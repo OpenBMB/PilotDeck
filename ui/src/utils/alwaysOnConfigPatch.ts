@@ -12,7 +12,7 @@ export function isAlwaysOnProjectEnabled(
   project: SettingsProject,
 ): boolean {
   const root = getAlwaysOnProjectRoot(project);
-  return Boolean(root && config.alwaysOn?.discovery?.projects?.[root]?.enabled === true);
+  return Boolean(root && config.alwaysOn?.projects?.[root]?.enabled === true);
 }
 
 export function setAlwaysOnProjectEnabled<T extends PilotDeckConfigLike>(
@@ -27,14 +27,11 @@ export function setAlwaysOnProjectEnabled<T extends PilotDeckConfigLike>(
     ...config,
     alwaysOn: {
       ...config.alwaysOn,
-      discovery: {
-        ...config.alwaysOn?.discovery,
-        projects: {
-          ...config.alwaysOn?.discovery?.projects,
-          [root]: {
-            ...config.alwaysOn?.discovery?.projects?.[root],
-            enabled,
-          },
+      projects: {
+        ...config.alwaysOn?.projects,
+        [root]: {
+          ...config.alwaysOn?.projects?.[root],
+          enabled,
         },
       },
     },

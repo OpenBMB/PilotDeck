@@ -481,12 +481,21 @@ export function useChatSessionState({
 
     // Fetch from server → store updates → chatMessages re-derives automatically
     setIsLoadingSessionMessages(true);
+    // Intentionally fetch the WHOLE transcript on session entry: PilotDeck's
+    // `readSessionMessages` slices in jsonl-forward order (`allMessages.slice(
+    // offset, offset+limit)`), but the ui-side `fetchMore` path that handles
+    // scroll-to-top assumes "more older messages" semantics and prepends the
+    // returned batch to serverMessages. The two are incompatible, so paging
+    // here produces a reordered transcript (the second-page batch — actually
+    // the *newer* tail messages — gets prepended in front of the older ones
+    // already on screen). Sessions are typically well under a few hundred
+    // messages, so fetching everything is fine.
     sessionStore.fetchFromServer(selectedSession.id, {
       provider: (selectedSession.__provider || provider) as SessionProvider,
       projectName: selectedProject.name,
       projectPath: selectedProject.fullPath || selectedProject.path || '',
       ...sessionRequestParams,
-      limit: MESSAGES_PER_PAGE,
+      limit: null,
       offset: 0,
     }).then(slot => {
       if (slot) {

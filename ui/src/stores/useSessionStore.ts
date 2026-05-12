@@ -66,6 +66,10 @@ export interface NormalizedMessage {
   // Cursor-specific ordering
   sequence?: number;
   rowid?: number;
+  // Streaming-only: id of slot.serverMessages tail at the moment the
+  // streaming row was created. computeMerged uses this for an id-based
+  // same-turn-snapshot test instead of a timestamp window.
+  serverTailIdAtStart?: string;
 }
 
 // ─── Per-session slot ────────────────────────────────────────────────────────
@@ -203,32 +207,27 @@ function computeMerged(server: NormalizedMessage[], realtime: NormalizedMessage[
   if (extra.length === 0) return server;
 
   // Structural dedup: if there's an active __streaming_ message in extras
-  // AND the server's last message is an assistant text from the SAME turn
-  // (i.e. a mid-stream fetchFromServer snapshot), drop the server snapshot
-  // in favor of the live streaming version.
+  // AND the server's last message is an assistant text whose id is NEW
+  // (different from the id captured when streaming started), the server
+  // wrote a mid-stream snapshot of the in-progress turn. Drop the server
+  // snapshot in favor of the live streaming version.
   //
-  // The same-turn guard is required: when a NEW turn starts, the server
-  // legitimately holds the previous turn's assistant message as its tail,
-  // and naively splicing it would erase the prior assistant reply (and
-  // because realtime extras are appended after the splice, it would also
-  // reorder the new user message after the new assistant streaming row).
-  // We rely on `updateStreaming` recording the turn start time on the
-  // streaming message and never refreshing it on subsequent deltas, so
-  // `lastServer.timestamp >= streaming.timestamp` only holds when the
-  // server snapshot was written during this turn.
+  // We compare ids (not timestamps) so the test is immune to NTP drift /
+  // burst-turn scenarios where the previous turn's assistant message
+  // finished writing within milliseconds of the next turn's first
+  // stream_delta — a timestamp window can't distinguish those cases,
+  // but an id comparison can: the previous turn's tail id was already
+  // captured into `serverTailIdAtStart`, so a `lastServer.id ===
+  // streamMsg.serverTailIdAtStart` match means "still the same tail
+  // that was there at turn start" → don't dedup.
   const streamIdx = extra.findIndex(m => m.id.startsWith('__streaming_'));
   if (streamIdx >= 0 && server.length > 0) {
     const lastServer = server[server.length - 1];
     const streamMsg = extra[streamIdx];
-    const lastServerTs = parseTimestampMs(lastServer.timestamp);
-    const streamTs = parseTimestampMs(streamMsg.timestamp);
-    const isSameTurnSnapshot =
-      lastServer.kind === 'text'
-      && lastServer.role === 'assistant'
-      && lastServerTs != null
-      && streamTs != null
-      && lastServerTs >= streamTs - 500;
-    if (isSameTurnSnapshot) {
+    const isAssistantText = lastServer.kind === 'text' && lastServer.role === 'assistant';
+    const tailIdChanged = streamMsg.serverTailIdAtStart !== undefined
+      && lastServer.id !== streamMsg.serverTailIdAtStart;
+    if (isAssistantText && tailIdChanged) {
       return [...server.slice(0, -1), ...extra];
     }
   }
@@ -538,6 +537,15 @@ export function useSessionStore() {
         content: accumulatedText,
       };
     } else {
+      // Record the id of server's tail message at the moment this turn
+      // started streaming. computeMerged uses this for an id-based
+      // dedup check that's immune to NTP drift / burst-turn time
+      // windows: only delete the server tail if it's a NEW message
+      // (a real mid-stream snapshot) rather than the previous turn's
+      // legitimate trailing assistant message.
+      const serverTailId = slot.serverMessages.length > 0
+        ? slot.serverMessages[slot.serverMessages.length - 1].id
+        : null;
       const msg: NormalizedMessage = {
         id: streamId,
         sessionId,
@@ -545,6 +553,7 @@ export function useSessionStore() {
         provider: msgProvider,
         kind: 'stream_delta',
         content: accumulatedText,
+        serverTailIdAtStart: serverTailId ?? undefined,
       };
       slot.realtimeMessages = [...slot.realtimeMessages, msg];
     }

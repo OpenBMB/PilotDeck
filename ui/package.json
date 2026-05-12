@@ -6,15 +6,19 @@
   "type": "module",
   "main": "server/index.js",
   "scripts": {
-    "dev": "concurrently --kill-others \"npm run server\" \"npm run client\"",
-    "server": "node server/index.js",
+    "dev": "concurrently --kill-others --names gateway,server,client \"npm:dev:gateway\" \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:gateway": "npm --prefix .. run server",
+    "dev:server": "node --import tsx server/index.js",
+    "dev:client": "vite",
+    "server": "node --import tsx server/index.js",
+    "gateway": "npm --prefix .. run server",
     "client": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "start": "npm run build && npm run server",
+    "start": "npm run build && concurrently --kill-others --names gateway,server \"npm:gateway\" \"npm:server\"",
     "postinstall": "node scripts/fix-node-pty.js"
   },
   "dependencies": {

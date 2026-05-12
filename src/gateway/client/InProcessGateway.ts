@@ -97,14 +97,20 @@ export class InProcessGateway implements Gateway {
   }
 
   /**
-   * B1 — install a sink to receive `elicitation_request` /
-   * `elicitation_cancelled` events for `sessionKey` while a turn is active.
-   * Returns the sink the channel should call. The function is replaced /
-   * cleared by `submitTurn` lifecycle.
+   * Push a synthesized {@link GatewayEvent} into the active `submitTurn`
+   * stream for the given session. Returns true when a sink existed and
+   * the event was queued, false otherwise (e.g. no turn currently in
+   * progress for that session).
+   *
+   * Used by per-session bridge hooks (notably the interactive
+   * permission hook) that need to surface UI prompts mid-turn without
+   * waiting for the agent's own event loop to emit them.
    */
-  emitForSession(sessionKey: string, event: GatewayEvent): void {
+  emitForSession(sessionKey: string, event: GatewayEvent): boolean {
     const sink = this.emitSinks.get(sessionKey);
-    if (sink) sink(event);
+    if (!sink) return false;
+    sink(event);
+    return true;
   }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {

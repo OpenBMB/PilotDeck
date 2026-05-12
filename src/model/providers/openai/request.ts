@@ -48,6 +48,15 @@ type OpenAIMessage = {
   content?: string | unknown[];
   tool_calls?: unknown[];
   tool_call_id?: string;
+  /**
+   * Reasoning providers (DeepSeek's `deepseek-reasoner` / `deepseek-v4-pro`,
+   * etc.) require the prior turn's chain-of-thought to be echoed back in
+   * this field on every follow-up request, otherwise the API rejects the
+   * call with "The reasoning_content in the thinking mode must be passed
+   * back to the API". Providers that don't recognize the field just
+   * ignore it.
+   */
+  reasoning_content?: string;
 };
 
 type OpenAITool = {
@@ -122,17 +131,35 @@ function toOpenAIMessages(message: CanonicalMessage): OpenAIMessage[] {
       },
     }));
 
+  // Split thinking blocks out of the regular content stream: reasoning
+  // providers (DeepSeek `deepseek-reasoner` / `deepseek-v4-pro`) expect
+  // them to be echoed back via the separate `reasoning_content` field,
+  // and they reject requests that hide the prior reasoning inside
+  // `content`. Non-reasoning providers ignore `reasoning_content`.
+  const reasoningBlocks = message.content.filter((block) => block.type === "thinking");
+  const reasoningText = reasoningBlocks
+    .map((block) => (block.type === "thinking" ? block.text : ""))
+    .filter((text) => text.length > 0)
+    .join("\n");
+
   const normalContent = message.content.filter(
-    (block) => block.type !== "tool_result" && block.type !== "tool_call",
+    (block) =>
+      block.type !== "tool_result"
+      && block.type !== "tool_call"
+      && block.type !== "thinking",
   );
 
   const messages: OpenAIMessage[] = [];
-  if (normalContent.length > 0 || assistantToolCalls.length > 0) {
-    messages.push({
+  if (normalContent.length > 0 || assistantToolCalls.length > 0 || reasoningText.length > 0) {
+    const entry: OpenAIMessage = {
       role: message.role,
       content: normalContent.length > 0 ? toOpenAIContent(normalContent) : undefined,
       tool_calls: assistantToolCalls.length > 0 ? assistantToolCalls : undefined,
-    });
+    };
+    if (reasoningText.length > 0 && message.role === "assistant") {
+      entry.reasoning_content = reasoningText;
+    }
+    messages.push(entry);
   }
 
   return [...messages, ...toolResultMessages];

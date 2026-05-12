@@ -65,18 +65,33 @@ type PilotDeckConfig = {
     subagents?: { default?: string; params?: Record<string, unknown> };
   };
   alwaysOn?: {
-    discovery?: {
-      trigger?: {
-        enabled?: boolean;
-        tickIntervalMinutes?: number;
-        cooldownMinutes?: number;
-        dailyBudget?: number;
-        heartbeatStaleSeconds?: number;
-        recentUserMsgMinutes?: number;
-        preferClient?: 'webui' | 'tui';
-      };
-      projects?: Record<string, { enabled?: boolean }>;
+    enabled?: boolean;
+    trigger?: {
+      enabled?: boolean;
+      tickIntervalMinutes?: number;
+      cooldownMinutes?: number;
+      dailyBudget?: number;
+      heartbeatStaleSeconds?: number;
+      recentUserMsgMinutes?: number;
+      preferChannel?: string;
     };
+    dormancy?: {
+      enabled?: boolean;
+      debounceMs?: number;
+      ignoreGlobs?: string[];
+    };
+    workspace?: {
+      gitWorktreeBaseDir?: string;
+      snapshotBaseDir?: string;
+      snapshotMaxBytes?: number;
+      gitLfs?: boolean;
+    };
+    execution?: {
+      maxTurns?: number;
+      maxToolCalls?: number;
+      timeoutMinutes?: number;
+    };
+    projects?: Record<string, { enabled?: boolean }>;
   };
   customEnv?: Record<string, string>;
   memory?: { enabled?: boolean; model?: string; params?: Record<string, unknown> };
@@ -701,7 +716,13 @@ function AlwaysOnSection({
   projects: SettingsProject[];
   onChange: (next: PilotDeckConfig) => void;
 }) {
-  const trigger = config.alwaysOn?.discovery?.trigger ?? {};
+  const ao = config.alwaysOn ?? {};
+  const trigger = ao.trigger ?? {};
+  const dormancy = ao.dormancy ?? {};
+  const workspace = ao.workspace ?? {};
+  const execution = ao.execution ?? {};
+  const enabled = ao.enabled === true;
+
   const projectRows = projects
     .map(project => ({ project, root: getAlwaysOnProjectRoot(project) }))
     .filter(item => item.root.length > 0);
@@ -712,66 +733,213 @@ function AlwaysOnSection({
       description="Configure automatic discovery globally and opt individual workspaces in."
     >
       <div className="space-y-4">
-        <SettingsCard divided>
+        {/* General */}
+        <SettingsCard>
           <SettingsRow
-            label="Auto discovery"
-            description="When enabled, Always-On can periodically inspect opted-in workspaces and propose follow-up plans."
+            label="Enabled"
+            description="Master switch for Always-On background agent."
           >
             <SettingsToggle
-              checked={trigger.enabled === true}
-              ariaLabel="Toggle automatic discovery"
-              onChange={(value) => onChange(patch(config, ['alwaysOn', 'discovery', 'trigger', 'enabled'], value))}
+              checked={enabled}
+              ariaLabel="Toggle Always-On"
+              onChange={(value) => onChange(patch(config, ['alwaysOn', 'enabled'], value))}
             />
           </SettingsRow>
-          <FormRow label="Tick interval (minutes)" description="How often the daemon checks opted-in workspaces.">
-            <NumberInput
-              value={trigger.tickIntervalMinutes}
-              placeholder="5"
-              onChange={(value) => onChange(patch(config, ['alwaysOn', 'discovery', 'trigger', 'tickIntervalMinutes'], value))}
-            />
-          </FormRow>
-          <FormRow label="Cooldown (minutes)" description="Minimum time between discovery runs per workspace.">
-            <NumberInput
-              value={trigger.cooldownMinutes}
-              placeholder="60"
-              onChange={(value) => onChange(patch(config, ['alwaysOn', 'discovery', 'trigger', 'cooldownMinutes'], value))}
-            />
-          </FormRow>
-          <FormRow label="Daily budget" description="Maximum automatic discovery runs per workspace per day.">
-            <NumberInput
-              value={trigger.dailyBudget}
-              placeholder="4"
-              onChange={(value) => onChange(patch(config, ['alwaysOn', 'discovery', 'trigger', 'dailyBudget'], value))}
-            />
-          </FormRow>
         </SettingsCard>
 
-        <SettingsSection
-          title="Workspace opt-in"
-          description="Only enabled workspaces receive Always-On heartbeats and scheduled discovery checks."
-        >
-          <SettingsCard divided>
-            {projectRows.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-muted-foreground">
-                No recognized projects yet. Add or open a workspace first.
-              </div>
-            ) : (
-              projectRows.map(({ project, root }) => (
+        {enabled && (
+          <>
+            {/* Trigger */}
+            <SettingsSection title="Trigger" description="Controls when and how often discovery runs fire.">
+              <SettingsCard divided>
                 <SettingsRow
-                  key={root}
-                  label={project.displayName || project.name}
-                  description={root}
+                  label="Auto discovery"
+                  description="When enabled, Always-On periodically inspects opted-in workspaces and proposes follow-up plans."
                 >
                   <SettingsToggle
-                    checked={isAlwaysOnProjectEnabled(config, project)}
-                    ariaLabel={`Toggle Always-On discovery for ${project.displayName || project.name}`}
-                    onChange={(enabled) => onChange(setAlwaysOnProjectEnabled(config, project, enabled))}
+                    checked={trigger.enabled === true}
+                    ariaLabel="Toggle automatic discovery"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'enabled'], value))}
                   />
                 </SettingsRow>
-              ))
-            )}
-          </SettingsCard>
-        </SettingsSection>
+                <FormRow label="Tick interval (minutes)" description="How often the daemon checks opted-in workspaces.">
+                  <NumberInput
+                    value={trigger.tickIntervalMinutes}
+                    placeholder="5"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'tickIntervalMinutes'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Cooldown (minutes)" description="Minimum time between discovery runs per workspace.">
+                  <NumberInput
+                    value={trigger.cooldownMinutes}
+                    placeholder="60"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'cooldownMinutes'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Daily budget" description="Maximum automatic discovery runs per workspace per day.">
+                  <NumberInput
+                    value={trigger.dailyBudget}
+                    placeholder="4"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'dailyBudget'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Heartbeat stale (seconds)" description="Heartbeats older than this are considered stale.">
+                  <NumberInput
+                    value={trigger.heartbeatStaleSeconds}
+                    placeholder="90"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'heartbeatStaleSeconds'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Recent user msg (minutes)" description="Only fire if the user sent a message within this window.">
+                  <NumberInput
+                    value={trigger.recentUserMsgMinutes}
+                    placeholder="5"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'recentUserMsgMinutes'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Preferred channel" description="Channel the discovery agent prefers to interact through.">
+                  <Select
+                    value={trigger.preferChannel}
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'preferChannel'], value))}
+                    options={[
+                      { value: 'web', label: 'Web UI' },
+                      { value: 'tui', label: 'TUI' },
+                    ]}
+                  />
+                </FormRow>
+              </SettingsCard>
+            </SettingsSection>
+
+            {/* Dormancy */}
+            <SettingsSection title="Dormancy" description="File-system watcher that pauses discovery while the user is actively editing.">
+              <SettingsCard divided>
+                <SettingsRow
+                  label="Enabled"
+                  description="Suppress discovery fires while the workspace has recent file changes."
+                >
+                  <SettingsToggle
+                    checked={dormancy.enabled !== false}
+                    ariaLabel="Toggle dormancy"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'dormancy', 'enabled'], value))}
+                  />
+                </SettingsRow>
+                <FormRow label="Debounce (ms)" description="Wait this long after the last file change before resuming.">
+                  <NumberInput
+                    value={dormancy.debounceMs}
+                    placeholder="2000"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'dormancy', 'debounceMs'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Ignore globs" description="File patterns excluded from dormancy detection, one per line.">
+                  <textarea
+                    value={(dormancy.ignoreGlobs ?? []).join('\n')}
+                    placeholder={"**/.git/**\n**/node_modules/**\n**/.pilotdeck/**\n**/dist/**\n**/.DS_Store"}
+                    onChange={(e) => {
+                      const globs = e.target.value.split('\n').filter((s) => s.trim().length > 0);
+                      onChange(patch(config, ['alwaysOn', 'dormancy', 'ignoreGlobs'], globs));
+                    }}
+                    spellCheck={false}
+                    className="min-h-[100px] w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs leading-5 text-foreground outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </FormRow>
+              </SettingsCard>
+            </SettingsSection>
+
+            {/* Workspace */}
+            <SettingsSection title="Workspace" description="Isolated workspace strategy for Always-On runs.">
+              <SettingsCard divided>
+                <FormRow label="Git worktree base dir" description="Root directory for git worktree-based isolation.">
+                  <TextInput
+                    value={workspace.gitWorktreeBaseDir}
+                    placeholder="(auto)"
+                    monospace
+                    onChange={(v) => onChange(patch(config, ['alwaysOn', 'workspace', 'gitWorktreeBaseDir'], v || undefined))}
+                  />
+                </FormRow>
+                <FormRow label="Snapshot base dir" description="Root directory for snapshot-based isolation.">
+                  <TextInput
+                    value={workspace.snapshotBaseDir}
+                    placeholder="(auto)"
+                    monospace
+                    onChange={(v) => onChange(patch(config, ['alwaysOn', 'workspace', 'snapshotBaseDir'], v || undefined))}
+                  />
+                </FormRow>
+                <FormRow label="Snapshot max bytes" description="Maximum size of a workspace snapshot.">
+                  <NumberInput
+                    value={workspace.snapshotMaxBytes}
+                    placeholder="1073741824"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'workspace', 'snapshotMaxBytes'], value))}
+                  />
+                </FormRow>
+                <SettingsRow
+                  label="Git LFS"
+                  description="Include Git LFS objects in workspace snapshots."
+                >
+                  <SettingsToggle
+                    checked={workspace.gitLfs === true}
+                    ariaLabel="Toggle Git LFS"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'workspace', 'gitLfs'], value))}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+            </SettingsSection>
+
+            {/* Execution */}
+            <SettingsSection title="Execution" description="Safety limits for each Always-On run.">
+              <SettingsCard divided>
+                <FormRow label="Max turns" description="Maximum number of agent turns per run.">
+                  <NumberInput
+                    value={execution.maxTurns}
+                    placeholder="30"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'execution', 'maxTurns'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Max tool calls" description="Maximum total tool calls per run.">
+                  <NumberInput
+                    value={execution.maxToolCalls}
+                    placeholder="200"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'execution', 'maxToolCalls'], value))}
+                  />
+                </FormRow>
+                <FormRow label="Timeout (minutes)" description="Hard timeout for each run.">
+                  <NumberInput
+                    value={execution.timeoutMinutes}
+                    placeholder="20"
+                    onChange={(value) => onChange(patch(config, ['alwaysOn', 'execution', 'timeoutMinutes'], value))}
+                  />
+                </FormRow>
+              </SettingsCard>
+            </SettingsSection>
+
+            {/* Workspace opt-in */}
+            <SettingsSection
+              title="Workspace opt-in"
+              description="Only enabled workspaces receive Always-On heartbeats and scheduled discovery checks."
+            >
+              <SettingsCard divided>
+                {projectRows.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No recognized projects yet. Add or open a workspace first.
+                  </div>
+                ) : (
+                  projectRows.map(({ project, root }) => (
+                    <SettingsRow
+                      key={root}
+                      label={project.displayName || project.name}
+                      description={root}
+                    >
+                      <SettingsToggle
+                        checked={isAlwaysOnProjectEnabled(config, project)}
+                        ariaLabel={`Toggle Always-On for ${project.displayName || project.name}`}
+                        onChange={(en) => onChange(setAlwaysOnProjectEnabled(config, project, en))}
+                      />
+                    </SettingsRow>
+                  ))
+                )}
+              </SettingsCard>
+            </SettingsSection>
+          </>
+        )}
       </div>
     </SettingsSection>
   );

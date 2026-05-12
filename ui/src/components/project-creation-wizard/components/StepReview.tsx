@@ -82,8 +82,8 @@ export default function StepReview({
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-accent/40 p-4">
-        {isCreating && cloneProgress ? (
+      {isCreating && cloneProgress ? (
+        <div className="rounded-lg border border-border bg-accent/40 p-4">
           <div className="space-y-2">
             <p className="text-sm font-medium text-foreground">
               {t('projectWizard.step3.cloningRepository', { defaultValue: 'Cloning repository...' })}
@@ -92,16 +92,8 @@ export default function StepReview({
               {cloneProgress}
             </code>
           </div>
-        ) : (
-          <p className="text-sm text-foreground">
-            {formState.workspaceType === 'existing'
-              ? t('projectWizard.step3.existingInfo')
-              : formState.githubUrl
-                ? t('projectWizard.step3.newWithClone')
-                : t('projectWizard.step3.newEmpty')}
-          </p>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

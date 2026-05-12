@@ -30,7 +30,7 @@ import {
     getPilotDeckGateway,
     getPilotDeckRepoRoot,
 } from './pilotdeck-bridge.js';
-import { resolvePilotHome, createProjectId } from '../../dist/src/pilot/index.js';
+import { resolvePilotHome, createProjectId } from './utils/pilotPaths.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
 
@@ -136,7 +136,7 @@ async function readMarkedProjectPaths() {
 }
 
 async function getProjects(progressCallback = null) {
-    const gateway = getPilotDeckGateway();
+    const gateway = await getPilotDeckGateway();
     const { projects: webProjects } = await gateway.listProjects();
     const markedProjects = await readMarkedProjectPaths();
     const seenByPath = new Set(
@@ -211,7 +211,8 @@ async function getProjects(progressCallback = null) {
     const generalHome = resolvePilotHome(process.env);
     let generalSessions = [];
     try {
-        const generalSessionsResult = await getPilotDeckGateway()
+        const generalGateway = await getPilotDeckGateway();
+        const generalSessionsResult = await generalGateway
             .listSessions({ projectKey: generalHome, limit: 5 })
             .catch(() => ({ sessions: [] }));
         generalSessions = (generalSessionsResult.sessions || []).map((session) =>
@@ -243,7 +244,7 @@ async function getProjects(progressCallback = null) {
 }
 
 async function getSessions(projectName, limit = 5, offset = 0) {
-    const gateway = getPilotDeckGateway();
+    const gateway = await getPilotDeckGateway();
     const projectPath = await extractProjectDirectory(projectName);
     const cursor = offset > 0 ? String(offset) : undefined;
     const result = await gateway

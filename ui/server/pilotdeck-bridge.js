@@ -5,7 +5,13 @@
  * `abort-session`, `claude-permission-response`, NormalizedMessage event
  * frames). This module:
  *
- *   1. Spins up a singleton in-process PilotDeck gateway on first use.
+ *   1. Connects to the standalone PilotDeck gateway server
+ *      (`pilotdeck server`, default ws://127.0.0.1:18789/ws) as a
+ *      WebSocket client. We never instantiate an in-process gateway
+ *      here — that would create a second, divergent agent runtime that
+ *      doesn't share `~/.pilotdeck/projects/<id>/chats/*.jsonl` writes
+ *      and permission state with the CLI/TUI surfaces. One process, one
+ *      gateway.
  *   2. Maps each old "sessionId" → PilotDeck "sessionKey" (1:1, generated
  *      on first turn and remembered for resume).
  *   3. Translates GatewayEvent → NormalizedMessage and writes back via
@@ -17,20 +23,38 @@
  * skills, taskmaster, memory, cron management) still runs through the
  * existing `ui/server/` route handlers — those are local/disk operations
  * that do not need an agent runtime.
+ *
+ * Two-process launch:
+ *
+ *   - `pilotdeck server` (port 18789) owns the gateway, agent loop,
+ *     model router, MCP runtime, cron daemon, and on-disk session
+ *     transcripts. Edit `src/**` then restart this process to pick up
+ *     changes — no `npm run build` required when running via `tsx`.
+ *   - `ui/server/index.js` (port 3001) is the express bridge: REST
+ *     endpoints for non-agent UI concerns + a WebSocket adapter that
+ *     re-shapes gateway events into the legacy NormalizedMessage frames
+ *     the React frontend reducer still expects.
+ *
+ * The pair is started together via `cd ui && npm run dev` (or
+ * `npm start`), which uses `concurrently` to launch both. Either order
+ * is fine — the bridge retries the WebSocket handshake for
+ * `GATEWAY_CONNECT_TIMEOUT_MS` so race conditions resolve themselves.
  */
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
-import os from 'node:os';
+import { promises as fsPromises } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
-import {
-    createLocalGateway,
-    getLocalGatewayRouterStats,
-} from '../../dist/src/cli/createLocalGateway.js';
-import { resolvePilotHome, createProjectId } from '../../dist/src/pilot/index.js';
-import { SessionConfigOverrides } from '../../dist/src/always-on/runtime/SessionConfigOverrides.js';
+import { resolvePilotHome, createProjectId } from './utils/pilotPaths.js';
+// Imported from TypeScript source — requires `node --import tsx` so the
+// module is transformed at load time. Keeping the bridge off
+// `dist/src/` is what lets `ui/server` survive `src/**` edits without
+// `npm run build`; the gateway server (also tsx-launched) restarts and
+// picks up the new code, while `ui/server` keeps running as a plain
+// client.
+import { createRemoteGateway } from '../../src/gateway/index.js';
 import { createNormalizedMessage } from './pilotdeck-message.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,43 +62,91 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const GENERAL_HOME = resolvePilotHome(process.env);
 
-/** @type {import('../../dist/src/gateway/index.js').Gateway | null} */
-let gateway = null;
-let gatewayInitError = null;
-const sessionOverrides = new SessionConfigOverrides();
+const GATEWAY_URL =
+    process.env.PILOTDECK_GATEWAY_URL || 'ws://127.0.0.1:18789/ws';
+const GATEWAY_TOKEN_PATH =
+    process.env.PILOTDECK_GATEWAY_TOKEN_PATH ||
+    path.join(GENERAL_HOME, 'server-token');
+// The two processes (gateway + bridge) are typically started in
+// parallel by `concurrently`. We allow up to 30 s for the gateway to
+// come up before failing the first call — covers cold MCP startup on
+// slower machines.
+const GATEWAY_CONNECT_TIMEOUT_MS = 30_000;
+const GATEWAY_CONNECT_RETRY_INTERVAL_MS = 250;
 
 /**
  * Default permission mode for sessions started from the Web UI. We use
  * `default` so PilotDeck's `Permission.decide()` fully evaluates rules
  * + tool semantics — read-only tools allow, side-effecting tools either
- * match an `allow` rule (set by clicking "Permission added" in the UI)
- * or surface a `permission_required` tool error. Override with
- * `PILOTDECK_WEB_PERMISSION_MODE`.
+ * surface an interactive `permission_request` (resolved via the banner)
+ * or short-circuit on an allow rule the user accumulated this session.
+ * Override with `PILOTDECK_WEB_PERMISSION_MODE`.
  */
 const WEB_DEFAULT_PERMISSION_MODE =
     process.env.PILOTDECK_WEB_PERMISSION_MODE || 'default';
 
-function ensureGateway() {
-    if (gateway) return gateway;
-    if (gatewayInitError) throw gatewayInitError;
+/** @type {Promise<import('../../src/gateway/index.js').Gateway> | null} */
+let gatewayPromise = null;
+
+async function readGatewayToken() {
     try {
-        gateway = createLocalGateway({
-            projectRoot: REPO_ROOT,
-            sessionOverrides,
-        });
-        return gateway;
-    } catch (error) {
-        gatewayInitError = error;
-        throw error;
+        const raw = await fsPromises.readFile(GATEWAY_TOKEN_PATH, 'utf8');
+        const trimmed = raw.trim();
+        return trimmed || null;
+    } catch {
+        return null;
     }
 }
 
+async function connectWithRetry() {
+    const deadline = Date.now() + GATEWAY_CONNECT_TIMEOUT_MS;
+    let lastError;
+    while (Date.now() < deadline) {
+        const token = await readGatewayToken();
+        if (token) {
+            try {
+                const gateway = await createRemoteGateway({
+                    url: GATEWAY_URL,
+                    token,
+                    clientName: 'web',
+                });
+                console.log(
+                    `[pilotdeck-bridge] connected → ${GATEWAY_URL}`,
+                );
+                return gateway;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        await new Promise((resolve) =>
+            setTimeout(resolve, GATEWAY_CONNECT_RETRY_INTERVAL_MS),
+        );
+    }
+    const detail = lastError instanceof Error ? `: ${lastError.message}` : '';
+    throw new Error(
+        `[pilotdeck-bridge] gateway connect failed after ${GATEWAY_CONNECT_TIMEOUT_MS}ms${detail}`,
+    );
+}
+
+function ensureGateway() {
+    if (!gatewayPromise) {
+        gatewayPromise = connectWithRetry().catch((error) => {
+            // Reset so the next caller retries instead of cementing the
+            // failure forever. The deadline inside connectWithRetry()
+            // already bounds individual attempts.
+            gatewayPromise = null;
+            throw error;
+        });
+    }
+    return gatewayPromise;
+}
+
 /**
- * Public accessor for the singleton gateway. Other ui/server modules
- * (projects.js etc.) call this so they share the same in-process
- * runtime as `runChatViaGateway` instead of constructing their own.
+ * Public accessor for the shared gateway client. Other ui/server modules
+ * (`projects.js`, etc.) await this so they share one WebSocket
+ * connection instead of opening their own.
  */
-export function getPilotDeckGateway() {
+export async function getPilotDeckGateway() {
     return ensureGateway();
 }
 
@@ -83,10 +155,10 @@ export function getPilotDeckRepoRoot() {
 }
 
 /**
- * Per-session state owned by the bridge. The frontend addresses sessions
- * by their PilotDeck `sessionKey` directly — no oldSessionId / newSessionId
- * indirection. The transcript on disk is named after this same key so
- * `/api/sessions/<sessionKey>/messages` can read it after a refresh.
+ * Per-session bookkeeping kept locally so abort + permission flows can
+ * find their target without round-tripping to the gateway just to
+ * resolve a sessionId. The gateway is still the source of truth for
+ * the transcript and the agent state machine.
  */
 const sessionState = new Map();
 
@@ -107,60 +179,15 @@ function ensureSessionState(sessionKey, projectKey, channelKey) {
             channelKey,
             runId: undefined,
             active: false,
-            // Live array references — we mutate them in place when the
-            // user adds tools so the agent's PermissionContext (which
-            // captures the same references at session-creation time)
-            // sees the update without recreating the session.
-            permissionRules: { allow: [], deny: [], ask: [] },
         };
         sessionState.set(sessionKey, state);
     } else {
-        // Refresh project/channel in case they changed (project switch).
         state.projectKey = projectKey;
         state.channelKey = channelKey;
     }
     return state;
 }
 
-/**
- * Translate the legacy frontend's `toolsSettings.allowedTools[]` /
- * `disallowedTools[]` into PilotDeck PermissionRule[]. We mutate the
- * existing arrays in place (don't replace them) so the live reference
- * captured by `createDefaultPermissionContext` reflects the update.
- */
-function syncPermissionRules(state, toolsSettings) {
-    const desiredAllow = Array.isArray(toolsSettings?.allowedTools)
-        ? toolsSettings.allowedTools.filter((name) => typeof name === 'string' && name.length > 0)
-        : [];
-    const desiredDeny = Array.isArray(toolsSettings?.disallowedTools)
-        ? toolsSettings.disallowedTools.filter((name) => typeof name === 'string' && name.length > 0)
-        : [];
-
-    state.permissionRules.allow.length = 0;
-    for (const name of desiredAllow) {
-        state.permissionRules.allow.push({
-            source: 'session',
-            behavior: 'allow',
-            toolName: name,
-        });
-    }
-    state.permissionRules.deny.length = 0;
-    for (const name of desiredDeny) {
-        state.permissionRules.deny.push({
-            source: 'session',
-            behavior: 'deny',
-            toolName: name,
-        });
-    }
-}
-
-/**
- * Resolve the desired PermissionMode for a turn:
- * 1. Explicit `permissionMode` from the chat composer (mode dropdown).
- * 2. `toolsSettings.skipPermissions === true` (legacy "skip permissions"
- *    toggle) → bypassPermissions.
- * 3. `WEB_DEFAULT_PERMISSION_MODE` (default `default`).
- */
 function resolvePermissionMode(options) {
     const explicit = options?.permissionMode || options?.mode;
     if (explicit) return explicit;
@@ -241,10 +268,11 @@ function gatewayEventToFrames(event, sessionId, provider) {
                 createNormalizedMessage({
                     ...base,
                     kind: 'interactive_prompt',
-                    content: event.questions
-                        ?.map((q) => q.prompt)
-                        .filter(Boolean)
-                        .join('\n') ?? '',
+                    content:
+                        event.questions
+                            ?.map((q) => q.prompt)
+                            .filter(Boolean)
+                            .join('\n') ?? '',
                     requestId: event.requestId,
                     toolCallId: event.toolCallId,
                     toolName: event.toolName,
@@ -322,44 +350,35 @@ function tryParseJson(value) {
  * it). The transcript on disk is named after the same key, so
  * `/api/sessions/<sessionKey>/messages` resolves cleanly.
  *
- * `options.toolsSettings` is mapped to per-session PermissionRule[] via
- * `SessionConfigOverrides` — clicking "Permission added" in the UI
- * pushes the tool name into that allow list and the next turn picks it
- * up because the rule arrays are shared by reference with the agent's
- * `PermissionContext`.
+ * Permission grants accumulated via the in-banner "Allow + remember"
+ * action are stored server-side for the duration of the agent session
+ * (see `createGatewayPermissionHook`) — `toolsSettings.allowedTools`
+ * pre-population from the legacy settings panel is currently NOT
+ * re-played here because the override map lives in another process.
+ * That feature can be restored by extending `submitTurn` to carry an
+ * optional `permissionAllow[]` payload; not needed for the common
+ * banner-driven flow.
  *
  * @param {string} command User prompt text.
  * @param {object} options Legacy options blob from the WS frame.
  * @param {{send: (msg: object) => void}} writer Existing writer.
  * @param {string} provider Provider hint (kept for legacy frame branding).
  */
-export async function runChatViaGateway(command, options = {}, writer, provider = 'pilotdeck') {
-    const gw = ensureGateway();
+export async function runChatViaGateway(
+    command,
+    options = {},
+    writer,
+    provider = 'pilotdeck',
+) {
+    const gw = await ensureGateway();
     const projectKey = options.projectPath || options.cwd || REPO_ROOT;
     const channelKey = 'web';
 
-    // Resolve / mint the sessionKey. We accept any incoming PilotDeck-
-    // shaped key as-is; anything else (legacy uuid from old transcripts,
-    // missing field, etc.) gets a fresh key and a session_created frame.
     const incoming = options.sessionId || options.sessionKey;
-    let sessionKey = isPilotDeckSessionKey(incoming) ? incoming : newSessionKey();
+    const sessionKey = isPilotDeckSessionKey(incoming) ? incoming : newSessionKey();
     const isNewSession = sessionKey !== incoming;
 
     const state = ensureSessionState(sessionKey, projectKey, channelKey);
-
-    // Sync per-session permission rules before the override is consumed
-    // by `createSession`. We mutate the same array references that the
-    // PermissionContext captures, so updates from a prior "Permission
-    // added" click apply on the very next turn without recreating the
-    // session.
-    syncPermissionRules(state, options.toolsSettings);
-    sessionOverrides.set(sessionKey, {
-        cwd: projectKey,
-        permissionMode: resolvePermissionMode(options),
-        bypassAvailable: true,
-        canPrompt: false,
-        permissionRules: state.permissionRules,
-    });
 
     if (isNewSession) {
         writer.send(
@@ -383,7 +402,7 @@ export async function runChatViaGateway(command, options = {}, writer, provider 
             channelKey,
             projectKey,
             message: command ?? '',
-            mode: options?.permissionMode || options?.mode,
+            mode: resolvePermissionMode(options),
             runId,
         });
         for await (const event of stream) {
@@ -437,7 +456,7 @@ export async function runChatViaGateway(command, options = {}, writer, provider 
 }
 
 export async function abortViaGateway(sessionId, _provider = 'pilotdeck') {
-    const gw = ensureGateway();
+    const gw = await ensureGateway();
     const sessionKey = isPilotDeckSessionKey(sessionId) ? sessionId : null;
     if (!sessionKey) return false;
     const state = sessionState.get(sessionKey);
@@ -451,7 +470,7 @@ export async function abortViaGateway(sessionId, _provider = 'pilotdeck') {
 }
 
 export async function decidePermissionViaGateway(requestId, decision, options = {}) {
-    const gw = ensureGateway();
+    const gw = await ensureGateway();
     // PermissionBus is keyed by sessionKey + requestId. We don't know
     // which session owns the request, so try each known session.
     for (const state of sessionState.values()) {
@@ -483,14 +502,20 @@ export function getActiveSessionIdsViaGateway() {
 }
 
 /**
- * Read persisted stats from ~/.pilotdeck/router-stats.json when no
- * in-memory ProjectRuntime exists yet (server just started).
- * Returns a Map shaped like LocalGatewayRouterStatsByProject.
+ * Read persisted router stats from `~/.pilotdeck/router-stats.json`.
+ *
+ * Both the gateway server and this bridge run in different processes;
+ * we no longer have an in-memory accessor (`getLocalGatewayRouterStats`
+ * was tied to the bridge owning the gateway). The gateway server's
+ * `TokenStatsCollector` periodically flushes to disk — this function
+ * is the bridge's read-only window into that file.
+ *
+ * @returns {Map<string, {aggregate: object, records: object[]}>}
  */
 function loadPersistedStatsFromDisk() {
     const result = new Map();
     try {
-        const statsPath = path.join(os.homedir(), '.pilotdeck', 'router-stats.json');
+        const statsPath = path.join(GENERAL_HOME, 'router-stats.json');
         const raw = fs.readFileSync(statsPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (!parsed || !parsed.sessions || typeof parsed.sessions !== 'object') {
@@ -539,10 +564,8 @@ function _readFirstPrompt(sessionId, projectKey) {
     const candidates = projectKey
         ? [path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${sessionId}.jsonl`)]
         : [];
-    // Also check the general workspace (sessions may live there)
     const generalChatPath = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats', `${sessionId}.jsonl`);
     if (!candidates.includes(generalChatPath)) candidates.push(generalChatPath);
-    // Scan all project dirs as last resort
     try {
         const projectsDir = path.join(pilotHome, 'projects');
         const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
@@ -580,21 +603,12 @@ function _readFirstPrompt(sessionId, projectKey) {
 }
 
 /**
- * Build a `DashboardData` payload from the per-project RouterRuntime
- * stats collected by `src/router/stats/TokenStatsCollector`. Shape
+ * Build a `DashboardData` payload from persisted router stats. Shape
  * mirrors what `ui/src/hooks/useRoutingDashboard.ts` expects so the V2
  * Dashboard tab renders without changing any frontend code.
  */
 export function getRouterDashboardData() {
-    const gw = ensureGateway();
-    let statsByProject = getLocalGatewayRouterStats(gw) || new Map();
-
-    // When no ProjectRuntime has been created yet (server just started,
-    // no chat turn submitted), fall back to reading persisted stats from
-    // disk so the dashboard still renders historical data.
-    if (statsByProject.size === 0) {
-        statsByProject = loadPersistedStatsFromDisk();
-    }
+    const statsByProject = loadPersistedStatsFromDisk();
 
     const projects = [];
     const overall = makeBucket();
@@ -807,7 +821,7 @@ export function getRouterStatsSummary() {
 }
 
 export async function elicitationRespondViaGateway(requestId, answer) {
-    const gw = ensureGateway();
+    const gw = await ensureGateway();
     for (const state of sessionState.values()) {
         try {
             const result = await gw.respondElicitation({

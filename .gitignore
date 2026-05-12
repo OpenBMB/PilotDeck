@@ -150,3 +150,6 @@ third-party/
 
 # Project-local PilotDeck overrides (per-project .pilotdeck/pilotdeck.yaml etc)
 .pilotdeck/
+
+# Playwright MCP browser session artifacts (console / page snapshots)
+.playwright-mcp/

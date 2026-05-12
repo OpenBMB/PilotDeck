@@ -2,7 +2,7 @@
 // Load environment variables before other imports execute
 import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
-import { installGlobalProxy } from '../../dist/src/cli/proxy.js';
+import { installGlobalProxy } from './utils/proxy.js';
 installGlobalProxy();
 
 import fs from 'fs';
@@ -86,8 +86,7 @@ import { createNormalizedMessage } from './pilotdeck-message.js';
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
 import { initializeDatabase, sessionNamesDb, applyCustomSessionNames, userDb } from './database/db.js';
 import { configureWebPush } from './services/vapid-keys.js';
-import { sendCronDaemonRequest, shutdownOwnedCronDaemon } from './services/cron-daemon-owner.js';
-import { startCronDaemonClientLease } from './services/cron-daemon-client-lease.js';
+import { sendCronDaemonRequest } from './services/cron-daemon-owner.js';
 import { createAlwaysOnHeartbeatManager } from './always-on-heartbeat.js';
 import { startDiscoveryTriggerClient } from './services/discovery-trigger-client.js';
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
@@ -1694,12 +1693,11 @@ function handleChatConnection(ws, request) {
 
     // Add to connected clients for project updates
     connectedClients.add(ws);
-    const clientId = alwaysOnHeartbeat.getWriterId(ws);
-    const cronDaemonLease = startCronDaemonClientLease({
-        clientId,
-        clientKind: 'webui',
-        getProjectRoots: () => alwaysOnHeartbeat.getProjectRoots(ws)
-    });
+    // NOTE: the legacy claude-code-main cron-daemon client lease was retired
+    // here. PilotDeck's cron runtime now lives inside `pilotdeck server`
+    // (src/cron via createCronRuntime), so multi-client lease tracking
+    // through `~/.claude/cron-daemon.sock` is no longer needed and was
+    // only producing ENOENT log spam against a daemon that never existed.
     let cleanedUp = false;
 
     // Wrap WebSocket with writer for consistent interface with SSEStreamWriter
@@ -1800,7 +1798,6 @@ function handleChatConnection(ws, request) {
         // Remove from connected clients
         connectedClients.delete(ws);
         void alwaysOnHeartbeat.clearPresence(ws);
-        void cronDaemonLease.stop();
     };
 
     ws.on('close', () => {
@@ -2657,14 +2654,9 @@ async function startServer() {
                         stopChromeHealthCheck();
                         shutdownGlobalChrome();
                     } catch { /* Chrome may not have been started */ }
-                    // Politely shut down the cron daemon WE spawned (token-checked
-                    // inside shutdownOwnedCronDaemon, so we don't kill a daemon
-                    // that another ui server owns). Without this, the detached
-                    // bun daemon survives Electron quit and shows up as an
-                    // orphaned process in Activity Monitor.
-                    try {
-                        await shutdownOwnedCronDaemon();
-                    } catch { /* already-down / not owner / socket closed */ }
+                    // Legacy claude-code-main cron-daemon shutdown removed —
+                    // PilotDeck cron is owned by `pilotdeck server` and shuts
+                    // down with it; ui/server never spawns its own daemon.
                 } finally {
                     process.exit(0);
                 }

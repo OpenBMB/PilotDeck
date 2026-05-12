@@ -28,6 +28,23 @@ export class PermissionRuntime {
       return finalizeAsk(askFromRule(tool, input, toolCallId, askRule), permissionContext);
     }
 
+    // Check user-configured allow rules BEFORE consulting the tool's own
+    // checkPermissions, so an explicit "Allow + remember" grant wins
+    // over a tool that hardcodes ask (web_fetch / web_search do this).
+    // Without this ordering, the user's grant is effectively ignored:
+    // tool.checkPermissions returns ask → runtime surfaces another
+    // permission prompt → next call repeats → infinite prompts.
+    // Deny rules (checked above) still win over allow rules.
+    const allowRule = findMatchingRule(permissionContext.rules.allow, tool.name);
+    if (allowRule) {
+      return allow({
+        type: "rule",
+        behavior: "allow",
+        rule: allowRule,
+        message: `Allow rule permits ${tool.name}.`,
+      });
+    }
+
     const toolPermission = await tool.checkPermissions?.(input, context);
     const toolDecision = normalizeToolPermission(toolPermission, tool, input, toolCallId, permissionContext);
     if (toolDecision) {
@@ -45,16 +62,6 @@ export class PermissionRuntime {
         type: "mode",
         mode: permissionContext.mode,
         message: `Permission mode ${permissionContext.mode} allows ${tool.name}.`,
-      });
-    }
-
-    const allowRule = findMatchingRule(permissionContext.rules.allow, tool.name);
-    if (allowRule) {
-      return allow({
-        type: "rule",
-        behavior: "allow",
-        rule: allowRule,
-        message: `Allow rule permits ${tool.name}.`,
       });
     }
 

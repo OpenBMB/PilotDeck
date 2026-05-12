@@ -3,17 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "ui"
+  ],
   "bin": {
     "pilotdeck": "./dist/src/cli/pilotdeck.js"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json; cp -a src/extension/plugins/builtin/. dist/src/extension/plugins/builtin/",
+    "server": "tsx src/cli/pilotdeck.ts server",
+    "server:built": "node dist/src/cli/pilotdeck.js server",
+    "dev": "npm --workspace ui run dev",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
     "e2e:real-agent-lifecycle-hooks": "npm run build && PILOTDECK_RUN_REAL_AGENT_LIFECYCLE_E2E=1 node dist/tests/agent/e2e/run-real-agent-lifecycle-hooks.js"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "ink-testing-library": "^4.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {

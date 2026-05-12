@@ -3,18 +3,19 @@
  *
  * GET /api/sessions/:sessionId/messages?projectName=&projectPath=&limit=&offset=
  *
- * After the PilotDeck-only migration this route always reads transcripts
- * from `src/session` via `gateway.readSessionMessages`, regardless of the
- * `provider` query param the legacy frontend may still pass. The shape
- * the chat reducer expects (`messages: NormalizedMessage[]`, `total`,
- * `hasMore`, `offset`, `limit`) is preserved by `mapWebMessageToNormalized`.
+ * Reads transcripts through the gateway's `readSessionMessages` RPC.
+ * Previously this route imported `readWebSessionMessages` directly from
+ * `dist/src/web/server/` — that coupled `ui/server/` to compiled
+ * artifacts and meant `src/` edits were silently invisible until a
+ * `npm run build`. Going through the gateway WebSocket means the
+ * standalone `pilotdeck server` process owns the read path and we pick
+ * up its in-flight session writes automatically.
  *
  * @module routes/messages
  */
 
 import express from 'express';
-import { readWebSessionMessages } from '../../../dist/src/web/server/readSessionMessages.js';
-import { resolvePilotHome } from '../../../dist/src/pilot/index.js';
+import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import { createNormalizedMessage } from '../pilotdeck-message.js';
 
 const router = express.Router();
@@ -30,16 +31,13 @@ router.get('/:sessionId/messages', async (req, res) => {
       : null;
     const offset = parseInt(req.query.offset || '0', 10);
 
-    const pilotHome = resolvePilotHome(process.env);
-    const result = await readWebSessionMessages(
-      {
-        sessionKey: sessionId,
-        projectKey: projectPath,
-        limit: limit ?? undefined,
-        cursor: offset > 0 ? String(offset) : undefined,
-      },
-      { projectRoot: projectPath, pilotHome },
-    );
+    const gateway = await getPilotDeckGateway();
+    const result = await gateway.readSessionMessages({
+      sessionKey: sessionId,
+      projectKey: projectPath,
+      limit: limit ?? undefined,
+      cursor: offset > 0 ? String(offset) : undefined,
+    });
 
     const messages = result.messages.map((message) => mapWebMessageToNormalized(message, sessionId));
     const totalKnown = typeof result.total === 'number' ? result.total : messages.length + offset;

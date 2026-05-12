@@ -31,9 +31,12 @@ export function formatToolInputForDisplay(input: unknown) {
 
 export function getPilotDeckPermissionSuggestion(
   message: ChatMessage | null | undefined,
-  provider: string,
+  _provider: string,
 ): PilotDeckPermissionSuggestion | null {
-  if (provider !== 'claude') return null;
+  // No longer gated on provider === 'claude': after the PolitDeck-only
+  // migration every provider routes tool calls through the same gateway
+  // PermissionContext, so the "Permission added" affordance is useful
+  // regardless of which model is selected.
   if (!message?.toolResult?.isError) return null;
 
   const toolName = message?.toolName;

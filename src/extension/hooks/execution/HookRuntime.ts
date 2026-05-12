@@ -41,6 +41,15 @@ export class HookRuntime {
     private readonly callbackExecutor = new CallbackHookExecutor(),
   ) {}
 
+  /**
+   * Expose the {@link CallbackHookExecutor} so the caller can register
+   * per-process callbacks (e.g. the gateway's interactive permission
+   * hook) before the runtime starts dispatching events.
+   */
+  getCallbackExecutor(): CallbackHookExecutor {
+    return this.callbackExecutor;
+  }
+
   async run(input: HookRuntimeRunInput): Promise<HookRuntimeRunResult> {
     const effects: PilotDeckHookEffect[] = [];
     const events: PilotDeckHookExecutionEvent[] = [];

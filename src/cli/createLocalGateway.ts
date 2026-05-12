@@ -27,12 +27,16 @@ import {
   type ListSessionsResult,
 } from "../gateway/index.js";
 import {
+  GATEWAY_PERMISSION_CALLBACK_NAME,
+  createGatewayPermissionHook,
+} from "../gateway/permission/createGatewayPermissionHook.js";
+import {
   McpRuntime,
   createMcpToolDefinitionsFromRuntime,
   parsePluginMcpServers,
 } from "../mcp/index.js";
 import { createModelRuntime, type ModelRuntime } from "../model/index.js";
-import { createDefaultPermissionContext } from "../permission/index.js";
+import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
 import { loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
 import type { PilotAgentModelSelection, PilotConfigSnapshot } from "../pilot/config/types.js";
 import type { RouterConfig } from "../router/config/schema.js";
@@ -65,54 +69,6 @@ export type CreateLocalGatewayOptions = {
    */
   __testModelFactory?: (snapshot: PilotConfigSnapshot) => ModelRuntime;
 };
-
-export type LocalGatewayRouterStatsRecord = {
-  sessionId: string;
-  scenarioType: string;
-  resolvedFrom: string;
-  provider: string;
-  model: string;
-  usage: {
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-    totalTokens?: number;
-  };
-  startedAt: string;
-  endedAt: string;
-};
-
-export type LocalGatewayRouterStatsByProject = Map<
-  string,
-  {
-    aggregate: {
-      totalRequests: number;
-      totalInputTokens: number;
-      totalOutputTokens: number;
-      perScenario: Record<string, number>;
-      perModel: Record<string, number>;
-    };
-    records: LocalGatewayRouterStatsRecord[];
-  }
->;
-
-const __gatewayRouterStatsAccessors = new WeakMap<
-  Gateway,
-  () => LocalGatewayRouterStatsByProject
->();
-
-/**
- * Side-channel accessor for router stats produced by RouterRuntime
- * instances spun up inside `createLocalGateway`. We deliberately keep
- * this off the `Gateway` interface so the protocol stays minimal — Web
- * UI consumers (ui/server/pilotdeck-bridge.js) call this directly.
- */
-export function getLocalGatewayRouterStats(
-  gateway: Gateway,
-): LocalGatewayRouterStatsByProject | undefined {
-  return __gatewayRouterStatsAccessors.get(gateway)?.();
-}
 
 export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Gateway {
   const baseEnv = options.env ?? process.env;
@@ -157,9 +113,6 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Gat
   // build a `GatewayElicitationChannel` against this gateway's bus +
   // emit-sink (B1).
   registry.setGateway(gateway);
-  __gatewayRouterStatsAccessors.set(gateway, () =>
-    registry.snapshotAllRouterStats(),
-  );
   return gateway;
 }
 
@@ -199,6 +152,23 @@ type ProjectRuntime = {
 class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<string, ProjectRuntime>();
   private gateway?: InProcessGateway;
+  /**
+   * Per-session live permission rules used when no `sessionOverrides`
+   * entry exists. Same array reference is handed to:
+   *   - `createDefaultPermissionContext({ rules })` so `PermissionRuntime.decide`
+   *     sees current allow/deny entries.
+   *   - `createGatewayPermissionHook({ permissionRules })` so the hook can
+   *     push session-scoped allow rules on `remember=true` and have the
+   *     very next `decide()` call inside this turn see them.
+   * Without this fallback, remote-gateway clients (Web UI talking to
+   * `pilotdeck server`) wouldn't be able to round-trip permission
+   * prompts because they can't reach into the server's `sessionOverrides`
+   * map from outside the process.
+   */
+  private readonly fallbackRuleSets = new Map<
+    string,
+    { allow: PermissionRule[]; deny: PermissionRule[]; ask: PermissionRule[] }
+  >();
 
   constructor(private readonly options: ProjectRuntimeRegistryOptions) {}
 
@@ -207,18 +177,31 @@ class ProjectRuntimeRegistry {
   }
 
   /**
-   * Snapshot every per-project RouterRuntime's TokenStatsCollector for
-   * the Web UI Dashboard tab. Keyed by canonical project root.
+   * Resolve the live permission-rule set for a session. Prefers any
+   * explicit `sessionOverrides` entry (used by `always-on` to inject a
+   * pre-populated allow list); otherwise lazily mints a per-session
+   * fallback so the gateway permission hook always has a live array to
+   * push `remember=true` grants into.
    */
-  snapshotAllRouterStats(): LocalGatewayRouterStatsByProject {
-    const out: LocalGatewayRouterStatsByProject = new Map();
-    for (const [projectRoot, runtime] of this.runtimes.entries()) {
-      out.set(projectRoot, {
-        aggregate: runtime.router.stats.snapshot(),
-        records: runtime.router.stats.recent(1000),
-      });
+  private getLiveRuleSet(sessionKey: string): {
+    allow: PermissionRule[];
+    deny: PermissionRule[];
+    ask: PermissionRule[];
+  } {
+    const explicit = this.options.sessionOverrides?.get(sessionKey)?.permissionRules;
+    if (explicit) {
+      return {
+        allow: explicit.allow ?? [],
+        deny: explicit.deny ?? [],
+        ask: explicit.ask ?? [],
+      };
     }
-    return out;
+    let auto = this.fallbackRuleSets.get(sessionKey);
+    if (!auto) {
+      auto = { allow: [], deny: [], ask: [] };
+      this.fallbackRuleSets.set(sessionKey, auto);
+    }
+    return auto;
   }
 
   resolve(projectKey?: string): ProjectRuntime {
@@ -310,7 +293,46 @@ class ProjectRuntimeRegistry {
     await runtime.pluginRuntime.refresh();
     await this.ensureMcpReady(runtime);
     const contributions = runtime.pluginRuntime.snapshotContributions();
-    const lifecycle = new LifecycleRuntime(new HookRuntime(contributions.hooks));
+
+    // Inject the gateway's interactive permission hook so the agent's
+    // PermissionRequest lifecycle is round-tripped through whichever
+    // client is streaming this session (Web UI, TUI, etc.) instead of
+    // returning `permission_required` errors. The hook mutates the
+    // session's live `permissionRules.allow` array on `remember=true`,
+    // so a subsequent tool call inside the same turn bypasses the ask
+    // path without waiting for the next turn.
+    //
+    // We register unconditionally whenever a gateway is wired up. If no
+    // client is actively streaming, `gw.emitForSession()` returns false
+    // and the hook auto-denies — better than silently hanging.
+    const gw = this.gateway;
+    const liveRuleSet = this.getLiveRuleSet(context.sessionKey);
+    const hookSettings: typeof contributions.hooks = gw
+      ? {
+          ...contributions.hooks,
+          PermissionRequest: [
+            ...(contributions.hooks.PermissionRequest ?? []),
+            {
+              hooks: [
+                { type: "callback", name: GATEWAY_PERMISSION_CALLBACK_NAME },
+              ],
+            },
+          ],
+        }
+      : contributions.hooks;
+    const hookRuntime = new HookRuntime(hookSettings);
+    if (gw) {
+      hookRuntime.getCallbackExecutor().register(
+        GATEWAY_PERMISSION_CALLBACK_NAME,
+        createGatewayPermissionHook({
+          sessionKey: context.sessionKey,
+          bus: gw.getPermissionBus(),
+          emit: (event) => gw.emitForSession(context.sessionKey, event),
+          permissionRules: liveRuleSet.allow,
+        }),
+      );
+    }
+    const lifecycle = new LifecycleRuntime(hookRuntime);
     const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
@@ -444,6 +466,13 @@ class ProjectRuntimeRegistry {
     const override = this.options.sessionOverrides?.get(sessionKey);
     const permissionMode = override?.permissionMode ?? this.options.permissionMode;
     const cwd = override?.cwd ?? runtime.projectRoot;
+    // Hand `PermissionContext` the same live rule-set reference the
+    // gateway permission hook owns (see `getLiveRuleSet`). With this
+    // shared reference, an "allow + remember" decision pushed by the
+    // hook is visible to `PermissionRuntime.decide` on the very next
+    // tool call inside the same turn — no roundtrip back to the client
+    // needed, even when the client lives in a different process.
+    const liveRuleSet = this.getLiveRuleSet(sessionKey);
     return {
       provider: agent.model.provider,
       model: agent.model.model,
@@ -454,13 +483,11 @@ class ProjectRuntimeRegistry {
         mode: permissionMode,
         canPrompt: override?.canPrompt ?? false,
         bypassAvailable: override?.bypassAvailable ?? true,
-        rules: override?.permissionRules
-          ? {
-              allow: override.permissionRules.allow ?? [],
-              deny: override.permissionRules.deny ?? [],
-              ask: override.permissionRules.ask ?? [],
-            }
-          : undefined,
+        rules: {
+          allow: liveRuleSet.allow,
+          deny: liveRuleSet.deny,
+          ask: liveRuleSet.ask,
+        },
       }),
     };
   }
