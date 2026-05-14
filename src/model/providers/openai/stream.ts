@@ -1,3 +1,4 @@
+import { jsonrepair } from "jsonrepair";
 import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIFinishReason } from "../../response/normalizeFinishReason.js";
@@ -253,22 +254,30 @@ function finishToolCalls(state: OpenAIStreamState, raw: unknown): CanonicalModel
     let input: unknown;
     try {
       input = JSON.parse(rawArguments);
-    } catch (parseError) {
-      const preview = rawArguments.length > 500
-        ? rawArguments.slice(0, 250) + "\n…[truncated]…\n" + rawArguments.slice(-250)
-        : rawArguments;
-      console.error(
-        `[openai-stream] invalid_tool_arguments for tool "${toolCall.name ?? "?"}" (index=${index}, `
-        + `buf_len=${rawArguments.length}):\n${preview}`,
-      );
-      throw new ModelProviderError({
-        provider: "openai",
-        protocol: "openai",
-        code: "invalid_tool_arguments",
-        message: "OpenAI stream tool call arguments are not valid JSON.",
-        retryable: false,
-        raw,
-      });
+    } catch {
+      try {
+        const repaired = jsonrepair(rawArguments);
+        input = JSON.parse(repaired);
+        console.warn(
+          `[openai-stream] repaired invalid JSON for tool "${toolCall.name ?? "?"}" (buf_len=${rawArguments.length})`,
+        );
+      } catch {
+        const preview = rawArguments.length > 500
+          ? rawArguments.slice(0, 250) + "\n…[truncated]…\n" + rawArguments.slice(-250)
+          : rawArguments;
+        console.error(
+          `[openai-stream] invalid_tool_arguments for tool "${toolCall.name ?? "?"}" (index=${index}, `
+          + `buf_len=${rawArguments.length}):\n${preview}`,
+        );
+        throw new ModelProviderError({
+          provider: "openai",
+          protocol: "openai",
+          code: "invalid_tool_arguments",
+          message: "OpenAI stream tool call arguments are not valid JSON.",
+          retryable: true,
+          raw,
+        });
+      }
     }
 
     events.push({

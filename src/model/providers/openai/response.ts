@@ -1,3 +1,4 @@
+import { jsonrepair } from "jsonrepair";
 import type {
   CanonicalContentBlock,
   CanonicalModelResponse,
@@ -47,14 +48,20 @@ function toCanonicalToolCall(toolCall: unknown, provider: string): CanonicalTool
   try {
     input = JSON.parse(rawArguments);
   } catch {
-    throw new ModelProviderError({
-      provider,
-      protocol: "openai",
-      code: "invalid_tool_arguments",
-      message: "OpenAI tool call arguments are not valid JSON.",
-      retryable: false,
-      raw: toolCall,
-    });
+    try {
+      const repaired = jsonrepair(rawArguments);
+      input = JSON.parse(repaired);
+      console.warn(`[openai-response] repaired invalid JSON for tool call (len=${rawArguments.length})`);
+    } catch {
+      throw new ModelProviderError({
+        provider,
+        protocol: "openai",
+        code: "invalid_tool_arguments",
+        message: "OpenAI tool call arguments are not valid JSON.",
+        retryable: true,
+        raw: toolCall,
+      });
+    }
   }
 
   return {
