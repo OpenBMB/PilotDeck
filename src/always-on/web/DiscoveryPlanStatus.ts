@@ -38,6 +38,7 @@ export type WebPlanRecord = {
   latestSummary: string;
   contextRefs: WebPlanContextRefs;
   planFilePath: string;
+  reportFilePath?: string;
   structureVersion: number;
   lastExecutionSource?: string;
   workspace?: {

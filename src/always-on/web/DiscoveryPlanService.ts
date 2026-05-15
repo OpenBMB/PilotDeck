@@ -193,6 +193,7 @@ export function normalizeDiscoveryPlanRecord(record: Record<string, unknown> | n
     latestSummary: normalizeString(record?.latestSummary),
     contextRefs,
     planFilePath: normalizeString(record?.planFilePath, relativePlanPath(id)),
+    reportFilePath: normalizeString(record?.reportFilePath) || undefined,
     structureVersion:
       typeof record?.structureVersion === "number" ? record.structureVersion : STRUCTURE_VERSION,
     workspace: normalizeWorkspaceRef(record?.workspace),
@@ -676,8 +677,20 @@ export class DiscoveryPlanService {
     const rawRecord = await readRawPlanRecord(projectDir, planId);
     if (!rawRecord) throw makeError("Discovery plan not found", "NOT_FOUND");
 
-    const reportPath = typeof rawRecord.reportFilePath === "string" ? rawRecord.reportFilePath : "";
-    if (!reportPath) return { content: "" };
+    let reportPath = typeof rawRecord.reportFilePath === "string" ? rawRecord.reportFilePath : "";
+
+    if (!reportPath) {
+      const runId =
+        typeof rawRecord.sourceDiscoverySessionId === "string" ? rawRecord.sourceDiscoverySessionId
+        : typeof rawRecord.sourceRunId === "string" ? rawRecord.sourceRunId
+        : "";
+      if (runId) {
+        const inferred = join("reports", `${runId}.md`);
+        const inferredContent = await readPlanBody(projectDir, inferred);
+        if (inferredContent) return { content: inferredContent };
+      }
+      return { content: "" };
+    }
 
     const content = await readPlanBody(projectDir, reportPath);
     return { content };
