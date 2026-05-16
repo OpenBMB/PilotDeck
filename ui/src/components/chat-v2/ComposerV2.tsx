@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
   ChangeEvent,
@@ -9,12 +10,37 @@ import type {
   RefObject,
   TouchEvent,
 } from 'react';
-import { ArrowUp, AtSign, Command, ImagePlus, Loader2, Square } from 'lucide-react';
-import type { PendingPermissionRequest } from '../chat/types/types';
+import {
+  ArrowUp,
+  AtSign,
+  Check,
+  Command,
+  Eye,
+  ImagePlus,
+  Loader2,
+  Shield,
+  ShieldCheck,
+  ShieldOff,
+  Square,
+} from 'lucide-react';
+import type { PendingPermissionRequest, PermissionMode } from '../chat/types/types';
 import CommandMenu from '../chat/view/subcomponents/CommandMenu';
 import PermissionRequestsBanner from '../chat/view/subcomponents/PermissionRequestsBanner';
 import ImageAttachment from '../chat/view/subcomponents/ImageAttachment';
 import { cn } from '../../lib/utils.js';
+
+const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+
+const MODE_CONFIG: Record<PermissionMode, {
+  icon: typeof Shield;
+  color: string;
+  activeColor: string;
+}> = {
+  default: { icon: Shield, color: 'text-neutral-500 dark:text-neutral-400', activeColor: 'text-neutral-500 dark:text-neutral-400' },
+  acceptEdits: { icon: ShieldCheck, color: 'text-emerald-500', activeColor: 'text-emerald-500' },
+  bypassPermissions: { icon: ShieldOff, color: 'text-amber-500', activeColor: 'text-amber-500' },
+  plan: { icon: Eye, color: 'text-indigo-500', activeColor: 'text-indigo-500' },
+};
 
 interface MentionableFile {
   name: string;
@@ -97,6 +123,9 @@ export type ComposerV2Props = {
 
   sendByCtrlEnter?: boolean;
 
+  permissionMode: PermissionMode;
+  onSelectPermissionMode: (mode: PermissionMode) => void;
+
   /**
    * When true, the outer "footer" chrome (top divider, page bg, page padding)
    * is suppressed so this composer can be embedded inside a centered card —
@@ -148,9 +177,41 @@ export default function ComposerV2({
   pendingPermissionRequests,
   handlePermissionDecision,
   handleGrantToolPermission,
+  permissionMode,
+  onSelectPermissionMode,
   chromeless = false,
 }: ComposerV2Props) {
   const { t } = useTranslation('chat');
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
+  const modeBtnRef = useRef<HTMLButtonElement>(null);
+
+  const toggleModeMenu = useCallback(() => {
+    setModeMenuOpen((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (!modeMenuOpen) return;
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (
+        modeMenuRef.current &&
+        !modeMenuRef.current.contains(event.target as Node) &&
+        modeBtnRef.current &&
+        !modeBtnRef.current.contains(event.target as Node)
+      ) {
+        setModeMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setModeMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [modeMenuOpen]);
 
   const hasQuestionPanel = pendingPermissionRequests.some(
     (r) => r.toolName === 'AskUserQuestion',
@@ -314,6 +375,63 @@ export default function ComposerV2({
                   >
                     <Command className="h-4 w-4" strokeWidth={1.75} />
                   </button>
+                  <div className="relative">
+                    <button
+                      ref={modeBtnRef}
+                      type="button"
+                      onClick={toggleModeMenu}
+                      className={cn(
+                        'inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                        MODE_CONFIG[permissionMode].color,
+                      )}
+                      title={t('input.clickToChangeMode', { defaultValue: 'Click to change permission mode (or press Tab in input)' }) as string}
+                    >
+                      {(() => {
+                        const IconComponent = MODE_CONFIG[permissionMode].icon;
+                        return <IconComponent className="h-4 w-4" strokeWidth={1.75} />;
+                      })()}
+                    </button>
+                    {modeMenuOpen ? (
+                      <div
+                        ref={modeMenuRef}
+                        className="absolute bottom-full left-0 z-50 mb-2 w-52 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+                      >
+                        {PERMISSION_MODES.map((mode) => {
+                          const config = MODE_CONFIG[mode];
+                          const ModeIcon = config.icon;
+                          const isActive = mode === permissionMode;
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={cn(
+                                'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors',
+                                isActive
+                                  ? 'bg-neutral-100 dark:bg-neutral-800'
+                                  : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
+                              )}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                onSelectPermissionMode(mode);
+                                setModeMenuOpen(false);
+                              }}
+                            >
+                              <ModeIcon
+                                className={cn('h-4 w-4 shrink-0', config.color)}
+                                strokeWidth={1.75}
+                              />
+                              <span className="flex-1 text-neutral-900 dark:text-neutral-100">
+                                {t(`codex.modes.${mode}`, { defaultValue: mode })}
+                              </span>
+                              {isActive ? (
+                                <Check className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={2} />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 {isLoading && canAbortSession ? (

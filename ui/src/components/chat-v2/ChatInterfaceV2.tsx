@@ -81,10 +81,18 @@ function ChatInterfaceV2({
   const {
     model,
     permissionMode,
+    setPermissionMode: setPermissionModeRaw,
     pendingPermissionRequests,
     setPendingPermissionRequests,
     cyclePermissionMode,
   } = useChatProviderState({ selectedSession });
+
+  const selectPermissionMode = useCallback((mode: typeof permissionMode) => {
+    setPermissionModeRaw(mode);
+    if (selectedSession?.id) {
+      localStorage.setItem(`permissionMode-${selectedSession.id}`, mode);
+    }
+  }, [setPermissionModeRaw, selectedSession?.id]);
 
   const {
     chatMessages,
@@ -368,6 +376,8 @@ function ChatInterfaceV2({
       handlePermissionDecision={handlePermissionDecision}
       handleGrantToolPermission={handleGrantToolPermission}
       sendByCtrlEnter={sendByCtrlEnter}
+      permissionMode={permissionMode}
+      onSelectPermissionMode={selectPermissionMode}
       chromeless={isWelcomeMode}
     />
   );
