@@ -57,7 +57,7 @@ export class AgentLoop {
   ) {}
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
-    this.applyPermissionOverrides(input.sessionId, input.permissionMode, input.permissionRules);
+    this.applyPermissionOverrides(input.permissionMode, input.permissionRules);
     const startedAt = this.now().toISOString();
     let messages = [...input.messages];
     let turnCount = 1;
@@ -94,6 +94,16 @@ export class AgentLoop {
     let hasAttemptedOutputRetry = false;
     const MAX_JSON_SELF_CORRECT_RETRIES = 3;
     let jsonSelfCorrectCount = 0;
+
+    /**
+     * Circuit breaker: consecutive turns where ALL tool calls are
+     * `invalid_tool_input` errors. When the model is stuck in a loop
+     * (e.g. qwen repeatedly emitting empty-param bash calls), terminate
+     * early instead of burning tokens. Resets on any turn with at least
+     * one successful tool call.
+     */
+    const MAX_CONSECUTIVE_ALL_INVALID_TURNS = 3;
+    let consecutiveAllInvalidTurns = 0;
 
     const stickyInfo = this.dependencies.router.invalidateSticky?.(input.sessionId);
     let previousTier: string | undefined = stickyInfo?.previousTier;
@@ -413,19 +423,9 @@ export class AgentLoop {
         }
         const requestedMode = readRequestedMode(result.type === "success" ? result.data : undefined);
         if (requestedMode) {
-          if (
-            this.config.permissionModeOrigin === "user" &&
-            this.config.permissionMode === "plan" &&
-            requestedMode !== "plan"
-          ) {
-            // User locked plan mode via UI — tools cannot exit it.
-          } else {
-            this.config.permissionMode = requestedMode;
-            this.config.permissionContext.mode = requestedMode;
-            this.config.permissionModeOrigin = "tool";
-            this.syncPlanFilePath(input.sessionId);
-            yield { type: "mode_change_requested", sessionId: input.sessionId, turnId: input.turnId, mode: requestedMode };
-          }
+          this.config.permissionMode = requestedMode;
+          this.config.permissionContext.mode = requestedMode;
+          yield { type: "mode_change_requested", sessionId: input.sessionId, turnId: input.turnId, mode: requestedMode };
         }
         yield { type: "tool_result", sessionId: input.sessionId, turnId: input.turnId, result };
       }
@@ -471,6 +471,38 @@ export class AgentLoop {
         await captureTurn(result.type === "error");
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
+      }
+
+      // Circuit breaker: detect turns where ALL tool calls returned
+      // invalid_tool_input. If the model is stuck (e.g. repeatedly emitting
+      // empty-param bash), terminate early after MAX_CONSECUTIVE_ALL_INVALID_TURNS.
+      const allInvalid = pairedResults.length > 0 && pairedResults.every(
+        (r) => r.type === "error" && r.error.code === "invalid_tool_input",
+      );
+      if (allInvalid) {
+        consecutiveAllInvalidTurns++;
+        if (consecutiveAllInvalidTurns >= MAX_CONSECUTIVE_ALL_INVALID_TURNS) {
+          const result = this.createTurnResult(input, {
+            type: "error",
+            stopReason: "tool_error",
+            usage,
+            permissionDenials,
+            turns: turnCount,
+            startedAt,
+            finalMessage,
+            structuredOutput,
+            errors: [agentError(
+              "agent_tool_error_loop",
+              `Terminated: ${consecutiveAllInvalidTurns} consecutive turns with all tool calls failing input validation. The model appears stuck in a loop.`,
+            )],
+          });
+          yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: result.errors![0]! };
+          await captureTurn(result.type === "error");
+          yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+          return { result, messages };
+        }
+      } else {
+        consecutiveAllInvalidTurns = 0;
       }
 
       if (this.config.stopOnStructuredOutput && structuredOutput !== undefined) {
@@ -619,13 +651,6 @@ export class AgentLoop {
       fileHistory: this.dependencies.fileHistory,
       subagentDepth: this.config.subagentDepth ?? 0,
       subagent: this.buildSubagentForkApi(input, messages),
-      planFile: this.dependencies.planFileManager
-        ? (() => {
-            const mgr = this.dependencies.planFileManager!;
-            const filePath = mgr.ensurePlanFile(input.sessionId);
-            return { path: filePath, read: () => mgr.readPlan(input.sessionId) };
-          })()
-        : undefined,
     };
   }
 
@@ -813,29 +838,17 @@ export class AgentLoop {
   }
 
   private applyPermissionOverrides(
-    sessionId: string,
     permissionMode?: PermissionMode,
     permissionRules?: Partial<PermissionRuleSet>,
   ): void {
     if (permissionMode) {
       this.config.permissionMode = permissionMode;
       this.config.permissionContext.mode = permissionMode;
-      this.config.permissionModeOrigin = "user";
     }
-    this.syncPlanFilePath(sessionId);
     if (!permissionRules) return;
     mergeUserRules(this.config.permissionContext.rules.allow, permissionRules.allow);
     mergeUserRules(this.config.permissionContext.rules.deny, permissionRules.deny);
     mergeUserRules(this.config.permissionContext.rules.ask, permissionRules.ask);
-  }
-
-  private syncPlanFilePath(sessionId: string): void {
-    if (this.config.permissionMode === "plan" && this.dependencies.planFileManager) {
-      this.config.permissionContext.planFilePath =
-        this.dependencies.planFileManager.ensurePlanFile(sessionId);
-    } else {
-      this.config.permissionContext.planFilePath = undefined;
-    }
   }
 
   private readonly now = (): Date => this.dependencies.now?.() ?? new Date();
