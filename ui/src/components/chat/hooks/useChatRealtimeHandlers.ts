@@ -220,6 +220,10 @@ export function useChatRealtimeHandlers({
             return;
           }
 
+          if (isCurrentSession && msg.tokenBudget) {
+            setTokenBudget(msg.tokenBudget as Record<string, unknown>);
+          }
+
           // Legacy isProcessing format from check-session-status
           if (msg.isProcessing) {
             onSessionProcessing?.(statusSessionId);
