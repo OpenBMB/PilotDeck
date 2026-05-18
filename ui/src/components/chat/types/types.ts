@@ -13,6 +13,14 @@ export type ChatRunMode = 'agent' | 'plan';
 export interface ChatImage {
   data: string;
   name: string;
+  mimeType?: string;
+}
+
+export interface ChatAttachment {
+  name: string;
+  path?: string;
+  size?: number;
+  mimeType?: string;
 }
 
 export interface ToolResult {
@@ -45,6 +53,7 @@ export interface ChatMessage {
   content?: string;
   timestamp: string | number | Date;
   images?: ChatImage[];
+  attachments?: ChatAttachment[];
   reasoning?: string;
   isThinking?: boolean;
   isStreaming?: boolean;
@@ -58,15 +67,61 @@ export interface ChatMessage {
   taskStatus?: string;
   taskId?: string;
   outputFile?: string;
+  taskResult?: string;
   isSubagentContainer?: boolean;
   isTaskNotification?: boolean;
   isInterruptedNotice?: boolean;
+  isAgentActivity?: boolean;
+  isAgentActivitySummary?: boolean;
+  isCompactBoundary?: boolean;
+  activityId?: string;
+  runId?: string;
+  compactTrigger?: string;
+  preTokens?: number;
+  compactLevel?: number;
+  compactStage?: string;
+  compactStageLabel?: string;
+  title?: string;
+  detail?: string;
+  phase?: string;
+  state?: string;
+  severity?: string;
+  startedAt?: string;
+  endedAt?: string | null;
+  durationMs?: number | null;
+  toolCallCount?: number;
+  toolErrorCount?: number;
+  ragSearchCount?: number;
+  editedFileCount?: number;
+  exploredFileCount?: number;
+  commandCount?: number;
+  subagentCount?: number;
+  compactCount?: number;
+  thinkingCount?: number;
+  otherToolCount?: number;
+  keySteps?: unknown[];
   subagentState?: {
     childTools: SubagentChildTool[];
     currentToolIndex: number;
     isComplete: boolean;
   };
   [key: string]: unknown;
+}
+
+export interface CompactProgress {
+  level: number;
+  stage: string;
+  label: string;
+  state: 'started' | 'running' | 'failed' | 'completed';
+  pre_tokens?: number;
+  reason?: string;
+}
+
+export interface ClaudeWorkStatus {
+  text: string;
+  tokens: number;
+  can_interrupt: boolean;
+  compactProgress?: CompactProgress | null;
 }
 
 export interface PilotDeckSettings {

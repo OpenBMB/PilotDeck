@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { PendingPermissionRequest } from '../types/types';
+import type { ClaudeWorkStatus, CompactProgress, PendingPermissionRequest } from '../types/types';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import type { SessionStore, NormalizedMessage } from '../../../stores/useSessionStore';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
@@ -33,6 +33,9 @@ type LatestChatMessage = {
   status?: any;
   isNewSession?: boolean;
   activeTurnMessages?: LatestChatMessage[];
+  activitySnapshot?: LatestChatMessage[];
+  compactProgress?: CompactProgress;
+  compact_progress?: CompactProgress;
   resultText?: string;
   isError?: boolean;
   success?: boolean;
@@ -79,7 +82,7 @@ interface UseChatRealtimeHandlersArgs {
   setIsLoading: (loading: boolean) => void;
   setCanAbortSession: (canAbort: boolean) => void;
   setIsAborting: (aborting: boolean) => void;
-  setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
+  setClaudeStatus: (status: ClaudeWorkStatus | null) => void;
   setTokenBudget: (budget: Record<string, unknown> | null) => void;
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
   pendingViewSessionRef: MutableRefObject<PendingViewSession | null>;
@@ -206,6 +209,10 @@ export function useChatRealtimeHandlers({
             }
           }
 
+          if (isCurrentSession && Array.isArray(msg.activitySnapshot)) {
+            sessionStore.setActivities?.(statusSessionId, msg.activitySnapshot as NormalizedMessage[]);
+          }
+
           const status = msg.status;
           if (status) {
             if (!isCurrentSession) return;
@@ -213,6 +220,7 @@ export function useChatRealtimeHandlers({
               text: status.text || 'Working...',
               tokens: status.tokens || 0,
               can_interrupt: status.can_interrupt !== undefined ? status.can_interrupt : true,
+              compactProgress: status.compactProgress || status.compact_progress || null,
             };
             setClaudeStatus(statusInfo);
             setIsLoading(true);
@@ -251,25 +259,32 @@ export function useChatRealtimeHandlers({
     /* ---------------------------------------------------------------- */
 
     const explicitSessionId = getExplicitSessionId(msg);
-    const sid = explicitSessionId;
+    const sid = explicitSessionId || activeViewSessionId;
     const isForActiveView =
       Boolean(sid) &&
       (sid === currentSessionId ||
         sid === selectedSession?.id ||
         sid === activeViewSessionId);
 
+    if (msg.kind === 'agent_activity') {
+      if (sid) {
+        sessionStore.upsertActivity?.(sid, msg as NormalizedMessage);
+      }
+      return;
+    }
+
     // --- Streaming: buffer for performance ---
     if (msg.kind === 'stream_delta') {
       const text = msg.content || '';
-      if (!text || !explicitSessionId) return;
+      if (!text || !sid) return;
       // Flush this session's thinking before its assistant text starts.
-      flushThinking(explicitSessionId, true);
-      const state = getOrCreateAccumulator(streamBySessionRef.current, explicitSessionId);
+      flushThinking(sid, true);
+      const state = getOrCreateAccumulator(streamBySessionRef.current, sid);
       state.content += text;
       if (!state.timer) {
         state.timer = window.setTimeout(() => {
           state.timer = null;
-          sessionStore.updateStreaming(explicitSessionId, state.content, provider);
+          sessionStore.updateStreaming(sid, state.content, provider);
         }, 100);
       }
       return;
@@ -278,27 +293,27 @@ export function useChatRealtimeHandlers({
     // --- Thinking: accumulate into a single message like stream_delta ---
     if (msg.kind === 'thinking') {
       const text = msg.content || '';
-      if (!text || !explicitSessionId) return;
-      const state = getOrCreateAccumulator(thinkingBySessionRef.current, explicitSessionId);
+      if (!text || !sid) return;
+      const state = getOrCreateAccumulator(thinkingBySessionRef.current, sid);
       state.content += text;
       if (!state.timer) {
         state.timer = window.setTimeout(() => {
           state.timer = null;
-          sessionStore.updateStreamingThinking(explicitSessionId, state.content, provider);
+          sessionStore.updateStreamingThinking(sid, state.content, provider);
         }, 100);
       }
       return;
     }
 
     if (msg.kind === 'stream_end') {
-      if (explicitSessionId) flushStream(explicitSessionId, true);
+      if (sid) flushStream(sid, true);
       return;
     }
 
     // --- Turn boundary: finalize in-flight streaming before non-stream msgs ---
-    if (explicitSessionId) {
-      flushThinking(explicitSessionId, true);
-      flushStream(explicitSessionId, true);
+    if (sid) {
+      flushThinking(sid, true);
+      flushStream(sid, true);
     }
 
     // --- All other messages: route to store ---
@@ -440,14 +455,26 @@ export function useChatRealtimeHandlers({
         if (!isForActiveView) break;
         if (msg.text === 'token_budget' && msg.tokenBudget) {
           setTokenBudget(msg.tokenBudget as Record<string, unknown>);
+        } else if (msg.text === 'clear_status') {
+          setClaudeStatus(null);
         } else if (msg.text) {
           setClaudeStatus({
             text: msg.text,
             tokens: msg.tokens || 0,
             can_interrupt: msg.canInterrupt !== undefined ? msg.canInterrupt : true,
+            compactProgress: msg.compactProgress || msg.compact_progress || null,
           });
           setIsLoading(true);
           setCanAbortSession(msg.canInterrupt !== false);
+        }
+        break;
+      }
+
+      case 'compact_boundary': {
+        if (isForActiveView) {
+          setClaudeStatus(null);
+          setIsLoading(true);
+          setCanAbortSession(true);
         }
         break;
       }

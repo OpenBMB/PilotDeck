@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
-import type { ChatMessage, Provider } from '../types/types';
+import type { ChatMessage, ClaudeWorkStatus } from '../types/types';
 import {
   getSessionRequestParams,
   isBackgroundTaskSession,
@@ -15,6 +15,7 @@ import { normalizedToChatMessages } from './useChatMessages';
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
+const EMPTY_NORMALIZED_MESSAGES: NormalizedMessage[] = [];
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -119,7 +120,7 @@ export function useChatSessionState({
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(selectedSession?.id || null);
   const [isLoadingSessionMessages, setIsLoadingSessionMessages] = useState(false);
-  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+  const [isLoadingMoreMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [totalMessages, setTotalMessages] = useState(0);
   const [canAbortSession, setCanAbortSession] = useState(false);
@@ -127,7 +128,8 @@ export function useChatSessionState({
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [tokenBudget, setTokenBudget] = useState<Record<string, unknown> | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
-  const [claudeStatus, setClaudeStatus] = useState<{ text: string; tokens: number; can_interrupt: boolean } | null>(null);
+  const [claudeStatus, setClaudeStatus] = useState<ClaudeWorkStatus | null>(null);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
   const [allMessagesLoaded, setAllMessagesLoaded] = useState(false);
   const [isLoadingAllMessages, setIsLoadingAllMessages] = useState(false);
   const [loadAllJustFinished, setLoadAllJustFinished] = useState(false);
@@ -137,7 +139,6 @@ export function useChatSessionState({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [searchTarget, setSearchTarget] = useState<{ timestamp?: string; uuid?: string; snippet?: string } | null>(null);
   const searchScrollActiveRef = useRef(false);
-  const isLoadingSessionRef = useRef(false);
   const isLoadingMoreRef = useRef(false);
   const allMessagesLoadedRef = useRef(false);
   const topLoadLockRef = useRef(false);
@@ -244,7 +245,10 @@ export function useChatSessionState({
   }
   prevActiveSessionRef.current = activeSessionId;
 
-  const storeMessages = activeSessionId ? sessionStore.getMessages(activeSessionId) : [];
+  const storeMessages = activeSessionId ? sessionStore.getMessages(activeSessionId) : EMPTY_NORMALIZED_MESSAGES;
+  const activityStoreMessages = activeSessionId
+    ? sessionStore.getActivityMessages?.(activeSessionId) ?? []
+    : [];
 
   // Reset viewHiddenCount when store messages change
   const prevStoreLenRef = useRef(0);
@@ -262,6 +266,8 @@ export function useChatSessionState({
     if (viewHiddenCount > 0 && viewHiddenCount < all.length) return all.slice(0, -viewHiddenCount);
     return all;
   }, [storeMessages, viewHiddenCount, pendingUserMessage]);
+
+  const activityMessages = normalizedToChatMessages(activityStoreMessages);
 
   /* ---------------------------------------------------------------- */
   /*  addMessage / clearMessages / rewindMessages                     */
@@ -426,6 +432,7 @@ export function useChatSessionState({
       setCanAbortSession(false);
       setIsAborting(false);
       setIsLoading(false);
+      setSessionLoadError(null);
       setCurrentSessionId(null);
       messagesOffsetRef.current = 0;
       setHasMoreMessages(false);
@@ -452,6 +459,7 @@ export function useChatSessionState({
       resetStreamingState();
       pendingViewSessionRef.current = null;
       setClaudeStatus(null);
+      setSessionLoadError(null);
       setCanAbortSession(false);
       setIsAborting(false);
     }
@@ -476,6 +484,7 @@ export function useChatSessionState({
     }
 
     setCurrentSessionId(selectedSession.id);
+    setSessionLoadError(null);
 
     // Check session status
     if (ws && !isReadOnlyBackgroundSession) {
@@ -507,9 +516,13 @@ export function useChatSessionState({
         setHasMoreMessages(slot.hasMore);
         setTotalMessages(slot.total);
         if (slot.tokenUsage) setTokenBudget(slot.tokenUsage as Record<string, unknown>);
+        setSessionLoadError(slot.status === 'error'
+          ? slot.lastError || 'Unable to load conversation messages.'
+          : null);
       }
       setIsLoadingSessionMessages(false);
-    }).catch(() => {
+    }).catch((error) => {
+      setSessionLoadError(error instanceof Error ? error.message : 'Unable to load conversation messages.');
       setIsLoadingSessionMessages(false);
     });
   }, [
@@ -835,6 +848,7 @@ export function useChatSessionState({
 
   return {
     chatMessages,
+    activityMessages,
     addMessage,
     clearMessages,
     rewindMessages,
@@ -843,6 +857,7 @@ export function useChatSessionState({
     currentSessionId,
     setCurrentSessionId,
     isLoadingSessionMessages,
+    sessionLoadError,
     isLoadingMoreMessages,
     hasMoreMessages,
     totalMessages,

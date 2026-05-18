@@ -20,6 +20,10 @@
     "codex": "Codex",
     "gemini": "Gemini"
   },
+  "toolUseError": {
+    "title": "工具错误",
+    "description": ""
+  },
   "interrupted": {
     "label": "已被用户暂停"
   },
@@ -27,7 +31,58 @@
     "default": "处理中",
     "processing": "处理中",
     "thinking": "思考中",
+    "generating": "正在生成回复",
+    "compacting": "正在压缩上下文...",
+    "compactingLevel": "正在压缩上下文（第 {{level}} 级）",
     "waitingForPermission": "等待授权"
+  },
+  "process": {
+    "summary": {
+      "processed": "已处理 {{duration}}",
+      "completed": "过程已完成",
+      "failed": "过程失败",
+      "cancelled": "过程已停止"
+    },
+    "waitingForModel": "等待模型响应",
+    "step": "步骤",
+    "metrics": {
+      "toolCalls": "{{count}} 次工具调用",
+      "searches": "{{count}} 次搜索",
+      "errors": "{{count}} 个错误"
+    },
+    "live": {
+      "editedFiles": "已编辑 {{count}} 个文件",
+      "editedFiles_one": "已编辑 {{count}} 个文件",
+      "editedFiles_other": "已编辑 {{count}} 个文件",
+      "exploredFiles": "已探索 {{count}} 个文件",
+      "exploredFiles_one": "已探索 {{count}} 个文件",
+      "exploredFiles_other": "已探索 {{count}} 个文件",
+      "searches": "已搜索 {{count}} 次",
+      "searches_one": "已搜索 {{count}} 次",
+      "searches_other": "已搜索 {{count}} 次",
+      "commands": "已运行 {{count}} 条命令",
+      "commands_one": "已运行 {{count}} 条命令",
+      "commands_other": "已运行 {{count}} 条命令",
+      "toolCalls": "已调用 {{count}} 个工具",
+      "toolCalls_one": "已调用 {{count}} 个工具",
+      "toolCalls_other": "已调用 {{count}} 个工具",
+      "errors": "{{count}} 个错误",
+      "errors_one": "{{count}} 个错误",
+      "errors_other": "{{count}} 个错误",
+      "subagentCompleted": "子任务已完成",
+      "compactCompleted": "已压缩上下文",
+      "thoughtCompleted": "已完成思考",
+      "runningEdit": "正在编辑文件",
+      "runningEditTarget": "正在编辑 {{target}}",
+      "runningRead": "正在读取文件",
+      "runningReadTarget": "正在读取 {{target}}",
+      "runningSearch": "正在搜索",
+      "runningSearchTarget": "正在搜索 {{target}}",
+      "runningCommand": "正在运行命令",
+      "runningCommandTarget": "正在运行 {{target}}",
+      "runningSubagent": "正在运行子任务"
+    },
+    "noSteps": "没有记录详细步骤。"
   },
   "tools": {
     "settings": "工具设置",

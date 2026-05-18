@@ -54,6 +54,25 @@ const stringifyMessageContent = (content: unknown): string => {
   }
 };
 
+function cleanToolUseErrorContent(content: unknown): string {
+  return stringifyMessageContent(content)
+    .replace(/<\/?tool_use_error>/g, '')
+    .replace(/^InputValidationError:\s*/i, '')
+    .trim();
+}
+
+function isRecoverableToolUseError(content: unknown): boolean {
+  const text = stringifyMessageContent(content);
+  if (!text.includes('<tool_use_error>')) return false;
+
+  const lower = text.toLowerCase();
+  const looksLikePermissionError =
+    lower.includes('permission') &&
+    (lower.includes('denied') || lower.includes('not allowed') || lower.includes('requires') || lower.includes('grant'));
+
+  return !looksLikePermissionError;
+}
+
 const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showRawParameters, showThinking, selectedProject, provider, hideHeader = false }: MessageComponentProps) => {
   const { t } = useTranslation('chat');
   const isGrouped = prevMessage && prevMessage.type === message.type &&
@@ -256,23 +275,48 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                 {/* Tool Result Section */}
                 {message.toolResult && !shouldHideToolResult(message.toolName || 'UnknownTool', message.toolResult) && (
                   message.toolResult.isError ? (
-                    // Error results - red error box with content
                     <div
                       id={`tool-result-${message.toolId}`}
-                      className="relative mt-2 scroll-mt-4 rounded border border-red-200/60 bg-red-50/50 p-3 dark:border-red-800/40 dark:bg-red-950/10"
+                      className="my-1 scroll-mt-4 border-l-2 border-l-red-500 py-0.5 pl-3 dark:border-l-red-400"
                     >
-                      <div className="relative mb-2 flex items-center gap-1.5">
-                        <svg className="h-4 w-4 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        <span className="text-xs font-medium text-red-700 dark:text-red-300">{t('messageTypes.error')}</span>
-                      </div>
-                      <div className="relative text-sm text-red-900 dark:text-red-100">
-                        <Markdown className="prose prose-sm prose-red max-w-none dark:prose-invert">
-                          {String(message.toolResult.content || '')}
-                        </Markdown>
+                      {(() => {
+                        const recoverableToolError = isRecoverableToolUseError(message.toolResult?.content);
+                        const renderedErrorContent = recoverableToolError
+                          ? cleanToolUseErrorContent(message.toolResult?.content)
+                          : stringifyMessageContent(message.toolResult?.content);
+
+                        return (
+                          <details className="group/details relative">
+                            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-red-600 transition-colors hover:text-red-700 dark:text-red-300 dark:hover:text-red-200 [&::-webkit-details-marker]:hidden">
+                              <svg
+                                className="h-3.5 w-3.5 transition-transform group-open/details:rotate-90"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>
+                                {recoverableToolError
+                                  ? t('toolUseError.title', { defaultValue: 'Tool error' })
+                                  : t('messageTypes.error')}
+                              </span>
+                              {message.toolName ? (
+                                <>
+                                  <span className="text-red-400/80 dark:text-red-300/60">/</span>
+                                  <span className="font-normal text-red-500 dark:text-red-300/90">{message.toolName}</span>
+                                </>
+                              ) : null}
+                            </summary>
+                            <div className="mt-1.5 pl-[18px] text-xs leading-5 text-gray-700 dark:text-gray-300">
+                              <Markdown className="prose prose-sm prose-red max-w-none dark:prose-invert">
+                                {renderedErrorContent}
+                              </Markdown>
                         {permissionSuggestion && (
-                          <div className="mt-4 border-t border-red-200/60 pt-3 dark:border-red-800/60">
+                          <div className="mt-3 border-t border-red-200/60 pt-3 dark:border-red-800/60">
                             <div className="flex flex-wrap items-center gap-2">
                               <button
                                 type="button"
@@ -332,7 +376,10 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                             )}
                           </div>
                         )}
-                      </div>
+                            </div>
+                          </details>
+                        );
+                      })()}
                     </div>
                   ) : (
                     // Non-error results - route through ToolRenderer (single source of truth)

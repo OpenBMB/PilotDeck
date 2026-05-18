@@ -1,4 +1,6 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { AlertTriangle, ChevronRight } from 'lucide-react';
 import type {
   ChatMessage,
@@ -9,13 +11,16 @@ import type { Project, SessionProvider } from '../../types/app';
 import MessageComponent from '../chat/view/subcomponents/MessageComponent';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
-import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
+import { ProcessTrace } from './ProcessTrace';
+import { processSummaryToTrace, type ProcessAttachment } from './processGrouping';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
 type MessageRowV2Props = {
   message: ChatMessage;
   prevMessage: ChatMessage | null;
+  beforeProcessAttachments?: ProcessAttachment[];
+  afterProcessAttachments?: ProcessAttachment[];
   provider: SessionProvider;
   selectedProject: Project | null;
   createDiff: (oldStr: string, newStr: string) => DiffLine[];
@@ -43,30 +48,11 @@ const shouldDelegate = (message: ChatMessage): boolean => {
   return false;
 };
 
-function messageToProcessStep(message: ChatMessage): ProcessTraceStep | null {
-  if (!message.isToolUse) return null;
-  const toolName = (message as Record<string, unknown>).tool_use_name as string | undefined
-    || (message as Record<string, unknown>).toolName as string | undefined
-    || '';
-  const detail = typeof (message as Record<string, unknown>).toolParams === 'object'
-    ? (((message as Record<string, unknown>).toolParams as Record<string, unknown>)?.command as string
-      || ((message as Record<string, unknown>).toolParams as Record<string, unknown>)?.file_path as string
-      || ((message as Record<string, unknown>).toolParams as Record<string, unknown>)?.pattern as string
-      || '')
-    : '';
-  return {
-    id: message.id,
-    title: toolName || 'Tool call',
-    detail: detail ? String(detail).slice(0, 120) : undefined,
-    state: message.isStreaming ? 'running' : 'completed',
-    phase: 'tool',
-    toolName,
-  };
-}
-
 function MessageRowV2({
   message,
   prevMessage,
+  beforeProcessAttachments = [],
+  afterProcessAttachments = [],
   provider,
   selectedProject,
   createDiff,
@@ -77,6 +63,7 @@ function MessageRowV2({
   showRawParameters,
   showThinking,
 }: MessageRowV2Props) {
+  const { t } = useTranslation('chat');
   const delegate = useMemo(() => shouldDelegate(message), [message]);
 
   const formattedContent = useMemo(
@@ -84,44 +71,72 @@ function MessageRowV2({
     [message.content],
   );
 
-  if (delegate) {
-    const processStep = useMemo(() => messageToProcessStep(message), [message]);
+  if (message.isAgentActivitySummary) {
     return (
-      <div className="ui-v2-legacy-row">
-        {processStep ? (
-          <ProcessLiveStatus step={processStep} compact>
-            <MessageComponent
-              message={message}
-              prevMessage={prevMessage}
-              createDiff={createDiff}
-              onFileOpen={onFileOpen}
-              onShowSettings={onShowSettings}
-              onGrantSessionToolPermission={onGrantSessionToolPermission}
-              autoExpandTools={autoExpandTools}
-              showRawParameters={showRawParameters}
-              showThinking={showThinking}
-              selectedProject={selectedProject ?? null}
-              provider={provider}
-              hideHeader
-            />
-          </ProcessLiveStatus>
-        ) : (
-          <MessageComponent
-            message={message}
-            prevMessage={prevMessage}
-            createDiff={createDiff}
-            onFileOpen={onFileOpen}
-            onShowSettings={onShowSettings}
-            onGrantSessionToolPermission={onGrantSessionToolPermission}
-            autoExpandTools={autoExpandTools}
-            showRawParameters={showRawParameters}
-            showThinking={showThinking}
-            selectedProject={selectedProject ?? null}
-            provider={provider}
-            hideHeader
-          />
-        )}
+      <ProcessSummaryRow
+        message={message}
+        t={t}
+      />
+    );
+  }
+
+  const renderProcessAttachment = (attachment: ProcessAttachment) => (
+    <ProcessSummaryRow
+      key={attachment.id}
+      message={attachment.processSummary}
+      detailMessages={attachment.processDetailMessages}
+      renderDetailMessage={(detailMessage, index) => (
+        <MessageRowV2
+          key={detailMessage.id || detailMessage.toolId || `${attachment.id || 'process-detail'}-${index}`}
+          message={detailMessage}
+          prevMessage={index > 0 ? attachment.processDetailMessages[index - 1] : null}
+          provider={provider}
+          selectedProject={selectedProject}
+          createDiff={createDiff}
+          onFileOpen={onFileOpen}
+          onShowSettings={onShowSettings}
+          onGrantSessionToolPermission={onGrantSessionToolPermission}
+          autoExpandTools={autoExpandTools}
+          showRawParameters={showRawParameters}
+          showThinking={showThinking}
+        />
+      )}
+      t={t}
+    />
+  );
+
+  const withProcessRows = (content: ReactNode) => {
+    if (beforeProcessAttachments.length === 0 && afterProcessAttachments.length === 0) {
+      return content;
+    }
+
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        {beforeProcessAttachments.map(renderProcessAttachment)}
+        {content}
+        {afterProcessAttachments.map(renderProcessAttachment)}
       </div>
+    );
+  };
+
+  if (delegate) {
+    return withProcessRows(
+      <div className="ui-v2-legacy-row">
+        <MessageComponent
+          message={message}
+          prevMessage={prevMessage}
+          createDiff={createDiff}
+          onFileOpen={onFileOpen}
+          onShowSettings={onShowSettings}
+          onGrantSessionToolPermission={onGrantSessionToolPermission}
+          autoExpandTools={autoExpandTools}
+          showRawParameters={showRawParameters}
+          showThinking={showThinking}
+          selectedProject={selectedProject ?? null}
+          provider={provider}
+          hideHeader
+        />
+      </div>,
     );
   }
 
@@ -133,7 +148,7 @@ function MessageRowV2({
     const userImages = Array.isArray(message.images)
       ? message.images.filter((img) => img && typeof img.data === 'string')
       : [];
-    return (
+    return withProcessRows(
       <div className="flex w-full justify-end">
         <div className="min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
           {userImages.length > 0 && (
@@ -157,13 +172,13 @@ function MessageRowV2({
             </div>
           ) : null}
         </div>
-      </div>
+      </div>,
     );
   }
 
   // Error: full-width red banner with warning glyph.
   if (isError) {
-    return (
+    return withProcessRows(
       <div className="flex gap-3">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-500">
           <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
@@ -171,37 +186,69 @@ function MessageRowV2({
         <div className="min-w-0 flex-1 pt-0.5 text-[14px] leading-relaxed text-red-500">
           <Markdown>{formattedContent}</Markdown>
         </div>
-      </div>
+      </div>,
     );
   }
 
   // Thinking: collapsible accordion
   if (message.isThinking) {
-    return (
+    return withProcessRows(
       <div className="min-w-0 text-[14px] leading-relaxed">
         <details className="group">
           <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
             <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
-            <span>Thinking</span>
+            <span>{t('thinking.title', { defaultValue: 'Thinking...' })}</span>
           </summary>
           <div className="mt-1.5 border-l-2 border-neutral-300 pl-3 text-[13px] text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
             <Markdown>{formattedContent}</Markdown>
           </div>
         </details>
-      </div>
+      </div>,
     );
   }
 
   // Assistant: plain prose, no avatar and no bubble.
-  return (
+  return withProcessRows(
     <div className="min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
       {message.isStreaming && !formattedContent ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
         <Markdown>{formattedContent}</Markdown>
       )}
-    </div>
+    </div>,
   );
 }
 
 export default memo(MessageRowV2);
+
+function ProcessSummaryRow({
+  message,
+  detailMessages = [],
+  renderDetailMessage,
+  t,
+}: {
+  message: ChatMessage;
+  detailMessages?: ChatMessage[];
+  renderDetailMessage?: (message: ChatMessage, index: number) => ReactNode;
+  t: TFunction<'chat'>;
+}) {
+  const trace = useMemo(() => processSummaryToTrace(message, t), [message, t]);
+  const detailSteps = detailMessages.length > 0 && renderDetailMessage ? [] : trace.steps;
+
+  return (
+    <ProcessTrace
+      label={trace.label}
+      collapsedDetail={trace.collapsedDetail}
+      statusLabel={trace.statusLabel}
+      status={trace.status}
+      metrics={trace.metrics}
+      steps={detailSteps}
+    >
+      {detailMessages.length > 0 && renderDetailMessage
+        ? detailMessages.map((detailMessage, index) =>
+            renderDetailMessage(detailMessage, index),
+          )
+        : null}
+    </ProcessTrace>
+  );
+}

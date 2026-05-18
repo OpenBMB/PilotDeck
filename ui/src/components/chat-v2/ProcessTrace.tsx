@@ -52,7 +52,7 @@ export function ProcessRunHeader({
     <div
       role="status"
       aria-live="polite"
-      className={`mb-4 border-b border-neutral-200/70 pb-2.5 text-[14px] leading-6 text-neutral-500 dark:border-neutral-800/80 dark:text-neutral-400 ${className}`}
+      className={`mb-3 border-b border-neutral-200/70 pb-1.5 text-[14px] leading-relaxed text-neutral-500 dark:border-neutral-800/80 dark:text-neutral-400 ${className}`}
     >
       <span className="tabular-nums">{label}</span>
     </div>
@@ -78,12 +78,12 @@ export function ProcessLiveStatus({
   const statusContent = (
     <>
       <Icon
-        className={`mt-1 h-4 w-4 shrink-0 ${getStepIconClass(step)} ${
+        className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
           Icon === Loader2 && isRunning ? 'animate-spin' : ''
         }`}
         strokeWidth={1.8}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <div className="truncate">{title}</div>
         {step.detail ? (
           <div className="truncate text-[12px] leading-5 text-neutral-400/80 dark:text-neutral-500/80">
@@ -105,26 +105,26 @@ export function ProcessLiveStatus({
     <div
       role="status"
       aria-live="polite"
-      className={`process-live-status ${compact ? 'pb-1 pt-0.5' : 'pb-4'} text-[14px] leading-6 text-neutral-400 dark:text-neutral-500 ${className}`}
+      className={`process-live-status ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
     >
       {hasDetails ? (
         <button
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
-          className={`group flex w-full min-w-0 items-start gap-2.5 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
+          className={`group inline-flex min-w-0 max-w-full items-start gap-2 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
             isRunning ? 'animate-pulse' : ''
           }`}
         >
           {statusContent}
         </button>
       ) : (
-        <div className={`flex min-w-0 items-start gap-2.5 ${isRunning ? 'animate-pulse' : ''}`}>
+        <div className={`inline-flex min-w-0 max-w-full items-start gap-2 ${isRunning ? 'animate-pulse' : ''}`}>
           {statusContent}
         </div>
       )}
       {expanded && hasDetails ? (
-        <div className="mt-2.5 space-y-3 pl-6">
+        <div className="mt-1.5 space-y-1.5 pl-5">
           {children}
         </div>
       ) : null}
@@ -138,13 +138,13 @@ function getStepIcon(step: ProcessTraceStep): LucideIcon {
   if (step.state === 'failed' || step.severity === 'error' || step.severity === 'warning') {
     return AlertCircle;
   }
-  if (step.phase === 'rag' || /search|grep|glob|find/.test(haystack)) {
+  if (step.phase === 'rag' || /search|grep|glob|find|检索|搜索/.test(haystack)) {
     return Search;
   }
-  if (/edit|write|patch|update|create|modify/.test(haystack)) {
+  if (/edit|write|patch|update|create|modify|修改|编辑|写入|创建/.test(haystack)) {
     return Pencil;
   }
-  if (/bash|shell|terminal|command|exec|run/.test(haystack)) {
+  if (/bash|shell|terminal|command|exec|run|命令|运行/.test(haystack)) {
     return Terminal;
   }
   if (step.phase === 'tool' || step.phase === 'subtask' || step.toolName) {
@@ -179,17 +179,17 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
 
   return (
     <div
-      className={`flex min-w-0 items-start gap-2.5 text-[13px] leading-6 text-neutral-400 dark:text-neutral-500 ${
+      className={`inline-flex min-w-0 max-w-full items-start gap-2 text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${
         isRunning ? 'animate-pulse' : ''
       }`}
     >
       <Icon
-        className={`mt-1 h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
+        className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
           Icon === Loader2 && isRunning ? 'animate-spin' : ''
         }`}
         strokeWidth={1.9}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <div className="truncate">{title}</div>
         {step.detail ? (
           <div className="truncate text-[12px] leading-5 text-neutral-400/80 dark:text-neutral-500/80">
@@ -225,12 +225,15 @@ export function ProcessTrace({
           state: status,
         }
       : null;
+  const summaryIconStep = steps[0] || statusStep || { title: label, state: status };
+  const SummaryIcon = getStepIcon(summaryIconStep);
+  const isRunning = status === 'running';
 
   return (
     <div
       role={live ? 'status' : undefined}
       aria-live={live ? 'polite' : undefined}
-      className={`process-trace mb-4 border-b border-neutral-200/70 pb-2.5 dark:border-neutral-800/80 ${className}`}
+      className={`process-trace py-0 ${className}`}
     >
       <button
         type="button"
@@ -240,9 +243,22 @@ export function ProcessTrace({
           }
         }}
         disabled={!hasDetails}
-        className="group flex w-full min-w-0 items-center gap-1.5 text-left text-[14px] leading-6 text-neutral-500 transition hover:text-neutral-700 disabled:cursor-default disabled:hover:text-neutral-500 dark:text-neutral-400 dark:hover:text-neutral-200 dark:disabled:hover:text-neutral-400"
+        className={`group inline-flex min-w-0 max-w-full items-center gap-2 text-left text-[14px] leading-relaxed text-neutral-400 transition hover:text-neutral-600 disabled:cursor-default disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-300 dark:disabled:hover:text-neutral-500 ${
+          isRunning ? 'animate-pulse' : ''
+        }`}
       >
-        <span className="shrink-0 tabular-nums">{label}</span>
+        <SummaryIcon
+          className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(summaryIconStep)} ${
+            SummaryIcon === Loader2 && isRunning ? 'animate-spin' : ''
+          }`}
+          strokeWidth={1.8}
+        />
+        <span className="min-w-0 truncate tabular-nums">{label}</span>
+        {visibleCollapsedDetail ? (
+          <span className="min-w-0 shrink truncate text-neutral-400/75 dark:text-neutral-500/75">
+            {visibleCollapsedDetail}
+          </span>
+        ) : null}
         {hasDetails ? (
           expanded ? (
             <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
@@ -250,20 +266,15 @@ export function ProcessTrace({
             <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
           )
         ) : null}
-        {visibleCollapsedDetail ? (
-          <span className="min-w-0 truncate text-neutral-400 dark:text-neutral-500">
-            {visibleCollapsedDetail}
-          </span>
-        ) : null}
       </button>
 
       {expanded ? (
-        <div className="mt-2.5 space-y-3">
+        <div className="mt-1.5 space-y-1.5 pl-5">
           {statusStep ? <ProcessTraceLine step={statusStep} /> : null}
           {steps.map((step, index) => (
             <ProcessTraceLine key={step.id || `${step.title || 'process-step'}-${index}`} step={step} />
           ))}
-          {children ? <div className="space-y-3 pt-0.5">{children}</div> : null}
+          {children ? <div className="space-y-1.5 pt-0.5">{children}</div> : null}
         </div>
       ) : null}
     </div>

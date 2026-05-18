@@ -101,6 +101,7 @@ function ChatInterfaceV2({
 
   const {
     chatMessages,
+    activityMessages,
     addMessage,
     clearMessages,
     rewindMessages,
@@ -109,6 +110,7 @@ function ChatInterfaceV2({
     currentSessionId,
     setCurrentSessionId,
     isLoadingSessionMessages,
+    sessionLoadError,
     isLoadingMoreMessages,
     hasMoreMessages,
     totalMessages,
@@ -423,7 +425,10 @@ function ChatInterfaceV2({
         onWheel={handleScroll}
         onTouchMove={handleScroll}
         isLoadingSessionMessages={isLoadingSessionMessages}
+        sessionLoadError={sessionLoadError}
+        onRetrySessionLoad={handleWebSocketReconnect}
         chatMessages={chatMessages}
+        activityMessages={activityMessages}
         visibleMessages={visibleMessages}
         visibleMessageCount={visibleMessageCount}
         isLoadingMoreMessages={isLoadingMoreMessages}
@@ -445,7 +450,8 @@ function ChatInterfaceV2({
         showThinking={showThinking}
         setInput={setInput}
         isAssistantWorking={isLoading}
-        workingStatusText={claudeStatus?.text ?? null}
+        workingStatus={claudeStatus}
+        runMode={runMode}
       />
       {composer}
     </div>

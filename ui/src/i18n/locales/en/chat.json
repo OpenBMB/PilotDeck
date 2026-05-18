@@ -20,6 +20,10 @@
     "codex": "Codex",
     "gemini": "Gemini"
   },
+  "toolUseError": {
+    "title": "Tool error",
+    "description": ""
+  },
   "interrupted": {
     "label": "Interrupted by user"
   },
@@ -27,7 +31,58 @@
     "default": "Working",
     "processing": "Processing",
     "thinking": "Thinking",
+    "generating": "Generating response",
+    "compacting": "Compacting context...",
+    "compactingLevel": "Compacting context (level {{level}})",
     "waitingForPermission": "Waiting for permission"
+  },
+  "process": {
+    "summary": {
+      "processed": "Processed {{duration}}",
+      "completed": "Process completed",
+      "failed": "Process failed",
+      "cancelled": "Process stopped"
+    },
+    "waitingForModel": "Waiting for model",
+    "step": "Step",
+    "metrics": {
+      "toolCalls": "{{count}} tool calls",
+      "searches": "{{count}} searches",
+      "errors": "{{count}} errors"
+    },
+    "live": {
+      "editedFiles": "Edited {{count}} files",
+      "editedFiles_one": "Edited {{count}} file",
+      "editedFiles_other": "Edited {{count}} files",
+      "exploredFiles": "Explored {{count}} files",
+      "exploredFiles_one": "Explored {{count}} file",
+      "exploredFiles_other": "Explored {{count}} files",
+      "searches": "Searched {{count}} times",
+      "searches_one": "Searched {{count}} time",
+      "searches_other": "Searched {{count}} times",
+      "commands": "Ran {{count}} commands",
+      "commands_one": "Ran {{count}} command",
+      "commands_other": "Ran {{count}} commands",
+      "toolCalls": "Used {{count}} tools",
+      "toolCalls_one": "Used {{count}} tool",
+      "toolCalls_other": "Used {{count}} tools",
+      "errors": "{{count}} errors",
+      "errors_one": "{{count}} error",
+      "errors_other": "{{count}} errors",
+      "subagentCompleted": "Subagent finished",
+      "compactCompleted": "Compacted context",
+      "thoughtCompleted": "Thought through next step",
+      "runningEdit": "Editing file",
+      "runningEditTarget": "Editing {{target}}",
+      "runningRead": "Reading file",
+      "runningReadTarget": "Reading {{target}}",
+      "runningSearch": "Searching",
+      "runningSearchTarget": "Searching {{target}}",
+      "runningCommand": "Running command",
+      "runningCommandTarget": "Running {{target}}",
+      "runningSubagent": "Running subagent"
+    },
+    "noSteps": "No detailed steps recorded."
   },
   "tools": {
     "settings": "Tool Settings",

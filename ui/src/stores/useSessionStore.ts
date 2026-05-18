@@ -28,7 +28,19 @@ export type MessageKind =
   | 'session_created'
   | 'interactive_prompt'
   | 'task_notification'
-  | 'interrupted';
+  | 'interrupted'
+  | 'compact_boundary'
+  | 'agent_activity'
+  | 'agent_activity_summary';
+
+export interface CompactProgress {
+  level: number;
+  stage: string;
+  label: string;
+  state: 'started' | 'running' | 'failed' | 'completed';
+  pre_tokens?: number;
+  reason?: string;
+}
 
 export interface NormalizedMessage {
   id: string;
@@ -41,6 +53,12 @@ export interface NormalizedMessage {
   role?: 'user' | 'assistant';
   content?: string;
   images?: string[];
+  attachments?: Array<{
+    name: string;
+    path?: string;
+    size?: number;
+    mimeType?: string;
+  }>;
   toolName?: string;
   toolInput?: unknown;
   toolId?: string;
@@ -56,6 +74,7 @@ export interface NormalizedMessage {
   text?: string;
   tokens?: number;
   canInterrupt?: boolean;
+  compactProgress?: CompactProgress;
   tokenBudget?: unknown;
   requestId?: string;
   input?: unknown;
@@ -69,6 +88,34 @@ export interface NormalizedMessage {
   subagentTools?: unknown[];
   taskId?: string;
   outputFile?: string;
+  taskResult?: string;
+  trigger?: string;
+  preTokens?: number;
+  compactLevel?: number;
+  compactStage?: string;
+  compactStageLabel?: string;
+  compactMetadata?: unknown;
+  runId?: string;
+  activityId?: string;
+  phase?: string;
+  state?: string;
+  title?: string;
+  detail?: string;
+  startedAt?: string;
+  endedAt?: string | null;
+  durationMs?: number | null;
+  severity?: string;
+  toolCallCount?: number;
+  toolErrorCount?: number;
+  ragSearchCount?: number;
+  compactCount?: number;
+  editedFileCount?: number;
+  exploredFileCount?: number;
+  commandCount?: number;
+  subagentCount?: number;
+  thinkingCount?: number;
+  otherToolCount?: number;
+  keySteps?: unknown[];
   isFinal?: boolean;
   // Cursor-specific ordering
   sequence?: number;
@@ -86,12 +133,14 @@ export type SessionStatus = 'idle' | 'loading' | 'streaming' | 'error';
 export interface SessionSlot {
   serverMessages: NormalizedMessage[];
   realtimeMessages: NormalizedMessage[];
+  activityMessages: NormalizedMessage[];
   merged: NormalizedMessage[];
   /** @internal Cache-invalidation refs for computeMerged */
   _lastServerRef: NormalizedMessage[];
   _lastRealtimeRef: NormalizedMessage[];
   status: SessionStatus;
   fetchedAt: number;
+  lastError: string | null;
   total: number;
   hasMore: boolean;
   offset: number;
@@ -104,11 +153,13 @@ function createEmptySlot(): SessionSlot {
   return {
     serverMessages: EMPTY,
     realtimeMessages: EMPTY,
+    activityMessages: EMPTY,
     merged: EMPTY,
     _lastServerRef: EMPTY,
     _lastRealtimeRef: EMPTY,
     status: 'idle',
     fetchedAt: 0,
+    lastError: null,
     total: 0,
     hasMore: false,
     offset: 0,
@@ -347,6 +398,7 @@ export function useSessionStore() {
       slot.offset = (opts.offset ?? 0) + messages.length;
       slot.fetchedAt = Date.now();
       slot.status = 'idle';
+      slot.lastError = null;
 
       // Prune realtime messages covered by server data.  Use the later of
       // fetchStartedAt and the latest server message timestamp as watermark
@@ -373,6 +425,7 @@ export function useSessionStore() {
     } catch (error) {
       console.error(`[SessionStore] fetch failed for ${sessionId}:`, error);
       slot.status = 'error';
+      slot.lastError = error instanceof Error ? error.message : 'Unknown error';
       notify(sessionId);
       return slot;
     }
@@ -443,6 +496,37 @@ export function useSessionStore() {
     }
     slot.realtimeMessages = updated;
     recomputeMergedIfNeeded(slot);
+    notify(sessionId);
+  }, [getSlot, notify]);
+
+  const upsertActivity = useCallback((sessionId: string, msg: NormalizedMessage) => {
+    const slot = getSlot(sessionId);
+    const key = msg.activityId || msg.id;
+    const existingIndex = slot.activityMessages.findIndex((activity) =>
+      (activity.activityId || activity.id) === key
+    );
+
+    if (existingIndex >= 0) {
+      const updated = [...slot.activityMessages];
+      updated[existingIndex] = msg;
+      slot.activityMessages = updated;
+    } else {
+      slot.activityMessages = [...slot.activityMessages, msg];
+    }
+
+    notify(sessionId);
+  }, [getSlot, notify]);
+
+  const setActivities = useCallback((sessionId: string, msgs: NormalizedMessage[]) => {
+    const slot = getSlot(sessionId);
+    const byKey = new Map<string, NormalizedMessage>();
+
+    for (const msg of msgs) {
+      if (msg.kind !== 'agent_activity') continue;
+      byKey.set(msg.activityId || msg.id, msg);
+    }
+
+    slot.activityMessages = Array.from(byKey.values());
     notify(sessionId);
   }, [getSlot, notify]);
 
@@ -664,6 +748,10 @@ export function useSessionStore() {
     return storeRef.current.get(sessionId)?.merged ?? [];
   }, []);
 
+  const getActivityMessages = useCallback((sessionId: string): NormalizedMessage[] => {
+    return storeRef.current.get(sessionId)?.activityMessages ?? [];
+  }, []);
+
   /**
    * Get session slot (for status, pagination info, etc.).
    */
@@ -677,6 +765,8 @@ export function useSessionStore() {
     fetchFromServer,
     fetchMore,
     appendRealtime,
+    upsertActivity,
+    setActivities,
     appendRealtimeBatch,
     refreshFromServer,
     setActiveSession,
@@ -688,13 +778,14 @@ export function useSessionStore() {
     finalizeStreamingThinking,
     clearRealtime,
     getMessages,
+    getActivityMessages,
     getSessionSlot,
   }), [
     getSlot, has, fetchFromServer, fetchMore,
-    appendRealtime, appendRealtimeBatch, refreshFromServer,
+    appendRealtime, upsertActivity, setActivities, appendRealtimeBatch, refreshFromServer,
     setActiveSession, setStatus, isStale, updateStreaming, finalizeStreaming,
     updateStreamingThinking, finalizeStreamingThinking,
-    clearRealtime, getMessages, getSessionSlot,
+    clearRealtime, getMessages, getActivityMessages, getSessionSlot,
   ]);
 }
 

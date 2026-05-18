@@ -146,6 +146,7 @@ function convertNormalizedMessages(messages: NormalizedMessage[]): ChatMessage[]
           taskStatus: msg.status || 'completed',
           taskId: msg.taskId || '',
           outputFile: msg.outputFile || '',
+          taskResult: msg.taskResult || '',
         });
         break;
 
@@ -156,6 +157,69 @@ function convertNormalizedMessages(messages: NormalizedMessage[]): ChatMessage[]
           content: msg.content || '[Request interrupted by user]',
           timestamp: msg.timestamp,
           isInterruptedNotice: true,
+        });
+        break;
+
+      case 'compact_boundary':
+        converted.push({
+          id: msg.id,
+          type: 'system',
+          content: 'Context compacted',
+          timestamp: msg.timestamp,
+          isCompactBoundary: true,
+          compactTrigger: msg.trigger,
+          preTokens: msg.preTokens,
+          compactLevel: msg.compactLevel,
+          compactStage: msg.compactStage,
+          compactStageLabel: msg.compactStageLabel,
+        });
+        break;
+
+      case 'agent_activity':
+        converted.push({
+          id: msg.id,
+          type: 'system',
+          content: msg.title || '',
+          timestamp: msg.timestamp,
+          isAgentActivity: true,
+          runId: msg.runId,
+          activityId: msg.activityId,
+          phase: msg.phase,
+          state: msg.state,
+          title: msg.title,
+          detail: msg.detail,
+          toolName: msg.toolName,
+          toolId: msg.toolId,
+          startedAt: msg.startedAt,
+          endedAt: msg.endedAt,
+          durationMs: msg.durationMs,
+          severity: msg.severity,
+        });
+        break;
+
+      case 'agent_activity_summary':
+        converted.push({
+          id: msg.id,
+          type: 'system',
+          content: msg.title || 'Process summary',
+          timestamp: msg.timestamp,
+          isAgentActivitySummary: true,
+          runId: msg.runId,
+          startedAt: msg.startedAt,
+          endedAt: msg.endedAt,
+          durationMs: msg.durationMs,
+          state: msg.status,
+          toolCallCount: msg.toolCallCount,
+          toolErrorCount: msg.toolErrorCount,
+          ragSearchCount: msg.ragSearchCount,
+          editedFileCount: msg.editedFileCount,
+          exploredFileCount: msg.exploredFileCount,
+          commandCount: msg.commandCount,
+          subagentCount: msg.subagentCount,
+          compactCount: msg.compactCount,
+          thinkingCount: msg.thinkingCount,
+          otherToolCount: msg.otherToolCount,
+          keySteps: msg.keySteps,
         });
         break;
 
