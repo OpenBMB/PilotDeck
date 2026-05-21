@@ -233,7 +233,7 @@ Build and release details: [apps/desktop/RELEASING.md](apps/desktop/RELEASING.md
 
 ## 🛠️ Extension Protocol
 
-PilotDeck has an open plugin architecture with a strict boundary between the open-source core and product-level customization (see [BOUNDARY.md](BOUNDARY.md)). Extending the system is a `plugin.json` away:
+PilotDeck has an open plugin architecture with a strict boundary between the open-source core and plugin customization. Extending the system is a `plugin.json` away:
 
 - **MCP Servers** — first-class integration with any Model Context Protocol server.
 - **Tools & Skills** — register custom tools, or pull community skills via [ClawHub](https://www.npmjs.com/package/clawhub).
