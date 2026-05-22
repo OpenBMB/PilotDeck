@@ -39,7 +39,7 @@ done
 
 [[ -n "$TARGET" ]] || { echo "Usage: release-l2.sh <DMG|.app> [--skip-electron]" >&2; exit 2; }
 
-RED=$'\033[0;31m'; GRN=$'\033[0;32m'; CYN=$'\033[0;36m'; BLD=$'\033[1m'; DIM=$'\033[2m'; RST=$'\033[0m'
+RED=$'\033[0;31m'; GRN=$'\033[0;32m'; YEL=$'\033[0;33m'; CYN=$'\033[0;36m'; BLD=$'\033[1m'; DIM=$'\033[2m'; RST=$'\033[0m'
 
 echo "${BLD}PilotDeck L2 smoke${RST}"
 echo "  Target: ${TARGET}"
