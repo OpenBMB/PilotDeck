@@ -16,6 +16,7 @@ export function createStructuredOutputTool(): PilotDeckToolDefinition<Structured
       additionalProperties: false,
       properties: {
         value: {
+          type: ["object", "array", "string", "number", "boolean"],
           description: "The structured payload to return (any JSON-serializable value).",
         },
       },
