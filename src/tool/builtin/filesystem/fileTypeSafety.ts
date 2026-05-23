@@ -1,8 +1,4 @@
-import { execFile } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 const IMAGE_MIME = new Map<string, string>([
   [".png", "image/png"],
@@ -108,13 +104,12 @@ export function parsePdfPageRange(value: string): ParsedPdfPageRange | undefined
   return { firstPage, lastPage };
 }
 
-export async function countPdfPages(absolutePath: string): Promise<number | undefined> {
+export async function countPdfPages(pdfBuffer: Buffer): Promise<number | undefined> {
   try {
-    const { stdout } = await execFileAsync("pdfinfo", [absolutePath], { timeout: 10_000 });
-    const match = /^Pages:\s+(\d+)/m.exec(stdout);
-    if (!match) return undefined;
-    const count = parseInt(match[1]!, 10);
-    return isNaN(count) ? undefined : count;
+    const mupdf = await import("mupdf");
+    const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf");
+    const count = doc.countPages();
+    return count > 0 ? count : undefined;
   } catch {
     return undefined;
   }

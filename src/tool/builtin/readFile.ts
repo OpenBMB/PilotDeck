@@ -1,8 +1,5 @@
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { tmpdir } from "node:os";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import { resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
@@ -35,7 +32,6 @@ const PDF_AT_MENTION_INLINE_THRESHOLD = 10;
 const PDF_EXTRACT_SIZE_THRESHOLD = 3 * 1024 * 1024;
 const FILE_UNCHANGED_STUB =
   "File unchanged since the last read. Refer to the earlier read_file result instead of re-reading it.";
-const execFileAsync = promisify(execFile);
 
 export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
   return {
@@ -210,7 +206,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           throw new PilotDeckToolRuntimeError("invalid_tool_input", `Invalid PDF page range: ${input.pages}.`);
         }
 
-        const pageCount = await countPdfPages(resolved.absolutePath);
+        const pdfBuffer = await readFile(resolved.absolutePath);
+        const pageCount = await countPdfPages(pdfBuffer);
 
         if (
           parsedPages
@@ -223,7 +220,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           );
         }
 
-        // With pages parameter: always render as images via pdftoppm
+        // With pages parameter: always render as images via mupdf
         if (parsedPages) {
           if (!supportsImage) {
             return {
@@ -235,7 +232,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             };
           }
           const rendered = await renderPdfPagesAsImages(
-            resolved.absolutePath,
+            pdfBuffer,
             resolved.relativePath,
             parsedPages,
             pageCount,
@@ -303,7 +300,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             };
           }
           const rendered = await renderPdfPagesAsImages(
-            resolved.absolutePath,
+            pdfBuffer,
             resolved.relativePath,
             undefined,
             pageCount,
@@ -353,7 +350,6 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         }
 
         // Model supports PDF and file is small enough: send as document block
-        const pdfBuffer = await readFile(resolved.absolutePath);
         readState.set(dedupKey, {
           mtimeMs: Math.floor(fileStat.mtimeMs),
           kind,
@@ -487,7 +483,7 @@ function renderNumberedLines(lines: string[], startLine: number): string {
 }
 
 async function renderPdfPagesAsImages(
-  absolutePath: string,
+  pdfBuffer: Buffer,
   relativePath: string,
   pages: { firstPage: number; lastPage: number } | undefined,
   pageCount: number | undefined,
@@ -512,28 +508,26 @@ async function renderPdfPagesAsImages(
   const firstPage = pages?.firstPage ?? 1;
   const lastPage = pages?.lastPage ?? Math.min(pageCount ?? MAX_PDF_PAGES_PER_REQUEST, MAX_PDF_PAGES_PER_REQUEST);
   const truncated = pages === undefined && pageCount !== undefined && pageCount > lastPage;
-  const outputDir = await mkdtemp(path.join(tmpdir(), "pilotdeck-pdf-pages-"));
 
   try {
-    const prefix = path.join(outputDir, "page");
-    await execFileAsync(
-      "pdftoppm",
-      ["-jpeg", "-r", "100", "-f", String(firstPage), "-l", String(lastPage), absolutePath, prefix],
-      { encoding: "utf8", timeout: 120_000 },
-    );
-
-    const imageFiles = (await readdir(outputDir))
-      .filter((file) => file.endsWith(".jpg") || file.endsWith(".jpeg"))
-      .sort();
-    if (imageFiles.length === 0) {
-      return { ok: false, error: `pdftoppm produced no page images for ${relativePath}` };
-    }
+    const mupdf = await import("mupdf");
+    const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf");
 
     const images = [];
-    for (const imageFile of imageFiles) {
-      const imageBuffer = await readFile(path.join(outputDir, imageFile));
+    for (let i = firstPage - 1; i < lastPage; i++) {
+      const page = doc.loadPage(i);
+      const scale = 100 / 72;
+      const pixmap = page.toPixmap(
+        mupdf.Matrix.scale(scale, scale),
+        mupdf.ColorSpace.DeviceRGB,
+        false,
+        true,
+      );
+      const jpegData = pixmap.asJPEG(80, false);
+      const jpegBuffer = Buffer.from(jpegData);
+
       const compressed = await compressImageForBudget(
-        imageBuffer,
+        jpegBuffer,
         "image/jpeg",
         Math.min(MAX_IMAGE_BYTES, maxImageBytes),
       );
@@ -546,6 +540,10 @@ async function renderPdfPagesAsImages(
       });
     }
 
+    if (images.length === 0) {
+      return { ok: false, error: `mupdf produced no page images for ${relativePath}` };
+    }
+
     return {
       ok: true,
       images,
@@ -555,9 +553,7 @@ async function renderPdfPagesAsImages(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: message || "pdftoppm is unavailable" };
-  } finally {
-    await rm(outputDir, { recursive: true, force: true }).catch(() => undefined);
+    return { ok: false, error: message || "mupdf rendering failed" };
   }
 }
 

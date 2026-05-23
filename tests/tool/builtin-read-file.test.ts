@@ -1,13 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
 import { createReadFileTool } from "../../src/tool/index.js";
 import { createPilotDeckTempWorkspace } from "../helpers/filesystem.js";
 import { createPilotDeckToolRuntimeFixture } from "../helpers/tool.js";
-
-const execFileAsync = promisify(execFile);
 
 function createMinimalPdf(pages = 1): Buffer {
   const header = "%PDF-1.4\n";
@@ -41,16 +37,6 @@ function createMinimalPdf(pages = 1): Buffer {
 
   const trailer = `trailer\n<< /Size ${totalObjects} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
   return Buffer.from(body + xref + trailer, "latin1");
-}
-
-async function hasPopplerUtils(): Promise<boolean> {
-  try {
-    await execFileAsync("which", ["pdfinfo"], { timeout: 5_000 });
-    await execFileAsync("which", ["pdftoppm"], { timeout: 5_000 });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 test("read_file reads text files with offset and limit", async (t) => {
@@ -227,11 +213,6 @@ test("read_file rejects excessive page ranges via validation", async (t) => {
 });
 
 test("read_file renders PDF pages as images when pages param is provided", async (t) => {
-  if (!await hasPopplerUtils()) {
-    t.skip("poppler-utils (pdfinfo/pdftoppm) not available");
-    return;
-  }
-
   const pdf = createMinimalPdf(3);
 
   const workspace = await createPilotDeckTempWorkspace({ "multi.pdf": pdf });
@@ -257,11 +238,6 @@ test("read_file renders PDF pages as images when pages param is provided", async
 });
 
 test("read_file degrades large PDFs to image rendering", async (t) => {
-  if (!await hasPopplerUtils()) {
-    t.skip("poppler-utils (pdfinfo/pdftoppm) not available");
-    return;
-  }
-
   const pdf = createMinimalPdf(2);
 
   const workspace = await createPilotDeckTempWorkspace({ "big.pdf": pdf });
