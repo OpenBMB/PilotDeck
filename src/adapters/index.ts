@@ -5,6 +5,9 @@ export { applyTuiEvent, createTuiRenderState, type TuiRenderState } from "./chan
 export { FeishuChannel, type FeishuChannelOptions, type FeishuOutboundMessage } from "./channel/feishu/FeishuChannel.js";
 export { FeishuSessionMapper, type FeishuSessionMapperState } from "./channel/feishu/FeishuSessionMapper.js";
 export { renderFeishuEvent } from "./channel/feishu/feishu-render.js";
+export { WeixinChannel, type WeixinChannelOptions } from "./channel/weixin/WeixinChannel.js";
+export { WeixinSessionMapper, type WeixinSessionMapperState } from "./channel/weixin/WeixinSessionMapper.js";
+export { renderWeixinEvent } from "./channel/weixin/weixin-render.js";
 export { createWebStaticMount, type WebStaticMountOptions } from "./web/static-mount.js";
 export type {
   ChannelAdapter,

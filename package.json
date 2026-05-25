@@ -45,6 +45,7 @@
     "strip-ansi": "^7.2.0",
     "turndown": "^7.2.4",
     "undici": "^8.2.0",
+    "weixin-ilink": "^0.1.0",
     "yaml": "^2.8.4"
   }
 }

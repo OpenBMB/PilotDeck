@@ -42,7 +42,7 @@ import type {
   SkillsListResult,
 } from "../../extension/skills/types.js";
 
-export type GatewayChannelKey = "cli" | "tui" | "feishu" | "web" | "test" | (string & {});
+export type GatewayChannelKey = "cli" | "tui" | "feishu" | "weixin" | "web" | "test" | (string & {});
 
 export type GatewayMode = "default" | "plan" | "acceptEdits" | "bypassPermissions";
 
