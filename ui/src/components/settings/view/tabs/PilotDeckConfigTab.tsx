@@ -589,9 +589,12 @@ function ModelRefInput({
   placeholder?: string;
 }) {
   const selected = value ?? '';
+  const noOptionsLabel = options.length === 0
+    ? (placeholder ?? 'No models configured — add a provider first')
+    : (placeholder ?? 'Select a configured model');
   const hasSelected = !selected || options.some((opt) => opt.value === selected);
   const selectOptions = [
-    { value: '', label: placeholder ?? 'Select a configured model' },
+    { value: '', label: noOptionsLabel },
     ...options,
     ...(!hasSelected ? [{ value: selected, label: `Missing: ${selected}` }] : []),
   ];
@@ -692,7 +695,7 @@ function ProviderCard({
   const protocol = provider.protocol ?? catalogEntry?.protocol ?? 'openai';
   const effectiveUrl = provider.url || catalogEntry?.defaultUrl || '';
   const enabledModels = Object.keys(provider.models ?? {});
-  const [newModelId, setNewModelId] = useState('');
+  const newModelInputRef = useRef<HTMLInputElement>(null);
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
   const [providerIdError, setProviderIdError] = useState('');
   const displayName = providerDisplayName(
@@ -727,7 +730,7 @@ function ProviderCard({
     if (!id) return;
     if (provider.models && id in provider.models) return;
     update({ models: { ...(provider.models ?? {}), [id]: {} } });
-    setNewModelId('');
+    if (newModelInputRef.current) newModelInputRef.current.value = '';
   };
   const removeModel = (mid: string) => {
     const next = { ...(provider.models ?? {}) };
@@ -902,13 +905,12 @@ function ProviderCard({
         {/* Add custom model */}
         <div className="flex items-center gap-2">
           <input
-            value={newModelId}
-            onChange={(e) => setNewModelId(e.target.value)}
+            ref={newModelInputRef}
             placeholder={t('pilotDeckConfig.panels.models.customModelPlaceholder')}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
-            onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addModel(newModelId); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addModel(e.currentTarget.value); }}
           />
-          <Button variant="outline" size="sm" className="shrink-0" onClick={() => addModel(newModelId)} disabled={!newModelId.trim()}>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => addModel(newModelInputRef.current?.value ?? '')} disabled={!(newModelInputRef.current?.value?.trim())}>
             <Plus className="mr-1 h-3 w-3" />
             {t('pilotDeckConfig.actions.add')}
           </Button>

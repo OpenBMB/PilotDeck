@@ -57,6 +57,7 @@ const DEFAULT_INCLUDE: Array<Exclude<SkillMigrationSourceKind, "custom">> = [
   "openclaw",
   "hermes",
 ];
+const SKILL_MD_RE = /^skill\.md$/iu;
 
 export async function migrateSkillsToPilotDeck(
   options: MigrateSkillsToPilotDeckOptions,
@@ -241,32 +242,45 @@ function dedupeSources(sources: SkillMigrationSource[]): SkillMigrationSource[] 
 
 async function discoverSkillDirs(sourceRoot: string): Promise<string[] | null> {
   try {
-    await access(join(sourceRoot, "SKILL.md"));
-    return [sourceRoot];
-  } catch {
-    /* Source root is a parent directory, not a single skill. */
-  }
-
-  let entries: import("node:fs").Dirent[];
-  try {
-    entries = await readdir(sourceRoot, { withFileTypes: true });
+    if (await hasSkillMdAtRoot(sourceRoot)) {
+      return [sourceRoot];
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 
-  const dirs: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const skillDir = join(sourceRoot, entry.name);
-    try {
-      await access(join(skillDir, "SKILL.md"));
-      dirs.push(skillDir);
-    } catch {
-      continue;
-    }
+  try {
+    await access(sourceRoot);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
-  return dirs.sort((a, b) => basename(a).localeCompare(basename(b)));
+
+  try {
+    const statEntries = await readdir(sourceRoot, { withFileTypes: true });
+    const dirs: string[] = [];
+    for (const entry of statEntries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const skillDir = join(sourceRoot, entry.name);
+      try {
+        if (await hasSkillMdAtRoot(skillDir)) {
+          dirs.push(skillDir);
+        }
+      } catch {
+        continue;
+      }
+    }
+    return dirs.sort((a, b) => basename(a).localeCompare(basename(b)));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function hasSkillMdAtRoot(directory: string): Promise<boolean> {
+  const entries = await readdir(directory);
+  return entries.some((entry) => SKILL_MD_RE.test(entry));
 }
 
 async function resolveDestinationSlug(
