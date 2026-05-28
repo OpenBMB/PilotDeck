@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 import {
   applyConfigToProcessEnv,
   getPilotDeckConfigPath,
@@ -18,6 +19,31 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 // chat execution goes through pilotdeck-bridge.js → src/gateway, which
 // reads ~/.pilotdeck/pilotdeck.yaml directly. The sanity check has been
 // retired; ui/server boots even when the config file is missing.
+// ─── Auto-bootstrap ──────────────────────────────────────────────────────────
+// On first run the ~/.pilotdeck/pilotdeck.yaml config file doesn't exist yet.
+// Rather than relying solely on npm `pre` hooks (which are skipped when the
+// server is started directly, e.g. `node server/index.js` or `pilotdeck start`),
+// we run the bootstrap script inline whenever the config is missing.
+// This ensures Windows users always get the folder + placeholder config
+// regardless of how they launch the project.
+
+function ensurePilotDeckConfigExists() {
+  if (hasPilotDeckConfigFile()) return;
+
+  const bootstrapScript = path.resolve(REPO_ROOT, 'scripts', 'bootstrap-pilotdeck-config.mjs');
+  if (!fs.existsSync(bootstrapScript)) return;
+
+  try {
+    execSync(`node "${bootstrapScript}"`, {
+      stdio: 'inherit',
+      cwd: REPO_ROOT,
+      timeout: 30000,
+      windowsHide: true,
+    });
+  } catch (err) {
+    console.warn('[load-env] Config bootstrap warning:', err instanceof Error ? err.message : String(err));
+  }
+}
 
 function applyDerivedRuntimeEnv() {
   const { config } = readPilotDeckConfigFile();
@@ -45,6 +71,7 @@ export function assertRequiredPilotDeckEnv() {
 }
 
 export function loadRootPilotDeckEnv() {
+  ensurePilotDeckConfigExists();
   applyDerivedRuntimeEnv();
 
   if (!process.env.DATABASE_PATH) {
