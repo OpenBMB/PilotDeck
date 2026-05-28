@@ -110,7 +110,52 @@
     "readFile": "Read file",
     "updateTodo": "Update todo list",
     "readTodo": "Read todo list",
-    "searchResults": "results"
+    "searchResults": "results",
+    "unknownError": "Unknown error",
+    "backgroundTaskUpdate": "Background task update",
+    "processSummary": "Process summary",
+    "unableToLoad": "Unable to load conversation messages.",
+    "failedToFetchCommands": "Failed to fetch commands",
+    "toolOutputError": "Tool output could not be rendered.",
+    "details": "Details",
+    "rawParams": "raw params",
+    "copyToClipboard": "Copy to clipboard",
+    "edit": "Edit",
+    "new": "New",
+    "patch": "Patch",
+    "foundFiles": "Found {{count}} {{fileType}}",
+    "foundSingular": "file",
+    "foundPlural": "files",
+    "updatingTodo": "Updating todo list",
+    "todoUpdated": "Todo list updated",
+    "readingList": "reading list",
+    "scheduleJob": "schedule job",
+    "scheduledJob": "Scheduled job",
+    "scheduled": "Scheduled",
+    "cancelJob": "cancel scheduled job",
+    "cancelledJob": "Cancelled scheduled job",
+    "cancelled": "Cancelled",
+    "listingJobs": "listing scheduled jobs",
+    "jobCount": "{{count}} scheduled {{jobType}}",
+    "jobSingular": "job",
+    "jobPlural": "jobs",
+    "creatingTask": "Creating task",
+    "updating": "updating",
+    "listingTasks": "listing tasks",
+    "taskList": "Task list",
+    "fetching": "fetching",
+    "taskDetails": "Task details",
+    "runningTask": "Running task",
+    "subagentPrefix": "Subagent / ",
+    "subagentResult": "Subagent result",
+    "noResponseText": "No response text",
+    "noResponse": "No response",
+    "question": "Question",
+    "questionPayload": "Question payload",
+    "questionsAnswered": "questions — answered",
+    "questions": "questions",
+    "implementationPlan": "Implementation Plan",
+    "parameters": "Parameters"
   },
   "search": {
     "found": "Found {{count}} {{type}}",
@@ -387,6 +432,80 @@
   },
   "composer": {
     "placeholder": "Tell PilotDeck what you want to get done…",
-    "welcomePlaceholder": "Tell PilotDeck what you want to get done…"
+    "welcomePlaceholder": "Tell PilotDeck what you want to get done…",
+    "askBeforeRisky": "Ask before risky operations",
+    "skipConfirmations": "Skip confirmations and allow full access"
+  },
+  "thinkingModes": {
+    "standard": { "name": "Standard", "description": "Regular response" },
+    "think": { "name": "Think", "description": "Basic extended thinking" },
+    "thinkHard": { "name": "Think Hard", "description": "More thorough evaluation" },
+    "thinkHarder": { "name": "Think Harder", "description": "Deep analysis with alternatives" },
+    "ultrathink": { "name": "Ultrathink", "description": "Maximum thinking budget" }
+  },
+  "subagent": {
+    "running": "Running subagent...",
+    "currently": "Currently:",
+    "failed": "Failed ({{count}} {{toolType}})",
+    "completed": "Completed ({{count}} {{toolType}})",
+    "viewHistory": "View tool history ({{count}})",
+    "toolSingular": "tool",
+    "toolPlural": "tools"
+  },
+  "askUser": {
+    "agentNeedsInput": "Agent needs your input",
+    "selectApply": "Select all that apply",
+    "other": "Other...",
+    "typeAnswer": "Type your answer...",
+    "skip": "Skip",
+    "skipAll": "Skip all",
+    "back": "Back",
+    "submit": "Submit",
+    "next": "Next"
+  },
+  "permission": {
+    "allowSaved": "Allow (saved)",
+    "allowRemember": "Allow & remember",
+    "required": "Permission required",
+    "toolLabel": "Tool: ",
+    "allowRule": "Allow rule: ",
+    "viewInput": "View tool input",
+    "viewInputs": "View {{count}} tool inputs",
+    "allowOnce": "Allow once",
+    "denied": "User denied tool use",
+    "deny": "Deny"
+  },
+  "imagePreview": {
+    "preview": "Image preview",
+    "close": "Close preview",
+    "previous": "Previous image",
+    "next": "Next image",
+    "remove": "Remove attachment"
+  },
+  "questionContent": {
+    "renderError": "Question payload could not be rendered.",
+    "custom": "(custom)",
+    "skipped": "Skipped",
+    "noAnswer": "No answer provided"
+  },
+  "taskContent": {
+    "completed": "{{completed}}/{{total}} completed"
+  },
+  "todoContent": {
+    "todoList": "Todo List (",
+    "itemSingular": "item",
+    "itemPlural": "items"
+  },
+  "imageAlt": {
+    "uploaded": "Uploaded image",
+    "toolResult": "Tool result image"
+  },
+  "processTrace": {
+    "working": "Working",
+    "step": "Step"
+  },
+  "messageRow": {
+    "copied": "Copied",
+    "copy": "Copy"
   }
 }

@@ -15,23 +15,6 @@ function normalizeMemoryTheme(isDarkMode: boolean): 'light' | 'dark' {
   return isDarkMode ? 'dark' : 'light';
 }
 
-const MEMORY_PANEL_TEXT: Record<'zh' | 'en', {
-  emptyProject: string;
-  unavailable: string;
-  title: string;
-}> = {
-  zh: {
-    emptyProject: '请选择一个项目查看 Memory。',
-    unavailable: '身份验证和项目上下文准备完成后，Memory 面板才可用。',
-    title: 'Memory 面板',
-  },
-  en: {
-    emptyProject: 'Select a project to inspect memory.',
-    unavailable: 'Memory dashboard is unavailable until auth and project context are ready.',
-    title: 'Memory Dashboard',
-  },
-};
-
 function buildMemoryDashboardUrl(project: Project, locale: 'zh' | 'en', theme: 'light' | 'dark'): string | null {
   const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
   const projectPath = project.fullPath || project.path;
@@ -49,16 +32,15 @@ function buildMemoryDashboardUrl(project: Project, locale: 'zh' | 'en', theme: '
 }
 
 export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isDarkMode } = useTheme();
   const memoryLocale = normalizeMemoryLocale(i18n.language);
   const memoryTheme = normalizeMemoryTheme(isDarkMode);
-  const text = MEMORY_PANEL_TEXT[memoryLocale];
 
   if (!selectedProject) {
     return (
       <div className="flex h-full items-center justify-center bg-white text-[13px] text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
-        {text.emptyProject}
+        {t('alwaysOn:memoryPanel.emptyProject')}
       </div>
     );
   }
@@ -67,7 +49,7 @@ export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {
   if (!dashboardUrl) {
     return (
       <div className="flex h-full items-center justify-center bg-white text-[13px] text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
-        {text.unavailable}
+        {t('alwaysOn:memoryPanel.unavailable')}
       </div>
     );
   }
@@ -80,7 +62,7 @@ export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {
     <div className="h-full w-full bg-white dark:bg-neutral-950">
       <iframe
         key={`${selectedProject.fullPath || selectedProject.path || 'memory'}:${memoryLocale}:${memoryTheme}`}
-        title={text.title}
+        title={t('memory', { defaultValue: 'Memory Dashboard' })}
         src={dashboardUrl}
         className="block h-full w-full border-0 bg-white dark:bg-neutral-950"
       />

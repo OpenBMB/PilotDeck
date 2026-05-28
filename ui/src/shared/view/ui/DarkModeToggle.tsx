@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { cn } from '../../../lib/utils';
@@ -11,9 +12,11 @@ type DarkModeToggleProps = {
 function DarkModeToggle({
   checked,
   onToggle,
-  ariaLabel = 'Toggle dark mode',
+  ariaLabel,
 }: DarkModeToggleProps) {
+  const { t } = useTranslation();
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const effectiveAriaLabel = ariaLabel ?? t('common:common.darkMode');
   const isControlled = typeof checked === 'boolean' && typeof onToggle === 'function';
   const isEnabled = isControlled ? checked : isDarkMode;
 
@@ -36,9 +39,9 @@ function DarkModeToggle({
       )}
       role="switch"
       aria-checked={isEnabled}
-      aria-label={ariaLabel}
+      aria-label={effectiveAriaLabel}
     >
-      <span className="sr-only">{ariaLabel}</span>
+      <span className="sr-only">{effectiveAriaLabel}</span>
       <span
         className={cn(
           'flex h-5 w-5 transform items-center justify-center rounded-full shadow-sm transition-transform duration-200',

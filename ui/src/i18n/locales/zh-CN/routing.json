@@ -34,14 +34,14 @@
       "title": "按项目"
     },
     "projectCard": {
-      "summary": "{{requests}} 次请求 · {{tokens}} tokens · {{sessions}} 个会话"
+      "summary": "{{requests}} 次请求 · {{tokens}} Token · {{sessions}} 个会话"
     },
     "units": {
       "requestsShort_one": "{{count}} 次",
       "requestsShort_other": "{{count}} 次",
       "queries_one": "{{count}} 条请求",
       "queries_other": "{{count}} 条请求",
-      "tokens": "{{value}} tokens"
+      "tokens": "{{value}} Token"
     },
     "session": {
       "orchestrated": "已编排",
@@ -74,7 +74,7 @@
       "savedLower": "节省",
       "extra": "多花",
       "extraLower": "多花",
-      "summary": "{{sessions}} 个会话 · {{requests}} 次请求 · {{tokens}} tokens",
+      "summary": "{{sessions}} 个会话 · {{requests}} 次请求 · {{tokens}} Token",
       "baselineHint": "按所有路由 token 都交给主模型估算。",
       "savedHint": "相对基准 {{rate}}%",
       "missingBaseline": "这些会话还没有配置基准成本。",

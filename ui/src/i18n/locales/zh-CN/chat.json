@@ -110,7 +110,52 @@
     "readFile": "读取文件",
     "updateTodo": "更新待办列表",
     "readTodo": "读取待办列表",
-    "searchResults": "结果"
+    "searchResults": "结果",
+    "unknownError": "未知错误",
+    "backgroundTaskUpdate": "后台任务更新",
+    "processSummary": "处理摘要",
+    "unableToLoad": "无法加载对话消息。",
+    "failedToFetchCommands": "获取命令失败",
+    "toolOutputError": "工具输出无法渲染。",
+    "details": "详情",
+    "rawParams": "原始参数",
+    "copyToClipboard": "复制到剪贴板",
+    "edit": "编辑",
+    "new": "新增",
+    "patch": "补丁",
+    "foundFiles": "找到 {{count}} 个{{fileType}}",
+    "foundSingular": "文件",
+    "foundPlural": "文件",
+    "updatingTodo": "正在更新待办列表",
+    "todoUpdated": "待办列表已更新",
+    "readingList": "读取列表",
+    "scheduleJob": "调度任务",
+    "scheduledJob": "已调度任务",
+    "scheduled": "已调度",
+    "cancelJob": "取消调度任务",
+    "cancelledJob": "已取消调度任务",
+    "cancelled": "已取消",
+    "listingJobs": "列出调度任务",
+    "jobCount": "{{count}} 个已调度{{jobType}}",
+    "jobSingular": "任务",
+    "jobPlural": "任务",
+    "creatingTask": "创建任务",
+    "updating": "更新中",
+    "listingTasks": "列出任务",
+    "taskList": "任务列表",
+    "fetching": "获取中",
+    "taskDetails": "任务详情",
+    "runningTask": "运行任务",
+    "subagentPrefix": "子智能体 / ",
+    "subagentResult": "子智能体结果",
+    "noResponseText": "无响应文本",
+    "noResponse": "无响应",
+    "question": "问题",
+    "questionPayload": "问题内容",
+    "questionsAnswered": "个问题 — 已回答",
+    "questions": "个问题",
+    "implementationPlan": "实施计划",
+    "parameters": "参数"
   },
   "search": {
     "found": "找到 {{count}} 个{{type}}",
@@ -189,6 +234,24 @@
       "plan": "计划模式 - 不执行任何命令"
     },
     "technicalDetails": "技术细节"
+  },
+  "gemini": {
+    "permissionMode": "Gemini 权限模式",
+    "description": "控制 Gemini CLI 处理操作审批的方式。",
+    "modes": {
+      "default": {
+        "title": "标准模式（请求审批）",
+        "description": "Gemini 在执行命令、写入文件和获取网络资源前会请求审批。"
+      },
+      "autoEdit": {
+        "title": "自动编辑（跳过文件审批）",
+        "description": "Gemini 会自动批准文件编辑和网络请求，但 Shell 命令仍需审批。"
+      },
+      "yolo": {
+        "title": "YOLO（跳过所有权限）",
+        "description": "Gemini 将不经审批直接执行所有操作。请谨慎使用。"
+      }
+    }
   },
   "input": {
     "placeholder": "输入 / 调用命令，@ 选择文件，或向 {{provider}} 提问...",
@@ -338,29 +401,29 @@
   },
   "pilotdeckStatus": {
     "actions": {
-      "thinking": "Thinking",
-      "processing": "Processing",
-      "analyzing": "Analyzing",
-      "working": "Working",
-      "computing": "Computing",
-      "reasoning": "Reasoning"
+      "thinking": "思考中",
+      "processing": "处理中",
+      "analyzing": "分析中",
+      "working": "工作中",
+      "computing": "计算中",
+      "reasoning": "推理中"
     },
     "state": {
-      "live": "Live",
-      "paused": "Paused"
+      "live": "运行中",
+      "paused": "已暂停"
     },
     "elapsed": {
-      "seconds": "{{count}}s",
-      "minutesSeconds": "{{minutes}}m {{seconds}}s",
-      "label": "{{time}} elapsed",
-      "startingNow": "Starting now"
+      "seconds": "{{count}}秒",
+      "minutesSeconds": "{{minutes}}分 {{seconds}}秒",
+      "label": "已用时 {{time}}",
+      "startingNow": "正在启动"
     },
     "controls": {
-      "stopGeneration": "Stop Generation",
-      "pressEscToStop": "Press Esc anytime to stop"
+      "stopGeneration": "停止生成",
+      "pressEscToStop": "随时按 Esc 停止"
     },
     "providers": {
-      "assistant": "Assistant"
+      "assistant": "助手"
     }
   },
   "projectSelection": {
@@ -371,10 +434,84 @@
   },
   "composer": {
     "placeholder": "告诉 PilotDeck 你想完成什么…",
-    "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…"
+    "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…",
+    "askBeforeRisky": "风险操作前询问",
+    "skipConfirmations": "跳过确认并允许完全访问"
   },
   "welcome": {
     "greetingWithProject": "今天想做点什么？",
     "noProject": "从左侧选择一个项目开始"
+  },
+  "thinkingModes": {
+    "standard": { "name": "标准", "description": "普通回复" },
+    "think": { "name": "思考", "description": "基础扩展思考" },
+    "thinkHard": { "name": "深度思考", "description": "更全面的评估" },
+    "thinkHarder": { "name": "超深度思考", "description": "带备选方案的深度分析" },
+    "ultrathink": { "name": "极致思考", "description": "最大思考预算" }
+  },
+  "subagent": {
+    "running": "正在运行子智能体...",
+    "currently": "当前：",
+    "failed": "失败（{{count}} 个{{toolType}}）",
+    "completed": "已完成（{{count}} 个{{toolType}}）",
+    "viewHistory": "查看工具历史（{{count}}）",
+    "toolSingular": "工具",
+    "toolPlural": "工具"
+  },
+  "askUser": {
+    "agentNeedsInput": "智能体需要您的输入",
+    "selectApply": "选择所有适用项",
+    "other": "其他...",
+    "typeAnswer": "输入您的回答...",
+    "skip": "跳过",
+    "skipAll": "全部跳过",
+    "back": "返回",
+    "submit": "提交",
+    "next": "下一步"
+  },
+  "permission": {
+    "allowSaved": "允许（已保存）",
+    "allowRemember": "允许并记住",
+    "required": "需要权限",
+    "toolLabel": "工具：",
+    "allowRule": "允许规则：",
+    "viewInput": "查看工具输入",
+    "viewInputs": "查看 {{count}} 个工具输入",
+    "allowOnce": "允许一次",
+    "denied": "用户拒绝了工具使用",
+    "deny": "拒绝"
+  },
+  "imagePreview": {
+    "preview": "图片预览",
+    "close": "关闭预览",
+    "previous": "上一张图片",
+    "next": "下一张图片",
+    "remove": "移除附件"
+  },
+  "questionContent": {
+    "renderError": "问题内容无法渲染。",
+    "custom": "（自定义）",
+    "skipped": "已跳过",
+    "noAnswer": "未提供答案"
+  },
+  "taskContent": {
+    "completed": "{{completed}}/{{total}} 已完成"
+  },
+  "todoContent": {
+    "todoList": "待办列表（",
+    "itemSingular": "项",
+    "itemPlural": "项"
+  },
+  "imageAlt": {
+    "uploaded": "上传的图片",
+    "toolResult": "工具结果图片"
+  },
+  "processTrace": {
+    "working": "处理中",
+    "step": "步骤"
+  },
+  "messageRow": {
+    "copied": "已复制",
+    "copy": "复制"
   }
 }

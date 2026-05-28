@@ -486,6 +486,33 @@
       "add": "Add",
       "dismiss": "Dismiss"
     },
+    "enabledModels": "Enabled models",
+    "clickStarToSetMain": "click ★ to set main agent",
+    "supportsImageInput": "supports image input",
+    "addProvider": "Add provider",
+    "addAProvider": "Add a provider",
+    "cancel": "Cancel",
+    "custom": "Custom",
+    "manualSetup": "Manual setup",
+    "modelsCount": "{{count}} models",
+    "customModelPlaceholder": "Custom model ID",
+    "searchPlaceholder": "My Search",
+    "perModelMaxOutputTokens": "Per-model max output tokens",
+    "perModelMaxOutputTokensDesc": "Cap on tokens each model may generate per turn (sent as max_tokens). Leave blank to fall back to the protocol default (~8k for openai, ~4k for anthropic). 32k is a safe modern recommendation; raise it for long-form / thinking models — too small a value cuts the response off mid-stream.",
+    "showAdvanced": "Show advanced (protocol & URL)",
+    "hideAdvanced": "Hide advanced (protocol & URL)",
+    "apiKeyHidden": "Key hidden; leave as-is to keep, retype to replace.",
+    "alreadyDefault": "Already using default",
+    "resetToDefault": "Reset to catalog/protocol default",
+    "noProvidersYet": "No providers configured yet. Click \"Add provider\" to get started.",
+    "protocol": "Protocol",
+    "baseUrl": "Base URL",
+    "noReloadYet": "No reload has run yet.",
+    "customSearchPlaceholder": "My Search",
+    "apiKeyLabel": "API key",
+    "searchPlaceholder": "My Search",
+    "mainAgent": "Main agent",
+    "existingKeyKept": "Existing key kept — type to replace",
     "rawYaml": {
       "configValid": "Config is valid",
       "unsaved": "(unsaved)",
@@ -496,6 +523,93 @@
       "yamlParseError": "YAML on disk failed to parse — switch to Raw YAML to fix it.",
       "cannotParse": "Could not parse the YAML on disk. Switch to {{rawYaml}} to inspect and fix it.",
       "rawYaml": "Raw YAML"
+    },
+    "subsystemLabels": {
+      "processEnv": "Process Env",
+      "memory": "Memory",
+      "router": "PilotDeck Router",
+      "gateway": "Gateway",
+      "proxy": "Proxy"
+    },
+    "reloadSummary": {
+      "reloaded": "Reloaded",
+      "noData": "No data"
+    },
+    "sourceLabels": {
+      "uiSave": "UI save",
+      "uiReload": "UI reload",
+      "externalEdit": "External file edit",
+      "manualRefresh": "Manual refresh"
+    },
+    "modelRef": {
+      "placeholder": "provider/model-name"
+    },
+    "catalogChip": {
+      "clickToDisable": "Click to disable",
+      "clickToEnable": "Click to enable"
+    },
+    "starButton": {
+      "currentMain": "Currently the main agent model",
+      "setMain": "Set as main agent model"
+    },
+    "advancedSection": {
+      "defaultsTo": "Defaults to",
+      "fromCatalog": "from catalog.",
+      "effective": "Effective:"
+    },
+    "providerCard": {
+      "modelsCount": "{{count}} models"
+    },
+    "agentSection": {
+      "pickModel": "— pick a model —",
+      "inheritModel": "inherit (use main agent's model)"
+    },
+    "envKeys": {
+      "tavilyHint": "Tavily web search API key",
+      "firecrawlHint": "Firecrawl web scraping API key",
+      "serperHint": "Serper search API key",
+      "browserbaseHint": "Browserbase API key"
+    },
+    "customEnv": {
+      "valuePlaceholder": "value"
+    },
+    "alwaysOnSection": {
+      "webUI": "Web UI",
+      "tui": "TUI",
+      "toggleLabel": "Toggle Always-On for {{project}}"
+    },
+    "searchConfig": {
+      "query": "query",
+      "apiKey": "api_key",
+      "dataItems": "data.items",
+      "titleField": "title",
+      "urlField": "url",
+      "snippet": "snippet",
+      "sourceField": "source",
+      "publishedAt": "publishedAt",
+      "scenarioName": "scenario name",
+      "scenarioExample": "scenario name (e.g. default)",
+      "tierName": "tier name (e.g. simple, medium, complex)"
+    },
+    "tierDescriptions": {
+      "simple": "Simple greetings, confirmations, single-step Q&A, trivial file writes, remembering rules",
+      "medium": "Single tool call, short text generation, 1-2 file read/write, code generation",
+      "complex": "Needs sub-agent orchestration: parallel workstreams, delegation to specialized agents",
+      "reasoning": "Deep single-agent work: multi-file operations, data analysis, multi-step workflows, web research, structured reports from many sources"
+    },
+    "tierRules": {
+      "complexOnly": "complex is ONLY for tasks that need sub-agent orchestration or parallel delegation — do NOT use it for single-agent multi-step work",
+      "reasoningRule": "Multi-file operations, data analysis, and multi-step workflows without orchestration should be reasoning",
+      "mediumRule": "Simple file creation (1-2 files) or single code generation is medium",
+      "simpleRule": "Trivial greetings, confirmations, remembering rules, or reading one file and answering a short question is simple"
+    },
+    "subagentPolicy": {
+      "judge": "judge",
+      "inherit": "inherit"
+    },
+    "toolsSection": {
+      "providerLabel": "Provider",
+      "bearerHeader": "Bearer header"
     },
     "sections": {
       "runtime": {

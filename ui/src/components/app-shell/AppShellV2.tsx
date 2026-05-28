@@ -97,7 +97,7 @@ export default function AppShellV2() {
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
     matchProjectChat?.params.sessionId ?? matchLegacySession?.params.sessionId ?? undefined;
-  useTranslation('common');
+  const { t } = useTranslation('common');
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -594,7 +594,7 @@ export default function AppShellV2() {
             type="button"
             className="fixed inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setSidebarOpen(false)}
-            aria-label="Close sidebar"
+            aria-label={t('versionUpdate.ariaLabels.closeSidebar')}
           />
           <div
             className={`relative h-full w-[85vw] max-w-sm transform transition-transform duration-150 ${
@@ -716,6 +716,7 @@ function DeleteProjectDialog({
   onCancel,
   onConfirm,
 }: DeleteProjectDialogProps) {
+  const { t } = useTranslation();
   const sessionCount = project.sessions?.length ?? 0;
   const displayName = project.displayName || project.name;
 
@@ -727,7 +728,7 @@ function DeleteProjectDialog({
             <Trash2 className="h-5 w-5" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold text-foreground">Delete project?</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('alwaysOn:deleteProject.title')}</h3>
             <p className="mt-1 break-all text-sm text-muted-foreground">
               <span className="font-mono text-xs">{displayName}</span>
             </p>
@@ -736,20 +737,18 @@ function DeleteProjectDialog({
 
         <div className="space-y-3 p-5">
           <p className="text-sm text-foreground">
-            This removes the project from PilotDeck and deletes its session metadata.
+            {t('alwaysOn:deleteProject.description')}
             {sessionCount > 0 ? (
               <>
                 {' '}
                 <span className="font-medium">
-                  {sessionCount} session{sessionCount === 1 ? '' : 's'}
-                </span>{' '}
-                will also be removed.
+                  {t('alwaysOn:deleteProject.sessionWarning', { count: sessionCount })}
+                </span>
               </>
             ) : null}
           </p>
           <p className="text-xs text-muted-foreground">
-            Files on disk are <span className="font-medium text-foreground">not</span> deleted —
-            only PilotDeck&apos;s reference to them.
+            {t('alwaysOn:deleteProject.diskNote')}
           </p>
           {error ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -765,7 +764,7 @@ function DeleteProjectDialog({
             disabled={isDeleting}
             className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
           >
-            Cancel
+            {t('alwaysOn:deleteProject.cancel')}
           </button>
           <button
             type="button"
@@ -774,7 +773,7 @@ function DeleteProjectDialog({
             className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
           >
             {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
-            {isDeleting ? 'Deleting…' : 'Delete project'}
+            {isDeleting ? t('alwaysOn:deleteProject.deleting') : t('alwaysOn:deleteProject.confirm')}
           </button>
         </div>
       </div>
@@ -797,6 +796,7 @@ function DeleteSessionDialog({
   onCancel,
   onConfirm,
 }: DeleteSessionDialogProps) {
+  const { t } = useTranslation();
   const projectName = target.project.displayName || target.project.name;
   const sessionTitle = sessionDisplayTitle(target.session);
 
@@ -808,7 +808,7 @@ function DeleteSessionDialog({
             <Trash2 className="h-5 w-5" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold text-foreground">Delete conversation?</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('alwaysOn:deleteConversation.title')}</h3>
             <p className="mt-1 truncate text-sm text-muted-foreground">
               {sessionTitle}
             </p>
@@ -817,9 +817,9 @@ function DeleteSessionDialog({
 
         <div className="space-y-3 p-5">
           <p className="text-sm text-foreground">
-            This removes the conversation from <span className="font-medium">{projectName}</span>.
+            {t('alwaysOn:deleteConversation.description', { projectName })}
           </p>
-          
+
           {error ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
@@ -834,7 +834,7 @@ function DeleteSessionDialog({
             disabled={isDeleting}
             className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
           >
-            Cancel
+            {t('alwaysOn:deleteConversation.cancel')}
           </button>
           <button
             type="button"
@@ -843,7 +843,7 @@ function DeleteSessionDialog({
             className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
           >
             {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
-            {isDeleting ? 'Deleting…' : 'Delete conversation'}
+            {isDeleting ? t('alwaysOn:deleteConversation.deleting') : t('alwaysOn:deleteConversation.confirm')}
           </button>
         </div>
       </div>

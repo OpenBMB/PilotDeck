@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface TaskItem {
   id: string;
@@ -81,6 +82,7 @@ const statusConfig = {
  * Parses text content from TaskList/TaskGet results
  */
 export const TaskListContent: React.FC<TaskListContentProps> = ({ content }) => {
+  const { t } = useTranslation('chat');
   const safeContent = stringifyTaskContent(content);
   const tasks = parseTaskContent(content);
 
@@ -100,7 +102,7 @@ export const TaskListContent: React.FC<TaskListContentProps> = ({ content }) => 
     <div>
       <div className="mb-1.5 flex items-center gap-2">
         <span className="text-[11px] text-gray-500 dark:text-gray-400">
-          {completed}/{total} completed
+          {t('chat:taskContent.completed', { completed, total })}
         </span>
         <div className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
           <div

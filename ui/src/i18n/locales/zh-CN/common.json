@@ -104,6 +104,8 @@
     "create": "创建技能",
     "creating": "创建中…"
   },
+  "newSessionInProject": "新建会话",
+  "deleteProject": "删除项目",
   "status": {
     "loading": "加载中...",
     "success": "成功",
@@ -176,10 +178,10 @@
     "projectFiles": "项目文件"
   },
   "alwaysOn": {
-    "title": "Always-On 总览",
+    "title": "常驻总览",
     "description": "在一个界面里查看当前项目的 discovery 计划和定时 cron 任务。",
     "lastUpdated": "最近更新：{{timestamp}}",
-    "loadingTitle": "正在加载 Always-On 数据",
+    "loadingTitle": "正在加载常驻数据",
     "loadingDescription": "正在读取当前项目的 discovery 计划和定时任务。",
     "emptyTitle": "还没有定时任务",
     "emptyDescription": "当前项目暂时没有可显示的持久化 cron 或本会话任务。",
@@ -254,13 +256,13 @@
       "alreadyRunning": "任务 {{id}} 正在运行中。"
     },
     "errors": {
-      "loadFailed": "加载 Always-On 数据失败。",
+      "loadFailed": "加载常驻数据失败。",
       "deleteFailed": "删除 cron job 失败。",
       "runNowFailed": "立即执行 cron job 失败。"
     },
     "discovery": {
       "title": "Discovery 计划",
-      "description": "由 Always-On discovery 生成、在执行前可审阅的结构化计划。",
+      "description": "由常驻 discovery 生成、在执行前可审阅的结构化计划。",
       "emptyTitle": "还没有 discovery 计划",
       "emptyDescription": "运行 discovery 后，这里会出现可执行的结构化计划。",
       "summary": {
@@ -307,6 +309,85 @@
     "cron": {
       "title": "定时 cron 任务",
       "description": "当前项目里已有的持久化和本会话 cron 任务。"
+    },
+    "deleteProject": {
+      "title": "删除项目？",
+      "description": "这将从 PilotDeck 中移除该项目并删除其会话元数据。",
+      "sessionWarning": "{{count}} 个会话也将被移除。",
+      "diskNote": "磁盘上的文件不会被删除——仅删除 PilotDeck 对它们的引用。",
+      "cancel": "取消",
+      "deleting": "删除中...",
+      "confirm": "删除项目"
+    },
+    "deleteConversation": {
+      "title": "删除对话？",
+      "description": "这将从 {{projectName}} 中移除该对话。",
+      "cancel": "取消",
+      "deleting": "删除中...",
+      "confirm": "删除对话"
+    },
+    "shell": {
+      "noProject": "选择一个项目以打开终端。",
+      "shellName": "zsh "
+    },
+    "gitV2": {
+      "noProject": "选择一个项目以查看版本控制。",
+      "fetch": "拉取",
+      "loading": "正在加载 Git 状态...",
+      "clean": "工作区干净。",
+      "staged": "已暂存",
+      "changes": "更改",
+      "commit": "提交",
+      "aiSuggest": "AI 建议提交信息",
+      "push": "推送",
+      "dismiss": "忽略"
+    },
+    "tasksV2": {
+      "title": "任务",
+      "taskCount": "{{count}} 个任务",
+      "inProgress": "进行中",
+      "refresh": "刷新",
+      "noTasks": "暂无任务。请从旧版任务面板初始化 Task Master 以开始使用。",
+      "notStarted": "未开始",
+      "done": "已完成",
+      "inReview": "审核中",
+      "blocked": "已阻塞",
+      "deferred": "已延迟",
+      "cancelled": "已取消"
+    },
+    "filesV2": {
+      "open": "打开"
+    },
+    "standaloneShell": {
+      "noProject": "未选择项目",
+      "projectRequired": "需要选择一个项目才能打开终端",
+      "completed": "（已完成）"
+    },
+    "codeEditorBinary": {
+      "close": "关闭",
+      "pdfTitle": "PDF：{{fileName}}",
+      "exitFullscreen": "退出全屏",
+      "fullscreen": "全屏"
+    },
+    "codeEditorSidebar": {
+      "dragToResize": "拖拽调整大小"
+    },
+    "editorToolbar": {
+      "openInModal": "在弹窗中打开"
+    },
+    "markdownCode": {
+      "copied": "已复制！",
+      "copy": "复制"
+    },
+    "authLoading": {
+      "loading": "加载中..."
+    },
+    "memoryPanel": {
+      "emptyProject": "选择一个项目以查看记忆。",
+      "unavailable": "记忆面板在认证和项目上下文就绪前不可用。"
+    },
+    "errorBoundary": {
+      "errorDetails": "错误详情"
     }
   },
   "fileTree": {
@@ -478,5 +559,32 @@
       "updateAvailable": "有可用更新",
       "closeSidebar": "关闭侧边栏"
     }
+  },
+  "git": {
+    "commitMessage": "提交信息"
+  },
+  "providerLogin": {
+    "runConfiguration": "运行配置",
+    "closeLoginModal": "关闭登录窗口"
+  },
+  "folderBrowser": {
+    "selectFolder": "选择文件夹",
+    "select": "选择",
+    "path": "路径：",
+    "cancel": "取消",
+    "useThisFolder": "使用此文件夹",
+    "newFolderName": "新文件夹名称",
+    "create": "创建",
+    "createNewFolder": "新建文件夹",
+    "showHiddenFolders": "显示隐藏文件夹",
+    "hideHiddenFolders": "隐藏隐藏文件夹",
+    "close": "关闭",
+    "noSubfoldersFound": "未找到子文件夹"
+  },
+  "errorBoundary": {
+    "somethingWentWrong": "出了点问题"
+  },
+  "dashboard": {
+    "tierBreakdown": "层级分布"
   }
 }

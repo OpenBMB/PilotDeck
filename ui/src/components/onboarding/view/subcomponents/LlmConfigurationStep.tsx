@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { authenticatedFetch } from '../../../../utils/api';
 import { CATALOG_PROVIDERS, findCatalogProviderByUrl, type CatalogProvider } from '../../../../shared/catalogProviders';
@@ -41,6 +42,7 @@ function hasUsableApiKey(value: unknown) {
 }
 
 export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepProps) {
+  const { t } = useTranslation('settings');
   const [selectedProvider, setSelectedProvider] = useState<CatalogProvider | null>(DEFAULT_PROVIDER);
   const [selectedModelId, setSelectedModelId] = useState(() => defaultModelForProvider(DEFAULT_PROVIDER));
   const [customModelId, setCustomModelId] = useState('');
@@ -408,7 +410,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
-              {showAdvanced ? 'Hide' : 'Show'} advanced settings
+              {showAdvanced ? t('pilotDeckConfig.hideAdvanced') : t('pilotDeckConfig.showAdvanced')}
             </button>
             {showAdvanced && (
               <div className="mt-3 space-y-3 rounded-lg border border-border/60 bg-muted/30 p-3">

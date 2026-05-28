@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ComponentProps } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark as prismOneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -16,6 +17,7 @@ export default function MarkdownCodeBlock({
   node: _node,
   ...props
 }: MarkdownCodeBlockProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const rawContent = Array.isArray(children) ? children.join('') : String(children ?? '');
   const looksMultiline = /[\r\n]/.test(rawContent);
@@ -52,7 +54,7 @@ export default function MarkdownCodeBlock({
           })}
         className="absolute right-2 top-2 z-10 rounded-md border border-gray-600 bg-gray-700/80 px-2 py-1 text-xs text-white opacity-0 transition-opacity hover:bg-gray-700 group-hover:opacity-100"
       >
-        {copied ? 'Copied!' : 'Copy'}
+        {copied ? t('alwaysOn:markdownCode.copied') : t('alwaysOn:markdownCode.copy')}
       </button>
 
       <SyntaxHighlighter

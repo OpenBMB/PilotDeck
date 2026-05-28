@@ -613,6 +613,8 @@ function ProjectGroupCard({
   group: ProjectGroup;
   defaultOpen?: boolean;
 }) {
+  const { t } = useTranslation('routing');
+  const { t: tCommon } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const agg = group.aggregated;
   const hasData = agg.total.requestCount > 0;
@@ -643,7 +645,7 @@ function ProjectGroupCard({
           {/* Tier breakdown */}
           {Object.keys(agg.byTier || {}).length > 0 && (
             <div className="mb-3">
-              <div className="text-xxs mb-2 text-neutral-400 dark:text-neutral-500">Tier breakdown</div>
+              <div className="text-xxs mb-2 text-neutral-400 dark:text-neutral-500">{tCommon('dashboard.tierBreakdown')}</div>
               <div className="flex flex-wrap gap-2">
                 {getSortedTierEntries(agg.byTier).map(([tier, bucket]) => (
                   <span
@@ -664,7 +666,7 @@ function ProjectGroupCard({
           {/* Session list — show all sessions */}
           {group.allSessions.length > 0 ? (
             <div>
-              <div className="text-xxs mb-2 text-neutral-400 dark:text-neutral-500">Sessions</div>
+              <div className="text-xxs mb-2 text-neutral-400 dark:text-neutral-500">{t('dashboard.sessions.title', { defaultValue: 'Sessions' })}</div>
               <div className="space-y-1">
                 {group.allSessions.map((session) => (
                   <SessionRow key={session.sessionId} session={session} />
@@ -672,7 +674,7 @@ function ProjectGroupCard({
               </div>
             </div>
           ) : (
-            <p className="text-xxs text-neutral-400 dark:text-neutral-500">No sessions yet.</p>
+            <p className="text-xxs text-neutral-400 dark:text-neutral-500">{t('dashboard.sessions.empty', { defaultValue: 'No sessions yet.' })}</p>
           )}
         </div>
       )}
@@ -724,6 +726,7 @@ function TierBar({ byTier }: { byTier: Record<string, { estimatedCost?: number; 
 
 function ProjectCostCard({ group, onClick }: { group: ProjectGroup; onClick?: () => void }) {
   const { t } = useTranslation('routing');
+  const { t: tCommon } = useTranslation();
   const agg = group.aggregated;
   const cost = agg.total.estimatedCost || 0;
   const requests = agg.total.requestCount || 0;

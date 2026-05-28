@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 
 export interface LightboxImage {
@@ -14,6 +15,7 @@ interface ImageLightboxProps {
 }
 
 const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) => {
+  const { t } = useTranslation('chat');
   const safeStart = useMemo(() => {
     if (images.length === 0) return 0;
     if (startIndex < 0) return 0;
@@ -71,7 +73,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={active?.name || 'Image preview'}
+      aria-label={active?.name || t('chat:imagePreview.preview')}
       className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={onClose}
     >
@@ -82,7 +84,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
           onClose();
         }}
         className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-        aria-label="Close preview"
+        aria-label={t('chat:imagePreview.close')}
       >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -97,7 +99,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
             showPrev();
           }}
           className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          aria-label="Previous image"
+          aria-label={t('chat:imagePreview.previous')}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -113,7 +115,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
             showNext();
           }}
           className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          aria-label="Next image"
+          aria-label={t('chat:imagePreview.next')}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -128,7 +130,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
         <img
           key={active.data}
           src={active.data}
-          alt={active.name || 'Image preview'}
+          alt={active.name || t('chat:imagePreview.preview')}
           className="max-h-[88vh] max-w-[92vw] rounded-md object-contain shadow-2xl"
         />
         {active.name || images.length > 1 ? (

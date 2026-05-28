@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const MIME_FRIENDLY_LABELS: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
@@ -38,6 +39,7 @@ interface ImageAttachmentProps {
 }
 
 const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachmentProps) => {
+  const { t } = useTranslation('chat');
   const [preview, setPreview] = useState<string | undefined>(undefined);
   const isImage = file.type.startsWith('image/');
   
@@ -87,7 +89,7 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
         type="button"
         onClick={onRemove}
         className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white opacity-100 transition-opacity focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-        aria-label="Remove attachment"
+        aria-label={t('chat:imagePreview.remove')}
       >
         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

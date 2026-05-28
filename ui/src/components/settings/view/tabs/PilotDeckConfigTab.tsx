@@ -188,13 +188,15 @@ const SECTIONS: Array<{ id: SectionId; labelKey: string; descriptionKey: string 
 // ── Reload-status presentation (kept identical to legacy raw view) ──────
 
 type SubsystemKey = 'processEnv' | 'memory' | 'router' | 'gateway' | 'proxy';
-const SUBSYSTEM_LABELS: Record<SubsystemKey, string> = {
-  processEnv: 'Process Env',
-  memory: 'Memory',
-  router: 'PilotDeck Router',
-  gateway: 'Gateway',
-  proxy: 'Proxy',
-};
+function getSubsystemLabels(t: (key: string) => string): Record<SubsystemKey, string> {
+  return {
+    processEnv: t('pilotDeckConfig.subsystemLabels.processEnv'),
+    memory: t('pilotDeckConfig.subsystemLabels.memory'),
+    router: t('pilotDeckConfig.subsystemLabels.router'),
+    gateway: t('pilotDeckConfig.subsystemLabels.gateway'),
+    proxy: t('pilotDeckConfig.subsystemLabels.proxy'),
+  };
+}
 
 type SubsystemResult = {
   reloaded?: boolean;
@@ -227,21 +229,23 @@ function SubsystemIcon({ state }: { state: 'ok' | 'skipped' | 'error' | 'unknown
 }
 
 function ReloadSummary({ reload }: { reload: ConfigReload | null }) {
+  const { t } = useTranslation('settings');
   if (!reload) {
-    return <div className="text-sm text-muted-foreground">No reload has run yet.</div>;
+    return <div className="text-sm text-muted-foreground">{t('pilotDeckConfig.noReloadYet')}</div>;
   }
   const keys: SubsystemKey[] = ['processEnv', 'memory', 'router', 'gateway', 'proxy'];
+  const labels = getSubsystemLabels(t);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
       {keys.map((key) => {
         const result = reload[key] as SubsystemResult | undefined;
         const state = classifySubsystem(result);
-        const detail = result?.error || result?.reason || result?.note || (state === 'ok' ? 'Reloaded' : state === 'unknown' ? 'No data' : '');
+        const detail = result?.error || result?.reason || result?.note || (state === 'ok' ? t('pilotDeckConfig.reloadSummary.reloaded') : state === 'unknown' ? t('pilotDeckConfig.reloadSummary.noData') : '');
         return (
           <div key={key} className={`flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs ${subsystemBadgeClasses(state)}`}>
             <div className="flex items-center gap-1.5 font-medium">
               <SubsystemIcon state={state} />
-              <span>{SUBSYSTEM_LABELS[key]}</span>
+              <span>{labels[key]}</span>
             </div>
             {detail && <div className="text-[11px] opacity-80">{detail}</div>}
           </div>
@@ -251,12 +255,12 @@ function ReloadSummary({ reload }: { reload: ConfigReload | null }) {
   );
 }
 
-function sourceLabel(source: string): string {
+function sourceLabel(source: string, t: (key: string) => string): string {
   switch (source) {
-    case 'ui-save':   return 'UI save';
-    case 'ui-reload': return 'UI reload';
-    case 'watcher':   return 'External file edit';
-    case 'refresh':   return 'Manual refresh';
+    case 'ui-save':   return t('pilotDeckConfig.sourceLabels.uiSave');
+    case 'ui-reload': return t('pilotDeckConfig.sourceLabels.uiReload');
+    case 'watcher':   return t('pilotDeckConfig.sourceLabels.watcher');
+    case 'refresh':   return t('pilotDeckConfig.sourceLabels.refresh');
     default:          return source;
   }
 }
@@ -417,12 +421,13 @@ function SecretTextInput({
   className?: string;
   monospace?: boolean;
 }) {
+  const { t } = useTranslation('settings');
   const masked = isMaskedSecret(value);
   return (
     <TextInput
       type="password"
       value={secretDisplayValue(value)}
-      placeholder={placeholder ?? (masked ? 'Existing key kept — type to replace' : emptyPlaceholder)}
+      placeholder={placeholder ?? (masked ? t('pilotDeckConfig.existingKeyKept') : emptyPlaceholder)}
       monospace={monospace}
       className={className}
       onChange={onChange}
@@ -496,6 +501,7 @@ function ModelRefInput({
   options: Array<{ value: string; label: string }>;
   placeholder?: string;
 }) {
+  const { t } = useTranslation('settings');
   const [id] = useState(() => `model-ref-dl-${++_datalistCounter}`);
   return (
     <>
@@ -504,7 +510,7 @@ function ModelRefInput({
         list={id}
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? 'provider/model-name'}
+        placeholder={placeholder ?? t('pilotDeckConfig.modelRef.placeholder')}
         spellCheck={false}
         className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
       />
@@ -680,7 +686,7 @@ function ProviderCard({
             {containsActive && (
               <span className="inline-flex items-center gap-1 rounded-full border border-foreground/30 bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-foreground">
                 <Star className="h-2.5 w-2.5 fill-current" strokeWidth={0} />
-                Main agent
+                {t('pilotDeckConfig.mainAgent')}
               </span>
             )}
           </div>
@@ -705,7 +711,7 @@ function ProviderCard({
 
       {/* API key — the only required field */}
       <label className="block text-xs text-muted-foreground">
-        <span className="mb-1 block">API key</span>
+        <span className="mb-1 block">{t('pilotDeckConfig.apiKeyLabel')}</span>
         <SecretTextInput
           value={provider.apiKey}
           emptyPlaceholder="sk-..."
@@ -714,7 +720,7 @@ function ProviderCard({
         {isMaskedKey && (
           <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
             <Info className="h-3 w-3" />
-            Key hidden; leave as-is to keep, retype to replace.
+            {t('pilotDeckConfig.apiKeyHidden')}
           </span>
         )}
       </label>
@@ -725,12 +731,12 @@ function ProviderCard({
           body to enable/disable; click the star to set as main. */}
       <div>
         <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          <span>Enabled models</span>
+          <span>{t('pilotDeckConfig.enabledModels')}</span>
           <span className="text-[10px] text-muted-foreground/60">
-            click <Star className="inline h-2.5 w-2.5" /> to set main agent
+            {t('pilotDeckConfig.clickStarToSetMain')}
           </span>
           <span className="text-[10px] text-muted-foreground/60">
-            · <ImageIcon className="inline h-2.5 w-2.5" /> supports image input
+            · <ImageIcon className="inline h-2.5 w-2.5" /> {t('pilotDeckConfig.supportsImageInput')}
           </span>
         </div>
         {catalogEntry && catalogEntry.models.length > 0 && (
@@ -755,7 +761,7 @@ function ProviderCard({
                     type="button"
                     onClick={() => toggleCatalogModel(m.id)}
                     className="inline-flex items-center gap-1 px-2 py-1"
-                    title={on ? 'Click to disable' : 'Click to enable'}
+                    title={on ? t('pilotDeckConfig.catalogChip.clickToDisable') : t('pilotDeckConfig.catalogChip.clickToEnable')}
                   >
                     {isActive && <Check className="h-3 w-3 text-primary" strokeWidth={2.5} />}
                     {m.displayName}
@@ -770,7 +776,7 @@ function ProviderCard({
                     <button
                       type="button"
                       onClick={() => onSetActive(ref)}
-                      title={isActive ? 'Currently the main agent model' : 'Set as main agent model'}
+                      title={isActive ? t('pilotDeckConfig.starButton.currentMain') : t('pilotDeckConfig.starButton.setMain')}
                       className={cn(
                         'border-l px-1.5 py-1 transition-opacity',
                         isActive ? 'border-primary/30 text-primary opacity-100' : 'border-current/20 opacity-30 hover:opacity-100',
@@ -797,7 +803,7 @@ function ProviderCard({
               <button
                 type="button"
                 onClick={() => onSetActive(ref)}
-                title={isActive ? 'Currently the main agent model' : 'Set as main agent model'}
+                title={isActive ? t('pilotDeckConfig.starButton.currentMain') : t('pilotDeckConfig.starButton.setMain')}
                 className={cn(
                   'transition-opacity',
                   isActive ? 'text-primary opacity-100' : 'text-muted-foreground opacity-40 hover:opacity-100',
@@ -821,13 +827,13 @@ function ProviderCard({
           <input
             value={newModelId}
             onChange={(e) => setNewModelId(e.target.value)}
-            placeholder="Custom model ID"
+            placeholder={t('pilotDeckConfig.customModelPlaceholder')}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
             onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addModel(newModelId); }}
           />
           <Button variant="outline" size="sm" className="shrink-0" onClick={() => addModel(newModelId)} disabled={!newModelId.trim()}>
             <Plus className="mr-1 h-3 w-3" />
-            Add
+            {t('pilotDeckConfig.actions.add')}
           </Button>
         </div>
       </div>
@@ -841,7 +847,7 @@ function ProviderCard({
         <div className="border-t border-border/60 pt-3">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
             <Settings2 className="h-3 w-3" />
-            Per-model max output tokens
+            {t('pilotDeckConfig.perModelMaxOutputTokens')}
           </div>
           <div className="space-y-1.5">
             {enabledModels.map((mid) => {
@@ -891,7 +897,7 @@ function ProviderCard({
                         ? 'opacity-30'
                         : 'hover:bg-muted hover:text-foreground',
                     )}
-                    title={current === undefined ? 'Already using default' : 'Reset to catalog/protocol default'}
+                    title={current === undefined ? t('pilotDeckConfig.alreadyDefault') : t('pilotDeckConfig.resetToDefault')}
                   >
                     <RefreshCw className="h-3 w-3" />
                   </button>
@@ -900,7 +906,7 @@ function ProviderCard({
             })}
           </div>
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-            Cap on tokens each model may generate per turn (sent as <code className="font-mono">max_tokens</code>). Leave blank to fall back to the protocol default (~8k for openai, ~4k for anthropic). 32k is a safe modern recommendation; raise it for long-form / thinking models — too small a value cuts the response off mid-stream.
+            {t('pilotDeckConfig.perModelMaxOutputTokensDesc')}
           </p>
         </div>
       )}
@@ -912,12 +918,12 @@ function ProviderCard({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="text-[11px] text-muted-foreground hover:text-foreground"
         >
-          {showAdvanced ? 'Hide' : 'Show'} advanced (protocol &amp; URL)
+          {showAdvanced ? t('pilotDeckConfig.hideAdvanced') : t('pilotDeckConfig.showAdvanced')}
         </button>
         {showAdvanced && (
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr]">
             <label className="text-[11px] text-muted-foreground">
-              <span className="mb-1 block">Protocol</span>
+              <span className="mb-1 block">{t('pilotDeckConfig.protocol')}</span>
               <Select
                 value={protocol}
                 onChange={(v) => update({ protocol: v as 'openai' | 'anthropic' })}
@@ -928,7 +934,7 @@ function ProviderCard({
               />
             </label>
             <label className="text-[11px] text-muted-foreground">
-              <span className="mb-1 block">Base URL</span>
+              <span className="mb-1 block">{t('pilotDeckConfig.baseUrl')}</span>
               <TextInput
                 value={provider.url}
                 placeholder={catalogEntry?.defaultUrl || 'https://api.example.com/v1'}
@@ -937,13 +943,13 @@ function ProviderCard({
               />
               {!provider.url && catalogEntry && (
                 <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-                  Defaults to <code className="font-mono">{catalogEntry.defaultUrl}</code> from catalog.
+                  {t('pilotDeckConfig.advancedSection.defaultsTo', { url: catalogEntry.defaultUrl })}
                 </span>
               )}
             </label>
             {effectiveUrl && (
               <div className="col-span-full text-[10px] text-muted-foreground">
-                Effective: <code className="font-mono">{effectiveUrl}</code>
+                {t('pilotDeckConfig.advancedSection.effective')} <code className="font-mono">{effectiveUrl}</code>
               </div>
             )}
           </div>
@@ -962,21 +968,22 @@ function CatalogPicker({
   onPick: (catalog: CatalogProvider) => void;
   onCustom: () => void;
 }) {
+  const { t } = useTranslation('settings');
   const [open, setOpen] = useState(false);
   const available = CATALOG_PROVIDERS.filter((p) => !existingIds.has(p.id));
   if (!open) {
     return (
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <Plus className="mr-1 h-3.5 w-3.5" />
-        Add provider
+        {t('pilotDeckConfig.addProvider')}
       </Button>
     );
   }
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-medium text-foreground">Add a provider</div>
-        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+        <div className="text-sm font-medium text-foreground">{t('pilotDeckConfig.addAProvider')}</div>
+        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>{t('pilotDeckConfig.cancel')}</Button>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {available.map((p) => (
@@ -987,7 +994,7 @@ function CatalogPicker({
             className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
           >
             <div className="font-medium text-foreground">{p.displayName}</div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">{p.models.length} models</div>
+            <div className="mt-0.5 text-[10px] text-muted-foreground">{t('pilotDeckConfig.providerCard.modelsCount', { count: p.models.length })}</div>
           </button>
         ))}
         <button
@@ -995,8 +1002,8 @@ function CatalogPicker({
           onClick={() => { onCustom(); setOpen(false); }}
           className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
         >
-          <div className="font-medium text-foreground">+ Custom</div>
-          <div className="mt-0.5 text-[10px] text-muted-foreground">Manual setup</div>
+          <div className="font-medium text-foreground">+ {t('pilotDeckConfig.custom')}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{t('pilotDeckConfig.manualSetup')}</div>
         </button>
       </div>
     </div>
@@ -1071,7 +1078,7 @@ function ModelsSection({ config, onChange }: { config: PilotDeckConfig; onChange
       <div className="space-y-3">
         {ids.length === 0 && (
           <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-            No providers configured yet. Click "Add provider" to get started.
+            {t('pilotDeckConfig.noProvidersYet')}
           </div>
         )}
         {ids.map((id) => (
@@ -1165,11 +1172,11 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
   const [showSubagents, setShowSubagents] = useState(subDefault !== 'inherit');
 
   const mainOptions = [
-    { value: '', label: '— pick a model —' },
+    { value: '', label: t('pilotDeckConfig.agentSection.pickModel') },
     ...refOptions,
   ];
   const subOptions = [
-    { value: 'inherit', label: 'inherit (use main agent\'s model)' },
+    { value: 'inherit', label: t('pilotDeckConfig.agentSection.inheritModel') },
     ...refOptions,
   ];
 
@@ -1431,12 +1438,14 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
   );
 }
 
-const WELL_KNOWN_ENV_KEYS = [
-  { key: 'TAVILY_API_KEY', hint: 'Tavily web search API key' },
-  { key: 'FIRECRAWL_API_KEY', hint: 'Firecrawl web scraping API key' },
-  { key: 'SERPER_API_KEY', hint: 'Serper search API key' },
-  { key: 'BROWSERBASE_API_KEY', hint: 'Browserbase API key' },
-];
+function getWellKnownEnvKeys(t: (key: string) => string) {
+  return [
+    { key: 'TAVILY_API_KEY', hint: t('pilotDeckConfig.envKeys.tavily') },
+    { key: 'FIRECRAWL_API_KEY', hint: t('pilotDeckConfig.envKeys.firecrawl') },
+    { key: 'SERPER_API_KEY', hint: t('pilotDeckConfig.envKeys.serper') },
+    { key: 'BROWSERBASE_API_KEY', hint: t('pilotDeckConfig.envKeys.browserbase') },
+  ];
+}
 
 function CustomEnvSection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
   const { t } = useTranslation('settings');
@@ -1465,7 +1474,7 @@ function CustomEnvSection({ config, onChange }: { config: PilotDeckConfig; onCha
     onChange(patch(config, ['customEnv', key], ''));
   };
 
-  const unusedWellKnown = WELL_KNOWN_ENV_KEYS.filter((wk) => envMap[wk.key] === undefined);
+  const unusedWellKnown = getWellKnownEnvKeys(t).filter((wk) => envMap[wk.key] === undefined);
 
   return (
     <SettingsSection
@@ -1491,7 +1500,7 @@ function CustomEnvSection({ config, onChange }: { config: PilotDeckConfig; onCha
                 <span className="text-muted-foreground">=</span>
                 <SecretTextInput
                   value={value}
-                  placeholder={isMasked ? t('pilotDeckConfig.panels.customEnv.existingValueKept') : 'value'}
+                  placeholder={isMasked ? t('pilotDeckConfig.panels.customEnv.existingValueKept') : t('pilotDeckConfig.customEnv.valuePlaceholder')}
                   monospace
                   className="min-w-0 flex-1"
                   onChange={(v) => setEnv(key, v)}
@@ -1663,8 +1672,8 @@ function AlwaysOnSection({
                     value={trigger.preferChannel}
                     onChange={(value) => onChange(patch(config, ['alwaysOn', 'trigger', 'preferChannel'], value))}
                     options={[
-                      { value: 'web', label: 'Web UI' },
-                      { value: 'tui', label: 'TUI' },
+                      { value: 'web', label: t('pilotDeckConfig.alwaysOnSection.webUI') },
+                      { value: 'tui', label: t('pilotDeckConfig.alwaysOnSection.tui') },
                     ]}
                   />
                 </FormRow>
@@ -1800,7 +1809,7 @@ function AlwaysOnSection({
                     >
                       <SettingsToggle
                         checked={isAlwaysOnProjectEnabled(config, project)}
-                        ariaLabel={`Toggle Always-On for ${project.displayName || project.name}`}
+                        ariaLabel={t('pilotDeckConfig.alwaysOnSection.toggleLabel', { project: project.displayName || project.name })}
                         onChange={(en) => onChange(setAlwaysOnProjectEnabled(config, project, en))}
                       />
                     </SettingsRow>
@@ -2008,7 +2017,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
           {isMaskedSecret(apiKey) && (
             <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
               <Info className="h-3 w-3" />
-              Key hidden; leave as-is to keep, retype to replace.
+              {t('pilotDeckConfig.apiKeyHidden')}
             </p>
           )}
         </FormRow>
@@ -2031,7 +2040,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
             >
               <TextInput
                 value={custom.name ?? ''}
-                placeholder="My Search"
+                placeholder={t('pilotDeckConfig.customSearchPlaceholder')}
                 onChange={(v) => setCustomField('name', v)}
               />
             </FormRow>
@@ -2278,7 +2287,7 @@ function RouterScenarioEditor({ config, onChange }: { config: PilotDeckConfig; o
           <input
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
-            placeholder="scenario name"
+            placeholder={t('pilotDeckConfig.searchConfig.scenarioName')}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
             onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addScenario(); }}
           />
@@ -2380,7 +2389,7 @@ function RouterFallbackEditor({ config, onChange }: { config: PilotDeckConfig; o
           <input
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
-            placeholder="scenario name (e.g. default)"
+            placeholder={t('pilotDeckConfig.searchConfig.scenarioNameDefault')}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
             onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addChain(); }}
           />
@@ -2394,19 +2403,23 @@ function RouterFallbackEditor({ config, onChange }: { config: PilotDeckConfig; o
   );
 }
 
-const DEFAULT_TIERS: Record<string, { description: string }> = {
-  simple: { description: 'Simple greetings, confirmations, single-step Q&A, trivial file writes, remembering rules' },
-  medium: { description: 'Single tool call, short text generation, 1-2 file read/write, code generation' },
-  complex: { description: 'Needs sub-agent orchestration: parallel workstreams, delegation to specialized agents' },
-  reasoning: { description: 'Deep single-agent work: multi-file operations, data analysis, multi-step workflows, web research, structured reports from many sources' },
-};
+function getDefaultTiers(t: (key: string) => string): Record<string, { description: string }> {
+  return {
+    simple: { description: t('pilotDeckConfig.tierDescriptions.simple') },
+    medium: { description: t('pilotDeckConfig.tierDescriptions.medium') },
+    complex: { description: t('pilotDeckConfig.tierDescriptions.complex') },
+    reasoning: { description: t('pilotDeckConfig.tierDescriptions.reasoning') },
+  };
+}
 
-const DEFAULT_RULES: string[] = [
-  'complex is ONLY for tasks that need sub-agent orchestration or parallel delegation — do NOT use it for single-agent multi-step work',
-  'Multi-file operations, data analysis, and multi-step workflows without orchestration should be reasoning',
-  'Simple file creation (1-2 files) or single code generation is medium',
-  'Trivial greetings, confirmations, remembering rules, or reading one file and answering a short question is simple',
-];
+function getDefaultRules(t: (key: string) => string): string[] {
+  return [
+    t('pilotDeckConfig.tierRules.complex'),
+    t('pilotDeckConfig.tierRules.reasoning'),
+    t('pilotDeckConfig.tierRules.medium'),
+    t('pilotDeckConfig.tierRules.simple'),
+  ];
+}
 
 function TokenSaverTierEditor({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
   const { t } = useTranslation('settings');
@@ -2425,7 +2438,7 @@ function TokenSaverTierEditor({ config, onChange }: { config: PilotDeckConfig; o
   const addTier = () => {
     const key = newKey.trim();
     if (!key || tiers[key]) return;
-    const preset = DEFAULT_TIERS[key];
+    const preset = getDefaultTiers(t)[key];
     onChange(patch(config, ['router', 'tokenSaver', 'tiers', key], {
       model: modelOpts[0]?.value ?? '',
       description: preset?.description ?? '',
@@ -2471,7 +2484,7 @@ function TokenSaverTierEditor({ config, onChange }: { config: PilotDeckConfig; o
           <input
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
-            placeholder="tier name (e.g. simple, medium, complex)"
+            placeholder={t('pilotDeckConfig.searchConfig.tierName')}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
             onKeyDown={(e) => { if (e.key === 'Enter' && !isImeEnterEvent(e)) addTier(); }}
           />
@@ -2699,8 +2712,8 @@ function RouterSection({ config, onChange }: { config: PilotDeckConfig; onChange
                     <Select
                       value={ts.subagent?.policy ?? 'judge'}
                       options={[
-                        { value: 'judge', label: 'judge' },
-                        { value: 'inherit', label: 'inherit' },
+                        { value: 'judge', label: t('pilotDeckConfig.subagentPolicy.judge') },
+                        { value: 'inherit', label: t('pilotDeckConfig.subagentPolicy.inherit') },
                       ]}
                       onChange={(v) => onChange(patch(config, ['router', 'tokenSaver', 'subagent', 'policy'], v))}
                     />
@@ -3136,7 +3149,7 @@ export default function PilotDeckConfigTab({ projects = [] }: { projects?: Setti
         title={t('pilotDeckConfig.panels.subsystemReload.title')}
         description={lastReloadInfo
           ? t('pilotDeckConfig.panels.subsystemReload.lastReload', {
-              source: sourceLabel(lastReloadInfo.source),
+              source: sourceLabel(lastReloadInfo.source, t),
               time: new Date(lastReloadInfo.at).toLocaleTimeString(),
             })
           : t('pilotDeckConfig.panels.subsystemReload.fallbackDescription')}

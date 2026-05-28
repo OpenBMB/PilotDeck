@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Terminal } from 'lucide-react';
 import type { Project, ProjectSession } from '../../types/app';
 import Shell from '../shell/view/Shell';
@@ -9,10 +10,11 @@ type ShellV2Props = {
 };
 
 export default function ShellV2({ selectedProject, selectedSession, isActive }: ShellV2Props) {
+  const { t } = useTranslation();
   if (!selectedProject) {
     return (
       <div className="flex h-full items-center justify-center bg-neutral-950 text-[13px] text-neutral-500">
-        Pick a project to open a shell.
+        {t('alwaysOn:shell.noProject')}
       </div>
     );
   }
