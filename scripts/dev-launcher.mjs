@@ -122,7 +122,7 @@ async function main() {
   const child = spawn(
     'npm',
     ['--workspace', 'ui', 'run', 'dev:concurrent'],
-    { cwd: repoRoot, env, stdio: 'inherit' },
+    { cwd: repoRoot, env, stdio: 'inherit', shell: true },
   );
 
   const forward = (signal) => {
