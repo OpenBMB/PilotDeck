@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../../../utils/api';
 import type { CodeEditorFile } from '../../types/types';
 import { isImageFile, isPdfFile } from '../../utils/binaryFile';
@@ -66,6 +67,7 @@ function PreviewSpinner() {
 }
 
 function FallbackContent({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full w-full flex-col items-center justify-center bg-white p-8 dark:bg-neutral-950">
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
@@ -94,7 +96,7 @@ function FallbackContent({ title, message, onClose }: { title: string; message: 
           onClick={onClose}
           className="mt-2 rounded-md bg-neutral-900 px-4 py-1.5 text-[13px] text-white transition-colors hover:opacity-90 dark:bg-neutral-100 dark:text-neutral-900"
         >
-          Close
+          {t('alwaysOn:codeEditorBinary.close')}
         </button>
       </div>
     </div>
@@ -163,6 +165,7 @@ export default function CodeEditorBinaryFile({
   title,
   message,
 }: CodeEditorBinaryFileProps) {
+  const { t } = useTranslation();
   const iconBtn =
     'flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
 
@@ -189,7 +192,7 @@ export default function CodeEditorBinaryFile({
             type="button"
             onClick={onToggleFullscreen}
             className={iconBtn}
-            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? t('alwaysOn:codeEditorBinary.exitFullscreen') : t('alwaysOn:codeEditorBinary.fullscreen')}
           >
             {isFullscreen ? (
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -212,7 +215,7 @@ export default function CodeEditorBinaryFile({
             )}
           </button>
         )}
-        <button type="button" onClick={onClose} className={iconBtn} title="Close">
+        <button type="button" onClick={onClose} className={iconBtn} title={t('alwaysOn:codeEditorBinary.close')}>
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"

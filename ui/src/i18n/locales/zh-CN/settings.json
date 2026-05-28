@@ -486,6 +486,33 @@
       "add": "添加",
       "dismiss": "忽略"
     },
+    "enabledModels": "已启用的模型",
+    "clickStarToSetMain": "点击 ★ 设为主代理",
+    "supportsImageInput": "支持图片输入",
+    "addProvider": "添加供应商",
+    "addAProvider": "添加供应商",
+    "cancel": "取消",
+    "custom": "自定义",
+    "manualSetup": "手动配置",
+    "modelsCount": "{{count}} 个模型",
+    "customModelPlaceholder": "自定义模型 ID",
+    "searchPlaceholder": "我的搜索",
+    "perModelMaxOutputTokens": "每个模型的最大输出 Token 数",
+    "perModelMaxOutputTokensDesc": "每个模型每轮可生成的最大 Token 数（作为 max_tokens 发送）。留空则使用协议默认值（OpenAI 约 8k，Anthropic 约 4k）。32k 是安全的现代推荐值；对于长文本/推理模型可适当调高——过小会导致响应中途截断。",
+    "showAdvanced": "显示高级选项（协议和 URL）",
+    "hideAdvanced": "隐藏高级选项（协议和 URL）",
+    "apiKeyHidden": "密钥已隐藏；保持原样以保留，重新输入以替换。",
+    "alreadyDefault": "已使用默认值",
+    "resetToDefault": "重置为目录/协议默认值",
+    "noProvidersYet": "尚未配置供应商。点击「添加供应商」开始。",
+    "protocol": "协议",
+    "baseUrl": "基础 URL",
+    "noReloadYet": "尚未执行重新加载。",
+    "customSearchPlaceholder": "我的搜索",
+    "apiKeyLabel": "API 密钥",
+    "searchPlaceholder": "我的搜索",
+    "mainAgent": "主智能体",
+    "existingKeyKept": "已保留现有密钥 —— 输入以替换",
     "rawYaml": {
       "configValid": "配置有效",
       "unsaved": "（未保存）",
@@ -496,6 +523,93 @@
       "yamlParseError": "磁盘上的 YAML 解析失败——切换到原始 YAML 以修复。",
       "cannotParse": "无法解析磁盘上的 YAML。切换到{{rawYaml}}以检查和修复。",
       "rawYaml": "原始 YAML"
+    },
+    "subsystemLabels": {
+      "processEnv": "进程环境",
+      "memory": "记忆",
+      "router": "PilotDeck 路由器",
+      "gateway": "网关",
+      "proxy": "代理"
+    },
+    "reloadSummary": {
+      "reloaded": "已重新加载",
+      "noData": "无数据"
+    },
+    "sourceLabels": {
+      "uiSave": "UI 保存",
+      "uiReload": "UI 重新加载",
+      "externalEdit": "外部文件编辑",
+      "manualRefresh": "手动刷新"
+    },
+    "modelRef": {
+      "placeholder": "提供商/模型名"
+    },
+    "catalogChip": {
+      "clickToDisable": "点击禁用",
+      "clickToEnable": "点击启用"
+    },
+    "starButton": {
+      "currentMain": "当前主智能体模型",
+      "setMain": "设为主智能体模型"
+    },
+    "advancedSection": {
+      "defaultsTo": "默认为",
+      "fromCatalog": "（来自目录）。",
+      "effective": "实际值："
+    },
+    "providerCard": {
+      "modelsCount": "{{count}} 个模型"
+    },
+    "agentSection": {
+      "pickModel": "— 选择模型 —",
+      "inheritModel": "继承（使用主智能体模型）"
+    },
+    "envKeys": {
+      "tavilyHint": "Tavily 网络搜索 API 密钥",
+      "firecrawlHint": "Firecrawl 网页抓取 API 密钥",
+      "serperHint": "Serper 搜索 API 密钥",
+      "browserbaseHint": "Browserbase API 密钥"
+    },
+    "customEnv": {
+      "valuePlaceholder": "值"
+    },
+    "alwaysOnSection": {
+      "webUI": "Web UI",
+      "tui": "终端",
+      "toggleLabel": "切换 {{project}} 的常驻模式"
+    },
+    "searchConfig": {
+      "query": "查询",
+      "apiKey": "api_key",
+      "dataItems": "data.items",
+      "titleField": "title",
+      "urlField": "url",
+      "snippet": "摘要",
+      "sourceField": "source",
+      "publishedAt": "publishedAt",
+      "scenarioName": "场景名称",
+      "scenarioExample": "场景名称（如 default）",
+      "tierName": "层级名称（如 simple, medium, complex）"
+    },
+    "tierDescriptions": {
+      "simple": "简单问候、确认、单步问答、简单文件写入、记住规则",
+      "medium": "单次工具调用、短文本生成、1-2 次文件读写、代码生成",
+      "complex": "需要子智能体编排：并行工作流、委派给专门的智能体",
+      "reasoning": "深度单智能体工作：多文件操作、数据分析、多步骤工作流、网络调研、多来源结构化报告"
+    },
+    "tierRules": {
+      "complexOnly": "complex 仅用于需要子智能体编排或并行委派的任务 — 不要用于单智能体多步骤工作",
+      "reasoningRule": "无编排的多文件操作、数据分析和多步骤工作流应使用 reasoning",
+      "mediumRule": "简单文件创建（1-2 个文件）或单次代码生成使用 medium",
+      "simpleRule": "简单问候、确认、记住规则，或读取一个文件回答简短问题使用 simple"
+    },
+    "subagentPolicy": {
+      "judge": "判断",
+      "inherit": "继承"
+    },
+    "toolsSection": {
+      "providerLabel": "提供商",
+      "bearerHeader": "Bearer 请求头"
     },
     "sections": {
       "runtime": {
@@ -599,7 +713,7 @@
         "add": "添加"
       },
       "alwaysOn": {
-        "title": "Always-On",
+        "title": "常驻模式",
         "description": "配置全局自动发现，并按工作区单独开关。",
         "enabled": { "label": "启用", "description": "常驻后台智能体的总开关。" },
         "trigger": {
@@ -658,16 +772,16 @@
         "title": "搜索",
         "description": "智能体的 web_search 工具背后的搜索提供商。只能选择一个提供商，未选中的提供商不会生效。",
         "provider": {
-          "label": "Provider",
+          "label": "提供商",
           "description": "选择智能体使用的唯一搜索提供商。",
           "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "自定义"
         },
         "apiKey": {
-          "label": "API Key",
+          "label": "API 密钥",
           "description": "保存到 pilotdeck.yaml 的 tools.webSearch.apiKey，作用于当前选择的提供商。",
-          "placeholder": "provider API key"
+          "placeholder": "供应商 API 密钥"
         },
         "endpoint": {
           "label": "接口地址",
@@ -682,7 +796,7 @@
           "auth": {
             "label": "鉴权方式",
             "description": "自定义提供商接收 API Key 的方式。",
-            "bearer": "Bearer header",
+            "bearer": "Bearer 请求头",
             "bodyApiKey": "API Key 放在 JSON body",
             "queryApiKey": "API Key 放在 query string",
             "none": "不使用 API Key"
@@ -709,7 +823,7 @@
         }
       },
       "router": {
-        "title": "PilotDeck Router",
+        "title": "PilotDeck 路由器",
         "description": "内嵌路由器，跨提供商路由分发（按层级分流、Token 节省、自动编排）。",
         "enabled": { "label": "启用", "description": "启用后，智能体通过路由器而非直接使用配置的提供商。" },
         "zeroUsageRetry": {
@@ -802,6 +916,7 @@
     "installFailed": "安装失败",
     "uninstallFailed": "卸载失败",
     "toggleFailed": "切换失败",
+    "starterPluginLabel": "入门插件",
     "buildYourOwn": "构建您自己的插件",
     "starter": "入门模板",
     "docs": "文档",
@@ -809,6 +924,12 @@
       "name": "项目统计",
       "badge": "入门",
       "description": "查看项目的文件数、代码行数、文件类型分布以及最近活动。",
+      "install": "安装"
+    },
+    "terminalPlugin": {
+      "name": "终端",
+      "badge": "官方",
+      "description": "在界面中直接集成终端，提供完整的 Shell 访问。",
       "install": "安装"
     },
     "morePlugins": "更多",

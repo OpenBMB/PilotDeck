@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import pilotdeckLogoDark from '../../../assets/pilotdeck-wordmark-dark.png';
 import pilotdeckLogoLight from '../../../assets/pilotdeck-wordmark-light.png';
@@ -51,6 +52,7 @@ function validateSetupForm(formState: SetupFormState): string | null {
  * credentials after submission.
  */
 export default function SetupForm() {
+  const { t } = useTranslation('auth');
   const { register } = useAuth();
 
   const [formState, setFormState] = useState<SetupFormState>(initialState);
@@ -84,9 +86,9 @@ export default function SetupForm() {
 
   return (
     <AuthScreenLayout
-      title="Welcome to PilotDeck"
-      description="Set up your account to get started"
-      footerText="This is a single-user system. Only one account can be created."
+      title={t('setup.title')}
+      description={t('setup.description')}
+      footerText={t('setup.footerText')}
       logo={
         <div className="flex items-center justify-center gap-2">
           <img
@@ -108,10 +110,10 @@ export default function SetupForm() {
         <AuthInputField
           id="username"
           name="username"
-          label="Username"
+          label={t('setup.username')}
           value={formState.username}
           onChange={(value) => updateField('username', value)}
-          placeholder="Enter your username"
+          placeholder={t('setup.placeholders.username')}
           isDisabled={isSubmitting}
           autoComplete="username"
         />
@@ -119,10 +121,10 @@ export default function SetupForm() {
         <AuthInputField
           id="password"
           name="password"
-          label="Password"
+          label={t('setup.password')}
           value={formState.password}
           onChange={(value) => updateField('password', value)}
-          placeholder="Enter your password"
+          placeholder={t('setup.placeholders.password')}
           isDisabled={isSubmitting}
           type="password"
           autoComplete="new-password"
@@ -131,10 +133,10 @@ export default function SetupForm() {
         <AuthInputField
           id="confirmPassword"
           name="confirmPassword"
-          label="Confirm Password"
+          label={t('setup.confirmPassword')}
           value={formState.confirmPassword}
           onChange={(value) => updateField('confirmPassword', value)}
-          placeholder="Confirm your password"
+          placeholder={t('setup.placeholders.confirmPassword')}
           isDisabled={isSubmitting}
           type="password"
           autoComplete="new-password"
@@ -147,7 +149,7 @@ export default function SetupForm() {
           disabled={isSubmitting}
           className="w-full rounded-md bg-blue-600 px-4 py-2 font-medium text-white transition-colors duration-200 hover:bg-blue-700 disabled:bg-blue-400"
         >
-          {isSubmitting ? 'Setting up...' : 'Create Account'}
+          {isSubmitting ? t('setup.loading') : t('setup.submit')}
         </button>
       </form>
     </AuthScreenLayout>

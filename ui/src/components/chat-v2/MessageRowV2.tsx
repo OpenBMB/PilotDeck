@@ -263,7 +263,7 @@ function MessageRowV2({
                     >
                       <img
                         src={image.data}
-                        alt={image.name || 'Uploaded image'}
+                        alt={image.name || t('chat:imageAlt.uploaded')}
                         className="block h-auto max-h-64 w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
                         loading="lazy"
                       />
@@ -340,6 +340,7 @@ function MessageRowV2({
 }
 
 function CopyMarkdownButton({ content }: { content: string }) {
+  const { t } = useTranslation('chat');
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -356,8 +357,8 @@ function CopyMarkdownButton({ content }: { content: string }) {
       type="button"
       onClick={handleClick}
       className="rounded p-1 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
-      aria-label={copied ? 'Copied' : 'Copy'}
-      title={copied ? 'Copied' : 'Copy'}
+      aria-label={copied ? t('chat:messageRow.copied') : t('chat:messageRow.copy')}
+      title={copied ? t('chat:messageRow.copied') : t('chat:messageRow.copy')}
     >
       {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={2} />}
     </button>
@@ -459,7 +460,7 @@ function ProcessAttachmentRow({
             >
               <img
                 src={image.data}
-                alt={image.name || 'Tool result image'}
+                alt={image.name || t('chat:imageAlt.toolResult')}
                 className="block h-auto max-h-72 max-w-xs cursor-zoom-in object-contain"
                 loading="lazy"
               />

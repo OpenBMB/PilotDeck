@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Circle, Clock, type LucideIcon } from 'lucide-react';
 import { Badge } from '../../../../../shared/view/ui';
 
@@ -95,6 +96,7 @@ const TodoList = memo(
     todos: TodoItem[];
     isResult?: boolean;
   }) => {
+    const { t } = useTranslation('chat');
     // Memoize normalization to avoid recomputing list metadata on every render.
     const normalizedTodos = useMemo<NormalizedTodoItem[]>(
       () =>
@@ -114,8 +116,8 @@ const TodoList = memo(
       <div className="space-y-1.5">
         {isResult && (
           <div className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
-            Todo List ({normalizedTodos.length}{' '}
-            {normalizedTodos.length === 1 ? 'item' : 'items'})
+            {t('chat:todoContent.todoList')} ({normalizedTodos.length}{' '}
+            {normalizedTodos.length === 1 ? t('chat:todoContent.itemSingular') : t('chat:todoContent.itemPlural')})
           </div>
         )}
         {normalizedTodos.map((todo, index) => (

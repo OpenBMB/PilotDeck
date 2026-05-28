@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Activity,
   AlertCircle,
@@ -89,8 +90,9 @@ export function ProcessLiveStatus({
     }
     onExpandedChange?.(resolvedExpanded);
   };
+  const { t } = useTranslation('chat');
   const Icon = getStepIcon(step);
-  const title = step.title || step.toolName || 'Working';
+  const title = step.title || step.toolName || t('chat:processTrace.working');
   const isRunning = step.state !== 'failed' && step.state !== 'completed' && step.state !== 'cancelled';
   const hasDetails = Boolean(children);
   const statusContent = (
@@ -191,9 +193,10 @@ function getStepIconClass(step: ProcessTraceStep): string {
 }
 
 function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
+  const { t } = useTranslation('chat');
   const Icon = getStepIcon(step);
   const isRunning = step.state === 'running';
-  const title = step.title || step.toolName || 'Step';
+  const title = step.title || step.toolName || t('chat:processTrace.step');
 
   return (
     <div

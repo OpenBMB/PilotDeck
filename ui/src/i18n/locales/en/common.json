@@ -309,6 +309,85 @@
     "cron": {
       "title": "Scheduled cron jobs",
       "description": "Existing durable and session-scoped cron tasks for this project."
+    },
+    "deleteProject": {
+      "title": "Delete project?",
+      "description": "This removes the project from PilotDeck and deletes its session metadata.",
+      "sessionWarning": "{{count}} session(s) will also be removed.",
+      "diskNote": "Files on disk are not deleted -- only PilotDeck's reference to them.",
+      "cancel": "Cancel",
+      "deleting": "Deleting...",
+      "confirm": "Delete project"
+    },
+    "deleteConversation": {
+      "title": "Delete conversation?",
+      "description": "This removes the conversation from {{projectName}}.",
+      "cancel": "Cancel",
+      "deleting": "Deleting...",
+      "confirm": "Delete conversation"
+    },
+    "shell": {
+      "noProject": "Pick a project to open a shell.",
+      "shellName": "zsh "
+    },
+    "gitV2": {
+      "noProject": "Pick a project to view source control.",
+      "fetch": "Fetch",
+      "loading": "Loading git status...",
+      "clean": "Working tree clean.",
+      "staged": "Staged",
+      "changes": "Changes",
+      "commit": "Commit",
+      "aiSuggest": "AI suggest commit message",
+      "push": "Push",
+      "dismiss": "Dismiss"
+    },
+    "tasksV2": {
+      "title": "Tasks",
+      "taskCount": "{{count}} tasks",
+      "inProgress": "in progress",
+      "refresh": "Refresh",
+      "noTasks": "No tasks yet. Initialize Task Master from the legacy tasks panel to get started.",
+      "notStarted": "Not started",
+      "done": "Done",
+      "inReview": "In review",
+      "blocked": "Blocked",
+      "deferred": "Deferred",
+      "cancelled": "Cancelled"
+    },
+    "filesV2": {
+      "open": "Open"
+    },
+    "standaloneShell": {
+      "noProject": "No Project Selected",
+      "projectRequired": "A project is required to open a shell",
+      "completed": "(Completed)"
+    },
+    "codeEditorBinary": {
+      "close": "Close",
+      "pdfTitle": "PDF: {{fileName}}",
+      "exitFullscreen": "Exit fullscreen",
+      "fullscreen": "Fullscreen"
+    },
+    "codeEditorSidebar": {
+      "dragToResize": "Drag to resize"
+    },
+    "editorToolbar": {
+      "openInModal": "Open in modal"
+    },
+    "markdownCode": {
+      "copied": "Copied!",
+      "copy": "Copy"
+    },
+    "authLoading": {
+      "loading": "Loading..."
+    },
+    "memoryPanel": {
+      "emptyProject": "Select a project to inspect memory.",
+      "unavailable": "Memory dashboard is unavailable until auth and project context are ready."
+    },
+    "errorBoundary": {
+      "errorDetails": "Error Details"
     }
   },
   "fileTree": {
@@ -480,5 +559,32 @@
       "updateAvailable": "Update available",
       "closeSidebar": "Close sidebar"
     }
+  },
+  "git": {
+    "commitMessage": "Commit message"
+  },
+  "providerLogin": {
+    "runConfiguration": "Run configuration",
+    "closeLoginModal": "Close login modal"
+  },
+  "folderBrowser": {
+    "selectFolder": "Select Folder",
+    "select": "Select",
+    "path": "Path:",
+    "cancel": "Cancel",
+    "useThisFolder": "Use this folder",
+    "newFolderName": "New folder name",
+    "create": "Create",
+    "createNewFolder": "Create new folder",
+    "showHiddenFolders": "Show hidden folders",
+    "hideHiddenFolders": "Hide hidden folders",
+    "close": "Close",
+    "noSubfoldersFound": "No subfolders found"
+  },
+  "errorBoundary": {
+    "somethingWentWrong": "Something went wrong"
+  },
+  "dashboard": {
+    "tierBreakdown": "Tier breakdown"
   }
 }

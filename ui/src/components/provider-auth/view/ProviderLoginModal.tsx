@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ExternalLink, KeyRound, X } from 'lucide-react';
 import StandaloneShell from '../../standalone-shell/view/StandaloneShell';
 import { IS_PLATFORM } from '../../../constants/config';
@@ -82,6 +83,7 @@ export default function ProviderLoginModal({
   customCommand,
   isAuthenticated = false,
 }: ProviderLoginModalProps) {
+  const { t } = useTranslation();
   if (!isOpen) {
     return null;
   }
@@ -103,7 +105,7 @@ export default function ProviderLoginModal({
           <button
             onClick={onClose}
             className="text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300"
-            aria-label="Close login modal"
+            aria-label={t('providerLogin.closeLoginModal')}
           >
             <X className="h-6 w-6" />
           </button>
@@ -145,7 +147,7 @@ export default function ProviderLoginModal({
                       2
                     </div>
                     <div>
-                      <p className="mb-1 text-sm font-medium text-gray-900 dark:text-white">Run configuration</p>
+                      <p className="mb-1 text-sm font-medium text-gray-900 dark:text-white">{t('providerLogin.runConfiguration')}</p>
                       <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">Open your terminal and run:</p>
                       <code className="block rounded bg-gray-100 px-3 py-2 font-mono text-sm text-pink-600 dark:bg-gray-900 dark:text-pink-400">
                         gemini config set api_key YOUR_KEY

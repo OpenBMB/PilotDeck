@@ -27,15 +27,18 @@ function flattenTasks(tasks: TaskMasterTask[]): TaskMasterTask[] {
   return out;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Not started',
-  'in-progress': 'In progress',
-  done: 'Done',
-  review: 'In review',
-  blocked: 'Blocked',
-  deferred: 'Deferred',
-  cancelled: 'Cancelled',
-};
+function getStatusLabel(status: string, t: (key: string) => string): string {
+  const labels: Record<string, string> = {
+    pending: t('alwaysOn:tasksV2.notStarted'),
+    'in-progress': t('alwaysOn:tasksV2.inProgress'),
+    done: t('alwaysOn:tasksV2.done'),
+    review: t('alwaysOn:tasksV2.inReview'),
+    blocked: t('alwaysOn:tasksV2.blocked'),
+    deferred: t('alwaysOn:tasksV2.deferred'),
+    cancelled: t('alwaysOn:tasksV2.cancelled'),
+  };
+  return labels[status] ?? status;
+}
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
   pending: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400',
@@ -95,10 +98,10 @@ export default function TasksV2({ isVisible }: TasksV2Props) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-[20px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
-              Tasks
+              {t('alwaysOn:tasksV2.title')}
             </h2>
             <p className="mt-0.5 text-[13px] text-neutral-500 dark:text-neutral-400">
-              {flat.length} tasks · {inProgressCount} in progress
+              {t('alwaysOn:tasksV2.taskCount', { count: flat.length })} · {t('alwaysOn:tasksV2.inProgress')}
             </p>
           </div>
           <button
@@ -107,7 +110,7 @@ export default function TasksV2({ isVisible }: TasksV2Props) {
             className="text-xxs inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-2.5 text-white transition hover:opacity-90 dark:bg-neutral-50 dark:text-neutral-900"
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-            <span>Refresh</span>
+            <span>{t('alwaysOn:tasksV2.refresh')}</span>
           </button>
         </div>
 
@@ -118,7 +121,7 @@ export default function TasksV2({ isVisible }: TasksV2Props) {
           </div>
         ) : flat.length === 0 ? (
           <div className="rounded-xl border border-neutral-200 p-10 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-            No tasks yet. Initialize Task Master from the legacy tasks panel to get started.
+            {t('alwaysOn:tasksV2.noTasks')}
           </div>
         ) : (
           <div className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
@@ -151,7 +154,7 @@ export default function TasksV2({ isVisible }: TasksV2Props) {
                       {task.title}
                     </div>
                     <div className="text-xxs mt-0.5 text-neutral-500 dark:text-neutral-400">
-                      {STATUS_LABEL[status] ?? status}
+                      {getStatusLabel(status, t)}
                       {task.priority ? ` · ${task.priority}` : ''}
                     </div>
                   </div>
@@ -163,7 +166,7 @@ export default function TasksV2({ isVisible }: TasksV2Props) {
                           'bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400',
                       )}
                     >
-                      {STATUS_LABEL[status] ?? status}
+                      {getStatusLabel(status, t)}
                     </span>
                   ) : null}
                 </label>

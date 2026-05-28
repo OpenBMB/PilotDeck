@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Question } from '../../../types/types';
 
 interface QuestionAnswerContentProps {
@@ -77,6 +78,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
   answers,
   className = '',
 }) => {
+  const { t } = useTranslation('chat');
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const normalizedQuestions = normalizeQuestions(questions);
   const normalizedAnswers = normalizeAnswers(answers);
@@ -88,7 +90,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
 
     return (
       <div className={`rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-200 ${className}`}>
-        <div className="font-medium">Question payload could not be rendered.</div>
+        <div className="font-medium">{t('chat:questionContent.renderError')}</div>
         <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] opacity-80">
           {formatInvalidPayload(questions)}
         </pre>
@@ -159,7 +161,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
                         >
                           {lbl}
                           {isCustom && (
-                            <span className="text-[9px] font-normal text-blue-400 dark:text-blue-500">(custom)</span>
+                            <span className="text-[9px] font-normal text-blue-400 dark:text-blue-500">{t('chat:questionContent.custom')}</span>
                           )}
                         </span>
                       );
@@ -169,7 +171,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
 
                 {!isExpanded && skipped && hasAnyAnswer && (
                   <span className="mt-1 inline-block text-[10px] italic text-gray-400 dark:text-gray-500">
-                    Skipped
+                    {t('chat:questionContent.skipped')}
                   </span>
                 )}
               </div>
@@ -244,7 +246,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
 
                   {skipped && hasAnyAnswer && (
                     <div className="px-2.5 py-1 text-[11px] italic text-gray-400 dark:text-gray-500">
-                      No answer provided
+                      {t('chat:questionContent.noAnswer')}
                     </div>
                   )}
                 </div>
@@ -256,7 +258,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
 
       {!hasAnyAnswer && total === 1 && (
         <div className="text-[11px] italic text-gray-400 dark:text-gray-500">
-          Skipped
+          {t('chat:questionContent.skipped')}
         </div>
       )}
     </div>

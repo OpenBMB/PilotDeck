@@ -1,4 +1,6 @@
 import React, { memo, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../../i18n/config.js';
 import type { Project } from '../../../types/app';
 import type { SubagentChildTool } from '../types/types';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
@@ -66,7 +68,7 @@ class ToolRendererErrorBoundary extends React.Component<
     if (this.state.error) {
       return (
         <div className="my-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-200">
-          <div className="font-medium">Tool output could not be rendered.</div>
+          <div className="font-medium">{i18n.t('chat:tools.toolOutputError')}</div>
           <div className="mt-0.5 opacity-80">{this.props.toolName}</div>
         </div>
       );
@@ -132,6 +134,7 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
   isSubagentContainer,
   subagentState
 }) => {
+  const { t } = useTranslation('chat');
   const canonicalToolName = getCanonicalToolName(toolName);
   const config = getToolConfig(toolName);
   const displayConfig: any = mode === 'input' ? config.input : config.result;
@@ -204,9 +207,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         () => typeof displayConfig.title === 'function'
           ? displayConfig.title(parsedData)
           : displayConfig.title,
-        'Details',
+        t('chat:tools.details'),
       ),
-      'Details',
+      t('chat:tools.details'),
     );
 
     const defaultOpen = displayConfig.defaultOpen !== undefined

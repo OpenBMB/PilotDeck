@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   Check,
@@ -32,6 +33,7 @@ const STATUS_COLOR: Record<ChangeRow['status'], string> = {
 };
 
 export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
+  const { t } = useTranslation();
   const controller = useGitPanelController({
     selectedProject,
     activeView: 'changes',
@@ -84,7 +86,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
   if (!selectedProject) {
     return (
       <div className="flex h-full items-center justify-center bg-white text-[13px] text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
-        Pick a project to view source control.
+        {t('alwaysOn:gitV2.noProject')}
       </div>
     );
   }
@@ -137,7 +139,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
             className={cn('h-3.5 w-3.5', controller.isFetching && 'animate-spin')}
             strokeWidth={1.75}
           />
-          <span>Fetch</span>
+          <span>{t('alwaysOn:gitV2.fetch')}</span>
         </button>
       </div>
 
@@ -145,7 +147,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
         {isLoading && !controller.gitStatus ? (
           <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-neutral-500 dark:text-neutral-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
-            <span>Loading git status…</span>
+            <span>{t('alwaysOn:gitV2.loading')}</span>
           </div>
         ) : hasError ? (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-400">
@@ -159,15 +161,15 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
           </div>
         ) : stagedRows.length === 0 && changeRows.length === 0 ? (
           <div className="py-10 text-center text-[13px] text-neutral-500 dark:text-neutral-400">
-            Working tree clean.
+            {t('alwaysOn:gitV2.clean')}
           </div>
         ) : (
           <div className="space-y-5">
             {stagedRows.length > 0 ? (
-              <ChangeList title="Staged" rows={stagedRows} onFileOpen={onFileOpen} />
+              <ChangeList title={t('alwaysOn:gitV2.staged')} rows={stagedRows} onFileOpen={onFileOpen} />
             ) : null}
             {changeRows.length > 0 ? (
-              <ChangeList title="Changes" rows={changeRows} onFileOpen={onFileOpen} />
+              <ChangeList title={t('alwaysOn:gitV2.changes')} rows={changeRows} onFileOpen={onFileOpen} />
             ) : null}
           </div>
         )}
@@ -177,7 +179,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
         <textarea
           value={commitMessage}
           onChange={(event) => setCommitMessage(event.target.value)}
-          placeholder="Commit message"
+          placeholder={t('git.commitMessage')}
           rows={2}
           disabled={isCommitting || allChangeFiles.length === 0}
           className="w-full resize-none rounded-lg border border-neutral-200 bg-transparent p-2.5 text-[13px] outline-none placeholder:text-neutral-400 focus:border-neutral-300 disabled:opacity-50 dark:border-neutral-800 dark:placeholder:text-neutral-500 dark:focus:border-neutral-700"
@@ -194,14 +196,14 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
             ) : (
               <Check className="h-3.5 w-3.5" strokeWidth={2} />
             )}
-            <span>Commit</span>
+            <span>{t('alwaysOn:gitV2.commit')}</span>
           </button>
           <button
             type="button"
             onClick={() => void handleGenerate()}
             disabled={isGenerating || allChangeFiles.length === 0}
             className="inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-            title="AI suggest commit message"
+            title={t('alwaysOn:gitV2.aiSuggest')}
           >
             {isGenerating ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
@@ -220,7 +222,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
             ) : (
               <Upload className="h-3.5 w-3.5" strokeWidth={1.75} />
             )}
-            <span>Push</span>
+            <span>{t('alwaysOn:gitV2.push')}</span>
           </button>
         </div>
         {controller.operationError ? (
@@ -232,7 +234,7 @@ export default function GitV2({ selectedProject, onFileOpen }: GitV2Props) {
               onClick={controller.clearOperationError}
               className="ml-auto opacity-70 hover:opacity-100"
             >
-              Dismiss
+              {t('alwaysOn:gitV2.dismiss')}
             </button>
           </div>
         ) : null}

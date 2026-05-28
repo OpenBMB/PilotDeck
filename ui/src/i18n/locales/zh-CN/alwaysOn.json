@@ -1,5 +1,5 @@
 {
-  "emptyProject": "选择一个项目以查看 Always-On。",
+  "emptyProject": "选择一个项目以查看常驻。",
   "actions": {
     "refresh": "刷新"
   },
@@ -8,10 +8,10 @@
     "plansCron": "计划与定时任务"
   },
   "dashboard": {
-    "title": "Always-On 仪表盘",
+    "title": "常驻仪表盘",
     "subtitle": "所有工作区的活动动态。",
     "loading": "正在加载事件…",
-    "empty": "暂无 Always-On 事件记录。",
+    "empty": "暂无常驻事件记录。",
     "stats": {
       "todayEvents": "今日事件",
       "activeProjects": "活跃项目",
