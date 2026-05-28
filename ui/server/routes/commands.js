@@ -18,6 +18,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+const SKILL_MD_RE = /^skill\.md$/i;
+
+function isSkillMdFileName(name) {
+  return typeof name === 'string' && SKILL_MD_RE.test(name);
+}
+
+async function findSkillMdFile(skillDir) {
+  try {
+    const entries = await fs.readdir(skillDir);
+    const name = entries.find(isSkillMdFileName);
+    return name ? path.join(skillDir, name) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Slash commands curated to always appear at the top of the menu in this exact
@@ -138,7 +153,8 @@ async function scanSkillsDirectory(dir, namespace) {
       }
 
       const skillDir = path.join(dir, entry.name);
-      const skillFile = path.join(skillDir, 'SKILL.md');
+      const skillFile = await findSkillMdFile(skillDir);
+      if (!skillFile) continue;
 
       let content;
       try {
@@ -163,7 +179,7 @@ async function scanSkillsDirectory(dir, namespace) {
         skills.push({
           name: skillName,
           path: skillFile,
-          relativePath: path.join(entry.name, 'SKILL.md'),
+          relativePath: path.join(entry.name, path.basename(skillFile)),
           description,
           namespace,
           metadata: { ...frontmatter, type: 'skill' },
@@ -695,11 +711,11 @@ Custom commands can be created in:
 
     let installed = false;
     let skillMeta = null;
-    try {
-      await fs.access(path.join(installPath, 'SKILL.md'));
+    const installedSkillFile = await findSkillMdFile(installPath);
+    if (installedSkillFile) {
       installed = true;
       try {
-        const content = await fs.readFile(path.join(installPath, 'SKILL.md'), 'utf8');
+        const content = await fs.readFile(installedSkillFile, 'utf8');
         const { data: fm } = parseFrontmatter(content);
         skillMeta = {
           name: fm.name || slug,
@@ -709,8 +725,6 @@ Custom commands can be created in:
       } catch {
         /* SKILL.md exists but unreadable/unparseable — keep installed=true */
       }
-    } catch {
-      /* SKILL.md missing — installed stays false */
     }
 
     if (runError && runError.code === 'ENOENT') {

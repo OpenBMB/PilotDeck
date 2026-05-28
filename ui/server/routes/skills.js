@@ -55,12 +55,33 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 
 const SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
+const SKILL_MD_RE = /^skill\.md$/i;
 const PILOT_HOME = resolvePilotHome(process.env);
 const PROJECT_DIR = '.pilotdeck';
 const SKILLS_SUBDIR = 'skills';
 
 function safeSlug(slug) {
   return typeof slug === 'string' && SLUG_RE.test(slug) && !slug.includes('..');
+}
+
+function isSkillMdFileName(name) {
+  return typeof name === 'string' && SKILL_MD_RE.test(name);
+}
+
+function isRootSkillMdPath(relativePath) {
+  if (typeof relativePath !== 'string') return false;
+  const normalized = relativePath.replace(/\\/g, '/');
+  return !normalized.includes('/') && isSkillMdFileName(normalized);
+}
+
+async function findSkillMdFile(skillDir) {
+  try {
+    const entries = await fs.readdir(skillDir);
+    const name = entries.find(isSkillMdFileName);
+    return name ? path.join(skillDir, name) : null;
+  } catch {
+    return null;
+  }
 }
 
 const GENERAL_CWD_PATHS = [path.resolve(PILOT_HOME)];
@@ -348,7 +369,7 @@ router.post('/import-upload', upload.array('files', 500), async (req, res) => {
 
     let skillMdContent = '';
     for (const m of manifest) {
-      if (m.relativePath === 'SKILL.md') {
+      if (isRootSkillMdPath(m.relativePath)) {
         skillMdContent = m.buffer.toString('utf8');
         break;
       }
@@ -559,16 +580,18 @@ router.post('/clawhub/install', async (req, res) => {
 
     let installed = false;
     let skill = null;
-    try {
-      await fs.access(path.join(installPath, 'SKILL.md'));
+    const installedSkillFile = await findSkillMdFile(installPath);
+    if (installedSkillFile) {
       installed = true;
-      // Pull the summary back through the gateway so descriptions reflect
-      // the same frontmatter parser the agent will use.
-      const list = await callGateway('skillsList', { projectKey: effectiveProjectPath });
-      const bucket = resolvedScope === 'project' ? list.project : list.user;
-      skill = bucket.find((s) => s.slug === slug) ?? null;
-    } catch {
-      /* not installed */
+      try {
+        // Pull the summary back through the gateway so descriptions reflect
+        // the same frontmatter parser the agent will use.
+        const list = await callGateway('skillsList', { projectKey: effectiveProjectPath });
+        const bucket = resolvedScope === 'project' ? list.project : list.user;
+        skill = bucket.find((s) => s.slug === slug) ?? null;
+      } catch {
+        /* installed, but summary lookup failed */
+      }
     }
 
     const needsForce =

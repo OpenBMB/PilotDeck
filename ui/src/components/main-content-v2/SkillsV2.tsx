@@ -82,6 +82,10 @@ function isGeneralProject(p: Project | null): boolean {
   return p.name === 'general' || p.displayName === 'general';
 }
 
+function isSkillMdFileName(name: string): boolean {
+  return /^skill\.md$/i.test(name);
+}
+
 async function api<T>(url: string, body: unknown): Promise<T> {
   const r = await authenticatedFetch(url, {
     method: 'POST',
@@ -1290,7 +1294,7 @@ function ImportFromFolder({
     const rootSkillFile = files.find((f) => {
       const rel = f.webkitRelativePath || f.name;
       const stripped = rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
-      return stripped === 'SKILL.md';
+      return isSkillMdFileName(stripped);
     });
 
     if (rootSkillFile) {
@@ -1325,7 +1329,7 @@ function ImportFromFolder({
         const rel = f.webkitRelativePath || f.name;
         const prefix = rootName ? rootName + '/' + folderName + '/' : folderName + '/';
         const stripped = rel.startsWith(prefix) ? rel.slice(prefix.length) : rel;
-        return stripped === 'SKILL.md';
+        return isSkillMdFileName(stripped);
       });
 
       let name: string | null = null;
