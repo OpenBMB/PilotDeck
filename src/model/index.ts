@@ -67,6 +67,7 @@ export {
 } from "./structuredOutput/extractStructuredOutput.js";
 export type { ModelCapabilities } from "./protocol/capabilities.js";
 export type { InputModality, MultimodalConstraints } from "./protocol/multimodal.js";
+export { sanitizeMessagesForMultimodalConstraints } from "./protocol/multimodal.js";
 export {
   ModelConfigError,
   ModelProviderError,

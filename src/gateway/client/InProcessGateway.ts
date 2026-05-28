@@ -267,6 +267,7 @@ export class InProcessGateway implements Gateway {
     }
 
     // Background pump: agent events → queue.
+    let pumpSettled = false;
     const pump = (async () => {
       try {
         const session = await this.router.getOrCreate({
@@ -312,6 +313,7 @@ export class InProcessGateway implements Gateway {
         this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
         queue.enqueue(gatewayEvent);
       } finally {
+        pumpSettled = true;
         queue.close();
       }
     })();
@@ -321,6 +323,9 @@ export class InProcessGateway implements Gateway {
         yield event;
       }
     } finally {
+      if (!pumpSettled) {
+        await this.router.abort(input.sessionKey, `stream_closed:${runId}`).catch(() => undefined);
+      }
       // Clean up the emit-sink and any orphaned elicitation / permission
       // entries before returning so a subsequent turn doesn't see stale
       // state.
@@ -328,9 +333,9 @@ export class InProcessGateway implements Gateway {
       this.activeTurnReplays.delete(input.sessionKey);
       this.elicitationBus.rejectSession(input.sessionKey, "turn_ended");
       this.permissionBus.rejectSession(input.sessionKey, "turn_ended");
-      this.router.endTurn(input.sessionKey, runId);
       // Defensive — make sure the pump promise is settled before we resolve.
       await pump.catch(() => undefined);
+      this.router.endTurn(input.sessionKey, runId);
       // Signal any in-flight `abortTurn` awaiters that the session slot
       // has been released. Drop our deferred only if we still own it —
       // a later turn for the same session may have already installed

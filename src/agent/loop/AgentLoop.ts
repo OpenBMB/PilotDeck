@@ -488,6 +488,21 @@ export class AgentLoop {
 
       yield { type: "tool_calls_detected", sessionId: input.sessionId, turnId: input.turnId, calls: toolCalls };
       if (input.abortSignal?.aborted) {
+        const pairedResults = ensureToolResultPairing(
+          toolCalls,
+          [],
+          this.now,
+          "Tool execution was interrupted before it started.",
+        );
+        for (const result of pairedResults) {
+          yield { type: "tool_result", sessionId: input.sessionId, turnId: input.turnId, result };
+        }
+        const projected = projectToolResults(pairedResults);
+        messages.push(...projected);
+        yield { type: "tool_results_projected", sessionId: input.sessionId, turnId: input.turnId, message: projected[0]! };
+        for (const msg of projected) {
+          await input.onDurableMessage?.(msg);
+        }
         const result = this.createTurnResult(input, {
           type: "aborted",
           stopReason: "aborted_streaming",
@@ -516,20 +531,6 @@ export class AgentLoop {
         results = toolCalls.map((call) =>
           createMissingToolResult(call, this.now, error instanceof Error ? error.message : String(error)),
         );
-      }
-      if (input.abortSignal?.aborted) {
-        const result = this.createTurnResult(input, {
-          type: "aborted",
-          stopReason: "aborted_streaming",
-          usage,
-          permissionDenials,
-          turns: turnCount,
-          startedAt,
-          finalMessage,
-        });
-        await captureTurn(result.type === "error");
-        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
-        return { result, messages };
       }
       yield* this.drainEventBuffer();
 
@@ -590,6 +591,21 @@ export class AgentLoop {
       await input.onDurableMessage?.(toolResultMsg);
       for (const supplemental of supplementalMsgs) {
         await input.onDurableMessage?.(supplemental);
+      }
+
+      if (input.abortSignal?.aborted) {
+        const result = this.createTurnResult(input, {
+          type: "aborted",
+          stopReason: "aborted_streaming",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+        });
+        await captureTurn(result.type === "error");
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
       }
 
       const lifecycleBlock = findToolLifecycleBlock(pairedResults);

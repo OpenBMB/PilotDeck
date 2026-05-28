@@ -1,5 +1,4 @@
 import { jsonrepair } from "jsonrepair";
-import { randomUUID } from "node:crypto";
 import type {
   CanonicalContentBlock,
   CanonicalModelResponse,
@@ -28,7 +27,12 @@ export function parseOpenAIResponse(raw: unknown, provider = "openai"): Canonica
   }
 
   if (Array.isArray(message.tool_calls)) {
-    content.push(...message.tool_calls.map((toolCall) => toCanonicalToolCall(toolCall, provider)));
+    const seenToolCallIds = new Set<string>();
+    content.push(
+      ...message.tool_calls.map((toolCall, index) =>
+        toCanonicalToolCall(toolCall, provider, index, seenToolCallIds)
+      ),
+    );
   }
 
   return {
@@ -40,7 +44,12 @@ export function parseOpenAIResponse(raw: unknown, provider = "openai"): Canonica
   };
 }
 
-function toCanonicalToolCall(toolCall: unknown, provider: string): CanonicalToolCallBlock {
+function toCanonicalToolCall(
+  toolCall: unknown,
+  provider: string,
+  index: number,
+  seenToolCallIds: Set<string>,
+): CanonicalToolCallBlock {
   const record = asRecord(toolCall);
   const fn = asRecord(record.function);
   const rawArguments = typeof fn.arguments === "string" ? fn.arguments : "{}";
@@ -67,23 +76,27 @@ function toCanonicalToolCall(toolCall: unknown, provider: string): CanonicalTool
 
   return {
     type: "tool_call",
-    id: readNonEmptyString(record.id) ?? generateToolCallId(),
+    id: normalizeToolCallId(record.id, index, seenToolCallIds),
     name: typeof fn.name === "string" ? fn.name : "",
     input,
     raw: toolCall,
   };
 }
 
+function normalizeToolCallId(rawId: unknown, index: number, seen: Set<string>): string {
+  const original = typeof rawId === "string" ? rawId.trim() : "";
+  let candidate = original || `call_${index}`;
+  let suffix = 1;
+  while (seen.has(candidate)) {
+    candidate = `${original || `call_${index}`}_${suffix}`;
+    suffix += 1;
+  }
+  seen.add(candidate);
+  return candidate;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function readNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function generateToolCallId(): string {
-  return `call_${randomUUID().slice(0, 8)}`;
 }

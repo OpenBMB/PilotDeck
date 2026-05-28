@@ -1,5 +1,5 @@
 import { ModelRequestError } from "./errors.js";
-import type { CanonicalContentBlock } from "./canonical.js";
+import type { CanonicalContentBlock, CanonicalMessage, CanonicalToolResultContentBlock } from "./canonical.js";
 
 export const SUPPORTED_INPUT_MODALITIES = ["text", "image", "pdf", "audio"] as const;
 
@@ -162,4 +162,107 @@ export function assertContentSupported(
       maxImagesPerRequest: constraints.maxImagesPerRequest,
     });
   }
+}
+
+export function sanitizeMessagesForMultimodalConstraints(
+  messages: CanonicalMessage[],
+  constraints: MultimodalConstraints | undefined,
+): CanonicalMessage[] {
+  if (!constraints) {
+    return messages;
+  }
+
+  const state = {
+    allowed: new Set<InputModality>(constraints.input),
+    imageCount: 0,
+  };
+
+  return messages.map((message) => ({
+    ...message,
+    content: message.content.map((block) => sanitizeContentBlock(block, constraints, state)),
+  }));
+}
+
+function sanitizeContentBlock(
+  block: CanonicalContentBlock,
+  constraints: MultimodalConstraints,
+  state: { allowed: Set<InputModality>; imageCount: number },
+): CanonicalContentBlock {
+  if (block.type === "image") {
+    state.imageCount += 1;
+    return shouldStripImage(block, constraints, state)
+      ? mediaPlaceholder("Image", "selected model does not support this image input")
+      : block;
+  }
+  if (block.type === "pdf") {
+    return shouldStripPdf(block, constraints, state)
+      ? mediaPlaceholder("PDF", "selected model does not support this PDF input")
+      : block;
+  }
+  if (block.type === "audio") {
+    return shouldStripAudio(block, constraints, state)
+      ? mediaPlaceholder("Audio", "selected model does not support this audio input")
+      : block;
+  }
+  if (block.type === "tool_result") {
+    return {
+      ...block,
+      content: block.content.map((item) => sanitizeToolResultContentBlock(item, constraints, state)),
+    };
+  }
+  return block;
+}
+
+function sanitizeToolResultContentBlock(
+  block: CanonicalToolResultContentBlock,
+  constraints: MultimodalConstraints,
+  state: { allowed: Set<InputModality>; imageCount: number },
+): CanonicalToolResultContentBlock {
+  if (block.type === "image") {
+    state.imageCount += 1;
+    return shouldStripImage(block, constraints, state)
+      ? mediaPlaceholder("Image", "selected model does not support this image input")
+      : block;
+  }
+  if (block.type === "pdf") {
+    return shouldStripPdf(block, constraints, state)
+      ? mediaPlaceholder("PDF", "selected model does not support this PDF input")
+      : block;
+  }
+  return block;
+}
+
+function shouldStripImage(
+  block: Extract<CanonicalContentBlock | CanonicalToolResultContentBlock, { type: "image" }>,
+  constraints: MultimodalConstraints,
+  state: { allowed: Set<InputModality>; imageCount: number },
+): boolean {
+  return !state.allowed.has("image") ||
+    (constraints.supportedImageMimeTypes !== undefined && !constraints.supportedImageMimeTypes.includes(block.mimeType)) ||
+    (constraints.maxImageBytes !== undefined && block.bytes !== undefined && block.bytes > constraints.maxImageBytes) ||
+    (constraints.maxImagesPerRequest !== undefined && state.imageCount > constraints.maxImagesPerRequest);
+}
+
+function shouldStripPdf(
+  block: Extract<CanonicalContentBlock | CanonicalToolResultContentBlock, { type: "pdf" }>,
+  constraints: MultimodalConstraints,
+  state: { allowed: Set<InputModality>; imageCount: number },
+): boolean {
+  return !state.allowed.has("pdf") ||
+    (constraints.maxPdfBytes !== undefined && block.bytes > constraints.maxPdfBytes);
+}
+
+function shouldStripAudio(
+  block: Extract<CanonicalContentBlock, { type: "audio" }>,
+  constraints: MultimodalConstraints,
+  state: { allowed: Set<InputModality>; imageCount: number },
+): boolean {
+  return !state.allowed.has("audio") ||
+    (constraints.maxAudioSeconds !== undefined &&
+      block.durationSeconds !== undefined &&
+      block.durationSeconds > constraints.maxAudioSeconds);
+}
+
+function mediaPlaceholder(kind: "Image" | "PDF" | "Audio", reason: string): { type: "text"; text: string } {
+  return { type: "text", text: `[${kind} removed: ${reason}.]` };
 }

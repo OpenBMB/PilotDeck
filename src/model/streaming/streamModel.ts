@@ -75,7 +75,7 @@ export async function* streamModel(
       response = await sendProviderRequest(provider, body, true, options.fetch ?? fetch, options.signal);
     } catch (error) {
       if (attempt < MAX_STREAM_RETRIES && isRetryableStreamError(error)) {
-        await delay(1000 * (attempt + 1));
+        await delay(1000 * (attempt + 1), options.signal);
         continue;
       }
       throw error;
@@ -100,20 +100,31 @@ export async function* streamModel(
 
     const state = createStreamNormalizerState();
     let streamCompleted = false;
+    let sawMessageEnd = false;
 
     try {
       for await (const rawEvent of readServerSentEvents(response.body, options.signal)) {
         for (const event of normalizeStreamEvent(provider.protocol, rawEvent, state)) {
           checkpoint.onEvent(event);
+          if (event.type === "message_end") {
+            sawMessageEnd = true;
+          }
           yield event;
         }
       }
       streamCompleted = true;
     } catch (error) {
+      if (sawMessageEnd) {
+        return;
+      }
+
+      const retryable = isRetryableStreamError(error);
+      const snapshot = checkpoint.get();
       if (
         attempt < MAX_STREAM_RETRIES &&
-        isRetryableStreamError(error) &&
-        checkpoint.hasSubstantialContent()
+        retryable &&
+        checkpoint.hasSubstantialContent() &&
+        !snapshot.hasToolCalls
       ) {
         currentRequest = buildContinuationRequest(currentRequest, checkpoint.get().partialText);
         checkpoint.reset();
@@ -121,7 +132,7 @@ export async function* streamModel(
         continue;
       }
 
-      if (isRetryableStreamError(error) && attempt < MAX_STREAM_RETRIES) {
+      if (retryable && attempt < MAX_STREAM_RETRIES && snapshot.tokensReceived === 0) {
         await delay(1000 * (attempt + 1), options.signal);
         continue;
       }
@@ -140,7 +151,7 @@ function isRetryableStreamError(error: unknown): boolean {
     return false;
   }
   if (error instanceof ModelProviderError) {
-    return false;
+    return error.error.retryable;
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();

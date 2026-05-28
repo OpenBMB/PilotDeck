@@ -25,7 +25,7 @@ export function normalizeModelError(
     (error instanceof Error ? error.message : undefined) ??
     "Model provider request failed.";
 
-  const semanticCode = classifySemanticError(message, status, protocol);
+  const semanticCode = classifySemanticError(message, status, protocol) ?? classifyNetworkError(message, status);
   const code: CanonicalModelErrorCode | (string & {}) =
     semanticCode ?? readString(source?.code) ?? readString(source?.type) ?? statusCodeToCode(status);
 
@@ -70,6 +70,22 @@ function classifySemanticError(
   if (status === 413) {
     // 413 with no PTL phrase is treated as request_too_large (Vertex pattern noted in legacy).
     return protocol === "anthropic" ? "request_too_large" : "request_too_large";
+  }
+  return undefined;
+}
+
+function classifyNetworkError(
+  message: string,
+  status: number | undefined,
+): CanonicalModelErrorCode | undefined {
+  if (status !== undefined) {
+    return undefined;
+  }
+  if (/(timeout|timed out|etimedout|aborted)/i.test(message)) {
+    return "timeout";
+  }
+  if (/(fetch failed|network|econnreset|socket hang up|epipe|econnrefused|enotfound|eai_again)/i.test(message)) {
+    return "server_error";
   }
   return undefined;
 }

@@ -42,6 +42,15 @@ type OpenAIMessage = {
   reasoning_content?: string;
 };
 
+type OpenAIToolCall = {
+  id?: unknown;
+  type?: unknown;
+  function?: {
+    name?: unknown;
+    arguments?: unknown;
+  };
+};
+
 type OpenAITool = {
   type: "function";
   function: {
@@ -55,7 +64,7 @@ export function buildOpenAIRequest(
   request: CanonicalModelRequest,
   model: ModelDefinition,
 ): OpenAIRequestBody {
-  const messages = repairOpenAIToolPairing(
+  const messages = sanitizeOpenAIToolMessages(
     request.messages.flatMap((message, messageIndex) => toOpenAIMessages(message, messageIndex)),
   );
   if (request.systemPrompt) {
@@ -343,78 +352,141 @@ function normalizeToolCallId(id: unknown, messageIndex: number, toolCallIndex: n
 }
 
 /**
- * Last-resort safety net for OpenAI's strict tool-pairing rules:
- *  - normalize every assistant `tool_calls[]` item to the required shape;
- *  - keep only immediately-following tool messages whose `tool_call_id`
- *    matches that assistant message;
- *  - inject placeholders for missing tool results;
- *  - drop orphaned / duplicate / mismatched `role: "tool"` messages.
+ * Last-resort safety net for OpenAI-compatible providers with strict tool
+ * history validation (DeepSeek in particular):
+ *   - every assistant tool call has a non-empty `id` and `type:"function"`;
+ *   - matching tool messages are moved immediately after that assistant;
+ *   - missing tool results get placeholders;
+ *   - orphan tool messages are dropped so `role:"tool"` never appears without
+ *     a directly preceding assistant `tool_calls` message.
  */
-function repairOpenAIToolPairing(messages: OpenAIMessage[]): OpenAIMessage[] {
+function sanitizeOpenAIToolMessages(messages: OpenAIMessage[]): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
+  const usedToolCallIds = new Set<string>();
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-
-    if (msg.role !== "assistant" || !msg.tool_calls?.length) {
-      if (msg.role !== "tool") {
-        out.push(msg);
-      }
+    if (msg.role === "tool") {
       continue;
     }
 
-    const toolCalls = msg.tool_calls.map((toolCall, toolCallIndex) =>
-      normalizeOpenAIToolCall(toolCall, i, toolCallIndex)
-    );
-    out.push({ ...msg, tool_calls: toolCalls });
+    if (msg.role !== "assistant" || !msg.tool_calls?.length) {
+      out.push(msg);
+      continue;
+    }
 
-    const expectedIds = new Set(toolCalls.map((tc) => tc.id));
-    const matchedIds = new Set<string>();
+    const { toolCalls, remap } = normalizeAssistantToolCalls(msg.tool_calls, out.length, usedToolCallIds);
+    if (toolCalls.length === 0) {
+      const { tool_calls: _toolCalls, ...withoutToolCalls } = msg;
+      out.push(withoutToolCalls);
+      continue;
+    }
+
+    const collected = new Map<string, OpenAIMessage>();
+    const deferred: OpenAIMessage[] = [];
     let j = i + 1;
-    while (j < messages.length && messages[j].role === "tool") {
-      const tid = messages[j].tool_call_id;
-      if (
-        typeof tid === "string" &&
-        tid.trim().length > 0 &&
-        expectedIds.has(tid) &&
-        !matchedIds.has(tid)
-      ) {
-        out.push(messages[j]);
-        matchedIds.add(tid);
+    while (j < messages.length && messages[j].role !== "assistant") {
+      const next = messages[j];
+      if (next.role === "tool") {
+        const mapped = normalizeToolMessageForCalls(next, toolCalls, remap, collected);
+        if (mapped) {
+          collected.set(mapped.tool_call_id!, mapped);
+        }
+      } else {
+        deferred.push(next);
       }
       j++;
     }
 
-    // Inject placeholders for any still-missing results.
-    for (const missingId of expectedIds) {
-      if (matchedIds.has(missingId)) {
-        continue;
-      }
-      out.push({
-        role: "tool",
-        tool_call_id: missingId,
-        content: "[result truncated]",
-      });
+    out.push({
+      ...msg,
+      content: msg.content ?? "",
+      tool_calls: toolCalls,
+    });
+
+    for (const call of toolCalls) {
+      out.push(
+        collected.get(call.id) ?? {
+          role: "tool",
+          tool_call_id: call.id,
+          content: "[result truncated]",
+        },
+      );
     }
+
+    out.push(...deferred);
     i = j - 1;
   }
   return out;
 }
 
-function normalizeOpenAIToolCall(
-  toolCall: unknown,
+function normalizeAssistantToolCalls(
+  toolCalls: unknown[],
   messageIndex: number,
-  toolCallIndex: number,
-): { id: string; type: "function"; function: { name: string; arguments: string } } {
-  const record = isRecord(toolCall) ? toolCall : {};
-  const fn = isRecord(record.function) ? record.function : {};
-  const args = fn.arguments;
+  usedToolCallIds: Set<string>,
+): { toolCalls: Array<Required<OpenAIToolCall> & { id: string }>; remap: Map<string, string> } {
+  const normalized: Array<Required<OpenAIToolCall> & { id: string }> = [];
+  const remap = new Map<string, string>();
+
+  toolCalls.forEach((toolCall, callIndex) => {
+    const record = isRecord(toolCall) ? (toolCall as OpenAIToolCall) : {};
+    const fn = isRecord(record.function) ? record.function : {};
+    const originalId = typeof record.id === "string" ? record.id.trim() : "";
+    const id = reserveToolCallId(originalId, messageIndex, callIndex, usedToolCallIds);
+    if (originalId && !remap.has(originalId)) {
+      remap.set(originalId, id);
+    }
+
+    normalized.push({
+      id,
+      type: "function",
+      function: {
+        name: typeof fn.name === "string" ? fn.name : "",
+        arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+      },
+    });
+  });
+
+  return { toolCalls: normalized, remap };
+}
+
+function reserveToolCallId(
+  originalId: string,
+  messageIndex: number,
+  callIndex: number,
+  usedToolCallIds: Set<string>,
+): string {
+  const base = originalId || `call_${messageIndex}_${callIndex}`;
+  let id = base;
+  let suffix = 1;
+  while (usedToolCallIds.has(id)) {
+    id = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  usedToolCallIds.add(id);
+  return id;
+}
+
+function normalizeToolMessageForCalls(
+  message: OpenAIMessage,
+  toolCalls: Array<{ id: string }>,
+  remap: Map<string, string>,
+  collected: Map<string, OpenAIMessage>,
+): OpenAIMessage | undefined {
+  const originalId = typeof message.tool_call_id === "string" ? message.tool_call_id.trim() : "";
+  let id = originalId ? (remap.get(originalId) ?? originalId) : "";
+
+  if (!id || !toolCalls.some((call) => call.id === id) || collected.has(id)) {
+    const nextUnclaimed = toolCalls.find((call) => !collected.has(call.id));
+    if (!nextUnclaimed || (originalId && !remap.has(originalId))) {
+      return undefined;
+    }
+    id = nextUnclaimed.id;
+  }
+
   return {
-    id: normalizeToolCallId(record.id, messageIndex, toolCallIndex),
-    type: "function",
-    function: {
-      name: typeof fn.name === "string" ? fn.name : "",
-      arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
-    },
+    role: "tool",
+    tool_call_id: id,
+    content: message.content ?? "",
   };
 }
 

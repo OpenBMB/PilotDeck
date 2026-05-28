@@ -30,5 +30,5 @@ test("parseOpenAIResponse synthesizes a tool call id when provider omits it", ()
   if (toolCall.type !== "tool_call") {
     throw new Error(`Expected tool_call block, got ${toolCall.type}`);
   }
-  assert.match(toolCall.id, /^call_[0-9a-f]{8}$/);
+  assert.equal(toolCall.id, "call_0");
 });

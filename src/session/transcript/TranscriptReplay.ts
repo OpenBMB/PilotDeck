@@ -1,4 +1,4 @@
-import { cloneMessage, cloneMessages, type CanonicalMessage, type CanonicalUsage } from "../../model/index.js";
+import { cloneMessage, cloneMessages, type CanonicalContentBlock, type CanonicalMessage, type CanonicalUsage } from "../../model/index.js";
 import type { AgentEvent } from "../../agent/protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../../agent/protocol/result.js";
 import type { AgentTranscriptDiagnostic, AgentTranscriptEntry, SessionMetadataValue } from "./TranscriptEntry.js";
@@ -120,8 +120,10 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
     }
   }
 
+  const repairedMessages = repairToolPairing(messages, diagnostics);
+
   return {
-    messages,
+    messages: repairedMessages,
     usage,
     permissionDenials,
     events,
@@ -130,6 +132,92 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
     lastCompactBoundaryIndex: lastBoundaryIndex === -1 ? undefined : lastBoundaryIndex,
     lastCompactBoundary,
   };
+}
+
+function repairToolPairing(
+  messages: CanonicalMessage[],
+  diagnostics: AgentTranscriptDiagnostic[],
+): CanonicalMessage[] {
+  const out: CanonicalMessage[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (message.role === "user") {
+      const cleaned = stripToolResultBlocks(message);
+      if (cleaned.content.length > 0) {
+        out.push(cleaned);
+      }
+      continue;
+    }
+
+    const toolCalls = message.content.filter((block) => block.type === "tool_call");
+    if (toolCalls.length === 0) {
+      out.push(message);
+      continue;
+    }
+
+    const expectedIds = new Set(toolCalls.map((block) => block.id));
+    const collected = new Map<string, CanonicalContentBlock>();
+    const deferred: CanonicalMessage[] = [];
+    let j = i + 1;
+    while (j < messages.length && messages[j].role !== "assistant") {
+      const next = messages[j];
+      const deferredContent: CanonicalContentBlock[] = [];
+      for (const block of next.content) {
+        if (block.type === "tool_result" || block.type === "tool_result_reference") {
+          if (expectedIds.has(block.toolCallId) && !collected.has(block.toolCallId)) {
+            collected.set(block.toolCallId, block);
+          } else {
+            diagnostics.push({
+              code: "transcript_entry_invalid",
+              severity: "warning",
+              message: `Skipping orphaned or duplicate tool result ${block.toolCallId}.`,
+            });
+          }
+        } else {
+          deferredContent.push(block);
+        }
+      }
+      if (deferredContent.length > 0) {
+        deferred.push({ ...next, content: deferredContent });
+      }
+      j += 1;
+    }
+
+    out.push(message);
+    const toolResultContent: CanonicalContentBlock[] = [];
+    for (const call of toolCalls) {
+      const existing = collected.get(call.id);
+      if (existing) {
+        toolResultContent.push(existing);
+      } else {
+        diagnostics.push({
+          code: "transcript_entry_invalid",
+          severity: "warning",
+          message: `Inserted synthetic tool result for incomplete tool call ${call.id}.`,
+        });
+        toolResultContent.push({
+          type: "tool_result",
+          toolCallId: call.id,
+          isError: true,
+          content: [{
+            type: "text",
+            text: "Tool result unavailable: previous turn ended before this tool result was recorded.",
+          }],
+        });
+      }
+    }
+    out.push({ role: "user", content: toolResultContent });
+    out.push(...deferred);
+    i = j - 1;
+  }
+  return out;
+}
+
+function stripToolResultBlocks(message: CanonicalMessage): CanonicalMessage {
+  const content = message.content.filter(
+    (block) => block.type !== "tool_result" && block.type !== "tool_result_reference",
+  );
+  return content.length === message.content.length ? message : { ...message, content };
 }
 
 function projectMessageEvent(sessionId: string, turnId: string, message: CanonicalMessage): AgentEvent {
