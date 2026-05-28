@@ -1,0 +1,482 @@
+{
+  "buttons": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "create": "创建",
+    "edit": "编辑",
+    "close": "关闭",
+    "confirm": "确认",
+    "submit": "提交",
+    "retry": "重试",
+    "refresh": "刷新",
+    "search": "搜索",
+    "clear": "清除",
+    "copy": "复制",
+    "download": "下载",
+    "upload": "上传",
+    "browse": "浏览"
+  },
+  "tabs": {
+    "home": "主页",
+    "chat": "智能体",
+    "alwaysOn": "常驻",
+    "shell": "终端",
+    "files": "文件",
+    "git": "源代码管理",
+    "tasks": "任务",
+    "dashboard": "路由",
+    "memory": "记忆",
+    "skills": "技能"
+  },
+  "skillsTab": {
+    "pickProject": "选一个项目来管理它的技能。",
+    "generalChat": "通用聊天 — 仅显示用户级技能",
+    "refresh": "刷新",
+    "newSkill": "新建",
+    "loading": "加载中…",
+    "empty": "还没有技能。点 \"新建\" 来安装或创建一个。",
+    "selectHint": "在左侧选一个技能查看或编辑它的 SKILL.md。",
+    "projectScope": "项目技能",
+    "userScope": "用户技能",
+    "save": "保存",
+    "saving": "保存中…",
+    "savedSuccess": "已保存",
+    "delete": "删除",
+    "deletedSuccess": "已删除",
+    "revert": "撤销",
+    "confirmDelete": "确认删除这个技能？整个文件夹会被移除。",
+    "discardUnsaved": "放弃未保存的修改？",
+    "newTitle": "新建技能",
+    "close": "关闭",
+    "tabInstall": "从 ClawHub 安装",
+    "tabImport": "从文件夹导入",
+    "tabCreate": "自己写一个",
+    "importSource": "源文件夹",
+    "importSourceHint": "包含 SKILL.md 的文件夹绝对路径。波浪号 (~) 会在服务端展开。",
+    "importSourceHintBoth": "通过原生对话框选择文件夹，或粘贴绝对路径。~ 在服务端展开。",
+    "pickFolder": "选择文件夹…",
+    "files": "个文件",
+    "complianceCheck": "合规检查",
+    "complianceClean": "全部通过。",
+    "symlinkUnavailable": "— 选择器上传不支持（没有磁盘上的源路径）。",
+    "importSlug": "Slug（目标文件夹名）",
+    "importSlugHint": "默认用源文件夹名，可手动改。",
+    "importMode": "导入方式",
+    "importModeCopy": "复制",
+    "importModeCopyHint": "— 独立副本，编辑只发生在 skills 目录。",
+    "importModeSymlink": "软链",
+    "importModeSymlinkHint": "— 源文件夹的编辑实时同步到 skill；源被删则 skill 失效。",
+    "importForce": "已存在时覆盖",
+    "importEnableForce": "勾选 \"覆盖\" 来替换。",
+    "importAction": "导入技能",
+    "importing": "导入中…",
+    "scan": "扫描",
+    "scanning": "扫描中…",
+    "foundSkills": "在 {{total}} 个子文件夹中找到 {{count}} 个技能",
+    "noSkillsFound": "该文件夹下没有找到技能。",
+    "selectAll": "全选 ({{count}})",
+    "importNSkills": "导入 {{count}} 个技能",
+    "batchProgress": "正在导入 {{current}}/{{total}}…",
+    "batchComplete": "批量导入完成：{{success}} 个成功，{{failed}} 个失败",
+    "batchDone": "完成",
+    "noSkillMd": "无 SKILL.md",
+    "alreadyExists": "已存在",
+    "scope": "范围",
+    "scopeUser": "用户",
+    "scopeProject": "项目",
+    "searchPlaceholder": "在 clawhub.com 搜索…",
+    "searchHint": "输入关键词搜索 clawhub.com。",
+    "noResults": "没有结果。",
+    "install": "安装",
+    "installing": "安装中…",
+    "installForce": "强制安装",
+    "installedSuccess": "已安装 {{name}}",
+    "flaggedSuspicious": "\"{{slug}}\" 被 VirusTotal 标记为可疑。再点一次以 --force 安装。",
+    "fieldSlug": "Slug",
+    "slugHint": "文件夹名，例如 my-skill",
+    "fieldName": "显示名",
+    "fieldNamePlaceholder": "可选，默认用 slug",
+    "fieldDescription": "描述",
+    "descHint": "会显示在 slash 菜单 — 简要说明这个技能做什么、什么时候用。",
+    "fieldBody": "初始正文（Markdown）",
+    "bodyHint": "可选，之后可以在主视图里详细编辑。",
+    "create": "创建技能",
+    "creating": "创建中…"
+  },
+  "status": {
+    "loading": "加载中...",
+    "success": "成功",
+    "error": "错误",
+    "failed": "失败",
+    "pending": "待处理",
+    "completed": "已完成",
+    "inProgress": "进行中"
+  },
+  "messages": {
+    "savedSuccessfully": "保存成功",
+    "deletedSuccessfully": "删除成功",
+    "updatedSuccessfully": "更新成功",
+    "operationFailed": "操作失败",
+    "networkError": "网络错误，请检查您的连接。",
+    "unauthorized": "未授权，请登录。",
+    "notFound": "未找到",
+    "invalidInput": "输入无效",
+    "requiredField": "此字段为必填项",
+    "unknownError": "发生未知错误"
+  },
+  "navigation": {
+    "settings": "设置",
+    "home": "首页",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "logout": "退出登录"
+  },
+  "common": {
+    "language": "语言",
+    "theme": "主题",
+    "darkMode": "深色模式",
+    "lightMode": "浅色模式",
+    "name": "名称",
+    "description": "描述",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "optional": "可选",
+    "version": "版本",
+    "select": "选择",
+    "selectAll": "全选",
+    "deselectAll": "取消全选"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前",
+    "yesterday": "昨天"
+  },
+  "fileOperations": {
+    "newFile": "新建文件",
+    "newFolder": "新建文件夹",
+    "rename": "重命名",
+    "move": "移动",
+    "copyPath": "复制路径",
+    "openInEditor": "在编辑器中打开"
+  },
+  "mainContent": {
+    "loading": "正在加载 PilotDeck",
+    "settingUpWorkspace": "正在设置您的工作空间...",
+    "chooseProject": "选择您的项目",
+    "selectProjectDescription": "从侧边栏选择一个项目以开始使用 PilotDeck 进行编程。每个项目包含您的聊天会话和文件历史。",
+    "tip": "提示",
+    "createProjectMobile": "点击上方的菜单按钮以访问项目",
+    "createProjectDesktop": "点击侧边栏中的文件夹图标以创建新项目",
+    "newSession": "新会话",
+    "untitledSession": "未命名会话",
+    "projectFiles": "项目文件"
+  },
+  "alwaysOn": {
+    "title": "Always-On 总览",
+    "description": "在一个界面里查看当前项目的 discovery 计划和定时 cron 任务。",
+    "lastUpdated": "最近更新：{{timestamp}}",
+    "loadingTitle": "正在加载 Always-On 数据",
+    "loadingDescription": "正在读取当前项目的 discovery 计划和定时任务。",
+    "emptyTitle": "还没有定时任务",
+    "emptyDescription": "当前项目暂时没有可显示的持久化 cron 或本会话任务。",
+    "summary": {
+      "total": "任务总数",
+      "recurring": "循环任务",
+      "failed": "最近失败"
+    },
+    "status": {
+      "draft": "草稿",
+      "ready": "待执行",
+      "queued": "已排队",
+      "scheduled": "待触发",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "superseded": "已替代",
+      "unknown": "未知"
+    },
+    "actions": {
+      "viewDetails": "查看 {{id}} 的详情",
+      "discoverTasks": "主动发现任务",
+      "runNow": "立即执行"
+    },
+    "flags": {
+      "durable": "持久化",
+      "sessionScoped": "本会话",
+      "oneShot": "单次",
+      "recurring": "循环",
+      "manualOnly": "仅手动执行",
+      "permanent": "永久"
+    },
+    "fields": {
+      "scope": "范围",
+      "type": "类型",
+      "kind": "类别",
+      "jobId": "任务 ID",
+      "prompt": "提示词",
+      "cron": "Cron 表达式",
+      "status": "状态",
+      "createdAt": "创建时间",
+      "lastFiredAt": "上次触发",
+      "originSessionId": "来源会话",
+      "transcriptKey": "转录键",
+      "lastActivity": "最近活动",
+      "latestRunSummary": "最近一次运行摘要",
+      "latestRunTaskId": "最近一次运行任务 ID",
+      "latestRunTranscript": "最近一次运行转录",
+      "outputFile": "输出文件"
+    },
+    "detail": {
+      "title": "任务详情",
+      "oneShotRunNowHint": "对单次任务点击“立即执行”只会额外触发一次，不会改变原始定时触发；到原定时间时它仍可能再次执行。",
+      "missingTitle": "任务已不可用",
+      "missingDescription": "该任务可能已经被删除，或在概览加载后变得不可见。",
+      "noLatestRun": "该任务还没有记录到后台运行结果。",
+      "sections": {
+        "definition": "任务定义",
+        "latestRun": "最近一次运行"
+      }
+    },
+    "values": {
+      "notUpdated": "尚未更新",
+      "notAvailable": "暂无"
+    },
+    "confirmations": {
+      "delete": "确认删除定时任务 {{id}} 吗？"
+    },
+    "feedback": {
+      "deleted": "已删除定时任务 {{id}}。",
+      "runNowStarted": "已立即发起 {{id}}。",
+      "alreadyRunning": "任务 {{id}} 正在运行中。"
+    },
+    "errors": {
+      "loadFailed": "加载 Always-On 数据失败。",
+      "deleteFailed": "删除 cron job 失败。",
+      "runNowFailed": "立即执行 cron job 失败。"
+    },
+    "discovery": {
+      "title": "Discovery 计划",
+      "description": "由 Always-On discovery 生成、在执行前可审阅的结构化计划。",
+      "emptyTitle": "还没有 discovery 计划",
+      "emptyDescription": "运行 discovery 后，这里会出现可执行的结构化计划。",
+      "summary": {
+        "running": "运行中计划"
+      },
+      "actions": {
+        "viewDetails": "查看详情",
+        "openSession": "打开会话",
+        "archive": "归档"
+      },
+      "fields": {
+        "title": "标题",
+        "summary": "摘要",
+        "rationale": "价值说明",
+        "updatedAt": "更新时间",
+        "planFile": "计划文件",
+        "sourceSession": "discovery 会话",
+        "executionSession": "执行会话",
+        "executionStartedAt": "开始执行时间",
+        "executionLastActivityAt": "最近活动",
+        "latestSummary": "最近摘要",
+        "contextRefsWorkingDirectory": "工作区信号",
+        "contextRefsMemory": "记忆引用",
+        "contextRefsPlans": "相关计划",
+        "contextRefsCron": "相关 cron 任务",
+        "contextRefsChats": "最近聊天"
+      },
+      "detail": {
+        "meta": "计划元数据",
+        "plan": "计划正文",
+        "noContent": "这份 discovery 计划暂时没有落盘的 Markdown 正文。",
+        "missingTitle": "discovery 计划已不可用",
+        "missingDescription": "该计划可能已在概览加载后被更新或归档。"
+      },
+      "feedback": {
+        "executionQueued": "已将 discovery 计划 {{id}} 加入执行队列。",
+        "archived": "已归档 discovery 计划 {{id}}。"
+      },
+      "errors": {
+        "executeFailed": "执行 discovery 计划失败。",
+        "archiveFailed": "归档 discovery 计划失败。"
+      }
+    },
+    "cron": {
+      "title": "定时 cron 任务",
+      "description": "当前项目里已有的持久化和本会话 cron 任务。"
+    }
+  },
+  "fileTree": {
+    "loading": "正在加载文件...",
+    "files": "文件",
+    "simpleView": "简单视图",
+    "compactView": "紧凑视图",
+    "detailedView": "详细视图",
+    "searchPlaceholder": "搜索文件和文件夹...",
+    "clearSearch": "清除搜索",
+    "name": "名称",
+    "size": "大小",
+    "modified": "修改时间",
+    "permissions": "权限",
+    "noFilesFound": "未找到文件",
+    "checkProjectPath": "检查项目路径是否可访问",
+    "noMatchesFound": "未找到匹配项",
+    "tryDifferentSearch": "尝试不同的搜索词或清除搜索",
+    "justNow": "刚刚",
+    "minAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前",
+    "newFile": "新建文件 (Cmd+N)",
+    "newFolder": "新建文件夹 (Cmd+Shift+N)",
+    "refresh": "刷新",
+    "collapseAll": "全部折叠",
+    "context": {
+      "rename": "重命名",
+      "delete": "删除",
+      "copyPath": "复制路径",
+      "download": "下载",
+      "newFile": "新建文件",
+      "newFolder": "新建文件夹",
+      "refresh": "刷新",
+      "menuLabel": "文件上下文菜单",
+      "loading": "加载中..."
+    }
+  },
+  "projectWizard": {
+    "title": "创建新项目",
+    "steps": {
+      "type": "类型",
+      "configure": "配置",
+      "confirm": "确认"
+    },
+    "step1": {
+      "question": "您已经有工作区，还是想创建一个新的工作区？",
+      "existing": {
+        "title": "现有工作区",
+        "description": "我的服务器上已经有工作区，只需要将其添加到项目列表中"
+      },
+      "new": {
+        "title": "新建工作区",
+        "description": "创建一个新工作区，可选择从 GitHub 仓库克隆"
+      }
+    },
+    "step2": {
+      "existingPath": "工作区路径",
+      "newPath": "工作区路径",
+      "existingPlaceholder": "/path/to/existing/workspace",
+      "newPlaceholder": "/path/to/new/workspace",
+      "existingHelp": "您现有工作区目录的完整路径",
+      "newHelp": "工作区目录的完整路径",
+      "githubUrl": "GitHub URL（可选）",
+      "githubPlaceholder": "https://github.com/username/repository",
+      "githubHelp": "可选：提供 GitHub URL 以克隆仓库",
+      "githubAuth": "GitHub 身份验证（可选）",
+      "githubAuthHelp": "仅私有仓库需要。公共仓库无需身份验证即可克隆。",
+      "loadingTokens": "正在加载已保存的令牌...",
+      "storedToken": "已保存的令牌",
+      "newToken": "新令牌",
+      "nonePublic": "无（公共）",
+      "selectToken": "选择令牌",
+      "selectTokenPlaceholder": "-- 选择令牌 --",
+      "tokenPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tokenHelp": "此令牌仅用于此操作",
+      "publicRepoInfo": "公共仓库不需要身份验证。如果克隆公共仓库，可以跳过提供令牌。",
+      "noTokensHelp": "没有可用的已保存令牌。您可以在 设置 → API 密钥 中添加令牌以便重复使用。",
+      "optionalTokenPublic": "GitHub 令牌（公共仓库可选）",
+      "tokenPublicPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx（公共仓库可留空）"
+    },
+    "step3": {
+      "reviewConfig": "查看您的配置",
+      "workspaceType": "工作区类型：",
+      "existingWorkspace": "现有工作区",
+      "newWorkspace": "新建工作区",
+      "path": "路径：",
+      "cloneFrom": "克隆自：",
+      "authentication": "身份验证：",
+      "usingStoredToken": "使用已保存的令牌：",
+      "usingProvidedToken": "使用提供的令牌",
+      "noAuthentication": "无身份验证",
+      "sshKey": "SSH 密钥",
+      "existingInfo": "工作区将添加到您的项目列表，可用于 PilotDeck 会话。",
+      "newWithClone": "仓库将从此文件夹克隆。",
+      "newEmpty": "工作区将添加到您的项目列表，可用于 PilotDeck 会话。",
+      "cloningRepository": "正在克隆仓库..."
+    },
+    "buttons": {
+      "cancel": "取消",
+      "back": "返回",
+      "next": "下一步",
+      "createProject": "创建项目",
+      "creating": "创建中...",
+      "cloning": "正在克隆..."
+    },
+    "errors": {
+      "selectType": "请选择您已有现有工作区还是想创建新工作区",
+      "providePath": "请提供工作区路径",
+      "failedToCreate": "创建工作区失败",
+      "failedToCreateFolder": "创建文件夹失败"
+    }
+  },
+  "notifications": {
+    "genericTool": "工具",
+    "codes": {
+      "generic": {
+        "info": {
+          "title": "通知"
+        }
+      },
+      "permission": {
+        "required": {
+          "title": "需要处理",
+          "body": "{{toolName}} 正在等待你的决策。"
+        }
+      },
+      "run": {
+        "stopped": {
+          "title": "运行已停止",
+          "body": "原因：{{reason}}"
+        },
+        "failed": {
+          "title": "运行失败"
+        }
+      },
+      "agent": {
+        "notification": {
+          "title": "Agent 通知"
+        }
+      }
+    }
+  },
+  "versionUpdate": {
+    "title": "有可用更新",
+    "newVersionReady": "新版本已准备就绪",
+    "currentVersion": "当前版本",
+    "latestVersion": "最新版本",
+    "whatsNew": "新内容：",
+    "viewFullRelease": "查看完整发布",
+    "updateProgress": "更新进度：",
+    "manualUpgrade": "手动升级：",
+    "npmUpgradeCommand": "git pull && npm run build && (cd ui && npm run build)",
+    "manualUpgradeHint": "或点击'立即更新'以自动运行更新。",
+    "updateCompleted": "更新成功完成！",
+    "restartServer": "请重启服务器以应用更改。",
+    "updateFailed": "更新失败",
+    "buttons": {
+      "close": "关闭",
+      "later": "稍后",
+      "copyCommand": "复制命令",
+      "updateNow": "立即更新",
+      "updating": "更新中..."
+    },
+    "ariaLabels": {
+      "closeModal": "关闭版本升级模态框",
+      "showSidebar": "显示侧边栏",
+      "settings": "设置",
+      "updateAvailable": "有可用更新",
+      "closeSidebar": "关闭侧边栏"
+    }
+  }
+}

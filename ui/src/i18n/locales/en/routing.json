@@ -1,0 +1,88 @@
+{
+  "dashboard": {
+    "title": "Router",
+    "total": "Total",
+    "subtitle": "Usage across all projects and sessions.",
+    "projectSubtitle": "Routing stats for {{project}}.",
+    "loading": "Loading router…",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "scope": {
+      "label": "Dashboard scope",
+      "project": "Project",
+      "total": "Total"
+    },
+    "stats": {
+      "requests": "Requests",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "sessions_one": "{{count}} session",
+      "sessions_other": "{{count}} sessions",
+      "routedSessions_one": "{{count}} routed session",
+      "routedSessions_other": "{{count}} routed sessions",
+      "activeProjects_one": "{{count}} active project",
+      "activeProjects_other": "{{count}} active projects",
+      "inOut": "{{in}} in · {{out}} out",
+      "perRequest": "≈ {{value}} / request",
+      "noRouterCost": "No-router {{value}}"
+    },
+    "sessions": {
+      "title": "Sessions",
+      "empty": "No sessions yet."
+    },
+    "projects": {
+      "title": "By project"
+    },
+    "projectCard": {
+      "summary": "{{requests}} requests · {{tokens}} tokens · {{sessions}} sessions"
+    },
+    "units": {
+      "requestsShort_one": "{{count}} req",
+      "requestsShort_other": "{{count}} req",
+      "queries_one": "{{count}} query",
+      "queries_other": "{{count}} queries",
+      "tokens": "{{value}} tokens"
+    },
+    "session": {
+      "orchestrated": "orchestrated",
+      "mainAgent": "Main Agent",
+      "subagents": "Sub-agents",
+      "mainShort": "main",
+      "subShort": "sub",
+      "toolShort": "tool",
+      "noContent": "(no content)",
+      "noUserQueries": "No user queries recorded.",
+      "models": "Models:"
+    },
+    "recent": {
+      "title": "Recent routes",
+      "empty": "No routing activity yet. Start a conversation to see stats here.",
+      "columns": {
+        "time": "Time",
+        "project": "Project",
+        "provider": "Provider",
+        "model": "Model",
+        "tokens": "Tokens"
+      }
+    },
+    "price": {
+      "title": "Price",
+      "empty": "No priced sessions yet.",
+      "actual": "Actual cost",
+      "baseline": "No-router cost",
+      "saved": "Saved",
+      "savedLower": "saved",
+      "extra": "Extra spent",
+      "extraLower": "over",
+      "summary": "{{sessions}} sessions · {{requests}} req · {{tokens}} tokens",
+      "baselineHint": "Baseline assumes the main model handles all routed tokens.",
+      "savedHint": "{{rate}}% vs baseline",
+      "missingBaseline": "No baseline configured for these sessions.",
+      "session": "Session",
+      "actualShort": "Actual",
+      "baselineShort": "No router",
+      "savedShort": "Saved",
+      "extraShort": "Extra"
+    }
+  }
+}

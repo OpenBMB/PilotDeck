@@ -1,0 +1,88 @@
+{
+  "dashboard": {
+    "title": "路由",
+    "total": "总计",
+    "subtitle": "覆盖所有项目与会话的用量统计。",
+    "projectSubtitle": "{{project}} 的路由统计。",
+    "loading": "正在加载路由…",
+    "retry": "重试",
+    "refresh": "刷新",
+    "scope": {
+      "label": "统计范围",
+      "project": "项目",
+      "total": "总计"
+    },
+    "stats": {
+      "requests": "请求数",
+      "tokens": "Token 数",
+      "cost": "成本",
+      "sessions_one": "{{count}} 个会话",
+      "sessions_other": "{{count}} 个会话",
+      "routedSessions_one": "{{count}} 个已路由会话",
+      "routedSessions_other": "{{count}} 个已路由会话",
+      "activeProjects_one": "{{count}} 个活跃项目",
+      "activeProjects_other": "{{count}} 个活跃项目",
+      "inOut": "输入 {{in}} · 输出 {{out}}",
+      "perRequest": "≈ {{value}} / 次请求",
+      "noRouterCost": "不走路由 {{value}}"
+    },
+    "sessions": {
+      "title": "会话",
+      "empty": "暂无会话。"
+    },
+    "projects": {
+      "title": "按项目"
+    },
+    "projectCard": {
+      "summary": "{{requests}} 次请求 · {{tokens}} tokens · {{sessions}} 个会话"
+    },
+    "units": {
+      "requestsShort_one": "{{count}} 次",
+      "requestsShort_other": "{{count}} 次",
+      "queries_one": "{{count}} 条请求",
+      "queries_other": "{{count}} 条请求",
+      "tokens": "{{value}} tokens"
+    },
+    "session": {
+      "orchestrated": "已编排",
+      "mainAgent": "主智能体",
+      "subagents": "子智能体",
+      "mainShort": "主",
+      "subShort": "子",
+      "toolShort": "工具",
+      "noContent": "（无内容）",
+      "noUserQueries": "暂无用户请求记录。",
+      "models": "模型："
+    },
+    "recent": {
+      "title": "最近调用",
+      "empty": "暂无路由活动。发起一个对话即可在此看到统计。",
+      "columns": {
+        "time": "时间",
+        "project": "项目",
+        "provider": "供应商",
+        "model": "模型",
+        "tokens": "Token 数"
+      }
+    },
+    "price": {
+      "title": "成本",
+      "empty": "暂无可计价会话。",
+      "actual": "实际开销",
+      "baseline": "不走 Router 开销",
+      "saved": "节省",
+      "savedLower": "节省",
+      "extra": "多花",
+      "extraLower": "多花",
+      "summary": "{{sessions}} 个会话 · {{requests}} 次请求 · {{tokens}} tokens",
+      "baselineHint": "按所有路由 token 都交给主模型估算。",
+      "savedHint": "相对基准 {{rate}}%",
+      "missingBaseline": "这些会话还没有配置基准成本。",
+      "session": "会话",
+      "actualShort": "实际",
+      "baselineShort": "不走 Router",
+      "savedShort": "节省",
+      "extraShort": "多花"
+    }
+  }
+}

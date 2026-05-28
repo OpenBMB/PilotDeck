@@ -1,0 +1,102 @@
+{
+  "emptyProject": "Pick a project to view Always-On.",
+  "actions": {
+    "refresh": "Refresh"
+  },
+  "tabs": {
+    "dashboard": "Dashboard",
+    "plansCron": "Plans & Cron Jobs"
+  },
+  "dashboard": {
+    "title": "Always-On Dashboard",
+    "subtitle": "Activity feed across all workspaces.",
+    "loading": "Loading events…",
+    "empty": "No Always-On events recorded yet.",
+    "stats": {
+      "todayEvents": "Today's Events",
+      "activeProjects": "Active Projects",
+      "running": "Running Now"
+    },
+    "eventList": {
+      "title": "Recent Events"
+    },
+    "detail": {
+      "back": "Back to events",
+      "placeholder": "Details coming soon."
+    },
+    "runDetail": {
+      "back": "Back to events",
+      "backToPlans": "Back to Plans & Cron Jobs",
+      "loading": "Loading…",
+      "untitled": "Untitled Plan",
+      "workspaceStrategy": "Workspace",
+      "executionSession": "Execution Session",
+      "openSession": "Open Session",
+      "outcome": "Outcome",
+      "plan": "Plan",
+      "report": "Report",
+      "noPlanContent": "No plan content available.",
+      "noReportContent": "No report available yet.",
+      "apply": "Apply to Main",
+      "archive": "Archive"
+    },
+    "phase": {
+      "discoveryStarted": "Discovery Started",
+      "planProduced": "Plan Produced",
+      "noPlan": "No Plan",
+      "workspaceReady": "Workspace Ready",
+      "executionStarted": "Execution Started",
+      "executionCompleted": "Execution Completed",
+      "reportProduced": "Report Produced",
+      "runCompleted": "Run Completed",
+      "runFailed": "Run Failed",
+      "cronStarted": "Cron Started",
+      "cronCompleted": "Cron Completed",
+      "cronFailed": "Cron Failed"
+    }
+  },
+  "plansCron": {
+    "title": "Plans & Cron Jobs",
+    "subtitle": "All plans and cron jobs across projects.",
+    "loading": "Loading plans and cron jobs…",
+    "empty": "No plans or cron jobs found.",
+    "unassigned": "Unassigned",
+    "columns": {
+      "title": "Title",
+      "type": "Type",
+      "createdAt": "Created",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "retry": "Retry",
+      "delete": "Delete",
+      "runNow": "Run Now",
+      "stop": "Stop",
+      "applyCycle": "Apply All",
+      "archiveCycle": "Archive"
+    },
+    "type": {
+      "plan": "Plan",
+      "cronJob": "Cron Job"
+    },
+    "status": {
+      "created": "Created",
+      "preparingWorkspace": "Preparing Workspace",
+      "executing": "Executing",
+      "completedWaiting": "Completed",
+      "failed": "Failed",
+      "archived": "Archived",
+      "scheduled": "Scheduled",
+      "running": "Running"
+    },
+    "workCycle": "Work Cycle",
+    "plans": "plans",
+    "cycleStatus": {
+      "active": "Active",
+      "applying": "Applying…",
+      "applied": "Applied",
+      "archived": "Archived"
+    }
+  }
+}

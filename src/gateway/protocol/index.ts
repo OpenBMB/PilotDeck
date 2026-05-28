@@ -1,0 +1,32 @@
+export type {
+  ChannelAttachment,
+  Gateway,
+  GatewayCronController,
+  GatewayChannelKey,
+  GatewayActiveTurnSnapshot,
+  GatewayActiveTurnSnapshotInput,
+  GatewayElicitationResponseInput,
+  GatewayError,
+  GatewayEvent,
+  GatewayMode,
+  GatewayServerInfo,
+  GatewaySessionInfo,
+  GatewaySubmitTurnInput,
+  ListSessionsInput,
+  ListSessionsResult,
+  NewSessionInput,
+  ReloadConfigResult,
+  TurnUsage,
+} from "./types.js";
+export type {
+  GatewayWsClientName,
+  WsEventFrame,
+  WsGatewayFrame,
+  WsGatewayMethod,
+  WsHelloFrame,
+  WsHelloOk,
+  WsNotificationFrame,
+  WsRequestFrame,
+  WsResponseFrame,
+} from "./frames.js";
+export { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "./version.js";

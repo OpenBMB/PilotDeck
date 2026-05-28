@@ -1,0 +1,13 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": { "tool_name": "*" },
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo \"[AUDIT] tool_use: $TOOL_NAME at $(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> /tmp/pilotdeck-audit.log"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+wcb-output/
+wcb/
+test-results/
+node_modules/
+.git/
+Auto-Research-Skills/
+apps/
+packages/
+*.png
+*.log
+.env*
+dist/
+ui/dist/
+ui/node_modules/

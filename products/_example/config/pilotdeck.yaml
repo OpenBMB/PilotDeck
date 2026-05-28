@@ -1,0 +1,30 @@
+# 产品覆盖配置示例
+# 部署时将此文件合并到目标环境的 ~/.pilotdeck/pilotdeck.yaml
+
+# 记忆系统配置
+memory:
+  enabled: true
+  provider: "edgeclaw"
+  captureStrategy: "full_session"
+  includeAssistant: true
+
+# 模型配置（可覆盖默认模型）
+# agent:
+#   model:
+#     id: "claude-sonnet-4"
+#     provider: "anthropic"
+#     model: "claude-sonnet-4-20250514"
+
+# 内置工具配置（可选）
+# tools:
+#   webSearch:
+#     apiKey: "..."                                 # SerpAPI key（serpapi.com）
+#     # endpoint: https://serpapi.com/search        # 高级：覆盖到 SerpAPI 兼容代理
+
+# 品牌配置（待贡献点就绪后生效）
+# brand:
+#   name: "MyProduct"
+#   logo: "./brand/logo.svg"
+#   theme:
+#     brand: "rgb(0,120,212)"
+#     brandAccent: "rgb(0,150,255)"

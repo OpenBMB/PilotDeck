@@ -1,0 +1,14 @@
+{
+  "_comment": "品牌主题覆盖。待 PilotConfig.brand 贡献点就绪后，此文件将被配置系统读取。",
+  "brand": "rgb(0,120,212)",
+  "brandAccent": "rgb(0,150,255)",
+  "background": "rgb(10,10,30)",
+  "panel": "rgb(15,20,45)",
+  "text": "rgb(230,237,247)",
+  "subtle": "rgb(120,145,170)",
+  "border": "rgb(40,60,100)",
+  "success": "rgb(74,222,128)",
+  "warning": "rgb(250,204,21)",
+  "error": "rgb(248,113,113)",
+  "permission": "rgb(96,165,250)"
+}

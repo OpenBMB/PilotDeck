@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- V8 JIT for Electron -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Required for Electron's writable executable pages -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Required for spawning Node.js + Bun child processes with custom env -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <!-- Keep for Electron's bundled frameworks; remove once all frameworks share the same Team ID -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- User-selected file access (open workspace folders) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>

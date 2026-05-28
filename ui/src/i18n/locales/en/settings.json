@@ -1,0 +1,827 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "account": "Account",
+    "permissions": "Permissions",
+    "mcpServers": "MCP Servers",
+    "appearance": "Appearance"
+  },
+  "account": {
+    "title": "Account",
+    "language": "Language",
+    "languageLabel": "Display Language",
+    "languageDescription": "Choose your preferred language for the interface",
+    "username": "Username",
+    "email": "Email",
+    "profile": "Profile",
+    "changePassword": "Change Password"
+  },
+  "mcp": {
+    "title": "MCP Servers",
+    "addServer": "Add Server",
+    "editServer": "Edit Server",
+    "deleteServer": "Delete Server",
+    "serverName": "Server Name",
+    "serverType": "Server Type",
+    "config": "Configuration",
+    "testConnection": "Test Connection",
+    "status": "Status",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "scope": {
+      "label": "Scope",
+      "user": "User",
+      "project": "Project"
+    }
+  },
+  "appearance": {
+    "title": "Appearance",
+    "theme": "Theme",
+    "codeEditor": "Code Editor",
+    "editorTheme": "Editor Theme",
+    "wordWrap": "Word Wrap",
+    "showMinimap": "Show Minimap",
+    "lineNumbers": "Line Numbers",
+    "fontSize": "Font Size"
+  },
+  "actions": {
+    "saveChanges": "Save Changes",
+    "resetToDefaults": "Reset to Defaults",
+    "cancelChanges": "Cancel Changes"
+  },
+  "quickSettings": {
+    "title": "Quick Settings",
+    "sections": {
+      "appearance": "Appearance",
+      "toolDisplay": "Tool Display",
+      "viewOptions": "View Options",
+      "inputSettings": "Input Settings"
+    },
+    "darkMode": "Dark Mode",
+    "autoExpandTools": "Auto-expand tools",
+    "showRawParameters": "Show raw parameters",
+    "showThinking": "Show thinking",
+    "autoScrollToBottom": "Auto-scroll to bottom",
+    "sendByCtrlEnter": "Send by Ctrl+Enter",
+    "sendByCtrlEnterDescription": "When enabled, pressing Ctrl+Enter will send the message instead of just Enter. This is useful for IME users to avoid accidental sends.",
+    "dragHandle": {
+      "dragging": "Dragging handle",
+      "closePanel": "Close settings panel",
+      "openPanel": "Open settings panel",
+      "draggingStatus": "Dragging...",
+      "toggleAndMove": "Click to toggle, drag to move"
+    }
+  },
+  "terminalShortcuts": {
+    "title": "Terminal Shortcuts",
+    "sectionKeys": "Keys",
+    "sectionNavigation": "Navigation",
+    "escape": "Escape",
+    "tab": "Tab",
+    "shiftTab": "Shift+Tab",
+    "arrowUp": "Arrow Up",
+    "arrowDown": "Arrow Down",
+    "scrollDown": "Scroll Down",
+    "handle": {
+      "closePanel": "Close shortcuts panel",
+      "openPanel": "Open shortcuts panel"
+    }
+  },
+  "mainTabs": {
+    "label": "Settings",
+    "agents": "Agents",
+    "appearance": "Appearance",
+    "permissions": "Permissions",
+    "git": "Git",
+    "apiTokens": "API & Tokens",
+    "tasks": "Tasks",
+    "notifications": "Notifications",
+    "plugins": "Plugins",
+    "router": "Router",
+    "config": "Config",
+    "about": "About"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Control which notification events you receive.",
+    "webPush": {
+      "title": "Web Push Notifications",
+      "enable": "Enable Push Notifications",
+      "disable": "Disable Push Notifications",
+      "enabled": "Push notifications are enabled",
+      "loading": "Updating...",
+      "unsupported": "Push notifications are not supported in this browser.",
+      "denied": "Push notifications are blocked. Please allow them in your browser settings."
+    },
+    "events": {
+      "title": "Event Types",
+      "actionRequired": "Action required",
+      "stop": "Run stopped",
+      "error": "Run failed"
+    }
+  },
+  "appearanceSettings": {
+    "darkMode": {
+      "label": "Dark Mode",
+      "description": "Toggle between light and dark themes"
+    },
+    "projectSorting": {
+      "label": "Project Sorting",
+      "description": "How projects are ordered in the sidebar",
+      "alphabetical": "Alphabetical",
+      "recentActivity": "Recent Activity"
+    },
+    "codeEditor": {
+      "title": "Code Editor",
+      "theme": {
+        "label": "Editor Theme",
+        "description": "Default theme for the code editor"
+      },
+      "wordWrap": {
+        "label": "Word Wrap",
+        "description": "Enable word wrapping by default in the editor"
+      },
+      "showMinimap": {
+        "label": "Show Minimap",
+        "description": "Display a minimap for easier navigation in diff view"
+      },
+      "lineNumbers": {
+        "label": "Show Line Numbers",
+        "description": "Display line numbers in the editor"
+      },
+      "fontSize": {
+        "label": "Font Size",
+        "description": "Applies to the code editor only (px). Chat and sidebar keep the system default."
+      }
+    }
+  },
+  "mcpForm": {
+    "title": {
+      "add": "Add MCP Server",
+      "edit": "Edit MCP Server"
+    },
+    "importMode": {
+      "form": "Form Input",
+      "json": "JSON Import"
+    },
+    "scope": {
+      "label": "Scope",
+      "userGlobal": "User (Global)",
+      "projectLocal": "Project (Local)",
+      "userDescription": "User scope: Available across all projects on your machine",
+      "projectDescription": "Local scope: Only available in the selected project",
+      "cannotChange": "Scope cannot be changed when editing an existing server"
+    },
+    "fields": {
+      "serverName": "Server Name",
+      "transportType": "Transport Type",
+      "command": "Command",
+      "arguments": "Arguments (one per line)",
+      "jsonConfig": "JSON Configuration",
+      "url": "URL",
+      "envVars": "Environment Variables (KEY=value, one per line)",
+      "headers": "Headers (KEY=value, one per line)",
+      "selectProject": "Select a project..."
+    },
+    "placeholders": {
+      "serverName": "my-server"
+    },
+    "validation": {
+      "missingType": "Missing required field: type",
+      "stdioRequiresCommand": "stdio type requires a command field",
+      "httpRequiresUrl": "{{type}} type requires a url field",
+      "invalidJson": "Invalid JSON format",
+      "jsonHelp": "Paste your MCP server configuration in JSON format. Example formats:",
+      "jsonExampleStdio": "• stdio: {\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"@upstash/context7-mcp\"]}",
+      "jsonExampleHttp": "• http/sse: {\"type\":\"http\",\"url\":\"https://api.example.com/mcp\"}"
+    },
+    "configDetails": "Configuration Details (from {{configFile}})",
+    "projectPath": "Path: {{path}}",
+    "actions": {
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "addServer": "Add Server",
+      "updateServer": "Update Server"
+    }
+  },
+  "saveStatus": {
+    "success": "Settings saved successfully!",
+    "error": "Failed to save settings",
+    "saving": "Saving..."
+  },
+  "footerActions": {
+    "save": "Save Settings",
+    "cancel": "Cancel"
+  },
+  "git": {
+    "title": "Git Configuration",
+    "description": "Configure your git identity for commits. These settings will be applied globally via git config --global",
+    "name": {
+      "label": "Git Name",
+      "help": "Your name for git commits"
+    },
+    "email": {
+      "label": "Git Email",
+      "help": "Your email for git commits"
+    },
+    "actions": {
+      "save": "Save Configuration",
+      "saving": "Saving..."
+    },
+    "status": {
+      "success": "Saved successfully"
+    }
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "description": "Generate API keys to access the external API from other applications.",
+    "newKey": {
+      "alertTitle": "⚠️ Save Your API Key",
+      "alertMessage": "This is the only time you'll see this key. Store it securely.",
+      "iveSavedIt": "I've saved it"
+    },
+    "form": {
+      "placeholder": "API Key Name (e.g., Production Server)",
+      "createButton": "Create",
+      "cancelButton": "Cancel"
+    },
+    "newButton": "New API Key",
+    "empty": "No API keys created yet.",
+    "list": {
+      "created": "Created:",
+      "lastUsed": "Last used:"
+    },
+    "confirmDelete": "Are you sure you want to delete this API key?",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "github": {
+      "title": "GitHub Tokens",
+      "description": "Add GitHub Personal Access Tokens to clone private repositories via the external API.",
+      "descriptionAlt": "Add GitHub Personal Access Tokens to clone private repositories. You can also pass tokens directly in API requests without storing them.",
+      "addButton": "Add Token",
+      "form": {
+        "namePlaceholder": "Token Name (e.g., Personal Repos)",
+        "tokenPlaceholder": "GitHub Personal Access Token (ghp_...)",
+        "descriptionPlaceholder": "Description (optional)",
+        "addButton": "Add Token",
+        "cancelButton": "Cancel",
+        "howToCreate": "How to create a GitHub Personal Access Token →"
+      },
+      "empty": "No GitHub tokens added yet.",
+      "added": "Added:",
+      "confirmDelete": "Are you sure you want to delete this GitHub token?"
+    },
+    "apiDocsLink": "API Documentation",
+    "documentation": {
+      "title": "External API Documentation",
+      "description": "Learn how to use the external API to trigger PilotDeck sessions from your applications.",
+      "viewLink": "View API Documentation →"
+    },
+    "loading": "Loading...",
+    "version": {
+      "updateAvailable": "Update available: v{{version}}"
+    }
+  },
+  "tasks": {
+    "checking": "Checking TaskMaster installation...",
+    "notInstalled": {
+      "title": "TaskMaster AI CLI Not Installed",
+      "description": "TaskMaster CLI is required to use task management features. Install it to get started:",
+      "installCommand": "npm install -g task-master-ai",
+      "viewOnGitHub": "View on GitHub",
+      "afterInstallation": "After installation:",
+      "steps": {
+        "restart": "Restart this application",
+        "autoAvailable": "TaskMaster features will automatically become available",
+        "initCommand": "Use task-master init in your project directory"
+      }
+    },
+    "settings": {
+      "enableLabel": "Enable TaskMaster Integration",
+      "enableDescription": "Show TaskMaster tasks, banners, and sidebar indicators across the interface"
+    }
+  },
+  "agents": {
+    "authStatus": {
+      "checking": "Checking...",
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "disconnected": "Disconnected",
+      "checkingAuth": "Checking authentication status...",
+      "loggedInAs": "Logged in as {{email}}",
+      "authenticatedUser": "authenticated user"
+    },
+    "account": {
+      "claude": {
+        "description": "Anthropic Claude AI assistant"
+      },
+      "cursor": {
+        "description": "Cursor AI-powered code editor"
+      },
+      "codex": {
+        "description": "OpenAI Codex AI assistant"
+      },
+      "gemini": {
+        "description": "Google Gemini AI assistant"
+      },
+      "pilotdeck": {
+        "description": "OpenBMB PilotDeck AI assistant"
+      }
+    },
+    "connectionStatus": "Connection Status",
+    "login": {
+      "title": "Login",
+      "reAuthenticate": "Re-authenticate",
+      "description": "Sign in to your {{agent}} account to enable AI features",
+      "reAuthDescription": "Sign in with a different account or refresh credentials",
+      "button": "Login",
+      "reLoginButton": "Re-login"
+    },
+    "error": "Error: {{error}}"
+  },
+  "permissions": {
+    "title": "Permission Settings",
+    "description": "Manage which tools the assistant can run without asking. Grants from the chat \"Add permission\" button land here too.",
+    "export": "Export",
+    "import": "Import",
+    "importExportHint": "Share or back up your tool permissions as JSON.",
+    "exportSuccess": "Exported {{allowed}} allowed and {{blocked}} blocked tools.",
+    "exportError": "Failed to export permissions.",
+    "importReadError": "Could not read the selected file.",
+    "importInvalid": "Not a valid permissions export. Expected JSON with allowedTools / disallowedTools / skipPermissions.",
+    "importConfirmBody": "Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?",
+    "importSuccess": "Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.",
+    "skipPermissions": {
+      "label": "Skip permission prompts (use with caution)",
+      "claudeDescription": "Equivalent to --dangerously-skip-permissions flag",
+      "cursorDescription": "Equivalent to -f flag in Cursor CLI",
+      "pilotdeckDescription": "Equivalent to --dangerously-skip-permissions flag"
+    },
+    "allowedTools": {
+      "title": "Allowed Tools",
+      "description": "Tools that are automatically allowed without prompting for permission",
+      "placeholder": "e.g., \"Bash(git log:*)\" or \"Write\"",
+      "quickAdd": "Quick add common tools:",
+      "empty": "No allowed tools configured"
+    },
+    "blockedTools": {
+      "title": "Blocked Tools",
+      "description": "Tools that are automatically blocked without prompting for permission",
+      "placeholder": "e.g., \"Bash(rm:*)\"",
+      "empty": "No blocked tools configured"
+    },
+    "allowedCommands": {
+      "title": "Allowed Shell Commands",
+      "description": "Shell commands that are automatically allowed without prompting",
+      "placeholder": "e.g., \"Shell(ls)\" or \"Shell(git status)\"",
+      "quickAdd": "Quick add common commands:",
+      "empty": "No allowed commands configured"
+    },
+    "blockedCommands": {
+      "title": "Blocked Shell Commands",
+      "description": "Shell commands that are automatically blocked",
+      "placeholder": "e.g., \"Shell(rm -rf)\" or \"Shell(sudo)\"",
+      "empty": "No blocked commands configured"
+    },
+    "toolExamples": {
+      "title": "Tool Pattern Examples:",
+      "bashGitLog": "- Allow all git log commands",
+      "bashGitDiff": "- Allow all git diff commands",
+      "write": "- Allow all Write tool usage",
+      "bashRm": "- Block all rm commands (dangerous)"
+    },
+    "shellExamples": {
+      "title": "Shell Command Examples:",
+      "ls": "- Allow ls command",
+      "gitStatus": "- Allow git status",
+      "npmInstall": "- Allow npm install",
+      "rmRf": "- Block recursive delete"
+    },
+    "codex": {
+      "permissionMode": "Permission Mode",
+      "description": "Controls how Codex handles file modifications and command execution",
+      "modes": {
+        "default": {
+          "title": "Default",
+          "description": "Only trusted commands (ls, cat, grep, git status, etc.) run automatically. Other commands are skipped. Can write to workspace."
+        },
+        "acceptEdits": {
+          "title": "Accept Edits",
+          "description": "All commands run automatically within the workspace. Full auto mode with sandboxed execution."
+        },
+        "bypassPermissions": {
+          "title": "Bypass Permissions",
+          "description": "Full system access with no restrictions. All commands run automatically with full disk and network access. Use with caution."
+        }
+      },
+      "technicalDetails": "Technical details",
+      "technicalInfo": {
+        "default": "sandboxMode=workspace-write, approvalPolicy=untrusted. Trusted commands: cat, cd, grep, head, ls, pwd, tail, git status/log/diff/show, find (without -exec), etc.",
+        "acceptEdits": "sandboxMode=workspace-write, approvalPolicy=never. All commands auto-execute within project directory.",
+        "bypassPermissions": "sandboxMode=danger-full-access, approvalPolicy=never. Full system access, use only in trusted environments.",
+        "overrideNote": "You can override this per-session using the mode button in the chat interface."
+      }
+    },
+    "actions": {
+      "add": "Add",
+      "remove": "Remove"
+    }
+  },
+  "mcpServers": {
+    "title": "MCP Servers",
+    "description": {
+      "pilotdeck": "Model Context Protocol servers provide additional tools and data sources to PilotDeck",
+      "cursor": "Model Context Protocol servers provide additional tools and data sources to Cursor",
+      "codex": "Model Context Protocol servers provide additional tools and data sources to Codex"
+    },
+    "addButton": "Add MCP Server",
+    "empty": "No MCP servers configured",
+    "serverType": "Type",
+    "scope": {
+      "local": "local",
+      "user": "user"
+    },
+    "config": {
+      "command": "Command",
+      "url": "URL",
+      "args": "Args",
+      "environment": "Environment"
+    },
+    "tools": {
+      "title": "Tools",
+      "count": "({{count}}):",
+      "more": "+{{count}} more"
+    },
+    "actions": {
+      "edit": "Edit server",
+      "delete": "Delete server"
+    },
+    "help": {
+      "title": "About Codex MCP",
+      "description": "Codex supports stdio-based MCP servers. You can add servers that extend Codex's capabilities with additional tools and resources."
+    }
+  },
+  "pilotDeckConfig": {
+    "loading": "Loading PilotDeck config...",
+    "header": {
+      "configFile": "Config file",
+      "configPreview": "Config preview",
+      "unsaved": "Unsaved"
+    },
+    "viewMode": {
+      "form": "Form",
+      "rawYaml": "Raw YAML"
+    },
+    "actions": {
+      "opening": "Opening...",
+      "revealFile": "Reveal File",
+      "refresh": "Refresh",
+      "reloadCurrent": "Reload current",
+      "saving": "Saving...",
+      "saveAndReload": "Save & reload",
+      "remove": "Remove",
+      "removeModel": "Remove model",
+      "add": "Add",
+      "dismiss": "Dismiss"
+    },
+    "rawYaml": {
+      "configValid": "Config is valid",
+      "unsaved": "(unsaved)",
+      "configInvalid": "Config has validation errors",
+      "configInvalidSeeBelow": "Config has validation errors — see below",
+      "errors": "Errors",
+      "warnings": "Warnings",
+      "yamlParseError": "YAML on disk failed to parse — switch to Raw YAML to fix it.",
+      "cannotParse": "Could not parse the YAML on disk. Switch to {{rawYaml}} to inspect and fix it.",
+      "rawYaml": "Raw YAML"
+    },
+    "sections": {
+      "runtime": {
+        "label": "Runtime",
+        "description": "Ports, host, timeouts, database location"
+      },
+      "models": {
+        "label": "Models",
+        "description": "Providers and named model entries"
+      },
+      "agents": {
+        "label": "Agents",
+        "description": "Main agent + subagents model bindings"
+      },
+      "alwaysOn": {
+        "label": "Always-On",
+        "description": "Automatic discovery and workspace opt-in"
+      },
+      "memory": {
+        "label": "Memory",
+        "description": "PilotDeck memory service"
+      },
+      "tools": {
+        "label": "Search",
+        "description": "Web search provider"
+      },
+      "customEnv": {
+        "label": "Env Vars",
+        "description": "Custom environment variables for sessions"
+      },
+      "router": {
+        "label": "Router",
+        "description": "PilotDeck Router"
+      },
+      "gateway": {
+        "label": "Gateway",
+        "description": "Messaging gateway home + channels"
+      }
+    },
+    "panels": {
+      "runtime": {
+        "title": "Advanced (Runtime)",
+        "description": "Ports, paths, and timeouts the UI server uses. Most users never need to touch these.",
+        "fields": {
+          "host": { "label": "Host", "description": "Bind interface for the HTTP/WebSocket server." },
+          "serverPort": { "label": "Server port", "description": "Express + WebSocket port." },
+          "vitePort": { "label": "Vite port", "description": "Frontend dev server (only used when running `npm run dev`)." },
+          "proxyPort": { "label": "Proxy port", "description": "Local LLM proxy (PilotDeck agent target)." },
+          "apiTimeout": { "label": "API timeout (ms)", "description": "Per-request upstream timeout." },
+          "databasePath": { "label": "Database path", "description": "SQLite auth/projects database (~ expands to home)." },
+          "workspacesRoot": { "label": "Workspaces root", "description": "Directory under which projects are scanned." },
+          "httpsProxy": { "label": "HTTPS proxy", "description": "Outbound HTTPS proxy URL (HTTPS_PROXY / https_proxy)." }
+        }
+      },
+      "models": {
+        "title": "Models",
+        "description": "Configure your LLM providers. The catalog auto-fills protocol, URL, and model capabilities — you only need to paste an API key and pick which models to enable."
+      },
+      "agents": {
+        "title": "Agents",
+        "description": "Pick which provider/model the chat agent runs on.",
+        "mainModel": {
+          "label": "Main agent model",
+          "description": "Used by the primary chat agent. Reference an enabled provider/model from the Models section."
+        },
+        "capabilities": {
+          "title": "Active model capabilities",
+          "imageInput": "Image input",
+          "enabled": "Enabled",
+          "disabled": "Disabled",
+          "resetCatalog": "reset to catalog default",
+          "overrideActive": "Override active — your YAML explicitly defines this model's multimodal.input.",
+          "catalogSupportsImage": "Default from catalog: supports image input.",
+          "catalogTextOnly": "Default from catalog: text only.",
+          "noCatalog": "No catalog entry — defaulting to text only. Toggle to override.",
+          "imageWarning": "If the upstream model server doesn't actually accept images, enabling this will produce upstream errors at request time.",
+          "maxOutputTokens": "Max output tokens",
+          "override": "Override",
+          "default": "Default",
+          "resetDefault": "reset to default",
+          "maxOutputDescription": "Cap on tokens the model may generate per turn (sent as max_tokens to upstream). Leave empty to fall back to the catalog or protocol default (typically 8192 for openai). Increase this for long-form creative tasks or thinking models that burn output budget while reasoning — too small a value cuts the response off mid-stream and the UI then appears stuck.",
+          "maxContextTokens": "Max context tokens",
+          "maxContextDescription": "Override the model's context window size for auto-compaction. The agent automatically compresses conversation history when usage reaches 80% (warning) or 95% (blocking) of this budget. Leave empty to use the catalog default. Set a smaller value to trigger compaction earlier — useful for proxy providers or to reduce per-turn cost."
+        },
+        "subagents": {
+          "show": "Show",
+          "hide": "Hide",
+          "toggle": "subagent settings",
+          "label": "Subagents default",
+          "description": "Used by tool-spawned subagents (e.g. tasks)."
+        }
+      },
+      "customEnv": {
+        "title": "Environment Variables",
+        "description": "Custom env vars injected into every agent session. Persisted in config.yaml — no need to reconfigure after switching sessions.",
+        "empty": "No custom environment variables configured.",
+        "existingValueKept": "Existing value kept — type to replace",
+        "valueHidden": "Value hidden; leave as-is to keep, retype to replace.",
+        "addVariable": "Add variable",
+        "quickAddKeys": "Quick add common keys:",
+        "add": "Add"
+      },
+      "alwaysOn": {
+        "title": "Always-On",
+        "description": "Configure automatic discovery globally and opt individual workspaces in.",
+        "enabled": { "label": "Enabled", "description": "Master switch for Always-On background agent." },
+        "trigger": {
+          "title": "Trigger",
+          "description": "Controls when and how often discovery runs fire.",
+          "autoDiscovery": { "label": "Auto discovery", "description": "When enabled, Always-On periodically inspects opted-in workspaces and proposes follow-up plans." },
+          "tickInterval": { "label": "Tick interval (minutes)", "description": "How often the daemon checks opted-in workspaces." },
+          "cooldown": { "label": "Cooldown (minutes)", "description": "Minimum time between discovery runs per workspace." },
+          "dailyBudget": { "label": "Daily budget", "description": "Maximum automatic discovery runs per workspace per day." },
+          "heartbeatStale": { "label": "Heartbeat stale (seconds)", "description": "Heartbeats older than this are considered stale." },
+          "recentUserMsg": { "label": "Recent user msg (minutes)", "description": "Only fire if the user sent a message within this window." },
+          "preferChannel": { "label": "Preferred channel", "description": "Channel the discovery agent prefers to interact through." }
+        },
+        "dormancy": {
+          "title": "Dormancy",
+          "description": "File-system watcher that pauses discovery while the user is actively editing.",
+          "enabled": { "label": "Enabled", "description": "Suppress discovery fires while the workspace has recent file changes." },
+          "debounce": { "label": "Debounce (ms)", "description": "Wait this long after the last file change before resuming." },
+          "ignoreGlobs": { "label": "Ignore globs", "description": "File patterns excluded from dormancy detection, one per line." }
+        },
+        "workspace": {
+          "title": "Workspace",
+          "description": "Isolated workspace strategy for Always-On runs.",
+          "gitWorktree": { "label": "Git worktree base dir", "description": "Root directory for git worktree-based isolation." },
+          "snapshotDir": { "label": "Snapshot base dir", "description": "Root directory for snapshot-based isolation." },
+          "snapshotMaxBytes": { "label": "Snapshot max bytes", "description": "Maximum size of a workspace snapshot." },
+          "gitLfs": { "label": "Git LFS", "description": "Include Git LFS objects in workspace snapshots." }
+        },
+        "execution": {
+          "title": "Execution",
+          "description": "Safety limits for each Always-On run.",
+          "maxTurns": { "label": "Max turns", "description": "Maximum number of agent turns per run." },
+          "maxToolCalls": { "label": "Max tool calls", "description": "Maximum total tool calls per run." },
+          "timeout": { "label": "Timeout (minutes)", "description": "Hard timeout for each run." }
+        },
+        "workspaceOptIn": {
+          "title": "Workspace opt-in",
+          "description": "Only enabled workspaces receive Always-On heartbeats and scheduled discovery checks.",
+          "empty": "No recognized projects yet. Add or open a workspace first."
+        }
+      },
+      "memory": {
+        "title": "Memory",
+        "description": "PilotDeck memory service — embeddings & summarisation pipelines.",
+        "enabled": {
+          "label": "Enabled",
+          "description": "Toggles the memory service."
+        },
+        "model": {
+          "label": "Memory model",
+          "description": "Provider/model the memory pipeline calls.",
+          "inherit": "inherit (use main agent's model)"
+        }
+      },
+      "tools": {
+        "title": "Search",
+        "description": "Web search backing the agent's `web_search` tool. Select exactly one provider; inactive providers are ignored.",
+        "provider": {
+          "label": "Provider",
+          "description": "Choose the single search provider used by the agent.",
+          "glm": "GLM / Z.AI Web Search",
+          "tavily": "Tavily",
+          "custom": "Custom"
+        },
+        "apiKey": {
+          "label": "API key",
+          "description": "Stored in pilotdeck.yaml under tools.webSearch.apiKey for the selected provider.",
+          "placeholder": "provider API key"
+        },
+        "endpoint": {
+          "label": "Endpoint",
+          "description": "Optional override for the selected provider endpoint. Leave empty to use the provider default.",
+          "placeholder": "Provider default endpoint"
+        },
+        "custom": {
+          "name": {
+            "label": "Name",
+            "description": "Display name for this custom search provider."
+          },
+          "auth": {
+            "label": "Auth",
+            "description": "How the custom provider receives the API key.",
+            "bearer": "Bearer header",
+            "bodyApiKey": "API key in JSON body",
+            "queryApiKey": "API key in query string",
+            "none": "No API key"
+          },
+          "method": {
+            "label": "HTTP method",
+            "description": "Request method for the custom provider."
+          },
+          "params": {
+            "label": "Parameter names",
+            "description": "Left: query parameter/body field. Right: API key parameter/body field."
+          },
+          "mapping": {
+            "label": "Result mapping",
+            "description": "Dot-paths used to read the results array and each result's title, URL, snippet, source, and publish time."
+          }
+        },
+        "test": {
+          "button": "Test connection",
+          "testing": "Testing…",
+          "needsKey": "Enter an API key first.",
+          "success": "Connected — {{count}} organic result(s) in {{latency}}ms.",
+          "failedPrefix": "Failed: {{error}}"
+        }
+      },
+      "router": {
+        "title": "PilotDeck Router",
+        "description": "Embedded router for fan-out across providers (tier-based routing, token saver, auto-orchestrate).",
+        "enabled": { "label": "Enabled", "description": "When on, agents use the router instead of the configured provider directly." },
+        "zeroUsageRetry": {
+          "label": "Zero-usage retry",
+          "description": "Automatically retry when the upstream returns a response with zero tokens used.",
+          "maxAttempts": { "label": "Max attempts", "description": "Maximum retry attempts before giving up." }
+        },
+        "tokenSaver": {
+          "title": "Token Saver",
+          "description": "A lightweight judge classifies each turn into a tier and routes it to a cost-appropriate model.",
+          "judgeModel": "Judge model",
+          "defaultTier": "Default tier",
+          "judgeTimeout": { "label": "Judge timeout (ms)", "description": "Maximum time to wait for the judge decision." },
+          "subagentPolicy": { "label": "Sub-agent policy", "description": "How sub-agents are routed: 'judge' re-evaluates each sub-agent turn, 'inherit' reuses the parent tier." }
+        },
+        "autoOrchestrate": {
+          "title": "Auto Orchestrate",
+          "description": "Automatically fan out complex turns into parallel sub-agents when the judge assigns certain tiers.",
+          "triggerTiers": "Trigger tiers",
+          "slimPrompt": { "label": "Slim system prompt", "description": "Use a shorter system prompt for orchestrated sub-agents to save tokens." }
+        },
+        "stats": { "label": "Stats collection", "description": "Track token usage and cost per session. Powers the Dashboard tab." },
+        "pricing": {
+          "title": "Model Pricing",
+          "description": "Custom pricing per model ($/million tokens). Used when the API doesn't report cost.",
+          "keyFormat": "Key format:",
+          "empty": "No custom pricing configured. Built-in defaults cover common models (DeepSeek, Claude, GPT, Gemini, GLM, Qwen, Llama, etc).",
+          "inputPerM": "Input $/M",
+          "outputPerM": "Output $/M",
+          "cachePerM": "Cache $/M",
+          "addTitle": "Add model pricing",
+          "add": "Add"
+        },
+        "scenarios": {
+          "title": "Scenarios",
+          "description": "Map scenario names to models. default is the primary route.",
+          "empty": "No scenarios configured.",
+          "add": "Add"
+        },
+        "fallback": {
+          "title": "Fallback Chains",
+          "description": "Ordered fallback models per scenario. If the primary fails, the router tries the next.",
+          "empty": "No fallback chains configured.",
+          "addModel": "Add fallback model",
+          "add": "Add"
+        },
+        "tiers": {
+          "title": "Tiers",
+          "description": "Complexity tiers the judge can route to. Pick a model for each — descriptions are pre-filled.",
+          "placeholder": "Describe when the judge should pick this tier…",
+          "add": "Add"
+        },
+        "rules": {
+          "title": "Judge Rules",
+          "empty": "No custom rules. The judge uses tier descriptions only.",
+          "placeholder": "Add a rule for the judge…",
+          "add": "Add"
+        }
+      },
+      "gateway": {
+        "title": "Gateway",
+        "description": "Messaging gateway (Feishu / Telegram / Discord / Slack) — channel-level secrets are best edited via Raw YAML.",
+        "enabled": { "label": "Enabled", "description": "When on, the gateway home is generated and channels with credentials come online." },
+        "home": { "label": "Gateway home", "description": "Working directory for gateway state and per-channel configs." }
+      },
+      "subsystemReload": {
+        "title": "Subsystem reload status",
+        "fallbackDescription": "Reload status will appear after the first save or external edit.",
+        "lastReload": "Last reload: {{source}} at {{time}}"
+      }
+    }
+  },
+  "pluginSettings": {
+    "title": "Plugins",
+    "description": "Extend the interface with custom plugins. Install from git or drop a folder in ~/.pilotdeck/plugins/",
+    "installPlaceholder": "https://github.com/user/my-plugin",
+    "installButton": "Install",
+    "installing": "Installing…",
+    "securityWarning": "Only install plugins whose source code you have reviewed or from authors you trust.",
+    "scanningPlugins": "Scanning plugins…",
+    "noPluginsInstalled": "No plugins installed",
+    "pullLatest": "Pull latest from git",
+    "noGitRemote": "No git remote — update not available",
+    "uninstallPlugin": "Uninstall plugin",
+    "confirmUninstall": "Click again to confirm",
+    "confirmUninstallMessage": "Remove {{name}}? This cannot be undone.",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "updateFailed": "Update failed",
+    "installFailed": "Installation failed",
+    "uninstallFailed": "Uninstall failed",
+    "toggleFailed": "Toggle failed",
+    "starterPluginLabel": "Starter Plugin",
+    "starter": "Starter",
+    "docs": "Docs",
+    "starterPlugin": {
+      "name": "Project Stats",
+      "badge": "starter",
+      "description": "File counts, lines of code, file-type breakdown, and recent activity for your project.",
+      "install": "Install"
+    },
+    "terminalPlugin": {
+      "name": "Terminal",
+      "badge": "official",
+      "description": "Integrated terminal with full shell access directly within the interface.",
+      "install": "Install"
+    },
+    "morePlugins": "More",
+    "enable": "Enable",
+    "disable": "Disable",
+    "installAriaLabel": "Plugin git repository URL",
+    "tab": "tab",
+    "runningStatus": "running"
+  }
+}

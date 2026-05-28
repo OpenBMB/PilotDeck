@@ -1,0 +1,7 @@
+{
+  "name": "example-compliance",
+  "version": "1.0.0",
+  "description": "示例：合规审计插件。在工具调用前后记录审计日志。",
+  "hooks": "hooks/hooks.json",
+  "commands": ["commands/audit-report.md"]
+}

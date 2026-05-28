@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Memory</title>
+    <script>
+      (function applyEarlyMemoryTheme() {
+        const params = new URLSearchParams(window.location.search);
+        const theme = params.get("theme") === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+
+        const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+        if (colorSchemeMeta) {
+          colorSchemeMeta.setAttribute("content", theme);
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div id="appScrim" class="app-scrim hidden"></div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <nav id="boardNavTabs" class="nav-tabs">
+            <button class="nav-tab active" data-page="project" type="button">
+              <span class="nav-tab-label" data-i18n="nav.project"></span>
+            </button>
+            <button class="nav-tab" data-page="user" type="button">
+              <span class="nav-tab-label" data-i18n="nav.user"></span>
+            </button>
+            <button class="nav-tab" data-page="trace" type="button">
+              <span class="nav-tab-label" data-i18n="nav.trace"></span>
+            </button>
+          </nav>
+        </div>
+        <div class="topbar-right">
+          <div id="listSearchRow" class="search-row">
+            <input id="workspaceSearch" type="search" autocomplete="off" data-i18n-placeholder="search.placeholder" />
+            <button id="workspaceSearchBtn" class="action-btn" type="button" data-i18n="actions.search"></button>
+          </div>
+          <span class="topbar-sep"></span>
+          <div class="toolbar">
+            <button id="refreshBtn" class="action-btn" type="button" data-i18n="actions.refresh"></button>
+            <button id="indexBtn" class="action-btn action-btn--primary" type="button" data-i18n="actions.index"></button>
+            <button id="dreamBtn" class="action-btn action-btn--primary" type="button" data-i18n="actions.dream"></button>
+            <button id="rollbackLastDreamBtn" class="action-btn" type="button" data-i18n="actions.rollbackLastDream"></button>
+          </div>
+          <span class="topbar-sep"></span>
+          <div class="topbar-meta">
+            <span id="activityText" class="activity-text"></span>
+            <span class="topbar-dot">·</span>
+            <span id="memoryAutoStatus" class="topbar-auto-status"></span>
+            <span class="topbar-dot">·</span>
+            <span class="topbar-index-label" data-i18n="topbar.lastIndexed"></span>
+            <span id="navLastIndexed" class="topbar-index-time"></span>
+          </div>
+          <button id="settingsToggleBtn" class="action-btn action-btn--icon" type="button" data-i18n-title="actions.settings">⚙</button>
+        </div>
+      </header>
+
+      <div id="statusBar" class="status-bar hidden"></div>
+
+      <main class="workspace">
+        <div class="board-scroll">
+
+          <!-- ═══ PROJECT BOARD ═══ -->
+          <div id="projectBoard" class="board-content board-active">
+            <section id="projectContextSection" class="project-context-card"></section>
+            <section id="projectEntriesSection" class="board-group">
+              <div class="board-group-header">
+                <div><h4 data-i18n="project.section.title"></h4><p class="board-group-subtitle" data-i18n="project.section.subtitle"></p></div>
+              </div>
+              <div id="projectEntries" class="board-card-grid"></div>
+            </section>
+            <section id="feedbackEntriesSection" class="board-group">
+              <div class="board-group-header">
+                <div><h4 data-i18n="feedback.section.title"></h4><p class="board-group-subtitle" data-i18n="feedback.section.subtitle"></p></div>
+              </div>
+              <div id="feedbackEntries" class="board-card-grid"></div>
+            </section>
+            <section id="deprecatedEntriesSection" class="board-group hidden">
+              <div class="board-group-header">
+                <div><h4 data-i18n="deprecated.section.title"></h4><p class="board-group-subtitle" data-i18n="deprecated.section.subtitle"></p></div>
+              </div>
+              <div id="deprecatedEntries" class="board-card-grid"></div>
+            </section>
+          </div>
+
+          <!-- ═══ USER BOARD ═══ -->
+          <div id="userBoard" class="board-content">
+            <section class="board-group">
+              <div class="board-group-header">
+                <div><h4 data-i18n="user.section.title"></h4><p class="board-group-subtitle" data-i18n="user.section.subtitle"></p></div>
+              </div>
+              <div id="userSummary" class="stack"></div>
+            </section>
+          </div>
+
+          <!-- ═══ MEMORY DETAIL PAGE ═══ -->
+          <div id="memoryDetailBoard" class="board-content">
+            <div class="detail-page-head">
+              <button id="detailBackBtn" class="action-btn" type="button" data-i18n="actions.back">← 返回</button>
+            </div>
+            <div class="detail-page-hero">
+              <div class="detail-page-hero-text">
+                <p id="detailPageMeta" class="detail-eyebrow"></p>
+                <h2 id="detailPageTitle" class="detail-page-title"></h2>
+                <p id="detailPageDescription" class="detail-page-desc"></p>
+              </div>
+              <div id="detailPageActions" class="detail-page-actions"></div>
+            </div>
+            <div class="detail-page-body">
+              <pre id="detailPageContent" class="code-block detail-page-code"></pre>
+            </div>
+          </div>
+
+          <!-- ═══ TRACE BOARD ═══ -->
+          <div id="traceBoard" class="board-content">
+            <div class="trace-sub-tabs">
+              <button class="trace-tab active" data-trace="recall" type="button" data-i18n="trace.tab.recall"></button>
+              <button class="trace-tab" data-trace="index" type="button" data-i18n="trace.tab.index"></button>
+              <button class="trace-tab" data-trace="dream" type="button" data-i18n="trace.tab.dream"></button>
+            </div>
+
+            <!-- Recall Panel -->
+            <div id="recallPanel" class="trace-panel trace-panel-active">
+              <section class="board-group">
+                <div class="board-group-header"><div><h4 data-i18n="trace.selectCase"></h4></div>
+                </div>
+                <select id="recallCaseSelect" class="trace-select"><option value="" data-i18n="trace.selectRecallCase"></option></select>
+              </section>
+              <div id="recallDetail" class="hidden">
+                <section class="board-group">
+                  <div id="recallMetaTable" class="kv-grid"></div>
+                </section>
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.injectedContext"></h4></div></div>
+                  <div id="recallContext" class="context-block"></div>
+                </section>
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.toolEvents"></h4></div></div>
+                  <div id="recallToolEvents" class="context-block"></div>
+                </section>
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.finalReply"></h4></div></div>
+                  <div id="recallReply" class="context-block"></div>
+                </section>
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.reasoningTimeline"></h4></div></div>
+                  <div id="recallSteps" class="timeline"></div>
+                </section>
+              </div>
+              <div id="recallEmpty" class="empty-state" data-i18n="trace.empty.recall"></div>
+            </div>
+
+            <!-- Index Panel -->
+            <div id="indexPanel" class="trace-panel">
+              <section class="board-group">
+                <div class="board-group-header"><div><h4 data-i18n="trace.selectTrace"></h4></div>
+                </div>
+                <select id="indexTraceSelect" class="trace-select"><option value="" data-i18n="trace.selectIndexTrace"></option></select>
+              </section>
+              <div id="indexDetail" class="hidden">
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.reasoningTimeline"></h4></div></div>
+                  <div id="indexSteps" class="timeline"></div>
+                </section>
+              </div>
+              <div id="indexEmpty" class="empty-state" data-i18n="trace.empty.trace"></div>
+            </div>
+
+            <!-- Dream Panel -->
+            <div id="dreamPanel" class="trace-panel">
+              <section class="board-group">
+                <div class="board-group-header"><div><h4 data-i18n="trace.selectTrace"></h4></div>
+                </div>
+                <select id="dreamTraceSelect" class="trace-select"><option value="" data-i18n="trace.selectDreamTrace"></option></select>
+              </section>
+              <div id="dreamDetail" class="hidden">
+                <section class="board-group">
+                  <div class="board-group-header"><div><h4 data-i18n="trace.reasoningTimeline"></h4></div></div>
+                  <div id="dreamSteps" class="timeline"></div>
+                </section>
+              </div>
+              <div id="dreamEmpty" class="empty-state" data-i18n="trace.empty.trace"></div>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+
+    <!-- ═══ SETTINGS MODAL ═══ -->
+    <div id="settingsModal" class="settings-modal hidden" role="dialog" aria-modal="true">
+      <div class="settings-modal-card">
+        <div class="settings-modal-head">
+          <h3 data-i18n="settings.title"></h3>
+          <button id="settingsCloseBtn" class="settings-modal-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="settings-modal-body">
+
+          <section class="settings-section">
+            <div class="settings-section-header">
+              <h4 class="settings-section-title" data-i18n="settings.parameters.title"></h4>
+              <button id="saveSettingsBtn" class="settings-save-btn" type="button" data-i18n="actions.saveSettings"></button>
+            </div>
+            <div class="settings-param-grid">
+              <div class="settings-field">
+                <label for="settingAutoIndex" data-i18n="settings.autoIndex.label"></label>
+                <div class="settings-input-row">
+                  <input id="settingAutoIndex" type="number" min="0" step="any" value="30" class="settings-input settings-input--with-unit" />
+                  <select id="settingAutoIndexUnit" class="settings-input settings-unit-select">
+                    <option value="minutes" data-i18n="settings.unit.minutes"></option>
+                    <option value="hours" data-i18n="settings.unit.hours"></option>
+                  </select>
+                </div>
+                <p class="settings-hint" data-i18n="settings.autoIndex.hint"></p>
+              </div>
+              <div class="settings-field">
+                <label for="settingAutoDream" data-i18n="settings.autoDream.label"></label>
+                <div class="settings-input-row">
+                  <input id="settingAutoDream" type="number" min="0" step="any" value="1" class="settings-input settings-input--with-unit" />
+                  <select id="settingAutoDreamUnit" class="settings-input settings-unit-select">
+                    <option value="minutes" data-i18n="settings.unit.minutes"></option>
+                    <option value="hours" data-i18n="settings.unit.hours"></option>
+                  </select>
+                </div>
+                <p class="settings-hint" data-i18n="settings.autoDream.hint"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-section-title" data-i18n="settings.dataManagement.title"></h4>
+            <div class="settings-data-groups">
+
+              <div class="settings-data-group" data-variant="default">
+                <div class="settings-data-group-head">
+                  <span class="settings-data-group-icon">📁</span>
+                  <div class="settings-data-group-heading">
+                    <h5 class="settings-data-group-title" data-i18n="settings.data.currentProject"></h5>
+                  </div>
+                </div>
+                <div class="settings-data-actions">
+                  <button id="exportCurrentProjectBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↓</span><span data-i18n="actions.exportCurrentProject"></span></button>
+                  <button id="importCurrentProjectBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↑</span><span data-i18n="actions.importCurrentProject"></span></button>
+                  <hr class="settings-action-divider" />
+                  <button id="clearProjectBtn" class="settings-action-btn settings-action-danger" type="button"><span class="settings-action-icon">✕</span><span data-i18n="actions.clearProject"></span></button>
+                </div>
+              </div>
+
+              <div class="settings-data-group" data-variant="all">
+                <div class="settings-data-group-head">
+                  <span class="settings-data-group-icon">🗄</span>
+                  <h5 class="settings-data-group-title" data-i18n="settings.data.allMemory"></h5>
+                </div>
+                <div class="settings-data-actions">
+                  <button id="exportAllProjectsBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↓</span><span data-i18n="actions.exportAllProjects"></span></button>
+                  <button id="importAllProjectsBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↑</span><span data-i18n="actions.importAllProjects"></span></button>
+                  <hr class="settings-action-divider" />
+                  <button id="clearAllBtn" class="settings-action-btn settings-action-danger" type="button"><span class="settings-action-icon">✕</span><span data-i18n="actions.clearAll"></span></button>
+                </div>
+              </div>
+
+            </div>
+            <input id="importCurrentProjectInput" type="file" accept="application/json" hidden />
+            <input id="importAllProjectsInput" type="file" accept="application/json" hidden />
+          </section>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ DETAIL DRAWER ═══ -->
+    <aside id="detailDrawer" class="detail-drawer hidden">
+      <div class="detail-drawer-head">
+        <div><p id="detailMeta" class="detail-eyebrow"></p><h3 id="detailTitle" class="detail-title"></h3><p id="detailDescription" class="detail-subtitle"></p></div>
+        <button id="detailCloseBtn" class="action-btn" type="button" data-i18n="actions.close"></button>
+      </div>
+      <section class="drawer-section drawer-section-fill">
+        <div id="detailEmpty" class="empty-state" data-i18n="detail.empty"></div>
+        <div id="detailView" class="detail hidden">
+          <div id="detailActions" class="detail-actions"></div>
+          <pre id="detailContent" class="code-block detail-code"></pre>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ═══ EDIT MODAL ═══ -->
+    <div id="editorModal" class="editor-modal hidden" role="dialog" aria-modal="true" aria-labelledby="editorModalTitle">
+      <div class="editor-modal-card">
+        <div class="editor-modal-head">
+          <div>
+            <h3 id="editorModalTitle" class="editor-modal-title"></h3>
+            <p id="editorModalSubtitle" class="editor-modal-subtitle"></p>
+          </div>
+          <button id="editorCloseBtn" class="action-btn" type="button" data-i18n="actions.close"></button>
+        </div>
+        <form id="editorForm" class="editor-form">
+          <div id="editorError" class="status-bar hidden"></div>
+
+          <div id="editorProjectFields" class="editor-form-section hidden">
+            <div class="editor-field-grid">
+              <label class="editor-field">
+                <span data-i18n="editor.project.name"></span>
+                <input id="editorProjectName" class="settings-input" type="text" />
+              </label>
+              <label class="editor-field">
+                <span data-i18n="editor.project.status"></span>
+                <select id="editorProjectStatus" class="settings-input"></select>
+              </label>
+            </div>
+            <label class="editor-field">
+              <span data-i18n="editor.project.description"></span>
+              <textarea id="editorProjectDescription" class="editor-textarea" rows="4"></textarea>
+            </label>
+          </div>
+
+          <div id="editorMemoryFields" class="editor-form-section hidden">
+            <label class="editor-field">
+              <span data-i18n="editor.memory.name"></span>
+              <input id="editorMemoryName" class="settings-input" type="text" />
+            </label>
+            <label class="editor-field">
+              <span data-i18n="editor.memory.description"></span>
+              <textarea id="editorMemoryDescription" class="editor-textarea" rows="4"></textarea>
+            </label>
+          </div>
+
+          <div class="editor-actions">
+            <button id="editorCancelBtn" class="action-btn editor-action-btn" type="button" data-i18n="actions.cancel"></button>
+            <button id="editorSaveBtn" class="action-btn action-btn--primary editor-action-btn" type="submit" data-i18n="actions.save"></button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,102 @@
+{
+  "emptyProject": "选择一个项目以查看 Always-On。",
+  "actions": {
+    "refresh": "刷新"
+  },
+  "tabs": {
+    "dashboard": "仪表盘",
+    "plansCron": "计划与定时任务"
+  },
+  "dashboard": {
+    "title": "Always-On 仪表盘",
+    "subtitle": "所有工作区的活动动态。",
+    "loading": "正在加载事件…",
+    "empty": "暂无 Always-On 事件记录。",
+    "stats": {
+      "todayEvents": "今日事件",
+      "activeProjects": "活跃项目",
+      "running": "正在运行"
+    },
+    "eventList": {
+      "title": "近期事件"
+    },
+    "detail": {
+      "back": "返回事件列表",
+      "placeholder": "详细内容即将推出。"
+    },
+    "runDetail": {
+      "back": "返回事件列表",
+      "backToPlans": "返回计划列表",
+      "loading": "加载中…",
+      "untitled": "未命名计划",
+      "workspaceStrategy": "工作区",
+      "executionSession": "执行会话",
+      "openSession": "打开会话",
+      "outcome": "结果",
+      "plan": "计划",
+      "report": "报告",
+      "noPlanContent": "暂无计划内容。",
+      "noReportContent": "暂无报告。",
+      "apply": "应用到主分支",
+      "archive": "归档"
+    },
+    "phase": {
+      "discoveryStarted": "发现已启动",
+      "planProduced": "已产出计划",
+      "noPlan": "未产出计划",
+      "workspaceReady": "工作区就绪",
+      "executionStarted": "开始执行",
+      "executionCompleted": "执行完成",
+      "reportProduced": "已产出报告",
+      "runCompleted": "运行完成",
+      "runFailed": "运行失败",
+      "cronStarted": "定时任务已启动",
+      "cronCompleted": "定时任务完成",
+      "cronFailed": "定时任务失败"
+    }
+  },
+  "plansCron": {
+    "title": "计划与定时任务",
+    "subtitle": "所有项目的计划与定时任务。",
+    "loading": "正在加载计划与定时任务…",
+    "empty": "暂无计划或定时任务。",
+    "unassigned": "未关联项目",
+    "columns": {
+      "title": "标题",
+      "type": "类型",
+      "createdAt": "创建时间",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "actions": {
+      "retry": "重新执行",
+      "delete": "删除",
+      "runNow": "立即运行",
+      "stop": "停止",
+      "applyCycle": "全部应用",
+      "archiveCycle": "归档"
+    },
+    "type": {
+      "plan": "计划",
+      "cronJob": "定时任务"
+    },
+    "status": {
+      "created": "刚创建",
+      "preparingWorkspace": "正在创建隔离环境",
+      "executing": "正在执行",
+      "completedWaiting": "执行完成",
+      "failed": "执行失败",
+      "archived": "已归档",
+      "scheduled": "已安排",
+      "running": "运行中"
+    },
+    "workCycle": "工作周期",
+    "plans": "个计划",
+    "cycleStatus": {
+      "active": "活跃",
+      "applying": "正在应用…",
+      "applied": "已应用",
+      "archived": "已归档"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+services:
+  pilotdeck:
+    build: .
+    image: pilotdeck:latest
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount your local config (create ~/.pilotdeck/pilotdeck.yaml first)
+      - ${PILOTDECK_CONFIG:-~/.pilotdeck/pilotdeck.yaml}:/root/.pilotdeck/pilotdeck.yaml
+      # Persist project data across restarts
+      - pilotdeck-data:/root/.pilotdeck/projects
+    environment:
+      - NODE_ENV=production
+      # ── Proxy (uncomment if behind corporate proxy) ──
+      # - https_proxy=http://host.docker.internal:7890
+      # - PILOTDECK_PROXY=http://host.docker.internal:7890
+      #
+      # ── Or configure via env vars instead of mounting yaml ──
+      # - PILOTDECK_MODEL=openai/gpt-4.1
+      # - PILOTDECK_API_KEY=sk-xxx
+      # - PILOTDECK_API_URL=https://api.openai.com/v1
+    restart: unless-stopped
+
+volumes:
+  pilotdeck-data:

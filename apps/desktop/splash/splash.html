@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <title>PilotDeck</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a22;
+      --border: #2a3140;
+      --text: #e7eaf0;
+      --text-dim: #9aa3b2;
+      --accent: #4f9cff;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      background: transparent;
+      color: var(--text);
+      overflow: hidden;
+      -webkit-app-region: drag;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      width: 100%;
+      height: 100%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+    }
+    .tagline {
+      color: var(--text-dim);
+      font-size: 12px;
+      margin-bottom: 24px;
+    }
+    .progress-wrap {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 14px;
+    }
+    .progress-bar {
+      position: absolute;
+      top: 0;
+      left: -40%;
+      width: 40%;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      animation: indeterminate 1.6s infinite ease-in-out;
+    }
+    @keyframes indeterminate {
+      0%   { left: -40%; }
+      100% { left: 100%; }
+    }
+    .status {
+      color: var(--text-dim);
+      font-size: 12px;
+      text-align: center;
+      min-height: 16px;
+      max-width: 100%;
+      overflow-wrap: break-word;
+    }
+    .footer {
+      color: var(--text-dim);
+      opacity: 0.55;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">PilotDeck</div>
+    <div class="tagline">本地服务正在启动…</div>
+    <div class="progress-wrap"><div class="progress-bar"></div></div>
+    <div class="status" id="status">准备中…</div>
+    <div class="footer" id="footer"></div>
+  </div>
+  <script>
+    const statusEl = document.getElementById("status");
+    const footerEl = document.getElementById("footer");
+    if (window.pilotdeckSplash && typeof window.pilotdeckSplash.onStatus === "function") {
+      window.pilotdeckSplash.onStatus((payload) => {
+        if (!payload) return;
+        if (typeof payload.text === "string") {
+          statusEl.textContent = payload.text;
+        }
+        if (typeof payload.footer === "string") {
+          footerEl.textContent = payload.footer;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

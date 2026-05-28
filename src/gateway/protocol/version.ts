@@ -1,0 +1,1 @@
+export const PILOTDECK_GATEWAY_PROTOCOL_VERSION = "1.0";

@@ -1,0 +1,86 @@
+appId: cc.pilotdeck.desktop
+productName: PilotDeck
+copyright: "Copyright © 2026 PilotDeck Contributors. AGPL-3.0-or-later."
+
+directories:
+  output: dist-electron
+  buildResources: resources
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: arm64
+  icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  minimumSystemVersion: "12.0"
+  darkModeSupport: true
+  # Without these *UsageDescription strings, macOS TCC popups appear with an
+  # empty body — users see a generic "PilotDeck 想要访问 ..." prompt and have
+  # no idea why, which is half of the "陆陆续续蹦出来权限请求窗口" complaint.
+  # Each string is what shows up in the system dialog AND in
+  # System Settings → Privacy & Security → <category> → PilotDeck.
+  extendInfo:
+    NSDocumentsFolderUsageDescription: >-
+      PilotDeck 需要访问"文稿"目录以便加载和保存你授权的 workspace 项目内容。
+    NSDownloadsFolderUsageDescription: >-
+      PilotDeck 需要访问"下载"目录以便处理你拖入对话窗口的附件。
+    NSDesktopFolderUsageDescription: >-
+      PilotDeck 需要访问"桌面"目录以便加载放在桌面上的 workspace 项目内容。
+    NSRemovableVolumesUsageDescription: >-
+      PilotDeck 需要访问可移除磁盘上的 workspace 项目内容。
+    NSAppleEventsUsageDescription: >-
+      PilotDeck 在使用浏览器自动化技能时需要控制 Google Chrome / Chromium 实例。
+    NSCameraUsageDescription: >-
+      PilotDeck 不主动使用摄像头；当用户授权的 plugin/MCP 调用涉及摄像头时才会请求。
+    NSMicrophoneUsageDescription: >-
+      PilotDeck 不主动使用麦克风；当用户授权的 plugin/MCP 调用涉及麦克风时才会请求。
+
+dmg:
+  sign: true
+  artifactName: "PilotDeck-${version}-arm64.dmg"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  icon: resources/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: "PilotDeck-${version}-win-${arch}.exe"
+  shortcutName: PilotDeck
+  uninstallDisplayName: PilotDeck ${version}
+
+afterSign: scripts/notarize.js
+
+extraResources:
+  - from: resources/node-bin/
+    to: node-bin/
+  - from: resources/bun-bin/
+    to: bun-bin/
+  - from: resources/pilotdeckui-bundle.tar
+    to: pilotdeckui-bundle.tar
+  - from: resources/pilotdeck-main-bundle.tar
+    to: pilotdeck-main-bundle.tar
+  - from: resources/pilotdeck-memory-core-bundle.tar
+    to: pilotdeck-memory-core-bundle.tar
+
+files:
+  - "dist/**/*"
+  - "onboarding/**/*"
+  - "splash/**/*"
+  - "node_modules/**/*"
+  - "package.json"

@@ -1,0 +1,14 @@
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+*.gif filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.webp filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+
+# Small UI bundled images — keep as regular git blobs so Vite can inline them
+ui/src/assets/** !filter !diff !merge text=auto
+
+# Desktop app icon sources are tiny; avoid LFS (OpenBMB budget) and release-time smudge failures
+apps/desktop/assets/** !filter !diff !merge text=auto

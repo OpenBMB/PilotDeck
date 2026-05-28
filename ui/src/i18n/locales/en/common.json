@@ -1,0 +1,484 @@
+{
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "create": "Create",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "submit": "Submit",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "search": "Search",
+    "clear": "Clear",
+    "copy": "Copy",
+    "download": "Download",
+    "upload": "Upload",
+    "browse": "Browse"
+  },
+  "tabs": {
+    "home": "Home",
+    "chat": "Agent",
+    "alwaysOn": "Always-On",
+    "shell": "Shell",
+    "files": "Files",
+    "git": "Source Control",
+    "tasks": "Tasks",
+    "dashboard": "Routing",
+    "memory": "Memory",
+    "skills": "Skills"
+  },
+  "skillsTab": {
+    "pickProject": "Open a project to manage its skills.",
+    "generalChat": "General chat — user-scope skills only",
+    "refresh": "Refresh",
+    "newSkill": "New",
+    "loading": "Loading…",
+    "empty": "No skills yet. Click \"New\" to install or create one.",
+    "selectHint": "Pick a skill on the left to view or edit its SKILL.md.",
+    "projectScope": "Project Skills",
+    "userScope": "User Skills",
+    "save": "Save",
+    "saving": "Saving…",
+    "savedSuccess": "Saved",
+    "delete": "Delete",
+    "deletedSuccess": "Deleted",
+    "revert": "Revert",
+    "confirmDelete": "Delete this skill? This will remove the entire folder.",
+    "discardUnsaved": "Discard unsaved changes?",
+    "newTitle": "New Skill",
+    "close": "Close",
+    "tabInstall": "Install from ClawHub",
+    "tabImport": "Import folder",
+    "tabCreate": "Write my own",
+    "importSource": "Source folder",
+    "importSourceHint": "Absolute path to a folder containing SKILL.md. Tilde (~) is expanded server-side.",
+    "importSourceHintBoth": "Pick a folder via the native dialog, or paste an absolute path. ~ is expanded server-side.",
+    "pickFolder": "Pick folder…",
+    "files": "files",
+    "complianceCheck": "Compliance check",
+    "complianceClean": "All checks passed.",
+    "symlinkUnavailable": "— unavailable for picker uploads (no source path on disk).",
+    "importSlug": "Slug (target folder name)",
+    "importSlugHint": "Defaults to the source folder name. Edit to override.",
+    "importMode": "Import mode",
+    "importModeCopy": "Copy",
+    "importModeCopyHint": "— independent copy, edits live in the skills folder.",
+    "importModeSymlink": "Symlink",
+    "importModeSymlinkHint": "— edits in the source folder propagate live; deleting the source breaks the skill.",
+    "importForce": "Overwrite if exists",
+    "importEnableForce": "Enable \"Overwrite\" to replace it.",
+    "importAction": "Import skill",
+    "importing": "Importing…",
+    "scan": "Scan",
+    "scanning": "Scanning…",
+    "foundSkills": "Found {{count}} skills in {{total}} subfolders",
+    "noSkillsFound": "No skills found in this folder.",
+    "selectAll": "Select All ({{count}})",
+    "importNSkills": "Import {{count}} skills",
+    "batchProgress": "Importing {{current}}/{{total}}…",
+    "batchComplete": "Batch import complete: {{success}} succeeded, {{failed}} failed",
+    "batchDone": "Done",
+    "noSkillMd": "No SKILL.md",
+    "alreadyExists": "already exists",
+    "scope": "Scope",
+    "scopeUser": "User",
+    "scopeProject": "Project",
+    "searchPlaceholder": "Search clawhub.com…",
+    "searchHint": "Type to search clawhub.com.",
+    "noResults": "No results.",
+    "install": "Install",
+    "installing": "Installing…",
+    "installForce": "Install (force)",
+    "installedSuccess": "Installed {{name}}",
+    "flaggedSuspicious": "\"{{slug}}\" is flagged as suspicious by VirusTotal. Click again to install with --force.",
+    "fieldSlug": "Slug",
+    "slugHint": "Folder name, e.g. my-skill",
+    "fieldName": "Display name",
+    "fieldNamePlaceholder": "Optional, defaults to slug",
+    "fieldDescription": "Description",
+    "descHint": "Shown in the slash menu — describe what this skill does and when to invoke it.",
+    "fieldBody": "Initial body (Markdown)",
+    "bodyHint": "Optional. Edit in detail later from the main view.",
+    "create": "Create skill",
+    "creating": "Creating…"
+  },
+  "newSessionInProject": "New session",
+  "deleteProject": "Delete project",
+  "status": {
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "failed": "Failed",
+    "pending": "Pending",
+    "completed": "Completed",
+    "inProgress": "In Progress"
+  },
+  "messages": {
+    "savedSuccessfully": "Saved successfully",
+    "deletedSuccessfully": "Deleted successfully",
+    "updatedSuccessfully": "Updated successfully",
+    "operationFailed": "Operation failed",
+    "networkError": "Network error. Please check your connection.",
+    "unauthorized": "Unauthorized. Please log in.",
+    "notFound": "Not found",
+    "invalidInput": "Invalid input",
+    "requiredField": "This field is required",
+    "unknownError": "An unknown error occurred"
+  },
+  "navigation": {
+    "settings": "Settings",
+    "home": "Home",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "logout": "Logout"
+  },
+  "common": {
+    "language": "Language",
+    "theme": "Theme",
+    "darkMode": "Dark Mode",
+    "lightMode": "Light Mode",
+    "name": "Name",
+    "description": "Description",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "optional": "Optional",
+    "version": "Version",
+    "select": "Select",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{{count}} mins ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago",
+    "yesterday": "Yesterday"
+  },
+  "fileOperations": {
+    "newFile": "New File",
+    "newFolder": "New Folder",
+    "rename": "Rename",
+    "move": "Move",
+    "copyPath": "Copy Path",
+    "openInEditor": "Open in Editor"
+  },
+  "mainContent": {
+    "loading": "Loading PilotDeck",
+    "settingUpWorkspace": "Setting up your workspace...",
+    "chooseProject": "Choose Your Project",
+    "selectProjectDescription": "Select a project from the sidebar to start coding with PilotDeck. Each project contains your chat sessions and file history.",
+    "tip": "Tip",
+    "createProjectMobile": "Tap the menu button above to access projects",
+    "createProjectDesktop": "Create a new project by clicking the folder icon in the sidebar",
+    "newSession": "New Session",
+    "untitledSession": "Untitled Session",
+    "projectFiles": "Project Files"
+  },
+  "alwaysOn": {
+    "title": "Always-On Overview",
+    "description": "Review discovery plans and scheduled cron jobs for the current project in one place.",
+    "lastUpdated": "Last updated: {{timestamp}}",
+    "loadingTitle": "Loading Always-On data",
+    "loadingDescription": "Reading discovery plans and scheduled tasks for the current project.",
+    "emptyTitle": "No scheduled tasks yet",
+    "emptyDescription": "This project does not currently have any visible durable cron jobs or session-scoped tasks.",
+    "summary": {
+      "total": "Total jobs",
+      "recurring": "Recurring jobs",
+      "failed": "Failed recently"
+    },
+    "status": {
+      "draft": "Draft",
+      "ready": "Ready",
+      "queued": "Queued",
+      "scheduled": "Scheduled",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "superseded": "Superseded",
+      "unknown": "Unknown"
+    },
+    "actions": {
+      "viewDetails": "View details for {{id}}",
+      "discoverTasks": "Discover tasks",
+      "runNow": "Run now"
+    },
+    "flags": {
+      "durable": "Durable",
+      "sessionScoped": "Session",
+      "oneShot": "One-shot",
+      "recurring": "Recurring",
+      "manualOnly": "Manual only",
+      "permanent": "Permanent"
+    },
+    "fields": {
+      "scope": "Scope",
+      "type": "Type",
+      "kind": "Kind",
+      "jobId": "Task ID",
+      "prompt": "Prompt",
+      "cron": "Cron schedule",
+      "status": "Status",
+      "createdAt": "Created",
+      "lastFiredAt": "Last fired",
+      "originSessionId": "Origin session",
+      "transcriptKey": "Transcript key",
+      "lastActivity": "Last activity",
+      "latestRunSummary": "Latest run summary",
+      "latestRunTaskId": "Latest run task ID",
+      "latestRunTranscript": "Latest run transcript",
+      "outputFile": "Output file"
+    },
+    "detail": {
+      "title": "Task details",
+      "oneShotRunNowHint": "Run now executes this one-shot task immediately without changing the original scheduled trigger. It can still fire again at the scheduled time.",
+      "missingTitle": "Task no longer available",
+      "missingDescription": "This task may have been deleted or become unavailable since the overview was loaded.",
+      "noLatestRun": "This task does not have a recorded background run yet.",
+      "sections": {
+        "definition": "Task definition",
+        "latestRun": "Latest run"
+      }
+    },
+    "values": {
+      "notUpdated": "Not updated yet",
+      "notAvailable": "Not available"
+    },
+    "confirmations": {
+      "delete": "Delete scheduled task {{id}}?"
+    },
+    "feedback": {
+      "deleted": "Deleted scheduled task {{id}}.",
+      "runNowStarted": "Started {{id}} immediately.",
+      "alreadyRunning": "Task {{id}} is already running."
+    },
+    "errors": {
+      "loadFailed": "Failed to load Always-On data.",
+      "deleteFailed": "Failed to delete cron job.",
+      "runNowFailed": "Failed to run cron job immediately."
+    },
+    "discovery": {
+      "title": "Discovery plans",
+      "description": "Structured plans generated by Always-On discovery before execution.",
+      "emptyTitle": "No discovery plans yet",
+      "emptyDescription": "Run discovery to generate structured plans for follow-up work.",
+      "summary": {
+        "running": "Running plans"
+      },
+      "actions": {
+        "viewDetails": "View details",
+        "openSession": "Open session",
+        "archive": "Archive"
+      },
+      "fields": {
+        "title": "Title",
+        "summary": "Summary",
+        "rationale": "Rationale",
+        "updatedAt": "Updated",
+        "planFile": "Plan file",
+        "sourceSession": "Discovery session",
+        "executionSession": "Execution session",
+        "executionStartedAt": "Execution started",
+        "executionLastActivityAt": "Last activity",
+        "latestSummary": "Latest summary",
+        "contextRefsWorkingDirectory": "Workspace signals",
+        "contextRefsMemory": "Memory references",
+        "contextRefsPlans": "Related plans",
+        "contextRefsCron": "Related cron jobs",
+        "contextRefsChats": "Recent chats"
+      },
+      "detail": {
+        "meta": "Plan metadata",
+        "plan": "Plan content",
+        "noContent": "This discovery plan does not have stored markdown content.",
+        "missingTitle": "Discovery plan no longer available",
+        "missingDescription": "This plan may have been updated or archived since the overview was loaded."
+      },
+      "feedback": {
+        "executionQueued": "Queued discovery plan {{id}} for execution.",
+        "archived": "Archived discovery plan {{id}}."
+      },
+      "errors": {
+        "executeFailed": "Failed to execute discovery plan.",
+        "archiveFailed": "Failed to archive discovery plan."
+      }
+    },
+    "cron": {
+      "title": "Scheduled cron jobs",
+      "description": "Existing durable and session-scoped cron tasks for this project."
+    }
+  },
+  "fileTree": {
+    "loading": "Loading files...",
+    "files": "Files",
+    "simpleView": "Simple view",
+    "compactView": "Compact view",
+    "detailedView": "Detailed view",
+    "searchPlaceholder": "Search files and folders...",
+    "clearSearch": "Clear search",
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified",
+    "permissions": "Permissions",
+    "noFilesFound": "No files found",
+    "checkProjectPath": "Check if the project path is accessible",
+    "noMatchesFound": "No matches found",
+    "tryDifferentSearch": "Try a different search term or clear the search",
+    "justNow": "just now",
+    "minAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago",
+    "newFile": "New File (Cmd+N)",
+    "newFolder": "New Folder (Cmd+Shift+N)",
+    "refresh": "Refresh",
+    "collapseAll": "Collapse All",
+    "context": {
+      "rename": "Rename",
+      "delete": "Delete",
+      "copyPath": "Copy Path",
+      "download": "Download",
+      "newFile": "New File",
+      "newFolder": "New Folder",
+      "refresh": "Refresh",
+      "menuLabel": "File context menu",
+      "loading": "Loading..."
+    }
+  },
+  "projectWizard": {
+    "title": "Create New Project",
+    "steps": {
+      "type": "Type",
+      "configure": "Configure",
+      "confirm": "Confirm"
+    },
+    "step1": {
+      "question": "Do you already have a workspace, or would you like to create a new one?",
+      "existing": {
+        "title": "Existing Workspace",
+        "description": "I already have a workspace on my server and just need to add it to the project list"
+      },
+      "new": {
+        "title": "New Workspace",
+        "description": "Create a new workspace, optionally clone from a GitHub repository"
+      }
+    },
+    "step2": {
+      "existingPath": "Workspace Path",
+      "newPath": "Workspace Path",
+      "existingPlaceholder": "/path/to/existing/workspace",
+      "newPlaceholder": "/path/to/new/workspace",
+      "existingHelp": "Full path to your existing workspace directory",
+      "newHelp": "Full path to your workspace directory",
+      "githubUrl": "GitHub URL (Optional)",
+      "githubPlaceholder": "https://github.com/username/repository",
+      "githubHelp": "Optional: provide a GitHub URL to clone a repository",
+      "githubAuth": "GitHub Authentication (Optional)",
+      "githubAuthHelp": "Only required for private repositories. Public repos can be cloned without authentication.",
+      "loadingTokens": "Loading stored tokens...",
+      "storedToken": "Stored Token",
+      "newToken": "New Token",
+      "nonePublic": "None (Public)",
+      "selectToken": "Select Token",
+      "selectTokenPlaceholder": "-- Select a token --",
+      "tokenPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tokenHelp": "This token will be used only for this operation",
+      "publicRepoInfo": "Public repositories don't require authentication. You can skip providing a token if cloning a public repo.",
+      "noTokensHelp": "No stored tokens available. You can add tokens in Settings → API Keys for easier reuse.",
+      "optionalTokenPublic": "GitHub Token (Optional for Public Repos)",
+      "tokenPublicPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (leave empty for public repos)"
+    },
+    "step3": {
+      "reviewConfig": "Review Your Configuration",
+      "workspaceType": "Workspace Type:",
+      "existingWorkspace": "Existing Workspace",
+      "newWorkspace": "New Workspace",
+      "path": "Path:",
+      "cloneFrom": "Clone From:",
+      "authentication": "Authentication:",
+      "usingStoredToken": "Using stored token:",
+      "usingProvidedToken": "Using provided token",
+      "noAuthentication": "No authentication",
+      "sshKey": "SSH Key",
+      "existingInfo": "The workspace will be added to your project list and will be available for PilotDeck sessions.",
+      "newWithClone": "The repository will be cloned from this folder.",
+      "newEmpty": "The workspace will be added to your project list and will be available for PilotDeck sessions.",
+      "cloningRepository": "Cloning repository..."
+    },
+    "buttons": {
+      "cancel": "Cancel",
+      "back": "Back",
+      "next": "Next",
+      "createProject": "Create Project",
+      "creating": "Creating...",
+      "cloning": "Cloning..."
+    },
+    "errors": {
+      "selectType": "Please select whether you have an existing workspace or want to create a new one",
+      "providePath": "Please provide a workspace path",
+      "failedToCreate": "Failed to create workspace",
+      "failedToCreateFolder": "Failed to create folder"
+    }
+  },
+  "notifications": {
+    "genericTool": "a tool",
+    "codes": {
+      "generic": {
+        "info": {
+          "title": "Notification"
+        }
+      },
+      "permission": {
+        "required": {
+          "title": "Action Required",
+          "body": "{{toolName}} is waiting for your decision."
+        }
+      },
+      "run": {
+        "stopped": {
+          "title": "Run Stopped",
+          "body": "Reason: {{reason}}"
+        },
+        "failed": {
+          "title": "Run Failed"
+        }
+      },
+      "agent": {
+        "notification": {
+          "title": "Agent Notification"
+        }
+      }
+    }
+  },
+  "versionUpdate": {
+    "title": "Update Available",
+    "newVersionReady": "A new version is ready",
+    "currentVersion": "Current Version",
+    "latestVersion": "Latest Version",
+    "whatsNew": "What's New:",
+    "viewFullRelease": "View full release",
+    "updateProgress": "Update Progress:",
+    "manualUpgrade": "Manual upgrade:",
+    "npmUpgradeCommand": "git pull && npm run build && (cd ui && npm run build)",
+    "manualUpgradeHint": "Or click \"Update Now\" to run the update automatically.",
+    "updateCompleted": "Update completed successfully!",
+    "restartServer": "Please restart the server to apply changes.",
+    "updateFailed": "Update failed",
+    "buttons": {
+      "close": "Close",
+      "later": "Later",
+      "copyCommand": "Copy Command",
+      "updateNow": "Update Now",
+      "updating": "Updating..."
+    },
+    "ariaLabels": {
+      "closeModal": "Close version upgrade modal",
+      "showSidebar": "Show sidebar",
+      "settings": "Settings",
+      "updateAvailable": "Update available",
+      "closeSidebar": "Close sidebar"
+    }
+  }
+}

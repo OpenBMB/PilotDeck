@@ -1,0 +1,392 @@
+{
+  "codeBlock": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyCode": "Copy code"
+  },
+  "copyMessage": {
+    "copy": "Copy message",
+    "copied": "Message copied",
+    "selectFormat": "Select copy format",
+    "copyAsMarkdown": "Copy as markdown",
+    "copyAsText": "Copy as text"
+  },
+  "messageTypes": {
+    "user": "U",
+    "error": "Error",
+    "tool": "Tool",
+    "claude": "Claude",
+    "pilotdeck": "PilotDeck",
+    "cursor": "Cursor",
+    "codex": "Codex",
+    "gemini": "Gemini"
+  },
+  "toolUseError": {
+    "title": "Tool error",
+    "description": ""
+  },
+  "interrupted": {
+    "label": "Interrupted by user"
+  },
+  "compact": {
+    "label": "Context compacted",
+    "level": "Level {{level}}",
+    "tokens": "{{tokens}} tokens before compact",
+    "stages": {
+      "context_collapse": "Context collapse",
+      "session_memory": "Session memory compaction",
+      "summary": "Summary compaction",
+      "reactive": "Reactive compaction",
+      "overflow_recovery": "Overflow recovery retry"
+    }
+  },
+  "working": {
+    "default": "Working",
+    "processing": "Processing",
+    "thinking": "Thinking",
+    "generating": "Generating response",
+    "compacting": "Compacting context...",
+    "compactingLevel": "Triggering level {{level}} compaction: {{label}}",
+    "waitingForPermission": "Waiting for permission"
+  },
+  "process": {
+    "summary": {
+      "processed": "Processed {{duration}}",
+      "completed": "Process completed",
+      "failed": "Process failed",
+      "cancelled": "Process stopped"
+    },
+    "waitingForModel": "Waiting for model",
+    "step": "Step",
+    "metrics": {
+      "toolCalls": "{{count}} tool calls",
+      "searches": "{{count}} searches",
+      "errors": "{{count}} errors"
+    },
+    "live": {
+      "editedFiles": "Edited {{count}} files",
+      "editedFiles_one": "Edited {{count}} file",
+      "editedFiles_other": "Edited {{count}} files",
+      "exploredFiles": "Explored {{count}} files",
+      "exploredFiles_one": "Explored {{count}} file",
+      "exploredFiles_other": "Explored {{count}} files",
+      "searches": "Searched {{count}} times",
+      "searches_one": "Searched {{count}} time",
+      "searches_other": "Searched {{count}} times",
+      "commands": "Ran {{count}} commands",
+      "commands_one": "Ran {{count}} command",
+      "commands_other": "Ran {{count}} commands",
+      "toolCalls": "Used {{count}} tools",
+      "toolCalls_one": "Used {{count}} tool",
+      "toolCalls_other": "Used {{count}} tools",
+      "errors": "{{count}} errors",
+      "errors_one": "{{count}} error",
+      "errors_other": "{{count}} errors",
+      "subagentCompleted": "Subagent finished",
+      "compactCompleted": "Compacted context",
+      "thoughtCompleted": "Thought through next step",
+      "runningEdit": "Editing file",
+      "runningEditTarget": "Editing {{target}}",
+      "runningRead": "Reading file",
+      "runningReadTarget": "Reading {{target}}",
+      "runningSearch": "Searching",
+      "runningSearchTarget": "Searching {{target}}",
+      "runningCommand": "Running command",
+      "runningCommandTarget": "Running {{target}}",
+      "runningSubagent": "Running subagent"
+    },
+    "noSteps": "No detailed steps recorded."
+  },
+  "tools": {
+    "settings": "Tool Settings",
+    "error": "Tool Error",
+    "result": "Tool Result",
+    "viewParams": "View input parameters",
+    "viewRawParams": "View raw parameters",
+    "viewDiff": "View edit diff for",
+    "creatingFile": "Creating new file:",
+    "updatingTodo": "Updating Todo List",
+    "read": "Read",
+    "readFile": "Read file",
+    "updateTodo": "Update todo list",
+    "readTodo": "Read todo list",
+    "searchResults": "results"
+  },
+  "search": {
+    "found": "Found {{count}} {{type}}",
+    "file": "file",
+    "files": "files",
+    "pattern": "pattern:",
+    "in": "in:"
+  },
+  "fileOperations": {
+    "updated": "File updated successfully",
+    "created": "File created successfully",
+    "written": "File written successfully",
+    "diff": "Diff",
+    "newFile": "New File",
+    "viewContent": "View file content",
+    "viewFullOutput": "View full output ({{count}} chars)",
+    "contentDisplayed": "The file content is displayed in the diff view above"
+  },
+  "interactive": {
+    "title": "Interactive Prompt",
+    "waiting": "Waiting for your response in the CLI",
+    "instruction": "Please select an option in your terminal where PilotDeck is running.",
+    "selectedOption": "✓ PilotDeck selected option {{number}}",
+    "instructionDetail": "In the CLI, you would select this option interactively using arrow keys or by typing the number."
+  },
+  "thinking": {
+    "title": "Thinking...",
+    "emoji": "💭 Thinking..."
+  },
+  "json": {
+    "response": "JSON Response"
+  },
+  "permissions": {
+    "grant": "Grant {{tool}} for this chat",
+    "added": "Granted for this chat",
+    "addTo": "Temporarily allows {{entry}} in this chat only.",
+    "retry": "Retry in this chat to use the tool.",
+    "error": "Unable to grant this chat permission. Please try again.",
+    "openSettings": "Open settings"
+  },
+  "todo": {
+    "updated": "Todo list has been updated successfully",
+    "current": "Current Todo List"
+  },
+  "plan": {
+    "viewPlan": "📋 View implementation plan",
+    "title": "Implementation Plan",
+    "exitMode": {
+      "header": "Plan is ready",
+      "subtitle": "Confirming will exit Plan mode and let the model execute the plan.",
+      "syncingPlan": "Plan content is syncing, please confirm whether to execute.",
+      "feedbackLabel": "Optional notes for continued discussion",
+      "feedbackPlaceholder": "e.g. Add a test plan, or do not modify the database yet.",
+      "continueButton": "Continue Discussion",
+      "executeButton": "Execute Plan"
+    },
+    "approvedCard": {
+      "viewPlan": "View Plan"
+    }
+  },
+  "usageLimit": {
+    "resetAt": "Usage limit reached. Your limit will reset at **{{time}} {{timezone}}** - {{date}}"
+  },
+  "codex": {
+    "permissionMode": "Permission Mode",
+    "modes": {
+      "default": "Default Mode",
+      "acceptEdits": "Accept Edits",
+      "bypassPermissions": "Bypass Permissions",
+      "plan": "Plan Mode"
+    },
+    "descriptions": {
+      "default": "Only trusted commands (ls, cat, grep, git status, etc.) run automatically. Other commands are skipped. Can write to workspace.",
+      "acceptEdits": "All commands run automatically within the workspace. Full auto mode with sandboxed execution.",
+      "bypassPermissions": "Full system access with no restrictions. All commands run automatically with full disk and network access. Use with caution.",
+      "plan": "Planning mode - no commands are executed"
+    },
+    "technicalDetails": "Technical details"
+  },
+  "gemini": {
+    "permissionMode": "Gemini Permission Mode",
+    "description": "Control how Gemini CLI handles operation approvals.",
+    "modes": {
+      "default": {
+        "title": "Standard (Ask for Approval)",
+        "description": "Gemini will prompt for approval before executing commands, writing files, and fetching web resources."
+      },
+      "autoEdit": {
+        "title": "Auto Edit (Skip File Approvals)",
+        "description": "Gemini will automatically approve file edits and web fetches, but will still prompt for shell commands."
+      },
+      "yolo": {
+        "title": "YOLO (Bypass All Permissions)",
+        "description": "Gemini will execute all operations without asking for approval. Exercise caution."
+      }
+    }
+  },
+  "input": {
+    "placeholder": "Type / for commands, @ for files, or ask {{provider}} anything...",
+    "placeholderDefault": "Type your message...",
+    "disabled": "Input disabled",
+    "attachFiles": "Attach files",
+    "attachImages": "Attach images",
+    "mentionFile": "Mention a file",
+    "slashCommand": "Run a slash command",
+    "send": "Send",
+    "stop": "Stop",
+    "hintText": {
+      "ctrlEnter": "Ctrl+Enter to send • Shift+Enter for new line • Tab to change modes • / for slash commands",
+      "enter": "Enter to send • Shift+Enter for new line • Tab to change modes • / for slash commands"
+    },
+    "clickToChangeMode": "Click to change permission mode (or press Tab in input)",
+    "showAllCommands": "Show all commands",
+    "clearInput": "Clear input",
+    "scrollToBottom": "Scroll to bottom",
+    "permissions": {
+      "default": "Default Permissions",
+      "defaultDescription": "Ask before risky operations",
+      "bypassPermissions": "Full Access",
+      "bypassPermissionsDescription": "Skip confirmations and allow full access",
+      "change": "Select permission mode"
+    },
+    "runModes": {
+      "agent": "Agent",
+      "plan": "Plan",
+      "change": "Select run mode",
+      "agentDescription": "Directly process and execute the task",
+      "planDescription": "Generate a plan first, then execute after confirmation"
+    }
+  },
+  "commandMenu": {
+    "empty": "No commands available",
+    "groups": {
+      "pinned": "Pinned",
+      "frequent": "Frequently used",
+      "builtin": "Built-in",
+      "project": "Project",
+      "user": "User",
+      "other": "Other"
+    }
+  },
+  "thinkingMode": {
+    "selector": {
+      "title": "Thinking Mode",
+      "description": "Extended thinking gives PilotDeck more time to evaluate alternatives",
+      "active": "Active",
+      "tip": "Higher thinking modes take more time but provide more thorough analysis"
+    },
+    "modes": {
+      "none": {
+        "name": "Standard",
+        "description": "Regular PilotDeck response",
+        "prefix": ""
+      },
+      "think": {
+        "name": "Think",
+        "description": "Basic extended thinking",
+        "prefix": "think"
+      },
+      "thinkHard": {
+        "name": "Think Hard",
+        "description": "More thorough evaluation",
+        "prefix": "think hard"
+      },
+      "thinkHarder": {
+        "name": "Think Harder",
+        "description": "Deep analysis with alternatives",
+        "prefix": "think harder"
+      },
+      "ultrathink": {
+        "name": "Ultrathink",
+        "description": "Maximum thinking budget",
+        "prefix": "ultrathink"
+      }
+    },
+    "buttonTitle": "Thinking mode: {{mode}}"
+  },
+  "providerSelection": {
+    "title": "Choose Your AI Assistant",
+    "description": "Select a provider to start a new conversation",
+    "selectModel": "Select Model",
+    "providerInfo": {
+      "anthropic": "by Anthropic",
+      "openai": "by OpenAI",
+      "cursorEditor": "AI Code Editor",
+      "google": "by Google"
+    },
+    "readyPrompt": {
+      "pilotdeck": "Ready to use PilotDeck with {{model}}. Start typing your message below.",
+      "cursor": "Ready to use Cursor with {{model}}. Start typing your message below.",
+      "codex": "Ready to use Codex with {{model}}. Start typing your message below.",
+      "gemini": "Ready to use Gemini with {{model}}. Start typing your message below.",
+      "default": "Select a provider above to begin"
+    }
+  },
+  "session": {
+    "continue": {
+      "title": "Continue your conversation",
+      "description": "Ask questions about your code, request changes, or get help with development tasks"
+    },
+    "loading": {
+      "olderMessages": "Loading older messages...",
+      "sessionMessages": "Loading session messages..."
+    },
+    "messages": {
+      "showingOf": "Showing {{shown}} of {{total}} messages",
+      "scrollToLoad": "Scroll up to load more",
+      "showingLast": "Showing last {{count}} messages ({{total}} total)",
+      "loadEarlier": "Load earlier messages",
+      "loadAll": "Load all messages",
+      "loadingAll": "Loading all messages...",
+      "allLoaded": "All messages loaded",
+      "perfWarning": "All messages loaded — scrolling may be slower. Click \"Scroll to bottom\" to restore performance."
+    }
+  },
+  "shell": {
+    "selectProject": {
+      "title": "Select a Project",
+      "description": "Choose a project to open an interactive shell in that directory"
+    },
+    "status": {
+      "newSession": "New Session",
+      "initializing": "Initializing...",
+      "restarting": "Restarting..."
+    },
+    "actions": {
+      "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect from shell",
+      "restart": "Restart",
+      "restartTitle": "Restart Shell (disconnect first)",
+      "connect": "Continue in Shell",
+      "connectTitle": "Connect to shell"
+    },
+    "loading": "Loading terminal...",
+    "connecting": "Connecting to shell...",
+    "startSession": "Start a new PilotDeck session",
+    "resumeSession": "Resume session: {{displayName}}...",
+    "runCommand": "Run {{command}} in {{projectName}}",
+    "startCli": "Starting PilotDeck CLI in {{projectName}}",
+    "defaultCommand": "command"
+  },
+  "pilotdeckStatus": {
+    "actions": {
+      "thinking": "Thinking",
+      "processing": "Processing",
+      "analyzing": "Analyzing",
+      "working": "Working",
+      "computing": "Computing",
+      "reasoning": "Reasoning"
+    },
+    "state": {
+      "live": "Live",
+      "paused": "Paused"
+    },
+    "elapsed": {
+      "seconds": "{{count}}s",
+      "minutesSeconds": "{{minutes}}m {{seconds}}s",
+      "label": "{{time}} elapsed",
+      "startingNow": "Starting now"
+    },
+    "controls": {
+      "stopGeneration": "Stop Generation",
+      "pressEscToStop": "Press Esc anytime to stop"
+    },
+    "providers": {
+      "assistant": "Assistant"
+    }
+  },
+  "projectSelection": {
+    "startChatWithProvider": "Select a project to start chatting with {{provider}}"
+  },
+  "tasks": {
+    "nextTaskPrompt": "Start the next task"
+  },
+  "composer": {
+    "placeholder": "Tell PilotDeck what you want to get done…",
+    "welcomePlaceholder": "Tell PilotDeck what you want to get done…"
+  }
+}

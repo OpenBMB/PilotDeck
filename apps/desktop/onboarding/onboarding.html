@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <title>PilotDeck — 初始化</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a22;
+      --panel-2: #1d222d;
+      --border: #2a3140;
+      --text: #e7eaf0;
+      --text-dim: #9aa3b2;
+      --accent: #4f9cff;
+      --accent-hover: #6aaeff;
+      --error: #ff6b6b;
+      --success: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-app-region: drag;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      -webkit-app-region: no-drag;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .subtitle {
+      margin: 0 0 24px;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+    .row { margin-bottom: 16px; }
+    .row label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+    .row input,
+    .row select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .row input:focus,
+    .row select:focus {
+      border-color: var(--accent);
+    }
+    .row input.error,
+    .row select.error {
+      border-color: var(--error);
+    }
+    .key-wrap {
+      position: relative;
+    }
+    .key-wrap input {
+      padding-right: 64px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .key-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: 0;
+      color: var(--text-dim);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .key-toggle:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .preset-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .preset-btn {
+      padding: 6px 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-app-region: no-drag;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .hint {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    button.primary,
+    button.secondary {
+      flex: 1;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-app-region: no-drag;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled {
+      background: #2a3a55;
+      color: var(--text-dim);
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover { color: var(--text); border-color: var(--text-dim); }
+    .status {
+      margin-top: 16px;
+      min-height: 18px;
+      font-size: 12px;
+    }
+    .status.error { color: var(--error); }
+    .status.info { color: var(--text-dim); }
+    .status.success { color: var(--success); }
+
+    .test-results {
+      margin-top: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+      display: none;
+    }
+    .test-results.visible { display: block; }
+    .test-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .test-row:last-child { border-bottom: 0; }
+    .test-icon {
+      flex-shrink: 0;
+      width: 16px;
+      text-align: center;
+      line-height: 1.4;
+    }
+    .test-label {
+      flex-shrink: 0;
+      width: 64px;
+      color: var(--text-dim);
+    }
+    .test-detail {
+      flex: 1;
+      word-break: break-word;
+    }
+    .test-hint {
+      margin-top: 2px;
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+    .level-ok .test-icon { color: var(--success); }
+    .level-warning .test-icon { color: #f59e0b; }
+    .level-error .test-icon { color: var(--error); }
+    .level-skipped .test-icon { color: var(--text-dim); }
+    .test-summary {
+      padding: 8px 12px;
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+    }
+    .test-summary.overall-ok { color: var(--success); }
+    .test-summary.overall-warning { color: #f59e0b; }
+    .test-summary.overall-error { color: var(--error); }
+    button.test-btn {
+      padding: 10px 16px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-app-region: no-drag;
+    }
+    button.test-btn:hover { background: rgba(79,156,255,0.08); }
+    button.test-btn:disabled {
+      border-color: var(--border);
+      color: var(--text-dim);
+      cursor: not-allowed;
+      background: transparent;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--text-dim);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>初始化 PilotDeck</h1>
+    <p class="subtitle">配置一个 OpenAI / Anthropic 兼容的上游，保存后会写入 <code>~/.pilotdeck/pilotdeck.yaml</code>。</p>
+
+    <div class="preset-row">
+      <button type="button" class="preset-btn" data-preset="anthropic">Anthropic 官方</button>
+      <button type="button" class="preset-btn" data-preset="openrouter">OpenRouter</button>
+      <button type="button" class="preset-btn" data-preset="minimax">MiniMax</button>
+      <button type="button" class="preset-btn" data-preset="openai">OpenAI</button>
+    </div>
+
+    <div class="row">
+      <label for="provider-type">协议类型</label>
+      <select id="provider-type">
+        <option value="anthropic">anthropic（/v1/messages）</option>
+        <option value="openai-chat">openai-chat（/chat/completions）</option>
+        <option value="openai-responses">openai-responses（/responses）</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="base-url">API Base URL</label>
+      <input id="base-url" type="text" placeholder="https://api.anthropic.com" autocomplete="off" spellcheck="false" />
+      <div class="hint">不要带尾部 <code>/v1</code>，由协议类型自动拼接。</div>
+    </div>
+
+    <div class="row">
+      <label for="api-key">API Key</label>
+      <div class="key-wrap">
+        <input id="api-key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+        <button type="button" class="key-toggle" id="key-toggle">显示</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label for="model-name">模型 ID</label>
+      <input id="model-name" type="text" placeholder="claude-sonnet-4-5-20250929" autocomplete="off" spellcheck="false" />
+      <div class="hint">必须是上游实际服务的模型 ID。</div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="secondary" id="quit-btn">退出</button>
+      <button type="button" class="test-btn" id="test-btn">测试连接</button>
+      <button type="button" class="primary" id="save-btn">保存并启动</button>
+    </div>
+
+    <div class="status info" id="status"></div>
+    <div class="test-results" id="test-results"></div>
+  </div>
+
+  <script>
+    const PRESETS = {
+      anthropic: {
+        type: "anthropic",
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-sonnet-4-5-20250929",
+      },
+      openrouter: {
+        type: "openai-chat",
+        baseUrl: "https://openrouter.ai/api",
+        model: "anthropic/claude-sonnet-4.5",
+      },
+      minimax: {
+        type: "anthropic",
+        baseUrl: "https://api.minimaxi.com/anthropic",
+        model: "MiniMax-M2.7-highspeed",
+      },
+      openai: {
+        type: "openai-chat",
+        baseUrl: "https://api.openai.com",
+        model: "gpt-4o",
+      },
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const typeEl = $("provider-type");
+    const baseEl = $("base-url");
+    const keyEl = $("api-key");
+    const modelEl = $("model-name");
+    const statusEl = $("status");
+    const saveBtn = $("save-btn");
+    const testBtn = $("test-btn");
+    const quitBtn = $("quit-btn");
+    const keyToggle = $("key-toggle");
+    const testResultsEl = $("test-results");
+
+    let lastTestPassed = false;
+
+    document.querySelectorAll(".preset-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const p = PRESETS[btn.dataset.preset];
+        if (!p) return;
+        typeEl.value = p.type;
+        baseEl.value = p.baseUrl;
+        modelEl.value = p.model;
+        baseEl.classList.remove("error");
+        modelEl.classList.remove("error");
+        lastTestPassed = false;
+        hideTestResults();
+        showStatus(`已套用 ${btn.textContent} 预设，请填入 API Key。`, "info");
+        keyEl.focus();
+      });
+    });
+
+    [typeEl, baseEl, keyEl, modelEl].forEach((el) => {
+      el.addEventListener("input", () => { lastTestPassed = false; });
+    });
+
+    keyToggle.addEventListener("click", () => {
+      const show = keyEl.type === "password";
+      keyEl.type = show ? "text" : "password";
+      keyToggle.textContent = show ? "隐藏" : "显示";
+    });
+
+    function showStatus(msg, kind) {
+      statusEl.textContent = msg;
+      statusEl.className = `status ${kind || "info"}`;
+    }
+
+    function hideTestResults() {
+      testResultsEl.classList.remove("visible");
+      testResultsEl.innerHTML = "";
+    }
+
+    const LEVEL_ICONS = { ok: "\u2713", warning: "\u26A0", error: "\u2717", skipped: "\u2014" };
+    const OVERALL_LABELS = { ok: "全部通过", warning: "有警告，但可用", error: "存在错误" };
+
+    function renderTestResults(result) {
+      let html = `<div class="test-summary overall-${result.overall}">${OVERALL_LABELS[result.overall] || result.overall}</div>`;
+      for (const c of result.checks) {
+        html += `<div class="test-row level-${c.level}">`;
+        html += `<span class="test-icon">${LEVEL_ICONS[c.level] || "?"}</span>`;
+        html += `<span class="test-label">${esc(c.label)}</span>`;
+        html += `<span class="test-detail">${esc(c.detail)}`;
+        if (c.hint) html += `<div class="test-hint">${esc(c.hint)}</div>`;
+        if (c.durationMs != null) html += `<div class="test-hint">${c.durationMs}ms</div>`;
+        html += `</span></div>`;
+      }
+      testResultsEl.innerHTML = html;
+      testResultsEl.classList.add("visible");
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function validate() {
+      let ok = true;
+      [baseEl, keyEl, modelEl].forEach((el) => el.classList.remove("error"));
+      if (!baseEl.value.trim()) { baseEl.classList.add("error"); ok = false; }
+      if (!keyEl.value.trim())  { keyEl.classList.add("error");  ok = false; }
+      if (!modelEl.value.trim()) { modelEl.classList.add("error"); ok = false; }
+      return ok;
+    }
+
+    function getPayload() {
+      return {
+        providerType: typeEl.value,
+        baseUrl: baseEl.value.trim(),
+        apiKey: keyEl.value,
+        model: modelEl.value.trim(),
+      };
+    }
+
+    async function runTest() {
+      if (!validate()) {
+        showStatus("请先填写所有字段。", "error");
+        return null;
+      }
+      testBtn.disabled = true;
+      saveBtn.disabled = true;
+      hideTestResults();
+      statusEl.innerHTML = '<span class="spinner"></span>正在测试连接…';
+      statusEl.className = "status info";
+      try {
+        const result = await window.pilotdeckOnboarding.testProvider(getPayload());
+        renderTestResults(result);
+        if (result.overall === "ok") {
+          lastTestPassed = true;
+          showStatus("测试通过！", "success");
+        } else if (result.overall === "warning") {
+          lastTestPassed = true;
+          showStatus("有警告但可继续使用。", "info");
+        } else {
+          lastTestPassed = false;
+          showStatus("测试未通过，请检查配置。", "error");
+        }
+        return result;
+      } catch (e) {
+        lastTestPassed = false;
+        showStatus(`测试失败：${e && e.message || String(e)}`, "error");
+        return null;
+      } finally {
+        testBtn.disabled = false;
+        saveBtn.disabled = false;
+      }
+    }
+
+    testBtn.addEventListener("click", runTest);
+
+    saveBtn.addEventListener("click", async () => {
+      if (!validate()) {
+        showStatus("请填写所有字段。", "error");
+        return;
+      }
+
+      if (!lastTestPassed) {
+        const result = await runTest();
+        if (!result) return;
+        if (result.overall === "error") {
+          showStatus("测试未通过。如仍要保存，请再次点击「保存并启动」。", "error");
+          lastTestPassed = true;
+          return;
+        }
+      }
+
+      saveBtn.disabled = true;
+      testBtn.disabled = true;
+      showStatus("正在保存配置…", "info");
+      try {
+        const res = await window.pilotdeckOnboarding.save(getPayload());
+        if (res && res.ok) {
+          showStatus("已保存，正在启动 PilotDeck…", "success");
+        } else {
+          saveBtn.disabled = false;
+          testBtn.disabled = false;
+          showStatus(`保存失败：${(res && res.error) || "未知错误"}`, "error");
+        }
+      } catch (e) {
+        saveBtn.disabled = false;
+        testBtn.disabled = false;
+        showStatus(`保存失败：${e && e.message || String(e)}`, "error");
+      }
+    });
+
+    quitBtn.addEventListener("click", () => {
+      window.pilotdeckOnboarding.cancel();
+    });
+
+    keyEl.focus();
+  </script>
+</body>
+</html>

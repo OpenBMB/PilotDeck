@@ -1,0 +1,380 @@
+{
+  "codeBlock": {
+    "copy": "复制",
+    "copied": "已复制",
+    "copyCode": "复制代码"
+  },
+  "copyMessage": {
+    "copy": "复制消息",
+    "copied": "消息已复制",
+    "selectFormat": "选择复制格式",
+    "copyAsMarkdown": "复制为 Markdown",
+    "copyAsText": "复制为纯文本"
+  },
+  "messageTypes": {
+    "user": "U",
+    "error": "错误",
+    "tool": "工具",
+    "claude": "Claude",
+    "pilotdeck": "PilotDeck",
+    "cursor": "Cursor",
+    "codex": "Codex",
+    "gemini": "Gemini"
+  },
+  "toolUseError": {
+    "title": "工具错误",
+    "description": ""
+  },
+  "interrupted": {
+    "label": "已被用户暂停"
+  },
+  "compact": {
+    "label": "上下文已压缩",
+    "level": "{{level}} 级",
+    "tokens": "压缩前 {{tokens}} tokens",
+    "stages": {
+      "context_collapse": "上下文折叠",
+      "session_memory": "会话记忆压缩",
+      "summary": "摘要压缩",
+      "reactive": "响应式压缩",
+      "overflow_recovery": "溢出恢复重试"
+    }
+  },
+  "working": {
+    "default": "处理中",
+    "processing": "处理中",
+    "thinking": "思考中",
+    "generating": "正在生成回复",
+    "compacting": "正在压缩上下文...",
+    "compactingLevel": "正在触发 {{level}} 级压缩：{{label}}",
+    "waitingForPermission": "等待授权"
+  },
+  "process": {
+    "summary": {
+      "processed": "已处理 {{duration}}",
+      "completed": "过程已完成",
+      "failed": "过程失败",
+      "cancelled": "过程已停止"
+    },
+    "waitingForModel": "等待模型响应",
+    "step": "步骤",
+    "metrics": {
+      "toolCalls": "{{count}} 次工具调用",
+      "searches": "{{count}} 次搜索",
+      "errors": "{{count}} 个错误"
+    },
+    "live": {
+      "editedFiles": "已编辑 {{count}} 个文件",
+      "editedFiles_one": "已编辑 {{count}} 个文件",
+      "editedFiles_other": "已编辑 {{count}} 个文件",
+      "exploredFiles": "已探索 {{count}} 个文件",
+      "exploredFiles_one": "已探索 {{count}} 个文件",
+      "exploredFiles_other": "已探索 {{count}} 个文件",
+      "searches": "已搜索 {{count}} 次",
+      "searches_one": "已搜索 {{count}} 次",
+      "searches_other": "已搜索 {{count}} 次",
+      "commands": "已运行 {{count}} 条命令",
+      "commands_one": "已运行 {{count}} 条命令",
+      "commands_other": "已运行 {{count}} 条命令",
+      "toolCalls": "已调用 {{count}} 个工具",
+      "toolCalls_one": "已调用 {{count}} 个工具",
+      "toolCalls_other": "已调用 {{count}} 个工具",
+      "errors": "{{count}} 个错误",
+      "errors_one": "{{count}} 个错误",
+      "errors_other": "{{count}} 个错误",
+      "subagentCompleted": "子任务已完成",
+      "compactCompleted": "已压缩上下文",
+      "thoughtCompleted": "已完成思考",
+      "runningEdit": "正在编辑文件",
+      "runningEditTarget": "正在编辑 {{target}}",
+      "runningRead": "正在读取文件",
+      "runningReadTarget": "正在读取 {{target}}",
+      "runningSearch": "正在搜索",
+      "runningSearchTarget": "正在搜索 {{target}}",
+      "runningCommand": "正在运行命令",
+      "runningCommandTarget": "正在运行 {{target}}",
+      "runningSubagent": "正在运行子任务"
+    },
+    "noSteps": "没有记录详细步骤。"
+  },
+  "tools": {
+    "settings": "工具设置",
+    "error": "工具错误",
+    "result": "工具结果",
+    "viewParams": "查看输入参数",
+    "viewRawParams": "查看原始参数",
+    "viewDiff": "查看编辑差异",
+    "creatingFile": "创建新文件：",
+    "updatingTodo": "更新待办事项",
+    "read": "读取",
+    "readFile": "读取文件",
+    "updateTodo": "更新待办列表",
+    "readTodo": "读取待办列表",
+    "searchResults": "结果"
+  },
+  "search": {
+    "found": "找到 {{count}} 个{{type}}",
+    "file": "文件",
+    "files": "文件",
+    "pattern": "模式：",
+    "in": "在："
+  },
+  "fileOperations": {
+    "updated": "文件更新成功",
+    "created": "文件创建成功",
+    "written": "文件写入成功",
+    "diff": "差异",
+    "newFile": "新文件",
+    "viewContent": "查看文件内容",
+    "viewFullOutput": "查看完整输出（{{count}} 个字符）",
+    "contentDisplayed": "文件内容显示在上面的差异视图中"
+  },
+  "interactive": {
+    "title": "交互式提示",
+    "waiting": "等待您在 CLI 中响应",
+    "instruction": "请在 PilotDeck 运行的终端中选择一个选项。",
+    "selectedOption": "✓ PilotDeck 选择了选项 {{number}}",
+    "instructionDetail": "在 CLI 中，您可以使用方向键或输入数字来交互式地选择此选项。"
+  },
+  "thinking": {
+    "title": "思考中...",
+    "emoji": "💭 思考中..."
+  },
+  "json": {
+    "response": "JSON 响应"
+  },
+  "permissions": {
+    "grant": "在本聊天中授权 {{tool}}",
+    "added": "已在本聊天中授权",
+    "addTo": "仅在本聊天中临时允许 {{entry}}。",
+    "retry": "在本聊天中重试即可使用该工具。",
+    "error": "无法授予本聊天权限。请重试。",
+    "openSettings": "打开设置"
+  },
+  "todo": {
+    "updated": "待办列表已成功更新",
+    "current": "当前待办列表"
+  },
+  "plan": {
+    "viewPlan": "📋 查看实施计划",
+    "title": "实施计划",
+    "exitMode": {
+      "header": "计划已准备好",
+      "subtitle": "确认后会退出 Plan 模式，并让模型开始按计划执行。",
+      "syncingPlan": "计划正文正在同步，请确认是否执行。",
+      "feedbackLabel": "继续讨论时可以补充说明",
+      "feedbackPlaceholder": "例如：再补充测试方案，或者先不要改数据库。",
+      "continueButton": "发送继续交流消息",
+      "executeButton": "按计划执行"
+    },
+    "approvedCard": {
+      "viewPlan": "查看计划"
+    }
+  },
+  "usageLimit": {
+    "resetAt": "使用限制已达到。您的限制将在 **{{time}} {{timezone}}** - {{date}} 重置"
+  },
+  "codex": {
+    "permissionMode": "权限模式",
+    "modes": {
+      "default": "默认模式",
+      "acceptEdits": "编辑模式",
+      "bypassPermissions": "无限制模式",
+      "plan": "计划模式"
+    },
+    "descriptions": {
+      "default": "只有受信任的命令（ls、cat、grep、git status 等）自动运行。其他命令将被跳过。可以写入工作区。",
+      "acceptEdits": "工作区内的所有命令自动运行。完全自动模式，具有沙盒执行功能。",
+      "bypassPermissions": "完全的系统访问，无限制。所有命令自动运行，具有完整的磁盘和网络访问权限。请谨慎使用。",
+      "plan": "计划模式 - 不执行任何命令"
+    },
+    "technicalDetails": "技术细节"
+  },
+  "input": {
+    "placeholder": "输入 / 调用命令，@ 选择文件，或向 {{provider}} 提问...",
+    "placeholderDefault": "输入您的消息...",
+    "disabled": "输入已禁用",
+    "attachFile": "上传附件",
+    "attachFiles": "附加文件",
+    "attachImages": "附加图片",
+    "mentionFile": "引用文件",
+    "slashCommand": "运行斜杠命令",
+    "send": "发送",
+    "stop": "停止",
+    "hintText": {
+      "ctrlEnter": "Ctrl+Enter 发送 • Shift+Enter 换行 • Tab 切换模式 • / 斜杠命令",
+      "enter": "Enter 发送 • Shift+Enter 换行 • Tab 切换模式 • / 斜杠命令"
+    },
+    "clickToChangeMode": "点击更改权限模式（或在输入框中按 Tab）",
+    "showAllCommands": "显示所有命令",
+    "clearInput": "清空输入",
+    "scrollToBottom": "滚动到底部",
+    "permissions": {
+      "default": "默认权限",
+      "defaultDescription": "需要风险操作时先询问",
+      "bypassPermissions": "完全访问权限",
+      "bypassPermissionsDescription": "跳过确认并允许完全访问",
+      "change": "选择权限模式"
+    },
+    "runModes": {
+      "agent": "智能体",
+      "plan": "计划",
+      "change": "选择运行模式",
+      "agentDescription": "直接处理并执行任务",
+      "planDescription": "先产出计划，确认后再执行"
+    }
+  },
+  "commandMenu": {
+    "empty": "暂无可用命令",
+    "groups": {
+      "pinned": "常用",
+      "frequent": "最常用",
+      "builtin": "内置",
+      "project": "项目",
+      "user": "用户",
+      "other": "其他"
+    }
+  },
+  "thinkingMode": {
+    "selector": {
+      "title": "思考模式",
+      "description": "扩展思考给 PilotDeck 更多时间来评估替代方案",
+      "active": "激活",
+      "tip": "更高的思考模式需要更多时间，但提供更彻底的分析"
+    },
+    "modes": {
+      "none": {
+        "name": "标准",
+        "description": "常规 PilotDeck 响应",
+        "prefix": ""
+      },
+      "think": {
+        "name": "思考",
+        "description": "基本扩展思考",
+        "prefix": "思考"
+      },
+      "thinkHard": {
+        "name": "深入思考",
+        "description": "更彻底的评估",
+        "prefix": "深入思考"
+      },
+      "thinkHarder": {
+        "name": "更深入思考",
+        "description": "考虑替代方案的深度分析",
+        "prefix": "更深入思考"
+      },
+      "ultrathink": {
+        "name": "超级思考",
+        "description": "最大思考预算",
+        "prefix": "超级思考"
+      }
+    },
+    "buttonTitle": "思考模式：{{mode}}"
+  },
+  "providerSelection": {
+    "title": "选择您的 AI 助手",
+    "description": "选择一个供应商以开始新对话",
+    "selectModel": "选择模型",
+    "providerInfo": {
+      "anthropic": "由 Anthropic 提供",
+      "openai": "由 OpenAI 提供",
+      "cursorEditor": "AI 代码编辑器",
+      "google": "由 Google 提供"
+    },
+    "readyPrompt": {
+      "claude": "已就绪：使用 {{model}} 的 PilotDeck。请在下方开始输入您的消息。",
+      "cursor": "准备好使用带有 {{model}} 的 Cursor。请在下方开始输入您的消息。",
+      "codex": "准备好使用带有 {{model}} 的 Codex。请在下方开始输入您的消息。",
+      "gemini": "准备好使用带有 {{model}} 的 Gemini。请在下方开始输入您的消息。",
+      "pilotdeck": "准备好使用带有 {{model}} 的 PilotDeck。请在下方开始输入您的消息。",
+      "default": "请在上方选择一个提供者以开始"
+    }
+  },
+  "session": {
+    "continue": {
+      "title": "继续您的对话",
+      "description": "询问有关代码的问题、请求更改或获取开发任务的帮助"
+    },
+    "loading": {
+      "olderMessages": "正在加载更早的消息...",
+      "sessionMessages": "正在加载会话消息..."
+    },
+    "messages": {
+      "showingOf": "显示 {{shown}} / {{total}} 条消息",
+      "scrollToLoad": "向上滚动以加载更多",
+      "showingLast": "显示最近 {{count}} 条消息（共 {{total}} 条）",
+      "loadEarlier": "加载更早的消息",
+      "loadAll": "加载全部消息",
+      "loadingAll": "正在加载全部消息...",
+      "allLoaded": "全部消息已加载",
+      "perfWarning": "已加载全部消息 - 滚动可能变慢。点击「滚动到底部」恢复性能。"
+    }
+  },
+  "shell": {
+    "selectProject": {
+      "title": "选择项目",
+      "description": "选择一个项目以在该目录中打开交互式 Shell"
+    },
+    "status": {
+      "newSession": "新会话",
+      "initializing": "初始化中...",
+      "restarting": "重启中..."
+    },
+    "actions": {
+      "disconnect": "断开连接",
+      "disconnectTitle": "断开 Shell 连接",
+      "restart": "重启",
+      "restartTitle": "重启 Shell（请先断开连接）",
+      "connect": "在 Shell 中继续",
+      "connectTitle": "连接到 Shell"
+    },
+    "loading": "正在加载终端...",
+    "connecting": "正在连接到 Shell...",
+    "startSession": "启动新的 PilotDeck 会话",
+    "resumeSession": "恢复会话：{{displayName}}...",
+    "runCommand": "在 {{projectName}} 中运行 {{command}}",
+    "startCli": "在 {{projectName}} 中启动 PilotDeck CLI",
+    "defaultCommand": "命令"
+  },
+  "pilotdeckStatus": {
+    "actions": {
+      "thinking": "Thinking",
+      "processing": "Processing",
+      "analyzing": "Analyzing",
+      "working": "Working",
+      "computing": "Computing",
+      "reasoning": "Reasoning"
+    },
+    "state": {
+      "live": "Live",
+      "paused": "Paused"
+    },
+    "elapsed": {
+      "seconds": "{{count}}s",
+      "minutesSeconds": "{{minutes}}m {{seconds}}s",
+      "label": "{{time}} elapsed",
+      "startingNow": "Starting now"
+    },
+    "controls": {
+      "stopGeneration": "Stop Generation",
+      "pressEscToStop": "Press Esc anytime to stop"
+    },
+    "providers": {
+      "assistant": "Assistant"
+    }
+  },
+  "projectSelection": {
+    "startChatWithProvider": "选择一个项目以开始与 {{provider}} 聊天"
+  },
+  "tasks": {
+    "nextTaskPrompt": "开始下一个任务"
+  },
+  "composer": {
+    "placeholder": "告诉 PilotDeck 你想完成什么…",
+    "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…"
+  },
+  "welcome": {
+    "greetingWithProject": "今天想做点什么？",
+    "noProject": "从左侧选择一个项目开始"
+  }
+}

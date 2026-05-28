@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-electron/
+resources/node-bin/
+resources/bun-bin/
+resources/pilotdeck-memory-core-bundle.tar
+*.log
+.DS_Store
