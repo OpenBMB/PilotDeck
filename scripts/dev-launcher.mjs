@@ -22,10 +22,14 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+
+// On Windows npm is actually npm.cmd — spawning plain 'npm' fails with ENOENT.
+// The shell: true flag also lets Windows find the batch wrapper.
+const npmCommand = platform() === 'win32' ? 'npm.cmd' : 'npm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -120,9 +124,9 @@ async function main() {
   };
 
   const child = spawn(
-    'npm',
+    npmCommand,
     ['--workspace', 'ui', 'run', 'dev:concurrent'],
-    { cwd: repoRoot, env, stdio: 'inherit' },
+    { cwd: repoRoot, env, stdio: 'inherit', shell: platform() === 'win32' },
   );
 
   const forward = (signal) => {
