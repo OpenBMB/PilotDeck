@@ -217,6 +217,7 @@ router.post('/test-connection', async (req, res) => {
   // onboarding values ('openai-chat' | 'anthropic') for compatibility.
   const normalizedType = String(providerType || '').toLowerCase();
   const isAnthropic = normalizedType === 'anthropic';
+  const normalizedBaseUrl = String(baseUrl).trim().replace(/\/+$/, '');
   const timeout = 10_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -226,7 +227,7 @@ router.post('/test-connection', async (req, res) => {
     let fetchOptions;
 
     if (isAnthropic) {
-      url = `${baseUrl.replace(/\/+$/, '')}/v1/messages`;
+      url = `${normalizedBaseUrl}/v1/messages`;
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -242,9 +243,7 @@ router.post('/test-connection', async (req, res) => {
         signal: controller.signal,
       };
     } else {
-      const base = baseUrl.replace(/\/+$/, '');
-      const hasV1 = /\/v1\/?$/i.test(base);
-      url = hasV1 ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+      url = `${normalizedBaseUrl}/chat/completions`;
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -262,14 +261,35 @@ router.post('/test-connection', async (req, res) => {
 
     const response = await fetch(url, fetchOptions);
     clearTimeout(timer);
+    const responseText = await response.text();
 
     if (response.ok) {
+      let body;
+      try {
+        body = JSON.parse(responseText);
+      } catch {
+        return res.json({
+          ok: false,
+          error: `Expected a JSON completion response but received non-JSON content from ${url}. For OpenAI-compatible endpoints, the base URL usually ends with /v1.`,
+        });
+      }
+
+      const hasCompletionShape = isAnthropic
+        ? Array.isArray(body?.content) || body?.type === 'message'
+        : Array.isArray(body?.choices);
+      if (!hasCompletionShape) {
+        return res.json({
+          ok: false,
+          error: `Endpoint returned HTTP ${response.status}, but the response was not a valid ${isAnthropic ? 'Anthropic message' : 'OpenAI chat completion'}. Check the base URL path.`,
+        });
+      }
+
       return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
     }
 
     let detail = `${response.status} ${response.statusText}`;
     try {
-      const body = await response.json();
+      const body = JSON.parse(responseText);
       if (body?.error?.message) detail = body.error.message;
       else if (body?.error?.type) detail = `${body.error.type}: ${body.error.message || ''}`;
     } catch { /* ignore parse errors */ }

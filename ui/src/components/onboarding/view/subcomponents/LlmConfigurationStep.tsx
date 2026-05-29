@@ -332,6 +332,11 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
                     autoComplete="off"
                     spellCheck={false}
                   />
+                {customProtocol === 'openai' && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    OpenAI-compatible base URLs should include the API version path, for example ending in <span className="font-mono">/v1</span>.
+                  </p>
+                )}
                 </div>
               </div>
             </div>
@@ -426,6 +431,11 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
                     autoComplete="off"
                     spellCheck={false}
                   />
+                  {(selectedProvider?.protocol ?? customProtocol) === 'openai' && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      OpenAI-compatible base URLs should include the API version path, for example ending in <span className="font-mono">/v1</span>.
+                    </p>
+                  )}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
                   Protocol: <span className="font-mono">{selectedProvider?.protocol ?? customProtocol}</span> &middot; Default URL: <span className="font-mono">{selectedDefaultUrl}</span>
