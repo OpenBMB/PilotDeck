@@ -13,7 +13,7 @@ import type {
   PilotDeckCustomRouter,
   CustomRouterRegistry,
 } from "./customRouter/customRouter.js";
-import { noopCustomRouterRegistry } from "./customRouter/customRouter.js";
+
 import { isFallbackEligible, planFallback } from "./fallback/runFallbackChain.js";
 import { applyOrchestration } from "./orchestrate/applyOrchestration.js";
 import type {
@@ -36,6 +36,10 @@ import {
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
+import { createLogger } from '../pilot/logger.js';
+import { noopCustomRouterRegistry } from './customRouter/customRouter.js';
+
+const routerLog = createLogger('router');
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -260,9 +264,13 @@ export function createRouterRuntime(
     const alreadyOrchestrating = sticky?.orchestrating === true;
     const tokenSaverActive = config.tokenSaver?.enabled === true && tokenSaverTier != null;
     const orchGate = tokenSaverActive || alreadyOrchestrating;
-    console.log(
-      `[router] decision: tier=${tokenSaverTier}, model=${selection.provider}/${selection.model}, orchGate=${orchGate}, alreadyOrch=${alreadyOrchestrating}, resolvedFrom=${resolvedFrom}`,
-    );
+    routerLog.info('decision', {
+      tier: tokenSaverTier,
+      model: `${selection.provider}/${selection.model}`,
+      orchGate,
+      alreadyOrch: alreadyOrchestrating,
+      resolvedFrom,
+    });
 
     let skillPrompt: string | undefined;
     if (
@@ -516,10 +524,13 @@ export function createRouterRuntime(
           outcome.shouldRetryZeroUsage &&
           zeroUsageAttempt < zeroUsageMax
         ) {
-          console.warn(
-            `[PilotDeck] zeroUsageRetry: empty response from ${attempt.provider}/${attempt.model} ` +
-            `(attempt ${zeroUsageAttempt}/${zeroUsageMax}, session=${ctx.sessionId})`,
-          );
+          routerLog.warn('zeroUsageRetry: empty response', {
+            provider: attempt.provider,
+            model: attempt.model,
+            attempt: zeroUsageAttempt,
+            max: zeroUsageMax,
+            session: ctx.sessionId,
+          });
           events.emit({
             type: "pilotdeck_router_zero_usage_retry",
             sessionId: ctx.sessionId,

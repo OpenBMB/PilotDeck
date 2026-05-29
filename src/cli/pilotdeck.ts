@@ -1,3 +1,5 @@
+const cliLog = createLogger('cli');
+import { createLogger } from '../pilot/logger.js';
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { createAlwaysOnManager, createApplyHandler, SessionConfigOverrides, type AlwaysOnManager, type AlwaysOnConfig } from "../always-on/index.js";
@@ -31,15 +33,15 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
     const alwaysOnLogger = {
       info: (message: string, data?: Record<string, unknown>) =>
-        console.log(`[always-on] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`),
+        cliLog.info(message, data),
       warn: (message: string, data?: Record<string, unknown>) =>
-        console.warn(`[always-on] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`),
+        cliLog.warn(message, data),
     };
     const cronLogger = {
       info: (message: string, data?: Record<string, unknown>) =>
-        console.log(`[cron] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`),
+        cliLog.info(message, data),
       warn: (message: string, data?: Record<string, unknown>) =>
-        console.warn(`[cron] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`),
+        cliLog.warn(message, data),
     };
 
     function buildAlwaysOn(config: AlwaysOnConfig | undefined): AlwaysOnManager | undefined {

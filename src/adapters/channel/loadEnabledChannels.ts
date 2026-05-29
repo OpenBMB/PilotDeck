@@ -1,3 +1,5 @@
+import { createLogger } from '../../pilot/logger.js';
+const adapterLog = createLogger('adapters');
 import type { ChannelAdapter } from "./protocol/ChannelAdapter.js";
 import type { PilotAdaptersConfig, PilotPlatformAdapterConfig } from "../../pilot/config/types.js";
 
@@ -131,7 +133,7 @@ export async function loadEnabledChannels(adapters: PilotAdaptersConfig | undefi
     try {
       channels.push(await loader(cfg));
     } catch (e) {
-      console.error(`[adapters] Failed to load channel "${key}": ${e}`);
+      adapterLog.error(`Failed to load channel "${key}"`, undefined, { channel: key, error: String(e) });
     }
   }
 
