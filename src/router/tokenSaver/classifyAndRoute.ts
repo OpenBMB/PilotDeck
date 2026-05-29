@@ -1,3 +1,5 @@
+import { createLogger } from '../../../pilot/logger.js';
+const tokenSaverLog = createLogger('token-saver');
 import type {
   CanonicalMessage,
   CanonicalModelRequest,
@@ -91,7 +93,7 @@ export async function classifyAndRoute(
         if (attempt < maxAttempts) {
           continue;
         }
-        console.warn("[token-saver] Judge returned empty after retries");
+        tokenSaverLog.warn("Judge returned empty after retries");
         return {
           tier: config.defaultTier,
           selection: defaultTier.model,

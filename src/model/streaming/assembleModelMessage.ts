@@ -1,3 +1,5 @@
+import { createLogger } from '../../../pilot/logger.js';
+const assemble_msg_log = createLogger('assemble-msg');
 import type {
   CanonicalContentBlock,
   CanonicalFinishReason,
@@ -93,7 +95,7 @@ export function assembleAssistantMessage(state: ModelMessageAssemblerState): Ass
       const textBlock = state.content[textIdx] as CanonicalTextBlock;
       const { toolCalls, remainingText } = extractTextToolCalls(textBlock.text);
       if (toolCalls.length > 0) {
-        console.log(`[text-tool-call-fallback] Extracted ${toolCalls.length} tool call(s) from assistant text`);
+        assembleMsgLog.info("text-tool-call-fallback", { count: toolCalls.length });
         if (remainingText.length > 0) {
           (state.content[textIdx] as CanonicalTextBlock).text = remainingText;
         } else {

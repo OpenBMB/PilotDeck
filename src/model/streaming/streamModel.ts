@@ -1,3 +1,5 @@
+import { createLogger } from '../../../pilot/logger.js';
+const stream_model_log = createLogger('stream-model');
 import { normalizeModelError } from "../errors/normalizeModelError.js";
 import { buildModelRequest } from "../request/buildModelRequest.js";
 import { validateModelRequest } from "../request/validateModelRequest.js";
@@ -68,7 +70,7 @@ export async function* streamModel(
       const fs = await import("node:fs");
       const dumpPath = `/tmp/pilotdeck_request_${Date.now()}.json`;
       fs.writeFileSync(dumpPath, JSON.stringify(body, null, 2));
-      console.log(`[model-debug] Request dumped to ${dumpPath} (model=${currentRequest.model})`);
+      streamModelLog.info("model-debug request dumped", { dumpPath, model: currentRequest.model });
     }
     let response: Response;
     try {

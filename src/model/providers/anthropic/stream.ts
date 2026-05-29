@@ -1,3 +1,5 @@
+import { createLogger } from '../../../../pilot/logger.js';
+const anthropic_stream_log = createLogger('anthropic-stream');
 import { jsonrepair } from "jsonrepair";
 import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
