@@ -19,6 +19,9 @@
     "predev": "node scripts/bootstrap-pilotdeck-config.mjs",
     "dev": "node scripts/dev-launcher.mjs",
     "test": "npm run build && node --test --test-force-exit --test-timeout 60000 \"dist/tests/**/*.test.js\"",
+    "test:vitest": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "e2e:real-agent-lifecycle-hooks": "npm run build && PILOTDECK_RUN_REAL_AGENT_LIFECYCLE_E2E=1 node dist/tests/agent/e2e/run-real-agent-lifecycle-hooks.js"
   },
   "devDependencies": {
@@ -26,7 +29,8 @@
     "@types/ws": "^8.18.1",
     "ink-testing-library": "^4.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.65.0",
