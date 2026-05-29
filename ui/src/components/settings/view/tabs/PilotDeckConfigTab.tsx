@@ -589,9 +589,12 @@ function ModelRefInput({
   placeholder?: string;
 }) {
   const selected = value ?? '';
+  const noOptionsLabel = options.length === 0
+    ? (placeholder ?? 'No models configured — add a provider first')
+    : (placeholder ?? 'Select a configured model');
   const hasSelected = !selected || options.some((opt) => opt.value === selected);
   const selectOptions = [
-    { value: '', label: placeholder ?? 'Select a configured model' },
+    { value: '', label: noOptionsLabel },
     ...options,
     ...(!hasSelected ? [{ value: selected, label: `Missing: ${selected}` }] : []),
   ];
