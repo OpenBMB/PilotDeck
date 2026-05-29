@@ -108,19 +108,6 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
       { id: 'kimi-k1.5', displayName: 'Kimi K1.5', supportsImage: true, maxContextTokens: 131072 },
     ],
   },
-  {
-    id: 'volc_ark',
-    displayName: '火山方舟 (Volcano Ark)',
-    protocol: 'openai',
-    defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    models: [
-      { id: 'doubao-1.5-pro-256k', displayName: 'Doubao 1.5 Pro 256K', supportsImage: true, maxContextTokens: 262144 },
-      { id: 'doubao-1.5-pro', displayName: 'Doubao 1.5 Pro', supportsImage: true, maxContextTokens: 131072 },
-      { id: 'doubao-1.5-lite-128k', displayName: 'Doubao 1.5 Lite 128K', maxContextTokens: 131072 },
-      { id: 'doubao-1.5-lite', displayName: 'Doubao 1.5 Lite', maxContextTokens: 32768 },
-      { id: 'deepseek-r1', displayName: 'DeepSeek R1 (Volc)', maxContextTokens: 65536 },
-    ],
-  },
 ];
 
 export function findCatalogProviderById(id: string): CatalogProvider | undefined {

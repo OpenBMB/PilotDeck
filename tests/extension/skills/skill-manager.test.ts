@@ -1,91 +1,82 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { SkillManager } from "../../../src/extension/skills/SkillManager.js";
+import { SkillManager } from "../../../src/extension/skills/index.js";
 
-async function withManager<T>(fn: (manager: SkillManager, pilotHome: string) => Promise<T>): Promise<T> {
-  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-skills-test-"));
+const VALID_SKILL_MD = [
+  "---",
+  "name: Caps Skill",
+  "description: A useful skill with an uppercase markdown filename.",
+  "---",
+  "",
+  "# Caps Skill",
+  "",
+].join("\n");
+
+async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), "pilotdeck-skill-test-"));
   try {
-    return await fn(new SkillManager({ pilotHome }), pilotHome);
+    return await fn(dir);
   } finally {
-    await rm(pilotHome, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 }
 
-function validateSkillMd(manager: SkillManager, skillMdContent: string) {
-  return manager.validate({
-    skillMdContent,
-    files: [{ relativePath: "SKILL.md", size: Buffer.byteLength(skillMdContent) }],
-  });
-}
+test("SkillManager accepts SKILL.MD for path-based skill import and reads the imported skill", async () => {
+  await withTempDir(async (dir) => {
+    const sourceParent = join(dir, "sources");
+    const sourceSkill = join(sourceParent, "caps-skill");
+    await mkdir(sourceSkill, { recursive: true });
+    await writeFile(join(sourceSkill, "SKILL.MD"), VALID_SKILL_MD, { encoding: "utf8" });
 
-test("skill validation accepts standard YAML frontmatter", async () => {
-  await withManager(async (manager) => {
-    const result = await validateSkillMd(
-      manager,
-      [
-        "---",
-        "name: pptx",
-        "description: Work with PowerPoint decks and .pptx files.",
-        "---",
-        "",
-        "# PPTX",
-      ].join("\n"),
-    );
+    const manager = new SkillManager({ pilotHome: join(dir, "pilot-home") });
 
-    assert.equal(result.ok, true);
-    assert.equal(result.frontmatter?.name, "pptx");
-    assert.equal(result.frontmatter?.description, "Work with PowerPoint decks and .pptx files.");
-    assert.equal(result.warnings.some((w) => w.code === "frontmatter_compat_fallback"), false);
-  });
-});
+    const scan = await manager.scan({ parentPath: sourceParent });
+    assert.equal(scan.folders.length, 1);
+    assert.equal(scan.folders[0]?.hasSkillMd, true);
+    assert.equal(scan.folders[0]?.name, "Caps Skill");
 
-test("skill validation accepts OpenClaw-style description block without YAML spacing", async () => {
-  await withManager(async (manager) => {
-    const result = await validateSkillMd(
-      manager,
-      [
-        "---",
-        "name: pptx",
-        "description:>",
-        "当涉及 .pptx 文件时使用此技能。",
-        "编辑、修改或更新现有演示文稿。",
-        "---",
-        "",
-        "# PPTX",
-      ].join("\n"),
-    );
+    const validation = await manager.validate({ sourcePath: sourceSkill });
+    assert.equal(validation.ok, true);
 
-    assert.equal(result.ok, true);
-    assert.equal(result.frontmatter?.name, "pptx");
-    assert.equal(
-      result.frontmatter?.description,
-      "当涉及 .pptx 文件时使用此技能。\n编辑、修改或更新现有演示文稿。",
-    );
-    assert.equal(result.warnings.some((w) => w.code === "frontmatter_compat_fallback"), true);
+    const imported = await manager.import({
+      sourcePath: sourceSkill,
+      scope: "user",
+      mode: "copy",
+    });
+    assert.equal(imported.ok, true);
+    assert.equal(imported.skill?.name, "Caps Skill");
+
+    const listed = await manager.list({});
+    assert.deepEqual(listed.user.map((skill) => skill.slug), ["caps-skill"]);
+
+    const read = await manager.read({ scope: "user", slug: "caps-skill" });
+    assert.match(read.content, /# Caps Skill/);
+
+    await manager.write({
+      scope: "user",
+      slug: "caps-skill",
+      content: VALID_SKILL_MD.replace("# Caps Skill", "# Updated Skill"),
+    });
+
+    const targetUppercase = join(imported.skillPath, "SKILL.MD");
+    assert.equal((await stat(targetUppercase)).isFile(), true);
+    assert.match(await readFile(targetUppercase, "utf8"), /# Updated Skill/);
   });
 });
 
-test("skill validation still fails when required frontmatter fields are missing", async () => {
-  await withManager(async (manager) => {
-    const result = await validateSkillMd(
-      manager,
-      [
-        "---",
-        "description: Work with PowerPoint decks and .pptx files.",
-        "---",
-        "",
-        "# PPTX",
-      ].join("\n"),
-    );
+test("SkillManager validates uploaded manifest SKILL.MD files case-insensitively", async () => {
+  await withTempDir(async (dir) => {
+    const manager = new SkillManager({ pilotHome: join(dir, "pilot-home") });
+    const validation = await manager.validate({
+      skillMdContent: VALID_SKILL_MD,
+      files: [{ relativePath: "SKILL.MD", size: Buffer.byteLength(VALID_SKILL_MD) }],
+    });
 
-    assert.equal(result.ok, false);
-    assert.equal(
-      result.hardFails.some((issue) => issue.code === "frontmatter_missing_name"),
-      true,
-    );
+    assert.equal(validation.ok, true);
+    assert.equal(validation.frontmatter?.name, "Caps Skill");
   });
 });

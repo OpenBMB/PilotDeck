@@ -38,6 +38,8 @@ const SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_COUNT = 500;
+const CANONICAL_SKILL_MD = "SKILL.md";
+const SKILL_MD_RE = /^skill\.md$/iu;
 const RISKY_EXTS = new Set([
   ".sh",
   ".bash",
@@ -145,7 +147,10 @@ export class SkillManager {
 
   async read(input: SkillAddressInput): Promise<SkillReadResult> {
     const skillDir = this.resolveSkillDir(input);
-    const skillFile = join(skillDir, "SKILL.md");
+    const skillFile = await findSkillMdFile(skillDir);
+    if (!skillFile) {
+      throw new SkillManagerError("not_found", `SKILL.md not found at ${join(skillDir, CANONICAL_SKILL_MD)}.`);
+    }
     let content: string;
     try {
       content = await fs.readFile(skillFile, "utf8");
@@ -165,7 +170,7 @@ export class SkillManager {
     }
     const skillDir = this.resolveSkillDir(input);
     await fs.mkdir(skillDir, { recursive: true });
-    const skillFile = join(skillDir, "SKILL.md");
+    const skillFile = await findSkillMdFile(skillDir) ?? join(skillDir, CANONICAL_SKILL_MD);
     await fs.writeFile(skillFile, input.content, "utf8");
     const skill = await readSkillMeta(skillDir, input.scope);
     return { ok: true, scope: input.scope, slug: input.slug, skill };
@@ -195,7 +200,7 @@ export class SkillManager {
             description: input.description,
             body: input.body,
           });
-    const skillFile = join(skillDir, "SKILL.md");
+    const skillFile = join(skillDir, CANONICAL_SKILL_MD);
     await fs.writeFile(skillFile, finalContent, "utf8");
     const skill = await readSkillMeta(skillDir, input.scope);
     return {
@@ -257,9 +262,7 @@ export class SkillManager {
         `Source path is not a directory: ${resolvedSource}`,
       );
     }
-    try {
-      await fs.access(join(resolvedSource, "SKILL.md"));
-    } catch {
+    if (!(await findSkillMdFile(resolvedSource))) {
       throw new SkillManagerError(
         "no_skill_md",
         `Source folder does not contain a SKILL.md at the root: ${resolvedSource}`,
@@ -364,12 +367,10 @@ export class SkillManager {
       const subDir = join(resolvedRoot, entry.name);
       let hasSkillMd = false;
       let meta: SkillSummary | null = null;
-      try {
-        await fs.access(join(subDir, "SKILL.md"));
+      const skillFile = await findSkillMdFile(subDir);
+      if (skillFile) {
         hasSkillMd = true;
         meta = await readSkillMeta(subDir, "user");
-      } catch {
-        /* no SKILL.md */
       }
 
       let fileCount = 0;
@@ -452,6 +453,26 @@ function expandHome(p: string): string {
   if (p === "~") return homedir();
   if (p.startsWith("~/")) return join(homedir(), p.slice(2));
   return p;
+}
+
+function isSkillMdFileName(name: string): boolean {
+  return SKILL_MD_RE.test(name);
+}
+
+function isRootSkillMdPath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, "/");
+  return !normalized.includes("/") && isSkillMdFileName(normalized);
+}
+
+async function findSkillMdFile(skillDir: string): Promise<string | null> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(skillDir);
+  } catch {
+    return null;
+  }
+  const name = entries.find(isSkillMdFileName);
+  return name ? join(skillDir, name) : null;
 }
 
 /**
@@ -562,7 +583,8 @@ function parseCompatFrontmatter(fmRaw: string): Record<string, unknown> {
 }
 
 async function readSkillMeta(skillDir: string, scope: SkillScope): Promise<SkillSummary | null> {
-  const skillFile = join(skillDir, "SKILL.md");
+  const skillFile = await findSkillMdFile(skillDir);
+  if (!skillFile) return null;
   let content: string;
   try {
     content = await fs.readFile(skillFile, "utf8");
@@ -703,10 +725,15 @@ async function validateFromDisk(sourcePath: string): Promise<SkillValidationResu
   }
 
   let skillMdContent = "";
-  try {
-    skillMdContent = await fs.readFile(join(sourcePath, "SKILL.md"), "utf8");
-  } catch {
+  const skillFile = await findSkillMdFile(sourcePath);
+  if (!skillFile) {
     pushIssue(hardFails, "no_skill_md", "Source folder does not contain a SKILL.md at the root.");
+    return { ok: false, hardFails, warnings, stats, frontmatter };
+  }
+  try {
+    skillMdContent = await fs.readFile(skillFile, "utf8");
+  } catch {
+    pushIssue(hardFails, "no_skill_md", "Source folder does not contain a readable SKILL.md at the root.");
     return { ok: false, hardFails, warnings, stats, frontmatter };
   }
   frontmatter = validateRequiredFrontmatter(skillMdContent, hardFails, warnings);
@@ -797,7 +824,7 @@ function validateFromManifest(
   for (const f of files) {
     const rel = typeof f.relativePath === "string" ? f.relativePath : null;
     if (!rel) continue;
-    if (rel === "SKILL.md") hasSkillMd = true;
+    if (isRootSkillMdPath(rel)) hasSkillMd = true;
     if (rel.includes("..") || isAbsolute(rel)) {
       pushIssue(hardFails, "unsafe_path", `File path is unsafe: ${rel}`);
       continue;
