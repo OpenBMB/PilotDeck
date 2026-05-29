@@ -3,6 +3,7 @@ import type {
   CanonicalModelRequest,
   ModelRuntime,
 } from "../model/index.js";
+import { sanitizeMessagesForMultimodalConstraints } from "../model/index.js";
 import {
   DEFAULT_SUBAGENT_MAX_TOKENS,
   DEFAULT_SUBAGENT_POLICY,
@@ -343,6 +344,15 @@ export function createRouterRuntime(
     let messages = decision.requestPatch?.messages ?? request.messages;
     if (decision.mutations.subagentTagStripped) {
       messages = stripSubagentTagFromMessages(messages);
+    }
+    try {
+      messages = sanitizeMessagesForMultimodalConstraints(
+        messages,
+        deps.modelRuntime.getMultimodal(decision.provider, decision.model),
+      );
+    } catch {
+      // Let validateModelRequest surface provider/model config errors. This
+      // sanitizer is only a recovery path for known model media constraints.
     }
     return {
       ...request,
@@ -806,4 +816,3 @@ function classifyNetworkErrorCode(error: unknown): string {
   if (msg.includes("abort") || error.name === "AbortError") return "aborted";
   return "network_error";
 }
-
