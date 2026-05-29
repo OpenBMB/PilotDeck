@@ -4,7 +4,6 @@ updates:
     directories:
       - "/"
       - "/ui"
-      - "/apps/desktop"
       - "/src/context/memory/edgeclaw-memory-core"
     schedule:
       interval: "weekly"
