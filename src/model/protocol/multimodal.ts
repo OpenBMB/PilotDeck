@@ -189,10 +189,12 @@ function sanitizeContentBlock(
   state: { allowed: Set<InputModality>; imageCount: number },
 ): CanonicalContentBlock {
   if (block.type === "image") {
-    state.imageCount += 1;
-    return shouldStripImage(block, constraints, state)
-      ? mediaPlaceholder("Image", "selected model does not support this image input")
-      : block;
+    const nextState = { ...state, imageCount: state.imageCount + 1 };
+    if (shouldStripImage(block, constraints, nextState)) {
+      return mediaPlaceholder("Image", "selected model does not support this image input");
+    }
+    state.imageCount = nextState.imageCount;
+    return block;
   }
   if (block.type === "pdf") {
     return shouldStripPdf(block, constraints, state)
