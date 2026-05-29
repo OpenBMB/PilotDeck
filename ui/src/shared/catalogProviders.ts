@@ -98,6 +98,16 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
       { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000 },
     ],
   },
+  {
+    id: 'moonshot',
+    displayName: 'Moonshot AI (Kimi)',
+    protocol: 'openai',
+    defaultUrl: 'https://api.moonshot.cn/v1',
+    models: [
+      { id: 'kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144 },
+      { id: 'kimi-k1.5', displayName: 'Kimi K1.5', supportsImage: true, maxContextTokens: 131072 },
+    ],
+  },
 ];
 
 export function findCatalogProviderById(id: string): CatalogProvider | undefined {
