@@ -21,8 +21,15 @@ async function loadLarkSdk(): Promise<any> {
 
 const TENANT_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
 const SEND_MESSAGE_URL = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id";
+const MESSAGE_REACTIONS_URL = (messageId: string) =>
+  `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reactions`;
+const BOT_INFO_URL = "https://open.feishu.cn/open-apis/bot/v3/info";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const SEEN_EVENTS_MAX = 2000;
+
+const FEISHU_REACTION_IN_PROGRESS = "Typing";
+const FEISHU_REACTION_FAILURE = "CrossMark";
+const FEISHU_PROCESSING_REACTION_CACHE_SIZE = 1024;
 
 export type FeishuOutboundMessage = {
   chatId: string;
@@ -55,7 +62,7 @@ export type FeishuChannelOptions = {
 
 type ParsedEvent =
   | { kind: "url_verification"; challenge: string }
-  | { kind: "message"; eventId: string; chatId: string; text: string }
+  | { kind: "message"; eventId: string; chatId: string; text: string; messageId?: string }
   | { kind: "ignore" };
 
 export class FeishuChannel implements ChannelAdapter {
@@ -78,6 +85,12 @@ export class FeishuChannel implements ChannelAdapter {
   private tokenInflight?: Promise<string>;
   private readonly seenEvents = new Set<string>();
   private readonly activeChats = new Set<string>();
+
+  private botOpenId: string = "";
+  private botFetched = false;
+
+  private readonly _sentMessageIds = new Map<string, string>();
+  private readonly _pendingProcessingReactions = new Map<string, string>();
 
   private wsClient: any = null;
 
@@ -155,6 +168,18 @@ export class FeishuChannel implements ChannelAdapter {
             this.logger?.error?.(`feishu: stream event handler error: ${e}`);
           });
         },
+        "im.message.reaction.created_v1": (data: unknown) => {
+          this.logger?.info?.("feishu: ★ im.message.reaction.created_v1 fired");
+          void this._onReactionEvent("created", data as Record<string, unknown>).catch((e: unknown) => {
+            this.logger?.error?.(`feishu: reaction event handler error: ${e}`);
+          });
+        },
+        "im.message.reaction.deleted_v1": (data: unknown) => {
+          this.logger?.info?.("feishu: ★ im.message.reaction.deleted_v1 fired");
+          void this._onReactionEvent("deleted", data as Record<string, unknown>).catch((e: unknown) => {
+            this.logger?.error?.(`feishu: reaction event handler error: ${e}`);
+          });
+        },
       });
 
       const domain =
@@ -171,6 +196,9 @@ export class FeishuChannel implements ChannelAdapter {
 
       await this.wsClient.start({ eventDispatcher: dispatcher });
       this.logger?.info?.(`feishu: stream mode connected (appId=${maskAppId(this.appId)})`);
+      
+      await this._fetchBotInfo();
+      
       return true;
     } catch (e) {
       this.logger?.error?.(`feishu: stream mode start failed: ${e}`);
@@ -181,7 +209,7 @@ export class FeishuChannel implements ChannelAdapter {
   private async handleStreamEvent(data: unknown): Promise<void> {
     const raw = data as Record<string, unknown>;
     const message = (raw.message ?? (raw as { event?: { message?: unknown } }).event?.message) as
-      | { chat_id?: string; content?: string; message_type?: string; message_id?: string }
+      | { chat_id?: string; content?: string; message_type?: string; message_id?: string; chat_type?: string; mentions?: Array<{ id?: { open_id?: string; union_id?: string; user_id?: string }; key?: string; name?: string }> }
       | undefined;
     if (!message) return;
     if (message.message_type !== "text") return;
@@ -189,13 +217,25 @@ export class FeishuChannel implements ChannelAdapter {
     const chatId = message.chat_id;
     if (!chatId || message.content === undefined) return;
 
+    const chatType = message.chat_type ?? "p2p";
+    if (chatType === "group") {
+      const mentions = message.mentions ?? [];
+      const hasBotMention = this._isMentioningBot(mentions);
+
+      if (!hasBotMention) {
+        this.logger?.debug?.(`feishu: skipping group message without bot mention in chat ${chatId}`);
+        return;
+      }
+    }
+
     const text = extractTextContent(message.content);
     const eventId = message.message_id ?? `stream:${chatId}:${Date.now()}`;
+    const messageId = message.message_id;
 
     if (this.seenEvents.has(eventId)) return;
     this.rememberEvent(eventId);
 
-    await this.processInboundMessage(chatId, text);
+    await this.processInboundMessage(chatId, text, messageId);
   }
 
   async handleWebhook(request: IncomingMessage, response: ServerResponse, body: string): Promise<boolean> {
@@ -223,13 +263,13 @@ export class FeishuChannel implements ChannelAdapter {
     this.rememberEvent(parsed.eventId);
 
     respondJson(response, 200, { ok: true });
-    void this.processInboundMessage(parsed.chatId, parsed.text).catch((e) => {
+    void this.processInboundMessage(parsed.chatId, parsed.text, parsed.messageId).catch((e) => {
       this.logger?.error?.(`feishu: processInboundMessage error: ${e}`);
     });
     return true;
   }
 
-  private async processInboundMessage(chatId: string, text: string): Promise<void> {
+  private async processInboundMessage(chatId: string, text: string, messageId?: string): Promise<void> {
     if (!this.gateway) return;
 
     const mapped = this.mapper.resolve({ chatId, text });
@@ -245,6 +285,16 @@ export class FeishuChannel implements ChannelAdapter {
     }
 
     this.activeChats.add(chatId);
+    
+    let processingReactionId: string | undefined;
+    if (messageId) {
+      processingReactionId = await this._addReaction(messageId, FEISHU_REACTION_IN_PROGRESS) ?? undefined;
+      if (processingReactionId) {
+        this._pendingProcessingReactions.set(messageId, processingReactionId);
+      }
+    }
+
+    let success = false;
     try {
       let buffer = "";
       try {
@@ -263,8 +313,18 @@ export class FeishuChannel implements ChannelAdapter {
       const reply = buffer.trim();
       if (reply) {
         await this.send({ chatId, text: reply });
+        success = true;
       }
     } finally {
+      if (messageId && processingReactionId) {
+        await this._removeReaction(messageId, processingReactionId);
+        this._pendingProcessingReactions.delete(messageId);
+      }
+
+      if (!success && messageId) {
+        await this._addReaction(messageId, FEISHU_REACTION_FAILURE);
+      }
+
       this.activeChats.delete(chatId);
     }
   }
@@ -389,6 +449,121 @@ export class FeishuChannel implements ChannelAdapter {
       if (first) this.seenEvents.delete(first);
     }
   }
+
+  private async _fetchBotInfo(): Promise<void> {
+    if (this.botFetched || !this.appId || !this.appSecret) return;
+    this.botFetched = true;
+
+    try {
+      const token = await this.getTenantAccessToken();
+      const res = await fetch(BOT_INFO_URL, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        code?: number;
+        msg?: string;
+        bot?: { open_id?: string; app_name?: string };
+      };
+      if (json.code === 0 && json.bot?.open_id) {
+        this.botOpenId = json.bot.open_id;
+        this.logger?.info?.(`feishu: bot open_id = ${this.botOpenId}`);
+      } else {
+        this.logger?.warn?.(`feishu: failed to fetch bot info: code=${json.code} msg=${json.msg}`);
+      }
+    } catch (e) {
+      this.logger?.warn?.(`feishu: fetchBotInfo threw: ${e}`);
+    }
+  }
+
+  private _isMentioningBot(mentions: Array<{ id?: { open_id?: string; union_id?: string; user_id?: string }; key?: string; name?: string }>): boolean {
+    for (const mention of mentions) {
+      if (mention.id?.open_id && this.botOpenId) {
+        if (mention.id.open_id === this.botOpenId) {
+          return true;
+        }
+        continue;
+      }
+      if (mention.key === "@_all") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async _addReaction(messageId: string, emojiType: string): Promise<string | null> {
+    try {
+      const token = await this.getTenantAccessToken();
+      const res = await fetch(MESSAGE_REACTIONS_URL(messageId), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reaction_type: { emoji_type: emojiType } }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        code?: number;
+        msg?: string;
+        data?: { reaction_id?: string };
+      };
+      if (!res.ok || (json.code !== undefined && json.code !== 0)) {
+        this.logger?.warn?.(
+          `feishu: addReaction(${emojiType}) failed on ${messageId}: code=${json.code} msg=${json.msg}`,
+        );
+        return null;
+      }
+      return json.data?.reaction_id ?? null;
+    } catch (e) {
+      this.logger?.warn?.(`feishu: addReaction(${emojiType}) threw on ${messageId}: ${e}`);
+      return null;
+    }
+  }
+
+  private async _removeReaction(messageId: string, reactionId: string): Promise<boolean> {
+    try {
+      const token = await this.getTenantAccessToken();
+      const res = await fetch(`${MESSAGE_REACTIONS_URL(messageId)}/${reactionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json().catch(() => ({}))) as { code?: number; msg?: string };
+      if (!res.ok || (json.code !== undefined && json.code !== 0)) {
+        this.logger?.warn?.(
+          `feishu: removeReaction failed on ${messageId}/${reactionId}: code=${json.code} msg=${json.msg}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger?.warn?.(`feishu: removeReaction threw on ${messageId}/${reactionId}: ${e}`);
+      return false;
+    }
+  }
+
+  private async _onReactionEvent(
+    action: "created" | "deleted",
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const messageId = data.message_id as string | undefined;
+    const emojiType = (data as { emoji_type?: string; reaction_type?: { emoji_type?: string } }).emoji_type
+      ?? (data as { reaction_type?: { emoji_type?: string } }).reaction_type?.emoji_type;
+    const operatorType = data.operator_type as string | undefined;
+
+    if (!messageId) {
+      this.logger?.warn?.("feishu: reaction event missing message_id");
+      return;
+    }
+
+    // Filter bot/app reactions to avoid loops
+    if (operatorType === "app" || operatorType === "bot") {
+      return;
+    }
+
+    this.logger?.info?.(
+      `feishu: reaction ${action} on ${messageId}: emoji=${emojiType} by ${operatorType ?? "unknown"}`,
+    );
+  }
 }
 
 function parseDirectShape(raw: Record<string, unknown>): ParsedEvent | undefined {
@@ -406,7 +581,7 @@ function parseDirectShape(raw: Record<string, unknown>): ParsedEvent | undefined
 function parseV2Event(raw: Record<string, unknown>): ParsedEvent | undefined {
   const header = raw.header as { event_id?: string; event_type?: string } | undefined;
   const event = raw.event as
-    | { message?: { chat_id?: string; content?: string; message_type?: string } }
+    | { message?: { chat_id?: string; content?: string; message_type?: string; message_id?: string } }
     | undefined;
 
   if (!header?.event_id || !event?.message) return undefined;
@@ -415,10 +590,11 @@ function parseV2Event(raw: Record<string, unknown>): ParsedEvent | undefined {
 
   const chatId = event.message.chat_id;
   const content = event.message.content;
+  const messageId = event.message.message_id;
   if (!chatId || content === undefined) return undefined;
 
   const text = extractTextContent(content);
-  return { kind: "message", eventId: header.event_id, chatId, text };
+  return { kind: "message", eventId: header.event_id, chatId, text, messageId };
 }
 
 function parseV1Event(raw: Record<string, unknown>): ParsedEvent | undefined {
