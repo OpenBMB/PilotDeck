@@ -146,6 +146,17 @@ echo "[pilotdeck-docker] Starting PilotDeck (gateway + UI server)..."
 echo "[pilotdeck-docker] Config: $CONFIG_FILE"
 echo "[pilotdeck-docker] UI will be available at http://0.0.0.0:${SERVER_PORT:-3001}"
 
+# ── Run user-provided init scripts from /docker-entrypoint.d/ ─────────
+if [ -d /docker-entrypoint.d ]; then
+  for f in $(find /docker-entrypoint.d -maxdepth 1 -type f \( -name '*.sh' -o -perm /u+x,g+x,o+x \) | sort); do
+    if [ -f "$f" ] && [ -r "$f" ]; then
+      echo "[pilotdeck-docker] Running init script: $f"
+      # shellcheck disable=SC1090
+      . "$f"
+    fi
+  done
+fi
+
 # ── Start gateway + UI server via concurrently ────────────────────────
 cd /app
 
