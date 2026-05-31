@@ -18,8 +18,8 @@ export function getProjectMcpConfigFilePath(projectRoot: string): string {
 
 export function loadMcpServerConfig(projectRoot: string, pilotHome: string): LoadMcpServerConfigResult {
   const diagnostics: LoadMcpServerConfigResult["diagnostics"] = [];
-  const global = readMcpConfig(getGlobalMcpConfigFilePath(pilotHome), diagnostics);
-  const project = readMcpConfig(getProjectMcpConfigFilePath(projectRoot), diagnostics);
+  const global = readMcpConfig(getGlobalMcpConfigFilePath(pilotHome), diagnostics, undefined);
+  const project = readMcpConfig(getProjectMcpConfigFilePath(projectRoot), diagnostics, projectRoot);
 
   return {
     servers: {
@@ -33,6 +33,7 @@ export function loadMcpServerConfig(projectRoot: string, pilotHome: string): Loa
 function readMcpConfig(
   path: string,
   diagnostics: LoadMcpServerConfigResult["diagnostics"],
+  projectRoot: string | undefined,
 ): { mcpServers?: Record<string, unknown> } | undefined {
   if (!existsSync(path)) {
     return undefined;
@@ -63,26 +64,32 @@ function readMcpConfig(
     return {};
   }
 
-  return { mcpServers: expandConfig(rawServers) as Record<string, unknown> };
+  return { mcpServers: expandConfig(rawServers, { projectRoot }) as Record<string, unknown> };
 }
 
-function expandConfig(value: unknown): unknown {
+function expandConfig(
+  value: unknown,
+  opts: { projectRoot?: string },
+): unknown {
   if (typeof value === "string") {
-    return expandString(value);
+    return expandString(value, opts);
   }
   if (Array.isArray(value)) {
-    return value.map(expandConfig);
+    return value.map((v) => expandConfig(v, opts));
   }
   if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, expandConfig(entry)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, expandConfig(entry, opts)]),
+    );
   }
   return value;
 }
 
-function expandString(value: string): string {
+function expandString(value: string, opts: { projectRoot?: string }): string {
   return value
     .replace(/\$\{env:([^}]+)\}/g, (_match, name: string) => process.env[name] ?? "")
-    .replace(/\$\{userHome\}/g, process.env.HOME ?? "");
+    .replace(/\$\{userHome\}/g, process.env.HOME ?? "")
+    .replace(/\$\{projectRoot\}/g, opts.projectRoot ?? "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
