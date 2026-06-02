@@ -183,8 +183,9 @@ function toolCallEvents(
     if (typeof record.id === "string") {
       current.id = record.id;
     }
-    if (typeof fn.name === "string") {
-      current.name = fn.name;
+    const name = readToolCallName(record, fn);
+    if (name) {
+      current.name = name;
     }
 
     if (!state.toolCalls.has(index)) {
@@ -198,12 +199,13 @@ function toolCallEvents(
       });
     }
 
-    if (typeof fn.arguments === "string") {
-      current.argumentsBuffer = `${current.argumentsBuffer ?? ""}${fn.arguments}`;
+    const argumentsDelta = readToolCallArgumentsDelta(record, fn);
+    if (argumentsDelta !== undefined) {
+      current.argumentsBuffer = `${current.argumentsBuffer ?? ""}${argumentsDelta}`;
       events.push({
         type: "tool_call_delta",
         id: current.id ?? generateStreamToolCallId(index),
-        delta: fn.arguments,
+        delta: argumentsDelta,
         raw,
       });
     }
@@ -223,6 +225,18 @@ function finishToolCalls(
   const isTruncation = finishReason === "length";
 
   for (const [index, toolCall] of state.toolCalls.entries()) {
+    const name = readNonEmptyString(toolCall.name);
+    if (!name) {
+      throw new ModelProviderError({
+        provider: "openai",
+        protocol: "openai",
+        code: "missing_tool_name",
+        message: "OpenAI stream emitted a tool call without a function name.",
+        retryable: true,
+        raw,
+      });
+    }
+
     const rawArguments = toolCall.argumentsBuffer ?? "{}";
     let input: unknown;
     let wasRepaired = false;
@@ -279,7 +293,7 @@ function finishToolCalls(
       type: "tool_call_end",
       toolCall: {
         id: readNonEmptyString(toolCall.id) ?? generateStreamToolCallId(index),
-        name: toolCall.name ?? "",
+        name,
         input,
         raw,
       },
@@ -300,6 +314,27 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function readToolCallName(
+  record: Record<string, unknown>,
+  fn: Record<string, unknown>,
+): string | undefined {
+  return readNonEmptyString(fn.name)
+    ?? readNonEmptyString(record.name)
+    ?? readNonEmptyString(record.function_name)
+    ?? readNonEmptyString(record.tool_name);
+}
+
+function readToolCallArgumentsDelta(
+  record: Record<string, unknown>,
+  fn: Record<string, unknown>,
+): string | undefined {
+  if (typeof fn.arguments === "string") return fn.arguments;
+  if (typeof record.arguments === "string") return record.arguments;
+  if (typeof record.input === "string") return record.input;
+  if (record.input !== undefined) return JSON.stringify(record.input);
+  return undefined;
 }
 
 function generateStreamToolCallId(index: number): string {
