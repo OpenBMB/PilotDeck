@@ -82,7 +82,7 @@ export function buildDefaultPilotDeckConfig() {
     },
     webui: {
       runtime: {
-        host: '0.0.0.0',
+        host: '127.0.0.1',
         serverPort: 3001,
         vitePort: 5173,
         proxyPort: 18080,
@@ -313,7 +313,7 @@ export function buildRuntimeEnv(config) {
     PROXY_PORT: process.env.PROXY_PORT || proxyPort,
     SERVER_PORT: process.env.SERVER_PORT || String(runtime.serverPort ?? 3001),
     VITE_PORT: process.env.VITE_PORT || String(runtime.vitePort ?? 5173),
-    HOST: process.env.HOST || String(runtime.host ?? '0.0.0.0'),
+    HOST: process.env.HOST || String(runtime.host ?? '127.0.0.1'),
     API_TIMEOUT_MS: String(runtime.apiTimeoutMs ?? 120000),
     PILOTDECK_MEMORY_ENABLED: normalized.memory?.enabled ? '1' : '0',
   };
