@@ -69,13 +69,15 @@ COPY --from=builder /build/ui/vite.config.js ui/vite.config.js
 
 # Create PilotDeck state/workspace directories used by the gateway, UI server,
 # permissions, skills/plugins, memory, auth, and router stats.
+# Also create docker-entrypoint.d/ for user-provided init scripts.
 RUN mkdir -p \
     /root/.pilotdeck/projects \
     /root/.pilotdeck/router \
     /root/.pilotdeck/skills \
     /root/.pilotdeck/plugins \
     /root/.pilotdeck/memory \
-    /workspace
+    /workspace \
+    /docker-entrypoint.d
 
 # Entrypoint
 COPY docker-entrypoint.sh /docker-entrypoint.sh
