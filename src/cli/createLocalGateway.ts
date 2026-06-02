@@ -73,6 +73,7 @@ import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlug
 import { SkillManager } from "../extension/skills/index.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
+import { createSecurityGuard } from "../security/index.js";
 
 export type CreateLocalGatewayOptions = {
   projectRoot?: string;
@@ -848,6 +849,37 @@ class ProjectRuntimeRegistry {
               ],
             },
           ],
+          // Security Guard hook declarations
+          PostToolUse: [
+            ...(contributions.hooks.PostToolUse ?? []),
+            {
+              matcher: "/^mcp__/",
+              hooks: [
+                { type: "callback", name: "security-mcp-instruction" },
+              ],
+            },
+            {
+              matcher: "*",
+              hooks: [
+                { type: "callback", name: "security-hook-post" },
+              ],
+            },
+            {
+              matcher: "web_fetch",
+              hooks: [
+                { type: "callback", name: "security-web" },
+              ],
+            },
+          ],
+          PreToolUse: [
+            ...(contributions.hooks.PreToolUse ?? []),
+            {
+              matcher: "/^mcp__/",
+              hooks: [
+                { type: "callback", name: "security-annotation-pre" },
+              ],
+            },
+          ],
         }
       : contributions.hooks;
     const hookRuntime = new HookRuntime(hookSettings);
@@ -862,8 +894,41 @@ class ProjectRuntimeRegistry {
         }),
       );
     }
+
+    // Security Guard — register callback hooks for attack surface defense
+    const securityGuard = createSecurityGuard({
+      pilotHome: this.options.pilotHome,
+    });
+    hookRuntime.getCallbackExecutor().register(
+      "security-mcp-instruction",
+      securityGuard.mcpGuard,
+    );
+    hookRuntime.getCallbackExecutor().register(
+      "security-hook-post",
+      securityGuard.hookPostGuard,
+    );
+    hookRuntime.getCallbackExecutor().register(
+      "security-web",
+      securityGuard.webGuard,
+    );
+    hookRuntime.getCallbackExecutor().register(
+      "security-annotation-pre",
+      securityGuard.annotationGuard,
+    );
+
     const lifecycle = new LifecycleRuntime(hookRuntime);
-    const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
+    const sessionMcp = this.sessionMcpRuntimes.get(context.sessionKey);
+    const extension = new PluginRuntimeExtensionResolver(
+      runtime.pluginRuntime,
+      runtime.mcpRuntime || sessionMcp
+        ? {
+            getInstructions: () => [
+              ...(runtime.mcpRuntime?.getInstructions() ?? []),
+              ...(sessionMcp?.getInstructions() ?? []),
+            ],
+          }
+        : undefined,
+    );
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
     const now = this.options.now;
@@ -949,6 +1014,7 @@ class ProjectRuntimeRegistry {
         overflowRecovery,
         maxContextTokens: runtime.snapshot.config.agent.maxContextTokens ?? caps.maxContextTokens,
         now,
+        instructionSanitizer: securityGuard.instructionSanitizer,
       });
       const fileHistory = new FileHistoryStore({
         backupDir: storage.fileHistoryDir,

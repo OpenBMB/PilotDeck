@@ -24,6 +24,10 @@ export type PluginRuntimeLike = {
   getAllMcpInstructions?(): McpServerInstruction[];
 };
 
+export type McpRuntimeLike = {
+  getInstructions(): { serverId: string; instructions: string }[];
+};
+
 /**
  * Wraps a `PluginRuntime` (or compatible) so context can read plugin-derived
  * info without reaching into `PilotDeckLoadedPlugin` directly.
@@ -33,7 +37,10 @@ export type PluginRuntimeLike = {
  * to consume it (deferred `context-extension-snapshot`).
  */
 export class PluginRuntimeExtensionResolver implements ExtensionResolver {
-  constructor(private readonly runtime: PluginRuntimeLike) {}
+  constructor(
+    private readonly runtime: PluginRuntimeLike,
+    private readonly mcpRuntime?: McpRuntimeLike,
+  ) {}
 
   listCommands(): ContributedCommand[] {
     if (this.runtime.getAllCommands) {
@@ -70,10 +77,28 @@ export class PluginRuntimeExtensionResolver implements ExtensionResolver {
   }
 
   listMcpInstructions(): McpServerInstruction[] {
-    if (this.runtime.getAllMcpInstructions) {
-      return this.runtime.getAllMcpInstructions();
+    const staticEntries = this.runtime.getAllMcpInstructions
+      ? this.runtime.getAllMcpInstructions()
+      : [];
+
+    const entries: McpServerInstruction[] = staticEntries.map((e) => ({
+      serverName: e.serverName,
+      instructions: e.instructions,
+    }));
+
+    if (this.mcpRuntime) {
+      const dynamicEntries = this.mcpRuntime.getInstructions();
+      for (const dyn of dynamicEntries) {
+        const existing = entries.find((e) => e.serverName === dyn.serverId);
+        if (existing) {
+          existing.instructions = dyn.instructions;
+        } else {
+          entries.push({ serverName: dyn.serverId, instructions: dyn.instructions });
+        }
+      }
     }
-    // MCP runtime not yet integrated — see deferred `context-mcp-instructions`.
-    return [];
+
+    entries.sort((a, b) => a.serverName.localeCompare(b.serverName));
+    return entries;
   }
 }

@@ -19,6 +19,7 @@ import type {
   PilotDeckSubagentForkApi,
   PilotDeckToolResult,
   PilotDeckToolRuntimeContext,
+  PilotDeckToolSupplementalMessage,
   PilotDeckWriteSnapshotMap,
 } from "../../tool/index.js";
 import {
@@ -618,6 +619,30 @@ export class AgentLoop {
       yield* this.drainEventBuffer();
 
       const pairedResults = ensureToolResultPairing(toolCalls, results, this.now);
+
+      // Inject lifecycle additionalContext as supplementalMessages so
+      // security guard warnings reach the model as <hook_context> messages.
+      for (const result of pairedResults) {
+        const lifecycleCtx = (result.metadata as Record<string, unknown> | undefined)?.lifecycle;
+        if (!lifecycleCtx || typeof lifecycleCtx !== "object") continue;
+        const additionalContext = (lifecycleCtx as Record<string, unknown>).additionalContext;
+        if (!Array.isArray(additionalContext) || additionalContext.length === 0) continue;
+        const hookMessages: PilotDeckToolSupplementalMessage[] = additionalContext
+          .filter((ctx: unknown) => typeof ctx === "string")
+          .map((ctx: string): PilotDeckToolSupplementalMessage => ({
+            role: "user" as const,
+            content: [{
+              type: "text" as const,
+              text: `<hook_context source="security-guard">\n${ctx}\n</hook_context>`,
+            }],
+            isMeta: true,
+          }));
+        result.supplementalMessages = [
+          ...(result.supplementalMessages ?? []),
+          ...hookMessages,
+        ];
+      }
+
       permissionDenials = [...permissionDenials, ...collectPermissionDenials(pairedResults)];
       for (const result of pairedResults) {
         if (result.type === "success" && result.metadata?.structuredOutput) {
