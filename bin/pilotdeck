@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  LINK_TARGET="$(readlink "$SOURCE")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SOURCE="$LINK_TARGET"
+  else
+    SOURCE="$SOURCE_DIR/$LINK_TARGET"
+  fi
+done
+INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
+MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
+
+fail() { printf "pilotdeck: %s\n" "$1" >&2; exit 1; }
+warn() { printf "pilotdeck: %s\n" "$1" >&2; }
+
+is_port_free() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+  elif command -v ss >/dev/null 2>&1; then
+    ! ss -tlnH "sport = :$port" 2>/dev/null | grep -q .
+  else
+    ! (echo >/dev/tcp/127.0.0.1/"$port") 2>/dev/null
+  fi
+}
+
+find_free_port() {
+  local base="$1"
+  local offset candidate
+  for ((offset = 0; offset < MAX_PORT_TRIES; offset++)); do
+    candidate=$((base + offset))
+    if is_port_free "$candidate"; then
+      printf "%s" "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+git_remote_url() {
+  git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || printf "unknown"
+}
+
+git_branch_name() {
+  git -C "$INSTALL_DIR" branch --show-current 2>/dev/null || printf "unknown"
+}
+
+COMMAND="start"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    start)
+      COMMAND="start"
+      shift
+      ;;
+    status|info)
+      COMMAND="status"
+      shift
+      ;;
+    help|-h|--help)
+      COMMAND="help"
+      shift
+      ;;
+    --port|-p)
+      [[ $# -ge 2 ]] || fail "--port requires a value"
+      SERVER_PORT="$2"
+      shift 2
+      ;;
+    --port=*)
+      SERVER_PORT="${1#--port=}"
+      shift
+      ;;
+    --config)
+      [[ $# -ge 2 ]] || fail "--config requires a value"
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
+    --config=*)
+      CONFIG_FILE="${1#--config=}"
+      shift
+      ;;
+    *)
+      fail "unknown argument: $1"
+      ;;
+  esac
+done
+
+if [[ "$COMMAND" == "help" ]]; then
+  cat <<HELP
+pilotdeck - start the PilotDeck web UI
+
+Usage:
+  pilotdeck [start] [--port <port>] [--config <path>]
+  pilotdeck status
+  pilotdeck help
+
+HELP
+  exit 0
+fi
+
+if [[ "$COMMAND" == "status" ]]; then
+  SERVER_BASE="${SERVER_PORT:-3001}"
+  NEXT_SERVER_PORT="$(find_free_port "$SERVER_BASE" || printf "%s" "$SERVER_BASE")"
+  printf "Installation: %s\n" "$INSTALL_DIR"
+  printf "Remote:       %s\n" "$(git_remote_url)"
+  printf "Branch:       %s\n" "$(git_branch_name)"
+  printf "Config:       %s\n" "$CONFIG_FILE"
+  printf "Default URL:  http://localhost:%s\n" "$SERVER_BASE"
+  printf "Next start:   http://localhost:%s\n" "$NEXT_SERVER_PORT"
+  exit 0
+fi
+
+SERVER_BASE="${SERVER_PORT:-3001}"
+GATEWAY_BASE="${PILOTDECK_GATEWAY_PORT:-18789}"
+SERVER_PORT="$(find_free_port "$SERVER_BASE")" || fail "could not find a free UI port from ${SERVER_BASE}"
+PILOTDECK_GATEWAY_PORT="$(find_free_port "$GATEWAY_BASE")" || fail "could not find a free gateway port from ${GATEWAY_BASE}"
+PILOTDECK_GATEWAY_URL="ws://127.0.0.1:${PILOTDECK_GATEWAY_PORT}/ws"
+
+export PILOTDECK_CONFIG_PATH="$CONFIG_FILE"
+export SERVER_PORT PILOTDECK_GATEWAY_PORT PILOTDECK_GATEWAY_URL
+
+if [[ "$SERVER_PORT" != "$SERVER_BASE" ]]; then
+  warn "UI port ${SERVER_BASE} is busy; using ${SERVER_PORT} instead."
+fi
+if [[ "$PILOTDECK_GATEWAY_PORT" != "$GATEWAY_BASE" ]]; then
+  warn "Gateway port ${GATEWAY_BASE} is busy; using ${PILOTDECK_GATEWAY_PORT} instead."
+fi
+
+node "$INSTALL_DIR/scripts/bootstrap-pilotdeck-config.mjs"
+
+printf "pilotdeck: starting at http://localhost:%s\n" "$SERVER_PORT"
+export PILOTDECK_SKIP_DEFAULT_PROJECT=1
+cd "$INSTALL_DIR/ui"
+exec npm run start:built
