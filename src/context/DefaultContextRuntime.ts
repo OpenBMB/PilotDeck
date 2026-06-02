@@ -85,6 +85,8 @@ export type DefaultContextRuntimeOptions = {
   /** Timeout budget for MemoryResolver.retrieve during prepareForModel. */
   memoryRetrievalTimeoutMs?: number;
   now?: () => Date;
+  /** MCP instructions sanitizer from Security Guard. */
+  instructionSanitizer?: (instructions: string) => string;
 };
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 8192;
@@ -116,7 +118,7 @@ export class DefaultContextRuntime implements ContextRuntime {
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
     this.extension = options.extension ?? new NullExtensionResolver();
-    this.promptAssembler = options.promptAssembler ?? new PromptAssembler(this.extension);
+    this.promptAssembler = options.promptAssembler ?? new PromptAssembler(this.extension, options.instructionSanitizer);
     this.messageProjector = options.messageProjector ?? new MessageProjector();
     this.toolResultBudget = options.toolResultBudget;
     this.memoryResolver = options.memoryResolver;

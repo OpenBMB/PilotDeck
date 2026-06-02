@@ -118,6 +118,7 @@ export {
 export {
   PluginRuntimeExtensionResolver,
   type PluginRuntimeLike,
+  type McpRuntimeLike,
 } from "./extension/PluginRuntimeExtensionResolver.js";
 export {
   MemoryAttachmentBuilder,

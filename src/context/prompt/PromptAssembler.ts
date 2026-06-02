@@ -47,7 +47,10 @@ export type PromptAssemblerResult = {
  *   5 append_system_prompt    — always last
  */
 export class PromptAssembler {
-  constructor(private readonly extension: ExtensionResolver) {}
+  constructor(
+    private readonly extension: ExtensionResolver,
+    private readonly instructionSanitizer?: (instructions: string) => string,
+  ) {}
 
   assemble(input: PromptAssemblerInput): PromptAssemblerResult {
     const sections = this.buildSections(input);
@@ -105,7 +108,7 @@ export class PromptAssembler {
     }
 
     const mcpInstructions = this.extension.listMcpInstructions();
-    const mcpBlock = formatMcpInstructions(mcpInstructions);
+    const mcpBlock = formatMcpInstructions(mcpInstructions, this.instructionSanitizer);
     if (mcpBlock) {
       lines.push("");
       lines.push("Connected MCP server instructions:");
@@ -193,7 +196,10 @@ function formatPermissionMode(mode: string): string {
  * Entries lacking instructions are dropped so we never emit dummy `(no
  * instructions)` lines that thrash provider caches.
  */
-function formatMcpInstructions(instructions: McpServerInstruction[]): string {
+function formatMcpInstructions(
+  instructions: McpServerInstruction[],
+  sanitize?: (instructions: string) => string,
+): string {
   const populated = instructions
     .filter((entry) => typeof entry.instructions === "string" && entry.instructions.trim().length > 0)
     .map((entry) => ({ serverName: entry.serverName, instructions: entry.instructions!.trim() }))
@@ -202,7 +208,11 @@ function formatMcpInstructions(instructions: McpServerInstruction[]): string {
   const lines: string[] = ["<mcp-instructions>"];
   for (const entry of populated) {
     lines.push(`<server name="${escapeXmlAttr(entry.serverName)}">`);
-    lines.push(entry.instructions);
+    const body = sanitize ? sanitize(entry.instructions) : entry.instructions;
+    lines.push(`<instruction-source>${escapeXmlContent(entry.serverName)}</instruction-source>`);
+    lines.push(`<instruction-body>`);
+    lines.push(body);
+    lines.push(`</instruction-body>`);
     lines.push("</server>");
   }
   lines.push("</mcp-instructions>");
@@ -211,6 +221,13 @@ function formatMcpInstructions(instructions: McpServerInstruction[]): string {
 
 function escapeXmlAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function escapeXmlContent(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function formatCommands(commands: ContributedCommand[]): string {
