@@ -28,7 +28,7 @@ type CreateTelemetryCollectorInput = {
   fetchImpl?: typeof fetch;
 };
 
-const DEFAULT_BASE_URL = "http://123.56.15.233:3000";
+const DEFAULT_BASE_URL = "http://tele.pilotdeck.cn";
 
 const PATH_LIKE_KEY = /path|cwd|root|dir|file/i;
 const ABSOLUTE_PATH_VALUE = /^([A-Za-z]:)?[/\\]/;
