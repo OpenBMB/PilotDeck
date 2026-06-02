@@ -119,10 +119,19 @@ async function main() {
     PILOTDECK_SKIP_DEFAULT_PROJECT: '1',
   };
 
+  // On Windows the npm executable is a `npm.cmd` shim. Recent Node.js releases
+  // refuse to spawn `.cmd`/`.bat` files without a shell (they throw EINVAL, a
+  // hardening change from CVE-2024-27980), and the bare `npm` name cannot be
+  // resolved by `spawn` at all (ENOENT). Launch through the platform shell on
+  // Windows so `npm run dev` works out of the box; other platforms keep the
+  // plain, shell-free spawn. The arguments here are fixed literals with no
+  // user input, so enabling the shell carries no injection risk.
+  const isWindows = process.platform === 'win32';
+  const npmCommand = isWindows ? 'npm.cmd' : 'npm';
   const child = spawn(
-    'npm',
+    npmCommand,
     ['--workspace', 'ui', 'run', 'dev:concurrent'],
-    { cwd: repoRoot, env, stdio: 'inherit' },
+    { cwd: repoRoot, env, stdio: 'inherit', shell: isWindows },
   );
 
   const forward = (signal) => {
