@@ -103,6 +103,18 @@ export function createRouterRuntime(
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
 
+  function hasTools(request: CanonicalModelRequest): boolean {
+    return Array.isArray(request.tools) && request.tools.length > 0;
+  }
+
+  function isNoToolsAgnes(ref: Pick<RouterModelRef, "provider" | "model">): boolean {
+    return ref.provider === "agnes_ai" || ref.model === "agnes-2.0-flash";
+  }
+
+  function defaultModelRef(): RouterModelRef | undefined {
+    return config.scenarios?.default;
+  }
+
   async function resolveCustom(
     input: RouterDecisionInput,
   ): Promise<Partial<RouterDecision> | undefined> {
@@ -262,6 +274,24 @@ export function createRouterRuntime(
       mutations: {},
     };
 
+    if (hasTools(input.request) && isNoToolsAgnes(decision)) {
+      const fallback = defaultModelRef();
+      if (fallback && !isNoToolsAgnes(fallback)) {
+        decision.mutations = {
+          ...decision.mutations,
+          noToolsModelRerouted: {
+            from: `${decision.provider}/${decision.model}`,
+            to: `${fallback.provider}/${fallback.model}`,
+            reason: "selected model is chat-only/no-tools while request contains tools",
+          },
+        };
+        decision.provider = fallback.provider;
+        decision.model = fallback.model;
+        resolvedFrom = "fallback";
+        decision.resolvedFrom = resolvedFrom;
+      }
+    }
+
     const alreadyOrchestrating = sticky?.orchestrating === true;
     const tokenSaverActive = config.tokenSaver?.enabled === true && tokenSaverTier != null;
     const orchGate = tokenSaverActive || alreadyOrchestrating;
@@ -319,7 +349,7 @@ export function createRouterRuntime(
       mutations = { ...mutations, subagentTagStripped: true };
     }
 
-    decision.mutations = mutations;
+    decision.mutations = { ...decision.mutations, ...mutations };
 
     sessionStore.set({
       sessionId: input.sessionId,
@@ -365,10 +395,19 @@ export function createRouterRuntime(
   ): AsyncIterable<CanonicalModelEvent> {
     const startedAt = (deps.now?.() ?? new Date()).toISOString();
     const fallbackPlan = planFallback(config.fallback, decision.scenarioType);
-    const attempts: RouterModelRef[] = [
+    const rawAttempts: RouterModelRef[] = [
       { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model },
       ...fallbackPlan.attempts,
     ];
+    const attempts = hasTools(request)
+      ? rawAttempts.filter((attempt) => !isNoToolsAgnes(attempt))
+      : rawAttempts;
+    if (attempts.length === 0) {
+      const fallback = defaultModelRef();
+      if (fallback && !isNoToolsAgnes(fallback)) {
+        attempts.push(fallback);
+      }
+    }
     const zeroUsageMax = Math.max(1, config.zeroUsageRetry?.maxAttempts ?? 5);
     const zeroUsageEnabled = config.zeroUsageRetry?.enabled ?? true;
     const transientRetryEnabled = config.transientRetry?.enabled ?? true;
