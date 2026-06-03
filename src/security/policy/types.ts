@@ -34,7 +34,7 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
       "exec(",
       "nc ",
       "/bin/",
-      "| bash",
+      "\\| bash",
       "\\$\\(.+\\)",
     ],
   },
