@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from '../../../constants/config';
 import { useAuth } from '../context/AuthContext';
 import Onboarding from '../../onboarding/view/Onboarding';
 import AuthLoadingScreen from './AuthLoadingScreen';
@@ -15,14 +14,6 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (isLoading) {
     return <AuthLoadingScreen />;
-  }
-
-  if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
-    if (!hasCompletedOnboarding) {
-      return <Onboarding onComplete={refreshOnboardingStatus} />;
-    }
-
-    return <>{children}</>;
   }
 
   if (needsSetup) {

@@ -1,4 +1,4 @@
-import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from "../constants/config";
+import { IS_PLATFORM } from "../constants/config";
 
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
 
@@ -42,7 +42,7 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Content-Type'] = 'application/json';
   }
 
-  if (!IS_PLATFORM && !DISABLE_LOCAL_AUTH && token) {
+  if (!IS_PLATFORM && token) {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 

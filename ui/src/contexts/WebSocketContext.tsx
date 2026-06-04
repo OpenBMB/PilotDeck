@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../components/auth/context/AuthContext';
-import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from '../constants/config';
+import { IS_PLATFORM } from '../constants/config';
 
 type WSSubscriber = (msg: any) => void;
 
@@ -31,9 +31,8 @@ export const useWebSocket = () => {
 
 const buildWebSocketUrl = (token: string | null) => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  if (IS_PLATFORM || DISABLE_LOCAL_AUTH) return `${protocol}//${window.location.host}/ws`; // Platform mode: Use same domain as the page (goes through proxy)
-  if (!token) return null;
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`; // OSS mode: Use same host:port that served the page
+  if (IS_PLATFORM || !token) return `${protocol}//${window.location.host}/ws`;
+  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 };
 
 const useWebSocketProviderState = (): WebSocketContextType => {

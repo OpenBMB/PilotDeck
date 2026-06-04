@@ -18,6 +18,9 @@ services:
       - PILOT_HOME=/root/.pilotdeck
       - SERVER_PORT=3001
       - PILOTDECK_GATEWAY_PORT=18789
+      # ── Authentication (uncomment to require login) ──
+      # - PILOTDECK_DISABLE_LOCAL_AUTH=0
+      #
       # ── Proxy (uncomment if behind corporate proxy) ──
       # - https_proxy=http://host.docker.internal:7890
       # - PILOTDECK_PROXY=http://host.docker.internal:7890

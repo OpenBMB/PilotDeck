@@ -1,17 +1,12 @@
-import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from '../../../constants/config';
+import { IS_PLATFORM } from '../../../constants/config';
 import type { ShellIncomingMessage, ShellOutgoingMessage } from '../types/types';
 
 export function getShellWebSocketUrl(): string | null {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-  if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
-    return `${protocol}//${window.location.host}/shell`;
-  }
-
   const token = localStorage.getItem('auth-token');
-  if (!token) {
-    console.error('No authentication token found for Shell WebSocket connection');
-    return null;
+
+  if (IS_PLATFORM || !token) {
+    return `${protocol}//${window.location.host}/shell`;
   }
 
   return `${protocol}//${window.location.host}/shell?token=${encodeURIComponent(token)}`;
