@@ -351,6 +351,16 @@ export class GatewayBrowserClient {
     if (c && typeof c.randomUUID === "function") {
       return c.randomUUID();
     }
+    // Fallback: use crypto.getRandomValues for unpredictable IDs (issue #136).
+    // Math.random() was previously used here, producing predictable tokens
+    // that could be exploited in WebSocket reconnection scenarios.
+    if (c && typeof c.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      c.getRandomValues(bytes);
+      const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      return `web-${Date.now().toString(36)}-${hex}`;
+    }
+    // Last resort (no crypto at all — extremely rare in modern runtimes)
     return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   }
 }
@@ -409,9 +419,12 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 
   private next(): Promise<IteratorResult<T>> {
     if (this.error) {
-      const err = this.error;
-      this.error = undefined;
-      return Promise.reject(err);
+      // Do NOT clear the error — subsequent consumers must also see it.
+      // Previously `this.error = undefined` here caused the error to be consumed
+      // only once, after which callers got {done: true} instead of the error.
+      // This broke retry logic and reconnection in WebSocket-based streams
+      // (issue #128).
+      return Promise.reject(this.error);
     }
     const value = this.values.shift();
     if (value !== undefined) {
