@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.post('/check', async (req, res) => {
     const { stdout: branch } = await execInProject('git branch --show-current');
     const currentBranch = branch.trim() || 'main';
 
-    await execInProject(`git fetch origin ${currentBranch}`);
+    await execInProject(`git fetch origin ${currentBranch}:refs/remotes/origin/${currentBranch}`);
 
     const { stdout: localHead } = await execInProject('git rev-parse HEAD');
     const { stdout: remoteHead } = await execInProject(`git rev-parse origin/${currentBranch}`);
@@ -166,9 +166,8 @@ router.post('/restart', async (req, res) => {
     }
 
     // Local: spawn a new server process detached from this one
-    const projectRoot = path.resolve(PROJECT_ROOT, '..');
-    const child = spawn('bash', ['-c', `sleep 2 && cd "${projectRoot}" && npm run dev`], {
-      cwd: projectRoot,
+    const child = spawn('bash', ['-c', `sleep 2 && cd "${PROJECT_ROOT}" && npm run dev`], {
+      cwd: PROJECT_ROOT,
       detached: true,
       stdio: 'ignore',
       env: { ...process.env },
