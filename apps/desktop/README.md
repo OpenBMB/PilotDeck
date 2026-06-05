@@ -21,8 +21,12 @@ pnpm --filter pilotdeck-desktop dist:win
 
 Platform release builds should run on matching GitHub Actions runners:
 
-- macOS zip artifacts on `macos-latest`
-- Windows artifacts on `windows-latest`
+- macOS DMG artifacts on `macos-latest`
+- Windows NSIS installer artifacts on `windows-latest`
 
 The first packaging pass produces unsigned artifacts. Developer ID notarization
 and Windows Authenticode signing are separate hardening steps.
+
+The packaging script stages a production-only runtime in `.runtime/app` before
+calling `electron-builder`; the final app should not include the workspace
+development dependency tree.

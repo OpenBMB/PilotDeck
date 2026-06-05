@@ -34,7 +34,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pilotdeck-desktop-macos
-          path: |
-            apps/desktop/dist-electron/*.zip
-            apps/desktop/dist-electron/*.blockmap
+          path: apps/desktop/dist-electron/*.dmg
           if-no-files-found: error

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createWriteStream, existsSync, mkdirSync, rmSync, renameSync, chmodSync } from "node:fs";
+import { chmodSync, createWriteStream, existsSync, mkdirSync, rmSync, renameSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { spawnSync } from "node:child_process";
@@ -31,9 +31,40 @@ const nodeBinary = process.platform === "win32"
   ? join(targetDir, "node.exe")
   : join(targetDir, "bin", "node");
 
+function pruneNodeDistribution() {
+  const removable = process.platform === "win32"
+    ? [
+        "CHANGELOG.md",
+        "README.md",
+        "corepack",
+        "corepack.cmd",
+        "install_tools.bat",
+        "node_etw_provider.man",
+        "node_modules",
+        "npm",
+        "npm.cmd",
+        "npx",
+        "npx.cmd",
+      ]
+    : [
+        "CHANGELOG.md",
+        "README.md",
+        "bin/corepack",
+        "bin/npm",
+        "bin/npx",
+        "include",
+        "lib",
+        "share",
+      ];
+  for (const entry of removable) {
+    rmSync(join(targetDir, entry), { recursive: true, force: true });
+  }
+}
+
 if (existsSync(nodeBinary)) {
   const result = spawnSync(nodeBinary, ["--version"], { encoding: "utf8" });
   if (result.stdout.trim() === `v${version}`) {
+    pruneNodeDistribution();
     console.log(`[desktop] bundled Node already present: ${result.stdout.trim()}`);
     process.exit(0);
   }
@@ -63,4 +94,5 @@ if (extract.status !== 0) {
 renameSync(join(tmpDir, name), targetDir);
 rmSync(tmpDir, { recursive: true, force: true });
 if (process.platform !== "win32") chmodSync(nodeBinary, 0o755);
+pruneNodeDistribution();
 console.log(`[desktop] bundled Node ready: ${nodeBinary}`);

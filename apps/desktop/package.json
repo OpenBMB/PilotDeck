@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Cross-platform Electron shell for PilotDeck.",
+  "author": "PilotDeck",
   "main": "dist/main.js",
   "scripts": {
     "build:runtime": "node scripts/build-runtime.mjs",
@@ -24,100 +25,54 @@
     "appId": "cn.pilotdeck.desktop",
     "productName": "PilotDeck",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "compression": "maximum",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
-      "dist/**/*",
-      "package.json"
+      {
+        "from": ".",
+        "filter": [
+          "dist/**/*",
+          "package.json",
+          "!node_modules/**/*"
+        ]
+      }
     ],
     "asar": true,
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "afterPack": "scripts/after-pack.cjs",
+    "extraMetadata": {
+      "dependencies": {}
+    },
     "extraResources": [
       {
         "from": "resources/node",
         "to": "node"
       },
       {
-        "from": "../../package.json",
-        "to": "runtime/package.json"
-      },
-      {
-        "from": "../../pnpm-workspace.yaml",
-        "to": "runtime/pnpm-workspace.yaml"
-      },
-      {
-        "from": "../../node_modules",
-        "to": "runtime/node_modules",
+        "from": ".runtime/app",
+        "to": "runtime",
         "filter": [
-          "**/*",
-          "!**/.pnpm/node_modules/pilotdeck-desktop",
-          "!**/.cache/**",
-          "!**/.vite/**"
-        ]
-      },
-      {
-        "from": "../../dist",
-        "to": "runtime/dist"
-      },
-      {
-        "from": "../../src",
-        "to": "runtime/src",
-        "filter": [
-          "**/*",
-          "!**/*.map"
-        ]
-      },
-      {
-        "from": "../../scripts",
-        "to": "runtime/scripts"
-      },
-      {
-        "from": "../../ui/package.json",
-        "to": "runtime/ui/package.json"
-      },
-      {
-        "from": "../../ui/server",
-        "to": "runtime/ui/server"
-      },
-      {
-        "from": "../../ui/shared",
-        "to": "runtime/ui/shared"
-      },
-      {
-        "from": "../../ui/public",
-        "to": "runtime/ui/public"
-      },
-      {
-        "from": "../../ui/dist",
-        "to": "runtime/ui/dist"
-      },
-      {
-        "from": "../../ui/node_modules",
-        "to": "runtime/ui/node_modules",
-        "filter": [
-          "**/*",
-          "!**/.cache/**",
-          "!**/.vite/**"
+          "**/*"
         ]
       }
     ],
     "mac": {
-      "identity": null,
       "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist",
       "target": [
-        "zip"
+        "dmg"
       ]
     },
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "x64"
           ]
