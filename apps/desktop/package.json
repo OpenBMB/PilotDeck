@@ -52,6 +52,10 @@
         "to": "node"
       },
       {
+        "from": "resources/icons",
+        "to": "icons"
+      },
+      {
         "from": ".runtime/app",
         "to": "runtime",
         "filter": [
@@ -61,6 +65,7 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "resources/icons/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "resources/entitlements.mac.plist",
@@ -70,6 +75,7 @@
       ]
     },
     "win": {
+      "icon": "resources/icons/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -82,6 +88,9 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
+      "installerIcon": "resources/icons/icon.ico",
+      "uninstallerIcon": "resources/icons/icon.ico",
+      "installerHeaderIcon": "resources/icons/icon.ico",
       "allowToChangeInstallationDirectory": true
     }
   }
