@@ -1,0 +1,40 @@
+name: Desktop macOS
+
+on:
+  push:
+    branches:
+      - desktopdev
+      - mac
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS desktop artifact
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter pilotdeck-desktop run dist:mac
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilotdeck-desktop-macos
+          path: |
+            apps/desktop/dist-electron/*.zip
+            apps/desktop/dist-electron/*.blockmap
+          if-no-files-found: error

@@ -1,9 +1,11 @@
 {
   "name": "pilotdeck",
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
   "private": true,
   "type": "module",
   "workspaces": [
+    "apps/desktop",
     "ui"
   ],
   "bin": {

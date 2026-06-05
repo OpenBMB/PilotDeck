@@ -1,0 +1,133 @@
+{
+  "name": "pilotdeck-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform Electron shell for PilotDeck.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "compile": "tsc -p tsconfig.json",
+    "dev": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron .",
+    "pack": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --dir",
+    "dist:mac": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac",
+    "dist:win": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win",
+    "download-node": "node scripts/download-node.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "cn.pilotdeck.desktop",
+    "productName": "PilotDeck",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node"
+      },
+      {
+        "from": "../../package.json",
+        "to": "runtime/package.json"
+      },
+      {
+        "from": "../../pnpm-workspace.yaml",
+        "to": "runtime/pnpm-workspace.yaml"
+      },
+      {
+        "from": "../../node_modules",
+        "to": "runtime/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.pnpm/node_modules/pilotdeck-desktop",
+          "!**/.cache/**",
+          "!**/.vite/**"
+        ]
+      },
+      {
+        "from": "../../dist",
+        "to": "runtime/dist"
+      },
+      {
+        "from": "../../src",
+        "to": "runtime/src",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "../../scripts",
+        "to": "runtime/scripts"
+      },
+      {
+        "from": "../../ui/package.json",
+        "to": "runtime/ui/package.json"
+      },
+      {
+        "from": "../../ui/server",
+        "to": "runtime/ui/server"
+      },
+      {
+        "from": "../../ui/shared",
+        "to": "runtime/ui/shared"
+      },
+      {
+        "from": "../../ui/public",
+        "to": "runtime/ui/public"
+      },
+      {
+        "from": "../../ui/dist",
+        "to": "runtime/ui/dist"
+      },
+      {
+        "from": "../../ui/node_modules",
+        "to": "runtime/ui/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.cache/**",
+          "!**/.vite/**"
+        ]
+      }
+    ],
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
