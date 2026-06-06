@@ -26,7 +26,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { DetachedStdioTransport } from "./DetachedStdioTransport.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -84,6 +84,9 @@ export class McpClient {
   private serverInstructions = "";
   private connectPromise: Promise<void> | null = null;
   private reconnectInFlight = false;
+
+  /** PID for process-group kill. -1 = not yet set. */
+  private _transportPid: number = -1;
   private perSessionDir: string | null = null;
 
   constructor(
@@ -142,6 +145,12 @@ export class McpClient {
     }
     this.client = client;
     this.transport = transport;
+    // Capture PID after transport.start() has been called by client.connect().
+    // With DetachedStdioTransport (detached: true), PID == PGID, so
+    // kill(-pid, SIGKILL) in close() wipes the entire process tree.
+    if (this._transportPid <= 0 && "pid" in transport) {
+      this._transportPid = (transport as { pid: number | null }).pid ?? -1;
+    }
     this.status = "ready";
     const instructions = (client.getServerCapabilities() as { instructions?: string } | undefined)
       ?.instructions;
@@ -168,12 +177,16 @@ export class McpClient {
         this.perSessionDir = dir;
         args = [...(args ?? []), `--user-data-dir=${dir}`];
       }
-      return new StdioClientTransport({
+      const _transport = new DetachedStdioTransport({
         command: this.spec.command,
         args,
         env: this.spec.env,
         cwd: this.spec.cwd,
       });
+      // PID will be available after start() is called (during client.connect()).
+      // We read it lazily in close() via _transportPid, which gets set in
+      // runConnect() after the transport has spawned.
+      return _transport;
     }
     if (this.spec.transport === "streamable_http") {
       const url = new URL(this.spec.url);
@@ -291,13 +304,23 @@ export class McpClient {
   private recycleTransportAfterTimeout(): void {
     const oldClient = this.client;
     const oldDir = this.perSessionDir;
+    const oldPid = this._transportPid;
     this.client = null;
     this.transport = null;
     this.connectPromise = null;
     this.listToolsCache = null;
     this.perSessionDir = null;
+    this._transportPid = -1;
     this.status = "error";
     void (async () => {
+      // Kill the entire process group first (tsx → node → Chromium)
+      if (oldPid > 0) {
+        try {
+          process.kill(-oldPid, "SIGKILL");
+        } catch {
+          // ESRCH = already gone
+        }
+      }
       try {
         await oldClient?.close();
       } catch {
@@ -329,16 +352,39 @@ export class McpClient {
   }
 
   async close(): Promise<void> {
+    // ── Step 1: Kill the entire process group atomically ──
+    // With DetachedStdioTransport (detached: true), the child process is the
+    // leader of its own process group. kill(-pid, SIGKILL) wipes tsx + all
+    // descendants (node playwright-mcp, Chromium) in one syscall.
+    // Do this FIRST — it's faster than waiting for SDK's graceful SIGTERM→SIGKILL
+    // cascade, and guarantees no grandchildren survive.
+    if (this._transportPid > 0) {
+      try {
+        process.kill(-this._transportPid, "SIGKILL");
+      } catch (e) {
+        // ESRCH = group already gone (process exited normally). Safe to ignore.
+        if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
+          console.warn("[McpClient] process-group SIGKILL failed:", (e as Error).message);
+        }
+      }
+      this._transportPid = -1;
+    }
+
+    // ── Step 2: Close SDK client (best-effort, process is already dead) ──
     try {
       await this.client?.close();
     } catch {
-      // best effort
+      // process already killed in step 1
     }
+
+    // ── Step 3: Reset state ──
     this.client = null;
     this.transport = null;
     this.connectPromise = null;
     this.status = "idle";
     this.listToolsCache = null;
+
+    // ── Step 4: Clean up per-session temp directory ──
     if (this.perSessionDir) {
       try {
         rmSync(this.perSessionDir, { recursive: true, force: true });
