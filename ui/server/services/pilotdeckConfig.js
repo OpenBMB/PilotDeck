@@ -560,6 +560,12 @@ export async function writePilotDeckConfig(config) {
       ),
     ),
   );
+  if (isRecord(sanitized.memory)) {
+    const memModel = sanitized.memory.model;
+    if (typeof memModel === 'string' && !memModel.trim()) {
+      delete sanitized.memory.model;
+    }
+  }
   const validation = validatePilotDeckConfig(sanitized);
   if (!validation.valid) {
     const error = new Error('Invalid PilotDeck config');
@@ -569,6 +575,12 @@ export async function writePilotDeckConfig(config) {
   const configPath = getPilotDeckConfigPath();
   await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
   const yamlObj = validation.config;
+  if (isRecord(yamlObj.memory)) {
+    const memModel = yamlObj.memory.model;
+    if (typeof memModel === 'string' && !memModel.trim()) {
+      delete yamlObj.memory.model;
+    }
+  }
   const raw = stringifyYaml(yamlObj, { lineWidth: 0 });
   await fsPromises.writeFile(configPath, raw, 'utf8');
   return { configPath, raw, validation, config: yamlObj };

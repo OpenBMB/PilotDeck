@@ -3151,7 +3151,11 @@ export default function PilotDeckConfigTab({ projects = [] }: { projects?: Setti
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={openFile} disabled={opening} className="h-8 gap-1.5 px-2.5 text-xs">
                   <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
-                  {opening ? t('pilotDeckConfig.actions.opening') : t('pilotDeckConfig.actions.revealFile')}
+                  {opening
+                    ? t('pilotDeckConfig.actions.opening')
+                    : t(/win/i.test(navigator.userAgent) && !/darwin/i.test(navigator.userAgent)
+                        ? 'pilotDeckConfig.actions.revealFileWindows'
+                        : 'pilotDeckConfig.actions.revealFile')}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => void refresh()} className="h-8 gap-1.5 px-2.5 text-xs">
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" />

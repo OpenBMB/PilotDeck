@@ -18,6 +18,9 @@ function getCronDaemonOwnerPath() {
 }
 
 function getCronDaemonSocketPath() {
+  if (process.platform === 'win32') {
+    return '\\\\.\\pipe\\pilotdeck-cron-daemon';
+  }
   return path.join(getPilotDeckConfigHomeDir(), 'cron-daemon.sock');
 }
 

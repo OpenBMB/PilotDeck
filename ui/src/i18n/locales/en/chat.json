@@ -156,6 +156,18 @@
     "error": "Unable to grant this chat permission. Please try again.",
     "openSettings": "Open settings"
   },
+  "permissionBanner": {
+    "title": "Permission required",
+    "titleCount": "Permission required ({{count}})",
+    "tool": "Tool:",
+    "allowRule": "Allow rule:",
+    "viewToolInput": "View tool input",
+    "viewToolInputs": "View {{count}} tool inputs",
+    "allowOnce": "Allow once",
+    "allowRemember": "Allow & remember",
+    "allowSaved": "Allow (saved)",
+    "deny": "Deny"
+  },
   "todo": {
     "updated": "Todo list has been updated successfully",
     "current": "Current Todo List"

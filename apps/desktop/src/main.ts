@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -88,6 +88,15 @@ router:
     subagentMaxTokens: 48000
   stats:
     enabled: true
+memory:
+  enabled: true
+  captureStrategy: last_turn
+  includeAssistant: true
+  maxMessageChars: 6000
+  heartbeatBatchSize: 30
+  reasoningMode: answer_first
+  autoIndexIntervalMinutes: 30
+  autoDreamIntervalMinutes: 60
 cron:
   enabled: true
   timezone: Asia/Shanghai
@@ -239,6 +248,10 @@ async function createWindow(): Promise<void> {
   const info = await runtime.start();
   const icon = resolveAppIcon();
 
+  if (process.platform === "win32") {
+    Menu.setApplicationMenu(null);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 900,
@@ -246,6 +259,7 @@ async function createWindow(): Promise<void> {
     minHeight: 640,
     title: "PilotDeck",
     ...(icon ? { icon } : {}),
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
