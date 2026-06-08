@@ -82,6 +82,14 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     validateInput: async (input, context) => {
+      // Defensive normalization: some models/providers emit empty strings for optional fields
+      // instead of omitting them (e.g., `pages: ""` for a non-PDF file). Treat whitespace-only
+      // optional strings as absent to avoid spurious validation failures that trigger
+      // agent_tool_error_loop after 3 consecutive turns (issue #108).
+      if (typeof input.pages === "string" && input.pages.trim().length === 0) {
+        input = { ...input, pages: undefined };
+      }
+
       if (input.offset !== undefined && input.offset < 1) {
         return {
           ok: false,
