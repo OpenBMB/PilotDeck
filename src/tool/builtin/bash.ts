@@ -18,7 +18,7 @@ export type CreateBashToolOptions = {
 const BASH_TOOL_DESCRIPTION = `Run a shell command in the PilotDeck workspace.
 
 Usage:
-- The \`command\` parameter is passed to \`/bin/sh -c\`.
+- The \`command\` parameter is passed to the system shell (\`cmd.exe\` on Windows, \`/bin/sh\` on macOS/Linux).
 - The shell runs in the current workspace directory and inherits the tool runtime environment.
 - Use \`timeout\` to override the command timeout in milliseconds. When omitted, the default is 30000ms. Values above 600000ms are clamped to the maximum.
 - Use \`description\` to provide a short, clear label for logs and audits. Prefer 3-10 words that say what the command does.
@@ -43,7 +43,7 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
       properties: {
         command: {
           type: "string",
-          description: "The shell command to execute (passed to /bin/sh -c).",
+          description: "The shell command to execute (passed to the system shell).",
         },
         timeout: {
           type: "integer",

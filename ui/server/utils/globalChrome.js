@@ -56,14 +56,28 @@ function removeLock() {
 
 function findChromePath() {
   const platform = process.platform;
-  const candidates =
-    platform === 'darwin'
-      ? [
-          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-          '/Applications/Chromium.app/Contents/MacOS/Chromium',
-          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-        ]
-      : ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium'];
+  let candidates;
+  if (platform === 'darwin') {
+    candidates = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ];
+  } else if (platform === 'win32') {
+    const programFiles = process.env.PROGRAMFILES || 'C:\\Program Files';
+    const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+    const localAppData = process.env.LOCALAPPDATA || '';
+    candidates = [
+      join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      join(programFiles, 'Chromium', 'Application', 'chrome.exe'),
+    ];
+  } else {
+    candidates = ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium'];
+  }
 
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -145,8 +159,20 @@ async function killCDPPort() {
   const caller = _caller();
   let pidList = [];
   try {
-    const raw = execSync(`lsof -ti :${CDP_PORT} 2>/dev/null`, { encoding: 'utf8' }).trim();
-    if (raw) pidList = raw.split('\n').map(Number).filter(Boolean);
+    if (process.platform === 'win32') {
+      const raw = execSync(
+        `netstat -ano | findstr "LISTENING" | findstr ":${CDP_PORT} "`,
+        { encoding: 'utf8' }
+      ).trim();
+      for (const line of raw.split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = Number(parts[parts.length - 1]);
+        if (pid && !pidList.includes(pid)) pidList.push(pid);
+      }
+    } else {
+      const raw = execSync(`lsof -ti :${CDP_PORT} 2>/dev/null`, { encoding: 'utf8' }).trim();
+      if (raw) pidList = raw.split('\n').map(Number).filter(Boolean);
+    }
   } catch { /* ignore */ }
 
   if (pidList.length === 0) {
@@ -156,8 +182,14 @@ async function killCDPPort() {
 
   console.warn(`[BROWSER ${_ts()}] killCDPPort: sending SIGTERM to pids=${JSON.stringify(pidList)} | caller: ${caller}`);
 
-  for (const pid of pidList) {
-    try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+  if (process.platform === 'win32') {
+    for (const pid of pidList) {
+      try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }); } catch { /* ignore */ }
+    }
+  } else {
+    for (const pid of pidList) {
+      try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+    }
   }
 
   const deadline = Date.now() + CHROME_STOP_TIMEOUT_MS;
@@ -169,9 +201,11 @@ async function killCDPPort() {
     await new Promise((r) => setTimeout(r, CHROME_STOP_POLL_MS));
   }
 
-  console.warn(`[BROWSER ${_ts()}] killCDPPort: SIGTERM timeout, sending SIGKILL to pids=${JSON.stringify(pidList)}`);
-  for (const pid of pidList) {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+  if (process.platform !== 'win32') {
+    console.warn(`[BROWSER ${_ts()}] killCDPPort: SIGTERM timeout, sending SIGKILL to pids=${JSON.stringify(pidList)}`);
+    for (const pid of pidList) {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+    }
   }
   await new Promise((r) => setTimeout(r, 300));
   chromeProcess = null;

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 export const MCP_CONFIG_FILE_NAME = "mcp.json";
@@ -82,7 +83,7 @@ function expandConfig(value: unknown): unknown {
 function expandString(value: string): string {
   return value
     .replace(/\$\{env:([^}]+)\}/g, (_match, name: string) => process.env[name] ?? "")
-    .replace(/\$\{userHome\}/g, process.env.HOME ?? "");
+    .replace(/\$\{userHome\}/g, process.env.HOME ?? process.env.USERPROFILE ?? homedir());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

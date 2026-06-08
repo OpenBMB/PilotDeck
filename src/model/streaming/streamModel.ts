@@ -68,7 +68,9 @@ export async function* streamModel(
     const body = buildModelRequest(currentRequest, config);
     if (process.env.PILOTDECK_DUMP_REQUEST === "1") {
       const fs = await import("node:fs");
-      const dumpPath = `/tmp/pilotdeck_request_${Date.now()}.json`;
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const dumpPath = path.join(os.tmpdir(), `pilotdeck_request_${Date.now()}.json`);
       fs.writeFileSync(dumpPath, JSON.stringify(body, null, 2));
       console.log(`[model-debug] Request dumped to ${dumpPath} (model=${currentRequest.model})`);
     }
