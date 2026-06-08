@@ -75,22 +75,9 @@ function isRecoverableToolUseError(content: unknown): boolean {
   return !looksLikePermissionError;
 }
 
-function isWebSearchNotConfiguredError(toolName: string | undefined, content: unknown): boolean {
+function isWebSearchError(toolName: string | undefined): boolean {
   const name = (toolName ?? '').toLowerCase();
-  if (name !== 'web_search' && name !== 'websearch') return false;
-  const text = stringifyMessageContent(content).toLowerCase();
-  return (
-    text.includes('not configured') ||
-    text.includes('unsupported_tool') ||
-    text.includes('token expired') ||
-    text.includes('token invalid') ||
-    text.includes('invalid api key') ||
-    text.includes('invalid key') ||
-    text.includes('unauthorized') ||
-    text.includes('authentication') ||
-    /\b401\b/.test(text) ||
-    /\b403\b/.test(text)
-  );
+  return name === 'web_search' || name === 'websearch';
 }
 
 function getAttachmentTypeLabel(name?: string, mimeType?: string): string {
@@ -395,7 +382,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                   message.toolResult.isError ? (
                     <div id={`tool-result-${message.toolId}`} className="scroll-mt-4">
                       {(() => {
-                        if (isWebSearchNotConfiguredError(message.toolName, message.toolResult?.content)) {
+                        if (isWebSearchError(message.toolName)) {
                           return (
                             <div className="my-1.5 overflow-hidden rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-950/20">
                               <div className="flex items-start gap-3 px-4 py-3">
