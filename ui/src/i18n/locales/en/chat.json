@@ -25,8 +25,8 @@
     "title": "Tool error",
     "description": "",
     "webSearchNotConfigured": {
-      "title": "Web Search Not Configured",
-      "description": "The web search tool requires an API key to work. Please go to Settings → Config → Search to set up your search provider and API key.",
+      "title": "Web Search Not Ready",
+      "description": "The search API key is missing or invalid. Please go to Settings → Config → Search to check your search provider and API key.",
       "openSettings": "Go to Settings"
     }
   },

@@ -79,7 +79,18 @@ function isWebSearchNotConfiguredError(toolName: string | undefined, content: un
   const name = (toolName ?? '').toLowerCase();
   if (name !== 'web_search' && name !== 'websearch') return false;
   const text = stringifyMessageContent(content).toLowerCase();
-  return text.includes('not configured') || text.includes('unsupported_tool');
+  return (
+    text.includes('not configured') ||
+    text.includes('unsupported_tool') ||
+    text.includes('token expired') ||
+    text.includes('token invalid') ||
+    text.includes('invalid api key') ||
+    text.includes('invalid key') ||
+    text.includes('unauthorized') ||
+    text.includes('authentication') ||
+    /\b401\b/.test(text) ||
+    /\b403\b/.test(text)
+  );
 }
 
 function getAttachmentTypeLabel(name?: string, mimeType?: string): string {
