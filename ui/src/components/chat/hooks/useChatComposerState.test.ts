@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { shouldCycleRunModeOnKeyDown } from './useChatComposerState';
+import {
+  createWebSocketSendFailureMessage,
+  shouldCycleRunModeOnKeyDown,
+} from './useChatComposerState';
 
 function keyEvent(key: string, shiftKey = false) {
   return { key, shiftKey };
@@ -26,5 +29,15 @@ describe('useChatComposerState keyboard shortcuts', () => {
       showFileDropdown: false,
       showCommandMenu: true,
     })).toBe(false);
+  });
+});
+
+describe('createWebSocketSendFailureMessage', () => {
+  it('builds a visible error message for failed websocket sends', () => {
+    const message = createWebSocketSendFailureMessage();
+
+    expect(message.type).toBe('error');
+    expect(message.content).toContain('not connected');
+    expect(message.content).toContain('try again');
   });
 });
