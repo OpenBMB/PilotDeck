@@ -402,7 +402,17 @@ export class InProcessGateway implements Gateway {
     // `session_busy`.
     const pending = this.turnCompletions.get(input.sessionKey);
     if (!pending) return;
-    await pending;
+    const ABORT_TIMEOUT_MS = 30_000;
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) =>
+        setTimeout(() => {
+          console.warn(`[InProcessGateway] abortTurn timed out after ${ABORT_TIMEOUT_MS}ms for session ${input.sessionKey}`);
+          this.turnCompletions.delete(input.sessionKey);
+          resolve();
+        }, ABORT_TIMEOUT_MS),
+      ),
+    ]);
   }
 
   async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {

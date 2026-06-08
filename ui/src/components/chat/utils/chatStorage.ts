@@ -112,15 +112,23 @@ export async function savePilotDeckPermissionSettings(
   return next;
 }
 
+function unionStringArrays(a: string[], b: string[]): string[] {
+  const set = new Set(a);
+  for (const item of b) set.add(item);
+  return [...set];
+}
+
 function mergePermissionSettings(value: unknown): PilotDeckSettings {
   const current = getPilotDeckSettings();
   const parsed = value && typeof value === 'object' ? value as Partial<PilotDeckSettings> : {};
+  const backendAllowed = Array.isArray(parsed.allowedTools) ? parsed.allowedTools : [];
+  const backendDisallowed = Array.isArray(parsed.disallowedTools) ? parsed.disallowedTools : [];
   return {
     ...current,
     ...parsed,
-    allowedTools: Array.isArray(parsed.allowedTools) ? parsed.allowedTools : [],
-    disallowedTools: Array.isArray(parsed.disallowedTools) ? parsed.disallowedTools : [],
-    skipPermissions: Boolean(parsed.skipPermissions),
+    allowedTools: unionStringArrays(current.allowedTools, backendAllowed),
+    disallowedTools: unionStringArrays(current.disallowedTools, backendDisallowed),
+    skipPermissions: typeof parsed.skipPermissions === 'boolean' ? parsed.skipPermissions : current.skipPermissions,
     projectSortOrder: current.projectSortOrder || 'name',
   };
 }

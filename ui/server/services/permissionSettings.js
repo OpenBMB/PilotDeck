@@ -59,14 +59,20 @@ export function readPermissionSettings(env = process.env) {
 }
 
 export function writePermissionSettings(updates, env = process.env) {
+  const current = readPermissionSettings(env);
   const next = normalizePermissionSettings({
-    ...readPermissionSettings(env),
+    ...current,
     ...(updates || {}),
     lastUpdated: new Date().toISOString(),
   });
   const filePath = getPermissionSettingsPath(env);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    console.error(`[permissionSettings] Failed to write ${filePath}:`, err);
+    throw err;
+  }
   return next;
 }
 

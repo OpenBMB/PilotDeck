@@ -44,10 +44,9 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
         const pid = child.pid;
         if (!pid) return;
         if (process.platform === "win32") {
-          try { child.kill("SIGTERM"); } catch { /* already dead */ }
-          setTimeout(() => {
-            try { child.kill("SIGKILL"); } catch { /* already dead */ }
-          }, 3000).unref();
+          try {
+            spawn("taskkill", ["/pid", String(pid), "/t", "/f"], { stdio: "ignore" });
+          } catch { /* best-effort */ }
         } else {
           try { process.kill(-pid, "SIGTERM"); } catch { /* already dead */ }
           setTimeout(() => {
@@ -61,9 +60,22 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
         killProcessGroup();
       }, options.timeoutMs);
 
+      const ABORT_FORCE_RESOLVE_MS = 15_000;
+
       const onAbort = () => {
         if (settled) return;
         killProcessGroup();
+        setTimeout(() => {
+          if (settled) return;
+          cleanup();
+          resolve({
+            exitCode: null,
+            stdout,
+            stderr: stderr + "\n[PilotDeck] Process did not exit within 15s after abort; force-resolved.",
+            timedOut: true,
+            durationMs: Date.now() - startedAt,
+          });
+        }, ABORT_FORCE_RESOLVE_MS).unref();
       };
       options.signal?.addEventListener("abort", onAbort, { once: true });
 
