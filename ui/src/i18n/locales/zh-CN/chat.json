@@ -23,7 +23,12 @@
   },
   "toolUseError": {
     "title": "工具错误",
-    "description": ""
+    "description": "",
+    "webSearchNotConfigured": {
+      "title": "网络搜索未配置",
+      "description": "网络搜索工具需要配置 API Key 才能使用。请前往 设置 → 配置 → 搜索 设置搜索服务商和 API Key。",
+      "openSettings": "前往设置"
+    }
   },
   "interrupted": {
     "label": "已被用户暂停"

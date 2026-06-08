@@ -23,7 +23,12 @@
   },
   "toolUseError": {
     "title": "Tool error",
-    "description": ""
+    "description": "",
+    "webSearchNotConfigured": {
+      "title": "Web Search Not Configured",
+      "description": "The web search tool requires an API key to work. Please go to Settings → Config → Search to set up your search provider and API key.",
+      "openSettings": "Go to Settings"
+    }
   },
   "interrupted": {
     "label": "Interrupted by user"
