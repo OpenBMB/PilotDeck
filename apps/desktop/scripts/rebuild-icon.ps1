@@ -8,74 +8,69 @@ $outIco = Join-Path $iconsDir "icon.ico"
 $src = New-Object System.Drawing.Bitmap($sourcePath)
 $w = $src.Width
 $h = $src.Height
+Write-Host "Source: ${w}x${h}"
 
-# Corner radius: ~18% of size (matches the SVG rx=92 on 512 viewBox)
-$radius = [int]($w * 0.18)
-
-Write-Host "Source: ${w}x${h}, radius=$radius"
-
-# --- Helper: create a rounded-rect GraphicsPath ---
-function New-RoundedRectPath([int]$width, [int]$height, [int]$r) {
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $d = $r * 2
-    $path.AddArc(0, 0, $d, $d, 180, 90)
-    $path.AddArc($width - $d, 0, $d, $d, 270, 90)
-    $path.AddArc($width - $d, $height - $d, $d, $d, 0, 90)
-    $path.AddArc(0, $height - $d, $d, $d, 90, 90)
-    $path.CloseFigure()
-    return $path
-}
-
-# --- Apply transparency mask to a bitmap ---
-function Apply-RoundedMask([System.Drawing.Bitmap]$bmp) {
-    $size = $bmp.Width
-    $r = [int]($size * 0.18)
-    $path = New-RoundedRectPath $size $size $r
-    $region = New-Object System.Drawing.Region($path)
-
-    $rect = New-Object System.Drawing.Rectangle(0, 0, $size, $size)
+# --- Flood-fill border white pixels with transparency on the ORIGINAL size image ---
+function Remove-WhiteBorder([System.Drawing.Bitmap]$bmp) {
+    $width = $bmp.Width
+    $height = $bmp.Height
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $width, $height)
     $data = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadWrite,
                           [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $stride = $data.Stride
-    $bytes = New-Object byte[] ($stride * $size)
-    [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
+    $totalBytes = $stride * $height
+    $bytes = New-Object byte[] $totalBytes
+    [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $totalBytes)
 
-    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+    $threshold = 180
 
-    for ($y = 0; $y -lt $size; $y++) {
-        for ($x = 0; $x -lt $size; $x++) {
-            if (-not $region.IsVisible($x, $y, $gfx)) {
-                $idx = $y * $stride + $x * 4
-                $bytes[$idx]   = 0  # B
-                $bytes[$idx+1] = 0  # G
-                $bytes[$idx+2] = 0  # R
-                $bytes[$idx+3] = 0  # A
-            }
-        }
+    $visited = New-Object bool[] ($width * $height)
+    $queue = New-Object System.Collections.Generic.Queue[int]
+
+    for ($x = 0; $x -lt $width; $x++) {
+        $queue.Enqueue($x)
+        $queue.Enqueue(($height - 1) * $width + $x)
+    }
+    for ($y = 1; $y -lt ($height - 1); $y++) {
+        $queue.Enqueue($y * $width)
+        $queue.Enqueue($y * $width + $width - 1)
     }
 
-    [System.Runtime.InteropServices.Marshal]::Copy($bytes, 0, $data.Scan0, $bytes.Length)
+    $cleared = 0
+    while ($queue.Count -gt 0) {
+        $pos = $queue.Dequeue()
+        if ($pos -lt 0 -or $pos -ge ($width * $height)) { continue }
+        if ($visited[$pos]) { continue }
+        $visited[$pos] = $true
+
+        $x = $pos % $width
+        $y = [Math]::Floor($pos / $width)
+        $idx = $y * $stride + $x * 4
+
+        $b = $bytes[$idx]
+        $g = $bytes[$idx + 1]
+        $r = $bytes[$idx + 2]
+        $a = $bytes[$idx + 3]
+
+        if ($a -lt 128 -or $r -le $threshold -or $g -le $threshold -or $b -le $threshold) {
+            continue
+        }
+
+        $bytes[$idx]     = 0
+        $bytes[$idx + 1] = 0
+        $bytes[$idx + 2] = 0
+        $bytes[$idx + 3] = 0
+        $cleared++
+
+        if ($x -gt 0)            { $queue.Enqueue($pos - 1) }
+        if ($x -lt $width - 1)   { $queue.Enqueue($pos + 1) }
+        if ($y -gt 0)            { $queue.Enqueue($pos - $width) }
+        if ($y -lt $height - 1)  { $queue.Enqueue($pos + $width) }
+    }
+
+    [System.Runtime.InteropServices.Marshal]::Copy($bytes, 0, $data.Scan0, $totalBytes)
     $bmp.UnlockBits($data)
-    $gfx.Dispose()
-    $region.Dispose()
-    $path.Dispose()
-}
-
-# --- Resize + mask ---
-function Make-TransparentIcon([System.Drawing.Bitmap]$source, [int]$size) {
-    $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $bmp.SetResolution(96, 96)
-    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-    $gfx.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $gfx.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-    $gfx.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-    $gfx.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
-    $gfx.Clear([System.Drawing.Color]::Transparent)
-    $gfx.DrawImage($source, 0, 0, $size, $size)
-    $gfx.Dispose()
-
-    Apply-RoundedMask $bmp
-    return $bmp
+    Write-Host "  Cleared $cleared border pixels on ${width}x${height}"
 }
 
 # --- Build ICO (PNG-embedded format) ---
@@ -90,32 +85,28 @@ function Build-Ico([System.Drawing.Bitmap[]]$images, [int[]]$sizes, [string]$out
     $fs = [System.IO.File]::Create($outPath)
     $bw = New-Object System.IO.BinaryWriter($fs)
 
-    # ICO header
-    $bw.Write([uint16]0)              # reserved
-    $bw.Write([uint16]1)              # type = ICO
-    $bw.Write([uint16]$images.Count)  # image count
+    $bw.Write([uint16]0)
+    $bw.Write([uint16]1)
+    $bw.Write([uint16]$images.Count)
 
-    # Calculate data offsets
     $headerSize = 6
     $dirSize = 16 * $images.Count
     $dataOffset = $headerSize + $dirSize
 
-    # Directory entries
     for ($i = 0; $i -lt $images.Count; $i++) {
         $s = $sizes[$i]
         $pngBytes = $pngStreams[$i].ToArray()
-        $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))  # width
-        $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))  # height
-        $bw.Write([byte]0)             # color palette
-        $bw.Write([byte]0)             # reserved
-        $bw.Write([uint16]1)           # color planes
-        $bw.Write([uint16]32)          # bits per pixel
-        $bw.Write([uint32]$pngBytes.Length)  # data size
-        $bw.Write([uint32]$dataOffset)       # data offset
+        $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))
+        $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))
+        $bw.Write([byte]0)
+        $bw.Write([byte]0)
+        $bw.Write([uint16]1)
+        $bw.Write([uint16]32)
+        $bw.Write([uint32]$pngBytes.Length)
+        $bw.Write([uint32]$dataOffset)
         $dataOffset += $pngBytes.Length
     }
 
-    # Image data
     for ($i = 0; $i -lt $images.Count; $i++) {
         $bw.Write($pngStreams[$i].ToArray())
         $pngStreams[$i].Dispose()
@@ -125,26 +116,43 @@ function Build-Ico([System.Drawing.Bitmap[]]$images, [int[]]$sizes, [string]$out
     $fs.Close()
 }
 
-# --- Main ---
+# --- Step 1: Remove white border on the FULL-SIZE source first ---
+Write-Host "Step 1: Removing white border from full-size source..."
+$clean = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$gfx = [System.Drawing.Graphics]::FromImage($clean)
+$gfx.DrawImage($src, 0, 0, $w, $h)
+$gfx.Dispose()
+Remove-WhiteBorder $clean
+
+# --- Step 2: Resize from the cleaned source ---
+Write-Host "Step 2: Generating resized icons..."
 $sizes = @(256, 128, 64, 48, 32, 16)
 $bitmaps = @()
 
 foreach ($s in $sizes) {
-    Write-Host "  Generating ${s}x${s}..."
-    $bmp = Make-TransparentIcon $src $s
+    $bmp = New-Object System.Drawing.Bitmap($s, $s, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $bmp.SetResolution(96, 96)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $g.DrawImage($clean, 0, 0, $s, $s)
+    $g.Dispose()
+    Write-Host "  ${s}x${s} done"
     $bitmaps += ,$bmp
 }
 
-# Save 256px as icon.png
+# --- Step 3: Save ---
 $bitmaps[0].Save($outPng, [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Host "Wrote $outPng"
 
-# Save ICO
 Build-Ico $bitmaps $sizes $outIco
 Write-Host "Wrote $outIco"
 
-# Cleanup
 foreach ($b in $bitmaps) { $b.Dispose() }
+$clean.Dispose()
 $src.Dispose()
-
 Write-Host "Done!"
