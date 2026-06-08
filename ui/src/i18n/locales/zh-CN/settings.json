@@ -558,6 +558,7 @@
 	    "actions": {
 	      "opening": "正在打开...",
 	      "revealFile": "在访达中显示",
+	      "revealFileWindows": "在文件资源管理器中显示",
 	      "refresh": "刷新",
 	      "reloadCurrent": "重新加载当前配置",
 	      "saving": "保存中...",

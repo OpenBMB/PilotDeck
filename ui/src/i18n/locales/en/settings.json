@@ -558,6 +558,7 @@
 	    "actions": {
 	      "opening": "Opening...",
 	      "revealFile": "Reveal in Finder",
+	      "revealFileWindows": "Reveal in Explorer",
 	      "refresh": "Refresh",
 	      "reloadCurrent": "Reload current config",
 	      "saving": "Saving...",

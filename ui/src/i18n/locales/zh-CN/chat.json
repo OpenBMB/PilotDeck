@@ -151,6 +151,18 @@
     "error": "无法授予本聊天权限。请重试。",
     "openSettings": "打开设置"
   },
+  "permissionBanner": {
+    "title": "需要授权",
+    "titleCount": "需要授权 ({{count}})",
+    "tool": "工具：",
+    "allowRule": "允许规则：",
+    "viewToolInput": "查看工具输入",
+    "viewToolInputs": "查看 {{count}} 个工具输入",
+    "allowOnce": "允许一次",
+    "allowRemember": "允许并记住",
+    "allowSaved": "已允许（已保存）",
+    "deny": "拒绝"
+  },
   "todo": {
     "updated": "待办列表已成功更新",
     "current": "当前待办列表"
