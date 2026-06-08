@@ -82,6 +82,12 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     validateInput: async (input, context) => {
+      let normalizedInput: ReadFileInput = input;
+      if (typeof input.pages === "string" && input.pages.trim().length === 0) {
+        const { pages: _pages, ...rest } = input;
+        normalizedInput = rest;
+      }
+
       if (input.offset !== undefined && input.offset < 1) {
         return {
           ok: false,
@@ -94,8 +100,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           issues: [{ path: "limit", code: "invalid_schema", message: "limit must be greater than or equal to 0." }],
         };
       }
-      if (input.pages !== undefined) {
-        const parsed = parsePdfPageRange(input.pages);
+      if (normalizedInput.pages !== undefined) {
+        const parsed = parsePdfPageRange(normalizedInput.pages);
         if (!parsed) {
           return {
             ok: false,
@@ -115,7 +121,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       }
 
       const absolutePath = path.resolve(
-        path.isAbsolute(input.file_path) ? input.file_path : path.join(context.cwd, input.file_path),
+        path.isAbsolute(normalizedInput.file_path) ? normalizedInput.file_path : path.join(context.cwd, normalizedInput.file_path),
       );
       if (isBlockedDevicePath(absolutePath)) {
         return {
@@ -129,7 +135,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           issues: [{ path: "file_path", code: "invalid_schema", message: "binary files are not supported by read_file." }],
         };
       }
-      return { ok: true, input };
+      return { ok: true, input: normalizedInput };
     },
     execute: async (input, context) => {
       const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, { mustExist: true });
