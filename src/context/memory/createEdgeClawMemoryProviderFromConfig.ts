@@ -25,6 +25,8 @@ import type { TelemetryClient } from "../../telemetry/index.js";
 export type CreateEdgeClawMemoryProviderOptions = {
   config: PilotMemoryConfig | undefined;
   modelConfig?: ModelConfig;
+  /** Fallback model ref ("provider/model") when memory.model is not set. */
+  agentModel?: string;
   projectRoot: string;
   /** Optional logger forwarded to the underlying service. */
   logger?: {
@@ -47,7 +49,7 @@ export function createEdgeClawMemoryProviderFromConfig(
   const workspaceDir = options.projectRoot;
   const rootDir = cfg.rootDir;
 
-  const llm = resolveMemoryLlm(cfg, options.modelConfig);
+  const llm = resolveMemoryLlm(cfg, options.modelConfig, options.agentModel);
 
   const service = new EdgeClawMemoryService({
     workspaceDir,
@@ -76,14 +78,16 @@ export function createEdgeClawMemoryProviderFromConfig(
 function resolveMemoryLlm(
   cfg: PilotMemoryConfig,
   modelConfig?: ModelConfig,
+  agentModel?: string,
 ): EdgeClawMemoryLlmOptions | undefined {
-  if (!cfg.model) return undefined;
+  const modelRef = cfg.model || agentModel;
+  if (!modelRef) return undefined;
 
-  const sep = cfg.model.indexOf("/");
+  const sep = modelRef.indexOf("/");
   if (sep < 0) return undefined;
 
-  const providerId = cfg.model.slice(0, sep);
-  const modelId = cfg.model.slice(sep + 1);
+  const providerId = modelRef.slice(0, sep);
+  const modelId = modelRef.slice(sep + 1);
   const providerEntry = modelConfig?.providers[providerId];
 
   const llm: EdgeClawMemoryLlmOptions = {

@@ -44,22 +44,17 @@ export function parseMemoryConfig(
   }
 
   const memoryModel = parseMemoryModelRef(rawMemory.model, diagnostics, modelConfig);
-  const schedule = parseMemorySchedule(rawMemory.schedule, diagnostics);
+  const schedule = parseMemorySchedule(rawMemory.schedule, diagnostics)
+    ?? buildScheduleFromFlatFields(rawMemory);
 
+  const KNOWN_FIELDS = new Set([
+    "enabled", "provider", "rootDir", "captureStrategy", "includeAssistant",
+    "maxMessageChars", "retrievalTimeoutMs", "model", "apiType", "schedule",
+    "heartbeatBatchSize",
+    "reasoningMode", "autoIndexIntervalMinutes", "autoDreamIntervalMinutes",
+  ]);
   for (const key of Object.keys(rawMemory)) {
-    if (
-      key !== "enabled"
-      && key !== "provider"
-      && key !== "rootDir"
-      && key !== "captureStrategy"
-      && key !== "includeAssistant"
-      && key !== "maxMessageChars"
-      && key !== "retrievalTimeoutMs"
-      && key !== "model"
-      && key !== "apiType"
-      && key !== "schedule"
-      && key !== "heartbeatBatchSize"
-    ) {
+    if (!KNOWN_FIELDS.has(key)) {
       diagnostics.push({
         code: "CONFIG_MEMORY_UNKNOWN_FIELD",
         severity: "warning",
@@ -125,6 +120,19 @@ function parseMemorySchedule(
         recoverable: true,
       });
     }
+  }
+  return Object.keys(schedule).length > 0 ? schedule : undefined;
+}
+
+function buildScheduleFromFlatFields(rawMemory: Record<string, unknown>): PilotMemoryScheduleConfig | undefined {
+  const schedule: PilotMemoryScheduleConfig = {};
+  const reasoningMode = readOptionalMemoryReasoningMode(rawMemory.reasoningMode);
+  if (reasoningMode !== undefined) schedule.reasoningMode = reasoningMode;
+  if (typeof rawMemory.autoIndexIntervalMinutes === "number" && rawMemory.autoIndexIntervalMinutes >= 0) {
+    schedule.autoIndexIntervalMinutes = rawMemory.autoIndexIntervalMinutes;
+  }
+  if (typeof rawMemory.autoDreamIntervalMinutes === "number" && rawMemory.autoDreamIntervalMinutes >= 0) {
+    schedule.autoDreamIntervalMinutes = rawMemory.autoDreamIntervalMinutes;
   }
   return Object.keys(schedule).length > 0 ? schedule : undefined;
 }
