@@ -88,6 +88,15 @@ router:
     subagentMaxTokens: 48000
   stats:
     enabled: true
+memory:
+  enabled: true
+  captureStrategy: last_turn
+  includeAssistant: true
+  maxMessageChars: 6000
+  heartbeatBatchSize: 30
+  reasoningMode: answer_first
+  autoIndexIntervalMinutes: 30
+  autoDreamIntervalMinutes: 60
 cron:
   enabled: true
   timezone: Asia/Shanghai

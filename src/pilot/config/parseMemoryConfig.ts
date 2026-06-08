@@ -142,10 +142,13 @@ function parseMemoryModelRef(
   diagnostics: PilotConfigDiagnostic[],
   modelConfig?: ModelConfig,
 ): string | undefined {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return undefined;
   }
-  if (typeof value !== "string" || value.length === 0) {
+  if (typeof value === "string" && value.trim().length === 0) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
     throw new PilotConfigError(
       "CONFIG_MEMORY_MODEL_INVALID",
       'memory.model must be a "provider/model" string.',
