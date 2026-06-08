@@ -291,7 +291,7 @@ function SettingsHome({ projectSortOrder, onProjectSortOrderChange, onOpenPage }
         </GroupedCard>
       </SettingsGroup>
 
-      <VersionUpdateSection />
+      {/* <VersionUpdateSection /> */}
     </div>
   );
 }
