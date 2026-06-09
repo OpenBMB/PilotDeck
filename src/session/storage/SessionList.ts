@@ -3,14 +3,10 @@ import { join, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { readSessionLite, type SessionLiteFile } from "./SessionLiteReader.js";
 
-const ALWAYS_ON_AUXILIARY_PREFIXES = [
-  "always-on-discovery:",
-  "always-on-workspace:",
-  "always-on-report:",
-];
+const ALWAYS_ON_AUXILIARY_PATTERN = /^always-on-(discovery|workspace|report)[:\-]/;
 
 function isInternalSession(sessionId: string): boolean {
-  return ALWAYS_ON_AUXILIARY_PREFIXES.some((p) => sessionId.startsWith(p));
+  return ALWAYS_ON_AUXILIARY_PATTERN.test(sessionId);
 }
 
 export type SessionInfo = {
