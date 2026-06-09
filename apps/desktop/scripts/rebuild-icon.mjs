@@ -23,26 +23,13 @@ const SOURCE = join(ICONS_DIR, "icon-source.png");
 
 const ICO_SIZES = [256, 128, 64, 48, 32, 16];
 
-function roundedRectMask(size, radius) {
-  const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="white"/>
-  </svg>`;
-  return Buffer.from(svg);
-}
-
-async function makeTransparentIcon(size) {
-  const radius = Math.round(size * 0.18);
-
-  const resized = sharp(SOURCE).resize(size, size, {
-    fit: "cover",
-    kernel: sharp.kernel.lanczos3,
-  });
-
-  const mask = roundedRectMask(size, radius);
-
-  const buf = await resized
+async function makeIcon(size) {
+  const buf = await sharp(SOURCE)
+    .resize(size, size, {
+      fit: "cover",
+      kernel: sharp.kernel.lanczos3,
+    })
     .ensureAlpha()
-    .composite([{ input: mask, blend: "dest-in" }])
     .raw()
     .toBuffer();
 
@@ -144,13 +131,13 @@ function buildIco(entries) {
 async function main() {
   mkdirSync(ICONS_DIR, { recursive: true });
 
-  console.log("Generating transparent icons from", SOURCE);
+  console.log("Generating icons from", SOURCE);
 
   const icoEntries = [];
   let png256 = null;
 
   for (const size of ICO_SIZES) {
-    const { rgba, size: s } = await makeTransparentIcon(size);
+    const { rgba, size: s } = await makeIcon(size);
 
     // All sizes use BMP encoding for maximum NSIS compatibility.
     // PNG-in-ICO causes NSIS to fail setting the .exe title bar icon.
