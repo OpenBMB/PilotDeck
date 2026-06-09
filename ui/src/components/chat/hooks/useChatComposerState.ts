@@ -1136,7 +1136,7 @@ export function useChatComposerState({
         }
 
         sendMessage({
-          type: 'pilotdeck-permission-response',
+          type: 'permission-response',
           requestId,
           allow: Boolean(decision?.allow),
           updatedInput: decision?.updatedInput,
