@@ -1825,6 +1825,8 @@ function handleChatConnection(ws, request) {
         try {
             const data = JSON.parse(message);
 
+            if (data.type === 'ping') return;
+
             if (data.type === 'always-on-presence') {
                 await alwaysOnHeartbeat.handlePresence(ws, data);
             } else if (data.type === 'always-on-presence-clear') {

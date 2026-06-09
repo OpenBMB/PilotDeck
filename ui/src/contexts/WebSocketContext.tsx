@@ -47,6 +47,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const { token } = useAuth();
 
   useEffect(() => {
+    unmountedRef.current = false;
     return () => { unmountedRef.current = true; };
   }, []);
 
@@ -65,6 +66,14 @@ const useWebSocketProviderState = (): WebSocketContextType => {
           if (connectIdRef.current !== id) { websocket.close(); return; }
           setIsConnected(true);
           wsRef.current = websocket;
+
+          const pingInterval = setInterval(() => {
+            if (websocket.readyState === WebSocket.OPEN) {
+              websocket.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 30_000);
+          websocket.addEventListener('close', () => clearInterval(pingInterval));
+
           if (hasConnectedRef.current) {
             const reconnectMsg = { type: 'websocket-reconnected', timestamp: Date.now() };
             const subs = subscribersRef.current;

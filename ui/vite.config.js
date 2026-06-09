@@ -53,11 +53,15 @@ export default defineConfig(({ mode }) => {
         '/memory-dashboard': `http://${proxyHost}:${serverPort}`,
         '/ws': {
           target: `ws://${proxyHost}:${serverPort}`,
-          ws: true
+          ws: true,
+          timeout: 0,
+          proxyTimeout: 0,
         },
         '/shell': {
           target: `ws://${proxyHost}:${serverPort}`,
-          ws: true
+          ws: true,
+          timeout: 0,
+          proxyTimeout: 0,
         }
       }
     },
