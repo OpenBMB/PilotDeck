@@ -76,6 +76,7 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
+      "publisherName": "OpenBMB",
       "target": [
         {
           "target": "nsis",
