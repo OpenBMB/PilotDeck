@@ -137,12 +137,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     let reloadChain = Promise.resolve();
 
     configStore.subscribe((event) => {
-      if (event.changedPaths.some((p) => p.startsWith("telemetry."))) {
+      if (event.changedPaths.some((p) => p.startsWith("telemetry.") || p === "telemetry")) {
         telemetry.setEnabled(event.nextSnapshot.config.telemetry?.enabled ?? false);
       }
 
-      const aoChanged = event.changedPaths.some((p) => p.startsWith("alwaysOn."));
-      const cronChanged = event.changedPaths.some((p) => p.startsWith("cron."));
+      const aoChanged = event.changedPaths.some((p) => p.startsWith("alwaysOn.") || p === "alwaysOn");
+      const cronChanged = event.changedPaths.some((p) => p.startsWith("cron.") || p === "cron");
       const proxyChanged = event.changedPaths.some((p) => p.startsWith("proxy.") || p === "proxy");
 
       if (proxyChanged) {
