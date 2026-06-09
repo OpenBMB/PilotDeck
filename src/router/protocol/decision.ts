@@ -17,6 +17,7 @@ export type RouterMutationsLog = {
   asyncAgentLaunchedRewritten?: boolean;
   subagentTagStripped?: boolean;
   subagentModelOverride?: boolean;
+  noToolsModelRerouted?: { from: string; to: string; reason: string };
 };
 
 export type RouterRequestPatch = Pick<
