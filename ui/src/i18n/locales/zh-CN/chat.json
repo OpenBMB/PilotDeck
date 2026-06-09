@@ -30,6 +30,10 @@
       "openSettings": "前往设置"
     }
   },
+  "setupRequired": {
+    "title": "需要配置",
+    "openSettings": "前往设置"
+  },
   "interrupted": {
     "label": "已被用户暂停"
   },

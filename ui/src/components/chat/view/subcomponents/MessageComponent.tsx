@@ -421,6 +421,43 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                           ? cleanToolUseErrorContent(message.toolResult?.content)
                           : stringifyMessageContent(message.toolResult?.content);
 
+                        if (message.toolResult?.errorCode === 'setup_required') {
+                          return (
+                            <div className="my-1 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
+                              <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                  {t('setupRequired.title', { defaultValue: 'Configuration needed' })}
+                                </div>
+                                <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+                                  {renderedErrorContent}
+                                </div>
+                                {onShowSettings && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (typeof window !== 'undefined' && window.openSettings) {
+                                        window.openSettings('config');
+                                      } else {
+                                        onShowSettings();
+                                      }
+                                    }}
+                                    className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-white/80 px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-white dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    {t('setupRequired.openSettings', { defaultValue: 'Open Settings' })}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
                         if (!permissionSuggestion) {
                           return (
                             <CollapsibleDisplay
