@@ -151,19 +151,16 @@ async function main() {
   for (const size of ICO_SIZES) {
     const { rgba, size: s } = await makeTransparentIcon(size);
 
+    // All sizes use BMP encoding for maximum NSIS compatibility.
+    // PNG-in-ICO causes NSIS to fail setting the .exe title bar icon.
+    const bmpData = rgbaToBmpIcoEntry(rgba, s);
+    icoEntries.push({ size, data: bmpData });
+    console.log(`  ${size}x${size}: ${bmpData.length} bytes (BMP)`);
+
     if (size === 256) {
-      // 256x256: use PNG compression in ICO (standard, widely supported)
-      const pngBuf = await sharp(rgba, { raw: { width: s, height: s, channels: 4 } })
+      png256 = await sharp(rgba, { raw: { width: s, height: s, channels: 4 } })
         .png()
         .toBuffer();
-      icoEntries.push({ size, data: pngBuf });
-      png256 = pngBuf;
-      console.log(`  ${size}x${size}: ${pngBuf.length} bytes (PNG)`);
-    } else {
-      // Smaller sizes: use BMP encoding (required by NSIS)
-      const bmpData = rgbaToBmpIcoEntry(rgba, s);
-      icoEntries.push({ size, data: bmpData });
-      console.log(`  ${size}x${size}: ${bmpData.length} bytes (BMP)`);
     }
   }
 
