@@ -76,7 +76,7 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
-      "publisherName": "OpenBMB",
+      "legalTrademarks": "Copyright © OpenBMB",
       "target": [
         {
           "target": "nsis",
