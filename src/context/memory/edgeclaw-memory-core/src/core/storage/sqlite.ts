@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   type CaseTraceRecord,
@@ -425,6 +425,24 @@ function createSiblingTempPath(targetDir: string, label: string): string {
     parentDir,
     `.${basename(targetDir)}.${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   );
+}
+
+/**
+ * Attempt `renameSync`; on Windows EPERM/EACCES (file-locking by indexer,
+ * antivirus, or watchers), fall back to recursive copy + delete.
+ */
+function robustRenameSync(src: string, dst: string): void {
+  try {
+    renameSync(src, dst);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EPERM" || code === "EACCES") {
+      cpSync(src, dst, { recursive: true });
+      rmSync(src, { recursive: true, force: true });
+    } else {
+      throw error;
+    }
+  }
 }
 
 function sortSnapshotFiles(files: readonly MemorySnapshotFileRecord[]): MemorySnapshotFileRecord[] {
@@ -1249,16 +1267,16 @@ export class MemoryRepository {
     let movedLiveRoot = false;
     try {
       if (existsSync(liveRoot)) {
-        renameSync(liveRoot, backupRoot);
+        robustRenameSync(liveRoot, backupRoot);
         movedLiveRoot = true;
       }
-      renameSync(stagedRoot, liveRoot);
+      robustRenameSync(stagedRoot, liveRoot);
     } catch (error) {
       if (existsSync(stagedRoot)) {
         rmSync(stagedRoot, { recursive: true, force: true });
       }
       if (movedLiveRoot && !existsSync(liveRoot) && existsSync(backupRoot)) {
-        renameSync(backupRoot, liveRoot);
+        robustRenameSync(backupRoot, liveRoot);
       }
       throw error;
     }
