@@ -23,8 +23,16 @@ import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 async function notifyGatewayConfigReload() {
   try {
     const gw = await getPilotDeckGateway();
-    if (gw?.reloadConfig) await gw.reloadConfig();
-  } catch { /* gateway unreachable — self-watch will pick up the change */ }
+    if (!gw?.reloadConfig) {
+      return { skipped: true, reason: 'gateway_reload_unavailable' };
+    }
+    const result = await gw.reloadConfig();
+    return { reloaded: result?.reloaded !== false, ...(result?.changedPaths ? { changedPaths: result.changedPaths } : {}) };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 const router = express.Router();
@@ -126,8 +134,10 @@ router.put('/', async (req, res) => {
       return res.status(400).json({ error: 'raw YAML or config object is required' });
     }
 
-    const reloadResult = await reloadPilotDeckConfig(saved.config);
-    void notifyGatewayConfigReload();
+    const reloadResult = {
+      ...(await reloadPilotDeckConfig(saved.config)),
+      gateway: await notifyGatewayConfigReload(),
+    };
     // Re-read disk so the response's `raw` field comes from the actual
     // (lossless) file rather than the lossy round-trip output, and so
     // `serializeConfigResponse` has a `rawYaml` to render the full view.
@@ -150,8 +160,10 @@ router.post('/reload', async (_req, res) => {
     if (!validation.valid) {
       return res.status(400).json({ error: 'Invalid config', validation });
     }
-    const reloadResult = await reloadPilotDeckConfig(record.config);
-    void notifyGatewayConfigReload();
+    const reloadResult = {
+      ...(await reloadPilotDeckConfig(record.config)),
+      gateway: await notifyGatewayConfigReload(),
+    };
     const response = serializeConfigResponse(record, reloadResult);
     broadcastConfigEvent({ source: 'ui-reload', ...response, timestamp: new Date().toISOString() });
     res.json(response);
