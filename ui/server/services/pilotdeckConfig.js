@@ -601,5 +601,9 @@ export function rawYamlToMaskedString(rawYaml) {
 }
 
 export function parseConfigYaml(raw) {
-  return normalizePilotDeckConfig(parseYaml(raw) || {});
+  const parsed = parseYaml(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('raw YAML must parse to an object');
+  }
+  return normalizePilotDeckConfig(parsed);
 }
