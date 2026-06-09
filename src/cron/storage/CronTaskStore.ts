@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
 import type { CronRunRecord, CronTask } from "../protocol/types.js";
@@ -120,7 +120,17 @@ export class CronTaskStore {
     await mkdir(dirname(this.paths.tasksFile), { recursive: true });
     const tempPath = `${this.paths.tasksFile}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(tempPath, JSON.stringify(file, null, 2), "utf-8");
-    await rename(tempPath, this.paths.tasksFile);
+    try {
+      await rename(tempPath, this.paths.tasksFile);
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES") {
+        await copyFile(tempPath, this.paths.tasksFile);
+        await unlink(tempPath).catch(() => {});
+      } else {
+        throw err;
+      }
+    }
   }
 }
 

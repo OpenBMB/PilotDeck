@@ -141,15 +141,17 @@ Usage notes:
       const custom = normalizeCustomProviderConfig(options.customProvider);
       if (!apiKey && !(provider === "custom" && custom.auth === "none")) {
         throw new PilotDeckToolRuntimeError(
-          "unsupported_tool",
-          "web_search is not configured. Set tools.webSearch.provider to glm, tavily, or custom and provide tools.webSearch.apiKey, or set GLM_WEB_SEARCH_API_KEY/ZAI_API_KEY/TAVILY_API_KEY/CUSTOM_WEB_SEARCH_API_KEY.",
+          "setup_required",
+          "web_search requires an API key. Please configure it in Settings → Search.",
+          { tool: "web_search" },
         );
       }
       if (provider === "custom") {
         if (!options.endpoint?.trim()) {
           throw new PilotDeckToolRuntimeError(
-            "unsupported_tool",
-            "web_search custom provider requires tools.webSearch.endpoint.",
+            "setup_required",
+            "web_search custom provider requires an endpoint URL. Please configure it in Settings → Search.",
+            { tool: "web_search" },
           );
         }
         return performCustomSearch({

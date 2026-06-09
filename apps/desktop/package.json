@@ -76,6 +76,7 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
+      "legalTrademarks": "Copyright © OpenBMB",
       "target": [
         {
           "target": "nsis",
@@ -88,9 +89,9 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "installerIcon": "resources/icons/icon.ico",
-      "uninstallerIcon": "resources/icons/icon.ico",
-      "installerHeaderIcon": "resources/icons/icon.ico",
+      "installerIcon": "resources/icons/installer-icon.ico",
+      "uninstallerIcon": "resources/icons/installer-icon.ico",
+      "include": "resources/installer.nsh",
       "allowToChangeInstallationDirectory": true
     }
   }

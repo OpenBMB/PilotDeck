@@ -109,6 +109,7 @@ function runBuildIfNeeded(dir, packageJsonPath, onSuccess, onError) {
   const buildProcess = spawn('npm', ['run', 'build'], {
     cwd: dir,
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: true,
   });
 
   let stderr = '';
@@ -341,6 +342,7 @@ export function installPluginFromGit(url) {
         const npmProcess = spawn('npm', ['install', '--ignore-scripts'], {
           cwd: tempDir,
           stdio: ['ignore', 'pipe', 'pipe'],
+          shell: true,
         });
 
         npmProcess.on('close', (npmCode) => {
@@ -408,6 +410,7 @@ export function updatePluginFromGit(name) {
         const npmProcess = spawn('npm', ['install', '--ignore-scripts'], {
           cwd: pluginDir,
           stdio: ['ignore', 'pipe', 'pipe'],
+          shell: true,
         });
         npmProcess.on('close', (npmCode) => {
           if (npmCode !== 0) {

@@ -30,6 +30,10 @@
       "openSettings": "Go to Settings"
     }
   },
+  "setupRequired": {
+    "title": "Configuration needed",
+    "openSettings": "Open Settings"
+  },
   "interrupted": {
     "label": "Interrupted by user"
   },
