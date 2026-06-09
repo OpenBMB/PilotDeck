@@ -1,8 +1,6 @@
 ; Custom NSIS include for PilotDeck
-; Fix: UAC elevation inner process loses the MUI_ICON window icon.
-; After GUI init, explicitly reload the icon from the running exe
-; and set it on the installer window via WM_SETICON.
 
+; Fix 1: Reload icon after UAC elevation to prevent title bar icon loss.
 !define MUI_CUSTOMFUNCTION_GUIINIT fixInstallerIcon
 
 Function fixInstallerIcon
@@ -12,3 +10,15 @@ Function fixInstallerIcon
     SendMessage $HWNDPARENT 0x0080 1 $r0
   done:
 FunctionEnd
+
+; Fix 2: Override finish page to launch the app via explorer.exe,
+; which de-elevates naturally and avoids StdUtils.ExecShellAsUser hang.
+!macro customFinishPage
+  Function StartApp
+    Exec '"$WINDIR\explorer.exe" "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+  FunctionEnd
+
+  !define MUI_FINISHPAGE_RUN
+  !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
+  !insertmacro MUI_PAGE_FINISH
+!macroend
