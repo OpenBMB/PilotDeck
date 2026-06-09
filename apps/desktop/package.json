@@ -88,7 +88,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "installerIcon": "resources/icons/installer-icon.ico",
       "uninstallerIcon": "resources/icons/installer-icon.ico",
       "include": "resources/installer.nsh",
