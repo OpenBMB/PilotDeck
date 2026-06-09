@@ -12,6 +12,7 @@ ui/src/assets/** !filter !diff !merge text=auto
 
 # Desktop app icon sources are tiny; avoid LFS (OpenBMB budget) and release-time smudge failures
 apps/desktop/assets/** !filter !diff !merge text=auto
+apps/desktop/resources/icons/** !filter !diff !merge text=auto
 
 # Shell scripts MUST stay LF — CRLF breaks the Docker entrypoint (`bash\r` not found)
 *.sh text eol=lf

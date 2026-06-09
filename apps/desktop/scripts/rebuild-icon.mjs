@@ -1,12 +1,13 @@
 /**
- * Rebuild icon.ico / icon.png from icon-source.png with proper transparency.
+ * Rebuild icon.ico / icon.png / installer-icon.ico from icon-source.png.
  *
- * The source image is a rounded-rect on an opaque white background.
- * This script detects the rounded-rect shape, masks out the corners to
- * transparent, and writes multi-resolution .ico + .png files.
+ * icon.ico        – full multi-res ICO (256..16) for app exe (rcedit)
+ * installer-icon.ico – compact ICO (48/32/16 BMP only) for NSIS installer
+ * icon.png        – 256x256 PNG for macOS / general use
  *
- * NSIS requires BMP-encoded ICO entries for sizes <= 128px.
- * The 256x256 entry uses PNG compression (standard ICO spec).
+ * All ICO entries use BMP encoding (no PNG compression) for maximum
+ * NSIS compatibility. NSIS 3.x cannot reliably use PNG-in-ICO for the
+ * installer exe title bar icon.
  *
  * Usage:  node scripts/rebuild-icon.mjs
  */
@@ -164,11 +165,18 @@ async function main() {
     }
   }
 
-  // Write .ico
+  // Write full icon.ico (all sizes, for app exe via rcedit)
   const icoPath = join(ICONS_DIR, "icon.ico");
   const icoBuf = buildIco(icoEntries);
   writeFileSync(icoPath, icoBuf);
   console.log(`Wrote ${icoPath} (${icoBuf.length} bytes)`);
+
+  // Write compact installer-icon.ico (48/32/16 only, for NSIS installer)
+  const installerEntries = icoEntries.filter((e) => e.size <= 48);
+  const installerIcoPath = join(ICONS_DIR, "installer-icon.ico");
+  const installerIcoBuf = buildIco(installerEntries);
+  writeFileSync(installerIcoPath, installerIcoBuf);
+  console.log(`Wrote ${installerIcoPath} (${installerIcoBuf.length} bytes)`);
 
   // Write icon.png (256x256 with transparency)
   const pngPath = join(ICONS_DIR, "icon.png");

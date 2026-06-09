@@ -89,9 +89,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "installerIcon": "resources/icons/icon.ico",
-      "uninstallerIcon": "resources/icons/icon.ico",
-      "installerHeaderIcon": "resources/icons/icon.ico",
+      "installerIcon": "resources/icons/installer-icon.ico",
+      "uninstallerIcon": "resources/icons/installer-icon.ico",
       "allowToChangeInstallationDirectory": true
     }
   }
