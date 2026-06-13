@@ -3,7 +3,8 @@ import type { PermissionResult } from "../../../permission/index.js";
 const DENY_PATTERNS: RegExp[] = [
   // Unix
   /\brm\s+-[^&|;]*r[^&|;]*f\s+\//,
-  /\bsudo\b/,
+  // sudo as a command (not inside quotes, e.g. `git log -S "sudo"`)
+  /(?:^|[;&|]\s*)sudo\b/,
   /\bchmod\s+-R\s+777\b/,
   /\bchown\s+-R\b/,
   /\bdd\s+if=/,
