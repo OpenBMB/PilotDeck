@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AlertTriangle, Check, ChevronRight, Copy, FileText, Loader2 } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { useTypewriter } from './useTypewriter';
 import type { Project, SessionProvider } from '../../types/app';
 import type {
   ChatMessage,
@@ -116,6 +117,8 @@ function MessageRowV2({
     () => formatUsageLimitText(String(message.content ?? '')),
     [message.content],
   );
+  const thinkingDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !!message.isThinking, 4);
+  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6);
   const messageImages = useMemo(
     () =>
       Array.isArray(message.images)
@@ -302,34 +305,33 @@ function MessageRowV2({
     );
   }
 
-  // Thinking: streaming = expanded with loader + fade; completed = collapsible
+  // Thinking: unified <details> structure — `open` while streaming, collapsed when done.
+  // Using a single DOM structure avoids the flash that occurred when swapping between
+  // a plain <div> (streaming) and a <details> (completed).
   if (message.isThinking) {
     const isThinkingStreaming = !!message.isStreaming;
 
-    if (isThinkingStreaming) {
-      return withProcessRows(
-        <div className="min-w-0 text-[14px] leading-relaxed">
-          <div className="flex items-center gap-1.5 text-[13px] font-medium text-neutral-500 dark:text-neutral-400">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-            <span>{t('thinking.title', { defaultValue: 'Thinking...' })}</span>
-          </div>
-          <div className="relative mt-1.5 max-h-48 overflow-hidden border-l-2 border-blue-400/50 pl-3 text-[13px] text-neutral-500 dark:border-blue-500/40 dark:text-neutral-400">
-            <Markdown projectName={selectedProject?.name}>{formattedContent}</Markdown>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white dark:from-neutral-900" />
-          </div>
-        </div>,
-      );
-    }
-
     return withProcessRows(
       <div className="min-w-0 text-[14px] leading-relaxed">
-        <details className="group">
-          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
-            <span>{t('thinking.completed', { defaultValue: 'Thought process' })}</span>
+        <details className="group" open={isThinkingStreaming || undefined}>
+          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
+            {isThinkingStreaming
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+              : <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />}
+            <span>
+              {isThinkingStreaming
+                ? t('thinking.title', { defaultValue: 'Thinking...' })
+                : t('thinking.completed', { defaultValue: 'Thought process' })}
+            </span>
           </summary>
-          <div className="mt-1.5 border-l-2 border-neutral-300 pl-3 text-[13px] text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            <Markdown projectName={selectedProject?.name}>{formattedContent}</Markdown>
+          <div className={`mt-1.5 max-h-64 overflow-y-auto border-l-2 pl-3 text-[13px] ${
+            isThinkingStreaming
+              ? 'border-blue-400/50 text-neutral-600 dark:border-blue-500/40 dark:text-neutral-300'
+              : 'border-blue-400/30 text-neutral-600 dark:border-blue-500/30 dark:text-neutral-400'
+          }`}>
+            <Markdown projectName={selectedProject?.name} isStreaming={isThinkingStreaming}>
+              {isThinkingStreaming ? thinkingDisplayText : formattedContent}
+            </Markdown>
           </div>
         </details>
       </div>,
@@ -339,11 +341,11 @@ function MessageRowV2({
   // Assistant: plain prose, no avatar and no bubble.
   return withProcessRows(
     <div className="min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
-      {message.isStreaming && !formattedContent ? (
+      {message.isStreaming && !contentDisplayText ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
         <>
-          <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}>{formattedContent}</Markdown>
+          <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name} isStreaming={message.isStreaming}>{contentDisplayText}</Markdown>
           {formattedContent.trim() &&
            (!nextMessage || nextMessage.type === 'user' || nextMessage.type === 'error') ? (
             <div className="mt-1.5 flex justify-end">
