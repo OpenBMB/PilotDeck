@@ -80,6 +80,8 @@ type MessageRowV2Props = {
   onProcessExpandedChange?: (processKey: string, expanded: boolean) => void;
   onOpenSubagentDetail?: (subagentId: string) => void;
   subagentActivityById?: Map<string, ChatMessage>;
+  subagentThinkingById?: Map<string, string>;
+  isSessionRunning?: boolean;
 };
 
 // Fall back to the heavy legacy renderer for anything that isn't a vanilla
@@ -116,6 +118,8 @@ function MessageRowV2({
   onProcessExpandedChange,
   onOpenSubagentDetail,
   subagentActivityById,
+  subagentThinkingById,
+  isSessionRunning,
 }: MessageRowV2Props) {
   const { t } = useTranslation('chat');
   const delegate = useMemo(() => shouldDelegate(message), [message]);
@@ -200,8 +204,9 @@ function MessageRowV2({
   if (message.isSubagentContainer) {
     const subagentId = typeof message.subagentId === 'string' ? message.subagentId : '';
     const liveActivity = subagentId ? subagentActivityById?.get(subagentId) : undefined;
+    const thinkingContent = subagentId ? subagentThinkingById?.get(subagentId) : undefined;
     return withProcessRows(
-      <SubagentCard message={message} liveActivity={liveActivity} onOpenDetail={onOpenSubagentDetail} />,
+      <SubagentCard message={message} liveActivity={liveActivity} onOpenDetail={onOpenSubagentDetail} thinkingContent={thinkingContent} isSessionRunning={isSessionRunning} />,
     );
   }
 
@@ -330,7 +335,7 @@ function MessageRowV2({
       // Inline mode: unified <details> with typewriter animation + blue theme
       return withProcessRows(
         <div className="min-w-0 text-[14px] leading-relaxed">
-          <details className="group" open={isThinkingStreaming || undefined}>
+          <details className="group" open={(isThinkingStreaming ? thinkingDisplayText.length > 12 : false) || undefined}>
             <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
               {isThinkingStreaming
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Loader2, XCircle, Bot } from 'lucide-react';
 import type { ChatMessage } from '../chat/types/types';
 
@@ -9,17 +10,22 @@ function parseToolInput(toolInput: unknown): Record<string, unknown> {
   return (toolInput as Record<string, unknown>) || {};
 }
 
+const MAX_THINKING_LINES = 6;
+
 interface SubagentCardProps {
   message: ChatMessage;
   liveActivity?: ChatMessage;
   onOpenDetail?: (subagentId: string) => void;
+  thinkingContent?: string;
+  isSessionRunning?: boolean;
 }
 
-export default function SubagentCard({ message, liveActivity, onOpenDetail }: SubagentCardProps) {
+export default function SubagentCard({ message, liveActivity, onOpenDetail, thinkingContent, isSessionRunning }: SubagentCardProps) {
+  const { t } = useTranslation('chat');
   const parsed = useMemo(() => parseToolInput(message.toolInput), [message.toolInput]);
 
   const subagentType = (parsed.subagent_type || parsed.subagentType || 'agent') as string;
-  const description = (parsed.description || 'Running task') as string;
+  const description = (parsed.description || t('subagent.defaultDescription')) as string;
   const childTools = message.subagentState?.childTools ?? [];
   const isComplete = message.subagentState?.isComplete ?? false;
   const isFailed = Boolean(message.subagentState?.isFailed || message.toolResult?.isError);
@@ -27,29 +33,33 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail }: Su
   const currentTool = currentToolIndex >= 0 ? childTools[currentToolIndex] : null;
   const subagentId = (message as Record<string, unknown>).subagentId as string | undefined;
 
+  const hasToolResult = Boolean(message.toolResult);
   const statusLine = useMemo(() => {
     if (liveActivity) {
       const state = String(liveActivity.state || 'running');
       const text = String(liveActivity.detail || liveActivity.content || '');
       if (state === 'failed') {
-        return { icon: 'failed' as const, text: text || '执行失败' };
+        return { icon: 'failed' as const, text: text || t('subagent.status.failed') };
       }
       if (state === 'completed' || state === 'cancelled') {
-        return { icon: 'completed' as const, text: text || '已完成' };
+        return { icon: 'completed' as const, text: text || t('subagent.status.completed') };
       }
-      return { icon: 'running' as const, text: text || '思考中' };
+      return { icon: 'running' as const, text: text || t('subagent.status.thinking') };
     }
-    if (isComplete && isFailed) {
-      return { icon: 'failed' as const, text: '执行失败' };
+    if (isFailed) {
+      return { icon: 'failed' as const, text: t('subagent.status.stopped') };
     }
-    if (isComplete) {
-      return { icon: 'completed' as const, text: '已完成' };
+    if (isComplete || hasToolResult) {
+      return { icon: 'completed' as const, text: t('subagent.status.completed') };
     }
     if (currentTool) {
-      return { icon: 'running' as const, text: `正在执行 ${currentTool.toolName}` };
+      return { icon: 'running' as const, text: t('subagent.status.executingTool', { toolName: currentTool.toolName }) };
     }
-    return { icon: 'running' as const, text: '思考中' };
-  }, [isComplete, isFailed, currentTool, liveActivity]);
+    if (!isSessionRunning) {
+      return { icon: 'failed' as const, text: t('subagent.status.stopped') };
+    }
+    return { icon: 'running' as const, text: t('subagent.status.thinking') };
+  }, [isComplete, isFailed, hasToolResult, currentTool, liveActivity, isSessionRunning, t]);
 
   const handleClick = () => {
     if (subagentId && onOpenDetail) {
@@ -58,6 +68,16 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail }: Su
   };
 
   const isClickable = Boolean(subagentId && onOpenDetail);
+  const showThinking = statusLine.icon === 'running' && !hasToolResult && !!thinkingContent?.trim();
+
+  const thinkingLines = useMemo(() => {
+    if (!showThinking || !thinkingContent) return [];
+    const lines = thinkingContent.split('\n');
+    return lines.slice(-MAX_THINKING_LINES);
+  }, [showThinking, thinkingContent]);
+  const hasThinkingOverflow = showThinking && thinkingContent
+    ? thinkingContent.split('\n').length > MAX_THINKING_LINES
+    : false;
 
   return (
     <div
@@ -107,6 +127,27 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail }: Su
             {statusLine.text}
           </span>
         </div>
+
+        {/* Thinking content preview */}
+        {showThinking && thinkingLines.length > 0 ? (
+          <div
+            className="mt-1 overflow-hidden border-t border-neutral-100 pt-1.5 font-mono text-[11px] leading-relaxed text-neutral-400 dark:border-neutral-700/50 dark:text-neutral-500"
+            style={
+              hasThinkingOverflow
+                ? {
+                    maskImage: 'linear-gradient(to bottom, transparent 0%, black 30%)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 30%)',
+                  }
+                : undefined
+            }
+          >
+            {thinkingLines.map((line, i) => (
+              <div key={i} className="whitespace-pre-wrap break-words">
+                {line || '\u00A0'}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -384,5 +384,18 @@
   "welcome": {
     "greetingWithProject": "今天想做点什么？",
     "noProject": "从左侧选择一个项目开始"
+  },
+  "subagent": {
+    "detailTitle": "子任务详情",
+    "loadError": "加载子任务消息失败：{{error}}",
+    "noMessages": "没有可显示的子任务消息。",
+    "defaultDescription": "执行任务",
+    "status": {
+      "failed": "执行失败",
+      "completed": "已完成",
+      "stopped": "已停止",
+      "thinking": "思考中",
+      "executingTool": "正在执行 {{toolName}}"
+    }
   }
 }

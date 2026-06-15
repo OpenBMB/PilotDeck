@@ -88,8 +88,8 @@ export default function SubagentDetailMessageFlow({
     [messages, showThinking],
   );
   const renderableItems = useMemo(
-    () => buildRenderableMessageItems(renderableMessages, { isAssistantWorking: isRunning }),
-    [isRunning, renderableMessages],
+    () => buildRenderableMessageItems(renderableMessages, { isAssistantWorking: true }),
+    [renderableMessages],
   );
   const keyedItems = useMemo<KeyedRenderableMessageItem[]>(
     () => renderableItems.map((item, index) => ({
@@ -104,10 +104,9 @@ export default function SubagentDetailMessageFlow({
     [keyedItems],
   );
   const liveProcessGroups = useMemo(
-    () => isRunning
-      ? getLiveProcessGroups(renderableMessages, { isAssistantWorking: true })
+    () => getLiveProcessGroups(renderableMessages, { isAssistantWorking: true })
         .filter((group) => shouldRenderLiveProcessGroup(group, runMode))
-      : [],
+        .map((group) => isRunning ? group : { ...group, isRunning: false }),
     [isRunning, renderableMessages, runMode],
   );
   const liveProcessGroupsByAnchor = useMemo(() => {

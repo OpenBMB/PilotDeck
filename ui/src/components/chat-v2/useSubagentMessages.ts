@@ -48,11 +48,20 @@ function mergeSubagentDetailMessages(
     return snapshotMessages;
   }
 
+  if (snapshotMessages.length === 0) {
+    return realtimeMessages;
+  }
+
   const merged = [...snapshotMessages];
-  const seen = new Set(snapshotMessages.map((message) => message.id));
+  const seenIds = new Set(snapshotMessages.map((message) => message.id));
+  const snapshotToolIds = new Set(
+    snapshotMessages.filter(m => m.kind === 'tool_use' && m.toolId).map(m => m.toolId!),
+  );
   for (const message of realtimeMessages) {
-    if (seen.has(message.id)) continue;
-    seen.add(message.id);
+    if (seenIds.has(message.id)) continue;
+    if (message.kind === 'tool_use' && message.toolId && snapshotToolIds.has(message.toolId)) continue;
+    if (message.kind === 'tool_result' && message.toolId && snapshotToolIds.has(message.toolId)) continue;
+    seenIds.add(message.id);
     merged.push(message);
   }
   return merged;

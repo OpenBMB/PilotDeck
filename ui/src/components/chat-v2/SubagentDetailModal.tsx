@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Loader2 } from 'lucide-react';
 import type { ChatMessage } from '../chat/types/types';
 import type { Project, SessionProvider } from '../../types/app';
@@ -33,6 +34,7 @@ export default function SubagentDetailModal({
   isRunning = false,
   onClose,
 }: SubagentDetailModalProps) {
+  const { t } = useTranslation('chat');
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,13 +59,13 @@ export default function SubagentDetailModal({
   } else if (error) {
     content = (
       <div className="px-6 py-12 text-center text-sm text-red-500">
-        Failed to load subagent messages: {error}
+        {t('subagent.loadError', { error })}
       </div>
     );
   } else if (messages.length === 0) {
     content = (
       <div className="px-6 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
-        No displayable subagent messages found.
+        {t('subagent.noMessages')}
       </div>
     );
   } else {
@@ -83,6 +85,7 @@ export default function SubagentDetailModal({
   return (
     <div
       ref={overlayRef}
+      data-modal-overlay
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={handleOverlayClick}
     >
@@ -90,7 +93,7 @@ export default function SubagentDetailModal({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-6 py-3 dark:border-neutral-700">
           <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-            Subagent Detail
+            {t('subagent.detailTitle')}
             <span className="ml-2 font-mono text-xs text-neutral-400 dark:text-neutral-500">
               {subagentId.slice(0, 8)}
             </span>

@@ -348,6 +348,33 @@ export default function MessagesPaneV2({
     }
     return byId;
   }, [subagentActivities]);
+  const subagentThinkingByIdRef = useRef(new Map<string, string>());
+  const subagentThinkingById = (() => {
+    if (!sessionId || !sessionStore) {
+      if (subagentThinkingByIdRef.current.size === 0) return subagentThinkingByIdRef.current;
+      subagentThinkingByIdRef.current = new Map();
+      return subagentThinkingByIdRef.current;
+    }
+    const prev = subagentThinkingByIdRef.current;
+    let changed = false;
+    const next = new Map<string, string>();
+    for (const [subagentId, activity] of subagentActivityById) {
+      const state = String(activity.state || '');
+      if (['completed', 'failed', 'cancelled'].includes(state)) continue;
+      const msgs = sessionStore.getSubagentDetailMessages?.(sessionId, subagentId) ?? [];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m.id.startsWith('__subagent_thinking_') && m.content?.trim()) {
+          next.set(subagentId, m.content);
+          if (prev.get(subagentId) !== m.content) changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed && prev.size === next.size) return prev;
+    subagentThinkingByIdRef.current = next;
+    return next;
+  })();
   const openSubagentActivity = openSubagentId
     ? subagentActivityById.get(openSubagentId)
     : undefined;
@@ -363,11 +390,14 @@ export default function MessagesPaneV2({
     openSubagentActivity?.state,
   );
   const renderableMessages = useMemo(
-    () => visibleMessages.filter((message) =>
-      !message.isAgentActivity &&
-      (!inlineThinking && isStreamingThinkingMessage(message) ? false : true) &&
-      !(message.isThinking && !showThinking)
-    ),
+    () => {
+      const filtered = visibleMessages.filter((message) =>
+        !message.isAgentActivity &&
+        (!inlineThinking && isStreamingThinkingMessage(message) ? false : true) &&
+        !(message.isThinking && !showThinking)
+      );
+      return filtered;
+    },
     [visibleMessages, showThinking, inlineThinking],
   );
   const liveProcessDetailMessages = useMemo(
@@ -622,6 +652,8 @@ export default function MessagesPaneV2({
         onProcessExpandedChange={handleProcessExpandedChange}
         onOpenSubagentDetail={handleOpenSubagentDetail}
         subagentActivityById={subagentActivityById}
+        subagentThinkingById={subagentThinkingById}
+        isSessionRunning={isAssistantWorking}
       />
     ))
   ), [
@@ -636,10 +668,12 @@ export default function MessagesPaneV2({
     provider,
     selectedProject,
     subagentActivityById,
+    subagentThinkingById,
     isProcessExpanded,
     handleProcessExpandedChange,
     showRawParameters,
     showThinking,
+    isAssistantWorking,
   ]);
 
   const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
@@ -719,6 +753,8 @@ export default function MessagesPaneV2({
             onProcessExpandedChange={handleProcessExpandedChange}
             onOpenSubagentDetail={handleOpenSubagentDetail}
             subagentActivityById={subagentActivityById}
+            subagentThinkingById={subagentThinkingById}
+            isSessionRunning={isAssistantWorking}
           />
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
