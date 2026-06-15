@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { IS_PLATFORM } from '../../../constants/config';
+import { IS_PLATFORM, DISABLE_LOCAL_AUTH } from '../../../constants/config';
 import { api } from '../../../utils/api';
 import { AUTH_ERROR_MESSAGES, AUTH_TOKEN_STORAGE_KEY } from '../constants';
 import type {
@@ -123,12 +123,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [checkOnboardingStatus, clearSession, token]);
 
   useEffect(() => {
-    if (IS_PLATFORM) {
-      setUser({ username: 'platform-user' });
+    if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
+      setUser({ username: DISABLE_LOCAL_AUTH ? 'local-user' : 'platform-user' });
       setNeedsSetup(false);
-      void checkOnboardingStatus().finally(() => {
-        setIsLoading(false);
-      });
+      setHasCompletedOnboarding(true);
+      setIsLoading(false);
       return;
     }
 
