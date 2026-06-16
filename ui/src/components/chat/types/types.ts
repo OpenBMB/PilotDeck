@@ -137,11 +137,17 @@ export interface PilotDeckWorkStatus {
   compactProgress?: CompactProgress | null;
 }
 
+export const AUTO_PROCEED_DEFAULT_PROMPT =
+  '你处于自动推进模式，再次自行审查代码是否符合项目规范、是否已完整满足我的需求、是否已足够简洁清晰、无过度设计或冗余保护。如果你认为已达最终交付状态，请明确答复"无需自动推进"';
+
 export interface PilotDeckSettings {
   allowedTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
   projectSortOrder: string;
+  selfHealContinue?: boolean;
+  autoProceedOn?: boolean;
+  autoProceedPrompt?: string;
   lastUpdated?: string;
   [key: string]: unknown;
 }

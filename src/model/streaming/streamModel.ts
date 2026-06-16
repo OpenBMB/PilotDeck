@@ -29,7 +29,7 @@ export async function complete(
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
   const body = buildModelRequest(nonStreamingRequest, config);
-  const response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
+  const response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal, request.metadata);
 
   if (!response.ok) {
     const raw = await safeReadJson(response);
@@ -74,7 +74,7 @@ export async function* streamModel(
     }
     let response: Response;
     try {
-      response = await sendProviderRequest(provider, body, true, options.fetch ?? fetch, options.signal);
+      response = await sendProviderRequest(provider, body, true, options.fetch ?? fetch, options.signal, currentRequest.metadata);
     } catch (error) {
       if (attempt < MAX_STREAM_RETRIES && isRetryableStreamError(error)) {
         await delay(1000 * (attempt + 1));
@@ -204,6 +204,7 @@ async function sendProviderRequest(
   stream: boolean,
   transport: ModelTransport,
   signal?: AbortSignal,
+  metadata?: Record<string, unknown>,
 ): Promise<Response> {
   const controller = new AbortController();
   const detachAbort = signal ? forwardAbort(signal, controller) : undefined;
@@ -211,8 +212,9 @@ async function sendProviderRequest(
     ? setTimeout(() => controller.abort(), provider.timeoutMs)
     : undefined;
 
-  const finalBody = provider.extraBody
-    ? { ...(body as Record<string, unknown>), ...provider.extraBody }
+  const resolvedExtraBody = resolveExtraBody(provider.extraBody, metadata);
+  const finalBody = resolvedExtraBody
+    ? { ...(body as Record<string, unknown>), ...resolvedExtraBody }
     : body;
 
   try {
@@ -353,4 +355,47 @@ function isAbortError(error: unknown): boolean {
 
 function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+/**
+ * Resolve `${variable}` template strings in extraBody values against the
+ * provided metadata record. Supports dot-path lookups like
+ * `${pilotdeck_session}` or `${user.id}`.
+ *
+ * Values that are not strings, or strings without template expressions,
+ * are returned unchanged. Missing variables resolve to an empty string.
+ */
+function resolveExtraBody(
+  extraBody: Record<string, unknown> | undefined,
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!extraBody) return undefined;
+
+  const resolved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(extraBody)) {
+    if (typeof value === "string") {
+      resolved[key] = value.replace(/\$\{([^}]+)\}/g, (_match, path: string) => {
+        const trimmed = path.trim();
+        const lookedUp = lookupMetadataPath(metadata, trimmed);
+        return lookedUp !== undefined ? String(lookedUp) : "";
+      });
+    } else {
+      resolved[key] = value;
+    }
+  }
+  return resolved;
+}
+
+function lookupMetadataPath(
+  metadata: Record<string, unknown> | undefined,
+  path: string,
+): unknown {
+  if (!metadata) return undefined;
+  const segments = path.split(".");
+  let current: unknown = metadata;
+  for (const segment of segments) {
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
 }

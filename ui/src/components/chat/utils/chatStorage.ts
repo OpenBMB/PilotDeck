@@ -1,4 +1,5 @@
 import type { PilotDeckSettings } from '../types/types';
+import { AUTO_PROCEED_DEFAULT_PROMPT } from '../types/types';
 import { authenticatedFetch } from '../../../utils/api.js';
 
 export const PILOTDECK_SETTINGS_KEY = 'pilotdeck-settings';
@@ -58,6 +59,8 @@ export function getPilotDeckSettings(): PilotDeckSettings {
       disallowedTools: [],
       skipPermissions: false,
       projectSortOrder: 'name',
+      autoProceedOn: true,
+      autoProceedPrompt: AUTO_PROCEED_DEFAULT_PROMPT,
     };
   }
 
@@ -72,6 +75,18 @@ export function getPilotDeckSettings(): PilotDeckSettings {
           ? parsed.skipPermissions
           : false,
       projectSortOrder: parsed.projectSortOrder || 'name',
+      selfHealContinue:
+        typeof parsed.selfHealContinue === 'boolean'
+          ? parsed.selfHealContinue
+          : false,
+      autoProceedOn:
+        typeof parsed.autoProceedOn === 'boolean'
+          ? parsed.autoProceedOn
+          : true,
+      autoProceedPrompt:
+        typeof parsed.autoProceedPrompt === 'string' && parsed.autoProceedPrompt.length > 0
+          ? parsed.autoProceedPrompt
+          : AUTO_PROCEED_DEFAULT_PROMPT,
     };
   } catch {
     return {
@@ -79,6 +94,9 @@ export function getPilotDeckSettings(): PilotDeckSettings {
       disallowedTools: [],
       skipPermissions: false,
       projectSortOrder: 'name',
+      selfHealContinue: false,
+      autoProceedOn: true,
+      autoProceedPrompt: AUTO_PROCEED_DEFAULT_PROMPT,
     };
   }
 }
@@ -122,5 +140,10 @@ function mergePermissionSettings(value: unknown): PilotDeckSettings {
     disallowedTools: Array.isArray(parsed.disallowedTools) ? parsed.disallowedTools : [],
     skipPermissions: Boolean(parsed.skipPermissions),
     projectSortOrder: current.projectSortOrder || 'name',
+    selfHealContinue: typeof parsed.selfHealContinue === 'boolean' ? parsed.selfHealContinue : current.selfHealContinue,
+    autoProceedOn: typeof parsed.autoProceedOn === 'boolean' ? parsed.autoProceedOn : current.autoProceedOn,
+    autoProceedPrompt: typeof parsed.autoProceedPrompt === 'string' && parsed.autoProceedPrompt.length > 0
+      ? parsed.autoProceedPrompt
+      : current.autoProceedPrompt,
   };
 }

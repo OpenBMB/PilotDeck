@@ -953,7 +953,10 @@ export class AgentLoop {
       temperature: this.config.temperature,
       thinking: this.config.thinking,
       stream: true,
-      metadata: this.config.metadata,
+      metadata: {
+        ...this.config.metadata,
+        pilotdeck_session: input.sessionId,
+      },
       cacheBreakpoints: prepared.cacheBreakpoints,
     };
   }

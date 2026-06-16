@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, Plus, Shield, Upload, X } from 'lucide-react';
+import { AlertTriangle, Download, Plus, RefreshCw, Shield, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button, Input } from '../../../../shared/view/ui';
 import { isImeEnterEvent } from '../../../../utils/ime';
@@ -173,6 +173,9 @@ export default function PermissionsSettingsTab() {
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
   const [skipPermissions, setSkipPermissions] = useState(false);
+  const [selfHealContinue, setSelfHealContinue] = useState(false);
+  const [autoProceedOn, setAutoProceedOn] = useState(true);
+  const [autoProceedPrompt, setAutoProceedPrompt] = useState('');
   const [newAllowed, setNewAllowed] = useState('');
   const [newBlocked, setNewBlocked] = useState('');
   const [banner, setBanner] = useState<StatusBanner>(null);
@@ -183,6 +186,9 @@ export default function PermissionsSettingsTab() {
     setAllowedTools(settings.allowedTools);
     setDisallowedTools(settings.disallowedTools);
     setSkipPermissions(settings.skipPermissions);
+    setSelfHealContinue(settings.selfHealContinue || false);
+    setAutoProceedOn(settings.autoProceedOn !== false);
+    setAutoProceedPrompt(settings.autoProceedPrompt || '');
   }, []);
 
   useEffect(() => {
@@ -193,6 +199,9 @@ export default function PermissionsSettingsTab() {
         setAllowedTools(settings.allowedTools);
         setDisallowedTools(settings.disallowedTools);
         setSkipPermissions(settings.skipPermissions);
+        setSelfHealContinue(settings.selfHealContinue || false);
+        setAutoProceedOn(settings.autoProceedOn !== false);
+        setAutoProceedPrompt(settings.autoProceedPrompt || '');
       })
       .catch((error) => {
         console.error('Failed to load permission settings from backend:', error);
@@ -442,6 +451,69 @@ export default function PermissionsSettingsTab() {
               })}
             </div>
           ) : null}
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                {t('permissions.selfHealContinue.title', { defaultValue: 'Self-heal continuation' })}
+              </span>
+            }
+            description={t('permissions.selfHealContinue.description', {
+              defaultValue:
+                'When the assistant produces no real text output (e.g. empty response, tool-call-only turn), automatically send "继续" to unblock the session. Prevents silent stalls caused by model API failures.',
+            })}
+          >
+            <SettingsToggle
+              checked={selfHealContinue}
+              ariaLabel={t('permissions.selfHealContinue.title', { defaultValue: 'Self-heal continuation' })}
+              onChange={(value: boolean) => {
+                setSelfHealContinue(value);
+                persist({ selfHealContinue: value });
+              }}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                {t('permissions.autoProceedOn.title', { defaultValue: 'Auto-proceed (per-session)' })}
+              </span>
+            }
+            description={t('permissions.autoProceedOn.description', {
+              defaultValue:
+                'Default on for new sessions. After each assistant reply the session auto-checks completion and triggers a follow-up prompt unless the reply contains "无需自动推进". Toggle per session via the dot in the sidebar.',
+            })}
+          >
+            <SettingsToggle
+              checked={autoProceedOn}
+              ariaLabel={t('permissions.autoProceedOn.title', { defaultValue: 'Auto-proceed (per-session)' })}
+              onChange={(value: boolean) => {
+                setAutoProceedOn(value);
+                persist({ autoProceedOn: value });
+              }}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('permissions.autoProceedPrompt.title', { defaultValue: 'Auto-proceed prompt' })}
+            description={t('permissions.autoProceedPrompt.description', {
+              defaultValue:
+                'Sent after each assistant reply when auto-proceed is active and no "无需自动推进" marker is found.',
+            })}
+          >
+            <textarea
+              rows={3}
+              value={autoProceedPrompt}
+              onChange={(e) => {
+                setAutoProceedPrompt(e.target.value);
+                persist({ autoProceedPrompt: e.target.value });
+              }}
+              className="w-full max-w-[320px] rounded-md border border-border bg-muted/60 px-2.5 py-2 text-[12.5px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder={t('permissions.autoProceedPrompt.placeholder', {
+                defaultValue:
+                  '你处于自动推进模式…',
+              })}
+            />
+          </SettingsRow>
         </SettingsCard>
       </SettingsSection>
 
