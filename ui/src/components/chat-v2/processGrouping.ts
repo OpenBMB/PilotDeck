@@ -885,14 +885,16 @@ export function getLiveProcessGroups(
     }
 
     const first = groupMessages[0];
+    const detail = groupMessages.filter(isExpandableProcessMessage);
+    const gid = getStableProcessSegmentId(messages, liveTurn, first, groupStartIndex);
     groups.push({
-      id: getStableProcessSegmentId(messages, liveTurn, first, groupStartIndex),
+      id: gid,
       afterOriginalIndex: previousVisibleIndex,
       beforeOriginalIndex,
       startIndex: groupStartIndex,
       endIndex: beforeOriginalIndex ?? messages.length,
       messages: groupMessages,
-      detailMessages: groupMessages.filter(isExpandableProcessMessage),
+      detailMessages: detail,
     });
     groupStartIndex = -1;
     groupMessages = [];
@@ -918,7 +920,7 @@ export function getLiveProcessGroups(
 
   finishGroup(null);
 
-  return groups.map((group, index) => {
+  const result = groups.map((group, index) => {
     const isLatestGroup = index === groups.length - 1;
     const isOpenEnded = group.beforeOriginalIndex == null;
     return {
@@ -926,6 +928,7 @@ export function getLiveProcessGroups(
       isRunning: Boolean(options.isAssistantWorking && isLatestGroup && isOpenEnded),
     };
   });
+  return result;
 }
 
 export function shouldRenderLiveProcessGroup(group: LiveProcessGroup, runMode: ChatRunMode): boolean {

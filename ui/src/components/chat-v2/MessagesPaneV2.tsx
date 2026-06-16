@@ -90,6 +90,11 @@ function isStreamingThinkingMessage(message: ChatMessage): boolean {
   return Boolean(message.isThinking && String(message.id || '').startsWith('__streaming_thinking_'));
 }
 
+function isSubagentThinkingPlaceholder(message: ChatMessage): boolean {
+  const id = String(message.id || '');
+  return Boolean(message.isThinking && (id.startsWith('subagent_thinking_') || id.startsWith('__subagent_thinking_')));
+}
+
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -397,6 +402,7 @@ export default function MessagesPaneV2({
     () => {
       const filtered = visibleMessages.filter((message) =>
         !message.isAgentActivity &&
+        !isSubagentThinkingPlaceholder(message) &&
         (!inlineThinking && isStreamingThinkingMessage(message) ? false : true) &&
         !(message.isThinking && !showThinking)
       );
@@ -677,7 +683,6 @@ export default function MessagesPaneV2({
   const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
     const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
     const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? liveStatusStep : null);
-
     return (
       <ProcessLiveStatus
         key={group.id || `${group.afterOriginalIndex}-${index}`}
@@ -953,7 +958,7 @@ export default function MessagesPaneV2({
           {shouldRenderBottomLiveStatus ? (
             <>
               <ProcessLiveStatus step={liveStatusStep}>
-                {liveProcessDetailMessages.length > 0
+                {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
                   ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
                   : null}
               </ProcessLiveStatus>

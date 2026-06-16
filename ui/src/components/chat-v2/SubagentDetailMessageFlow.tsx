@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import type { Project, SessionProvider } from '../../types/app';
 import MessageRowV2 from './MessageRowV2';
-import { ProcessLiveStatus, StreamingThinkingPreview, type ProcessTraceStep } from './ProcessTrace';
+import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
   getLiveProcessGroups,
   getLiveProcessGroupStep,
+  getProcessToolKind,
   shouldRenderLiveProcessGroup,
   type LiveProcessGroup,
   type RenderableMessageItem,
@@ -58,33 +59,49 @@ export default function SubagentDetailMessageFlow({
   const { t } = useTranslation('chat');
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
 
-  const streamingThinkingContent = useMemo(() => {
-    if (!showThinking || !isRunning) return null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      if (
-        isStreamingSubagentThinkingMessage(message) &&
-        typeof message.content === 'string' &&
-        message.content.trim()
-      ) {
-        return message.content;
+  const thinkingStatusStep = useMemo<ProcessTraceStep>(() => {
+    const lastToolMsg = [...messages].reverse().find(
+      (m) => m.isToolUse && m.toolName && !m.isSubagentContainer,
+    );
+    if (lastToolMsg) {
+      const kind = getProcessToolKind(lastToolMsg);
+      const toolKindTitleMap: Record<string, string> = {
+        search: t('process.live.runningSearch', { defaultValue: 'Searching' }),
+        edit: t('process.live.runningEdit', { defaultValue: 'Editing file' }),
+        read: t('process.live.runningRead', { defaultValue: 'Reading file' }),
+        command: t('process.live.runningCommand', { defaultValue: 'Running command' }),
+      };
+      if (toolKindTitleMap[kind]) {
+        return {
+          id: 'subagent-detail-thinking',
+          title: toolKindTitleMap[kind],
+          phase: kind === 'search' ? 'rag' : 'tool',
+          state: 'running' as const,
+        };
       }
     }
-    return null;
-  }, [isRunning, messages, showThinking]);
-  const thinkingStatusStep = useMemo<ProcessTraceStep>(() => ({
-    id: 'subagent-detail-thinking',
-    title: t('working.thinking', { defaultValue: 'thinking' }),
-    phase: 'thinking',
-    state: 'running',
-  }), [t]);
+    return {
+      id: 'subagent-detail-thinking',
+      title: t('subagent.status.thinking', { defaultValue: 'Thinking' }),
+      phase: 'thinking',
+      state: 'running' as const,
+    };
+  }, [messages, t]);
 
   const renderableMessages = useMemo(
-    () => messages.filter((message) =>
-      !message.isAgentActivity &&
-      !isStreamingSubagentThinkingMessage(message) &&
-      !(message.isThinking && !showThinking)
-    ),
+    () => {
+      const result = messages
+        .filter((message) =>
+          !message.isAgentActivity &&
+          !isStreamingSubagentThinkingMessage(message) &&
+          !(message.isThinking && !showThinking)
+        )
+        .map((message) => message.isSubagentContainer
+          ? { ...message, isSubagentContainer: false }
+          : message
+        );
+      return result;
+    },
     [messages, showThinking],
   );
   const renderableItems = useMemo(
@@ -122,6 +139,8 @@ export default function SubagentDetailMessageFlow({
     () => liveProcessGroups.filter((group) => !visibleOriginalIndices.has(group.afterOriginalIndex)),
     [liveProcessGroups, visibleOriginalIndices],
   );
+  const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
+  const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup;
 
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
     expandedProcessRows.get(processKey) ?? defaultExpanded
@@ -135,10 +154,10 @@ export default function SubagentDetailMessageFlow({
     });
   }, []);
 
-  const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => (
-    detailMessages.map((message, index) => (
+  const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => {
+    return detailMessages.map((message, index) => (
       <MessageRowV2
-        key={`${groupId}-${getMessageKey(message, index)}`}
+        key={`${groupId}-${index}-${getMessageKey(message, index)}`}
         message={message}
         prevMessage={index > 0 ? detailMessages[index - 1] : null}
         nextMessage={index < detailMessages.length - 1 ? detailMessages[index + 1] : null}
@@ -150,8 +169,8 @@ export default function SubagentDetailMessageFlow({
         isProcessExpanded={isProcessExpanded}
         onProcessExpandedChange={handleProcessExpandedChange}
       />
-    ))
-  ), [
+    ));
+  }, [
     createDiff,
     handleProcessExpandedChange,
     isProcessExpanded,
@@ -162,7 +181,8 @@ export default function SubagentDetailMessageFlow({
   ]);
 
   const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
-    const step = getLiveProcessGroupStep(group, t, null);
+    const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
+    const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? thinkingStatusStep : null);
     return (
       <ProcessLiveStatus
         key={group.id || `${group.afterOriginalIndex}-${index}`}
@@ -179,14 +199,16 @@ export default function SubagentDetailMessageFlow({
   }, [
     handleProcessExpandedChange,
     isProcessExpanded,
+    liveProcessGroups,
     renderLiveProcessDetailMessages,
     t,
+    thinkingStatusStep,
   ]);
 
   if (
     keyedItems.length === 0 &&
     unanchoredLiveProcessGroups.length === 0 &&
-    !streamingThinkingContent
+    !shouldRenderBottomLiveStatus
   ) {
     return null;
   }
@@ -229,11 +251,8 @@ export default function SubagentDetailMessageFlow({
           </Fragment>
         );
       })}
-      {streamingThinkingContent ? (
-        <div className="flex min-w-0 flex-col">
-          <ProcessLiveStatus step={thinkingStatusStep} />
-          <StreamingThinkingPreview content={streamingThinkingContent} />
-        </div>
+      {shouldRenderBottomLiveStatus ? (
+        <ProcessLiveStatus step={thinkingStatusStep} />
       ) : null}
     </div>
   );
