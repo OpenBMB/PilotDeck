@@ -6,6 +6,8 @@ import {
   type RenderableMessageItem,
 } from './processGrouping';
 
+const PLAN_MODE_DENY_MESSAGE = 'Plan mode denies side-effecting tool bash. You are still in plan mode. Continue with read-only exploration and analysis, refine or write the markdown plan under `.pilotdeck/plans/`, then submit it with `exit_plan_mode` when the plan is concrete and actionable.';
+
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
 
 function timestamp(offsetMs: number): string {
@@ -290,7 +292,7 @@ describe('processGrouping', () => {
 
   it('folds plan-mode side-effect denials into the process row', () => {
     const planModeDeny = {
-      content: 'Plan mode denies side-effecting tool bash.',
+      content: PLAN_MODE_DENY_MESSAGE,
       isError: true,
       errorCode: 'permission_denied',
     };

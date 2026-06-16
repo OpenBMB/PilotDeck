@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../../types/types';
 import MessageComponent from './MessageComponent';
 
+const PLAN_MODE_DENY_MESSAGE = 'Plan mode denies side-effecting tool bash. You are still in plan mode. Continue with read-only exploration and analysis, refine or write the markdown plan under `.pilotdeck/plans/`, then submit it with `exit_plan_mode` when the plan is concrete and actionable.';
+
 afterEach(() => {
   cleanup();
 });
@@ -95,7 +97,7 @@ describe('MessageComponent tool errors', () => {
       toolInput: '{"command":"cd .","description":"List files"}',
       toolResult: {
         isError: true,
-        content: 'Plan mode denies side-effecting tool bash.',
+        content: PLAN_MODE_DENY_MESSAGE,
         errorCode: 'permission_denied',
       },
     });
@@ -112,5 +114,6 @@ describe('MessageComponent tool errors', () => {
 
     fireEvent.click(summary as HTMLElement);
     expect(screen.getByText(/Plan mode denies side-effecting tool bash/)).toBeTruthy();
+    expect(screen.getByText(/Continue with read-only exploration and analysis/)).toBeTruthy();
   });
 });

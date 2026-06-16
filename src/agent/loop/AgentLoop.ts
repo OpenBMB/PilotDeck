@@ -1373,10 +1373,12 @@ export class AgentLoop {
 
 function applyPlanModeToolOverrides(tools: CanonicalToolSchema[]): CanonicalToolSchema[] {
   const override = buildPlanModeAgentToolSchema();
-  return tools.map((tool) => {
-    if (tool.name !== "agent") return tool;
-    return { ...tool, description: override.description, inputSchema: override.inputSchema };
-  });
+  return tools
+    .filter((tool) => tool.name !== "enter_plan_mode")
+    .map((tool) => {
+      if (tool.name !== "agent") return tool;
+      return { ...tool, description: override.description, inputSchema: override.inputSchema };
+    });
 }
 
 function mergeUserRules(target: PermissionRule[], userRules: PermissionRule[] | undefined): void {

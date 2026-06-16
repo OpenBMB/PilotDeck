@@ -5,6 +5,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import MessagesPaneV2 from './MessagesPaneV2';
 
+const PLAN_MODE_DENY_MESSAGE = 'Plan mode denies side-effecting tool bash. You are still in plan mode. Continue with read-only exploration and analysis, refine or write the markdown plan under `.pilotdeck/plans/`, then submit it with `exit_plan_mode` when the plan is concrete and actionable.';
+
 beforeAll(() => {
   class ResizeObserverMock {
     observe() {}
@@ -261,7 +263,7 @@ describe('MessagesPaneV2 render behavior', () => {
         toolId: 'tool-bash-1',
         toolInput: '{"command":"find . -maxdepth 1 -type f","description":"List files"}',
         toolResult: {
-          content: 'Plan mode denies side-effecting tool bash.',
+          content: PLAN_MODE_DENY_MESSAGE,
           isError: true,
           errorCode: 'permission_denied',
         },

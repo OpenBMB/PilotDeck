@@ -101,7 +101,7 @@ export class PermissionRuntime {
           return deny({
             type: "mode",
             mode: "plan",
-            message: `Plan mode denies side-effecting tool ${tool.name}.`,
+            message: buildPlanModeSideEffectDenyMessage(tool.name),
           });
         }
         return finalizeAsk(toolDecision, permissionContext);
@@ -200,7 +200,7 @@ function decideByMode(
     return deny({
       type: "mode",
       mode: "plan",
-      message: `Plan mode denies side-effecting tool ${tool.name}.`,
+      message: buildPlanModeSideEffectDenyMessage(tool.name),
     });
   }
 
@@ -237,6 +237,13 @@ function allow(reason: PermissionDecisionReason): PermissionDecision {
 
 function deny(reason: PermissionDecisionReason): PermissionDecision {
   return { type: "deny", reason, message: reason.message };
+}
+
+function buildPlanModeSideEffectDenyMessage(toolName: string): string {
+  return [
+    `Plan mode denies side-effecting tool ${toolName}.`,
+    "You are still in plan mode. Continue with read-only exploration and analysis, refine or write the markdown plan under `.pilotdeck/plans/`, then submit it with `exit_plan_mode` when the plan is concrete and actionable.",
+  ].join(" ");
 }
 
 function denyFromRule(rule: PermissionRule): PermissionDecision {
