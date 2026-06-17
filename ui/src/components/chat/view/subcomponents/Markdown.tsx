@@ -20,7 +20,8 @@ export function Markdown({ children, className, isStreaming }: MarkdownProps) {
   const content = useMemo(
     () => normalizeInlineCodeFences(String(children ?? '')),
     [children],
-  );
+  ).replace(/\\\((.*?)\\\)/g, '$$$1$')
+   .replace(/\\\[(.*?)\\\]/g, '$$$1$$');
 
   // Only apply streaming-fade-in on the initial mount while streaming.
   // Once streaming ends, never re-apply it — prevents old content from
@@ -28,6 +29,7 @@ export function Markdown({ children, className, isStreaming }: MarkdownProps) {
   const wasStreamingRef = useRef(!!isStreaming);
   if (!isStreaming) wasStreamingRef.current = false;
   const showFadeIn = isStreaming && wasStreamingRef.current;
+  console.log(rehypeKatex);
 
   return (
     <div className={`${className || ''} ${showFadeIn ? 'streaming-fade-in' : ''}`.trim()}>
