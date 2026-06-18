@@ -84,6 +84,9 @@ export class McpClient {
   private serverInstructions = "";
   private connectPromise: Promise<void> | null = null;
   private reconnectInFlight = false;
+
+  /** PID for process-group kill. -1 = not yet set. */
+  private _transportPid: number = -1;
   private perSessionDir: string | null = null;
 
   constructor(
@@ -168,12 +171,19 @@ export class McpClient {
         this.perSessionDir = dir;
         args = [...(args ?? []), `--user-data-dir=${dir}`];
       }
-      return new StdioClientTransport({
+      const _transport = new StdioClientTransport({
         command: this.spec.command,
         args,
         env: this.spec.env,
         cwd: this.spec.cwd,
       });
+      // Capture tsx PID immediately or on spawn event for process-group kill
+      const _t = _transport as any;
+      this._transportPid = _t.pid ?? -1;
+      if (this._transportPid === -1 && typeof _t.once === "function") {
+        _t.once("spawn", () => { this._transportPid = _t.pid ?? -1; });
+      }
+      return _transport;
     }
     if (this.spec.transport === "streamable_http") {
       const url = new URL(this.spec.url);
@@ -343,6 +353,21 @@ export class McpClient {
       try {
         rmSync(this.perSessionDir, { recursive: true, force: true });
       } catch { /* best effort cleanup */ }
+      // PATCH: kill entire process group BEFORE perSessionDir cleanup.
+      // Root cause: tsx does NOT forward SIGTERM → node → Chromium.
+      // Solution: kill(-pid, SIGKILL) wipes the whole tree atomically.
+      if (this._transportPid > 0) {
+        try {
+          process.kill(-this._transportPid, "SIGKILL");
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
+            // eslint-disable-next-line no-console
+            console.warn("[McpClient] process-group SIGKILL failed:", (e as Error).message);
+          }
+        }
+        this._transportPid = -1;
+      }
+
       this.perSessionDir = null;
     }
   }

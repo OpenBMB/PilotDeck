@@ -272,7 +272,7 @@ export class FeishuChannel implements ChannelAdapter {
     if (!mapped.message) return;
 
     if (this.activeChats.has(chatId)) {
-      this.logger?.info?.(`feishu: chat ${chatId} already active, skipping`);
+      await this.send({ chatId, text: "⏳ 上一次消息还在处理中，请稍等片刻再试。" });
       return;
     }
 
@@ -284,12 +284,21 @@ export class FeishuChannel implements ChannelAdapter {
       let errorMessages = "";
       let inToolCall = false;
       try {
-        for await (const event of this.gateway.submitTurn({
-          sessionKey: mapped.sessionKey,
-          channelKey: "feishu",
-          message: mapped.message,
-          ...(mapped.projectKey ? { projectKey: mapped.projectKey } : {}),
-        })) {
+        // 60s timeout prevents activeChats deadlock if LLM hangs
+        const timer = setTimeout(() => { throw new Error("submitTurn timeout 60s"); }, 60_000);
+        const collected: any[] = [];
+        try {
+          for await (const event of (this.gateway.submitTurn as any)({
+            sessionKey: mapped.sessionKey, channelKey: "feishu", message: mapped.message,
+            ...(mapped.projectKey ? { projectKey: mapped.projectKey } : {}),
+          })) {
+            collected.push(event);
+            if (collected.length > 10000) break; // safety cap
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+        for (const event of collected) {
           switch (event.type) {
             case "assistant_text_delta":
               if (!inToolCall) lastTextSegment += event.text;
@@ -366,6 +375,7 @@ export class FeishuChannel implements ChannelAdapter {
       }
     } catch (e) {
       this.logger?.error?.(`feishu: send threw: ${e}`);
+      throw e;
     }
   }
 
