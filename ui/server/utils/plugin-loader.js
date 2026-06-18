@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { spawn } from 'child_process';
+import { resolvePilotHome } from './pilotPaths.js';
 
-const PLUGINS_DIR = path.join(os.homedir(), '.pilotdeck', 'plugins');
-const PLUGINS_CONFIG_PATH = path.join(os.homedir(), '.pilotdeck', 'plugins.json');
+function getPluginsConfigPath() {
+  return path.join(resolvePilotHome(), 'plugins.json');
+}
 
 const REQUIRED_MANIFEST_FIELDS = ['name', 'displayName', 'entry'];
 
@@ -24,16 +25,18 @@ const ALLOWED_TYPES = ['react', 'module'];
 const ALLOWED_SLOTS = ['tab'];
 
 export function getPluginsDir() {
-  if (!fs.existsSync(PLUGINS_DIR)) {
-    fs.mkdirSync(PLUGINS_DIR, { recursive: true });
+  const pluginsDir = path.join(resolvePilotHome(), 'plugins');
+  if (!fs.existsSync(pluginsDir)) {
+    fs.mkdirSync(pluginsDir, { recursive: true });
   }
-  return PLUGINS_DIR;
+  return pluginsDir;
 }
 
 export function getPluginsConfig() {
+  const configPath = getPluginsConfigPath();
   try {
-    if (fs.existsSync(PLUGINS_CONFIG_PATH)) {
-      return JSON.parse(fs.readFileSync(PLUGINS_CONFIG_PATH, 'utf-8'));
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     }
   } catch {
     // Corrupted config, start fresh
@@ -42,11 +45,12 @@ export function getPluginsConfig() {
 }
 
 export function savePluginsConfig(config) {
-  const dir = path.dirname(PLUGINS_CONFIG_PATH);
+  const configPath = getPluginsConfigPath();
+  const dir = path.dirname(configPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  fs.writeFileSync(PLUGINS_CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
 export function validateManifest(manifest) {
