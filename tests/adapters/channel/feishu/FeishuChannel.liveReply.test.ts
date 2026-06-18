@@ -38,9 +38,13 @@ async function* events(items: GatewayEvent[]): AsyncIterable<GatewayEvent> {
   }
 }
 
-function makeGateway(items: GatewayEvent[] | (() => AsyncIterable<GatewayEvent>)): Gateway {
+function makeGateway(
+  items: GatewayEvent[] | (() => AsyncIterable<GatewayEvent>),
+  options: { abortTurn?: Gateway["abortTurn"] } = {},
+): Gateway {
   return {
     submitTurn: () => Array.isArray(items) ? events(items) : items(),
+    abortTurn: options.abortTurn ?? (async () => undefined),
   } as unknown as Gateway;
 }
 
@@ -273,6 +277,122 @@ test("feishu live reply falls back to final continuation when update fails", asy
     assert.equal(requestMsgType(sends[0]), "interactive");
     assert.equal(requestText(sends[1]), "world");
     assert.equal(requestMsgType(sends[1]), "text");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("feishu live reply watchdog aborts long turns and edits card to timeout guidance", async () => {
+  const calls: FetchCall[] = [];
+  const aborts: Array<{ sessionKey: string; runId?: string }> = [];
+  const releaseTurn = deferred();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes("tenant_access_token")) {
+      return jsonResponse({ code: 0, tenant_access_token: "token", expire: 7200 });
+    }
+    if (init?.method === "POST" && String(url).includes("/im/v1/messages?")) {
+      return jsonResponse({ code: 0, data: { message_id: "om_timeout" } });
+    }
+    if (init?.method === "PATCH") {
+      return jsonResponse({ code: 0 });
+    }
+    return jsonResponse({ code: 0 });
+  }) as typeof fetch;
+
+  try {
+    const channel = new FeishuChannel({
+      appId: "cli_a",
+      appSecret: "secret",
+      connectionMode: "webhook",
+      liveReplyOptions: {
+        activityDelayMs: 5,
+        activityUpdateThrottleMs: 10_000,
+        turnTimeoutMs: 20,
+      },
+    });
+    await channel.start({
+      gateway: makeGateway(async function* () {
+        yield { type: "turn_started", runId: "run_timeout" };
+        yield { type: "model_request_started", model: "m", provider: "p" };
+        await releaseTurn.promise;
+      }, {
+        abortTurn: async (input) => {
+          aborts.push(input);
+          releaseTurn.resolve();
+        },
+      }),
+    });
+    await runWebhook(channel, { chatId: "oc_timeout", text: "hi", eventId: "evt_timeout" });
+
+    await waitFor(
+      () => aborts.length === 1 && calls.some((call) => call.init?.method === "PATCH"),
+      "expected watchdog abort and timeout card update",
+    );
+
+    assert.deepEqual(aborts, [{ sessionKey: "feishu:chat=oc_timeout:general", runId: "run_timeout" }]);
+    const sends = calls.filter((call) => call.init?.method === "POST" && call.url.includes("/im/v1/messages?"));
+    const edits = calls.filter((call) => call.init?.method === "PATCH");
+    assert.equal(requestText(sends[0]), "正在思考… ▉");
+    assert.equal(requestMsgType(sends[0]), "interactive");
+    assert.equal(requestText(edits.at(-1)), "处理超时，请重新发送或稍后重试。");
+    assert.equal(requestMsgType(edits.at(-1)), "interactive");
+  } finally {
+    releaseTurn.resolve();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("feishu agent_aborted updates live card once without raw error text", async () => {
+  const calls: FetchCall[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes("tenant_access_token")) {
+      return jsonResponse({ code: 0, tenant_access_token: "token", expire: 7200 });
+    }
+    if (init?.method === "POST" && String(url).includes("/im/v1/messages?")) {
+      return jsonResponse({ code: 0, data: { message_id: "om_abort" } });
+    }
+    if (init?.method === "PATCH") {
+      return jsonResponse({ code: 0 });
+    }
+    return jsonResponse({ code: 0 });
+  }) as typeof fetch;
+
+  try {
+    const channel = new FeishuChannel({
+      appId: "cli_a",
+      appSecret: "secret",
+      connectionMode: "webhook",
+      liveReplyOptions: {
+        activityDelayMs: 5,
+        activityUpdateThrottleMs: 10_000,
+        turnTimeoutMs: 10_000,
+      },
+    });
+    await channel.start({
+      gateway: makeGateway(async function* () {
+        yield { type: "turn_started", runId: "run_abort" };
+        yield { type: "model_request_started", model: "m", provider: "p" };
+        await wait(20);
+        yield { type: "error", code: "agent_aborted", message: "Session aborted.", recoverable: true };
+      }),
+    });
+    await runWebhook(channel, { chatId: "oc_abort", text: "hi", eventId: "evt_abort" });
+
+    await waitFor(
+      () => calls.some((call) => call.init?.method === "PATCH"),
+      "expected aborted update",
+    );
+
+    const texts = calls
+      .filter((call) => call.init?.method === "POST" || call.init?.method === "PATCH")
+      .map((call) => requestText(call));
+    assert.ok(texts.includes("正在思考… ▉"));
+    assert.ok(texts.includes("处理已中止，请重新发送或稍后重试。"));
+    assert.equal(texts.some((text) => text.includes("Session aborted")), false);
   } finally {
     globalThis.fetch = originalFetch;
   }

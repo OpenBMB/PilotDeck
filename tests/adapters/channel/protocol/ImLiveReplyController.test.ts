@@ -273,6 +273,94 @@ test("activity-only turn is finalized without cursor", async () => {
   ]);
 });
 
+test("turn timeout does not finalize before the configured timeout", async () => {
+  const { calls, transport } = makeTransport();
+  const controller = new ImLiveReplyController({
+    transport,
+    activityDelayMs: 5,
+    activityUpdateThrottleMs: 10_000,
+    turnTimeoutMs: 100,
+  });
+
+  await controller.handleEvent({ type: "turn_started", runId: "r1" });
+  await wait(20);
+
+  assert.deepEqual(calls, [{ kind: "send", text: "正在思考… ▉" }]);
+
+  await controller.flushFinal();
+});
+
+test("turn timeout edits activity placeholder to retry guidance", async () => {
+  const { calls, transport } = makeTransport();
+  const controller = new ImLiveReplyController({
+    transport,
+    activityDelayMs: 5,
+    activityUpdateThrottleMs: 10_000,
+    turnTimeoutMs: 20,
+  });
+
+  await controller.handleEvent({ type: "turn_started", runId: "r1" });
+  await wait(50);
+  await controller.handleEvent({ type: "assistant_text_delta", text: "late text" });
+
+  assert.deepEqual(calls, [
+    { kind: "send", text: "正在思考… ▉" },
+    { kind: "edit", handle: "m1", text: "处理超时，请重新发送或稍后重试。" },
+  ]);
+});
+
+test("non-editable transport sends timeout final once", async () => {
+  const { calls, transport } = makeTransport({ editable: false });
+  const controller = new ImLiveReplyController({
+    transport,
+    turnTimeoutMs: 5,
+  });
+
+  await controller.handleEvent({ type: "turn_started", runId: "r1" });
+  await wait(20);
+  await controller.markTimedOut();
+
+  assert.deepEqual(calls, [{ kind: "send", text: "处理超时，请重新发送或稍后重试。" }]);
+});
+
+test("native activity is stopped when turn times out", async () => {
+  const { calls, transport } = makeTransport({ nativeActivity: true });
+  const controller = new ImLiveReplyController({
+    transport,
+    activityDelayMs: 5,
+    activityUpdateThrottleMs: 10_000,
+    turnTimeoutMs: 20,
+  });
+
+  await controller.handleEvent({ type: "turn_started", runId: "r1" });
+  await wait(50);
+
+  assert.equal(calls[0]?.kind, "pulseActivity");
+  assert.deepEqual(calls.slice(-2), [
+    { kind: "stopActivity" },
+    { kind: "send", text: "处理超时，请重新发送或稍后重试。" },
+  ]);
+});
+
+test("markAborted sends retry guidance instead of raw aborted error", async () => {
+  const { calls, transport } = makeTransport();
+  const controller = new ImLiveReplyController({
+    transport,
+    activityDelayMs: 5,
+    activityUpdateThrottleMs: 10_000,
+    turnTimeoutMs: 10_000,
+  });
+
+  await controller.handleEvent({ type: "turn_started", runId: "r1" });
+  await wait(20);
+  await controller.markAborted();
+
+  assert.deepEqual(calls, [
+    { kind: "send", text: "正在思考… ▉" },
+    { kind: "edit", handle: "m1", text: "处理已中止，请重新发送或稍后重试。" },
+  ]);
+});
+
 test("edit failure sends only the unseen continuation", async () => {
   const { calls, transport } = makeTransport({ failEditAt: 1 });
   const controller = new ImLiveReplyController({

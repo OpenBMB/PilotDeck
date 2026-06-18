@@ -298,6 +298,8 @@ export class FeishuChannel implements ChannelAdapter {
 
     this.activeChats.add(chatId);
     try {
+      let activeRunId: string | undefined;
+      let watchdogSettled = false;
       const liveReply = new ImLiveReplyController<FeishuLiveMessageHandle>({
         ...this.liveReplyOptions,
         transport: this.createLiveReplyTransport(chatId),
@@ -305,6 +307,22 @@ export class FeishuChannel implements ChannelAdapter {
           this.logger?.warn?.(`feishu: live reply ${phase} failed: ${error}`);
         },
       });
+      const turnTimeoutMs = this.liveReplyOptions?.turnTimeoutMs ?? 600_000;
+      const watchdog = turnTimeoutMs > 0
+        ? setTimeout(() => {
+            if (watchdogSettled) return;
+            watchdogSettled = true;
+            this.logger?.warn?.(`feishu: live reply timed out for chat ${chatId}`);
+            void liveReply.markTimedOut().catch((error: unknown) => {
+              this.logger?.warn?.(`feishu: mark timeout failed: ${error}`);
+            });
+            void this.gateway?.abortTurn({ sessionKey: mapped.sessionKey, ...(activeRunId ? { runId: activeRunId } : {}) })
+              .catch((error: unknown) => {
+                this.logger?.warn?.(`feishu: abort timeout turn failed: ${error}`);
+              });
+          }, turnTimeoutMs)
+        : undefined;
+      watchdog?.unref?.();
       try {
         for await (const event of this.gateway.submitTurn({
           sessionKey: mapped.sessionKey,
@@ -312,10 +330,17 @@ export class FeishuChannel implements ChannelAdapter {
           message: mapped.message,
           ...(mapped.projectKey ? { projectKey: mapped.projectKey } : {}),
         })) {
+          if (event.type === "turn_started") {
+            activeRunId = event.runId;
+          }
           if (event.type === "elicitation_request") {
             const questionText = this.elicitation.capture(chatId, mapped.sessionKey, event);
             await liveReply.pauseActivity();
             await this.send({ chatId, text: questionText });
+            continue;
+          }
+          if (event.type === "error" && event.code === "agent_aborted") {
+            await liveReply.markAborted();
             continue;
           }
           await liveReply.handleEvent(event);
@@ -327,6 +352,9 @@ export class FeishuChannel implements ChannelAdapter {
           message: "处理消息时发生错误，请重试。",
           recoverable: true,
         });
+      } finally {
+        watchdogSettled = true;
+        if (watchdog) clearTimeout(watchdog);
       }
 
       this.elicitation.clear(chatId);

@@ -36,6 +36,7 @@ export type ImLiveReplyControllerOptions<Handle = ImLiveReplyHandle> = {
   bufferThreshold?: number;
   initialThrottleMs?: number;
   initialBufferThreshold?: number;
+  turnTimeoutMs?: number;
   activityDelayMs?: number;
   activityUpdateThrottleMs?: number;
   activityMaxUpdates?: number;
@@ -45,6 +46,8 @@ export type ImLiveReplyControllerOptions<Handle = ImLiveReplyHandle> = {
   formatError?: (event: GatewayEvent & { type: "error" }) => string;
   formatActivity?: (activity: Omit<ImLiveReplyActivity, "text">) => string;
   activityOnlyFinalText?: string;
+  timeoutFinalText?: string;
+  abortFinalText?: string;
   onTransportError?: (error: unknown, phase: ImLiveReplyTransportErrorPhase) => void;
 };
 
@@ -69,12 +72,15 @@ const DEFAULT_THROTTLE_MS = 2_000;
 const DEFAULT_BUFFER_THRESHOLD = 96;
 const DEFAULT_INITIAL_THROTTLE_MS = 800;
 const DEFAULT_INITIAL_BUFFER_THRESHOLD = 24;
+const DEFAULT_TURN_TIMEOUT_MS = 600_000;
 const DEFAULT_ACTIVITY_DELAY_MS = 2_500;
 const DEFAULT_ACTIVITY_UPDATE_THROTTLE_MS = 10_000;
 const DEFAULT_ACTIVITY_MAX_UPDATES = 6;
 const DEFAULT_ACTIVITY_TTL_MS = 120_000;
 const DEFAULT_CURSOR = " ▉";
 const DEFAULT_ACTIVITY_ONLY_FINAL_TEXT = "处理完成，但没有可见回复。";
+const DEFAULT_TIMEOUT_FINAL_TEXT = "处理超时，请重新发送或稍后重试。";
+const DEFAULT_ABORT_FINAL_TEXT = "处理已中止，请重新发送或稍后重试。";
 
 export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private readonly transport: ImLiveReplyTransport<Handle>;
@@ -82,6 +88,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private readonly bufferThreshold: number;
   private readonly initialThrottleMs: number;
   private readonly initialBufferThreshold: number;
+  private readonly turnTimeoutMs: number;
   private readonly activityDelayMs: number;
   private readonly activityUpdateThrottleMs: number;
   private readonly activityMaxUpdates: number;
@@ -91,16 +98,20 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private readonly formatError: (event: GatewayEvent & { type: "error" }) => string;
   private readonly formatActivity: (activity: Omit<ImLiveReplyActivity, "text">) => string;
   private readonly activityOnlyFinalText: string;
+  private readonly timeoutFinalText: string;
+  private readonly abortFinalText: string;
   private readonly onTransportError?: (error: unknown, phase: ImLiveReplyTransportErrorPhase) => void;
 
   private currentSegment: Segment<Handle> = createSegment();
   private readonly completedSegments: Array<Segment<Handle>> = [];
   private textTimer: ReturnType<typeof setTimeout> | undefined;
+  private turnTimer: ReturnType<typeof setTimeout> | undefined;
   private activityDelayTimer: ReturnType<typeof setTimeout> | undefined;
   private activityUpdateTimer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private lastFlushAt = 0;
   private closed = false;
+  private turnTimerArmed = false;
 
   constructor(options: ImLiveReplyControllerOptions<Handle>) {
     this.transport = options.transport;
@@ -108,6 +119,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     this.bufferThreshold = options.bufferThreshold ?? DEFAULT_BUFFER_THRESHOLD;
     this.initialThrottleMs = options.initialThrottleMs ?? DEFAULT_INITIAL_THROTTLE_MS;
     this.initialBufferThreshold = options.initialBufferThreshold ?? DEFAULT_INITIAL_BUFFER_THRESHOLD;
+    this.turnTimeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.activityDelayMs = options.activityDelayMs ?? DEFAULT_ACTIVITY_DELAY_MS;
     this.activityUpdateThrottleMs = options.activityUpdateThrottleMs ?? DEFAULT_ACTIVITY_UPDATE_THROTTLE_MS;
     this.activityMaxUpdates = options.activityMaxUpdates ?? DEFAULT_ACTIVITY_MAX_UPDATES;
@@ -117,14 +129,20 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     this.formatError = options.formatError ?? defaultErrorFormatter;
     this.formatActivity = options.formatActivity ?? defaultActivityFormatter;
     this.activityOnlyFinalText = options.activityOnlyFinalText ?? DEFAULT_ACTIVITY_ONLY_FINAL_TEXT;
+    this.timeoutFinalText = options.timeoutFinalText ?? DEFAULT_TIMEOUT_FINAL_TEXT;
+    this.abortFinalText = options.abortFinalText ?? DEFAULT_ABORT_FINAL_TEXT;
     this.onTransportError = options.onTransportError;
   }
 
   async handleEvent(event: GatewayEvent): Promise<void> {
     if (this.closed) return;
+    this.armTurnTimer();
 
     switch (event.type) {
       case "turn_started":
+        this.armTurnTimer(true);
+        this.markActivity("thinking");
+        return;
       case "model_request_started":
       case "assistant_thinking_delta":
         this.markActivity("thinking");
@@ -157,8 +175,17 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     }
   }
 
+  async markTimedOut(): Promise<void> {
+    await this.finalizeWithTerminalText(this.timeoutFinalText);
+  }
+
+  async markAborted(): Promise<void> {
+    await this.finalizeWithTerminalText(this.abortFinalText);
+  }
+
   async flushFinal(): Promise<void> {
     if (this.closed) return;
+    this.clearTurnTimer();
     await this.flushSegment({ finalizeActivityOnly: true });
     this.closed = true;
     await this.stopNativeActivity();
@@ -186,6 +213,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
   async clear(): Promise<void> {
     this.clearTextTimer();
+    this.clearTurnTimer();
     this.clearActivityTimers();
     await this.waitForInFlight();
 
@@ -301,6 +329,18 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       void this.flushCurrent({ final: false, force: false, finalizeActivityOnly: false });
     }, delayMs);
     this.textTimer.unref?.();
+  }
+
+  private armTurnTimer(force = false): void {
+    if (this.closed || this.turnTimeoutMs <= 0) return;
+    if (this.turnTimerArmed && !force) return;
+    this.clearTurnTimer();
+    this.turnTimerArmed = true;
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = undefined;
+      void this.markTimedOut();
+    }, this.turnTimeoutMs);
+    this.turnTimer.unref?.();
   }
 
   private markActivity(kind: ImLiveReplyActivityKind): void {
@@ -467,6 +507,17 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     await this.runExclusive(() => this.flushCurrentNow(params));
   }
 
+  private async finalizeWithTerminalText(text: string): Promise<void> {
+    if (this.closed) return;
+    this.clearTextTimer();
+    this.clearTurnTimer();
+    this.clearActivityTimers();
+    await this.stopNativeActivity();
+    await this.waitForInFlight();
+    await this.runExclusive(() => this.finalizeWithTerminalTextNow(text));
+    this.closed = true;
+  }
+
   private async runExclusive(fn: () => Promise<void>): Promise<void> {
     while (this.inFlight) {
       await this.inFlight;
@@ -611,6 +662,43 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     }
   }
 
+  private async finalizeWithTerminalTextNow(text: string): Promise<void> {
+    const segment = this.currentSegment;
+    const formatted = this.formatForTransport(text);
+
+    segment.text = "";
+    segment.activityVisible = false;
+    segment.lastVisibleFinalText = formatted;
+    segment.final = true;
+
+    if (segment.handle && this.transport.edit && !segment.editDisabled) {
+      try {
+        const ok = await this.transport.edit(segment.handle, formatted);
+        if (ok !== false) {
+          segment.lastVisibleText = formatted;
+          this.lastFlushAt = Date.now();
+          return;
+        }
+      } catch (error) {
+        this.reportTransportError(error, "edit");
+      }
+      segment.editDisabled = true;
+    }
+
+    if (!segment.handle || !segment.lastVisibleText.trim() || this.transport.edit) {
+      try {
+        const handle = await this.transport.send(formatted);
+        if (handle !== false) {
+          segment.handle = handle === undefined ? segment.handle : handle;
+          segment.lastVisibleText = formatted;
+          this.lastFlushAt = Date.now();
+        }
+      } catch (error) {
+        this.reportTransportError(error, "send");
+      }
+    }
+  }
+
   private async enterFallbackMode(segment: Segment<Handle>): Promise<void> {
     if (segment.editDisabled) return;
     segment.editDisabled = true;
@@ -695,6 +783,14 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     if (!this.textTimer) return;
     clearTimeout(this.textTimer);
     this.textTimer = undefined;
+  }
+
+  private clearTurnTimer(): void {
+    if (this.turnTimer) {
+      clearTimeout(this.turnTimer);
+      this.turnTimer = undefined;
+    }
+    this.turnTimerArmed = false;
   }
 
   private clearActivityTimers(): void {
