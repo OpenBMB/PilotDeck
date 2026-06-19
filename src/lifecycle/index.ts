@@ -10,3 +10,4 @@ export { emptyLifecycleDispatchResult } from "./protocol/payloads.js";
 export { PilotDeckLifecycleRuntimeError } from "./protocol/errors.js";
 export { LifecycleRuntime, NullLifecycleRuntime } from "./runtime/LifecycleRuntime.js";
 export type { LifecycleObserver } from "./runtime/LifecycleObserver.js";
+export { ResourceLifecycleRegistry } from "./runtime/ResourceLifecycleRegistry.js";

@@ -29,7 +29,7 @@ import { FileHistoryStore } from "../session/filesystem/FileHistoryStore.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
 import { HookRuntime, PluginRuntime } from "../extension/index.js";
-import { LifecycleRuntime } from "../lifecycle/index.js";
+import { LifecycleRuntime, ResourceLifecycleRegistry } from "../lifecycle/index.js";
 import {
   GatewayElicitationChannel,
   InProcessGateway,
@@ -124,7 +124,7 @@ export type CreateLocalGatewayResult = {
   gateway: Gateway;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
-  dispose: () => void;
+  dispose: () => Promise<void>;
   bindServer: (server: { broadcastNotification(name: string, payload?: unknown): void }) => void;
   /**
    * Returns true when at least one interactive (non-background) turn is
@@ -182,6 +182,23 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const configStore = createPilotConfigStoreSync({ projectRoot, env });
   const stopConfigWatching = configStore.startWatching();
   const stopExtensionWatching = extensionWatchManager.start();
+
+  const resourceRegistry = new ResourceLifecycleRegistry({
+    onError: (name, error) => {
+      console.warn(`[createLocalGateway] resource disposal failed for "${name}": ${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  // Register resources for coordinated disposal
+  resourceRegistry.register("config-store", () => {
+    stopConfigWatching();
+  });
+  resourceRegistry.register("extension-watch-manager", () => {
+    stopExtensionWatching();
+  });
+  if (ownsTelemetry) {
+    resourceRegistry.register("telemetry", () => telemetry.shutdown());
+  }
 
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const configChangeLifecycle = new LifecycleRuntime(new HookRuntime({}));
@@ -298,13 +315,9 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     gateway,
     configStore,
     registry,
-    dispose: () => {
+    dispose: async () => {
+      await resourceRegistry.disposeAll();
       registry.invalidate();
-      stopConfigWatching();
-      stopExtensionWatching();
-      if (ownsTelemetry) {
-        void telemetry.shutdown();
-      }
     },
     bindServer: (server) => { boundServer = server; },
     isProjectBusy: (projectKey: string) => router!.hasActiveUserTurn(projectKey),

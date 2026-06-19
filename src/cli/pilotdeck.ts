@@ -296,7 +296,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     const stop = async () => {
       try {
         console.log(`[telemetry] shutdown snapshot ${JSON.stringify(telemetry.snapshot())}`);
-        disposeGateway();
+        await disposeGateway();
         await alwaysOn?.stop();
         await cron?.stop();
         await telemetry.shutdown();
