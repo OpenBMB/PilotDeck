@@ -301,13 +301,13 @@ export class CronRuntime {
     if (!task) return { started: false, reason: "not_found" };
     if (task.status === "running") return { started: false, reason: "already_running", taskId: task.taskId };
 
-    await this.createTask({
+    const created = await this.createTask({
       message: task.message,
       schedule: { type: "once", runAt: new Date().toISOString() },
       projectKey: task.projectKey,
       mode: task.mode,
     });
-    return { started: true, taskId: task.taskId };
+    return { started: true, taskId: created.task.taskId };
   }
 
   runTickOnce(): Promise<void> {
