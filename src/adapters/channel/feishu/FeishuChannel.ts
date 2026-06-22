@@ -329,6 +329,7 @@ export class FeishuChannel implements ChannelAdapter {
           channelKey: "feishu",
           message: mapped.message,
           allowPlanModeTools: false,
+          timeoutMs: turnTimeoutMs,
           ...(mapped.projectKey ? { projectKey: mapped.projectKey } : {}),
         })) {
           if (event.type === "turn_started") {
@@ -342,6 +343,10 @@ export class FeishuChannel implements ChannelAdapter {
           }
           if (event.type === "error" && event.code === "agent_aborted") {
             await liveReply.markAborted();
+            continue;
+          }
+          if (event.type === "error" && event.code === "turn_timeout") {
+            await liveReply.markTimedOut();
             continue;
           }
           await liveReply.handleEvent(event);

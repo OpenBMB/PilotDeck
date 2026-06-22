@@ -284,6 +284,7 @@ export class WeixinChannel implements ChannelAdapter {
         channelKey: "weixin",
         message,
         allowPlanModeTools: false,
+        timeoutMs: turnTimeoutMs,
         ...(projectKey ? { projectKey } : {}),
       })) {
         if (event.type === "turn_started") {
@@ -297,6 +298,10 @@ export class WeixinChannel implements ChannelAdapter {
         }
         if (event.type === "error" && event.code === "agent_aborted") {
           await liveReply.markAborted();
+          continue;
+        }
+        if (event.type === "error" && event.code === "turn_timeout") {
+          await liveReply.markTimedOut();
           continue;
         }
         await liveReply.handleEvent(event);
