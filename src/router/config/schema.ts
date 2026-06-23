@@ -55,7 +55,7 @@ export const DEFAULT_SUBAGENT_MAX_TOKENS = 48000;
 export type RouterStatsConfig = {
   enabled: boolean;
   modelPricing?: Record<string, { input?: number; output?: number; cacheRead?: number }>;
-  /** Override the default ~/.pilotdeck/router/stats.json path (useful for tests). */
+  /** Override the default ~/.pilotdeck/router/stats.jsonl path (useful for tests). */
   filePath?: string;
   /** Provider/model ref used as the "no-router" baseline for savedCost calculation. */
   baselineModel?: { provider: string; model: string };

@@ -68,12 +68,13 @@ export class TokenStatsCollector {
     this.baselineModel = config?.baselineModel;
 
     if (this.enabled) {
-      const routerDir = config?.filePath
-        ? path.dirname(config.filePath)
+      const filePath = config?.filePath?.trim() ? config.filePath : undefined;
+      const routerDir = filePath
+        ? path.dirname(filePath)
         : path.join(resolvePilotHome(), "router");
       try { fs.mkdirSync(routerDir, { recursive: true }); } catch { /* ok */ }
 
-      this.jsonlPath = path.join(routerDir, "stats.jsonl");
+      this.jsonlPath = filePath ?? path.join(routerDir, "stats.jsonl");
 
       // One-time migration: old JSON formats → JSONL
       migrateJsonToJsonl(routerDir, this.jsonlPath);
