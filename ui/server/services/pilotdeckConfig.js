@@ -29,6 +29,17 @@ const MASK = '********';
 
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|auth[_-]?token|access[_-]?token|bot[_-]?token|app[_-]?token|encoding[_-]?aes[_-]?key)$/i;
 const SECRET_EXACT_KEYS = new Set(['key', 'apiKey', 'api_key', 'authToken', 'accessToken']);
+const PROXY_RUNTIME_ENV_KEYS = [
+  'PILOTDECK_PROXY',
+  'HTTPS_PROXY',
+  'https_proxy',
+  'HTTP_PROXY',
+  'http_proxy',
+  'NO_PROXY',
+  'no_proxy',
+];
+const managedProxyEnvKeys = new Set();
+const previousProxyEnvValues = new Map();
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -324,6 +335,11 @@ export function buildRuntimeEnv(config) {
   if (proxyUrl) {
     env.HTTPS_PROXY = proxyUrl;
     env.https_proxy = proxyUrl;
+    const noProxy = normalizeString(normalized.proxy?.noProxy);
+    if (noProxy) {
+      env.NO_PROXY = noProxy;
+      env.no_proxy = noProxy;
+    }
   }
 
   if (main) {
@@ -381,7 +397,27 @@ export function buildRuntimeEnv(config) {
 }
 
 export function applyConfigToProcessEnv(config) {
-  Object.assign(process.env, buildRuntimeEnv(config));
+  const env = buildRuntimeEnv(config);
+  for (const key of PROXY_RUNTIME_ENV_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(env, key)) {
+      if (!managedProxyEnvKeys.has(key)) {
+        previousProxyEnvValues.set(key, process.env[key]);
+      }
+      managedProxyEnvKeys.add(key);
+      continue;
+    }
+
+    if (!managedProxyEnvKeys.has(key)) continue;
+    const previousValue = previousProxyEnvValues.get(key);
+    if (previousValue === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = previousValue;
+    }
+    managedProxyEnvKeys.delete(key);
+    previousProxyEnvValues.delete(key);
+  }
+  Object.assign(process.env, env);
 }
 
 // ─── Memory service options ──────────────────────────────────────────────────
