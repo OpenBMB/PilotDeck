@@ -97,6 +97,10 @@ export type SessionMetadataValue = {
     url: string;
     repository: string;
   };
+  /** Parent session when this transcript was created via history fork. */
+  parentSessionId?: string;
+  /** Turn id of the fork point in the parent session. */
+  forkedFromTurnId?: string;
   updatedAt?: string;
 };
 

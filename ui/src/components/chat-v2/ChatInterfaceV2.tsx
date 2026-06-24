@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTasksSettings } from '../../contexts/TasksSettingsContext';
+import { useToast } from '../../contexts/ToastContext';
+import { api } from '../../utils/api';
 import type { ChatInterfaceProps, ChatRunMode, Provider } from '../chat/types/types';
+import type { ChatMessage } from '../chat/types/types';
 import {
   getSessionRequestParams,
   isBackgroundTaskSession,
@@ -71,6 +74,8 @@ function ChatInterfaceV2({
   const pendingViewSessionRef = useRef<PendingViewSession | null>(null);
   const [isAbortPending, setIsAbortPending] = useState(false);
   const [runMode, setRunMode] = useState<ChatRunMode>('agent');
+  const [isForkPending, setIsForkPending] = useState(false);
+  const { addToast } = useToast();
 
   const resetStreamingState = useCallback(() => {
     if (streamTimerRef.current) {
@@ -311,6 +316,73 @@ function ChatInterfaceV2({
     setIsAbortPending(true);
   }, [canAbortSession, handleAbortSession, isAbortPending, isLoading]);
 
+  const handleFork = useCallback(async (message: ChatMessage, _carriedPreview: number) => {
+    if (isForkPending || isLoading || isReadOnlyBackgroundSession) return;
+    const sessionId = currentSessionId || selectedSession?.id;
+    const fromEntryId = message.entryId;
+    if (!sessionId || !fromEntryId || !selectedProject) {
+      addToast('error', t('fork.missingTarget', { defaultValue: 'Cannot fork this message.' }));
+      return;
+    }
+
+    const projectPath = selectedProject.fullPath || selectedProject.path || '';
+    setIsForkPending(true);
+    try {
+      const response = await api.forkSession(sessionId, { projectPath, fromEntryId });
+      let result: { newSessionId?: string; prefillText?: string; error?: string } = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
+      }
+      if (!response.ok) {
+        throw new Error(result?.error || `Fork failed (${response.status})`);
+      }
+      const newSessionId = result?.newSessionId;
+      if (!newSessionId) {
+        throw new Error('Fork did not return a new session id');
+      }
+
+      if (typeof window.refreshProjects === 'function') {
+        void window.refreshProjects();
+      }
+
+      onNavigateToSession?.(newSessionId);
+      setInput(result.prefillText || message.content || '');
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        scrollToBottom?.();
+      });
+      // Messages load asynchronously after the session switch; scroll again
+      // once the carried history has had a chance to render.
+      setTimeout(() => scrollToBottom?.(), 400);
+      addToast(
+        'success',
+        t('fork.ready', {
+          defaultValue: 'Fork created — edit the prompt and send when ready.',
+        }),
+      );
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      addToast('error', messageText || t('fork.failed', { defaultValue: 'Fork failed.' }));
+    } finally {
+      setIsForkPending(false);
+    }
+  }, [
+    addToast,
+    currentSessionId,
+    isForkPending,
+    isLoading,
+    isReadOnlyBackgroundSession,
+    onNavigateToSession,
+    scrollToBottom,
+    selectedProject,
+    selectedSession?.id,
+    setInput,
+    t,
+    textareaRef,
+  ]);
+
   useEffect(() => {
     if (!isLoading || !canAbortSession) return;
     const handleGlobalEscape = (event: KeyboardEvent) => {
@@ -481,6 +553,8 @@ function ChatInterfaceV2({
         workingStatus={claudeStatus || pilotDeckStatus}
         runMode={runMode}
         sessionStore={sessionStore}
+        onFork={isReadOnlyBackgroundSession ? undefined : handleFork}
+        forkDisabled={isForkPending}
       />
       {composer}
     </div>

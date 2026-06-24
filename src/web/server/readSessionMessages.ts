@@ -56,6 +56,7 @@ export async function readWebSessionMessages(
   const { entries } = await readTranscript(transcriptPath);
   const webReplay = extractWebVisibleMessages(entries);
   const entryTimestamps = webReplay.timestamps;
+  const entryIds = webReplay.entryIds;
   const incompleteTurnIds = extractIncompleteTurnIds(entries);
 
   const flattenedPerMessage: WebMessage[][] = webReplay.messages
@@ -67,6 +68,7 @@ export async function readWebSessionMessages(
         projectKey: input.projectKey,
         now: options.now,
         entryTimestamp: entryTimestamps[index],
+        entryId: entryIds[index],
       }),
     );
 
@@ -130,6 +132,8 @@ export async function readWebSessionMessages(
       cwd: sessionInfo?.cwd,
       tag: sessionInfo?.tag,
       createdAt: sessionInfo?.createdAt,
+      parentSessionId: sessionInfo?.parentSessionId,
+      forkedFromTurnId: sessionInfo?.forkedFromTurnId,
     },
   };
 }
@@ -279,6 +283,8 @@ type ProjectionContext = {
   now?: () => Date;
   /** Actual transcript entry timestamp — preferred over now(). */
   entryTimestamp?: string;
+  /** Transcript entry id for fork targeting. */
+  entryId?: string;
 };
 
 /**
@@ -317,6 +323,7 @@ export function flattenCanonicalMessage(
       kind: "text",
       text: textBuffer,
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
+      ...(context.entryId ? { entryId: context.entryId } : {}),
       source: "history",
     });
     textBuffer = "";
@@ -532,11 +539,13 @@ type CompactBoundaryInfo = {
 function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
   messages: CanonicalMessage[];
   timestamps: string[];
+  entryIds: Array<string | undefined>;
   compactBoundaries: CompactBoundaryInfo[];
 } {
   const lastBoundaryIndex = findLastCompactBoundaryIndex(entries);
   const messages: CanonicalMessage[] = [];
   const timestamps: string[] = [];
+  const entryIds: Array<string | undefined> = [];
   const compactBoundaries: CompactBoundaryInfo[] = [];
 
   for (let index = 0; index < entries.length; index += 1) {
@@ -549,6 +558,7 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
           for (const message of entry.messages) {
             messages.push(cloneMessage(message));
             timestamps.push(entry.createdAt);
+            entryIds.push(entry.entryId);
           }
         }
         break;
@@ -558,6 +568,7 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
         if (!beforeBoundary) {
           messages.push(cloneMessage(entry.message));
           timestamps.push(entry.createdAt);
+          entryIds.push(entry.entryId);
         }
         break;
       case "control_boundary": {
@@ -582,7 +593,7 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
     }
   }
 
-  return { messages, timestamps, compactBoundaries };
+  return { messages, timestamps, entryIds, compactBoundaries };
 }
 
 function extractSubagentExecutionMessages(entries: AgentTranscriptEntry[]): {

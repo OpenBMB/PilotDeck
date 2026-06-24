@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XCircle } from 'lucide-react';
+import { XCircle, GitBranch } from 'lucide-react';
 import type {
   ChatMessage,
   ChatRunMode,
@@ -66,6 +66,9 @@ type MessagesPaneV2Props = {
   workingStatus?: ClaudeWorkStatus | PilotDeckWorkStatus | null;
   runMode?: ChatRunMode;
   sessionStore?: SessionStore;
+  onFork?: (message: ChatMessage, carriedMessageCount: number) => void;
+  forkDisabled?: boolean;
+  forkParentSessionTitle?: string | null;
 };
 
 type KeyedRenderableMessageItem = RenderableMessageItem & {
@@ -232,6 +235,23 @@ function MeasuredMessageItem({
   );
 }
 
+function countCarriedMessagesBefore(
+  items: KeyedRenderableMessageItem[],
+  renderIndex: number,
+): number {
+  return items
+    .slice(0, renderIndex)
+    .filter(({ message }) => message.type === 'user' || message.type === 'assistant' || message.isToolUse)
+    .length;
+}
+
+function isForkedChatSession(session: ProjectSession | null): boolean {
+  return Boolean(
+    session?.parentSessionId &&
+    session.sessionKind !== 'background_task',
+  );
+}
+
 export default function MessagesPaneV2({
   scrollContainerRef,
   onWheel,
@@ -266,6 +286,9 @@ export default function MessagesPaneV2({
   workingStatus,
   runMode = 'agent',
   sessionStore,
+  onFork,
+  forkDisabled = false,
+  forkParentSessionTitle = null,
 }: MessagesPaneV2Props) {
   const { t } = useTranslation('chat');
   const messageKeyMapRef = useRef<WeakMap<ChatMessage, string>>(new WeakMap());
@@ -711,6 +734,9 @@ export default function MessagesPaneV2({
       ? keyedMessageItems[item.renderIndex + 1].message
       : null;
     const isLast = !isAssistantWorking && item.renderIndex === keyedMessageItems.length - 1;
+    const forkCarriedMessageCount = item.message.type === 'user'
+      ? countCarriedMessagesBefore(keyedMessageItems, item.renderIndex)
+      : 0;
     const anchoredLiveGroups = liveProcessGroupsByAnchor.get(item.originalIndex) || [];
     const rendersLiveHeaderAfterItem = item.renderIndex === liveProcessHeaderIndex - 1;
 
@@ -758,6 +784,9 @@ export default function MessagesPaneV2({
             subagentActivityById={subagentActivityById}
             subagentThinkingById={subagentThinkingById}
             isSessionRunning={isAssistantWorking}
+            onFork={onFork}
+            forkCarriedMessageCount={forkCarriedMessageCount}
+            forkDisabled={forkDisabled}
           />
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
@@ -795,6 +824,8 @@ export default function MessagesPaneV2({
     liveProcessHeaderIndex,
     liveProcessStartedAtMs,
     onFileOpen,
+    onFork,
+    forkDisabled,
     onGrantSessionToolPermission,
     onShowSettings,
     provider,
@@ -803,6 +834,7 @@ export default function MessagesPaneV2({
     showRawParameters,
     showThinking,
     subagentActivityById,
+    subagentThinkingById,
     t,
   ]);
 
@@ -860,6 +892,22 @@ export default function MessagesPaneV2({
               ))}
             </div>
           ) : null}
+        </div>
+      ) : isExistingConversationEmpty && isForkedChatSession(selectedSession) ? (
+        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
+            <GitBranch className="h-5 w-5 text-neutral-500 dark:text-neutral-400" strokeWidth={2} />
+          </div>
+          <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
+            {t('fork.emptyTitle', { defaultValue: 'New branch ready' })}
+          </div>
+          <div className="max-w-[520px] text-[13px] leading-5 text-neutral-500 dark:text-neutral-400">
+            {t('fork.emptyDescription', {
+              parent: forkParentSessionTitle || selectedSession?.parentSessionId || '',
+              defaultValue:
+                'This branch starts from the beginning of the original conversation. The forked prompt is waiting in the composer — edit it and send to continue here.',
+            })}
+          </div>
         </div>
       ) : isExistingConversationEmpty ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-2 px-6 py-10 text-center">
@@ -932,6 +980,18 @@ export default function MessagesPaneV2({
               >
                 {t('messages.loadAll', { defaultValue: 'Load all' })}
               </button>
+            </div>
+          ) : null}
+
+          {isForkedChatSession(selectedSession) ? (
+            <div className="mb-6 flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300">
+              <GitBranch className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>
+                {t('fork.banner', {
+                  parent: forkParentSessionTitle || selectedSession?.parentSessionId || '',
+                  defaultValue: `Forked from ${forkParentSessionTitle || selectedSession?.parentSessionId || 'parent session'}`,
+                })}
+              </span>
             </div>
           ) : null}
 

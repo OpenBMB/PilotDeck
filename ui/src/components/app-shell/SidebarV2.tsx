@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ import {
   PanelLeftClose,
   Pencil,
   Plus,
+  GitBranch,
   Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react';
@@ -111,6 +113,46 @@ type FlatSession = {
   session: ProjectSession;
   sessionId: string;
   lastActivity: number;
+};
+
+type SessionTreeNode = {
+  flat: FlatSession;
+  children: SessionTreeNode[];
+};
+
+const isForkChildSession = (session: ProjectSession, knownSessionIds: Set<string>): boolean =>
+  Boolean(
+    session.parentSessionId &&
+    session.sessionKind !== 'background_task' &&
+    knownSessionIds.has(session.parentSessionId),
+  );
+
+const buildSessionTree = (flatSessions: FlatSession[]): SessionTreeNode[] => {
+  const knownSessionIds = new Set(flatSessions.map((item) => item.sessionId));
+  const childrenByParent = new Map<string, FlatSession[]>();
+  const roots: FlatSession[] = [];
+
+  for (const item of flatSessions) {
+    if (isForkChildSession(item.session, knownSessionIds)) {
+      const parentId = item.session.parentSessionId as string;
+      const list = childrenByParent.get(parentId) ?? [];
+      list.push(item);
+      childrenByParent.set(parentId, list);
+    } else {
+      roots.push(item);
+    }
+  }
+
+  const toNode = (flat: FlatSession): SessionTreeNode => ({
+    flat,
+    children: (childrenByParent.get(flat.sessionId) ?? [])
+      .sort((left, right) => right.lastActivity - left.lastActivity)
+      .map(toNode),
+  });
+
+  return roots
+    .sort((left, right) => right.lastActivity - left.lastActivity)
+    .map(toNode);
 };
 
 const collectSessionsForProject = (project: Project): FlatSession[] => {
@@ -676,6 +718,121 @@ export default function SidebarV2({
     // top-level list (no folder ancestor), so the usual ml-6 indent would
     // leave a weird empty gutter on the left.
     const containerClass = options.flat ? 'space-y-0.5' : 'ml-6 space-y-0.5';
+    const sessionTree = buildSessionTree(sessions);
+    const sessionTitleById = new Map(
+      allSessions.map(({ sessionId, session }) => [sessionId, sessionDisplayTitle(session)]),
+    );
+
+    const renderSessionTreeNode = (
+      node: SessionTreeNode,
+      depth: number,
+      isForkChild: boolean,
+    ): ReactNode => {
+      const { session, sessionId, lastActivity } = node.flat;
+      const isSessionActive =
+        selectedProject?.name === project.name &&
+        selectedSession?.id === sessionId &&
+        activeTab === 'chat';
+      const isSessionRenaming = renamingSession === sessionId;
+      const isOptimisticRow =
+        typeof sessionId === 'string' && sessionId.startsWith('new-session-');
+      const indicatorStatus: SessionIndicatorStatus = isOptimisticRow
+        ? 'processing'
+        : processingSessions?.has(sessionId)
+          ? 'processing'
+          : unreadSessionIds?.has(sessionId)
+            ? 'unread'
+            : 'idle';
+      const indicatorLabel =
+        indicatorStatus === 'processing'
+          ? t('sidebar:sessions.processing', { defaultValue: 'Agent is running' })
+          : indicatorStatus === 'unread'
+            ? t('sidebar:sessions.unread', { defaultValue: 'Unread messages' })
+            : t('sidebar:sessions.idle', { defaultValue: 'No unread messages' });
+      const parentTitle = session.parentSessionId
+        ? sessionTitleById.get(session.parentSessionId)
+        : undefined;
+
+      return (
+        <div key={sessionId} className={depth > 0 ? 'ml-4 border-l border-neutral-200 pl-2 dark:border-neutral-800' : undefined}>
+          <div
+            onContextMenu={(event) =>
+              isOptimisticRow ? undefined : openSessionContextMenu(event, project, session)
+            }
+            className={cn(
+              'group/session relative w-full rounded-md transition-colors',
+              isSessionActive
+                ? 'bg-neutral-200/70 dark:bg-neutral-800'
+                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            {isSessionRenaming ? (
+              <div className="flex items-center px-2 py-1">
+                <input
+                  ref={renameInputRef}
+                  value={renameDraft}
+                  onChange={(event) => setRenameDraft(event.target.value)}
+                  onBlur={commitSessionRename}
+                  onKeyDown={(event) => handleRenameKey(event, 'session')}
+                  onClick={(event) => event.stopPropagation()}
+                  placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
+                  className="w-full rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5 text-[12.5px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={
+                  isOptimisticRow
+                    ? undefined
+                    : () => handleSessionClick(project, sessionId)
+                }
+                disabled={isOptimisticRow}
+                className={cn(
+                  'flex w-full items-start gap-2 px-2 py-1 text-left',
+                  isOptimisticRow && 'cursor-default',
+                )}
+              >
+                <span className="flex h-[18px] w-3 shrink-0 items-center justify-center pt-[3px]">
+                  <SessionStatusIndicator
+                    status={indicatorStatus}
+                    label={indicatorLabel}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      'flex min-w-0 items-center gap-1 truncate text-[12.5px] text-neutral-900 dark:text-neutral-100',
+                      isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
+                    )}
+                  >
+                    {isForkChild ? (
+                      <GitBranch className="h-3 w-3 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={2} />
+                    ) : null}
+                    <span className="truncate">{sessionDisplayTitle(session)}</span>
+                  </div>
+                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {isOptimisticRow
+                      ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
+                      : isForkChild
+                        ? t('sidebar:sessions.forkedFrom', {
+                            parent: parentTitle || session.parentSessionId || '',
+                            defaultValue: `forked from ${parentTitle || session.parentSessionId || 'parent'}`,
+                          })
+                        : formatRelative(lastActivity, t)}
+                  </div>
+                </div>
+              </button>
+            )}
+          </div>
+          {node.children.length > 0 ? (
+            <div className="mt-0.5 space-y-0.5">
+              {node.children.map((child) => renderSessionTreeNode(child, depth + 1, true))}
+            </div>
+          ) : null}
+        </div>
+      );
+    };
 
     return (
       <div className={containerClass}>
@@ -694,102 +851,8 @@ export default function SidebarV2({
           </button>
         ) : null}
 
-        {sessions.length > 0 ? (
-          sessions.map(({ session, sessionId, lastActivity }) => {
-            const isSessionActive =
-              selectedProject?.name === project.name &&
-              selectedSession?.id === sessionId &&
-              activeTab === 'chat';
-            const isSessionRenaming = renamingSession === sessionId;
-            // Optimistic placeholder rows are not yet backed by a real
-            // session id on the server, so clicking / renaming / deleting
-            // them is meaningless until the server's `projects_updated`
-            // swaps in the real id (typically within ~300ms).
-            const isOptimisticRow =
-              typeof sessionId === 'string' && sessionId.startsWith('new-session-');
-            // Optimistic rows always appear "processing" — the user just
-            // submitted; the agent is always running for them.
-            const indicatorStatus: SessionIndicatorStatus = isOptimisticRow
-              ? 'processing'
-              : processingSessions?.has(sessionId)
-                ? 'processing'
-                : unreadSessionIds?.has(sessionId)
-                  ? 'unread'
-                  : 'idle';
-            const indicatorLabel =
-              indicatorStatus === 'processing'
-                ? t('sidebar:sessions.processing', { defaultValue: 'Agent is running' })
-                : indicatorStatus === 'unread'
-                  ? t('sidebar:sessions.unread', { defaultValue: 'Unread messages' })
-                  : t('sidebar:sessions.idle', { defaultValue: 'No unread messages' });
-
-            return (
-              <div
-                key={sessionId}
-                onContextMenu={(event) =>
-                  isOptimisticRow ? undefined : openSessionContextMenu(event, project, session)
-                }
-                className={cn(
-                  'group/session relative w-full rounded-md transition-colors',
-                  isSessionActive
-                    ? 'bg-neutral-200/70 dark:bg-neutral-800'
-                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                )}
-              >
-                {isSessionRenaming ? (
-                  <div className="flex items-center px-2 py-1">
-                    <input
-                      ref={renameInputRef}
-                      value={renameDraft}
-                      onChange={(event) => setRenameDraft(event.target.value)}
-                      onBlur={commitSessionRename}
-                      onKeyDown={(event) => handleRenameKey(event, 'session')}
-                      onClick={(event) => event.stopPropagation()}
-                      placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
-                      className="w-full rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5 text-[12.5px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
-                    />
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={
-                      isOptimisticRow
-                        ? undefined
-                        : () => handleSessionClick(project, sessionId)
-                    }
-                    disabled={isOptimisticRow}
-                    className={cn(
-                      'flex w-full items-start gap-2 px-2 py-1 text-left',
-                      isOptimisticRow && 'cursor-default',
-                    )}
-                  >
-                    <span className="flex h-[18px] w-3 shrink-0 items-center justify-center pt-[3px]">
-                      <SessionStatusIndicator
-                        status={indicatorStatus}
-                        label={indicatorLabel}
-                      />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className={cn(
-                          'truncate text-[12.5px] text-neutral-900 dark:text-neutral-100',
-                          isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
-                        )}
-                      >
-                        {sessionDisplayTitle(session)}
-                      </div>
-                      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {isOptimisticRow
-                          ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
-                          : formatRelative(lastActivity, t)}
-                      </div>
-                    </div>
-                  </button>
-                )}
-
-              </div>
-            );
-          })
+        {sessionTree.length > 0 ? (
+          sessionTree.map((node) => renderSessionTreeNode(node, 0, false))
         ) : (
           <div className="px-2 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
             {t('sidebar:sessions.noSessions', { defaultValue: 'No sessions yet' })}

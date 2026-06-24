@@ -20,6 +20,8 @@ export type SessionInfo = {
   cwd?: string;
   tag?: string;
   createdAt?: number;
+  parentSessionId?: string;
+  forkedFromTurnId?: string;
 };
 
 export type ListProjectSessionsOptions = {
@@ -73,6 +75,8 @@ export function parseSessionInfoFromLite(
   const customTitle = lastMetadataStringField(source, "title");
   const aiTitle = lastMetadataStringField(source, "aiTitle");
   const tag = lastMetadataStringField(source, "tag");
+  const parentSessionId = lastMetadataStringField(source, "parentSessionId");
+  const forkedFromTurnId = lastMetadataStringField(source, "forkedFromTurnId");
   const firstPrompt = firstAcceptedInputText(lite.head);
   const lastPrompt = lastAcceptedInputText(lite.tail) ?? firstPrompt;
   const summary = customTitle ?? aiTitle ?? lastPrompt;
@@ -92,6 +96,8 @@ export function parseSessionInfoFromLite(
     cwd: projectRoot,
     tag,
     createdAt: firstCreatedAt ? Date.parse(firstCreatedAt) : undefined,
+    parentSessionId,
+    forkedFromTurnId,
   };
 }
 

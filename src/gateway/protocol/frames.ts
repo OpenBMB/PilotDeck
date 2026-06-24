@@ -36,6 +36,7 @@ export type WsGatewayMethod =
   | "grant_session_permission"
   | "read_session_messages"
   | "read_subagent_messages"
+  | "fork_session"
   | "list_projects"
   | "describe_project"
   | "reload_config"

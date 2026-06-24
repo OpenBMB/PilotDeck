@@ -680,6 +680,9 @@ function createFallbackGateway(): Gateway {
     readSubagentMessages: async () => {
       throw new Error("read_subagent_messages is not configured.");
     },
+    forkSession: async () => {
+      throw new Error("fork_session is not configured.");
+    },
     listProjects: async () => ({ projects: [] }),
     describeProject: async (input) => ({
       projectKey: input.projectKey,

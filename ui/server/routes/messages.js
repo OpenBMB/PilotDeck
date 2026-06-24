@@ -56,6 +56,42 @@ router.get('/:sessionId/messages', async (req, res) => {
   }
 });
 
+router.post('/:sessionId/fork', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const projectPath = String(req.body?.projectPath || req.body?.projectName || req.query.projectPath || REPO_ROOT);
+    const fromEntryId = String(req.body?.fromEntryId || '');
+    if (!fromEntryId) {
+      return res.status(400).json({ error: 'fromEntryId is required' });
+    }
+
+    const gateway = await getPilotDeckGateway();
+    const result = await gateway.forkSession({
+      sessionKey: sessionId,
+      projectKey: projectPath,
+      fromEntryId,
+    });
+
+    return res.json({
+      newSessionId: result.newSessionKey,
+      prefillText: result.prefillText,
+      carriedMessageCount: result.carriedMessageCount,
+    });
+  } catch (error) {
+    console.error('[messages] fork_session failed:', error);
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    if (code.startsWith('fork_')) {
+      return res.status(400).json({
+        error: error instanceof Error ? error.message : 'Fork failed',
+        code,
+      });
+    }
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Fork failed',
+    });
+  }
+});
+
 router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
   try {
     const { sessionId, subagentId } = req.params;
@@ -89,6 +125,7 @@ function mapWebMessageToNormalized(message, sessionId) {
     sessionId,
     timestamp: message.createdAt,
     provider: message.provider || 'pilotdeck',
+    ...(message.entryId ? { entryId: message.entryId } : {}),
   };
   switch (message.kind) {
     case 'text':

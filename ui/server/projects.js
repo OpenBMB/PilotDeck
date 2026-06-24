@@ -101,6 +101,8 @@ function toLegacySession(session, projectName) {
         aiTitle: session.aiTitle,
         firstPrompt: session.firstPrompt,
         tag: presentation.tag,
+        parentSessionId: session.parentSessionId,
+        forkedFromTurnId: session.forkedFromTurnId,
         __projectName: projectName,
     };
 }

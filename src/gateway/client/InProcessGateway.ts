@@ -40,6 +40,8 @@ import type {
   WebReadSessionMessagesResult,
   WebReadSubagentMessagesInput,
   WebReadSubagentMessagesResult,
+  WebForkSessionInput,
+  WebForkSessionResult,
 } from "../protocol/types.js";
 import type {
   CronCreateInput,
@@ -92,6 +94,7 @@ export type InProcessGatewayOptions = {
    */
   readSessionMessages?: (input: WebReadSessionMessagesInput) => Promise<WebReadSessionMessagesResult>;
   readSubagentMessages?: (input: WebReadSubagentMessagesInput) => Promise<WebReadSubagentMessagesResult>;
+  forkSession?: (input: WebForkSessionInput) => Promise<WebForkSessionResult>;
   /**
    * Web Phase 3 — pluggable project enumerator + describer.
    */
@@ -614,6 +617,15 @@ export class InProcessGateway implements Gateway {
       );
     }
     return this.options.readSubagentMessages(input);
+  }
+
+  async forkSession(input: WebForkSessionInput): Promise<WebForkSessionResult> {
+    if (!this.options.forkSession) {
+      throw new Error(
+        "fork_session is not configured. Wire `forkSession` via createLocalGateway.",
+      );
+    }
+    return this.options.forkSession(input);
   }
 
   async listProjects(): Promise<WebListProjectsResult> {

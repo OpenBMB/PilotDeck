@@ -25,6 +25,8 @@ import type {
   WebReadSessionMessagesResult as WebUiReadSessionMessagesResult,
   WebReadSubagentMessagesInput as WebUiReadSubagentMessagesInput,
   WebReadSubagentMessagesResult as WebUiReadSubagentMessagesResult,
+  WebForkSessionInput as WebUiForkSessionInput,
+  WebForkSessionResult as WebUiForkSessionResult,
 } from "../../web/client/protocol.js";
 import type {
   SkillCreateInput,
@@ -222,6 +224,8 @@ export type WebReadSessionMessagesInput = WebUiReadSessionMessagesInput;
 export type WebReadSessionMessagesResult = WebUiReadSessionMessagesResult;
 export type WebReadSubagentMessagesInput = WebUiReadSubagentMessagesInput;
 export type WebReadSubagentMessagesResult = WebUiReadSubagentMessagesResult;
+export type WebForkSessionInput = WebUiForkSessionInput;
+export type WebForkSessionResult = WebUiForkSessionResult;
 export type WebProjectSummary = WebUiProjectSummary;
 export type WebListProjectsResult = WebUiListProjectsResult;
 export type WebDescribeProjectInput = { projectKey: string };
@@ -343,6 +347,10 @@ export interface Gateway {
    * the Web `WebMessage` DTO.
    */
   readSessionMessages(input: WebReadSessionMessagesInput): Promise<WebReadSessionMessagesResult>;
+  /**
+   * Fork a session transcript at a prior user turn into a new session file.
+   */
+  forkSession(input: WebForkSessionInput): Promise<WebForkSessionResult>;
   /**
    * Read a subagent's sidechain transcript and return its messages in WebMessage format.
    */

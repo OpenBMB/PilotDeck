@@ -210,6 +210,8 @@ export class GatewayWsConnection {
         return this.options.gateway.readSessionMessages(frame.params as never);
       case "read_subagent_messages":
         return this.options.gateway.readSubagentMessages(frame.params as never);
+      case "fork_session":
+        return this.options.gateway.forkSession(frame.params as never);
       case "list_projects":
         return this.options.gateway.listProjects();
       case "describe_project":

@@ -1,8 +1,9 @@
 import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Copy, FileText, GitBranch, Loader2 } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { cn } from '../../lib/utils.js';
 import { useTypewriter } from './useTypewriter';
 import type { Project, SessionProvider } from '../../types/app';
 import type {
@@ -82,6 +83,9 @@ type MessageRowV2Props = {
   subagentActivityById?: Map<string, ChatMessage>;
   subagentThinkingById?: Map<string, string>;
   isSessionRunning?: boolean;
+  onFork?: (message: ChatMessage, carriedMessageCount: number) => void;
+  forkCarriedMessageCount?: number;
+  forkDisabled?: boolean;
 };
 
 // Fall back to the heavy legacy renderer for anything that isn't a vanilla
@@ -120,6 +124,9 @@ function MessageRowV2({
   subagentActivityById,
   subagentThinkingById,
   isSessionRunning,
+  onFork,
+  forkCarriedMessageCount = 0,
+  forkDisabled = false,
 }: MessageRowV2Props) {
   const { t } = useTranslation('chat');
   const delegate = useMemo(() => shouldDelegate(message), [message]);
@@ -243,7 +250,17 @@ function MessageRowV2({
       mimeType: image.mimeType,
     }));
     return withProcessRows(
-      <div className="flex w-full justify-end">
+      <div className="group/user-msg flex w-full items-end justify-end gap-1.5">
+        {onFork ? (
+          <ForkMessageButton
+            carriedMessageCount={forkCarriedMessageCount}
+            disabled={forkDisabled || isSessionRunning || !message.entryId}
+            onFork={() => {
+              if (message.entryId) onFork(message, forkCarriedMessageCount);
+            }}
+            t={t}
+          />
+        ) : null}
         <div className="min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
           {message.isStreaming && !formattedContent ? (
             <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
@@ -417,6 +434,42 @@ function CopyMarkdownButton({ content }: { content: string }) {
       title={copied ? 'Copied' : 'Copy'}
     >
       {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={2} />}
+    </button>
+  );
+}
+
+function ForkMessageButton({
+  carriedMessageCount,
+  disabled,
+  onFork,
+  t,
+}: {
+  carriedMessageCount: number;
+  disabled?: boolean;
+  onFork: () => void;
+  t: TFunction;
+}) {
+  const title = t('fork.fromHere', {
+    count: carriedMessageCount,
+    defaultValue: `Fork from here · carries ${carriedMessageCount} messages`,
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={onFork}
+      disabled={disabled}
+      className={cn(
+        'mb-1 rounded-md p-1.5 text-neutral-400 opacity-0 transition-all',
+        'group-hover/user-msg:opacity-100 focus-visible:opacity-100',
+        disabled
+          ? 'cursor-not-allowed opacity-30'
+          : 'hover:bg-neutral-200/80 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200',
+      )}
+      aria-label={title}
+      title={title}
+    >
+      <GitBranch className="h-3.5 w-3.5" strokeWidth={2} />
     </button>
   );
 }

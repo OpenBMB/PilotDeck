@@ -154,6 +154,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ summary, provider }),
     }),
+  forkSession: (sessionId, { projectPath, fromEntryId }) =>
+    authenticatedFetch(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, {
+      method: 'POST',
+      body: JSON.stringify({ projectPath, fromEntryId }),
+    }),
   deleteProject: (projectName, force = false) =>
     authenticatedFetch(`/api/projects/${projectName}${force ? '?force=true' : ''}`, {
       method: 'DELETE',

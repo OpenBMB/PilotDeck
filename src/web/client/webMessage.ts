@@ -89,6 +89,8 @@ export type WebMessage = {
   source: "live" | "history";
   finishReason?: string;
   usage?: Record<string, number>;
+  /** Transcript entry id when projected from history (used for history fork). */
+  entryId?: string;
 };
 
 export type WebMessageReducerOptions = {
