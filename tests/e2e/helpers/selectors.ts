@@ -16,11 +16,14 @@ export const SEL = {
   // Sidebar entry title — used by A5 to verify "Fork of …" rendering.
   sidebarFirstTitle: '[data-testid="sidebar-item-0"] [data-testid="sidebar-item-title"], [data-testid="sidebar-item-0"]',
   // Message row anchors.
-  // Real DOM: <div class="chat-message" data-message-timestamp="...">
-  // User rows contain a fork button; assistant rows do not.
+  // Real DOM: <div class="chat-message" data-message-timestamp="..." data-message-type="user|assistant|error">
+  // We identify rows by the normalized type set on the row, NOT by presence
+  // of the fork button. The fork button only renders on user rows in M0; a
+  // :has() selector would tautologically pass once any fork button exists
+  // anywhere on the page, masking regressions where assistant rows get one.
   messageRow: '.chat-message[data-message-timestamp]',
-  userMessageRow: '.chat-message[data-message-timestamp]:has(button[aria-label="Fork this conversation"])',
-  assistantMessageRow: '.chat-message[data-message-timestamp]:not(:has(button[aria-label="Fork this conversation"]))',
+  userMessageRow: '.chat-message[data-message-timestamp][data-message-type="user"]',
+  assistantMessageRow: '.chat-message[data-message-timestamp][data-message-type="assistant"]',
   // Composer input for A6.
   composerInput: 'textarea[aria-label*="omposer" i], textarea[placeholder*="essage" i], textarea',
   // "Forked from …" banner (top of MessagesPaneV2 when meta.forkedFrom present).

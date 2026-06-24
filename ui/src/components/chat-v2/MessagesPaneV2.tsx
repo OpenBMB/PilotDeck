@@ -229,6 +229,7 @@ function MeasuredMessageItem({
       ref={itemRef}
       className={`chat-message ${isLast ? '' : compactBottomSpacing ? 'pb-2' : 'pb-4'}`}
       data-message-timestamp={message.timestamp ? String(message.timestamp) : undefined}
+      data-message-type={message.type}
     >
       {children}
     </div>

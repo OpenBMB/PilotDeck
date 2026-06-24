@@ -406,13 +406,6 @@ function MessageRowV2({
            (!nextMessage || nextMessage.type === 'user' || nextMessage.type === 'error') ? (
             <div className="mt-1.5 flex justify-end gap-1">
               <CopyMarkdownButton content={formattedContent} />
-              <ForkFromHereButton
-                messageType={message.type}
-                onFork={onFork}
-                projectName={selectedProject?.name ?? ''}
-                sessionId={activeSessionId ?? ''}
-                entryId={message.entryId ?? message.id ?? ''}
-              />
             </div>
           ) : null}
         </>
