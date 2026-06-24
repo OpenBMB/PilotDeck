@@ -67,6 +67,7 @@ export async function readWebSessionMessages(
         projectKey: input.projectKey,
         now: options.now,
         entryTimestamp: entryTimestamps[index],
+        entryId: webReplay.entryIds[index],
       }),
     );
 
@@ -176,6 +177,7 @@ export async function readSubagentWebMessages(
         projectKey: input.projectKey,
         now: options.now,
         entryTimestamp: webReplay.timestamps[index],
+        entryId: webReplay.entryIds[index],
       }),
     );
   const cumulativeWebCounts: number[] = [];
@@ -279,6 +281,10 @@ type ProjectionContext = {
   now?: () => Date;
   /** Actual transcript entry timestamp — preferred over now(). */
   entryTimestamp?: string;
+  /** JSONL entryId of the transcript entry being projected. Threaded
+   *  through onto each produced WebMessage so the client can reference
+   *  the underlying transcript row (e.g. for fork truncation). */
+  entryId?: string;
 };
 
 /**
@@ -315,6 +321,7 @@ export function flattenCanonicalMessage(
       provider: "pilotdeck",
       role,
       kind: "text",
+      ...(context.entryId ? { entryId: context.entryId } : {}),
       text: textBuffer,
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
       source: "history",
@@ -374,6 +381,7 @@ function flushBlock(
         kind: "thinking",
         text: block.text,
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
     case "tool_call":
@@ -390,6 +398,7 @@ function flushBlock(
         toolName: block.name,
         payload: block.input,
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
     case "tool_result": {
@@ -418,6 +427,7 @@ function flushBlock(
         ...(planData ? { payload: planData } : {}),
         ...(resultImages.length > 0 ? { images: resultImages } : {}),
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
     }
@@ -442,6 +452,7 @@ function flushBlock(
           reason: block.reason,
         },
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
     case "image":
@@ -461,6 +472,7 @@ function flushBlock(
         text: `[${block.type} attachment]`,
         payload: { mimeType: block.mimeType, bytes: "bytes" in block ? block.bytes : undefined },
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
     case "pdf":
@@ -478,6 +490,7 @@ function flushBlock(
         text: `[${block.type} attachment]`,
         payload: { mimeType: block.mimeType, bytes: "bytes" in block ? block.bytes : undefined },
         source: "history",
+        ...(context.entryId ? { entryId: context.entryId } : {}),
       });
       return;
   }
@@ -506,11 +519,13 @@ type CompactBoundaryInfo = {
 function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
   messages: CanonicalMessage[];
   timestamps: string[];
+  entryIds: string[];
   compactBoundaries: CompactBoundaryInfo[];
 } {
   const lastBoundaryIndex = findLastCompactBoundaryIndex(entries);
   const messages: CanonicalMessage[] = [];
   const timestamps: string[] = [];
+  const entryIds: string[] = [];
   const compactBoundaries: CompactBoundaryInfo[] = [];
 
   for (let index = 0; index < entries.length; index += 1) {
@@ -523,6 +538,7 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
           for (const message of entry.messages) {
             messages.push(cloneMessage(message));
             timestamps.push(entry.createdAt);
+            entryIds.push(entry.entryId);
           }
         }
         break;
@@ -532,6 +548,7 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
         if (!beforeBoundary) {
           messages.push(cloneMessage(entry.message));
           timestamps.push(entry.createdAt);
+          entryIds.push(entry.entryId);
         }
         break;
       case "control_boundary": {
@@ -556,17 +573,19 @@ function extractWebVisibleMessages(entries: AgentTranscriptEntry[]): {
     }
   }
 
-  return { messages, timestamps, compactBoundaries };
+  return { messages, timestamps, entryIds, compactBoundaries };
 }
 
 function extractSubagentExecutionMessages(entries: AgentTranscriptEntry[]): {
   messages: CanonicalMessage[];
   timestamps: string[];
+  entryIds: string[];
   compactBoundaries: CompactBoundaryInfo[];
 } {
   const lastBoundaryIndex = findLastCompactBoundaryIndex(entries);
   const messages: CanonicalMessage[] = [];
   const timestamps: string[] = [];
+  const entryIds: string[] = [];
   const compactBoundaries: CompactBoundaryInfo[] = [];
   let sawExecutionMessage = false;
 
@@ -586,6 +605,7 @@ function extractSubagentExecutionMessages(entries: AgentTranscriptEntry[]): {
         if (!beforeBoundary) {
           messages.push(cloneMessage(entry.message));
           timestamps.push(entry.createdAt);
+          entryIds.push(entry.entryId);
         }
         break;
       case "control_boundary": {
@@ -615,7 +635,7 @@ function extractSubagentExecutionMessages(entries: AgentTranscriptEntry[]): {
     }
   }
 
-  return { messages, timestamps, compactBoundaries };
+  return { messages, timestamps, entryIds, compactBoundaries };
 }
 
 function cloneMessage(message: CanonicalMessage): CanonicalMessage {

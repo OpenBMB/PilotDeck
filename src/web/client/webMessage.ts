@@ -89,6 +89,14 @@ export type WebMessage = {
   source: "live" | "history";
   finishReason?: string;
   usage?: Record<string, number>;
+  /**
+   * The JSONL entryId of the transcript entry this WebMessage was projected
+   * from. Multiple WebMessages can share an entryId (e.g. a multi-block
+   * assistant_message flattens to multiple text/tool frames). Required by
+   * the fork endpoint to implement per-row truncation; absent for live
+   * (streaming) messages that don't yet have a finalized entryId.
+   */
+  entryId?: string;
 };
 
 export type WebMessageReducerOptions = {

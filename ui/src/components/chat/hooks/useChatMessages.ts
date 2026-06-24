@@ -46,6 +46,9 @@ function convertSingleMessage(
           type: 'user',
           content: unescapeWithMathProtection(decodeHtmlEntities(content)),
           timestamp: msg.timestamp,
+          // Pass through the JSONL entryId so the UI can reference the
+          // underlying transcript row (e.g. for fork truncation).
+          ...(msg.entryId ? { entryId: msg.entryId } : {}),
           ...(userImages && userImages.length > 0 ? { images: userImages } : {}),
           ...(userAttachments.length > 0 ? { attachments: userAttachments } : {}),
         };
@@ -58,6 +61,9 @@ function convertSingleMessage(
           type: 'assistant',
           content: text,
           timestamp: msg.timestamp,
+          // Pass through the JSONL entryId so the UI can reference the
+          // underlying transcript row (e.g. for fork truncation).
+          ...(msg.entryId ? { entryId: msg.entryId } : {}),
         };
       }
     }

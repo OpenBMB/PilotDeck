@@ -1,7 +1,7 @@
 import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Copy, FileText, GitBranch, Loader2 } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { useTypewriter } from './useTypewriter';
 import type { Project, SessionProvider } from '../../types/app';
@@ -79,9 +79,14 @@ type MessageRowV2Props = {
   isProcessExpanded?: (processKey: string, defaultExpanded?: boolean) => boolean;
   onProcessExpandedChange?: (processKey: string, expanded: boolean) => void;
   onOpenSubagentDetail?: (subagentId: string) => void;
+  activeSessionId?: string;
   subagentActivityById?: Map<string, ChatMessage>;
   subagentThinkingById?: Map<string, string>;
   isSessionRunning?: boolean;
+  onFork?: (params: { projectName: string; sessionId: string }) => void;
+  // sessionId for the currently active session — the parent (MessagesPaneV2)
+  // passes this in because ChatMessage doesn't carry it.
+  activeSessionId?: string;
 };
 
 // Fall back to the heavy legacy renderer for anything that isn't a vanilla
@@ -120,6 +125,8 @@ function MessageRowV2({
   subagentActivityById,
   subagentThinkingById,
   isSessionRunning,
+  onFork,
+  activeSessionId,
 }: MessageRowV2Props) {
   const { t } = useTranslation('chat');
   const delegate = useMemo(() => shouldDelegate(message), [message]);
@@ -299,6 +306,17 @@ function MessageRowV2({
               {formattedContent ? (
                 <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 min-w-0 break-words [overflow-wrap:anywhere]" projectName={selectedProject?.name}>{formattedContent}</Markdown>
               ) : null}
+              {formattedContent.trim() ? (
+                <div className="mt-1.5 flex justify-end gap-1">
+                  <ForkFromHereButton
+                    messageType={message.type}
+                    onFork={onFork}
+                    projectName={selectedProject?.name ?? ''}
+                    sessionId={activeSessionId ?? ''}
+                    entryId={message.entryId ?? message.id ?? ''}
+                  />
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -386,13 +404,65 @@ function MessageRowV2({
           <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name} isStreaming={message.isStreaming}>{contentDisplayText}</Markdown>
           {formattedContent.trim() &&
            (!nextMessage || nextMessage.type === 'user' || nextMessage.type === 'error') ? (
-            <div className="mt-1.5 flex justify-end">
+            <div className="mt-1.5 flex justify-end gap-1">
               <CopyMarkdownButton content={formattedContent} />
+              <ForkFromHereButton
+                messageType={message.type}
+                onFork={onFork}
+                projectName={selectedProject?.name ?? ''}
+                sessionId={activeSessionId ?? ''}
+                entryId={message.entryId ?? message.id ?? ''}
+              />
             </div>
           ) : null}
         </>
       )}
     </div>,
+  );
+}
+
+function ForkFromHereButton({
+  messageType,
+  onFork,
+  projectName,
+  sessionId,
+  entryId,
+}: {
+  messageType: string;
+  onFork?: (params: { projectName: string; sessionId: string; entryId: string }) => void;
+  projectName: string;
+  sessionId: string;
+  entryId: string;
+}) {
+  // Disabled when project / session / entryId / callback is missing.
+  // Without an entryId the server would default to copying the whole
+  // conversation, which is the bug we're fixing here.
+  const disabled = !onFork || !projectName || !sessionId || !entryId;
+  const tooltip = disabled
+    ? 'Fork not available here'
+    : 'Fork this conversation from this turn';
+
+  // aria-label stays short ("Fork this conversation") so existing E2E
+  // selectors match verbatim. Tooltip above gives the more descriptive
+  // copy on hover.
+  const ariaLabel = 'Fork this conversation';
+
+  const handleClick = () => {
+    if (disabled || !onFork) return;
+    onFork({ projectName, sessionId, entryId });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled}
+      className="rounded p-1 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 disabled:opacity-50"
+      aria-label={ariaLabel}
+      title={tooltip}
+    >
+      <GitBranch className="h-3.5 w-3.5" strokeWidth={2} />
+    </button>
   );
 }
 

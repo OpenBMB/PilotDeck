@@ -89,6 +89,9 @@ function mapWebMessageToNormalized(message, sessionId) {
     sessionId,
     timestamp: message.createdAt,
     provider: message.provider || 'pilotdeck',
+    // Pass through the JSONL entryId so the client can identify the
+    // underlying transcript row (e.g. for fork truncation).
+    ...(message.entryId ? { entryId: message.entryId } : {}),
   };
   switch (message.kind) {
     case 'text':

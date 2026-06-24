@@ -1,7 +1,8 @@
+import { useNavigate } from 'react-router-dom';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XCircle } from 'lucide-react';
+import { XCircle, GitBranch } from 'lucide-react';
 import type {
   ChatMessage,
   ChatRunMode,
@@ -11,6 +12,8 @@ import type {
   PermissionGrantResult,
 } from '../chat/types/types';
 import type { SessionStore } from '../../stores/useSessionStore';
+import { api } from '../../utils/api';
+import { useSessionStore } from '../../stores/useSessionStore';
 import { isBackgroundTaskSession, type Project, type ProjectSession, type SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import MessageRowV2 from './MessageRowV2';
@@ -282,6 +285,74 @@ export default function MessagesPaneV2({
   }, []);
 
   const sessionId = selectedSession?.id ?? null;
+  const projectName = selectedProject?.name ?? '';
+
+  // Chat-fork wiring: handler invoked by the per-message "Fork from here" button.
+  const navigate = useNavigate();
+  const sessionStoreHook = useSessionStore();
+  const forkFromEntry = sessionStoreHook.forkFromEntry;
+  const refreshProjects = useCallback(async () => {
+    if (typeof window !== 'undefined' && typeof (window as { refreshProjects?: () => void | Promise<void> }).refreshProjects === 'function') {
+      await (window as { refreshProjects: () => void | Promise<void> }).refreshProjects();
+    }
+  }, []);
+
+  const handleFork = useCallback(
+    async (params: { projectName: string; sessionId: string; entryId: string }) => {
+      try {
+        await forkFromEntry({
+          projectName: params.projectName,
+          sessionId: params.sessionId,
+          entryId: params.entryId,
+          navigate,
+          refreshProjects,
+        });
+      } catch (err) {
+        console.error('[fork] failed:', err);
+        alert(`Fork failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [navigate, refreshProjects, forkFromEntry],
+  );
+
+  // Load session meta so we can show a "Forked from X" banner.
+  const [forkedFromInfo, setForkedFromInfo] = useState<{
+    sessionId: string;
+    entryId: string;
+    forkedAt: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!sessionId || !projectName) {
+      setForkedFromInfo(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await api.getSessionMeta(projectName, sessionId);
+        if (!response.ok) {
+          if (!cancelled) setForkedFromInfo(null);
+          return;
+        }
+        const meta = await response.json();
+        if (cancelled) return;
+        if (meta && meta.forkedFrom && typeof meta.forkedFrom === 'object') {
+          setForkedFromInfo({
+            sessionId: String(meta.forkedFrom.sessionId ?? ''),
+            entryId: String(meta.forkedFrom.entryId ?? ''),
+            forkedAt: String(meta.forkedFrom.forkedAt ?? new Date().toISOString()),
+          });
+        } else {
+          setForkedFromInfo(null);
+        }
+      } catch {
+        if (!cancelled) setForkedFromInfo(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, projectName]);
   const projectPath = selectedProject?.fullPath ?? undefined;
 
   const getMessageKey = useCallback((message: ChatMessage, index: number) => {
@@ -658,6 +729,8 @@ export default function MessagesPaneV2({
         subagentActivityById={subagentActivityById}
         subagentThinkingById={subagentThinkingById}
         isSessionRunning={isAssistantWorking}
+        onFork={handleFork}
+            activeSessionId={sessionId ?? ''}
       />
     ))
   ), [
@@ -758,6 +831,8 @@ export default function MessagesPaneV2({
             subagentActivityById={subagentActivityById}
             subagentThinkingById={subagentThinkingById}
             isSessionRunning={isAssistantWorking}
+            onFork={handleFork}
+            activeSessionId={sessionId ?? ''}
           />
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
@@ -885,12 +960,32 @@ export default function MessagesPaneV2({
           </div>
         </div>
       ) : (
-        <div
-          className="mx-auto max-w-[860px] px-6 py-10"
-          data-virtualized-messages={shouldVirtualizeMessages ? 'true' : undefined}
-          data-rendered-message-count={windowedMessageItems.length}
-          data-total-message-count={keyedMessageItems.length}
-        >
+                  <div
+            className="mx-auto max-w-[860px] px-6 py-10"
+            data-virtualized-messages={shouldVirtualizeMessages ? 'true' : undefined}
+            data-rendered-message-count={windowedMessageItems.length}
+            data-total-message-count={keyedMessageItems.length}
+          >
+          {forkedFromInfo ? (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                          <GitBranch className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                          <div>
+                            <div className="font-medium">Forked conversation</div>
+                            <div className="text-xs opacity-80">
+                              Branched from session{' '}
+                              <span className="font-mono">
+                                {forkedFromInfo.sessionId.length > 18
+                                  ? `${forkedFromInfo.sessionId.slice(0, 18)}…`
+                                  : forkedFromInfo.sessionId}
+                              </span>{' '}
+                              at entry{' '}
+                              <span className="font-mono">{forkedFromInfo.entryId}</span> on{' '}
+                              {new Date(forkedFromInfo.forkedAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+          ) : null}
+
           {isLoadingMoreMessages && !isLoadingAllMessages && !allMessagesLoaded ? (
             <div className="pb-3 text-center text-[12px] text-neutral-500 dark:text-neutral-400">
               {t('messages.loadingOlder', { defaultValue: 'Loading older messages...' })}
