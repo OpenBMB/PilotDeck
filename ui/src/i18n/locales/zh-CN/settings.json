@@ -839,8 +839,8 @@
         },
         "apiKey": {
           "label": "API 密钥",
-          "description": "当前提供商的 API 密钥。",
-          "placeholder": "提供商 API Key",
+          "description": "当前提供商的 API 密钥。留空时会使用匹配的运行时环境变量。",
+          "placeholder": "提供商 API Key 或运行时环境变量",
           "maskedPlaceholder": "已保留现有密钥，如需替换请重新输入",
           "keyHidden": "密钥已隐藏；留空会继续保留，重新输入可替换。"
         },
@@ -878,7 +878,7 @@
         "test": {
           "button": "测试连接",
           "testing": "测试中…",
-          "needsKey": "请先填写 API Key。",
+          "needsKey": "表单和运行时环境中都没有可用的 API Key。",
           "success": "连接正常：{{count}} 条结果，{{latency}}ms。",
           "failedPrefix": "连接失败：{{error}}"
         }

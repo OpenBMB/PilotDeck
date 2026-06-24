@@ -6,6 +6,7 @@ import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
   buildDefaultPilotDeckConfig,
+  buildRuntimeEnv,
   configToYaml,
   getPilotDeckConfigPath,
   maskSecrets,
@@ -29,6 +30,60 @@ async function notifyGatewayConfigReload() {
 }
 
 const router = express.Router();
+const MASK = '********';
+const WEB_SEARCH_ENV_KEYS = {
+  glm: ['GLM_WEB_SEARCH_API_KEY', 'ZAI_API_KEY'],
+  tavily: ['TAVILY_API_KEY'],
+  custom: ['CUSTOM_WEB_SEARCH_API_KEY'],
+};
+
+function isRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeCredential(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === MASK || trimmed === 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE' || trimmed.startsWith('PLACEHOLDER_')) {
+    return '';
+  }
+  return trimmed;
+}
+
+function buildWebSearchCredentialEnv(requestCustomEnv) {
+  let diskConfig = buildDefaultPilotDeckConfig();
+  try {
+    diskConfig = readPilotDeckConfigFile().config;
+  } catch {
+    // Keep the test route usable even when the main config is temporarily invalid.
+  }
+
+  const diskCustomEnv = isRecord(diskConfig.customEnv) ? diskConfig.customEnv : {};
+  const restoredRequestCustomEnv = isRecord(requestCustomEnv)
+    ? preserveMaskedSecrets(requestCustomEnv, diskCustomEnv)
+    : {};
+  const customEnv = isRecord(requestCustomEnv) && isRecord(restoredRequestCustomEnv)
+    ? restoredRequestCustomEnv
+    : diskCustomEnv;
+
+  return {
+    ...process.env,
+    ...buildRuntimeEnv({
+      ...diskConfig,
+      customEnv,
+    }),
+  };
+}
+
+function resolveWebSearchTestApiKey(apiKey, provider, env) {
+  const inlineKey = normalizeCredential(apiKey);
+  if (inlineKey) return inlineKey;
+  for (const key of WEB_SEARCH_ENV_KEYS[provider] ?? WEB_SEARCH_ENV_KEYS.glm) {
+    const envKey = normalizeCredential(env[key]);
+    if (envKey) return envKey;
+  }
+  return '';
+}
 
 function serializeConfigResponse(record, reloadResult = null) {
   const validation = validatePilotDeckConfig(record.config);
@@ -312,7 +367,7 @@ router.post('/test-connection', async (req, res) => {
  * established by `/test-connection`.
  */
 router.post('/test-web-search', async (req, res) => {
-  const { provider, apiKey, endpoint, customProvider } = req.body || {};
+  const { provider, apiKey, endpoint, customProvider, customEnv } = req.body || {};
   const selectedProvider = provider === 'tavily' || provider === 'custom' ? provider : 'glm';
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = typeof custom.auth === 'string' ? custom.auth : 'bearer';
@@ -320,8 +375,9 @@ router.post('/test-web-search', async (req, res) => {
   const queryParam = typeof custom.queryParam === 'string' && custom.queryParam.trim() ? custom.queryParam.trim() : 'query';
   const apiKeyParam = typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim() ? custom.apiKeyParam.trim() : 'api_key';
   const resultsPath = typeof custom.resultsPath === 'string' ? custom.resultsPath.trim() : '';
-  const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-  if (!trimmedKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
+  const credentialEnv = buildWebSearchCredentialEnv(customEnv);
+  const effectiveKey = resolveWebSearchTestApiKey(apiKey, selectedProvider, credentialEnv);
+  if (!effectiveKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
     return res.status(400).json({ ok: false, error: 'API key is required.' });
   }
   const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
@@ -347,7 +403,7 @@ router.post('/test-web-search', async (req, res) => {
             Accept: 'application/json',
           },
           body: JSON.stringify({
-            api_key: trimmedKey,
+            api_key: effectiveKey,
             query: 'hello',
             max_results: 3,
             include_answer: true,
@@ -363,13 +419,13 @@ router.post('/test-web-search', async (req, res) => {
         headers['Content-Type'] = 'application/json';
         body[queryParam] = 'hello';
       }
-      if (customAuth === 'bearer' && trimmedKey) {
-        headers.Authorization = `Bearer ${trimmedKey}`;
-      } else if (customAuth === 'queryApiKey' && trimmedKey) {
-        url.searchParams.set(apiKeyParam, trimmedKey);
-      } else if (customAuth === 'bodyApiKey' && trimmedKey) {
-        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, trimmedKey);
-        else body[apiKeyParam] = trimmedKey;
+      if (customAuth === 'bearer' && effectiveKey) {
+        headers.Authorization = `Bearer ${effectiveKey}`;
+      } else if (customAuth === 'queryApiKey' && effectiveKey) {
+        url.searchParams.set(apiKeyParam, effectiveKey);
+      } else if (customAuth === 'bodyApiKey' && effectiveKey) {
+        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, effectiveKey);
+        else body[apiKeyParam] = effectiveKey;
       }
       requestUrl = url.toString();
       requestInit = {
@@ -382,7 +438,7 @@ router.post('/test-web-search', async (req, res) => {
       requestInit = {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${trimmedKey}`,
+            Authorization: `Bearer ${effectiveKey}`,
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },

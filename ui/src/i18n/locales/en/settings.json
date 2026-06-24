@@ -839,8 +839,8 @@
         },
         "apiKey": {
           "label": "API key",
-          "description": "API key for the selected provider.",
-          "placeholder": "provider API key",
+          "description": "API key for the selected provider. Leave empty to use the matching runtime environment variable.",
+          "placeholder": "provider API key or runtime env",
           "maskedPlaceholder": "Existing key kept — type to replace",
           "keyHidden": "Key hidden; leave as-is to keep, retype to replace."
         },
@@ -878,7 +878,7 @@
         "test": {
           "button": "Test connection",
           "testing": "Testing…",
-          "needsKey": "Enter an API key first.",
+          "needsKey": "No API key is available from the form or runtime environment.",
           "success": "Connected: {{count}} result(s), {{latency}}ms.",
           "failedPrefix": "Connection failed: {{error}}"
         }
