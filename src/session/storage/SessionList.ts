@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { readSessionLite, type SessionLiteFile } from "./SessionLiteReader.js";
+import { SessionMetaStore, type SessionMeta } from "./SessionMetaStore.js";
 
 const ALWAYS_ON_AUXILIARY_PREFIXES = [
   "always-on-discovery:",
@@ -11,6 +12,13 @@ const ALWAYS_ON_AUXILIARY_PREFIXES = [
 
 function isInternalSession(sessionId: string): boolean {
   return ALWAYS_ON_AUXILIARY_PREFIXES.some((p) => sessionId.startsWith(p));
+}
+
+export async function loadSessionMetaForLite(lite: { path: string }): Promise<SessionMeta | null> {
+  const chatDir = dirname(lite.path);
+  const safeId = basename(lite.path).replace(/\.jsonl$/, "");
+  const store = new SessionMetaStore({ chatDir, sessionId: safeId });
+  return store.load();
 }
 
 export type SessionInfo = {
@@ -56,7 +64,7 @@ export async function listProjectSessions(options: ListProjectSessionsOptions): 
     if (!options.includeInternal && isInternalSession(sessionId)) {
       continue;
     }
-    const info = parseSessionInfoFromLite(sessionId, lite, options.projectRoot);
+    const info = await parseSessionInfoFromLite(sessionId, lite, options.projectRoot);
     if (info) {
       sessions.push(info);
     }
@@ -68,13 +76,14 @@ export async function listProjectSessions(options: ListProjectSessionsOptions): 
   return sessions.slice(offset, limit === 0 ? undefined : offset + limit);
 }
 
-export function parseSessionInfoFromLite(
+export async function parseSessionInfoFromLite(
   sessionId: string,
   lite: SessionLiteFile,
   projectRoot?: string,
-): SessionInfo | null {
+): Promise<SessionInfo | null> {
   const source = `${lite.head}\n${lite.tail}`;
-  const customTitle = lastMetadataStringField(source, "title");
+  const meta = await loadSessionMetaForLite(lite);
+  const customTitle = meta?.customTitle ?? lastMetadataStringField(source, "title");
   const aiTitle = lastMetadataStringField(source, "aiTitle");
   const tag = lastMetadataStringField(source, "tag");
   const firstPrompt = firstAcceptedInputText(lite.head);
@@ -224,7 +233,7 @@ export async function listAllSessions(options: ListAllSessionsOptions): Promise<
       if (!options.includeInternal && isInternalSession(sessionId)) continue;
       const lite = await readSessionLite(join(chatDir, name));
       if (!lite) continue;
-      const info = parseSessionInfoFromLite(sessionId, lite);
+      const info = await parseSessionInfoFromLite(sessionId, lite);
       if (info) {
         info.cwd = projectId;
         all.push(info);
@@ -269,7 +278,7 @@ export async function searchSessionsByTitle(options: SearchSessionsByTitleOption
     if (!options.includeInternal && isInternalSession(sessionId)) continue;
     const lite = await readSessionLite(join(chatDir, name));
     if (!lite) continue;
-    const info = parseSessionInfoFromLite(sessionId, lite, options.projectRoot);
+    const info = await parseSessionInfoFromLite(sessionId, lite, options.projectRoot);
     if (!info) continue;
     const haystack = [info.customTitle, info.aiTitle, info.firstPrompt]
       .filter(Boolean)

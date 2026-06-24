@@ -54,7 +54,7 @@ import mime from 'mime-types';
 import JSZip from 'jszip';
 import { readPermissionSettings } from './services/permissionSettings.js';
 
-import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
+import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, forkSessionHttp, getSessionMetaHttp, searchConversations } from './projects.js';
 import {
     runChatViaGateway,
     abortViaGateway,
@@ -726,6 +726,29 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
         res.json({ success: true });
     } catch (error) {
         console.error(`[API] Error deleting session ${req.params.sessionId}:`, error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Fork session endpoint
+app.post('/api/projects/:projectName/sessions/:sessionId/fork', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        console.log(`[API] Forking session: ${sessionId} in project: ${projectName}`);
+        await forkSessionHttp(req, res, projectName, sessionId);
+    } catch (error) {
+        console.error(`[API] Error in fork route:`, error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get session meta endpoint
+app.get('/api/projects/:projectName/sessions/:sessionId/meta', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        await getSessionMetaHttp(req, res, projectName, sessionId);
+    } catch (error) {
+        console.error(`[API] Error in get-meta route:`, error);
         res.status(500).json({ error: error.message });
     }
 });

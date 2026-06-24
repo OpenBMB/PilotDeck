@@ -9,7 +9,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { SessionProvider } from '../types/app';
-import { authenticatedFetch } from '../utils/api';
+import { api, authenticatedFetch } from '../utils/api';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -1108,6 +1108,36 @@ export function useSessionStore() {
     return storeRef.current.get(sessionId);
   }, []);
 
+  /**
+   * Fork the session at `entryId` via the backend, then refresh the project
+   * sidebar and navigate to the new session.
+   *
+   * `navigate` and `refreshProjects` are passed in by the caller (typically a
+   * routed component that already owns `useNavigate` and `useProjectsState`).
+   * The session store is a per-message hook — it doesn't own router or
+   * project-list state, so injecting these keeps the store decoupled from
+   * React Router and the projects context while still giving callers a
+   * single orchestrator entry point.
+   */
+  const forkFromEntry = useCallback(async (params: {
+    projectName: string;
+    sessionId: string;
+    entryId: string;
+    navigate: (path: string) => void;
+    refreshProjects: () => Promise<void> | void;
+  }) => {
+    const { projectName, sessionId, entryId, navigate, refreshProjects } = params;
+    const response = await api.forkSession(projectName, sessionId, entryId);
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `Failed to fork (HTTP ${response.status})`);
+    }
+    const data = (await response.json()) as { sessionId: string; customTitle?: string };
+    await refreshProjects();
+    navigate(`/p/${encodeURIComponent(projectName)}/c/${encodeURIComponent(data.sessionId)}`);
+    return data;
+  }, []);
+
   return useMemo(() => ({
     getSlot,
     has,
@@ -1136,6 +1166,7 @@ export function useSessionStore() {
     finalizeSubagentDetailStreaming,
     updateSubagentDetailThinking,
     finalizeSubagentDetailThinking,
+    forkFromEntry,
   }), [
     getSlot, has, fetchFromServer, fetchMore,
     appendRealtime, upsertActivity, setActivities, appendRealtimeBatch, refreshFromServer,
@@ -1144,6 +1175,7 @@ export function useSessionStore() {
     clearRealtime, getMessages, getActivityMessages, getSubagentDetailMessages, getSessionSlot,
     recordSubagentLink, appendSubagentDetailMessage, updateSubagentDetailStreaming,
     finalizeSubagentDetailStreaming, updateSubagentDetailThinking, finalizeSubagentDetailThinking,
+    forkFromEntry,
   ]);
 }
 

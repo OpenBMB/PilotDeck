@@ -455,6 +455,70 @@ async function deleteSession(projectName, sessionId, _options = {}) {
     return removed;
 }
 
+/**
+ * Fork a session: copy source JSONL up to (and including) upToEntryId
+ * into a new session, write sidecar meta.json. The new session lives
+ * in the same project as the source.
+ */
+async function forkSessionHttp(req, res, projectName, sessionId) {
+    try {
+        const upToEntryId = req.body && req.body.upToEntryId;
+        if (upToEntryId !== undefined && (typeof upToEntryId !== 'string' || !upToEntryId)) {
+            return res.status(400).json({ error: 'upToEntryId must be a non-empty string when provided' });
+        }
+        const fullPath = await extractProjectDirectory(projectName);
+        const pilotHome = resolvePilotHome(process.env);
+        // Dynamic import of the TS module (CJS → ESM bridge).
+        const mod = await import('../../src/session/storage/forkSession.js');
+        const result = await mod.forkSession({
+            pilotHome,
+            projectRoot: fullPath,
+            sourceSessionId: sessionId,
+            ...(upToEntryId ? { upToEntryId } : {}),
+        });
+        console.log(`[API] Forked session ${sessionId} -> ${result.newSessionId} (${result.entryCount} entries) in project ${projectName}`);
+        res.json({
+            sessionId: result.newSessionId,
+            projectName,
+            forkedFromEntryId: result.forkedFromEntryId,
+            forkedAt: result.forkedAt,
+            customTitle: result.customTitle,
+            entryCount: result.entryCount,
+        });
+    } catch (error) {
+        if (error && error.name === 'ForkError') {
+            const status = /not found/i.test(error.message) ? 404 : 400;
+            return res.status(status).json({ error: error.message });
+        }
+        console.error(`[API] Error forking session ${sessionId} in project ${projectName}:`, error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
+/**
+ * Read sidecar meta.json for a session.
+ */
+async function getSessionMetaHttp(req, res, projectName, sessionId) {
+    try {
+        const fullPath = await extractProjectDirectory(projectName);
+        const pilotHome = resolvePilotHome(process.env);
+        // Dynamic import of the TS module (CJS → ESM bridge).
+        const mod = await import('../../src/session/storage/SessionMetaStore.js');
+        // Resolve the chat dir from the project root via the pilot barrel.
+        const pilotMod = await import('../../src/pilot/index.js');
+        const chatDir = pilotMod.getPilotProjectChatDir(fullPath, pilotHome);
+        const store = new mod.SessionMetaStore({ chatDir, sessionId });
+        const meta = await store.load();
+        if (!meta) {
+            return res.status(404).json({ error: 'no meta for session' });
+        }
+        res.json(meta);
+    } catch (error) {
+        console.error(`[API] Error reading meta for session ${sessionId} in project ${projectName}:`, error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
 async function deleteProject(projectName, force = false) {
     const fullPath = await extractProjectDirectory(projectName);
     const pilotHome = resolvePilotHome(process.env);
@@ -593,4 +657,6 @@ export {
     extractProjectDirectory,
     clearProjectDirectoryCache,
     searchConversations,
+    forkSessionHttp,
+    getSessionMetaHttp,
 };

@@ -149,6 +149,15 @@ export const api = {
       method: 'DELETE',
     });
   },
+  forkSession: (projectName, sessionId, upToEntryId) => {
+    const body = upToEntryId ? { upToEntryId } : {};
+    return authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sessionId)}/fork`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  getSessionMeta: (projectName, sessionId) =>
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sessionId)}/meta`),
   renameSession: (sessionId, summary, provider) =>
     authenticatedFetch(`/api/sessions/${sessionId}/rename`, {
       method: 'PUT',
