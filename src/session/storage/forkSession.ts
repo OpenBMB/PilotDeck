@@ -19,6 +19,24 @@ export class ForkError extends Error {
   }
 }
 
+/**
+ * Strip every `__fork_<shortTag>` suffix from an entryId, returning the
+ * "root" id shared across all forks of the same origin conversation.
+ *
+ * Examples:
+ *   "abc-123"                          → "abc-123"
+ *   "abc-123__fork_def456"             → "abc-123"
+ *   "abc-123__fork_def456__fork_xyz789" → "abc-123"
+ *
+ * A conversation file is invariant under this transform: either every entry
+ * has no suffix, or every entry has exactly one (after chain-fork, every
+ * entry in the resulting file has the new fork's suffix regardless of what
+ * the source had).
+ */
+export function rootEntryIdOf(entryId: string): string {
+  return entryId.replace(/(__fork_[a-f0-9]+)+$/i, "");
+}
+
 export type ForkSessionInput = {
   pilotHome: string;
   projectRoot: string;
@@ -87,6 +105,15 @@ export async function forkSession(input: ForkSessionInput): Promise<ForkSessionR
   let entryCount = 0;
   let lineNo = 0;
 
+  // The truncation point is matched against the *root* entryId. This lets
+  // chain-forks work: when the client passes an entryId from a previous fork
+  // (e.g. "abc__fork_def"), we strip the suffix and look for the root
+  // "abc" inside the source. The source may be a fork (every entry has its
+  // own __fork_ suffix) or a non-fork (root === entryId); either way the
+  // stripped root uniquely identifies the entry to keep up to.
+  const upToRootId =
+    input.upToEntryId !== undefined ? rootEntryIdOf(input.upToEntryId) : undefined;
+
   const stream = createReadStream(sourcePath, { encoding: "utf8" });
   const rl = readline.createInterface({
     input: stream,
@@ -111,12 +138,16 @@ export async function forkSession(input: ForkSessionInput): Promise<ForkSessionR
       }
 
       const oldIdRaw = entry.entryId;
-      if (typeof oldIdRaw === "string" && oldIdRaw.includes("__fork_")) {
-        throw new ForkError(
-          `cannot fork transcript: entry at line ${lineNo} already contains "__fork_" in entryId (${oldIdRaw})`,
-        );
-      }
-      const newId = typeof oldIdRaw === "string" ? `${oldIdRaw}__fork_${shortTag}` : oldIdRaw;
+      const rootId =
+        typeof oldIdRaw === "string" && oldIdRaw.length > 0
+          ? rootEntryIdOf(oldIdRaw)
+          : null;
+
+      // The new entryId is always `<root>__fork_<shortTag>` — never stack
+      // suffixes. This keeps chain-fork idempotent and the on-disk format
+      // shallow (one fork-suffix per file, no matter how many ancestors).
+      const newId =
+        rootId !== null ? `${rootId}__fork_${shortTag}` : oldIdRaw;
 
       // Deep-clone via JSON so any nested fields (metadata, messages, payload,
       // result, etc.) survive verbatim. Transcript entries are pure JSON.
@@ -129,23 +160,30 @@ export async function forkSession(input: ForkSessionInput): Promise<ForkSessionR
         if (srcParent != null) {
           if (typeof srcParent !== "string") {
             // Unknown shape — preserve verbatim rather than guessing.
-          } else if (remap.has(srcParent)) {
-            clone.parentEntryId = remap.get(srcParent);
           } else {
-            // The parent entry is either missing or appears after the fork
-            // point in the source. Either way the resulting transcript would
-            // reference an entry we did not keep.
-            throw new ForkError(
-              `parentEntryId references an entry beyond the fork point: ${srcParent}`,
-            );
+            // Remap by root. The source parent might be a previous fork's
+            // entryId (`abc__fork_def`); we strip to root and look up in
+            // `remap`, which is keyed by root. The cloned parent then points
+            // at the freshly-suffixed entry in this fork.
+            const parentRoot = rootEntryIdOf(srcParent);
+            if (remap.has(parentRoot)) {
+              clone.parentEntryId = remap.get(parentRoot);
+            } else {
+              // The parent entry is either missing or appears after the fork
+              // point in the source. Either way the resulting transcript
+              // would reference an entry we did not keep.
+              throw new ForkError(
+                `parentEntryId references an entry beyond the fork point: ${srcParent}`,
+              );
+            }
           }
         }
         // srcParent === null / undefined → keep as-is (already mirrored via deep clone).
       }
 
       await appendFile(newJsonlPath, JSON.stringify(clone) + "\n", "utf8");
-      if (typeof oldIdRaw === "string" && oldIdRaw.length > 0) {
-        remap.set(oldIdRaw, newId as string);
+      if (rootId !== null) {
+        remap.set(rootId, newId as string);
       }
       entryCount += 1;
 
@@ -153,7 +191,11 @@ export async function forkSession(input: ForkSessionInput): Promise<ForkSessionR
       // that contains it (so the user always gets a complete turn triple:
       // accepted_input + assistant_message + turn_result). If upToEntryId
       // is not set, copy every entry (whole conversation).
-      if (input.upToEntryId !== undefined && oldIdRaw === input.upToEntryId) {
+      if (
+        upToRootId !== undefined &&
+        rootId !== null &&
+        rootId === upToRootId
+      ) {
         foundUpTo = true;
         if (entry.type === "turn_result") {
           break;
