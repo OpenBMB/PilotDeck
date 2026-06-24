@@ -1,6 +1,6 @@
 import type { CanonicalModelRequest, ModelConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
 import { ModelRequestError } from "../protocol/errors.js";
-import { assertContentSupported, downgradeUnsupportedContent } from "../protocol/multimodal.js";
+import { assertContentSupported } from "../protocol/multimodal.js";
 
 export type ResolvedModelRequest = {
   provider: ProviderConfig;
@@ -38,8 +38,6 @@ export function validateModelRequest(
   if (request.tools?.length && !model.capabilities.supportsToolUse) {
     throw new ModelRequestError("unsupported_tool_use", `Model ${request.model} does not support tools.`);
   }
-
-  downgradeUnsupportedContent(request.messages, model.multimodal);
 
   for (const message of request.messages) {
     assertContentSupported(message.content, model.multimodal);
