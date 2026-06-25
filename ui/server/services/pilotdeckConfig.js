@@ -166,18 +166,31 @@ export function resolveModel(config, ref, options = {}) {
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
-function validateProvider(id, provider, errors) {
+function validateProvider(id, provider, errors, options = {}) {
   if (!isRecord(provider)) {
     errors.push(`model.providers.${id} must be an object`);
     return;
   }
   const protocol = normalizeString(provider.protocol).toLowerCase();
-  if (!protocol) errors.push(`model.providers.${id}.protocol is required`);
-  else if (protocol !== 'openai' && protocol !== 'anthropic') {
+  if (options.requireProtocol && !protocol) errors.push(`model.providers.${id}.protocol is required`);
+  else if (protocol && protocol !== 'openai' && protocol !== 'anthropic') {
     errors.push(`model.providers.${id}.protocol must be "openai" or "anthropic"`);
   }
-  if (!normalizeString(provider.url)) errors.push(`model.providers.${id}.url is required`);
-  if (!normalizeString(provider.apiKey)) errors.push(`model.providers.${id}.apiKey is required`);
+  if (options.requireUrl && !normalizeString(provider.url)) errors.push(`model.providers.${id}.url is required`);
+  if (options.requireApiKey !== false && !normalizeString(provider.apiKey)) {
+    errors.push(`model.providers.${id}.apiKey is required`);
+  }
+  if (options.requireModels !== false) {
+    if (!isRecord(provider.models) || Object.keys(provider.models).length === 0) {
+      errors.push(`model.providers.${id}.models must contain at least one model`);
+    } else {
+      for (const [modelId, model] of Object.entries(provider.models)) {
+        if (model !== null && model !== undefined && !isRecord(model)) {
+          errors.push(`model.providers.${id}.models.${modelId} must be an object`);
+        }
+      }
+    }
+  }
 }
 
 function validateModelRef(config, ref, label, errors) {
@@ -223,6 +236,13 @@ export function validatePilotDeckConfig(config) {
   const errors = [];
   const warnings = [];
 
+  const providers = normalized.model?.providers;
+  if (isRecord(providers)) {
+    for (const [id, provider] of Object.entries(providers)) {
+      validateProvider(id, provider, errors);
+    }
+  }
+
   const mainRef = normalizeString(normalized.agent.model);
   if (!mainRef) {
     warnings.push('agent.model is empty; pick a model from model.providers.');
@@ -231,7 +251,12 @@ export function validatePilotDeckConfig(config) {
     if (!main) {
       errors.push(`agent.model="${mainRef}" doesn't resolve to a configured provider/model`);
     } else {
-      validateProvider(main.providerId, main.provider, errors);
+      validateProvider(main.providerId, main.provider, errors, {
+        requireProtocol: true,
+        requireUrl: true,
+        requireApiKey: false,
+        requireModels: false,
+      });
     }
   }
 
