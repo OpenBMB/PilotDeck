@@ -34,7 +34,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     // Apply proxy from config (env-based proxy from top-level installGlobalProxy
     // takes precedence; this fills in when only pilotdeck.yaml has a proxy).
     if (snapshot.config.proxy?.url) {
-      await installGlobalProxy(snapshot.config.proxy.url);
+      await installGlobalProxy(snapshot.config.proxy.url, snapshot.config.proxy.noProxy);
     }
 
     let alwaysOn: AlwaysOnManager | undefined;
