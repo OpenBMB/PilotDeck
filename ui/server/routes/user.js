@@ -126,6 +126,7 @@ router.post('/git-config', authenticateToken, async (req, res) => {
 
 router.post('/complete-onboarding', authenticateToken, async (req, res) => {
   try {
+    userDb.completeOnboarding(req.user.id);
     res.json({
       success: true,
       message: 'Onboarding completed successfully'
@@ -138,7 +139,11 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const hasCompleted = hasUsablePilotDeckConfig();
+    // Check DB flag first (set when user clicks "Enter PilotDeck" in onboarding)
+    const dbCompleted = userDb.hasCompletedOnboarding(req.user.id);
+    // Fall back to checking YAML config for backwards compatibility
+    const configCompleted = hasUsablePilotDeckConfig();
+    const hasCompleted = dbCompleted || configCompleted;
 
     res.json({
       success: true,
