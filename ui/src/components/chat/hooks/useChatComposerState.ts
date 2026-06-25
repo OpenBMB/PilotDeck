@@ -50,7 +50,7 @@ interface UseChatComposerStateArgs {
   isLoading: boolean;
   canAbortSession: boolean;
   tokenBudget: Record<string, unknown> | null;
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean | void;
   sendByCtrlEnter?: boolean;
   onSessionActive?: (sessionId?: string | null) => void;
   onSessionProcessing?: (sessionId?: string | null) => void;
@@ -106,6 +106,8 @@ const createFakeSubmitEvent = () => {
 
 const MAX_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
+const WEBSOCKET_SEND_FAILURE_TEXT =
+  'PilotDeck is not connected. Please wait for the WebSocket connection to reconnect and try again.';
 
 type UploadedAttachmentFile = {
   name: string;
@@ -125,6 +127,14 @@ export function shouldCycleRunModeOnKeyDown(
   },
 ): boolean {
   return event.key === 'Tab' && event.shiftKey && !showFileDropdown && !showCommandMenu;
+}
+
+export function createWebSocketSendFailureMessage(): ChatMessage {
+  return {
+    type: 'error',
+    content: WEBSOCKET_SEND_FAILURE_TEXT,
+    timestamp: new Date(),
+  };
 }
 
 function buildAttachmentPathNote(files: UploadedAttachmentFile[]): string {
@@ -681,13 +691,6 @@ export function useChatComposerState({
       // arrives with the real id).
       const optimisticSessionId =
         submitTargetSessionId || createTemporarySessionId();
-      if (selectedProject?.name) {
-        onSessionActivityBump?.(
-          selectedProject.name,
-          optimisticSessionId,
-          userVisibleInput,
-        );
-      }
 
       let uploadedImages: unknown[] = [];
       let uploadedFiles: UploadedAttachmentFile[] = [];
@@ -728,36 +731,12 @@ export function useChatComposerState({
       const effectiveSessionId = submitTargetSessionId;
       const sessionToActivate = effectiveSessionId || optimisticSessionId;
 
-      const userMessage: ChatMessage = {
-        type: 'user',
-        content: userVisibleInput,
-        images: uploadedImages as any,
-        attachments: uploadedFiles as any,
-        timestamp: new Date(),
-      };
-
-      addMessage(userMessage, submitTargetSessionId);
-      setIsLoading(true); // Processing banner starts
-      setCanAbortSession(true);
-      setClaudeStatus({
-        text: 'Processing',
-        tokens: 0,
-        can_interrupt: true,
-      });
-
-      setIsUserScrolledUp(false);
-      setTimeout(() => scrollToBottom(), 100);
-
       if (!effectiveSessionId && !submitSelectedSession?.id) {
         if (typeof window !== 'undefined') {
           // Reset stale pending IDs from previous interrupted runs before creating a new one.
           sessionStorage.removeItem('pendingSessionId');
         }
         pendingViewSessionRef.current = { sessionId: null, startedAt: Date.now() };
-      }
-      onSessionActive?.(sessionToActivate);
-      if (effectiveSessionId && !isTemporarySessionId(effectiveSessionId)) {
-        onSessionProcessing?.(effectiveSessionId);
       }
 
       // PilotDeck-only: a single localStorage entry (`pilotdeck-settings`)
@@ -784,7 +763,7 @@ export function useChatComposerState({
       const toolsSettings = getToolsSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
 
-      startSessionCommand({
+      const launchResult = startSessionCommand({
         sendMessage,
         selectedProject,
         command: messageContent,
@@ -797,6 +776,49 @@ export function useChatComposerState({
         sessionSummary,
         images: uploadedImages,
       });
+
+      if (!launchResult.sent) {
+        pendingViewSessionRef.current = null;
+        setIsLoading(false);
+        setCanAbortSession(false);
+        setClaudeStatus(null);
+        setPilotDeckStatus(null);
+        addMessage(createWebSocketSendFailureMessage(), submitTargetSessionId);
+        return;
+      }
+
+      if (selectedProject?.name) {
+        onSessionActivityBump?.(
+          selectedProject.name,
+          launchResult.sessionId,
+          userVisibleInput,
+        );
+      }
+
+      const userMessage: ChatMessage = {
+        type: 'user',
+        content: userVisibleInput,
+        images: uploadedImages as any,
+        attachments: uploadedFiles as any,
+        timestamp: new Date(),
+      };
+
+      addMessage(userMessage, submitTargetSessionId);
+      setIsLoading(true); // Processing banner starts
+      setCanAbortSession(true);
+      setClaudeStatus({
+        text: 'Processing',
+        tokens: 0,
+        can_interrupt: true,
+      });
+
+      setIsUserScrolledUp(false);
+      setTimeout(() => scrollToBottom(), 100);
+
+      onSessionActive?.(launchResult.sessionId);
+      if (effectiveSessionId && !isTemporarySessionId(effectiveSessionId)) {
+        onSessionProcessing?.(effectiveSessionId);
+      }
 
       setInput('');
       inputValueRef.current = '';

@@ -12,7 +12,7 @@ export type ReconnectInfo = {
 
 type WebSocketContextType = {
   ws: WebSocket | null;
-  sendMessage: (message: any) => void;
+  sendMessage: (message: any) => boolean;
   latestMessage: any | null;
   isConnected: boolean;
   reconnectInfo: ReconnectInfo;
@@ -175,10 +175,16 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const sendMessage = useCallback((message: any) => {
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
-    } else {
-      console.warn('WebSocket not connected');
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        console.error('WebSocket send failed:', error);
+        return false;
+      }
     }
+    console.warn('WebSocket not connected');
+    return false;
   }, []);
 
   const subscribe = useCallback<WebSocketContextType['subscribe']>((handler) => {

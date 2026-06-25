@@ -3,7 +3,7 @@ import type { ChatAttachment, PilotDeckSettings, PermissionMode } from '../types
 import { getPilotDeckSettings, safeLocalStorage } from './chatStorage';
 
 type StartSessionOptions = {
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean | void;
   selectedProject: Project;
   command: string;
   sessionId?: string | null;
@@ -18,6 +18,11 @@ type StartSessionOptions = {
   alwaysOnPlanId?: string;
   alwaysOnExecutionToken?: string;
   workspaceCwd?: string;
+};
+
+type StartSessionResult = {
+  sessionId: string;
+  sent: boolean;
 };
 
 const VALID_PERMISSION_MODES = new Set<PermissionMode>([
@@ -91,12 +96,12 @@ export function startSessionCommand({
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
-}: StartSessionOptions): string {
+}: StartSessionOptions): StartSessionResult {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
 
-  sendMessage({
+  const sent = sendMessage({
     type: 'pilotdeck-command',
     command,
     options: {
@@ -114,7 +119,10 @@ export function startSessionCommand({
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
       ...(workspaceCwd ? { workspaceCwd } : {}),
     },
-  });
+  }) !== false;
 
-  return sessionToActivate;
+  return {
+    sessionId: sessionToActivate,
+    sent,
+  };
 }
