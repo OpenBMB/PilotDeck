@@ -313,15 +313,22 @@ router.post('/test-connection', async (req, res) => {
  */
 router.post('/test-web-search', async (req, res) => {
   const { provider, apiKey, endpoint, customProvider } = req.body || {};
-  const selectedProvider = provider === 'tavily' || provider === 'custom' ? provider : 'glm';
+  const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  const selectedProvider = provider === 'tavily' || provider === 'custom'
+    ? provider
+    : trimmedKey
+      ? 'glm'
+      : readEnvValue('TAVILY_API_KEY')
+        ? 'tavily'
+        : 'glm';
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = typeof custom.auth === 'string' ? custom.auth : 'bearer';
   const customMethod = custom.method === 'GET' ? 'GET' : 'POST';
   const queryParam = typeof custom.queryParam === 'string' && custom.queryParam.trim() ? custom.queryParam.trim() : 'query';
   const apiKeyParam = typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim() ? custom.apiKeyParam.trim() : 'api_key';
   const resultsPath = typeof custom.resultsPath === 'string' ? custom.resultsPath.trim() : '';
-  const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-  if (!trimmedKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
+  const effectiveApiKey = resolveWebSearchApiKey(trimmedKey, selectedProvider);
+  if (!effectiveApiKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
     return res.status(400).json({ ok: false, error: 'API key is required.' });
   }
   const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
@@ -347,7 +354,7 @@ router.post('/test-web-search', async (req, res) => {
             Accept: 'application/json',
           },
           body: JSON.stringify({
-            api_key: trimmedKey,
+            api_key: effectiveApiKey,
             query: 'hello',
             max_results: 3,
             include_answer: true,
@@ -363,13 +370,13 @@ router.post('/test-web-search', async (req, res) => {
         headers['Content-Type'] = 'application/json';
         body[queryParam] = 'hello';
       }
-      if (customAuth === 'bearer' && trimmedKey) {
-        headers.Authorization = `Bearer ${trimmedKey}`;
-      } else if (customAuth === 'queryApiKey' && trimmedKey) {
-        url.searchParams.set(apiKeyParam, trimmedKey);
-      } else if (customAuth === 'bodyApiKey' && trimmedKey) {
-        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, trimmedKey);
-        else body[apiKeyParam] = trimmedKey;
+      if (customAuth === 'bearer' && effectiveApiKey) {
+        headers.Authorization = `Bearer ${effectiveApiKey}`;
+      } else if (customAuth === 'queryApiKey' && effectiveApiKey) {
+        url.searchParams.set(apiKeyParam, effectiveApiKey);
+      } else if (customAuth === 'bodyApiKey' && effectiveApiKey) {
+        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, effectiveApiKey);
+        else body[apiKeyParam] = effectiveApiKey;
       }
       requestUrl = url.toString();
       requestInit = {
@@ -382,7 +389,7 @@ router.post('/test-web-search', async (req, res) => {
       requestInit = {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${trimmedKey}`,
+            Authorization: `Bearer ${effectiveApiKey}`,
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
@@ -440,6 +447,18 @@ router.post('/test-web-search', async (req, res) => {
     return res.json({ ok: false, error: err.message || String(err) });
   }
 });
+
+function resolveWebSearchApiKey(inlineKey, provider) {
+  if (inlineKey) return inlineKey;
+  if (provider === 'tavily') return readEnvValue('TAVILY_API_KEY');
+  if (provider === 'custom') return readEnvValue('CUSTOM_WEB_SEARCH_API_KEY');
+  return readEnvValue('GLM_WEB_SEARCH_API_KEY') || readEnvValue('ZAI_API_KEY');
+}
+
+function readEnvValue(name) {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : '';
+}
 
 function readPath(value, pathValue) {
   return pathValue.split('.').reduce((current, segment) => {
