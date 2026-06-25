@@ -757,6 +757,7 @@ export function useChatSessionState({
 
     const target = searchTarget;
     setSearchTarget(null);
+    let cancelled = false;
 
     const scrollToTarget = async () => {
       if (!allMessagesLoadedRef.current && selectedSession && selectedProject) {
@@ -770,6 +771,7 @@ export function useChatSessionState({
               limit: null,
               offset: 0,
             });
+            if (cancelled) return;
             if (slot) {
               setHasMoreMessages(false);
               setTotalMessages(slot.total);
@@ -778,6 +780,7 @@ export function useChatSessionState({
               setAllMessagesLoaded(true);
               allMessagesLoadedRef.current = true;
               await new Promise(resolve => setTimeout(resolve, 300));
+              if (cancelled) return;
             }
           } catch {
             // Fall through and scroll in current messages
@@ -787,6 +790,7 @@ export function useChatSessionState({
       setVisibleMessageCount(Infinity);
 
       const findAndScroll = (retriesLeft: number) => {
+        if (cancelled) return;
         const container = scrollContainerRef.current;
         if (!container) return;
 
@@ -819,7 +823,9 @@ export function useChatSessionState({
         if (targetElement) {
           targetElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
           targetElement.classList.add('search-highlight-flash');
-          setTimeout(() => targetElement?.classList.remove('search-highlight-flash'), 4000);
+          setTimeout(() => {
+            if (!cancelled) targetElement?.classList.remove('search-highlight-flash');
+          }, 4000);
           searchScrollActiveRef.current = false;
         } else if (retriesLeft > 0) {
           setTimeout(() => findAndScroll(retriesLeft - 1), 200);
@@ -832,6 +838,7 @@ export function useChatSessionState({
     };
 
     scrollToTarget();
+    return () => { cancelled = true; };
   }, [chatMessages.length, isLoadingSessionMessages, searchTarget, selectedProject, selectedSession, sessionRequestParams, sessionStore]);
 
   useEffect(() => {
