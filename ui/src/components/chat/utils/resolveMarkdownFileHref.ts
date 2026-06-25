@@ -30,6 +30,28 @@ const resolveRelativeToFile = (href: string, baseFilePath: string): string => {
   return resolved.join('/');
 };
 
+const resolveProjectPathFromPathname = (pathname: string): string | null => {
+  const normalizedPathname = pathname.replace(/\\/g, '/');
+
+  // Assistant sometimes emits /session/<filename.md> even though /session is
+  // reserved for conversation ids.
+  const sessionPrefix = '/session/';
+  if (normalizedPathname.startsWith(sessionPrefix)) {
+    const filePath = normalizedPathname.slice(sessionPrefix.length);
+    if (looksLikeProjectFilePath(filePath)) return filePath;
+  }
+
+  // Optional deep-link shape: /p/:project/f/:encoded/path
+  const projectFileMatch = normalizedPathname.match(/^\/p\/[^/]+\/f\/(.+)$/);
+  if (projectFileMatch) {
+    const filePath = decodePath(projectFileMatch[1]);
+    if (looksLikeProjectFilePath(filePath)) return filePath;
+  }
+
+  const rootRelativePath = normalizedPathname.replace(/^\/+/, '');
+  return looksLikeProjectFilePath(rootRelativePath) ? rootRelativePath : null;
+};
+
 /**
  * Returns a project-relative file path when `href` points at a local workspace
  * file. Handles common assistant-generated shapes such as
@@ -45,8 +67,14 @@ export function resolveMarkdownFileHref(
   const trimmed = href.trim();
   if (!trimmed || trimmed.startsWith('#')) return null;
 
-  // Relative / root-relative paths (no protocol).
-  if (!/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(trimmed)) {
+  const hasProtocol = /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(trimmed);
+
+  if (trimmed.startsWith('/')) {
+    return resolveProjectPathFromPathname(decodePath(trimmed));
+  }
+
+  // Relative paths (no protocol).
+  if (!hasProtocol) {
     const decoded = decodePath(trimmed);
     const normalized = decoded.replace(/^\.\//, '').replace(/^\/+/, '');
     const candidate = options?.baseFilePath && !decoded.startsWith('/')
@@ -62,23 +90,7 @@ export function resolveMarkdownFileHref(
     if (origin && url.origin !== origin) return null;
 
     const pathname = decodePath(url.pathname);
-
-    // Assistant sometimes emits /session/<filename.md> even though /session is
-    // reserved for conversation ids.
-    const sessionPrefix = '/session/';
-    if (pathname.startsWith(sessionPrefix)) {
-      const filePath = pathname.slice(sessionPrefix.length);
-      if (looksLikeProjectFilePath(filePath)) return filePath;
-    }
-
-    // Optional deep-link shape: /p/:project/f/:encoded/path
-    const projectFileMatch = pathname.match(/^\/p\/[^/]+\/f\/(.+)$/);
-    if (projectFileMatch) {
-      const filePath = decodePath(projectFileMatch[1]);
-      if (looksLikeProjectFilePath(filePath)) return filePath;
-    }
-
-    return null;
+    return resolveProjectPathFromPathname(pathname);
   } catch {
     return null;
   }

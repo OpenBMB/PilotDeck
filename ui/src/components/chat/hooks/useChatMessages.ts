@@ -15,10 +15,69 @@ import { parseUserAttachmentNote } from '../utils/attachmentNotes';
 // memo(MessageRowV2) for every message in the session.
 const msgConversionCache = new WeakMap<NormalizedMessage, ChatMessage | null>();
 
+type ConvertSingleMessageOptions = {
+  preserveEmptyAssistantShell?: boolean;
+};
+
+function normalizeAssistantText(content: string): string {
+  let text = decodeHtmlEntities(content);
+  text = unescapeWithMathProtection(text);
+  return formatUsageLimitText(text);
+}
+
+function isEmptyAssistantTextMessage(msg: NormalizedMessage): boolean {
+  if (msg.kind !== 'text' || msg.role !== 'assistant') {
+    return false;
+  }
+  return normalizeAssistantText(msg.content || '').trim().length === 0;
+}
+
+function isNonRenderableTransportMessage(msg: NormalizedMessage): boolean {
+  return (
+    msg.kind === 'tool_result' ||
+    msg.kind === 'stream_end' ||
+    msg.kind === 'complete' ||
+    msg.kind === 'status' ||
+    msg.kind === 'permission_request' ||
+    msg.kind === 'permission_cancelled' ||
+    msg.kind === 'session_created'
+  );
+}
+
+function findNeighborRenderableMessage(
+  messages: NormalizedMessage[],
+  index: number,
+  direction: -1 | 1,
+): NormalizedMessage | null {
+  for (let i = index + direction; i >= 0 && i < messages.length; i += direction) {
+    const msg = messages[i];
+    if (!msg || isNonRenderableTransportMessage(msg)) {
+      continue;
+    }
+    return msg;
+  }
+  return null;
+}
+
+function shouldPreserveEmptyAssistantShell(
+  messages: NormalizedMessage[],
+  index: number,
+): boolean {
+  const msg = messages[index];
+  if (!msg || !isEmptyAssistantTextMessage(msg)) {
+    return false;
+  }
+
+  const previous = findNeighborRenderableMessage(messages, index, -1);
+  const next = findNeighborRenderableMessage(messages, index, 1);
+  return previous?.kind === 'tool_use' || next?.kind === 'tool_use';
+}
+
 function convertSingleMessage(
   msg: NormalizedMessage,
   toolResultMap: Map<string, NormalizedMessage>,
   subagentLinks?: Map<string, { subagentId: string; subagentType: string }>,
+  options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
   switch (msg.kind) {
     case 'text': {
@@ -55,10 +114,8 @@ function convertSingleMessage(
           ...(userAttachments.length > 0 ? { attachments: userAttachments } : {}),
         };
       } else {
-        let text = decodeHtmlEntities(content);
-        text = unescapeWithMathProtection(text);
-        text = formatUsageLimitText(text);
-        if (!text.trim()) return null;
+        const text = normalizeAssistantText(content);
+        if (!text.trim() && !options.preserveEmptyAssistantShell) return null;
         return {
           id: msg.id,
           type: 'assistant',
@@ -295,7 +352,8 @@ function convertNormalizedMessages(
   }
   const toolResultMap = new Map<string, NormalizedMessage>();
 
-  for (const msg of messages) {
+  for (let index = 0; index < messages.length; index += 1) {
+    const msg = messages[index];
     // tool_use messages depend on toolResultMap + subagentLinks (external state) so skip cache
     if (msg.kind === 'tool_use') {
       if (msg.toolId && !msg.toolResult) {
@@ -309,15 +367,20 @@ function convertNormalizedMessages(
       continue;
     }
 
+    const preserveEmptyAssistantShell = shouldPreserveEmptyAssistantShell(messages, index);
+    const skipCache = isEmptyAssistantTextMessage(msg);
+
     // All other message types: use WeakMap cache for stable references
-    if (msgConversionCache.has(msg)) {
+    if (!skipCache && msgConversionCache.has(msg)) {
       const cached = msgConversionCache.get(msg);
       if (cached) converted.push(cached);
       continue;
     }
 
-    const result = convertSingleMessage(msg, toolResultMap);
-    msgConversionCache.set(msg, result);
+    const result = convertSingleMessage(msg, toolResultMap, undefined, { preserveEmptyAssistantShell });
+    if (!skipCache) {
+      msgConversionCache.set(msg, result);
+    }
     if (result) converted.push(result);
   }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { NormalizedMessage } from '../../stores/useSessionStore';
 import type { ChatMessage } from '../chat/types/types';
+import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import {
   buildRenderableMessageItems,
   getLiveProcessGroups,
@@ -49,6 +51,41 @@ function tool(
     toolId: id,
     toolInput: JSON.stringify(input),
     toolResult,
+  };
+}
+
+function normalizedText(
+  id: string,
+  role: 'user' | 'assistant',
+  content: string,
+  offsetMs = 0,
+): NormalizedMessage {
+  return {
+    id,
+    sessionId: 'session-1',
+    provider: 'pilotdeck',
+    kind: 'text',
+    role,
+    content,
+    timestamp: timestamp(offsetMs),
+  };
+}
+
+function normalizedTool(
+  id: string,
+  toolName: string,
+  input: Record<string, unknown> = {},
+  offsetMs = 0,
+): NormalizedMessage {
+  return {
+    id,
+    sessionId: 'session-1',
+    provider: 'pilotdeck',
+    kind: 'tool_use',
+    toolName,
+    toolId: id,
+    toolInput: input,
+    timestamp: timestamp(offsetMs),
   };
 }
 
@@ -399,5 +436,52 @@ describe('processGrouping', () => {
     expect(items.map((item) => item.message.id)).toEqual(['u1', 'a1', 'a-final']);
     expect(groups).toHaveLength(2);
     expect(groups.every((group) => group.afterOriginalIndex === 1)).toBe(true);
+  });
+
+  it('keeps normalized empty assistant shells available as process separators', () => {
+    const normalized = [
+      normalizedText('u1', 'user', 'Do the work'),
+      normalizedText('a1', 'assistant', 'Starting work.', 100),
+      normalizedTool('read-1', 'Read', { file_path: '/repo/src/App.tsx' }, 200),
+      normalizedText('a-empty-1', 'assistant', '', 250),
+      normalizedTool('grep-1', 'Grep', { pattern: 'MessagesPaneV2' }, 300),
+      normalizedText('a-empty-2', 'assistant', '', 350),
+      normalizedText('a-final', 'assistant', 'Here is the result.', 400),
+    ];
+
+    const messages = normalizedToChatMessages(normalized);
+    const items = buildRenderableMessageItems(messages, { isAssistantWorking: true });
+    const groups = getLiveProcessGroups(messages, { isAssistantWorking: true });
+
+    expect(messages.map((message) => message.id)).toEqual([
+      'u1',
+      'a1',
+      'read-1',
+      'a-empty-1',
+      'grep-1',
+      'a-empty-2',
+      'a-final',
+    ]);
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a1', 'a-final']);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.messages.map((message) => message.id))).toEqual([
+      ['read-1'],
+      ['grep-1'],
+    ]);
+  });
+
+  it('still drops unrelated normalized empty assistant messages', () => {
+    const empty = normalizedText('a-empty', 'assistant', '');
+
+    expect(normalizedToChatMessages([
+      normalizedText('u1', 'user', 'Hello'),
+      empty,
+    ]).map((message) => message.id)).toEqual(['u1']);
+
+    expect(normalizedToChatMessages([
+      normalizedText('u1', 'user', 'Hello'),
+      normalizedTool('read-1', 'Read', { file_path: '/repo/src/App.tsx' }, 100),
+      empty,
+    ]).map((message) => message.id)).toEqual(['u1', 'read-1', 'a-empty']);
   });
 });
