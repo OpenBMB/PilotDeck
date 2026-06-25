@@ -95,6 +95,10 @@ export function classifyBashPermission(command: string): PermissionResult {
 }
 
 export function isReadOnlyShellCommand(command: string): boolean {
+  if (hasShellControlOperator(command) || hasWriteCapableNodeEval(command)) {
+    return false;
+  }
+
   const tokens = tokenizeSimpleShell(command);
   if (!tokens || tokens.length === 0) {
     return false;
@@ -124,6 +128,69 @@ export function isReadOnlyShellCommand(command: string): boolean {
   }
 
   return normalizedCommandName === "sh" && args.length === 2 && args[0] === "-c" && /^exit\s+\d+$/.test(args[1]);
+}
+
+function hasShellControlOperator(command: string): boolean {
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i]!;
+    const next = command[i + 1];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+        continue;
+      }
+      if (char === "\\" && quote === '"') {
+        escaped = true;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === ">" || char === "<" || char === "|" || char === ";" || char === "&") {
+      return true;
+    }
+    if (char === "$" && next === "(") {
+      return true;
+    }
+    if (char === "`") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+const NODE_EVAL_WRITE_PATTERNS: RegExp[] = [
+  /\bfs\s*\.\s*(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|rm(?:Sync)?|unlink(?:Sync)?|rmdir(?:Sync)?|mkdir(?:Sync)?|cp(?:Sync)?|copyFile(?:Sync)?|rename(?:Sync)?|truncate(?:Sync)?)\s*\(/,
+  /\brequire\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)\s*\.\s*(?:writeFile|appendFile|rm|unlink|rmdir|mkdir|cp|copyFile|rename|truncate)\s*\(/,
+  /\bimport\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/,
+];
+
+function hasWriteCapableNodeEval(command: string): boolean {
+  const match = /\bnode(?:\.exe)?\b[\s\S]*?(?:^|\s)(?:-[A-Za-z]*e[A-Za-z]*|--eval)(?:=|\s+)([\s\S]+)/i.exec(command);
+  if (!match) {
+    return false;
+  }
+  const evalSource = match[1] ?? "";
+  return NODE_EVAL_WRITE_PATTERNS.some((pattern) => pattern.test(evalSource));
 }
 
 const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
