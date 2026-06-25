@@ -63,6 +63,38 @@ test("plan mode blocks side-effecting bash commands without asking permission", 
   assert.match(textOf(result), /mkdir build-output/);
 });
 
+test("plan mode blocks bash read-only classifier bypasses", async () => {
+  const registry = new ToolRegistry();
+  registry.register(createBashTool({
+    runner: {
+      async run() {
+        throw new Error("bash runner should not be reached");
+      },
+    },
+  }));
+
+  const commands = [
+    "echo hello > plan-output.txt",
+    "printf hello >> plan-output.txt",
+    "cat package.json | tee copied-package.json",
+    "pwd; touch plan-output.txt",
+    "node -e \"require('fs').writeFileSync('plan-output.txt', 'hello')\"",
+    "node --eval=\"fs.appendFileSync('plan-output.txt', 'hello')\"",
+  ];
+
+  for (const command of commands) {
+    const result = await new ToolRuntime(registry, new PermissionRuntime()).execute(
+      { id: `call-${command}`, name: "bash", input: { command } },
+      createPlanContext(),
+    );
+
+    assert.equal(result.type, "error", command);
+    if (result.type !== "error") continue;
+    assert.equal(result.error.code, "plan_mode_violation", command);
+    assert.match(textOf(result), /READ-ONLY commands/, command);
+  }
+});
+
 test("plan mode allows read-only bash commands", async () => {
   const registry = new ToolRegistry();
   let executedCommand: string | undefined;
