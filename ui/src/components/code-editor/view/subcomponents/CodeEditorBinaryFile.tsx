@@ -101,18 +101,16 @@ function FallbackContent({ title, message, onClose }: { title: string; message: 
   );
 }
 
-function ImagePreview({ projectName, file, title, message, onClose }: {
-  projectName?: string;
+function ImagePreview({ blobUrl, file, title, message, onClose }: {
+  blobUrl: string;
   file: CodeEditorFile;
   title: string;
   message: string;
   onClose: () => void;
 }) {
-  const { blobUrl, error, loading } = useBlobUrl(projectName, file.path, true);
   const [imgError, setImgError] = useState(false);
 
-  if (loading) return <PreviewSpinner />;
-  if (error || imgError || !blobUrl) {
+  if (imgError || !blobUrl) {
     return <FallbackContent title={title} message={message} onClose={onClose} />;
   }
 
@@ -128,20 +126,10 @@ function ImagePreview({ projectName, file, title, message, onClose }: {
   );
 }
 
-function PdfPreview({ projectName, file, title, message, onClose }: {
-  projectName?: string;
+function PdfPreview({ blobUrl, file }: {
+  blobUrl: string;
   file: CodeEditorFile;
-  title: string;
-  message: string;
-  onClose: () => void;
 }) {
-  const { blobUrl, error, loading } = useBlobUrl(projectName, file.path, true);
-
-  if (loading) return <PreviewSpinner />;
-  if (error || !blobUrl) {
-    return <FallbackContent title={title} message={message} onClose={onClose} />;
-  }
-
   return (
     <div className="h-full w-full bg-white dark:bg-neutral-950">
       <iframe
@@ -170,11 +158,28 @@ export default function CodeEditorBinaryFile({
   const isPdf = isPdfFile(file.name);
   const canPreview = isImage || isPdf;
 
-  const previewContent = isImage
-    ? <ImagePreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
-    : isPdf
-      ? <PdfPreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
-      : <FallbackContent title={title} message={message} onClose={onClose} />;
+  const { blobUrl, error: blobError, loading } = useBlobUrl(projectName, file.path, canPreview);
+
+  let previewContent;
+  if (loading) {
+    previewContent = <PreviewSpinner />;
+  } else if (blobError || !blobUrl) {
+    previewContent = <FallbackContent title={title} message={message} onClose={onClose} />;
+  } else if (isImage) {
+    previewContent = (
+      <ImagePreview
+        blobUrl={blobUrl}
+        file={file}
+        title={title}
+        message={message}
+        onClose={onClose}
+      />
+    );
+  } else if (isPdf) {
+    previewContent = <PdfPreview blobUrl={blobUrl} file={file} />;
+  } else {
+    previewContent = <FallbackContent title={title} message={message} onClose={onClose} />;
+  }
 
   const headerTopBar = (
     <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950">
@@ -184,6 +189,28 @@ export default function CodeEditorBinaryFile({
         </h3>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {canPreview && blobUrl && !loading && !blobError && (
+          <a
+            href={blobUrl}
+            download={file.name}
+            className={iconBtn}
+            title="Download"
+          >
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.75}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          </a>
+        )}
         {!isSidebar && (
           <button
             type="button"
