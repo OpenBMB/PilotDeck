@@ -361,11 +361,11 @@ ensure_lfs_assets() {
 }
 
 has_playwright_chrome_for_testing() {
-  local candidate
-  for candidate in \
-    "$HOME/Library/Caches/ms-playwright"/mcp-chrome-for-testing-* \
-    "$HOME/.cache/ms-playwright"/mcp-chrome-for-testing-*; do
-    if [[ -d "$candidate" ]]; then
+  local base
+  for base in \
+    "$HOME/Library/Caches/ms-playwright" \
+    "$HOME/.cache/ms-playwright"; do
+    if find "$base" -maxdepth 1 -name "mcp-chrome-for-testing-*" -type d 2>/dev/null | grep -q .; then
       return 0
     fi
   done
