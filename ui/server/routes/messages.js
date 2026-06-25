@@ -52,7 +52,14 @@ router.get('/:sessionId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_session_messages failed:', error);
-    return res.json({ messages: [], total: 0, hasMore: false, offset: 0, limit: null });
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : String(error),
+      messages: [],
+      total: 0,
+      hasMore: false,
+      offset: 0,
+      limit: null,
+    });
   }
 });
 
