@@ -261,6 +261,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     // --- Server startup ---
 
     const envPort = Number.parseInt(env.PILOTDECK_GATEWAY_PORT ?? "", 10);
+    const configPort = snapshot.config.gateway?.port;
     const extraChannels = await loadEnabledChannels(snapshot.config.adapters);
     const feishuCfg = snapshot.config.adapters?.feishu;
     const feishuChannel = feishuCfg?.enabled === true
@@ -277,7 +278,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     const weixinChannel = weixinCfg?.enabled === true ? new WeixinChannel() : undefined;
     const server = await startPilotDeckServer({
       gateway,
-      port: readPort(argv) ?? (Number.isFinite(envPort) ? envPort : 18789),
+      port: readPort(argv) ?? (Number.isFinite(envPort) ? envPort : configPort ?? 18789),
       staticAssetsPath: resolve(projectRoot, "ui/dist"),
       feishu: feishuChannel,
       weixin: weixinChannel,
