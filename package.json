@@ -29,7 +29,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.65.0",
+    "@larksuiteoapi/node-sdk": "^1.56.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/react": "^19.2.14",
     "@types/turndown": "^5.0.6",
