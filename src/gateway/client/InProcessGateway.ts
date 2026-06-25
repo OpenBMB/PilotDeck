@@ -1182,8 +1182,13 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
       const PERSIST_THRESHOLD = 4096;
       let resultPath: string | undefined;
       if (totalBytes > PERSIST_THRESHOLD) {
-        const dir = resolve(tmpdir(), "pilotdeck-tool-results");
-        resultPath = resolve(dir, `${event.result.toolCallId}.txt`);
+        const dir = resolve(
+          tmpdir(),
+          "pilotdeck-tool-results",
+          safeGatewayPathPart(event.sessionId),
+          safeGatewayPathPart(event.turnId),
+        );
+        resultPath = resolve(dir, `${safeGatewayPathPart(event.result.toolCallId)}.txt`);
         void (async () => {
           try {
             await mkdir(dir, { recursive: true });
@@ -1495,6 +1500,10 @@ function previewUnknown(value: unknown): string | undefined {
   } catch {
     return String(value);
   }
+}
+
+function safeGatewayPathPart(value: string): string {
+  return value.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "value";
 }
 
 async function buildAgentInputWithAttachments(

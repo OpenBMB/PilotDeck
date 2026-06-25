@@ -257,11 +257,15 @@ export class DefaultContextRuntime implements ContextRuntime {
     let supplementalMessages = input.supplementalMessages ?? [];
     if (this.toolResultBudget) {
       try {
-        appended = await this.toolResultBudget.applyToMessage(input.toolResultMessage);
+        appended = await this.toolResultBudget.applyToMessage(input.toolResultMessage, { turnId: input.turnId });
         supplementalMessages = await Promise.all(
           supplementalMessages.map(async ({ toolCallId, message }) => ({
             toolCallId,
-            message: await this.toolResultBudget!.applyToSupplementalMessage(message, toolCallId),
+            message: await this.toolResultBudget!.applyToSupplementalMessage(
+              message,
+              toolCallId,
+              { turnId: input.turnId },
+            ),
           })),
         );
       } catch (error) {

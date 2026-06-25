@@ -49,6 +49,10 @@ export type ToolResultBudgetOptions = {
   state?: ToolResultBudgetState;
 };
 
+export type ToolResultBudgetApplyOptions = {
+  turnId?: string;
+};
+
 export function createToolResultBudgetState(): ToolResultBudgetState {
   return { replacements: new Map() };
 }
@@ -56,8 +60,8 @@ export function createToolResultBudgetState(): ToolResultBudgetState {
 /**
  * Replace tool_result blocks whose serialized text exceeds the budget with
  * structured `tool_result_reference` blocks. Persists the original body to
- * `{toolResultsDir}/{toolCallId}.{json|txt}` (write flag 'wx' to avoid
- * overwriting on resume).
+ * `{toolResultsDir}/{turnId}-{toolCallId}.{json|txt}` when a turn id is
+ * available (write flag 'wx' to avoid overwriting on resume).
  */
 export class ToolResultBudget {
   private readonly maxResultSizeChars: number;
@@ -76,7 +80,10 @@ export class ToolResultBudget {
     return this.state;
   }
 
-  async applyToMessage(message: CanonicalMessage): Promise<CanonicalMessage> {
+  async applyToMessage(
+    message: CanonicalMessage,
+    options: ToolResultBudgetApplyOptions = {},
+  ): Promise<CanonicalMessage> {
     if (message.role !== "user") {
       return message;
     }
@@ -88,7 +95,7 @@ export class ToolResultBudget {
         primaryContent.push(block);
         continue;
       }
-      const replaced = await this.maybeReplaceToolResult(block);
+      const replaced = await this.maybeReplaceToolResult(block, options);
       if (replaced.block !== block || replaced.mediaReferences.length > 0) {
         modified = true;
       }
@@ -101,7 +108,11 @@ export class ToolResultBudget {
     return { ...message, content: [...primaryContent, ...mediaReferences] };
   }
 
-  async applyToSupplementalMessage(message: CanonicalMessage, toolCallId: string): Promise<CanonicalMessage> {
+  async applyToSupplementalMessage(
+    message: CanonicalMessage,
+    toolCallId: string,
+    options: ToolResultBudgetApplyOptions = {},
+  ): Promise<CanonicalMessage> {
     if (message.role !== "user") {
       return message;
     }
@@ -109,7 +120,7 @@ export class ToolResultBudget {
     let modified = false;
     for (let index = 0; index < message.content.length; index += 1) {
       const block = message.content[index];
-      const replaced = await this.maybeReplaceMedia(block, index, toolCallId);
+      const replaced = await this.maybeReplaceMedia(block, index, toolCallId, options);
       if (replaced !== block) {
         modified = true;
       }
@@ -120,12 +131,13 @@ export class ToolResultBudget {
 
   private async maybeReplaceToolResult(
     block: CanonicalToolResultBlock,
+    options: ToolResultBudgetApplyOptions,
   ): Promise<{
     block: CanonicalToolResultBlock | CanonicalToolResultReferenceBlock;
     mediaReferences: CanonicalMediaReferenceBlock[];
   }> {
     if (!block.content.some(isToolResultMediaBlock)) {
-      return { block: await this.maybeReplaceTextToolResult(block), mediaReferences: [] };
+      return { block: await this.maybeReplaceTextToolResult(block, options), mediaReferences: [] };
     }
 
     const content: CanonicalToolResultContentBlock[] = [];
@@ -138,7 +150,7 @@ export class ToolResultBudget {
         continue;
       }
 
-      const replaced = await this.maybeReplaceMedia(entry, index, block.toolCallId);
+      const replaced = await this.maybeReplaceMedia(entry, index, block.toolCallId, options);
       if (replaced.type === "media_reference") {
         mediaReferences.push(replaced);
         content.push({ type: "text", text: replaced.preview });
@@ -155,9 +167,11 @@ export class ToolResultBudget {
 
   private async maybeReplaceTextToolResult(
     block: CanonicalToolResultBlock,
+    options: ToolResultBudgetApplyOptions,
   ): Promise<CanonicalToolResultBlock | CanonicalToolResultReferenceBlock> {
-    if (this.state.replacements.has(block.toolCallId)) {
-      return this.toReferenceBlock(this.state.replacements.get(block.toolCallId)!);
+    const replacementKey = scopedToolResultKey(block.toolCallId, options.turnId);
+    if (this.state.replacements.has(replacementKey)) {
+      return this.toReferenceBlock(this.state.replacements.get(replacementKey)!);
     }
 
     const flat = flattenToolResultBlockText(block);
@@ -168,7 +182,7 @@ export class ToolResultBudget {
 
     const isJson = looksLikeJson(flat);
     const ext = isJson ? "json" : "txt";
-    const path = resolve(this.toolResultsDir, `${block.toolCallId}.${ext}`);
+    const path = resolve(this.toolResultsDir, `${replacementKey}.${ext}`);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     try {
       await access(path);
@@ -186,7 +200,7 @@ export class ToolResultBudget {
       mimeType: isJson ? "application/json" : "text/plain",
       reason: "tool_result_too_large",
     };
-    this.state.replacements.set(block.toolCallId, record);
+    this.state.replacements.set(replacementKey, record);
     return this.toReferenceBlock(record);
   }
 
@@ -207,6 +221,7 @@ export class ToolResultBudget {
     block: CanonicalContentBlock,
     index: number,
     toolCallId: string,
+    options: ToolResultBudgetApplyOptions,
   ): Promise<CanonicalContentBlock> {
     if (block.type !== "image" && block.type !== "pdf" && block.type !== "audio") {
       return block;
@@ -220,7 +235,7 @@ export class ToolResultBudget {
     const mediaType = block.type;
     const mimeType = block.mimeType;
     const ext = extensionForMedia(mediaType, mimeType);
-    const id = `${mediaType}-${index}-${hashString(block.data).slice(0, 12)}`;
+    const id = `${scopedToolResultKey(toolCallId, options.turnId)}-${mediaType}-${index}-${hashString(block.data).slice(0, 12)}`;
     const path = resolve(this.toolResultsDir, `${id}.${ext}`);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     try {
@@ -311,6 +326,16 @@ function isToolResultMediaBlock(
 
 function mediaOriginalBytes(block: Extract<CanonicalContentBlock, { type: "image" | "pdf" | "audio" }>): number {
   return ("bytes" in block ? block.bytes : undefined) ?? Buffer.byteLength(block.data, "utf8");
+}
+
+function scopedToolResultKey(toolCallId: string, turnId: string | undefined): string {
+  const safeToolCallId = safePathPart(toolCallId) || "tool-call";
+  const safeTurnId = turnId === undefined ? undefined : safePathPart(turnId);
+  return safeTurnId ? `${safeTurnId}-${safeToolCallId}` : safeToolCallId;
+}
+
+function safePathPart(value: string): string {
+  return value.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function extensionForMedia(mediaType: "image" | "pdf" | "audio", mimeType: string): string {
