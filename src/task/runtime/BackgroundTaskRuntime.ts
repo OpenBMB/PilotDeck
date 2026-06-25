@@ -198,6 +198,10 @@ export class BackgroundTaskRuntime {
   /**
    * Stop a task: SIGTERM, wait `graceMs`, then SIGKILL if still alive.
    * Idempotent: stopping an already-finished task is a no-op.
+   *
+   * On Unix (non-Windows), we kill the entire process group via
+   * `process.kill(-child.pid, signal)` so that spawned shell children
+   * and their sub-processes are all terminated together.
    */
   async stop(taskId: string, options: StopTaskOptions = {}): Promise<void> {
     const entry = this.entries.get(taskId);
@@ -206,22 +210,32 @@ export class BackgroundTaskRuntime {
     if (task.status !== "running") return;
     if (!child) return;
     task.interrupted = true;
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      // child already exited
-    }
+
+    const isUnix = process.platform !== "win32";
+    const pid = child.pid;
+
+    const killSignal = (signal: "SIGTERM" | "SIGKILL") => {
+      try {
+        // On Unix, kill the whole process group so nested children are cleaned up.
+        // child.pid is always positive; passing -child.pid means "kill process group".
+        if (isUnix && typeof pid === "number" && pid > 0) {
+          process.kill(-pid, signal);
+        } else {
+          child?.kill(signal);
+        }
+      } catch {
+        // child already exited
+      }
+    };
+
+    killSignal("SIGTERM");
     const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       done,
       new Promise<void>((resolve) => {
         timer = setTimeout(() => {
-          try {
-            child.kill("SIGKILL");
-          } catch {
-            // already exited between the timer firing and kill()
-          }
+          killSignal("SIGKILL");
           resolve();
         }, graceMs);
       }),
