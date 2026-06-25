@@ -22,6 +22,7 @@
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prestart": "node ../scripts/bootstrap-pilotdeck-config.mjs",
     "start": "npm run build && npm run start:built",
     "start:built": "concurrently --kill-others-on-fail --names gateway,server \"npm:gateway\" \"npm:server\"",
     "postinstall": "node scripts/fix-node-pty.js"
