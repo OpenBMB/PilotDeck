@@ -24,6 +24,7 @@ type CommandMenuCommand = {
 };
 
 type CommandMenuProps = {
+  id?: string;
   commands?: CommandMenuCommand[];
   selectedIndex?: number;
   onSelect?: (command: CommandMenuCommand, index: number, isHover: boolean) => void;
@@ -80,6 +81,7 @@ const getMenuPosition = (position: { top: number; left: number; bottom?: number 
 };
 
 export default function CommandMenu({
+  id,
   commands = [],
   selectedIndex = -1,
   onSelect,
@@ -131,6 +133,7 @@ export default function CommandMenu({
   if (commands.length === 0) {
     return (
       <div
+        id={id}
         ref={menuRef}
         className={cn(containerClass, 'px-4 py-5 text-center text-[13px] text-neutral-500 dark:text-neutral-400')}
         style={{ ...menuPosition, zIndex: 1000 }}
@@ -144,6 +147,7 @@ export default function CommandMenu({
 
   return (
     <div
+      id={id}
       ref={menuRef}
       role="listbox"
       aria-label="Available commands"
@@ -171,6 +175,7 @@ export default function CommandMenu({
               </div>
             ) : null}
             <div
+              id={id ? `${id}-option-${commandIndex}` : undefined}
               ref={isSelected ? selectedItemRef : null}
               role="option"
               aria-selected={isSelected}

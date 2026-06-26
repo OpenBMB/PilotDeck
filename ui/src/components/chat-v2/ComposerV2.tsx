@@ -320,6 +320,7 @@ export default function ComposerV2({
   const suppressSlashToolbarClickRef = useRef(false);
   const queueAttachmentBlockId = useId();
   const fileSuggestionsId = useId();
+  const commandMenuId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
   useEffect(() => {
@@ -401,6 +402,16 @@ export default function ComposerV2({
   const selectedFileOptionId = fileSuggestionsOpen && selectedFileIndex >= 0
     ? `${fileSuggestionsId}-option-${selectedFileIndex}`
     : undefined;
+  const commandMenuOpen = isCommandMenuOpen && filteredCommands.length > 0;
+  const selectedCommandOptionId = commandMenuOpen && selectedCommandIndex >= 0
+    ? `${commandMenuId}-option-${selectedCommandIndex}`
+    : undefined;
+  const activeAutocompleteId = fileSuggestionsOpen
+    ? fileSuggestionsId
+    : commandMenuOpen
+      ? commandMenuId
+      : undefined;
+  const activeAutocompleteOptionId = selectedFileOptionId ?? selectedCommandOptionId;
   const closeComposerPopovers = () => {
     setIsRunModeMenuOpen(false);
     setIsPermissionMenuOpen(false);
@@ -664,6 +675,7 @@ export default function ComposerV2({
               <input {...getInputProps()} />
 
               <CommandMenu
+                id={commandMenuId}
                 commands={filteredCommands}
                 selectedIndex={selectedCommandIndex}
                 onSelect={onCommandSelect}
@@ -703,9 +715,9 @@ export default function ComposerV2({
                   onInput={onTextareaInput}
                   placeholder={placeholder}
                   aria-autocomplete="list"
-                  aria-controls={fileSuggestionsOpen ? fileSuggestionsId : undefined}
-                  aria-expanded={fileSuggestionsOpen}
-                  aria-activedescendant={selectedFileOptionId}
+                  aria-controls={activeAutocompleteId}
+                  aria-expanded={Boolean(activeAutocompleteId)}
+                  aria-activedescendant={activeAutocompleteOptionId}
                   rows={2}
                   className="relative z-10 block max-h-[34vh] min-h-[56px] w-full resize-none bg-transparent px-2 pt-2 text-[16px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100 dark:placeholder-neutral-500 md:max-h-[40vh] md:min-h-[48px] md:pt-1.5 md:text-[14px]"
                 />
