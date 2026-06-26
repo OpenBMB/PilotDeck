@@ -979,7 +979,7 @@ router.post('/load', async (req, res) => {
  */
 router.post('/execute', async (req, res) => {
   try {
-    const { commandName, commandPath, args = [], context = {} } = req.body;
+    const { commandName, commandPath, args = [], rawArgs, rawInput, context = {} } = req.body;
 
     if (!commandName) {
       return res.status(400).json({
@@ -1014,11 +1014,18 @@ router.post('/execute', async (req, res) => {
     const isBundledStub = BUNDLED_SKILL_STUBS.some(
       (stub) => stub.name === commandName,
     );
+    const buildPassthroughContent = () => {
+      if (typeof rawInput === 'string' && rawInput.trimStart().startsWith(commandName)) {
+        return rawInput.trim();
+      }
+      const argsString = typeof rawArgs === 'string'
+        ? rawArgs.trimStart()
+        : args.join(' ').trim();
+      return argsString ? `${commandName} ${argsString}` : commandName;
+    };
+
     if (isBundledStub) {
-      const argsString = args.join(' ').trim();
-      const passthroughContent = argsString
-        ? `${commandName} ${argsString}`
-        : commandName;
+      const passthroughContent = buildPassthroughContent();
       return res.json({
         type: 'custom',
         command: commandName,
@@ -1033,10 +1040,7 @@ router.post('/execute', async (req, res) => {
     // SKILL.md body into chat. Instead, passthrough the slash text so the
     // proxy's slash parser invokes SkillTool with the procedural body.
     if (commandPath && /\/\.pilotdeck\/skills\/[^/]+\/SKILL\.md$/i.test(commandPath)) {
-      const argsString = args.join(' ').trim();
-      const passthroughContent = argsString
-        ? `${commandName} ${argsString}`
-        : commandName;
+      const passthroughContent = buildPassthroughContent();
       return res.json({
         type: 'custom',
         command: commandName,
