@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -308,6 +308,7 @@ export default function ComposerV2({
   const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isRunModeMenuOpen, setIsRunModeMenuOpen] = useState(false);
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
+  const queueAttachmentBlockId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
   useEffect(() => {
@@ -323,6 +324,11 @@ export default function ComposerV2({
   const hasDraftContent = input.trim().length > 0 || attachedImages.length > 0;
   const hasUploadingImages = uploadingImages.size > 0;
   const queueBlockedByAttachments = isLoading && attachedImages.length > 0;
+  const queueAttachmentBlockMessage = t('queue.attachmentsDisabledInline', {
+    count: attachedImages.length,
+    defaultValue:
+      'Attachments cannot be queued. Wait for the current run to finish, then send this message.',
+  }) as string;
   const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || queueBlockedByAttachments;
   const contextStatus = getContextStatus(tokenBudget);
   const selectedPermissionOption =
@@ -390,6 +396,16 @@ export default function ComposerV2({
                     />
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {queueBlockedByAttachments ? (
+              <div
+                id={queueAttachmentBlockId}
+                role="status"
+                className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                {queueAttachmentBlockMessage}
               </div>
             ) : null}
 
@@ -908,6 +924,7 @@ export default function ComposerV2({
                       type="submit"
                       disabled={disabled}
                       aria-busy={isSubmitPending || hasUploadingImages}
+                      aria-describedby={queueBlockedByAttachments ? queueAttachmentBlockId : undefined}
                       className={cn(
                         'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900 md:h-8 md:w-8',
                         isLoading && 'bg-neutral-700 dark:bg-neutral-200',
@@ -917,7 +934,7 @@ export default function ComposerV2({
                         isSubmitPending || hasUploadingImages
                           ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
                           : queueBlockedByAttachments
-                            ? (t('queue.attachmentsDisabled', { defaultValue: 'Wait for the current run to finish before sending attachments' }) as string)
+                            ? queueAttachmentBlockMessage
                           : isLoading
                             ? (t('queue.add', { defaultValue: 'Add to queue' }) as string)
                             : (t('input.send', { defaultValue: 'Send' }) as string)

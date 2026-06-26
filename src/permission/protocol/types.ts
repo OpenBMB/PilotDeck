@@ -156,7 +156,7 @@ function normalizeSudoRemoteHosts(value: unknown): SudoRemoteHostPolicy[] {
     const host = typeof record.host === "string" ? record.host.trim() : "";
     if (!host) continue;
     const action = normalizeSudoPolicyAction(record.action, "deny");
-    const key = `${host.toLowerCase()}:${action}`;
+    const key = host.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ host, action });
