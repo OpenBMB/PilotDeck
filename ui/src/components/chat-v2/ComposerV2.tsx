@@ -476,6 +476,18 @@ export default function ComposerV2({
                           defaultValue:
                             `${item.files.length} queued attachment${item.files.length === 1 ? '' : 's'} will not send. Remove this item and send it after the current run.`,
                         });
+                    const moveUpLabel = t('queue.moveItemUp', {
+                      index: index + 1,
+                      defaultValue: `Move queued message ${index + 1} up`,
+                    }) as string;
+                    const moveDownLabel = t('queue.moveItemDown', {
+                      index: index + 1,
+                      defaultValue: `Move queued message ${index + 1} down`,
+                    }) as string;
+                    const removeLabel = t('queue.removeItem', {
+                      index: index + 1,
+                      defaultValue: `Remove queued message ${index + 1}`,
+                    }) as string;
                     return (
                       <div
                         key={item.id}
@@ -516,6 +528,7 @@ export default function ComposerV2({
                             onClick={() => onMoveQueuedInputUp(item.id)}
                             disabled={index === 0}
                             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-30 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                            aria-label={moveUpLabel}
                             title={t('queue.moveUp', { defaultValue: 'Move up' }) as string}
                           >
                             <ChevronUp className="h-4 w-4" strokeWidth={1.8} />
@@ -525,6 +538,7 @@ export default function ComposerV2({
                             onClick={() => onMoveQueuedInputDown(item.id)}
                             disabled={index === queuedInputs.length - 1}
                             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-30 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                            aria-label={moveDownLabel}
                             title={t('queue.moveDown', { defaultValue: 'Move down' }) as string}
                           >
                             <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
@@ -533,6 +547,7 @@ export default function ComposerV2({
                             type="button"
                             onClick={() => onRemoveQueuedInput(item.id)}
                             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-red-50 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                            aria-label={removeLabel}
                             title={t('queue.remove', { defaultValue: 'Remove from queue' }) as string}
                           >
                             <Trash2 className="h-4 w-4" strokeWidth={1.8} />
