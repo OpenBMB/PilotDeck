@@ -91,6 +91,21 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
 
+  it('exposes file mention suggestions as selectable options', () => {
+    renderComposer({
+      showFileDropdown: true,
+      selectedFileIndex: 1,
+      filteredFiles: [
+        { name: 'README.md', path: 'README.md' },
+        { name: 'ComposerV2.tsx', path: 'ui/src/components/chat-v2/ComposerV2.tsx' },
+      ],
+    });
+
+    expect(screen.getByRole('listbox', { name: 'File suggestions' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /README.md/ }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('option', { name: /ComposerV2.tsx/ }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });
