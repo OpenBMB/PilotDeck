@@ -242,7 +242,14 @@
       "manage": "配置管理",
       "duplicate": "复制",
       "reset": "重置配置",
-      "delete": "删除配置"
+      "delete": "删除配置",
+      "cancel": "取消",
+      "deleteConfirmTitle": "删除 {{name}}？",
+      "deleteConfirmDescription": "此配置将从本机移除。内置预设和其他自定义配置会保留。",
+      "confirmDelete": "删除配置",
+      "resetConfirmTitle": "重置所有自定义配置？",
+      "resetConfirmDescription": "这会移除所有自定义外观配置，并切回 PilotDeck 默认预设。",
+      "confirmReset": "重置配置"
     },
     "projectSorting": {
       "label": "项目排序",
