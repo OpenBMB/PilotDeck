@@ -106,6 +106,10 @@ export function removeActiveSlashQueryForTest(input: string, slashPosition: numb
     return tail.trimStart();
   }
 
+  if (/^\r?\n/.test(tail)) {
+    return `${before.replace(/[ \t]+$/, '')}${tail}`;
+  }
+
   if (/[ \t]$/.test(before) && /^[ \t]/.test(tail)) {
     return `${before}${tail.replace(/^[ \t]+/, '')}`;
   }
