@@ -15,6 +15,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronUp,
   CircleGauge,
   Hand,
   ListChecks,
@@ -22,9 +23,10 @@ import {
   Paperclip,
   ShieldAlert,
   Square,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import type { ChatRunMode, PendingPermissionRequest, PermissionMode } from '../chat/types/types';
+import type { ChatRunMode, PendingPermissionRequest, PermissionMode, QueuedChatInput } from '../chat/types/types';
 import PermissionRequestsBanner from '../chat/view/subcomponents/PermissionRequestsBanner';
 import ImageAttachment from '../chat/view/subcomponents/ImageAttachment';
 import CommandMenu from '../chat/view/subcomponents/CommandMenu';
@@ -89,6 +91,11 @@ export type ComposerV2Props = {
   canAbortSession: boolean;
   isAbortPending?: boolean;
   isSubmitPending?: boolean;
+  queuedInputs: QueuedChatInput[];
+  onUpdateQueuedInput: (id: string, content: string) => void;
+  onRemoveQueuedInput: (id: string) => void;
+  onMoveQueuedInputUp: (id: string) => void;
+  onMoveQueuedInputDown: (id: string) => void;
   tokenBudget?: Record<string, unknown> | null;
 
   pendingPermissionRequests: PendingPermissionRequest[];
@@ -280,6 +287,11 @@ export default function ComposerV2({
   canAbortSession,
   isAbortPending = false,
   isSubmitPending = false,
+  queuedInputs,
+  onUpdateQueuedInput,
+  onRemoveQueuedInput,
+  onMoveQueuedInputUp,
+  onMoveQueuedInputDown,
   tokenBudget,
   pendingPermissionRequests,
   handlePermissionDecision,
@@ -310,7 +322,8 @@ export default function ComposerV2({
 
   const hasDraftContent = input.trim().length > 0 || attachedImages.length > 0;
   const hasUploadingImages = uploadingImages.size > 0;
-  const disabled = !hasDraftContent || isLoading || isSubmitPending || hasUploadingImages;
+  const queueBlockedByAttachments = isLoading && attachedImages.length > 0;
+  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || queueBlockedByAttachments;
   const contextStatus = getContextStatus(tokenBudget);
   const selectedPermissionOption =
     PERMISSION_MODE_OPTIONS.find((option) => option.mode === permissionMode) ||
@@ -374,6 +387,87 @@ export default function ComposerV2({
                       error={imageErrors.get(file.name)}
                     />
                   ))}
+                </div>
+              </div>
+            ) : null}
+
+            {queuedInputs.length > 0 ? (
+              <div className="mb-2 rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-1.5 flex items-center justify-between gap-3 px-1">
+                  <div className="min-w-0 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
+                    {t('queue.title', {
+                      count: queuedInputs.length,
+                      defaultValue: `${queuedInputs.length} queued`,
+                    })}
+                  </div>
+                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {isLoading
+                      ? t('queue.waiting', { defaultValue: 'Will send after this run' })
+                      : t('queue.ready', { defaultValue: 'Sending next' })}
+                  </div>
+                </div>
+                <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                  {queuedInputs.map((item, index) => {
+                    const hasFiles = item.files.length > 0;
+                    return (
+                      <div
+                        key={item.id}
+                        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-950"
+                      >
+                        <div className="flex h-7 min-w-7 items-center justify-center rounded bg-neutral-100 text-[11px] font-medium tabular-nums text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <textarea
+                            value={item.content}
+                            rows={1}
+                            onChange={(event) => onUpdateQueuedInput(item.id, event.target.value)}
+                            className="block max-h-24 min-h-7 w-full resize-y bg-transparent text-[13px] leading-5 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100"
+                            aria-label={t('queue.editItem', {
+                              index: index + 1,
+                              defaultValue: `Edit queued message ${index + 1}`,
+                            }) as string}
+                          />
+                          {hasFiles ? (
+                            <div className="mt-1 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                              {t('queue.attachments', {
+                                count: item.files.length,
+                                defaultValue: `${item.files.length} attachment${item.files.length === 1 ? '' : 's'}`,
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => onMoveQueuedInputUp(item.id)}
+                            disabled={index === 0}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-30 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                            title={t('queue.moveUp', { defaultValue: 'Move up' }) as string}
+                          >
+                            <ChevronUp className="h-4 w-4" strokeWidth={1.8} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onMoveQueuedInputDown(item.id)}
+                            disabled={index === queuedInputs.length - 1}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-30 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                            title={t('queue.moveDown', { defaultValue: 'Move down' }) as string}
+                          >
+                            <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveQueuedInput(item.id)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-red-50 hover:text-red-600 dark:text-neutral-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                            title={t('queue.remove', { defaultValue: 'Remove from queue' }) as string}
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={1.8} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
@@ -807,28 +901,32 @@ export default function ComposerV2({
                           <Square className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />
                         )}
                       </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        disabled={disabled}
-                        aria-busy={isSubmitPending || hasUploadingImages}
-                        className={cn(
-                          'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
-                          (isSubmitPending || hasUploadingImages) && 'cursor-wait',
-                        )}
-                        title={
-                          isSubmitPending || hasUploadingImages
-                            ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
+                    ) : null}
+                    <button
+                      type="submit"
+                      disabled={disabled}
+                      aria-busy={isSubmitPending || hasUploadingImages}
+                      className={cn(
+                        'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
+                        isLoading && 'bg-neutral-700 dark:bg-neutral-200',
+                        (isSubmitPending || hasUploadingImages) && 'cursor-wait',
+                      )}
+                      title={
+                        isSubmitPending || hasUploadingImages
+                          ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
+                          : queueBlockedByAttachments
+                            ? (t('queue.attachmentsDisabled', { defaultValue: 'Wait for the current run to finish before sending attachments' }) as string)
+                          : isLoading
+                            ? (t('queue.add', { defaultValue: 'Add to queue' }) as string)
                             : (t('input.send', { defaultValue: 'Send' }) as string)
-                        }
-                      >
-                        {isSubmitPending || hasUploadingImages ? (
-                          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
-                        ) : (
-                          <ArrowUp className="h-4 w-4" strokeWidth={2} />
-                        )}
-                      </button>
-                    )}
+                      }
+                    >
+                      {isSubmitPending || hasUploadingImages ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" strokeWidth={2} />
+                      )}
+                    </button>
                   </div>
                 </div>
             </div>

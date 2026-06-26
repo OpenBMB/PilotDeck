@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { shouldCycleRunModeOnKeyDown } from './useChatComposerState';
+import type { QueuedChatInput } from '../types/types';
+import { canQueueInputForTest, moveQueuedInputForTest, shouldCycleRunModeOnKeyDown } from './useChatComposerState';
 
 function keyEvent(key: string, shiftKey = false) {
   return { key, shiftKey };
@@ -26,5 +27,38 @@ describe('useChatComposerState keyboard shortcuts', () => {
       showFileDropdown: false,
       showCommandMenu: true,
     })).toBe(false);
+  });
+});
+
+describe('useChatComposerState queued input ordering', () => {
+  const makeQueue = (): QueuedChatInput[] => [
+    { id: 'a', content: 'first', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 1 },
+    { id: 'b', content: 'second', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 2 },
+    { id: 'c', content: 'third', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 3 },
+  ];
+
+  it('moves queued inputs up and down', () => {
+    expect(moveQueuedInputForTest(makeQueue(), 'b', -1).map((item) => item.id)).toEqual(['b', 'a', 'c']);
+    expect(moveQueuedInputForTest(makeQueue(), 'b', 1).map((item) => item.id)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('keeps order when moving past queue boundaries or missing ids', () => {
+    expect(moveQueuedInputForTest(makeQueue(), 'a', -1).map((item) => item.id)).toEqual(['a', 'b', 'c']);
+    expect(moveQueuedInputForTest(makeQueue(), 'c', 1).map((item) => item.id)).toEqual(['a', 'b', 'c']);
+    expect(moveQueuedInputForTest(makeQueue(), 'x', 1).map((item) => item.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('useChatComposerState queued input eligibility', () => {
+  it('allows text-only queued input', () => {
+    expect(canQueueInputForTest('next step', 0)).toBe(true);
+  });
+
+  it('rejects blank queued input', () => {
+    expect(canQueueInputForTest('   \n\t', 0)).toBe(false);
+  });
+
+  it('rejects queued input with attachments', () => {
+    expect(canQueueInputForTest('next step', 1)).toBe(false);
   });
 });
