@@ -134,5 +134,9 @@ describe('useSlashCommands query filtering behavior', () => {
         '/skill_install',
       ]);
     });
+
+    await waitFor(() => {
+      expect(result.current.selectedCommandIndex).toBe(0);
+    });
   });
 });

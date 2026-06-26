@@ -316,6 +316,9 @@ export function useSlashCommands({
       if (displayedCommands.length === 0) {
         return -1;
       }
+      if (previousIndex < 0) {
+        return 0;
+      }
       if (previousIndex >= displayedCommands.length) {
         return displayedCommands.length - 1;
       }
