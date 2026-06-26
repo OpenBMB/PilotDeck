@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDefaultPermissionContext, PermissionRuntime } from "../../../src/permission/index.js";
+import { createDefaultPermissionContext, normalizeSudoPermissionPolicy, PermissionRuntime } from "../../../src/permission/index.js";
 import type { SudoPermissionPolicy } from "../../../src/permission/index.js";
 import { createBashTool } from "../../../src/tool/builtin/bash.js";
 import { classifyBashPermission } from "../../../src/tool/builtin/bash/permissions.js";
@@ -71,6 +71,26 @@ test("remote host overrides take precedence over the remote default", () => {
   assert.equal(result.type, "deny");
   if (result.type !== "deny") return;
   assert.match(result.message, /remote host deploy@prod-01/);
+});
+
+test("remote host overrides normalize conflicting duplicate hosts", () => {
+  const policy = normalizeSudoPermissionPolicy({
+    local: "deny",
+    remote: "ask",
+    remoteHosts: [
+      { host: "Prod-*", action: "allow" },
+      { host: " prod-* ", action: "deny" },
+      { host: "stage-*", action: "ask" },
+    ],
+  });
+
+  assert.deepEqual(policy.remoteHosts, [
+    { host: "Prod-*", action: "allow" },
+    { host: "stage-*", action: "ask" },
+  ]);
+
+  const result = classifyBashPermission("ssh deploy@prod-01 sudo systemctl restart nginx", policy);
+  assert.equal(result.type, "allow");
 });
 
 test("remote sudo detection handles ssh executable paths", () => {

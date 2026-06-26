@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authenticatedFetch } from '../utils/api';
 
 export type ProjectModelSettings = {
@@ -50,6 +50,9 @@ const clone = (value: ProjectModelSettings): ProjectModelSettings =>
   JSON.parse(JSON.stringify(value ?? {})) as ProjectModelSettings;
 
 export function useProjectModelSettings(projectName?: string, savedMessage = 'Saved for this project') {
+  const activeProjectRef = useRef(projectName);
+  const loadRequestIdRef = useRef(0);
+  const saveRequestIdRef = useRef(0);
   const [data, setData] = useState<ProjectModelSettingsResponse | null>(null);
   const [draft, setDraft] = useState<ProjectModelSettings>({});
   const [loading, setLoading] = useState(false);
@@ -62,21 +65,41 @@ export function useProjectModelSettings(projectName?: string, savedMessage = 'Sa
     [draft, data?.settings],
   );
 
+  activeProjectRef.current = projectName;
+
+  useEffect(() => {
+    setSaving(false);
+  }, [projectName]);
+
   const refresh = useCallback(async () => {
-    if (!projectName) return;
+    const requestProject = projectName;
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    if (!requestProject) {
+      setData(null);
+      setDraft({});
+      setError(null);
+      setMessage(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/model-settings`);
+      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(requestProject)}/model-settings`);
       const result = (await response.json()) as ProjectModelSettingsResponse & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Failed to load project model settings');
+      if (activeProjectRef.current !== requestProject || loadRequestIdRef.current !== requestId) return;
       setData(result);
       setDraft(clone(result.settings));
     } catch (caught) {
+      if (activeProjectRef.current !== requestProject || loadRequestIdRef.current !== requestId) return;
       setError(caught instanceof Error ? caught.message : 'Failed to load project model settings');
     } finally {
-      setLoading(false);
+      if (activeProjectRef.current === requestProject && loadRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [projectName]);
 
@@ -85,24 +108,32 @@ export function useProjectModelSettings(projectName?: string, savedMessage = 'Sa
   }, [refresh]);
 
   const save = useCallback(async () => {
-    if (!projectName) return;
+    const requestProject = projectName;
+    const requestId = saveRequestIdRef.current + 1;
+    saveRequestIdRef.current = requestId;
+    if (!requestProject) return;
+    loadRequestIdRef.current += 1;
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/model-settings`, {
+      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(requestProject)}/model-settings`, {
         method: 'PUT',
         body: JSON.stringify({ settings: draft }),
       });
       const result = (await response.json()) as ProjectModelSettingsResponse & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Failed to save project model settings');
+      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return;
       setData(result);
       setDraft(clone(result.settings));
       setMessage(savedMessage);
     } catch (caught) {
+      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return;
       setError(caught instanceof Error ? caught.message : 'Failed to save project model settings');
     } finally {
-      setSaving(false);
+      if (saveRequestIdRef.current === requestId) {
+        setSaving(false);
+      }
     }
   }, [draft, projectName, savedMessage]);
 
