@@ -5,6 +5,7 @@ import {
   getNextDispatchableQueuedInputForTest,
   insertComposerTokenForTest,
   moveQueuedInputForTest,
+  settleQueuedDispatchForTest,
   shouldCycleRunModeOnKeyDown,
 } from './useChatComposerState';
 
@@ -83,6 +84,11 @@ describe('useChatComposerState queued input ordering', () => {
 });
 
 describe('useChatComposerState queued input eligibility', () => {
+  const makeQueue = (): QueuedChatInput[] => [
+    { id: 'a', content: 'first', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 1 },
+    { id: 'b', content: 'second', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 2 },
+  ];
+
   it('allows text-only queued input', () => {
     expect(canQueueInputForTest('next step', 0)).toBe(true);
   });
@@ -110,5 +116,16 @@ describe('useChatComposerState queued input eligibility', () => {
     ];
 
     expect(getNextDispatchableQueuedInputForTest(queue)?.id).toBe('a');
+  });
+
+  it('keeps a queued input visible when dispatch fails', () => {
+    const queue = makeQueue();
+
+    expect(settleQueuedDispatchForTest(queue, 'a', false)).toEqual(queue);
+  });
+
+  it('removes only the dispatched queued input after successful dispatch', () => {
+    expect(settleQueuedDispatchForTest(makeQueue(), 'a', true).map((item) => item.id)).toEqual(['b']);
+    expect(settleQueuedDispatchForTest(makeQueue(), 'b', true).map((item) => item.id)).toEqual(['a']);
   });
 });

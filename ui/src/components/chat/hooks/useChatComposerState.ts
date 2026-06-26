@@ -157,6 +157,19 @@ export function getNextDispatchableQueuedInputForTest(queue: QueuedChatInput[]):
   return next;
 }
 
+export function settleQueuedDispatchForTest(
+  queue: QueuedChatInput[],
+  dispatchedId: string,
+  dispatched: boolean,
+): QueuedChatInput[] {
+  if (!dispatched) {
+    return queue;
+  }
+  return queue[0]?.id === dispatchedId
+    ? queue.slice(1)
+    : queue.filter((item) => item.id !== dispatchedId);
+}
+
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
   {
@@ -981,11 +994,9 @@ export function useChatComposerState({
         selectedSession?.id ||
         null,
       selectedSession,
-    }).then(() => {
+    }).then((dispatched) => {
       setQueuedInputs((previous) =>
-        previous[0]?.id === nextQueuedInput.id
-          ? previous.slice(1)
-          : previous.filter((item) => item.id !== nextQueuedInput.id),
+        settleQueuedDispatchForTest(previous, nextQueuedInput.id, dispatched),
       );
     }).finally(() => {
       queueDispatchInFlightRef.current = false;
