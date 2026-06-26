@@ -524,9 +524,9 @@ function ChatInterfaceV2({
     const projectName = selectedProject?.displayName || selectedProject?.name || '';
     return (
       <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
-        <div className="flex flex-1 flex-col items-center justify-center px-6">
+        <div className="flex flex-1 flex-col items-center justify-center px-3 py-4 md:px-6 md:py-0">
           <div className="w-full max-w-[720px]">
-            <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
+            <h1 className="mb-5 text-center text-[22px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100 md:mb-8 md:text-[26px]">
               {selectedProject
                 ? t('welcome.greetingWithProject', {
                     project: projectName,

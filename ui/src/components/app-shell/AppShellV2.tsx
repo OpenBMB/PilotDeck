@@ -484,12 +484,15 @@ export default function AppShellV2() {
 	    }
 	  }, [deleteSessionTarget, refreshProjectsSilently, sidebarSharedProps]);
 
-	  const handleSelectProject = useCallback(
+  const handleSelectProject = useCallback(
     (project: Project) => {
       handleProjectSelect(project);
       navigate(`/p/${encodeURIComponent(project.name)}`);
+      if (isMobile) {
+        setSidebarOpen(false);
+      }
     },
-    [handleProjectSelect, navigate],
+    [handleProjectSelect, isMobile, navigate, setSidebarOpen],
   );
 
   const handleSelectSession = useCallback(
@@ -512,8 +515,19 @@ export default function AppShellV2() {
         navigate(`/session/${sessId}`);
       }
       setActiveTab('chat');
+      if (isMobile) {
+        setSidebarOpen(false);
+      }
     },
-    [handleProjectSelect, handleSessionSelect, navigate, selectedProject?.name, setActiveTab],
+    [
+      handleProjectSelect,
+      handleSessionSelect,
+      isMobile,
+      navigate,
+      selectedProject?.name,
+      setActiveTab,
+      setSidebarOpen,
+    ],
   );
 
   const handleSelectTab = useCallback(
@@ -542,16 +556,22 @@ export default function AppShellV2() {
         handleNewSession(project);
         navigate(`/p/${encodeURIComponent(project.name)}`);
         setActiveTab('chat');
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
       } else if (selectedProject) {
         handleNewSession(selectedProject);
         setActiveTab('chat');
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
       } else {
         // No project context yet — land on /, MainContent's empty state
         // will prompt the user to create or pick a project.
         navigate('/');
       }
     },
-    [handleNewSession, navigate, selectedProject, setActiveTab],
+    [handleNewSession, isMobile, navigate, selectedProject, setActiveTab, setSidebarOpen],
   );
 
   // Wrap the two session-lifecycle callbacks coming out of useSessionProtection
@@ -619,7 +639,7 @@ export default function AppShellV2() {
             aria-label="Close sidebar"
           />
           <div
-            className={`relative h-full w-[85vw] max-w-sm transform transition-transform duration-150 ${
+            className={`relative h-full w-[min(92vw,26rem)] transform transition-transform duration-150 ${
               sidebarOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
             onClick={(e) => e.stopPropagation()}

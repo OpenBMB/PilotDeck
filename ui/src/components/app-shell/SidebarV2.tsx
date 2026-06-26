@@ -778,7 +778,7 @@ export default function SidebarV2({
                   onKeyDown={(event) => handleRenameKey(event, 'session')}
                   onClick={(event) => event.stopPropagation()}
                   placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
-                  className="w-full rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5 text-[12.5px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+                  className="h-9 w-full rounded-sm border border-neutral-300 bg-white px-2 text-[14px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
                 />
               </div>
             ) : (
@@ -791,11 +791,11 @@ export default function SidebarV2({
                 }
                 disabled={isOptimisticRow}
                 className={cn(
-                  'flex w-full items-start gap-2 px-2 py-1 text-left',
+                  'flex min-h-11 w-full items-start gap-2 px-2 py-2 text-left md:min-h-0 md:py-1',
                   isOptimisticRow && 'cursor-default',
                 )}
               >
-                <span className="flex h-[18px] w-3 shrink-0 items-center justify-center pt-[3px]">
+                <span className="flex h-6 w-3 shrink-0 items-center justify-center pt-[5px] md:h-[18px] md:pt-[3px]">
                   <SessionStatusIndicator
                     status={indicatorStatus}
                     label={indicatorLabel}
@@ -804,7 +804,7 @@ export default function SidebarV2({
                 <div className="min-w-0 flex-1">
                   <div
                     className={cn(
-                      'flex min-w-0 items-center gap-1 truncate text-[12.5px] text-neutral-900 dark:text-neutral-100',
+                      'flex min-w-0 items-center gap-1 truncate text-[14px] text-neutral-900 dark:text-neutral-100 md:text-[12.5px]',
                       isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
                     )}
                   >
@@ -813,7 +813,7 @@ export default function SidebarV2({
                     ) : null}
                     <span className="truncate">{sessionDisplayTitle(session)}</span>
                   </div>
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  <div className="text-[12px] text-neutral-500 dark:text-neutral-400 md:text-[11px]">
                     {isOptimisticRow
                       ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
                       : isForkChild
@@ -842,7 +842,7 @@ export default function SidebarV2({
           <button
             type="button"
             onClick={(event) => handleNewSession(event, project)}
-            className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+            className="block w-full rounded-md bg-neutral-200/70 px-2 py-2 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100 md:py-1"
           >
             <div className="truncate text-[12.5px]">
               {t('sidebar:sessions.newSession', { defaultValue: 'New Session' })}
@@ -879,7 +879,7 @@ export default function SidebarV2({
             }}
             disabled={isLoadingMore}
             className={cn(
-              'block w-full rounded-md px-2 py-1 text-left text-[11px] transition-colors',
+              'block min-h-10 w-full rounded-md px-2 py-2 text-left text-[12px] transition-colors md:min-h-0 md:py-1 md:text-[11px]',
               isLoadingMore
                 ? 'text-neutral-400 dark:text-neutral-500'
                 : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
@@ -910,7 +910,7 @@ export default function SidebarV2({
                 return next;
               });
             }}
-            className="block w-full rounded-md px-2 py-1 text-left text-[11px] transition-colors text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            className="block min-h-10 w-full rounded-md px-2 py-2 text-left text-[12px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 md:min-h-0 md:py-1 md:text-[11px]"
           >
             {t('sidebar:sessions.showLess', { defaultValue: 'Show less' })}
           </button>
@@ -933,7 +933,7 @@ export default function SidebarV2({
         <div
           onContextMenu={(event) => openProjectContextMenu(event, project, isGeneral)}
           className={cn(
-            'group/project flex h-8 w-full items-center rounded-lg pr-1 text-[13px] transition-colors',
+            'group/project flex h-11 w-full items-center rounded-lg pr-1 text-[14px] transition-colors md:h-8 md:text-[13px]',
             isSelected
               ? 'bg-neutral-200/70 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
               : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
@@ -950,7 +950,7 @@ export default function SidebarV2({
                 onKeyDown={(event) => handleRenameKey(event, 'project')}
                 onClick={(event) => event.stopPropagation()}
                 placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
-                className="w-full rounded-sm border border-neutral-300 bg-white px-1.5 py-0.5 text-[12.5px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+                className="h-9 w-full rounded-sm border border-neutral-300 bg-white px-2 text-[14px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
               />
             </div>
           ) : (
@@ -995,12 +995,12 @@ export default function SidebarV2({
                 aria-label={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
                 title={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
                 className={cn(
-                  'inline-flex h-6 w-6 items-center justify-center rounded-md',
+                  'inline-flex h-10 w-10 items-center justify-center rounded-md md:h-6 md:w-6',
                   'text-neutral-500 hover:bg-neutral-200/70 hover:text-neutral-900',
                   'dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100',
                 )}
               >
-                <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <MessageSquarePlus className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
               </button>
             </div>
           ) : null}
@@ -1024,7 +1024,7 @@ export default function SidebarV2({
         'border-r border-neutral-200 dark:border-neutral-800',
       )}
     >
-      <div className="flex h-16 items-center justify-between pl-2 pr-4">
+      <div className="flex h-14 items-center justify-between pl-2 pr-3 md:h-16 md:pr-4">
         <div className="flex min-w-0 shrink items-center gap-2">
           <button
             type="button"
@@ -1065,7 +1065,7 @@ export default function SidebarV2({
             onClick={onCollapse}
             aria-label={t('sidebar:tooltips.hideSidebar', { defaultValue: 'Hide sidebar' }) as string}
             title={t('sidebar:tooltips.hideSidebar', { defaultValue: 'Hide sidebar' }) as string}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-8 md:w-8"
           >
             <PanelLeftClose className="h-4 w-4" strokeWidth={1.75} />
           </button>
@@ -1087,8 +1087,8 @@ export default function SidebarV2({
             aria-selected={activeSection === 'projects'}
             onClick={handleProjectsSectionClick}
             className={cn(
-              'flex-1 rounded text-[12px] font-medium transition-colors',
-              'h-7 leading-none',
+              'flex-1 rounded text-[13px] font-medium transition-colors md:text-[12px]',
+              'h-10 leading-none md:h-7',
               activeSection === 'projects'
                 ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
                 : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
@@ -1102,8 +1102,8 @@ export default function SidebarV2({
             aria-selected={activeSection === 'general'}
             onClick={handleGeneralSectionClick}
             className={cn(
-              'flex-1 rounded text-[12px] font-medium transition-colors',
-              'h-7 leading-none',
+              'flex-1 rounded text-[13px] font-medium transition-colors md:text-[12px]',
+              'h-10 leading-none md:h-7',
               activeSection === 'general'
                 ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
                 : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
@@ -1139,12 +1139,12 @@ export default function SidebarV2({
                     ? t('sidebar:projects.collapseAll', { defaultValue: 'Collapse all projects' }) as string
                     : t('sidebar:projects.expandAll', { defaultValue: 'Expand all projects' }) as string
                 }
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-6 md:w-6"
               >
                 {allProjectGroupsExpanded ? (
-                  <ChevronsDownUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <ChevronsDownUp className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
                 ) : (
-                  <ChevronsUpDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <ChevronsUpDown className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
                 )}
               </button>
               <button
@@ -1152,9 +1152,9 @@ export default function SidebarV2({
                 onClick={onCreateProject}
                 aria-label={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
                 title={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-6 md:w-6"
               >
-                <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
               </button>
             </div>
 
@@ -1181,9 +1181,9 @@ export default function SidebarV2({
                     onClick={(event) => handleNewSession(event, generalProject)}
                     aria-label={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
                     title={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-6 md:w-6"
                   >
-                    <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    <MessageSquarePlus className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
                   </button>
                 </div>
                 <div className="px-1">
@@ -1201,13 +1201,13 @@ export default function SidebarV2({
         )}
       </div>
 
-      <div className="border-t border-neutral-200 px-2 py-2 dark:border-neutral-800">
+      <div className="border-t border-neutral-200 px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] dark:border-neutral-800">
         <button
           type="button"
           onClick={onShowSettings}
           aria-label={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
           title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
-          className="flex h-9 w-full items-center justify-start gap-2 rounded-lg px-6 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          className="flex h-11 w-full items-center justify-start gap-2 rounded-lg px-6 text-[14px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-9 md:text-[13px]"
         >
           <SettingsIcon className="h-4 w-4" strokeWidth={1.75} />
           <span>{t('sidebar:actions.settings', { defaultValue: 'Settings' })}</span>

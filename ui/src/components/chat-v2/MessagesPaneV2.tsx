@@ -893,7 +893,7 @@ export default function MessagesPaneV2({
       className="relative flex-1 overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
     >
       {hasSessionLoadError ? (
-        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-3 py-8 text-center md:px-6 md:py-10">
           <XCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" strokeWidth={1.75} />
           <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
             {t('session.loadFailedTitle', { defaultValue: 'Could not load this conversation' })}
@@ -912,14 +912,14 @@ export default function MessagesPaneV2({
           ) : null}
         </div>
       ) : isLoadingSessionMessages && chatMessages.length === 0 ? (
-        <div className="mx-auto flex h-full max-w-[720px] items-center justify-center px-6 py-10 text-[13px] text-neutral-500 dark:text-neutral-400">
+        <div className="mx-auto flex h-full max-w-[720px] items-center justify-center px-3 py-8 text-[13px] text-neutral-500 dark:text-neutral-400 md:px-6 md:py-10">
           <div className="flex items-center gap-2">
             <div className="h-3.5 w-3.5 animate-spin rounded-full border-b-2 border-neutral-400" />
             <span>{t('loading', { defaultValue: 'Loading...' })}</span>
           </div>
         </div>
       ) : isNewConversationEmpty ? (
-        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-4 px-3 py-8 text-center md:px-6 md:py-10">
           <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
             {selectedProject
               ? t('emptyChat.title', { defaultValue: 'Start a new conversation' })
@@ -957,7 +957,7 @@ export default function MessagesPaneV2({
           </div>
         </div>
       ) : isExistingConversationEmpty ? (
-        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+        <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-2 px-3 py-8 text-center md:px-6 md:py-10">
           <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
             {sessionIsReadOnly
               ? t('emptyChat.readonlyTranscriptTitle', {
@@ -981,7 +981,7 @@ export default function MessagesPaneV2({
         </div>
       ) : (
         <div
-          className="mx-auto max-w-[860px] px-6 py-10"
+          className="mx-auto max-w-[860px] px-3 py-6 md:px-6 md:py-10"
           data-virtualized-messages={shouldVirtualizeMessages ? 'true' : undefined}
           data-rendered-message-count={windowedMessageItems.length}
           data-total-message-count={keyedMessageItems.length}
