@@ -100,6 +100,7 @@ import { configureWebPush } from './services/vapid-keys.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
+import { hostGuardMiddleware, resolveAllowedHostsFromEnv } from './middleware/hostGuard.js';
 import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
@@ -380,6 +381,16 @@ const wss = new WebSocketServer({
 app.locals.wss = wss;
 
 app.use(cors({ exposedHeaders: ['X-Refreshed-Token'] }));
+
+// Host-header allowlist guard — blocks DNS-rebinding attacks.
+// Loopback names always pass; operators that intentionally widen the bind via
+// HOST=0.0.0.0 must extend the allowlist with PILOTDECK_ALLOWED_HOSTS so the
+// public hostname is explicitly enumerated. See middleware/hostGuard.js.
+app.use(hostGuardMiddleware({
+    bindHost: process.env.HOST || '127.0.0.1',
+    allowedHosts: resolveAllowedHostsFromEnv(process.env),
+}));
+
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -2838,7 +2849,14 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
 }
 
 const SERVER_PORT = process.env.SERVER_PORT || 3001;
-const HOST = process.env.HOST || '0.0.0.0';
+// Bind to loopback by default so the documented localhost workflow (see
+// README "Quick Start") and the OSS default auth-off mode (controlled by
+// PILOTDECK_DISABLE_LOCAL_AUTH, defaults to true — see constants/config.js
+// and middleware/auth.js) are not exposed to the LAN. The Dockerfile
+// overrides HOST=0.0.0.0 explicitly so container deployments are unchanged.
+// Operators who need network exposure should set HOST=0.0.0.0 explicitly
+// AND configure PILOTDECK_ALLOWED_HOSTS / re-enable auth as appropriate.
+const HOST = process.env.HOST || '127.0.0.1';
 const DISPLAY_HOST = getConnectableHost(HOST);
 const VITE_PORT = process.env.VITE_PORT || 5173;
 
