@@ -25,7 +25,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     const projectRoot = process.cwd();
     const env = process.env;
     const pilotHome = resolvePilotHome(env);
-    const snapshot = loadPilotConfig({ projectRoot, env });
+    const snapshot = loadPilotConfig({ env });
     const telemetry = createTelemetryCollector({
       env, pilotHome,
       enabled: snapshot.config.telemetry?.enabled,
@@ -689,6 +689,27 @@ function createFallbackGateway(): Gateway {
       name: input.projectKey,
       fullPath: input.projectKey,
       sessionCount: 0,
+    }),
+    readProjectModelSettings: async (input) => ({
+      projectKey: input.projectKey,
+      configPath: "",
+      exists: false,
+      inherited: {},
+      settings: {},
+      effective: {},
+      modelOptions: [],
+      diagnostics: [],
+    }),
+    saveProjectModelSettings: async (input) => ({
+      projectKey: input.projectKey,
+      configPath: "",
+      exists: false,
+      inherited: {},
+      settings: input.settings,
+      effective: input.settings,
+      modelOptions: [],
+      diagnostics: [],
+      saved: false,
     }),
   };
 }

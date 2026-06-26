@@ -39,6 +39,8 @@ export type WsGatewayMethod =
   | "fork_session"
   | "list_projects"
   | "describe_project"
+  | "read_project_model_settings"
+  | "save_project_model_settings"
   | "reload_config"
   | "reload_extensions"
   | "skill_list"

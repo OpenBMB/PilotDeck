@@ -114,6 +114,8 @@ export type WebGatewayMethod =
   | "delete_session"
   | "list_projects"
   | "describe_project"
+  | "read_project_model_settings"
+  | "save_project_model_settings"
   | "reload_config"
   | "skill_list"
   | "skill_read"
@@ -300,4 +302,42 @@ export type WebProjectSummary = {
 
 export type WebListProjectsResult = {
   projects: WebProjectSummary[];
+};
+
+export type WebProjectModelSettings = {
+  mainModel?: string;
+  thinking?: {
+    enabled?: boolean;
+    budgetTokens?: number;
+  };
+  tokenSaver?: {
+    enabled?: boolean;
+    judge?: string;
+    defaultTier?: string;
+    tiers?: Record<string, { model?: string; description?: string }>;
+    subagentPolicy?: "skip" | "judge";
+  };
+  autoOrchestrate?: {
+    enabled?: boolean;
+    mainAgentModel?: string;
+    subagentModel?: string;
+    triggerTiers?: string[];
+  };
+  fallback?: {
+    default?: string[];
+    subagent?: string[];
+    explicit?: string[];
+  };
+};
+
+export type WebProjectModelSettingsResult = {
+  projectKey: string;
+  configPath: string;
+  exists: boolean;
+  inherited: WebProjectModelSettings;
+  settings: WebProjectModelSettings;
+  effective: WebProjectModelSettings;
+  modelOptions: Array<{ id: string; provider: string; model: string; label: string }>;
+  diagnostics: Array<{ severity: "warning" | "error"; message: string; path?: string }>;
+  saved?: boolean;
 };

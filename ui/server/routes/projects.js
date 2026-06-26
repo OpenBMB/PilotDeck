@@ -310,6 +310,44 @@ router.post('/:projectName/work-cycles/:cycleId/archive', async (req, res) => {
   }
 });
 
+router.get('/:projectName/model-settings', async (req, res) => {
+  try {
+    const projectName = getTrimmedParam(req.params?.projectName);
+    if (!projectName) return res.status(400).json({ error: 'projectName is required' });
+
+    const projectKey = await extractProjectDirectory(projectName);
+    const gateway = await import('../pilotdeck-bridge.js').then((mod) => mod.getPilotDeckGateway());
+    const result = await gateway.readProjectModelSettings({ projectKey });
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+router.put('/:projectName/model-settings', async (req, res) => {
+  try {
+    const projectName = getTrimmedParam(req.params?.projectName);
+    if (!projectName) return res.status(400).json({ error: 'projectName is required' });
+    const settings = req.body?.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return res.status(400).json({ error: 'settings object is required' });
+    }
+
+    const projectKey = await extractProjectDirectory(projectName);
+    const gateway = await import('../pilotdeck-bridge.js').then((mod) => mod.getPilotDeckGateway());
+    const result = await gateway.saveProjectModelSettings({ projectKey, settings });
+    if (result?.saved === false || result?.diagnostics?.some((diagnostic) => diagnostic.severity === 'error')) {
+      return res.status(400).json({
+        error: 'Project model settings are invalid',
+        ...result,
+      });
+    }
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 /**
  * Create a new workspace
  * POST /api/projects/create-workspace

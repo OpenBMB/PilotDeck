@@ -59,6 +59,10 @@ import { createModelRuntime, type ModelRuntime } from "../model/index.js";
 import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
 import { loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
 import { createPilotConfigStoreSync, type PilotConfigStore } from "../pilot/config/PilotConfigStore.js";
+import {
+  readProjectModelSettings,
+  saveProjectModelSettings,
+} from "../pilot/config/projectModelSettings.js";
 import type { PilotAgentModelSelection, PilotConfigSnapshot } from "../pilot/config/types.js";
 import { DEFAULT_JUDGE_TIMEOUT_MS, DEFAULT_ALLOWED_TOOLS, DEFAULT_TRIGGER_TIERS, type RouterConfig } from "../router/config/schema.js";
 import { createAgentProjectSessionStorage, listProjectSessions, resumeAgentSession } from "../session/index.js";
@@ -187,7 +191,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     defaultRuntime.snapshot.config.gateway?.memoryDiagnostics,
   );
 
-  const configStore = createPilotConfigStoreSync({ projectRoot, env });
+  const configStore = createPilotConfigStoreSync({ env });
   const stopConfigWatching = configStore.startWatching();
   const stopExtensionWatching = extensionWatchManager.start();
 
@@ -280,6 +284,21 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       listWebProjects({ pilotHome, defaultProjectRoot: options.skipDefaultProject ? undefined : projectRoot }),
     describeProject: (input) =>
       describeWebProject(input.projectKey, { pilotHome, defaultProjectRoot: options.skipDefaultProject ? undefined : projectRoot }),
+    readProjectModelSettings: (input) =>
+      readProjectModelSettings(input, { env }),
+    async saveProjectModelSettings(input) {
+      const result = await saveProjectModelSettings(input, { env });
+      if (result.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+        return result;
+      }
+      registry.invalidate(input.projectKey);
+      router?.markProjectDirty(input.projectKey, "project_model_settings_changed");
+      boundServer?.broadcastNotification("config_changed", {
+        changedPaths: [result.configPath],
+        changeClasses: ["next-runtime"],
+      });
+      return result;
+    },
     async reloadConfig() {
       let changedPaths: string[] = [];
       const unsubscribe = configStore.subscribe((event) => {
@@ -320,8 +339,17 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     // Singleton-deduped inside PilotConfigStore.reload — concurrent
     // turns share a single in-flight read, and unchanged config is a
     // no-op (no invalidation, no session recreation).
-    async refreshConfigBeforeTurn() {
+    async refreshConfigBeforeTurn(input) {
       await configStore.reload("turn-start");
+      const activeProject = input.projectKey ?? projectRoot;
+      const changed = registry.refreshProjectRuntime(activeProject);
+      if (changed) {
+        router?.markProjectDirty(activeProject, "project_config_changed");
+        boundServer?.broadcastNotification("config_changed", {
+          changedPaths: [`${activeProject}/.pilotdeck/pilotdeck.yaml`],
+          changeClasses: ["next-runtime"],
+        });
+      }
     },
     afterTurnCompleted: ({ sessionKey, projectKey, runId }) => {
       if (memoryDiagnosticsEnabled) {
@@ -669,6 +697,20 @@ class ProjectRuntimeRegistry {
     };
     this.runtimes.set(projectRoot, runtime);
     return runtime;
+  }
+
+  refreshProjectRuntime(projectKey?: string): boolean {
+    const projectRoot = resolve(projectKey ?? this.options.defaultProjectRoot);
+    const cached = this.runtimes.get(projectRoot);
+    if (!cached) {
+      return false;
+    }
+    const nextSnapshot = loadPilotConfig({ projectRoot, env: this.options.env });
+    if (nextSnapshot.contentHash === cached.snapshot.contentHash) {
+      return false;
+    }
+    this.invalidate(projectRoot);
+    return true;
   }
 
   scheduleMemoryMaintenance(projectKey?: string): void {

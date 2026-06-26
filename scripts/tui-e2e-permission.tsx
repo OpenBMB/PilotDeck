@@ -101,6 +101,27 @@ class MockGateway implements Gateway {
   forkSession = stub({ newSessionKey: "web:s_fork", prefillText: "", carriedMessageCount: 0 }) as unknown as Gateway["forkSession"];
   listProjects = stub({ projects: [] }) as Gateway["listProjects"];
   describeProject = stub({ projectKey: "", name: "", root: "", fullPath: "", sessionCount: 0 }) as unknown as Gateway["describeProject"];
+  readProjectModelSettings = stub({
+    projectKey: "",
+    configPath: "",
+    exists: false,
+    inherited: {},
+    settings: {},
+    effective: {},
+    modelOptions: [],
+    diagnostics: [],
+  }) as Gateway["readProjectModelSettings"];
+  saveProjectModelSettings = stub({
+    projectKey: "",
+    configPath: "",
+    exists: false,
+    inherited: {},
+    settings: {},
+    effective: {},
+    modelOptions: [],
+    diagnostics: [],
+    saved: true,
+  }) as Gateway["saveProjectModelSettings"];
 }
 
 // ──────────────── helpers ────────────────

@@ -12,6 +12,12 @@ import type {
   CronStopResult,
 } from "../../cron/protocol/types.js";
 import type { CanonicalUsage } from "../../model/index.js";
+import type {
+  ProjectModelSettingsInput,
+  ProjectModelSettingsResult,
+  SaveProjectModelSettingsInput,
+  SaveProjectModelSettingsResult,
+} from "../../pilot/config/projectModelSettings.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 import type { SessionInfo as ProjectSessionInfo } from "../../session/index.js";
 import type {
@@ -235,6 +241,10 @@ export type WebForkSessionResult = WebUiForkSessionResult;
 export type WebProjectSummary = WebUiProjectSummary;
 export type WebListProjectsResult = WebUiListProjectsResult;
 export type WebDescribeProjectInput = { projectKey: string };
+export type WebReadProjectModelSettingsInput = ProjectModelSettingsInput;
+export type WebSaveProjectModelSettingsInput = SaveProjectModelSettingsInput;
+export type WebProjectModelSettingsResult = ProjectModelSettingsResult;
+export type WebSaveProjectModelSettingsResult = SaveProjectModelSettingsResult;
 
 export type GatewayError = {
   code: string;
@@ -370,6 +380,12 @@ export interface Gateway {
    * Web Phase 3 — load a single project summary.
    */
   describeProject(input: WebDescribeProjectInput): Promise<WebProjectSummary>;
+  /**
+   * Read/write the repo-local `.pilotdeck/pilotdeck.yaml` model overlay for a project.
+   * The file stores only model-combination choices; provider credentials stay global.
+   */
+  readProjectModelSettings(input: WebReadProjectModelSettingsInput): Promise<WebProjectModelSettingsResult>;
+  saveProjectModelSettings(input: WebSaveProjectModelSettingsInput): Promise<WebSaveProjectModelSettingsResult>;
   /**
    * Trigger a config reload from `~/.pilotdeck/pilotdeck.yaml` and
    * invalidate cached runtimes. Returns the list of changed config paths
