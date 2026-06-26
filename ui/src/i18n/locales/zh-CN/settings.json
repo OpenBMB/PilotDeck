@@ -123,6 +123,9 @@
       "light": "浅色",
       "dark": "深色"
     },
+    "appearance": {
+      "detail": "品牌配置、预设套装、Logo、网页图标、字体、配色和布局密度"
+    },
     "chatInput": {
       "title": "聊天与输入",
       "detail": "工具显示、滚动行为和发送快捷键"
@@ -201,6 +204,40 @@
     "darkMode": {
       "label": "深色模式",
       "description": "切换浅色和深色主题"
+    },
+    "brand": {
+      "title": "品牌配置",
+      "activeProfile": "当前配置",
+      "preset": "预设套装",
+      "applyPreset": "应用预设",
+      "readonlyPreset": "内置预设不可直接编辑。应用预设会创建一份可编辑副本。",
+      "identity": "品牌标识",
+      "profileName": "配置名称",
+      "profileNameDescription": "保存在本机，可同时保留多组外观配置。",
+      "brandName": "品牌名称",
+      "tagline": "主要文字",
+      "logoLight": "浅色 Logo",
+      "logoDark": "深色 Logo",
+      "favicon": "网页小图标",
+      "assetDescription": "可使用应用路径、远程 URL 或 data URL。图片无效时会回退到 PilotDeck 默认资源。",
+      "uploadAsset": "上传",
+      "assetTooLarge": "请选择小于 1 MB 的图片。",
+      "assetReadError": "无法读取这张图片。",
+      "system": "系统外观",
+      "font": "字体组合",
+      "density": "布局密度",
+      "comfortable": "舒适",
+      "compact": "紧凑",
+      "layout": "控件布局",
+      "layoutBalanced": "均衡",
+      "layoutCompactTools": "工具紧凑",
+      "layoutSpacious": "宽松",
+      "radius": "控件圆角",
+      "colors": "配色套装",
+      "manage": "配置管理",
+      "duplicate": "复制",
+      "reset": "重置配置",
+      "delete": "删除配置"
     },
     "projectSorting": {
       "label": "项目排序",

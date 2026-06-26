@@ -55,10 +55,6 @@ export const ThemeProvider = ({ children }) => {
         statusBarMeta.setAttribute('content', 'black-translucent');
       }
       
-      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-      if (themeColorMeta) {
-        themeColorMeta.setAttribute('content', '#0c1117'); // Dark background color (hsl(222.2 84% 4.9%))
-      }
     } else {
       document.documentElement.classList.remove('dark');
       
@@ -68,10 +64,6 @@ export const ThemeProvider = ({ children }) => {
         statusBarMeta.setAttribute('content', 'default');
       }
       
-      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-      if (themeColorMeta) {
-        themeColorMeta.setAttribute('content', '#ffffff'); // Light background color
-      }
     }
 
     localStorage.setItem(THEME_MODE_KEY, themeMode);

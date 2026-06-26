@@ -22,7 +22,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { Button } from '../../../shared/view/ui';
-import { useTheme } from '../../../contexts/ThemeContext';
 import { languages } from '../../../i18n/languages';
 import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { usePilotDeckConfig } from '../../../hooks/usePilotDeckConfig';
@@ -43,11 +42,12 @@ import PilotDeckConfigTab from './tabs/PilotDeckConfigTab';
 import McpServersTab from './tabs/McpServersTab';
 import PermissionsSettingsTab from './tabs/PermissionsSettingsTab';
 import GatewaySettingsTab from './tabs/GatewaySettingsTab';
+import AppearanceSettingsTab from './tabs/AppearanceSettingsTab';
 
-type SettingsPage = 'main' | 'config' | 'projectModels' | 'mcp' | 'permissions' | 'chatInput' | 'codeEditor' | 'gateway';
-type ThemeMode = 'system' | 'light' | 'dark';
+type SettingsPage = 'main' | 'appearance' | 'config' | 'projectModels' | 'mcp' | 'permissions' | 'chatInput' | 'codeEditor' | 'gateway';
 
 const pageFromInitialTab = (tab: string): SettingsPage => {
+  if (tab === 'appearance') return 'appearance';
   if (tab === 'config') return 'config';
   if (tab === 'projectModels') return 'projectModels';
   if (tab === 'mcp') return 'mcp';
@@ -78,6 +78,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
 
   const title = {
     main: t('title'),
+    appearance: t('mainTabs.appearance'),
     config: t('mainTabs.config'),
     projectModels: t('projectModels.title', { defaultValue: 'Project Models' }),
     mcp: t('mcpConfig.title'),
@@ -87,7 +88,9 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
     gateway: t('gateway.title'),
   }[page];
 
-  const maxWidth = page === 'config' || page === 'projectModels' ? 'max-w-[820px]' : 'max-w-[760px]';
+  const maxWidth = page === 'config' || page === 'appearance' || page === 'projectModels'
+    ? 'max-w-[820px]'
+    : 'max-w-[760px]';
 
   return (
     <div className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm md:p-4">
@@ -133,6 +136,17 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
 
             {page === 'config' && <PilotDeckConfigTab projects={projects} />}
             {page === 'projectModels' && <ProjectModelsSettingsPage projects={projects} />}
+            {page === 'appearance' && (
+              <AppearanceSettingsTab
+                projectSortOrder={projectSortOrder}
+                onProjectSortOrderChange={setProjectSortOrder}
+                codeEditorSettings={codeEditorSettings}
+                onCodeEditorWordWrapChange={(value) => updateCodeEditorSetting('wordWrap', value)}
+                onCodeEditorShowMinimapChange={(value) => updateCodeEditorSetting('showMinimap', value)}
+                onCodeEditorLineNumbersChange={(value) => updateCodeEditorSetting('lineNumbers', value)}
+                onCodeEditorFontSizeChange={(value) => updateCodeEditorSetting('fontSize', value)}
+              />
+            )}
             {page === 'mcp' && <McpServersTab projects={projects} />}
             {page === 'permissions' && <PermissionsSettingsTab />}
             {page === 'gateway' && <GatewaySettingsTab />}
@@ -162,10 +176,6 @@ type SettingsHomeProps = {
 
 function SettingsHome({ projects = [], projectSortOrder, onProjectSortOrderChange, onOpenPage }: SettingsHomeProps) {
   const { t, i18n } = useTranslation('settings');
-  const { themeMode = 'system', setThemeMode } = useTheme() as {
-    themeMode?: ThemeMode;
-    setThemeMode?: (mode: ThemeMode) => void;
-  };
   const { raw, setRaw, save, loading } = usePilotDeckConfig();
 
   const telemetryEnabled = useMemo(() => {
@@ -228,22 +238,12 @@ function SettingsHome({ projects = [], projectSortOrder, onProjectSortOrderChang
 
       <SettingsGroup title={t('settingsHome.application')}>
         <GroupedCard divided>
-          <MenuRow
+          <NavigationRow
             icon={Palette}
-            title={t('settingsHome.appearanceMode.title')}
-            detail={t('settingsHome.appearanceMode.detail')}
-          >
-            <SelectControl
-              value={themeMode}
-              onChange={(value) => setThemeMode?.(value as ThemeMode)}
-              options={[
-                { value: 'system', label: t('settingsHome.appearanceMode.system') },
-                { value: 'light', label: t('settingsHome.appearanceMode.light') },
-                { value: 'dark', label: t('settingsHome.appearanceMode.dark') },
-              ]}
-              className="w-40"
-            />
-          </MenuRow>
+            title={t('mainTabs.appearance')}
+            detail={t('settingsHome.appearance.detail')}
+            onClick={() => onOpenPage('appearance')}
+          />
           <MenuRow
             icon={Globe2}
             title={t('account.languageLabel')}
