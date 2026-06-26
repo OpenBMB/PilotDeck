@@ -451,7 +451,14 @@ export function useSlashCommands({
       if (!displayedCommands.length) {
         if (event.key === 'Escape') {
           event.preventDefault();
-          resetCommandMenuState();
+          dismissCommandMenu();
+          return true;
+        }
+        if (event.key === 'Tab' || event.key === 'Enter') {
+          if (isImeEnterEvent(event)) {
+            return false;
+          }
+          event.preventDefault();
           return true;
         }
         return false;
