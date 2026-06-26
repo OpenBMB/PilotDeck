@@ -95,8 +95,8 @@ export function removeActiveSlashQueryForTest(input: string, slashPosition: numb
 
   const before = input.slice(0, slashPosition);
   const after = input.slice(slashPosition);
-  const spaceIndex = after.indexOf(' ');
-  const tail = spaceIndex !== -1 ? after.slice(spaceIndex) : '';
+  const whitespaceIndex = after.search(/\s/);
+  const tail = whitespaceIndex !== -1 ? after.slice(whitespaceIndex) : '';
 
   if (!tail) {
     return before.replace(/\s+$/, '');
@@ -106,8 +106,8 @@ export function removeActiveSlashQueryForTest(input: string, slashPosition: numb
     return tail.trimStart();
   }
 
-  if (/\s$/.test(before) && /^\s/.test(tail)) {
-    return `${before}${tail.trimStart()}`;
+  if (/[ \t]$/.test(before) && /^[ \t]/.test(tail)) {
+    return `${before}${tail.replace(/^[ \t]+/, '')}`;
   }
 
   return `${before}${tail}`;
