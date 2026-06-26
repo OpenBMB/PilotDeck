@@ -22,6 +22,27 @@ type PendingViewSession = {
   startedAt: number;
 };
 
+type GlobalEscapeEvent = Pick<KeyboardEvent, 'key' | 'repeat' | 'defaultPrevented' | 'target'>;
+
+export function shouldAbortSessionOnGlobalEscapeForTest(
+  event: GlobalEscapeEvent,
+  hasModalOverlay: boolean,
+): boolean {
+  if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) {
+    return false;
+  }
+  if (hasModalOverlay) {
+    return false;
+  }
+  if (
+    event.target instanceof Element &&
+    event.target.closest('[data-composer-popover-scope="true"]')
+  ) {
+    return false;
+  }
+  return true;
+}
+
 // V2 chat wrapper. Reuses all business-logic hooks from legacy
 // `ChatInterface` so streaming, file-mentions, slash commands, permissions,
 // ccr_output, task notifications, subagent containers, etc. all keep working
@@ -408,11 +429,11 @@ function ChatInterfaceV2({
   useEffect(() => {
     if (!isLoading || !canAbortSession) return;
     const handleGlobalEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) return;
-      if (document.querySelector('[data-modal-overlay]')) return;
       if (
-        event.target instanceof Element &&
-        event.target.closest('[data-composer-popover-scope="true"]')
+        !shouldAbortSessionOnGlobalEscapeForTest(
+          event,
+          Boolean(document.querySelector('[data-modal-overlay]')),
+        )
       ) {
         return;
       }
