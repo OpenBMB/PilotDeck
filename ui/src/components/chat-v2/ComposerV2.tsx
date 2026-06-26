@@ -401,8 +401,9 @@ export default function ComposerV2({
     : firstQueuedInputBlocked
       ? (t('queue.paused', { defaultValue: 'Fix first item to continue' }) as string)
       : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
-  const fileSuggestionsOpen = showFileDropdown && filteredFiles.length > 0;
-  const selectedFileOptionId = fileSuggestionsOpen && selectedFileIndex >= 0
+  const fileSuggestionsOpen = showFileDropdown;
+  const fileSuggestionsHaveOptions = filteredFiles.length > 0;
+  const selectedFileOptionId = fileSuggestionsOpen && fileSuggestionsHaveOptions && selectedFileIndex >= 0
     ? `${fileSuggestionsId}-option-${selectedFileIndex}`
     : undefined;
   const commandMenuOpen = isCommandMenuOpen;
@@ -416,14 +417,14 @@ export default function ComposerV2({
       : undefined;
   const activeAutocompleteOptionId = selectedFileOptionId ?? selectedCommandOptionId;
   useEffect(() => {
-    if (!fileSuggestionsOpen || selectedFileIndex < 0) {
+    if (!fileSuggestionsOpen || !fileSuggestionsHaveOptions || selectedFileIndex < 0) {
       return;
     }
     const selectedSuggestion = selectedFileSuggestionRef.current;
     if (typeof selectedSuggestion?.scrollIntoView === 'function') {
       selectedSuggestion.scrollIntoView({ block: 'nearest' });
     }
-  }, [fileSuggestionsOpen, selectedFileIndex]);
+  }, [fileSuggestionsHaveOptions, fileSuggestionsOpen, selectedFileIndex]);
 
   const closeComposerPopovers = () => {
     setIsRunModeMenuOpen(false);
@@ -643,38 +644,45 @@ export default function ComposerV2({
                 aria-label={t('input.fileSuggestions', {
                   defaultValue: 'File suggestions',
                 }) as string}
-                className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+                className={cn(
+                  'absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900',
+                  !fileSuggestionsHaveOptions && 'px-3 py-4 text-center text-[13px] text-neutral-500 dark:text-neutral-400',
+                )}
               >
-                {filteredFiles.map((file, index) => (
-                  <div
-                    key={file.path}
-                    id={`${fileSuggestionsId}-option-${index}`}
-                    ref={index === selectedFileIndex ? selectedFileSuggestionRef : null}
-                    role="option"
-                    aria-selected={index === selectedFileIndex}
-                    className={cn(
-                      'cursor-pointer border-b border-neutral-100 px-3 py-2 text-[13px] last:border-b-0 dark:border-neutral-800',
-                      index === selectedFileIndex
-                        ? 'bg-neutral-100 dark:bg-neutral-800'
-                        : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
-                    )}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onMouseEnter={() => onHighlightFile(index)}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onSelectFile(file);
-                    }}
-                  >
-                    <div className="font-medium">{file.name}</div>
-                    <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
-                      {file.path}
+                {fileSuggestionsHaveOptions ? (
+                  filteredFiles.map((file, index) => (
+                    <div
+                      key={file.path}
+                      id={`${fileSuggestionsId}-option-${index}`}
+                      ref={index === selectedFileIndex ? selectedFileSuggestionRef : null}
+                      role="option"
+                      aria-selected={index === selectedFileIndex}
+                      className={cn(
+                        'cursor-pointer border-b border-neutral-100 px-3 py-2 text-[13px] last:border-b-0 dark:border-neutral-800',
+                        index === selectedFileIndex
+                          ? 'bg-neutral-100 dark:bg-neutral-800'
+                          : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
+                      )}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      onMouseEnter={() => onHighlightFile(index)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSelectFile(file);
+                      }}
+                    >
+                      <div className="font-medium">{file.name}</div>
+                      <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
+                        {file.path}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  t('input.noFileSuggestions', { defaultValue: 'No matching files' })
+                )}
               </div>
             ) : null}
 

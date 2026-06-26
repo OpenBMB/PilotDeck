@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { KeyboardEvent } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../../utils/api';
 import type { Project } from '../../../types/app';
@@ -13,6 +14,12 @@ vi.mock('../../../utils/api', () => ({
 }));
 
 const getFilesMock = vi.mocked(api.getFiles);
+
+const makeTextareaKeyEvent = (key: string) => ({
+  key,
+  preventDefault: vi.fn(),
+  nativeEvent: {},
+}) as unknown as KeyboardEvent<HTMLTextAreaElement> & { preventDefault: ReturnType<typeof vi.fn> };
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -99,5 +106,98 @@ describe('useFileMentions selection behavior', () => {
     });
 
     expect(result.current.selectedFileIndex).toBe(1);
+  });
+
+  it('does not let Enter or Tab submit when the open file menu has no matches', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: '@missing',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(8);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles).toHaveLength(0);
+    });
+
+    const enterEvent = makeTextareaKeyEvent('Enter');
+    const tabEvent = makeTextareaKeyEvent('Tab');
+
+    let enterHandled = false;
+    let tabHandled = false;
+    act(() => {
+      enterHandled = result.current.handleFileMentionsKeyDown(enterEvent);
+      tabHandled = result.current.handleFileMentionsKeyDown(tabEvent);
+    });
+
+    expect(enterHandled).toBe(true);
+    expect(tabHandled).toBe(true);
+    expect(enterEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(tabEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(setInput).not.toHaveBeenCalled();
+  });
+
+  it('closes an empty file mention menu with Escape', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: '@missing',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(8);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles).toHaveLength(0);
+    });
+
+    const escapeEvent = makeTextareaKeyEvent('Escape');
+
+    let handled = false;
+    act(() => {
+      handled = result.current.handleFileMentionsKeyDown(escapeEvent);
+    });
+
+    expect(handled).toBe(true);
+    expect(escapeEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(result.current.showFileDropdown).toBe(false);
   });
 });
