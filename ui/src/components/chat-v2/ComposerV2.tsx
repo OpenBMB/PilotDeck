@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -310,6 +310,7 @@ export default function ComposerV2({
   const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isRunModeMenuOpen, setIsRunModeMenuOpen] = useState(false);
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
+  const suppressSlashToolbarClickRef = useRef(false);
   const queueAttachmentBlockId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
@@ -728,8 +729,22 @@ export default function ComposerV2({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onMouseDown={(event) => {
                       if (isCommandMenuOpen) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        suppressSlashToolbarClickRef.current = true;
+                        onCloseCommandMenu();
+                      }
+                    }}
+                    onClick={(event) => {
+                      if (suppressSlashToolbarClickRef.current) {
+                        suppressSlashToolbarClickRef.current = false;
+                        event.preventDefault();
+                        return;
+                      }
+                      if (isCommandMenuOpen) {
+                        event.preventDefault();
                         onCloseCommandMenu();
                         return;
                       }
