@@ -225,6 +225,37 @@ export function TuiApp(props: TuiAppProps): React.ReactNode {
         }
         return;
       }
+      const pending = state.pendingPermissions[0];
+      if (pending?.isElicitation) {
+        const fields = extractElicitationFields(pending.payload);
+        if (fields.length > 0) {
+          const inputs = Object.fromEntries(fields.map((field) => [field.id, trimmed]));
+          void props.gateway.respondElicitation({
+            sessionKey: state.activeSessionKey,
+            requestId: pending.requestId,
+            answer: { type: "answered", answers: {}, inputs },
+          });
+          setState((current) => ({
+            ...current,
+            input: "",
+            pendingPermissions: current.pendingPermissions.slice(1),
+          }));
+        }
+        const questions = extractElicitationQuestions(pending.payload);
+        if (questions.length > 0) {
+          void props.gateway.respondElicitation({
+            sessionKey: state.activeSessionKey,
+            requestId: pending.requestId,
+            answer: { type: "answered", answers: buildElicitationAnswers(questions, trimmed) },
+          });
+          setState((current) => ({
+            ...current,
+            input: "",
+            pendingPermissions: current.pendingPermissions.slice(1),
+          }));
+        }
+        return;
+      }
       if (state.isRunning || state.pendingPermissions.length > 0) {
         return;
       }
@@ -301,6 +332,17 @@ export function TuiApp(props: TuiAppProps): React.ReactNode {
       const front = state.pendingPermissions[0]!;
       const { requestId, toolName, payload } = front;
       const dequeue = (c: TuiAppState) => ({ ...c, pendingPermissions: c.pendingPermissions.slice(1) });
+      if (front.isElicitation) {
+        if (key.escape) {
+          void props.gateway.respondElicitation({
+            sessionKey: state.activeSessionKey,
+            requestId,
+            answer: { type: "cancelled", reason: "User cancelled in TUI" },
+          });
+          setState(dequeue);
+        }
+        return;
+      }
       if (input === "y") {
         void props.gateway.permissionDecide({
           sessionKey: state.activeSessionKey,
@@ -626,6 +668,7 @@ export function TuiApp(props: TuiAppProps): React.ReactNode {
         <PermissionPrompt
           toolName={state.pendingPermissions[0]!.toolName}
           payload={state.pendingPermissions[0]!.payload}
+          isElicitation={state.pendingPermissions[0]!.isElicitation}
           queueLength={state.pendingPermissions.length}
         />
       ) : null}
@@ -635,7 +678,7 @@ export function TuiApp(props: TuiAppProps): React.ReactNode {
         onChange={handleInputChange}
         onSubmit={handleSubmit}
         isRunning={state.isRunning}
-        focus={!state.helpOpen && state.pendingPermissions.length === 0}
+        focus={!state.helpOpen && (state.pendingPermissions.length === 0 || Boolean(state.pendingPermissions[0]?.isElicitation))}
       />
     </Box>
   );
@@ -657,6 +700,77 @@ export function TuiApp(props: TuiAppProps): React.ReactNode {
   }
 
   return chatContent;
+}
+
+function extractElicitationFields(payload: unknown): Array<{ id: string }> {
+  if (!payload || typeof payload !== "object") return [];
+  const fields = (payload as { fields?: unknown }).fields;
+  if (!Array.isArray(fields)) return [];
+  return fields
+    .map((field) => {
+      if (!field || typeof field !== "object") return undefined;
+      const id = (field as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { id } : undefined;
+    })
+    .filter((field): field is { id: string } => Boolean(field));
+}
+
+type TuiElicitationQuestion = {
+  question: string;
+  options: Array<{ label: string }>;
+  multiSelect: boolean;
+};
+
+function extractElicitationQuestions(payload: unknown): TuiElicitationQuestion[] {
+  if (!payload || typeof payload !== "object") return [];
+  const questions = (payload as { questions?: unknown }).questions;
+  if (!Array.isArray(questions)) return [];
+  return questions
+    .map((question) => {
+      if (!question || typeof question !== "object") return undefined;
+      const record = question as {
+        question?: unknown;
+        options?: unknown;
+        multiSelect?: unknown;
+      };
+      if (typeof record.question !== "string" || !Array.isArray(record.options)) {
+        return undefined;
+      }
+      const options = record.options
+        .map((option) => {
+          if (!option || typeof option !== "object") return undefined;
+          const label = (option as { label?: unknown }).label;
+          return typeof label === "string" && label.length > 0 ? { label } : undefined;
+        })
+        .filter((option): option is { label: string } => Boolean(option));
+      if (options.length === 0) return undefined;
+      return {
+        question: record.question,
+        options,
+        multiSelect: record.multiSelect === true,
+      };
+    })
+    .filter((question): question is TuiElicitationQuestion => Boolean(question));
+}
+
+function buildElicitationAnswers(
+  questions: TuiElicitationQuestion[],
+  text: string,
+): Record<string, string | string[]> {
+  const answers: Record<string, string | string[]> = {};
+  const indices = text
+    .split(/[,，\s]+/)
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => !Number.isNaN(value));
+
+  for (const question of questions) {
+    const selected = indices
+      .filter((index) => index >= 1 && index <= question.options.length)
+      .map((index) => question.options[index - 1]!.label);
+    const fallback = selected.length > 0 ? selected : [text];
+    answers[question.question] = question.multiSelect ? fallback : fallback[0]!;
+  }
+  return answers;
 }
 
 async function handleCommand(

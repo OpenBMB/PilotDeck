@@ -314,6 +314,7 @@ export function applyWebGatewayEvent(
         toolName: event.toolName,
         payload: {
           questions: event.questions,
+          fields: event.fields,
           previewFormat: event.previewFormat,
           metadata: event.metadata,
         },

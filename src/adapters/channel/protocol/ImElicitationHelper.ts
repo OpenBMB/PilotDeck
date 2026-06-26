@@ -23,6 +23,13 @@ type PendingElicitation = {
     options: Array<{ label: string; description: string }>;
     multiSelect?: boolean;
   }>;
+  fields?: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    kind: "text" | "secret" | "multiline";
+    required?: boolean;
+  }>;
 };
 
 export class ImElicitationHelper {
@@ -37,9 +44,23 @@ export class ImElicitationHelper {
       sessionKey,
       requestId: event.requestId,
       questions: event.questions,
+      fields: event.fields,
     });
 
     const lines: string[] = [];
+    if (event.fields && event.fields.length > 0) {
+      lines.push("需要你输入信息后才能继续。");
+      for (const field of event.fields) {
+        lines.push(`**${field.label}**`);
+        if (field.description) lines.push(field.description);
+        if (field.kind === "secret") {
+          lines.push("该内容只会发送给正在运行的命令，不会回显到工具结果。");
+        }
+      }
+      lines.push("", "直接回复内容继续，回复 0 取消。");
+      return lines.join("\n");
+    }
+
     for (const q of event.questions) {
       if (q.header) lines.push(`**${q.header}**`);
       if (q.question) lines.push(q.question);
@@ -78,6 +99,19 @@ export class ImElicitationHelper {
     }
 
     const answers: Record<string, string | string[]> = {};
+    const inputs: Record<string, string> = {};
+
+    if (entry.fields && entry.fields.length > 0) {
+      for (const field of entry.fields) {
+        inputs[field.id] = trimmed;
+      }
+      await gateway.respondElicitation({
+        sessionKey: entry.sessionKey,
+        requestId: entry.requestId,
+        answer: { type: "answered", answers, inputs },
+      });
+      return undefined;
+    }
 
     for (const q of entry.questions) {
       const indices = trimmed.split(/[,，\s]+/).map((s) => Number.parseInt(s, 10)).filter((n) => !Number.isNaN(n));

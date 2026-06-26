@@ -31,8 +31,22 @@ export type WebElicitationQuestion = {
   multiSelect?: boolean;
 };
 
+export type WebElicitationField = {
+  id: string;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  kind: "text" | "secret" | "multiline";
+  required?: boolean;
+};
+
 export type WebElicitationAnswer =
-  | { type: "answered"; answers: Record<string, string | string[]>; annotations?: Record<string, { preview?: string; notes?: string }> }
+  | {
+      type: "answered";
+      answers: Record<string, string | string[]>;
+      inputs?: Record<string, string>;
+      annotations?: Record<string, { preview?: string; notes?: string }>;
+    }
   | { type: "cancelled"; reason?: string };
 
 export type WebGatewayEvent =
@@ -79,6 +93,7 @@ export type WebGatewayEvent =
       toolName: string;
       previewFormat?: "html" | "markdown";
       questions: WebElicitationQuestion[];
+      fields?: WebElicitationField[];
       metadata?: Record<string, unknown>;
     }
   | { type: "elicitation_cancelled"; requestId: string; reason?: string }

@@ -1118,15 +1118,19 @@ export function useChatComposerState({
           const submitted =
             (decision?.updatedInput as {
               answers?: Record<string, string | string[]>;
+              inputs?: Record<string, string>;
               annotations?: Record<string, { preview?: string; notes?: string }>;
             } | undefined) ?? {};
           const submittedAnswers = submitted.answers ?? {};
+          const submittedInputs = submitted.inputs ?? {};
           const hasAnswers = Object.keys(submittedAnswers).length > 0;
+          const hasInputs = Object.keys(submittedInputs).length > 0;
           const answer =
-            decision?.allow && hasAnswers
+            decision?.allow && (hasAnswers || hasInputs)
               ? {
                   type: 'answered' as const,
                   answers: submittedAnswers,
+                  ...(hasInputs ? { inputs: submittedInputs } : {}),
                   ...(submitted.annotations ? { annotations: submitted.annotations } : {}),
                 }
               : {
