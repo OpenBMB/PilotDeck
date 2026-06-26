@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -51,6 +51,9 @@ const getCommandKey = (command: CommandMenuCommand) =>
 const getNamespace = (command: CommandMenuCommand) =>
   command.namespace || command.type || 'other';
 
+const getNamespaceLabel = (namespace: string) =>
+  namespace.charAt(0).toUpperCase() + namespace.slice(1);
+
 // Anchor the menu to the textarea: above on desktop, full-bleed bottom sheet on
 // mobile. Returns inline styles so we can mix calculated coords with Tailwind
 // classes for visual treatment.
@@ -83,7 +86,6 @@ export default function CommandMenu({
   onClose,
   position = { top: 0, left: 0 },
   isOpen = false,
-  frequentCommands = [],
 }: CommandMenuProps) {
   const { t } = useTranslation('chat');
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -138,42 +140,7 @@ export default function CommandMenu({
     );
   }
 
-  const hasFrequentCommands = frequentCommands.length > 0;
-  const frequentCommandKeys = new Set(frequentCommands.map(getCommandKey));
-  const groupedCommands = commands.reduce<Record<string, CommandMenuCommand[]>>((groups, command) => {
-    if (hasFrequentCommands && frequentCommandKeys.has(getCommandKey(command))) {
-      return groups;
-    }
-    const namespace = getNamespace(command);
-    if (!groups[namespace]) {
-      groups[namespace] = [];
-    }
-    groups[namespace].push(command);
-    return groups;
-  }, {});
-  if (hasFrequentCommands) {
-    groupedCommands.frequent = frequentCommands;
-  }
-
-  const preferredOrder = hasFrequentCommands
-    ? ['pinned', 'frequent', 'builtin', 'project', 'user', 'other']
-    : ['pinned', 'builtin', 'project', 'user', 'other'];
-  const extraNamespaces = Object.keys(groupedCommands).filter(
-    (namespace) => !preferredOrder.includes(namespace),
-  );
-  const orderedNamespaces = [...preferredOrder, ...extraNamespaces].filter(
-    (namespace) => groupedCommands[namespace],
-  );
-
-  const commandIndexByKey = new Map<string, number>();
-  commands.forEach((command, index) => {
-    const key = getCommandKey(command);
-    if (!commandIndexByKey.has(key)) {
-      commandIndexByKey.set(key, index);
-    }
-  });
-
-  const showGroupHeaders = orderedNamespaces.length > 1;
+  const showGroupHeaders = new Set(commands.map(getNamespace)).size > 1;
 
   return (
     <div
@@ -183,79 +150,69 @@ export default function CommandMenu({
       className={cn(containerClass, 'p-1')}
       style={{ ...menuPosition, zIndex: 1000 }}
     >
-      {orderedNamespaces.map((namespace, groupIdx) => {
+      {commands.map((command, commandIndex) => {
+        const namespace = getNamespace(command);
+        const previousNamespace = commandIndex > 0 ? getNamespace(commands[commandIndex - 1]) : null;
+        const showHeader = showGroupHeaders && namespace !== previousNamespace;
         const Icon = namespaceIcons[namespace] || namespaceIcons.other;
+        const isSelected = commandIndex === selectedIndex;
         return (
-          <div
-            key={namespace}
-            className={cn(
-              'pb-1',
-              groupIdx > 0 && showGroupHeaders && 'mt-1 border-t border-neutral-100 pt-2 dark:border-neutral-800',
-            )}
-          >
-            {showGroupHeaders ? (
-              <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <Fragment key={getCommandKey(command)}>
+            {showHeader ? (
+              <div
+                className={cn(
+                  'px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400',
+                  commandIndex > 0 && 'mt-1 border-t border-neutral-100 pt-2 dark:border-neutral-800',
+                )}
+              >
                 {t(`commandMenu.groups.${namespace}`, {
-                  defaultValue: namespace.charAt(0).toUpperCase() + namespace.slice(1),
+                  defaultValue: getNamespaceLabel(namespace),
                 })}
               </div>
             ) : null}
-
-            {(groupedCommands[namespace] || []).map((command) => {
-              const commandKey = getCommandKey(command);
-              const commandIndex = commandIndexByKey.get(commandKey) ?? -1;
-              const isSelected = commandIndex === selectedIndex;
-              return (
-                <div
-                  key={`${namespace}-${command.name}-${command.path || ''}`}
-                  ref={isSelected ? selectedItemRef : null}
-                  role="option"
-                  aria-selected={isSelected}
-                  className={cn(
-                    'group relative flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-2 transition-colors',
-                    isSelected
-                      ? 'bg-neutral-100 dark:bg-neutral-800'
-                      : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
-                  )}
-                  onMouseEnter={() =>
-                    onSelect && commandIndex >= 0 && onSelect(command, commandIndex, true)
-                  }
-                  onClick={() =>
-                    onSelect && commandIndex >= 0 && onSelect(command, commandIndex, false)
-                  }
-                  onMouseDown={(event) => event.preventDefault()}
-                >
-                  <Icon
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
-                        {command.name}
-                      </span>
-                      {command.metadata?.type ? (
-                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                          {command.metadata.type}
-                        </span>
-                      ) : null}
-                    </div>
-                    {command.description ? (
-                      <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
-                        {command.description}
-                      </div>
-                    ) : null}
-                  </div>
-                  {isSelected ? (
-                    <ChevronRight
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400 dark:text-neutral-500"
-                      strokeWidth={2}
-                    />
+            <div
+              ref={isSelected ? selectedItemRef : null}
+              role="option"
+              aria-selected={isSelected}
+              className={cn(
+                'group relative flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-2 transition-colors',
+                isSelected
+                  ? 'bg-neutral-100 dark:bg-neutral-800'
+                  : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
+              )}
+              onMouseEnter={() => onSelect?.(command, commandIndex, true)}
+              onClick={() => onSelect?.(command, commandIndex, false)}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <Icon
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400"
+                strokeWidth={1.75}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
+                    {command.name}
+                  </span>
+                  {command.metadata?.type ? (
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                      {command.metadata.type}
+                    </span>
                   ) : null}
                 </div>
-              );
-            })}
-          </div>
+                {command.description ? (
+                  <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
+                    {command.description}
+                  </div>
+                ) : null}
+              </div>
+              {isSelected ? (
+                <ChevronRight
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400 dark:text-neutral-500"
+                  strokeWidth={2}
+                />
+              ) : null}
+            </div>
+          </Fragment>
         );
       })}
     </div>
