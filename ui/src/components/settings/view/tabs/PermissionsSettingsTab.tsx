@@ -181,6 +181,10 @@ export function getPermissionsImportImpactForTest(parsed: ParsedPermissionsImpor
   };
 }
 
+export function normalizeSudoPolicyForTest(value: unknown): SudoPermissionPolicy {
+  return normalizeSudoPolicy(value);
+}
+
 const mergeUnique = (a: string[], b: string[]): string[] => {
   const seen = new Set(a);
   const out = [...a];
@@ -941,22 +945,38 @@ function normalizeSudoPolicy(value: unknown): SudoPermissionPolicy {
   return {
     local: normalizeSudoAction(obj.local, DEFAULT_SUDO_POLICY.local),
     remote: normalizeSudoAction(obj.remote, DEFAULT_SUDO_POLICY.remote),
-    remoteHosts: Array.isArray(obj.remoteHosts)
-      ? obj.remoteHosts
-        .map((entry) => {
-          const record = entry && typeof entry === 'object' && !Array.isArray(entry)
-            ? entry as { host?: unknown; action?: unknown }
-            : {};
-          return {
-            host: typeof record.host === 'string' ? record.host.trim() : '',
-            action: normalizeSudoAction(record.action, 'deny'),
-          };
-        })
-        .filter((entry) => entry.host.length > 0)
-      : [],
+    remoteHosts: normalizeSudoRemoteHosts(obj.remoteHosts),
   };
 }
 
 function normalizeSudoAction(value: unknown, fallback: SudoPolicyAction): SudoPolicyAction {
   return value === 'deny' || value === 'ask' || value === 'allow' ? value : fallback;
+}
+
+function normalizeSudoRemoteHosts(value: unknown): SudoPermissionPolicy['remoteHosts'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const remoteHosts: SudoPermissionPolicy['remoteHosts'] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const record = entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? entry as { host?: unknown; action?: unknown }
+      : {};
+    const host = typeof record.host === 'string' ? record.host.trim() : '';
+    if (!host) {
+      continue;
+    }
+    const key = host.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    remoteHosts.push({
+      host,
+      action: normalizeSudoAction(record.action, 'deny'),
+    });
+  }
+  return remoteHosts;
 }

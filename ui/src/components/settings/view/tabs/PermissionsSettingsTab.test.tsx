@@ -2,7 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedFetch } from '../../../../utils/api.js';
-import PermissionsSettingsTab, { getPermissionsImportImpactForTest } from './PermissionsSettingsTab';
+import PermissionsSettingsTab, {
+  getPermissionsImportImpactForTest,
+  normalizeSudoPolicyForTest,
+} from './PermissionsSettingsTab';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -108,6 +111,28 @@ describe('PermissionsSettingsTab import safety', () => {
       affectsSkipPermissions: true,
       affectsSudoPolicy: true,
       sudoHostCount: 1,
+    });
+  });
+
+  it('normalizes imported sudo host overrides the same way the runtime does', () => {
+    expect(normalizeSudoPolicyForTest({
+      local: 'ask',
+      remote: 'allow',
+      remoteHosts: [
+        { host: ' Prod-* ', action: 'allow' },
+        { host: 'prod-*', action: 'deny' },
+        { host: '', action: 'ask' },
+        { host: 'stage-*', action: 'ask' },
+        { host: 'broken', action: 'unexpected' },
+      ],
+    })).toEqual({
+      local: 'ask',
+      remote: 'allow',
+      remoteHosts: [
+        { host: 'Prod-*', action: 'allow' },
+        { host: 'stage-*', action: 'ask' },
+        { host: 'broken', action: 'deny' },
+      ],
     });
   });
 });
