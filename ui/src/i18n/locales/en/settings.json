@@ -179,7 +179,12 @@
     "refresh": "Refresh",
     "save": "Save Project Models",
     "saving": "Saving...",
-    "saved": "Saved for this project"
+    "saved": "Saved for this project",
+    "unsavedSwitchTitle": "Unsaved changes in this project",
+    "unsavedSwitchDescription": "Save or discard changes before switching to {{project}}.",
+    "keepEditing": "Keep editing",
+    "discardAndSwitch": "Discard & switch",
+    "saveAndSwitch": "Save & switch"
   },
   "notifications": {
     "title": "Notifications",

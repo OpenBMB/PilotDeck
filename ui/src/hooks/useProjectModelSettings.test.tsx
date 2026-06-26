@@ -118,11 +118,13 @@ describe('useProjectModelSettings', () => {
       result.current.setDraft({ mainModel: 'openai/saved' });
     });
 
+    let saveResult = false;
     await act(async () => {
-      await result.current.save();
+      saveResult = await result.current.save();
     });
 
     await waitFor(() => {
+      expect(saveResult).toBe(true);
       expect(result.current.data?.settings.mainModel).toBe('openai/saved');
       expect(result.current.message).toBe('Saved for this project');
     });
@@ -133,5 +135,39 @@ describe('useProjectModelSettings', () => {
       expect(result.current.data?.settings.mainModel).toBe('openai/saved');
       expect(result.current.draft.mainModel).toBe('openai/saved');
     });
+  });
+
+  it('returns false and keeps the draft when save fails', async () => {
+    fetchMock.mockImplementation((url, options) => {
+      if (String(url).includes('/alpha/') && options?.method === 'PUT') {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ error: 'Project model settings are invalid' }),
+        } as Response);
+      }
+      return Promise.resolve(responseFor('alpha', 'openai/alpha'));
+    });
+
+    const { result } = renderHook(
+      ({ projectName }: { projectName?: string }) => useProjectModelSettings(projectName),
+      { initialProps: { projectName: 'alpha' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data?.projectKey).toBe('alpha');
+    });
+
+    act(() => {
+      result.current.setDraft({ mainModel: 'openai/invalid' });
+    });
+
+    let saveResult = true;
+    await act(async () => {
+      saveResult = await result.current.save();
+    });
+
+    expect(saveResult).toBe(false);
+    expect(result.current.error).toBe('Project model settings are invalid');
+    expect(result.current.draft.mainModel).toBe('openai/invalid');
   });
 });

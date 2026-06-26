@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
+  AlertTriangle,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
@@ -475,10 +476,12 @@ const TOKEN_TIERS = [
   { key: 'complex', label: 'Complex' },
 ];
 
-function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageProps) {
+export function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageProps) {
   const { t } = useTranslation('settings');
   const [selectedProjectName, setSelectedProjectName] = useState(() => projects[0]?.name ?? '');
+  const [pendingProjectName, setPendingProjectName] = useState<string | null>(null);
   const selectedProject = projects.find((project) => project.name === selectedProjectName) ?? projects[0];
+  const pendingProject = projects.find((project) => project.name === pendingProjectName);
   const {
     data,
     draft,
@@ -500,6 +503,11 @@ function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageP
       setSelectedProjectName(projects[0].name);
     }
   }, [projects, selectedProjectName]);
+
+  useEffect(() => {
+    if (!pendingProjectName || projects.some((project) => project.name === pendingProjectName)) return;
+    setPendingProjectName(null);
+  }, [pendingProjectName, projects]);
 
   const modelOptions = data?.modelOptions ?? [];
   const modelSelectOptions = [
@@ -526,6 +534,33 @@ function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageP
         },
       },
     }));
+  };
+  const switchProject = (projectName: string) => {
+    setSelectedProjectName(projectName);
+    setPendingProjectName(null);
+  };
+  const handleProjectSelect = (projectName: string) => {
+    if (projectName === selectedProject?.name) {
+      setPendingProjectName(null);
+      return;
+    }
+    if (dirty) {
+      setPendingProjectName(projectName);
+      return;
+    }
+    switchProject(projectName);
+  };
+  const handleDiscardAndSwitch = () => {
+    if (!pendingProjectName) return;
+    switchProject(pendingProjectName);
+  };
+  const handleSaveAndSwitch = async () => {
+    if (!pendingProjectName) return;
+    const targetProjectName = pendingProjectName;
+    const saved = await save();
+    if (saved) {
+      switchProject(targetProjectName);
+    }
   };
 
   if (projects.length === 0) {
@@ -555,7 +590,7 @@ function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageP
           >
             <SelectControl
               value={selectedProject?.name ?? ''}
-              onChange={setSelectedProjectName}
+              onChange={handleProjectSelect}
               options={projects.map((project) => ({
                 value: project.name,
                 label: project.displayName || project.name,
@@ -575,6 +610,43 @@ function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageP
           </SettingsRow>
         </SettingsCard>
       </SettingsSection>
+
+      {pendingProjectName ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+              <div className="min-w-0">
+                <div className="font-medium">
+                  {t('projectModels.unsavedSwitchTitle', { defaultValue: 'Unsaved changes in this project' })}
+                </div>
+                <div className="mt-1 text-xs leading-5 text-amber-800/90 dark:text-amber-100/80">
+                  {t('projectModels.unsavedSwitchDescription', {
+                    project: pendingProject?.displayName || pendingProject?.name || pendingProjectName,
+                    defaultValue: 'Save or discard changes before switching to {{project}}.',
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+              <Button variant="outline" size="sm" onClick={() => setPendingProjectName(null)}>
+                {t('projectModels.keepEditing', { defaultValue: 'Keep editing' })}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDiscardAndSwitch} disabled={saving}>
+                {t('projectModels.discardAndSwitch', { defaultValue: 'Discard & switch' })}
+              </Button>
+              <Button size="sm" onClick={() => void handleSaveAndSwitch()} disabled={loading || saving || modelOptions.length === 0}>
+                {saving
+                  ? t('projectModels.saving', { defaultValue: 'Saving...' })
+                  : t('projectModels.saveAndSwitch', { defaultValue: 'Save & switch' })}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <SettingsSection title={t('projectModels.mainSection', { defaultValue: 'Main Agent' })}>
         <SettingsCard divided>

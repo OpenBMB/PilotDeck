@@ -111,7 +111,7 @@ export function useProjectModelSettings(projectName?: string, savedMessage = 'Sa
     const requestProject = projectName;
     const requestId = saveRequestIdRef.current + 1;
     saveRequestIdRef.current = requestId;
-    if (!requestProject) return;
+    if (!requestProject) return false;
     loadRequestIdRef.current += 1;
     setSaving(true);
     setError(null);
@@ -123,13 +123,15 @@ export function useProjectModelSettings(projectName?: string, savedMessage = 'Sa
       });
       const result = (await response.json()) as ProjectModelSettingsResponse & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Failed to save project model settings');
-      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return;
+      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return false;
       setData(result);
       setDraft(clone(result.settings));
       setMessage(savedMessage);
+      return true;
     } catch (caught) {
-      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return;
+      if (activeProjectRef.current !== requestProject || saveRequestIdRef.current !== requestId) return false;
       setError(caught instanceof Error ? caught.message : 'Failed to save project model settings');
+      return false;
     } finally {
       if (saveRequestIdRef.current === requestId) {
         setSaving(false);
