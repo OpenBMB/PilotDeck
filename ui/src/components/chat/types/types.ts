@@ -149,10 +149,24 @@ export interface PilotDeckWorkStatus {
   retryProgress?: RetryProgress | null;
 }
 
+export type SudoPolicyAction = 'deny' | 'ask' | 'allow';
+
+export interface SudoRemoteHostPolicy {
+  host: string;
+  action: SudoPolicyAction;
+}
+
+export interface SudoPermissionPolicy {
+  local: SudoPolicyAction;
+  remote: SudoPolicyAction;
+  remoteHosts: SudoRemoteHostPolicy[];
+}
+
 export interface PilotDeckSettings {
   allowedTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
+  sudoPolicy: SudoPermissionPolicy;
   projectSortOrder: string;
   lastUpdated?: string;
   [key: string]: unknown;

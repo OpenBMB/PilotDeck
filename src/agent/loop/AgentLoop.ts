@@ -35,7 +35,13 @@ import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.j
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type { ContextRecoveryDecision, ContextSupplementalToolResultMessage } from "../../context/index.js";
-import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
+import {
+  normalizeSudoPermissionPolicy,
+  type PermissionMode,
+  type PermissionRule,
+  type PermissionRuleSet,
+  type SudoPermissionPolicy,
+} from "../../permission/index.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -72,6 +78,7 @@ export type AgentLoopInput = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  sudoPolicy?: Partial<SudoPermissionPolicy>;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
 };
@@ -107,7 +114,7 @@ export class AgentLoop {
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
-    this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
+    this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode, input.sudoPolicy);
     const startedAt = this.now().toISOString();
     let messages = [...input.messages];
     let turnCount = 1;
@@ -1537,6 +1544,7 @@ export class AgentLoop {
     permissionMode?: PermissionMode,
     permissionRules?: Partial<PermissionRuleSet>,
     basePermissionMode?: PermissionMode,
+    sudoPolicy?: Partial<SudoPermissionPolicy>,
   ): void {
     if (permissionMode) {
       if (permissionMode === "plan" && this.config.permissionMode !== "plan") {
@@ -1544,6 +1552,9 @@ export class AgentLoop {
       }
       this.config.permissionMode = permissionMode;
       this.config.permissionContext.mode = permissionMode;
+    }
+    if (sudoPolicy) {
+      this.config.permissionContext.sudoPolicy = normalizeSudoPermissionPolicy(sudoPolicy);
     }
     if (!permissionRules) return;
     mergeUserRules(this.config.permissionContext.rules.allow, permissionRules.allow);

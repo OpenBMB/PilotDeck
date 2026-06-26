@@ -1,7 +1,13 @@
-import type { PilotDeckSettings } from '../types/types';
+import type { PilotDeckSettings, SudoPermissionPolicy, SudoPolicyAction } from '../types/types';
 import { authenticatedFetch } from '../../../utils/api.js';
 
 export const PILOTDECK_SETTINGS_KEY = 'pilotdeck-settings';
+
+export const DEFAULT_SUDO_POLICY: SudoPermissionPolicy = {
+  local: 'deny',
+  remote: 'deny',
+  remoteHosts: [],
+};
 
 export const safeLocalStorage = {
   setItem: (key: string, value: string) => {
@@ -57,6 +63,7 @@ export function getPilotDeckSettings(): PilotDeckSettings {
       allowedTools: [],
       disallowedTools: [],
       skipPermissions: false,
+      sudoPolicy: normalizeSudoPolicy(DEFAULT_SUDO_POLICY),
       projectSortOrder: 'name',
     };
   }
@@ -71,6 +78,7 @@ export function getPilotDeckSettings(): PilotDeckSettings {
         typeof parsed.skipPermissions === 'boolean'
           ? parsed.skipPermissions
           : false,
+      sudoPolicy: normalizeSudoPolicy(parsed.sudoPolicy),
       projectSortOrder: parsed.projectSortOrder || 'name',
     };
   } catch {
@@ -78,6 +86,7 @@ export function getPilotDeckSettings(): PilotDeckSettings {
       allowedTools: [],
       disallowedTools: [],
       skipPermissions: false,
+      sudoPolicy: normalizeSudoPolicy(DEFAULT_SUDO_POLICY),
       projectSortOrder: 'name',
     };
   }
@@ -129,6 +138,34 @@ function mergePermissionSettings(value: unknown): PilotDeckSettings {
     allowedTools: unionStringArrays(current.allowedTools, backendAllowed),
     disallowedTools: unionStringArrays(current.disallowedTools, backendDisallowed),
     skipPermissions: typeof parsed.skipPermissions === 'boolean' ? parsed.skipPermissions : current.skipPermissions,
+    sudoPolicy: normalizeSudoPolicy(parsed.sudoPolicy ?? current.sudoPolicy),
     projectSortOrder: current.projectSortOrder || 'name',
   };
+}
+
+function normalizeSudoPolicy(value: unknown): SudoPermissionPolicy {
+  const obj = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<SudoPermissionPolicy>
+    : {};
+  return {
+    local: normalizeSudoAction(obj.local, DEFAULT_SUDO_POLICY.local),
+    remote: normalizeSudoAction(obj.remote, DEFAULT_SUDO_POLICY.remote),
+    remoteHosts: Array.isArray(obj.remoteHosts)
+      ? obj.remoteHosts
+        .map((entry) => {
+          const record = entry && typeof entry === 'object' && !Array.isArray(entry)
+            ? entry as { host?: unknown; action?: unknown }
+            : {};
+          return {
+            host: typeof record.host === 'string' ? record.host.trim() : '',
+            action: normalizeSudoAction(record.action, 'deny'),
+          };
+        })
+        .filter((entry) => entry.host.length > 0)
+      : [],
+  };
+}
+
+function normalizeSudoAction(value: unknown, fallback: SudoPolicyAction): SudoPolicyAction {
+  return value === 'deny' || value === 'ask' || value === 'allow' ? value : fallback;
 }

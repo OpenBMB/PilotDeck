@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { readFile } from "node:fs/promises";
 import type { Gateway, GatewayMode, GatewaySessionInfo } from "../../../../gateway/index.js";
+import type { SudoPolicyAction } from "../../../../permission/index.js";
 import { readPermissionSettings, writePermissionSettings } from "../../../../permission/settings.js";
 import { defaultTuiSessionKey } from "../TuiChannel.js";
 import { ActivityLine } from "./ActivityLine.js";
@@ -709,6 +710,13 @@ async function handleCommand(
       if (!sub) {
         const lines = [
           `skipPermissions: ${current.skipPermissions}`,
+          `sudo.local: ${current.sudoPolicy.local}`,
+          `sudo.remote: ${current.sudoPolicy.remote}`,
+          `sudo.remoteHosts: ${
+            current.sudoPolicy.remoteHosts.length === 0
+              ? "(none)"
+              : current.sudoPolicy.remoteHosts.map((entry) => `${entry.host}=${entry.action}`).join(", ")
+          }`,
           `allow: ${current.allowedTools.length === 0 ? "(none)" : current.allowedTools.join(", ")}`,
           `deny: ${current.disallowedTools.length === 0 ? "(none)" : current.disallowedTools.join(", ")}`,
         ];
@@ -716,16 +724,74 @@ async function handleCommand(
         return true;
       }
       const entry = args.slice(1).join(" ").trim();
-      if (!entry && sub !== "bypass") {
+      if (!entry && sub !== "bypass" && sub !== "sudo") {
         setState((c) => ({
           ...c,
           messages: [
             ...c.messages,
             {
               role: "error",
-              text: "Usage: /permissions [allow|deny|clear <entry>|bypass]",
+              text: permissionsUsage(),
             },
           ],
+        }));
+        return true;
+      }
+      if (sub === "sudo") {
+        const scope = args[1];
+        const action = normalizeSudoAction(args[2]);
+        if ((scope === "local" || scope === "remote") && action) {
+          writePermissionSettings({
+            sudoPolicy: {
+              ...current.sudoPolicy,
+              [scope]: action,
+            },
+          });
+          setState((c) => ({
+            ...c,
+            messages: [...c.messages, { role: "system", text: `Set sudo.${scope}: ${action}` }],
+          }));
+          return true;
+        }
+        if (scope === "host") {
+          const host = args[2]?.trim();
+          const hostAction = normalizeSudoAction(args[3]);
+          if (host && hostAction) {
+            writePermissionSettings({
+              sudoPolicy: {
+                ...current.sudoPolicy,
+                remoteHosts: [
+                  ...current.sudoPolicy.remoteHosts.filter((item) => item.host.toLowerCase() !== host.toLowerCase()),
+                  { host, action: hostAction },
+                ],
+              },
+            });
+            setState((c) => ({
+              ...c,
+              messages: [...c.messages, { role: "system", text: `Set sudo host ${host}: ${hostAction}` }],
+            }));
+            return true;
+          }
+        }
+        if (scope === "clear-host") {
+          const host = args[2]?.trim();
+          if (host) {
+            writePermissionSettings({
+              sudoPolicy: {
+                ...current.sudoPolicy,
+                remoteHosts: current.sudoPolicy.remoteHosts.filter((item) => item.host !== host),
+              },
+            });
+            setState((c) => ({
+              ...c,
+              messages: [...c.messages, { role: "system", text: `Cleared sudo host: ${host}` }],
+            }));
+            return true;
+          }
+        }
+        setState((c) => ({
+          ...c,
+          messages: [...c.messages, { role: "error", text: permissionsUsage() }],
         }));
         return true;
       }
@@ -829,6 +895,25 @@ function buildPermissionEntry(toolName: string, payload: unknown): string {
   const tokens = command.split(/\s+/);
   if (tokens[0] === "git" && tokens[1]) return `bash:${tokens[0]} ${tokens[1]}:*`;
   return `bash:${tokens[0]}:*`;
+}
+
+function normalizeSudoAction(value: string | undefined): SudoPolicyAction | undefined {
+  return value === "deny" || value === "ask" || value === "allow" ? value : undefined;
+}
+
+function permissionsUsage(): string {
+  return [
+    "Usage:",
+    "/permissions",
+    "/permissions allow <entry>",
+    "/permissions deny <entry>",
+    "/permissions clear <entry>",
+    "/permissions bypass",
+    "/permissions sudo local <deny|ask|allow>",
+    "/permissions sudo remote <deny|ask|allow>",
+    "/permissions sudo host <host|pattern> <deny|ask|allow>",
+    "/permissions sudo clear-host <host|pattern>",
+  ].join("\n");
 }
 
 function SessionHint({ sessions }: { sessions: GatewaySessionInfo[] }): React.ReactNode {

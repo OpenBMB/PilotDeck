@@ -402,6 +402,7 @@ export class InProcessGateway implements Gateway {
               ...persistedRules,
               allow: [...sessionAllowRules, ...persistedRules.allow],
             },
+            sudoPolicy: permissionSettings.sudoPolicy,
           },
         )) {
           if (this.turnCompletions.get(input.sessionKey) !== turnDone) {

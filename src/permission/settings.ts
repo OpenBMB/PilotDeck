@@ -1,13 +1,20 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolvePilotHome } from "../pilot/paths.js";
-import type { PermissionRule, PermissionRuleSet } from "./protocol/types.js";
+import {
+  DEFAULT_SUDO_PERMISSION_POLICY,
+  normalizeSudoPermissionPolicy,
+  type PermissionRule,
+  type PermissionRuleSet,
+  type SudoPermissionPolicy,
+} from "./protocol/types.js";
 
 export type PermissionSettings = {
   version: 1;
   allowedTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
+  sudoPolicy: SudoPermissionPolicy;
   lastUpdated?: string;
 };
 
@@ -16,6 +23,7 @@ export const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
   allowedTools: [],
   disallowedTools: [],
   skipPermissions: true,
+  sudoPolicy: DEFAULT_SUDO_PERMISSION_POLICY,
 };
 
 const TOOL_NAME_ALIASES = new Map<string, string>([
@@ -43,7 +51,7 @@ export function readPermissionSettings(env: NodeJS.ProcessEnv = process.env): Pe
     const parsed = JSON.parse(raw) as unknown;
     return normalizePermissionSettings(parsed);
   } catch {
-    return { ...DEFAULT_PERMISSION_SETTINGS };
+    return normalizePermissionSettings(DEFAULT_PERMISSION_SETTINGS);
   }
 }
 
@@ -90,6 +98,7 @@ export function normalizePermissionSettings(value: unknown): PermissionSettings 
     allowedTools: normalizeStringArray(record.allowedTools),
     disallowedTools: normalizeStringArray(record.disallowedTools),
     skipPermissions: Boolean(record.skipPermissions),
+    sudoPolicy: normalizeSudoPermissionPolicy(record.sudoPolicy),
     lastUpdated: typeof record.lastUpdated === "string" ? record.lastUpdated : undefined,
   };
 }

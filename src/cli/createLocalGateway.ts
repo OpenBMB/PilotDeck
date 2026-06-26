@@ -56,7 +56,7 @@ import {
   parsePluginMcpServers,
 } from "../mcp/index.js";
 import { createModelRuntime, type ModelRuntime } from "../model/index.js";
-import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
+import { createDefaultPermissionContext, readPermissionSettings, type PermissionRule } from "../permission/index.js";
 import { loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
 import { createPilotConfigStoreSync, type PilotConfigStore } from "../pilot/config/PilotConfigStore.js";
 import {
@@ -1157,6 +1157,7 @@ class ProjectRuntimeRegistry {
     const override = this._sessionOverrides?.get(sessionKey);
     const permissionMode = override?.permissionMode ?? this.options.permissionMode;
     const cwd = override?.cwd ?? runtime.projectRoot;
+    const permissionSettings = readPermissionSettings(this.options.env);
     // Hand `PermissionContext` the same live rule-set reference the
     // gateway permission hook owns (see `getLiveRuleSet`). With this
     // shared reference, an "allow + remember" decision pushed by the
@@ -1193,6 +1194,7 @@ class ProjectRuntimeRegistry {
         canPrompt: override?.canPrompt ?? true,
         bypassAvailable: override?.bypassAvailable ?? true,
         additionalWorkingDirectories: this.options.additionalWorkingDirectories,
+        sudoPolicy: permissionSettings.sudoPolicy,
         rules: {
           allow: liveRuleSet.allow,
           deny: liveRuleSet.deny,

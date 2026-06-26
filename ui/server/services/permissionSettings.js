@@ -7,6 +7,11 @@ const DEFAULT_SETTINGS = {
   allowedTools: [],
   disallowedTools: [],
   skipPermissions: true,
+  sudoPolicy: {
+    local: 'deny',
+    remote: 'deny',
+    remoteHosts: [],
+  },
 };
 
 const TOOL_NAME_ALIASES = new Map([
@@ -45,6 +50,7 @@ export function normalizePermissionSettings(value) {
     allowedTools: normalizeStringArray(obj.allowedTools),
     disallowedTools: normalizeStringArray(obj.disallowedTools),
     skipPermissions: Boolean(obj.skipPermissions),
+    sudoPolicy: normalizeSudoPolicy(obj.sudoPolicy),
     lastUpdated: typeof obj.lastUpdated === 'string' ? obj.lastUpdated : undefined,
   };
 }
@@ -54,7 +60,7 @@ export function readPermissionSettings(env = process.env) {
     const raw = fs.readFileSync(getPermissionSettingsPath(env), 'utf8');
     return normalizePermissionSettings(JSON.parse(raw));
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return normalizePermissionSettings(DEFAULT_SETTINGS);
   }
 }
 
@@ -85,6 +91,36 @@ function normalizeStringArray(value) {
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
+  }
+  return out;
+}
+
+function normalizeSudoPolicy(value) {
+  const obj = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    local: normalizeSudoAction(obj.local, DEFAULT_SETTINGS.sudoPolicy.local),
+    remote: normalizeSudoAction(obj.remote, DEFAULT_SETTINGS.sudoPolicy.remote),
+    remoteHosts: normalizeSudoRemoteHosts(obj.remoteHosts),
+  };
+}
+
+function normalizeSudoAction(value, fallback) {
+  return value === 'deny' || value === 'ask' || value === 'allow' ? value : fallback;
+}
+
+function normalizeSudoRemoteHosts(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const host = typeof item.host === 'string' ? item.host.trim() : '';
+    if (!host) continue;
+    const action = normalizeSudoAction(item.action, 'deny');
+    const key = `${host.toLowerCase()}:${action}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ host, action });
   }
   return out;
 }

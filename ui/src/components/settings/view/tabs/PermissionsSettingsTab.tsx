@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, Plus, Shield, Upload, X } from 'lucide-react';
+import { AlertTriangle, Download, Plus, Server, Shield, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button, Input } from '../../../../shared/view/ui';
 import { isImeEnterEvent } from '../../../../utils/ime';
@@ -11,6 +11,7 @@ import {
   savePilotDeckPermissionSettings,
 } from '../../../chat/utils/chatStorage';
 import type { PilotDeckSettings } from '../../../chat/types/types';
+import type { SudoPermissionPolicy, SudoPolicyAction } from '../../../chat/types/types';
 import SettingsCard from '../SettingsCard';
 import SettingsRow from '../SettingsRow';
 import SettingsSection from '../SettingsSection';
@@ -38,7 +39,7 @@ const QUICK_ADD_TOOLS = [
   'web_search',
 ];
 
-const QUICK_BLOCK_TOOLS_UNIX = ['bash:rm:*', 'bash:sudo:*'];
+const QUICK_BLOCK_TOOLS_UNIX = ['bash:rm:*'];
 const QUICK_BLOCK_TOOLS_WINDOWS = [
   'bash:rm:*',
   'bash:Remove-Item:*',
@@ -48,6 +49,14 @@ const QUICK_BLOCK_TOOLS_WINDOWS = [
   'bash:Start-Process:*',
 ];
 const QUICK_BLOCK_TOOLS = IS_WINDOWS ? QUICK_BLOCK_TOOLS_WINDOWS : QUICK_BLOCK_TOOLS_UNIX;
+
+const DEFAULT_SUDO_POLICY: SudoPermissionPolicy = {
+  local: 'deny',
+  remote: 'deny',
+  remoteHosts: [],
+};
+
+const SUDO_ACTIONS: SudoPolicyAction[] = ['deny', 'ask', 'allow'];
 
 const addUnique = (items: string[], value: string): string[] => {
   const trimmed = value.trim();
@@ -85,6 +94,7 @@ type PermissionsExport = {
   allowedTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
+  sudoPolicy: SudoPermissionPolicy;
 };
 
 function buildExportPayload(): PermissionsExport {
@@ -96,6 +106,7 @@ function buildExportPayload(): PermissionsExport {
     allowedTools: settings.allowedTools,
     disallowedTools: settings.disallowedTools,
     skipPermissions: settings.skipPermissions,
+    sudoPolicy: normalizeSudoPolicy(settings.sudoPolicy),
   };
 }
 
@@ -122,6 +133,7 @@ function parsePermissionsImport(raw: string): {
   allowedTools: string[];
   disallowedTools: string[];
   skipPermissions?: boolean;
+  sudoPolicy?: SudoPermissionPolicy;
 } | null {
   let parsed: unknown;
   try {
@@ -140,7 +152,14 @@ function parsePermissionsImport(raw: string): {
   const allowedTools = toStringArray(obj.allowedTools);
   const disallowedTools = toStringArray(obj.disallowedTools);
 
-  if (allowedTools.length === 0 && disallowedTools.length === 0 && typeof obj.skipPermissions !== 'boolean') {
+  const sudoPolicy = obj.sudoPolicy ? normalizeSudoPolicy(obj.sudoPolicy) : undefined;
+
+  if (
+    allowedTools.length === 0
+    && disallowedTools.length === 0
+    && typeof obj.skipPermissions !== 'boolean'
+    && sudoPolicy === undefined
+  ) {
     return null;
   }
 
@@ -148,6 +167,7 @@ function parsePermissionsImport(raw: string): {
     allowedTools,
     disallowedTools,
     skipPermissions: typeof obj.skipPermissions === 'boolean' ? obj.skipPermissions : undefined,
+    ...(sudoPolicy ? { sudoPolicy } : {}),
   };
 }
 
@@ -173,8 +193,11 @@ export default function PermissionsSettingsTab() {
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
   const [skipPermissions, setSkipPermissions] = useState(false);
+  const [sudoPolicy, setSudoPolicy] = useState<SudoPermissionPolicy>(DEFAULT_SUDO_POLICY);
   const [newAllowed, setNewAllowed] = useState('');
   const [newBlocked, setNewBlocked] = useState('');
+  const [newSudoHost, setNewSudoHost] = useState('');
+  const [newSudoHostAction, setNewSudoHostAction] = useState<SudoPolicyAction>('deny');
   const [banner, setBanner] = useState<StatusBanner>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -183,6 +206,7 @@ export default function PermissionsSettingsTab() {
     setAllowedTools(settings.allowedTools);
     setDisallowedTools(settings.disallowedTools);
     setSkipPermissions(settings.skipPermissions);
+    setSudoPolicy(normalizeSudoPolicy(settings.sudoPolicy));
   }, []);
 
   useEffect(() => {
@@ -193,6 +217,7 @@ export default function PermissionsSettingsTab() {
         setAllowedTools(settings.allowedTools);
         setDisallowedTools(settings.disallowedTools);
         setSkipPermissions(settings.skipPermissions);
+        setSudoPolicy(normalizeSudoPolicy(settings.sudoPolicy));
       })
       .catch((error) => {
         console.error('Failed to load permission settings from backend:', error);
@@ -242,6 +267,29 @@ export default function PermissionsSettingsTab() {
   const handleSkipPermissionsChange = (value: boolean) => {
     setSkipPermissions(value);
     persist({ skipPermissions: value });
+  };
+
+  const handleSudoPolicyChange = (updates: Partial<SudoPermissionPolicy>) => {
+    const next = normalizeSudoPolicy({ ...sudoPolicy, ...updates });
+    setSudoPolicy(next);
+    persist({ sudoPolicy: next });
+  };
+
+  const handleAddSudoHost = () => {
+    const host = newSudoHost.trim();
+    if (!host) return;
+    const remoteHosts = [
+      ...sudoPolicy.remoteHosts.filter((entry) => entry.host.toLowerCase() !== host.toLowerCase()),
+      { host, action: newSudoHostAction },
+    ];
+    handleSudoPolicyChange({ remoteHosts });
+    setNewSudoHost('');
+  };
+
+  const handleRemoveSudoHost = (host: string) => {
+    handleSudoPolicyChange({
+      remoteHosts: sudoPolicy.remoteHosts.filter((entry) => entry.host !== host),
+    });
   };
 
   // Auto-dismiss the import/export banner after 4s. The user gets to read
@@ -335,6 +383,7 @@ export default function PermissionsSettingsTab() {
       allowedTools: nextAllowed,
       disallowedTools: nextBlocked,
       ...(parsed.skipPermissions !== undefined ? { skipPermissions: parsed.skipPermissions } : {}),
+      ...(parsed.sudoPolicy ? { sudoPolicy: parsed.sudoPolicy } : {}),
     };
     persist(updates);
 
@@ -342,6 +391,9 @@ export default function PermissionsSettingsTab() {
     setDisallowedTools(nextBlocked);
     if (parsed.skipPermissions !== undefined) {
       setSkipPermissions(parsed.skipPermissions);
+    }
+    if (parsed.sudoPolicy) {
+      setSudoPolicy(parsed.sudoPolicy);
     }
 
     const addedAllowed = nextAllowed.length - current.allowedTools.length;
@@ -442,6 +494,111 @@ export default function PermissionsSettingsTab() {
               })}
             </div>
           ) : null}
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            {t('permissions.sudoPolicy.title', { defaultValue: 'sudo policy' })}
+          </span>
+        }
+        description={t('permissions.sudoPolicy.description', {
+          defaultValue: 'Choose how PilotDeck handles sudo locally, over SSH, and for specific remote hosts.',
+        })}
+      >
+        <SettingsCard divided>
+          <SudoPolicyRow
+            label={t('permissions.sudoPolicy.local.label', { defaultValue: 'Local sudo' })}
+            description={t('permissions.sudoPolicy.local.description', {
+              defaultValue: 'Applies when sudo would run on this machine.',
+            })}
+            value={sudoPolicy.local}
+            onChange={(action) => handleSudoPolicyChange({ local: action })}
+            t={t}
+          />
+          <SudoPolicyRow
+            label={t('permissions.sudoPolicy.remote.label', { defaultValue: 'Remote sudo default' })}
+            description={t('permissions.sudoPolicy.remote.description', {
+              defaultValue: 'Applies to sudo detected inside ssh remote commands unless a host rule overrides it.',
+            })}
+            value={sudoPolicy.remote}
+            onChange={(action) => handleSudoPolicyChange({ remote: action })}
+            t={t}
+          />
+          <div className="space-y-3 px-4 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={newSudoHost}
+                onChange={(event) => setNewSudoHost(event.target.value)}
+                placeholder={t('permissions.sudoPolicy.hosts.placeholder', {
+                  defaultValue: 'Host, user@host, IP, or wildcard like prod-*',
+                })}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    if (isImeEnterEvent(event)) return;
+                    event.preventDefault();
+                    handleAddSudoHost();
+                  }
+                }}
+                className="h-10 flex-1"
+              />
+              <select
+                value={newSudoHostAction}
+                onChange={(event) => setNewSudoHostAction(event.target.value as SudoPolicyAction)}
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                aria-label={t('permissions.sudoPolicy.hosts.actionLabel', { defaultValue: 'Host sudo action' })}
+              >
+                {SUDO_ACTIONS.map((action) => (
+                  <option key={action} value={action}>
+                    {t(`permissions.sudoPolicy.actions.${action}`, { defaultValue: action })}
+                  </option>
+                ))}
+              </select>
+              <Button
+                onClick={handleAddSudoHost}
+                disabled={!newSudoHost.trim()}
+                size="sm"
+                className="h-10 px-4"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                {t('permissions.actions.add', { defaultValue: 'Add' })}
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {sudoPolicy.remoteHosts.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border py-5 text-center text-xs text-muted-foreground">
+                  {t('permissions.sudoPolicy.hosts.empty', {
+                    defaultValue: 'No remote host overrides configured.',
+                  })}
+                </div>
+              ) : (
+                sudoPolicy.remoteHosts.map((entry) => (
+                  <div
+                    key={`${entry.host}:${entry.action}`}
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <code className="font-mono text-xs text-foreground">{entry.host}</code>
+                      <span className="ml-2 rounded bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {t(`permissions.sudoPolicy.actions.${entry.action}`, { defaultValue: entry.action })}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveSudoHost(entry.host)}
+                      className="h-7 w-7 p-0"
+                      aria-label={t('permissions.actions.remove', { defaultValue: 'Remove' })}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </SettingsCard>
       </SettingsSection>
 
@@ -667,4 +824,66 @@ export default function PermissionsSettingsTab() {
       </SettingsSection>
     </div>
   );
+}
+
+function SudoPolicyRow({
+  label,
+  description,
+  value,
+  onChange,
+  t,
+}: {
+  label: string;
+  description: string;
+  value: SudoPolicyAction;
+  onChange: (value: SudoPolicyAction) => void;
+  t: ReturnType<typeof useTranslation>['t'];
+}) {
+  return (
+    <SettingsRow label={label} description={description}>
+      <div className="flex rounded-md border border-border p-0.5">
+        {SUDO_ACTIONS.map((action) => (
+          <button
+            key={action}
+            type="button"
+            onClick={() => onChange(action)}
+            className={
+              value === action
+                ? 'rounded px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground'
+                : 'rounded px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground'
+            }
+          >
+            {t(`permissions.sudoPolicy.actions.${action}`, { defaultValue: action })}
+          </button>
+        ))}
+      </div>
+    </SettingsRow>
+  );
+}
+
+function normalizeSudoPolicy(value: unknown): SudoPermissionPolicy {
+  const obj = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<SudoPermissionPolicy>
+    : {};
+  return {
+    local: normalizeSudoAction(obj.local, DEFAULT_SUDO_POLICY.local),
+    remote: normalizeSudoAction(obj.remote, DEFAULT_SUDO_POLICY.remote),
+    remoteHosts: Array.isArray(obj.remoteHosts)
+      ? obj.remoteHosts
+        .map((entry) => {
+          const record = entry && typeof entry === 'object' && !Array.isArray(entry)
+            ? entry as { host?: unknown; action?: unknown }
+            : {};
+          return {
+            host: typeof record.host === 'string' ? record.host.trim() : '',
+            action: normalizeSudoAction(record.action, 'deny'),
+          };
+        })
+        .filter((entry) => entry.host.length > 0)
+      : [],
+  };
+}
+
+function normalizeSudoAction(value: unknown, fallback: SudoPolicyAction): SudoPolicyAction {
+  return value === 'deny' || value === 'ask' || value === 'allow' ? value : fallback;
 }
