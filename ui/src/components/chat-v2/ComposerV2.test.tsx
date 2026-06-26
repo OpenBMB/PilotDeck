@@ -118,6 +118,23 @@ describe('ComposerV2 queue feedback', () => {
     expect(onInsertSlash).not.toHaveBeenCalled();
   });
 
+  it('keeps only one composer popover open at a time', () => {
+    renderComposer();
+
+    fireEvent.click(screen.getByTitle('Select run mode'));
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: /Plan/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle('Select permission mode'));
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(screen.queryByRole('menuitemradio', { name: /Plan/ })).toBeNull();
+    expect(screen.getByRole('menuitemradio', { name: /Full Access/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle('Context usage unknown. It will appear after the next model response.'));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Context window');
+  });
+
   it('shows a visible explanation when attachments cannot be queued', () => {
     renderComposer({
       isLoading: true,
