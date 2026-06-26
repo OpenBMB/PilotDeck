@@ -148,6 +148,37 @@ describe('ComposerV2 queue feedback', () => {
     expect(status.textContent).toContain('Empty queued messages will not send');
   });
 
+  it('gives queued message icon controls stable accessible names', () => {
+    renderComposer({
+      input: '',
+      queuedInputs: [
+        {
+          id: 'queued-first',
+          content: 'first queued message',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 1,
+        },
+        {
+          id: 'queued-second',
+          content: 'second queued message',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 2,
+        },
+      ],
+    });
+
+    expect(screen.getByRole('button', { name: 'Move queued message 1 up' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move queued message 1 down' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove queued message 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move queued message 2 up' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move queued message 2 down' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove queued message 2' })).toBeTruthy();
+  });
+
   it('shows a paused queue status when the first queued message cannot send', () => {
     renderComposer({
       input: '',
