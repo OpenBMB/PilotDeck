@@ -90,6 +90,31 @@ const groupCommandsForDisplay = (
   );
 };
 
+export function removeActiveSlashQueryForTest(input: string, slashPosition: number): string {
+  if (slashPosition < 0 || slashPosition >= input.length || input[slashPosition] !== '/') {
+    return input;
+  }
+
+  const before = input.slice(0, slashPosition);
+  const after = input.slice(slashPosition);
+  const spaceIndex = after.indexOf(' ');
+  const tail = spaceIndex !== -1 ? after.slice(spaceIndex) : '';
+
+  if (!tail) {
+    return before.replace(/\s+$/, '');
+  }
+
+  if (!before.trim()) {
+    return tail.trimStart();
+  }
+
+  if (/\s$/.test(before) && /^\s/.test(tail)) {
+    return `${before}${tail.trimStart()}`;
+  }
+
+  return `${before}${tail}`;
+}
+
 export function useSlashCommands({
   selectedProject,
   input,
@@ -124,16 +149,15 @@ export function useSlashCommands({
   const dismissCommandMenu = useCallback(() => {
     if (showCommandMenu && slashPosition >= 0) {
       setInput((prev) => {
-        const before = prev.slice(0, slashPosition);
-        const after = prev.slice(slashPosition);
-        const spaceIdx = after.indexOf(' ');
-        const tail = spaceIdx !== -1 ? after.slice(spaceIdx) : '';
-        const next = (before + tail).replace(/^\s+$/, '');
+        const next = removeActiveSlashQueryForTest(prev, slashPosition);
+        if (externalInputValueRef) {
+          externalInputValueRef.current = next;
+        }
         return next;
       });
     }
     resetCommandMenuState();
-  }, [showCommandMenu, slashPosition, setInput, resetCommandMenuState]);
+  }, [externalInputValueRef, showCommandMenu, slashPosition, setInput, resetCommandMenuState]);
 
   useEffect(() => {
     const fetchCommands = async () => {
