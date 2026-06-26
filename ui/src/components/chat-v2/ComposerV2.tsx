@@ -22,6 +22,7 @@ import {
   Loader2,
   Paperclip,
   ShieldAlert,
+  Slash,
   Square,
   Trash2,
   type LucideIcon,
@@ -280,6 +281,7 @@ export default function ComposerV2({
   frequentCommands,
   onToggleCommandMenu: _onToggleCommandMenu,
   onInsertMention,
+  onInsertSlash,
   getRootProps,
   getInputProps,
   isDragActive,
@@ -723,6 +725,14 @@ export default function ComposerV2({
                     title={t('input.mentionFile', { defaultValue: 'Mention a file' }) as string}
                   >
                     <AtSign className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onInsertSlash}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
+                    title={t('input.slashCommand', { defaultValue: 'Run a slash command' }) as string}
+                  >
+                    <Slash className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
                   </button>
                     <div
                       className="relative"
