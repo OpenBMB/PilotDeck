@@ -75,6 +75,15 @@ function renderComposer(overrides: Partial<ComposerV2Props> = {}) {
 }
 
 describe('ComposerV2 queue feedback', () => {
+  it('exposes a toolbar button for slash commands', () => {
+    const onInsertSlash = vi.fn();
+    renderComposer({ onInsertSlash });
+
+    screen.getByTitle('Run a slash command').click();
+
+    expect(onInsertSlash).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a visible explanation when attachments cannot be queued', () => {
     renderComposer({
       isLoading: true,
