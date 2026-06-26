@@ -126,6 +126,26 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
   });
 
+  it('connects the composer textbox to active slash command suggestions', () => {
+    renderComposer({
+      isCommandMenuOpen: true,
+      selectedCommandIndex: 1,
+      filteredCommands: [
+        { name: '/clear', description: 'Clear chat' },
+        { name: '/skill_install', description: 'Install a skill' },
+      ],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'Available commands' });
+    const selectedOption = screen.getByRole('option', { name: /\/skill_install/ });
+
+    expect(textarea.getAttribute('aria-autocomplete')).toBe('list');
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });
