@@ -136,10 +136,6 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       return;
     }
 
-    setAtSymbolPosition(lastAtIndex);
-    setShowFileDropdown(true);
-    setSelectedFileIndex(-1);
-
     const matchingFiles = fileList
       .filter(
         (file) =>
@@ -148,6 +144,9 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       )
       .slice(0, 10);
 
+    setAtSymbolPosition(lastAtIndex);
+    setShowFileDropdown(true);
+    setSelectedFileIndex(matchingFiles.length > 0 ? 0 : -1);
     setFilteredFiles(matchingFiles);
   }, [input, cursorPosition, fileList]);
 
