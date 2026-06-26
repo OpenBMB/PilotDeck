@@ -170,6 +170,24 @@ export function shouldCycleRunModeOnKeyDown(
   return event.key === 'Tab' && event.shiftKey && !showFileDropdown && !showCommandMenu;
 }
 
+export function insertComposerTokenForTest(
+  current: string,
+  selectionStart: number,
+  selectionEnd: number,
+  token: string,
+): { nextValue: string; nextCursor: number } {
+  const beforeSelection = current.slice(0, selectionStart);
+  const afterSelection = current.slice(selectionEnd);
+  const insert = token === '/' && beforeSelection.length > 0 && !/\s$/.test(beforeSelection)
+    ? ' /'
+    : token;
+
+  return {
+    nextValue: `${beforeSelection}${insert}${afterSelection}`,
+    nextCursor: selectionStart + insert.length,
+  };
+}
+
 function buildAttachmentPathNote(files: UploadedAttachmentFile[]): string {
   if (!files.length) {
     return '';
@@ -1048,8 +1066,12 @@ export function useChatComposerState({
       const current = inputValueRef.current ?? input;
       const selectionStart = textarea?.selectionStart ?? current.length;
       const selectionEnd = textarea?.selectionEnd ?? selectionStart;
-      const nextValue = `${current.slice(0, selectionStart)}${char}${current.slice(selectionEnd)}`;
-      const nextCursor = selectionStart + char.length;
+      const { nextValue, nextCursor } = insertComposerTokenForTest(
+        current,
+        selectionStart,
+        selectionEnd,
+        char,
+      );
 
       setInput(nextValue);
       inputValueRef.current = nextValue;
