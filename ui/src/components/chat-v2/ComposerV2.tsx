@@ -608,10 +608,18 @@ export default function ComposerV2({
             ) : null}
 
             {showFileDropdown && filteredFiles.length > 0 ? (
-              <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+              <div
+                role="listbox"
+                aria-label={t('input.fileSuggestions', {
+                  defaultValue: 'File suggestions',
+                }) as string}
+                className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+              >
                 {filteredFiles.map((file, index) => (
                   <div
                     key={file.path}
+                    role="option"
+                    aria-selected={index === selectedFileIndex}
                     className={cn(
                       'cursor-pointer border-b border-neutral-100 px-3 py-2 text-[13px] last:border-b-0 dark:border-neutral-800',
                       index === selectedFileIndex
