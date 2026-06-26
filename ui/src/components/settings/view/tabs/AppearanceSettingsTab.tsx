@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { Copy, Palette, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, Copy, Palette, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { useAppearanceProfile } from '../../../../contexts/AppearanceProfileContext';
@@ -74,9 +74,17 @@ export default function AppearanceSettingsTab({
     resetProfiles,
   } = useAppearanceProfile();
   const [selectedPresetId, setSelectedPresetId] = useState(presets[0]?.id ?? '');
+  const [deleteConfirmProfileId, setDeleteConfirmProfileId] = useState<string | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const customActive = !activeProfile.readonly;
   const allProfiles = useMemo(() => [...presets, ...profiles], [presets, profiles]);
+  const deleteConfirmOpen = deleteConfirmProfileId === activeProfile.id;
+
+  useEffect(() => {
+    setDeleteConfirmProfileId(null);
+    setResetConfirmOpen(false);
+  }, [activeProfile.id]);
 
   const applyPreset = () => {
     createFromPreset(selectedPresetId);
@@ -88,6 +96,25 @@ export default function AppearanceSettingsTab({
   };
 
   const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? presets[0];
+  const requestResetProfiles = () => {
+    setDeleteConfirmProfileId(null);
+    setResetConfirmOpen(true);
+  };
+
+  const confirmResetProfiles = () => {
+    resetProfiles();
+    setResetConfirmOpen(false);
+  };
+
+  const requestDeleteProfile = () => {
+    setResetConfirmOpen(false);
+    setDeleteConfirmProfileId(activeProfile.id);
+  };
+
+  const confirmDeleteProfile = () => {
+    deleteProfile(activeProfile.id);
+    setDeleteConfirmProfileId(null);
+  };
 
   return (
     <div className="space-y-8">
@@ -347,35 +374,99 @@ export default function AppearanceSettingsTab({
       </SettingsSection>
 
       <SettingsSection title={t('appearanceSettings.brand.manage')}>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => duplicateProfile(activeProfile.id, `${activeProfile.name} Copy`)}
-          >
-            <Copy className="h-4 w-4" />
-            {t('appearanceSettings.brand.duplicate')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={resetProfiles}
-          >
-            <RotateCcw className="h-4 w-4" />
-            {t('appearanceSettings.brand.reset')}
-          </Button>
-          {customActive ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              variant="destructive"
-              onClick={() => deleteProfile(activeProfile.id)}
+              variant="outline"
+              onClick={() => duplicateProfile(activeProfile.id, `${activeProfile.name} Copy`)}
             >
-              <Trash2 className="h-4 w-4" />
-              {t('appearanceSettings.brand.delete')}
+              <Copy className="h-4 w-4" />
+              {t('appearanceSettings.brand.duplicate')}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={profiles.length === 0}
+              onClick={requestResetProfiles}
+            >
+              <RotateCcw className="h-4 w-4" />
+              {t('appearanceSettings.brand.reset')}
+            </Button>
+            {customActive ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={requestDeleteProfile}
+              >
+                <Trash2 className="h-4 w-4" />
+                {t('appearanceSettings.brand.delete')}
+              </Button>
+            ) : null}
+          </div>
+
+          {resetConfirmOpen ? (
+            <DestructiveActionNotice
+              title={t('appearanceSettings.brand.resetConfirmTitle')}
+              description={t('appearanceSettings.brand.resetConfirmDescription')}
+              confirmLabel={t('appearanceSettings.brand.confirmReset')}
+              cancelLabel={t('appearanceSettings.brand.cancel')}
+              onConfirm={confirmResetProfiles}
+              onCancel={() => setResetConfirmOpen(false)}
+            />
+          ) : null}
+
+          {deleteConfirmOpen ? (
+            <DestructiveActionNotice
+              title={t('appearanceSettings.brand.deleteConfirmTitle', { name: activeProfile.name })}
+              description={t('appearanceSettings.brand.deleteConfirmDescription')}
+              confirmLabel={t('appearanceSettings.brand.confirmDelete')}
+              cancelLabel={t('appearanceSettings.brand.cancel')}
+              onConfirm={confirmDeleteProfile}
+              onCancel={() => setDeleteConfirmProfileId(null)}
+            />
           ) : null}
         </div>
       </SettingsSection>
+    </div>
+  );
+}
+
+function DestructiveActionNotice({
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col gap-3 rounded-md border border-destructive/35 bg-destructive/10 px-3 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 gap-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="min-w-0">
+          <div className="font-medium">{title}</div>
+          <div className="mt-0.5 text-xs leading-5 text-destructive/85">{description}</div>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+          {cancelLabel}
+        </Button>
+        <Button type="button" variant="destructive" size="sm" onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -242,7 +242,14 @@
       "manage": "Profile Management",
       "duplicate": "Duplicate",
       "reset": "Reset Profiles",
-      "delete": "Delete Profile"
+      "delete": "Delete Profile",
+      "cancel": "Cancel",
+      "deleteConfirmTitle": "Delete {{name}}?",
+      "deleteConfirmDescription": "This profile will be removed locally. Built-in presets and other custom profiles stay available.",
+      "confirmDelete": "Delete profile",
+      "resetConfirmTitle": "Reset all custom profiles?",
+      "resetConfirmDescription": "This removes every custom appearance profile and switches back to the default PilotDeck preset.",
+      "confirmReset": "Reset profiles"
     },
     "projectSorting": {
       "label": "Project Sorting",
