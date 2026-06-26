@@ -57,9 +57,7 @@ describe('SmoothTextStream', () => {
 
     stream.append(text);
 
-    expect(emitted.length).toBe(1);
-    expect(emitted[0].length).toBeGreaterThan(0);
-    expect(emitted[0].length).toBeLessThan(text.length);
+    expect(emitted.length).toBe(0);
     expect(stream.getSnapshot().targetLength).toBe(text.length);
 
     scheduler.runNext();
@@ -72,22 +70,23 @@ describe('SmoothTextStream', () => {
     for (let index = 1; index < emitted.length; index += 1) {
       const delta = emitted[index].length - emitted[index - 1].length;
       expect(delta).toBeGreaterThan(0);
-      expect(delta).toBeLessThanOrEqual(18);
+      expect(delta).toBeLessThanOrEqual(2);
     }
 
-    scheduler.drain();
+    scheduler.drain(200);
 
     expect(emitted[emitted.length - 1]).toBe(text);
     expect(stream.getSnapshot().renderedLength).toBe(text.length);
   });
 
-  it('updates the moving average rate when chunk cadence changes', () => {
+  it('keeps appended text buffered until scheduled frame updates render it', () => {
     let now = 0;
     const scheduler = createManualFrameScheduler(() => {
       now += 33;
     });
+    const emitted: string[] = [];
     const stream = new SmoothTextStream({
-      emit: () => {},
+      emit: (content) => emitted.push(content),
       scheduleFrame: (callback) => scheduler.scheduleFrame(callback),
       cancelFrame: (handle) => scheduler.cancelFrame(handle),
       now: () => now,
@@ -97,13 +96,17 @@ describe('SmoothTextStream', () => {
     now += 40;
     stream.append('x'.repeat(80));
 
-    const snapshot = stream.getSnapshot();
-    expect(snapshot.averageCharsPerSecond).toBeGreaterThan(400);
-    expect(snapshot.pendingChars).toBeGreaterThan(0);
-    expect(snapshot.pendingChars).toBeLessThan(84);
+    expect(emitted).toHaveLength(0);
+    expect(stream.getSnapshot().averageCharsPerSecond).toBe(120);
+    expect(stream.getSnapshot().pendingChars).toBe(84);
+
+    scheduler.runNext();
+
+    expect(emitted).toEqual(['ab']);
+    expect(stream.getSnapshot().pendingChars).toBe(82);
   });
 
-  it('prefers whitespace and punctuation boundaries without exceeding the frame cap', () => {
+  it('emits small frame-sized slices while streaming gradually', () => {
     let now = 0;
     const scheduler = createManualFrameScheduler(() => {
       now += 33;
@@ -122,8 +125,8 @@ describe('SmoothTextStream', () => {
     stream.append('hello world, next sentence.');
     scheduler.runNext();
 
-    expect(emitted[0].length).toBeLessThanOrEqual(12);
-    expect(/[\s,]$/.test(emitted[0])).toBe(true);
+    expect(emitted[0]).toBe('he');
+    expect(emitted[0].length).toBeLessThanOrEqual(2);
   });
 
   it('flushes all buffered content and finalizes immediately', () => {
@@ -153,15 +156,8 @@ describe('SmoothTextStream', () => {
     expect(scheduler.size).toBe(0);
   });
 
-  it('falls back when requestAnimationFrame does not run promptly', () => {
+  it('uses the fallback timer when the scheduled frame does not run promptly', () => {
     vi.useFakeTimers();
-    const requestAnimationFrameSpy = vi.fn(() => 1);
-    const cancelAnimationFrameSpy = vi.fn();
-    vi.stubGlobal('window', {
-      requestAnimationFrame: requestAnimationFrameSpy,
-      cancelAnimationFrame: cancelAnimationFrameSpy,
-      setTimeout: globalThis.setTimeout,
-    });
     const emitted: string[] = [];
 
     try {
@@ -172,13 +168,13 @@ describe('SmoothTextStream', () => {
 
       stream.append('abcdefghijklmnopqrstuvwxyz '.repeat(4));
 
-      expect(emitted.length).toBe(1);
+      expect(emitted.length).toBe(0);
       vi.advanceTimersByTime(10);
 
-      expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(1);
+      expect(emitted.length).toBe(1);
+      vi.advanceTimersByTime(10);
       expect(emitted.length).toBeGreaterThan(1);
     } finally {
-      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });

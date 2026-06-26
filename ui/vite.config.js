@@ -2,6 +2,7 @@ import path from 'path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
+import { configDefaults } from 'vitest/config'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -89,6 +90,10 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      exclude: [
+        ...configDefaults.exclude,
+        'e2e/**',
+      ],
       server: {
         deps: {
           inline: ['react', 'react-dom']
