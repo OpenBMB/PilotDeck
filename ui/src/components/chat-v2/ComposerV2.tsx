@@ -324,6 +324,9 @@ export default function ComposerV2({
   const queueAttachmentBlockId = useId();
   const fileSuggestionsId = useId();
   const commandMenuId = useId();
+  const runModeMenuId = useId();
+  const permissionMenuId = useId();
+  const contextPopoverId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
   useEffect(() => {
@@ -771,6 +774,7 @@ export default function ComposerV2({
                         }) as string}
                         aria-haspopup="menu"
                         aria-expanded={isRunModeMenuOpen}
+                        aria-controls={isRunModeMenuOpen ? runModeMenuId : undefined}
                       >
                         <SelectedRunModeIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                         <span className="truncate">{selectedRunModeLabel}</span>
@@ -784,6 +788,7 @@ export default function ComposerV2({
                       </button>
                       {isRunModeMenuOpen ? (
                         <div
+                          id={runModeMenuId}
                           role="menu"
                           className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
                         >
@@ -943,6 +948,7 @@ export default function ComposerV2({
                       }) as string}
                       aria-haspopup="menu"
                       aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
+                      aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}
                     >
                       <SelectedPermissionIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{selectedPermissionLabel}</span>
@@ -956,6 +962,7 @@ export default function ComposerV2({
                     </button>
                     {isPermissionMenuOpen ? (
                       <div
+                        id={permissionMenuId}
                         role="menu"
                         className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
                       >
@@ -1049,12 +1056,14 @@ export default function ComposerV2({
                         title={contextStatusTitle}
                         aria-label={contextStatusTitle}
                         aria-expanded={isContextPopoverOpen}
+                        aria-controls={isContextPopoverOpen ? contextPopoverId : undefined}
                       >
                         <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
                         <span>{contextStatus.known ? `${contextStatus.percent}%` : '--'}</span>
                       </button>
                       {isContextPopoverOpen ? (
                         <div
+                          id={contextPopoverId}
                           role="status"
                           className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
                         >

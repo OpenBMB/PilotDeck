@@ -250,17 +250,26 @@ describe('ComposerV2 queue feedback', () => {
     renderComposer();
 
     fireEvent.click(screen.getByTitle('Select run mode'));
-    expect(screen.getByRole('menu')).toBeTruthy();
+    const runModeButton = screen.getByTitle('Select run mode');
+    const runModeMenu = screen.getByRole('menu');
+    expect(runModeMenu).toBeTruthy();
+    expect(runModeButton.getAttribute('aria-controls')).toBe(runModeMenu.id);
     expect(screen.getByRole('menuitemradio', { name: /Plan/ })).toBeTruthy();
 
     fireEvent.click(screen.getByTitle('Select permission mode'));
+    const permissionButton = screen.getByTitle('Select permission mode');
+    const permissionMenu = screen.getAllByRole('menu')[0];
     expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(permissionButton.getAttribute('aria-controls')).toBe(permissionMenu.id);
     expect(screen.queryByRole('menuitemradio', { name: /Plan/ })).toBeNull();
     expect(screen.getByRole('menuitemradio', { name: /Full Access/ })).toBeTruthy();
 
     fireEvent.click(screen.getByTitle('Context usage unknown. It will appear after the next model response.'));
+    const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
+    const contextPopover = screen.getByRole('status');
     expect(screen.queryByRole('menu')).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('Context window');
+    expect(contextPopover.textContent).toContain('Context window');
+    expect(contextButton.getAttribute('aria-controls')).toBe(contextPopover.id);
   });
 
   it('closes composer popovers before running toolbar actions', () => {
