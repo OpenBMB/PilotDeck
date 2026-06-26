@@ -73,6 +73,7 @@ export type ComposerV2Props = {
   filteredFiles: MentionableFile[];
   selectedFileIndex: number;
   onSelectFile: (file: MentionableFile) => void;
+  onHighlightFile: (index: number) => void;
 
   filteredCommands: SlashCommand[];
   selectedCommandIndex: number;
@@ -280,6 +281,7 @@ export default function ComposerV2({
   filteredFiles,
   selectedFileIndex,
   onSelectFile,
+  onHighlightFile,
   filteredCommands,
   selectedCommandIndex,
   onCommandSelect,
@@ -648,6 +650,7 @@ export default function ComposerV2({
                       event.preventDefault();
                       event.stopPropagation();
                     }}
+                    onMouseEnter={() => onHighlightFile(index)}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();

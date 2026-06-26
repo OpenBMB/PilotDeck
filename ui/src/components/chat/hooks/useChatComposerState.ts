@@ -626,6 +626,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    highlightFileSuggestion,
     setCursorPosition,
     handleFileMentionsKeyDown,
   } = useFileMentions({
@@ -1362,6 +1363,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    highlightFileSuggestion,
     attachedImages,
     setAttachedImages,
     uploadingImages,

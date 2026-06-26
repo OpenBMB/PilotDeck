@@ -35,6 +35,7 @@ function renderComposer(overrides: Partial<ComposerV2Props> = {}) {
     filteredFiles: [],
     selectedFileIndex: 0,
     onSelectFile: noop,
+    onHighlightFile: noop,
     filteredCommands: [],
     selectedCommandIndex: 0,
     onCommandSelect: noop,
@@ -124,6 +125,23 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.getAttribute('aria-expanded')).toBe('true');
     expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
     expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
+  });
+
+  it('highlights a file suggestion on hover so mouse and keyboard selection stay aligned', () => {
+    const onHighlightFile = vi.fn();
+    renderComposer({
+      showFileDropdown: true,
+      selectedFileIndex: 0,
+      onHighlightFile,
+      filteredFiles: [
+        { name: 'README.md', path: 'README.md' },
+        { name: 'ComposerV2.tsx', path: 'ui/src/components/chat-v2/ComposerV2.tsx' },
+      ],
+    });
+
+    fireEvent.mouseEnter(screen.getByRole('option', { name: /ComposerV2.tsx/ }));
+
+    expect(onHighlightFile).toHaveBeenCalledWith(1);
   });
 
   it('connects the composer textbox to active slash command suggestions', () => {
