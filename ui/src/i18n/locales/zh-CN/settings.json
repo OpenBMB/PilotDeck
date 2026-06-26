@@ -477,8 +477,19 @@
     "exportError": "导出权限失败。",
     "importReadError": "无法读取选中的文件。",
     "importInvalid": "文件不是有效的权限导出（需要包含 allowedTools / disallowedTools 的 JSON）。",
-    "importConfirmBody": "将导入的 {{allowed}} 个允许工具与 {{blocked}} 个禁用工具合并到现有权限？",
-    "importSuccess": "导入完成，新增 {{addedAllowed}} 个允许工具与 {{addedBlocked}} 个禁用工具。",
+    "importConfirmBody": "将导入的 {{allowed}} 个允许工具与 {{blocked}} 个禁用工具合并到现有权限？{{details}}",
+    "importConfirmDetailsIntro": "此次导入还会修改：",
+    "importConfirmSkipPermissions": "跳过权限确认：{{value}}",
+    "importConfirmSudoPolicy": "sudo 策略：本地 {{local}}，远程默认 {{remote}}，{{hostText}}",
+    "importConfirmSudoHostSingular": "1 条主机覆盖规则",
+    "importConfirmSudoHostPlural": "{{hosts}} 条主机覆盖规则",
+    "importSuccess": "导入完成，新增 {{addedAllowed}} 个允许工具与 {{addedBlocked}} 个禁用工具。{{details}}",
+    "importSuccessSkipPermissions": "已更新跳过权限确认。",
+    "importSuccessSudoPolicy": "已更新 sudo 策略。",
+    "values": {
+      "enabled": "开启",
+      "disabled": "关闭"
+    },
     "skipPermissions": {
       "title": "跳过权限确认",
       "description": "工具调用不再弹出确认，等同于 bypassPermissions。仅建议在可信工作区中开启。",
