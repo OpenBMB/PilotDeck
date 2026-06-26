@@ -402,8 +402,8 @@ export default function ComposerV2({
   const selectedFileOptionId = fileSuggestionsOpen && selectedFileIndex >= 0
     ? `${fileSuggestionsId}-option-${selectedFileIndex}`
     : undefined;
-  const commandMenuOpen = isCommandMenuOpen && filteredCommands.length > 0;
-  const selectedCommandOptionId = commandMenuOpen && selectedCommandIndex >= 0
+  const commandMenuOpen = isCommandMenuOpen;
+  const selectedCommandOptionId = commandMenuOpen && filteredCommands.length > 0 && selectedCommandIndex >= 0
     ? `${commandMenuId}-option-${selectedCommandIndex}`
     : undefined;
   const activeAutocompleteId = fileSuggestionsOpen
