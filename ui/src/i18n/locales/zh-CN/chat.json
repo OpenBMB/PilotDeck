@@ -251,6 +251,20 @@
       "planDescription": "先产出计划，确认后再执行"
     }
   },
+  "queue": {
+    "title": "{{count}} 条排队消息",
+    "waiting": "当前运行结束后发送",
+    "ready": "正在发送下一条",
+    "editItem": "编辑第 {{index}} 条排队消息",
+    "attachments": "{{count}} 个附件",
+    "attachments_one": "{{count}} 个附件",
+    "attachments_other": "{{count}} 个附件",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "remove": "从队列移除",
+    "add": "加入队列",
+    "attachmentsDisabledInline": "带附件的消息不能排队。请等待当前运行结束后再发送这条消息。"
+  },
   "commandMenu": {
     "empty": "暂无可用命令",
     "groups": {

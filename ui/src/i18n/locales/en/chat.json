@@ -268,6 +268,20 @@
       "planDescription": "Generate a plan first, then execute after confirmation"
     }
   },
+  "queue": {
+    "title": "{{count}} queued",
+    "waiting": "Will send after this run",
+    "ready": "Sending next",
+    "editItem": "Edit queued message {{index}}",
+    "attachments": "{{count}} attachment",
+    "attachments_one": "{{count}} attachment",
+    "attachments_other": "{{count}} attachments",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove from queue",
+    "add": "Add to queue",
+    "attachmentsDisabledInline": "Attachments cannot be queued. Wait for the current run to finish, then send this message."
+  },
   "commandMenu": {
     "empty": "No commands available",
     "groups": {

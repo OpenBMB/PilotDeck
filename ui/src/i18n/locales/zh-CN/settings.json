@@ -179,7 +179,12 @@
     "refresh": "刷新",
     "save": "保存项目模型",
     "saving": "正在保存...",
-    "saved": "已保存到此项目"
+    "saved": "已保存到此项目",
+    "unsavedSwitchTitle": "当前项目有未保存更改",
+    "unsavedSwitchDescription": "请先保存或放弃更改，再切换到 {{project}}。",
+    "keepEditing": "继续编辑",
+    "discardAndSwitch": "放弃并切换",
+    "saveAndSwitch": "保存并切换"
   },
   "notifications": {
     "title": "通知",
