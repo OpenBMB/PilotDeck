@@ -3,6 +3,7 @@ import type { QueuedChatInput } from '../types/types';
 import {
   canQueueInputForTest,
   getNextDispatchableQueuedInputForTest,
+  insertComposerTokenForTest,
   moveQueuedInputForTest,
   shouldCycleRunModeOnKeyDown,
 } from './useChatComposerState';
@@ -32,6 +33,33 @@ describe('useChatComposerState keyboard shortcuts', () => {
       showFileDropdown: false,
       showCommandMenu: true,
     })).toBe(false);
+  });
+});
+
+describe('useChatComposerState composer token insertion', () => {
+  it('inserts a separating space before toolbar slash commands after text', () => {
+    expect(insertComposerTokenForTest('please review', 13, 13, '/')).toEqual({
+      nextValue: 'please review /',
+      nextCursor: 15,
+    });
+  });
+
+  it('keeps slash commands tight at the start or after existing whitespace', () => {
+    expect(insertComposerTokenForTest('', 0, 0, '/')).toEqual({
+      nextValue: '/',
+      nextCursor: 1,
+    });
+    expect(insertComposerTokenForTest('please ', 7, 7, '/')).toEqual({
+      nextValue: 'please /',
+      nextCursor: 8,
+    });
+  });
+
+  it('replaces selected text when inserting composer tokens', () => {
+    expect(insertComposerTokenForTest('please replace this', 7, 14, '@')).toEqual({
+      nextValue: 'please @ this',
+      nextCursor: 8,
+    });
   });
 });
 
