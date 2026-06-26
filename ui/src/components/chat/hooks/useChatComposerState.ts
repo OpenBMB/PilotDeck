@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   PendingPermissionRequest,
   PermissionMode,
+  QueuedChatInput,
 } from '../types/types';
 import type {
   Project,
@@ -114,6 +115,40 @@ type UploadedAttachmentFile = {
   mimeType?: string;
 };
 
+type PreparedSubmission = {
+  content: string;
+  files: File[];
+  thinkingMode: string;
+  targetSessionId: string | null;
+  selectedSession: ProjectSession | null;
+};
+
+function createQueuedInputId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `queued-input-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function moveQueuedInputForTest(queue: QueuedChatInput[], id: string, direction: -1 | 1): QueuedChatInput[] {
+  const index = queue.findIndex((item) => item.id === id);
+  if (index < 0) {
+    return queue;
+  }
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= queue.length) {
+    return queue;
+  }
+  const next = [...queue];
+  const [item] = next.splice(index, 1);
+  next.splice(nextIndex, 0, item);
+  return next;
+}
+
+export function canQueueInputForTest(content: string, fileCount: number): boolean {
+  return content.trim().length > 0 && fileCount === 0;
+}
+
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
   {
@@ -180,6 +215,7 @@ export function useChatComposerState({
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [thinkingMode, setThinkingMode] = useState('none');
+  const [queuedInputs, setQueuedInputs] = useState<QueuedChatInput[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHighlightRef = useRef<HTMLDivElement>(null);
@@ -187,6 +223,8 @@ export function useChatComposerState({
     ((event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>) => Promise<void>) | null
   >(null);
   const inputValueRef = useRef(input);
+  const isLoadingRef = useRef(isLoading);
+  const queueDispatchInFlightRef = useRef(false);
 
   // One-shot flag set by `handleCustomCommand` when re-submitting passthrough
   // slash content (e.g. `/projects` for bundled stubs, `/canvas` for skills).
@@ -194,6 +232,24 @@ export function useChatComposerState({
   // again, call executeCommand, get the same passthrough back, and loop —
   // user-visibly: the input keeps deleting/refilling.
   const skipSlashDetectionOnceRef = useRef(false);
+
+  const updateQueuedInput = useCallback((id: string, content: string) => {
+    setQueuedInputs((previous) =>
+      previous.map((item) => (item.id === id ? { ...item, content } : item)),
+    );
+  }, []);
+
+  const removeQueuedInput = useCallback((id: string) => {
+    setQueuedInputs((previous) => previous.filter((item) => item.id !== id));
+  }, []);
+
+  const moveQueuedInputUp = useCallback((id: string) => {
+    setQueuedInputs((previous) => moveQueuedInputForTest(previous, id, -1));
+  }, []);
+
+  const moveQueuedInputDown = useCallback((id: string) => {
+    setQueuedInputs((previous) => moveQueuedInputForTest(previous, id, 1));
+  }, []);
 
   const handleBuiltInCommand = useCallback(
     async (result: CommandExecutionResult) => {
@@ -540,6 +596,41 @@ export function useChatComposerState({
     textareaRef,
   });
 
+  const resetComposerDraft = useCallback(() => {
+    setInput('');
+    inputValueRef.current = '';
+    resetCommandMenuState();
+    setAttachedImages([]);
+    setUploadingImages(new Map());
+    setImageErrors(new Map());
+    setIsTextareaExpanded(false);
+    setThinkingMode('none');
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    if (selectedProject) {
+      safeLocalStorage.removeItem(`draft_input_${selectedProject.name}`);
+    }
+  }, [resetCommandMenuState, selectedProject]);
+
+  const enqueueCurrentInput = useCallback((content: string, targetSessionId: string | null) => {
+    if (!canQueueInputForTest(content, 0)) {
+      return;
+    }
+    const nextItem: QueuedChatInput = {
+      id: createQueuedInputId(),
+      content,
+      files: [],
+      thinkingMode,
+      targetSessionId,
+      createdAt: Date.now(),
+    };
+    setQueuedInputs((previous) => [...previous, nextItem]);
+    resetComposerDraft();
+  }, [resetComposerDraft, thinkingMode]);
+
   const syncInputOverlayScroll = useCallback((target: HTMLTextAreaElement) => {
     if (!inputHighlightRef.current || !target) {
       return;
@@ -617,71 +708,22 @@ export function useChatComposerState({
     noKeyboard: true,
   });
 
-  const handleSubmit = useCallback(
-    async (
-      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
-    ) => {
-      event.preventDefault();
-      const currentInput = inputValueRef.current;
-      const hasAttachments = attachedImages.length > 0;
-      if ((!currentInput.trim() && !hasAttachments) || isLoading || !selectedProject) {
-        return;
+  const dispatchSubmission = useCallback(
+    async ({ content, files, thinkingMode: submissionThinkingMode, targetSessionId, selectedSession: submitSelectedSession }: PreparedSubmission) => {
+      if (!selectedProject) {
+        return false;
       }
 
-      // Intercept slash commands: if input starts with /commandName, execute as command with args.
-      // Skip when handleCustomCommand just pushed a passthrough back into the
-      // input box — we already executed it once and want this submit to flow
-      // through as a normal user message.
-      const trimmedInput = currentInput.trim();
-      if (skipSlashDetectionOnceRef.current) {
-        skipSlashDetectionOnceRef.current = false;
-      } else if (trimmedInput.startsWith('/')) {
-        const commandName = trimmedInput.match(/^(\S+)/)?.[1] ?? trimmedInput;
-        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
-        if (matchedCommand) {
-          executeCommand(matchedCommand, trimmedInput);
-          setInput('');
-          inputValueRef.current = '';
-          setAttachedImages([]);
-          setUploadingImages(new Map());
-          setImageErrors(new Map());
-          resetCommandMenuState();
-          setIsTextareaExpanded(false);
-          if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-          }
-          return;
-        }
-      }
-
-      const userVisibleInput = currentInput.trim() || 'Please review the attached file(s).';
+      const userVisibleInput = content.trim() || 'Please review the attached file(s).';
       let messageContent = userVisibleInput;
-      const selectedThinkingMode = thinkingModes.find((mode: { id: string; prefix?: string }) => mode.id === thinkingMode);
-      if (selectedThinkingMode && selectedThinkingMode.prefix) {
+      const selectedThinkingMode = thinkingModes.find((mode: { id: string; prefix?: string }) => mode.id === submissionThinkingMode);
+      if (selectedThinkingMode?.prefix) {
         messageContent = `${selectedThinkingMode.prefix}: ${userVisibleInput}`;
       }
 
-      // Pin the target session before any await so attachment upload cannot
-      // race with a sidebar session switch and leak the optimistic bubble.
-      const pendingSessionIdAtSubmit = pendingViewSessionRef.current?.sessionId ?? null;
-      const canResumeCurrentSession =
-        Boolean(currentSessionId) &&
-        (Boolean(selectedSession?.id) || pendingSessionIdAtSubmit === currentSessionId);
-      const submitTargetSessionId =
-        selectedSession?.id ||
-        (canResumeCurrentSession ? currentSessionId : null);
-      const submitSelectedSession = selectedSession;
-
-      // Optimistic sidebar refresh — fire BEFORE the attachment upload so
-      // the sidebar reorders/spawns the row the instant the user clicks
-      // send, not after the network round-trip. We resolve a stable
-      // session id here (real id when resuming; otherwise a temporary
-      // `new-session-*` placeholder that will be replaced by
-      // `preserveLoadedSessions` once the server's `projects_updated`
-      // arrives with the real id).
-      const optimisticSessionId =
-        submitTargetSessionId || createTemporarySessionId();
-      if (selectedProject?.name) {
+      const submitTargetSessionId = targetSessionId;
+      const optimisticSessionId = submitTargetSessionId || createTemporarySessionId();
+      if (selectedProject.name) {
         onSessionActivityBump?.(
           selectedProject.name,
           optimisticSessionId,
@@ -691,9 +733,9 @@ export function useChatComposerState({
 
       let uploadedImages: unknown[] = [];
       let uploadedFiles: UploadedAttachmentFile[] = [];
-      if (attachedImages.length > 0) {
+      if (files.length > 0) {
         const formData = new FormData();
-        attachedImages.forEach((file) => {
+        files.forEach((file) => {
           formData.append('attachments', file);
         });
 
@@ -719,7 +761,7 @@ export function useChatComposerState({
             content: `Failed to upload attachments: ${message}`,
             timestamp: new Date(),
           }, submitTargetSessionId);
-          return;
+          return false;
         }
       }
 
@@ -737,7 +779,8 @@ export function useChatComposerState({
       };
 
       addMessage(userMessage, submitTargetSessionId);
-      setIsLoading(true); // Processing banner starts
+      isLoadingRef.current = true;
+      setIsLoading(true);
       setCanAbortSession(true);
       setClaudeStatus({
         text: 'Processing',
@@ -750,7 +793,6 @@ export function useChatComposerState({
 
       if (!effectiveSessionId && !submitSelectedSession?.id) {
         if (typeof window !== 'undefined') {
-          // Reset stale pending IDs from previous interrupted runs before creating a new one.
           sessionStorage.removeItem('pendingSessionId');
         }
         pendingViewSessionRef.current = { sessionId: null, startedAt: Date.now() };
@@ -760,10 +802,6 @@ export function useChatComposerState({
         onSessionProcessing?.(effectiveSessionId);
       }
 
-      // PilotDeck-only: a single localStorage entry (`pilotdeck-settings`)
-      // tracks tool consent + skip-permissions for every chat. The legacy
-      // per-provider keys (`cursor-tools-settings`, `codex-settings`,
-      // `gemini-settings`) are no longer read or written.
       const getToolsSettings = () => {
         try {
           const savedSettings = safeLocalStorage.getItem('pilotdeck-settings');
@@ -798,44 +836,91 @@ export function useChatComposerState({
         images: uploadedImages,
       });
 
-      setInput('');
-      inputValueRef.current = '';
-      resetCommandMenuState();
-      setAttachedImages([]);
-      setUploadingImages(new Map());
-      setImageErrors(new Map());
-      setIsTextareaExpanded(false);
-      setThinkingMode('none');
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-
-      safeLocalStorage.removeItem(`draft_input_${selectedProject.name}`);
+      return true;
     },
     [
-      selectedSession,
-      attachedImages,
+      addMessage,
+      basePermissionMode,
       model,
-      currentSessionId,
-      executeCommand,
-      isLoading,
       onSessionActive,
       onSessionActivityBump,
       onSessionProcessing,
       pendingViewSessionRef,
       permissionMode,
-      basePermissionMode,
-      resetCommandMenuState,
       scrollToBottom,
       selectedProject,
       sendMessage,
       setCanAbortSession,
-      addMessage,
       setClaudeStatus,
-      setPilotDeckStatus,
       setIsLoading,
       setIsUserScrolledUp,
+    ],
+  );
+
+  const handleSubmit = useCallback(
+    async (
+      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
+    ) => {
+      event.preventDefault();
+      const currentInput = inputValueRef.current;
+      const hasAttachments = attachedImages.length > 0;
+      if ((!currentInput.trim() && !hasAttachments) || !selectedProject) {
+        return;
+      }
+
+      const trimmedInput = currentInput.trim();
+      if (skipSlashDetectionOnceRef.current) {
+        skipSlashDetectionOnceRef.current = false;
+      } else if (trimmedInput.startsWith('/')) {
+        const firstSpace = trimmedInput.indexOf(' ');
+        const commandName = firstSpace > 0 ? trimmedInput.slice(0, firstSpace) : trimmedInput;
+        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
+        if (matchedCommand) {
+          executeCommand(matchedCommand, trimmedInput);
+          resetComposerDraft();
+          return;
+        }
+      }
+
+      const pendingSessionIdAtSubmit = pendingViewSessionRef.current?.sessionId ?? null;
+      const canResumeCurrentSession =
+        Boolean(currentSessionId) &&
+        (Boolean(selectedSession?.id) || pendingSessionIdAtSubmit === currentSessionId);
+      const submitTargetSessionId =
+        selectedSession?.id ||
+        (canResumeCurrentSession ? currentSessionId : null);
+      const submitSelectedSession = selectedSession;
+      const submission: PreparedSubmission = {
+        content: currentInput,
+        files: attachedImages,
+        thinkingMode,
+        targetSessionId: submitTargetSessionId,
+        selectedSession: submitSelectedSession,
+      };
+
+      if (isLoadingRef.current) {
+        if (!canQueueInputForTest(currentInput, attachedImages.length)) {
+          return;
+        }
+        enqueueCurrentInput(currentInput, submitTargetSessionId);
+        return;
+      }
+
+      const dispatched = await dispatchSubmission(submission);
+      if (dispatched) {
+        resetComposerDraft();
+      }
+    },
+    [
+      attachedImages,
+      currentSessionId,
+      dispatchSubmission,
+      enqueueCurrentInput,
+      executeCommand,
+      pendingViewSessionRef,
+      resetComposerDraft,
+      selectedProject,
+      selectedSession,
       slashCommands,
       thinkingMode,
     ],
@@ -844,6 +929,43 @@ export function useChatComposerState({
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (isLoading || queueDispatchInFlightRef.current || queuedInputs.length === 0 || !selectedProject) {
+      return;
+    }
+
+    const nextQueuedInput = queuedInputs[0];
+    if (!canQueueInputForTest(nextQueuedInput.content, nextQueuedInput.files.length)) {
+      setQueuedInputs((previous) => previous.slice(1));
+      return;
+    }
+
+    queueDispatchInFlightRef.current = true;
+    void dispatchSubmission({
+      content: nextQueuedInput.content,
+      files: nextQueuedInput.files,
+      thinkingMode: nextQueuedInput.thinkingMode,
+      targetSessionId:
+        nextQueuedInput.targetSessionId ||
+        (currentSessionId && !isTemporarySessionId(currentSessionId) ? currentSessionId : null) ||
+        selectedSession?.id ||
+        null,
+      selectedSession,
+    }).then(() => {
+      setQueuedInputs((previous) =>
+        previous[0]?.id === nextQueuedInput.id
+          ? previous.slice(1)
+          : previous.filter((item) => item.id !== nextQueuedInput.id),
+      );
+    }).finally(() => {
+      queueDispatchInFlightRef.current = false;
+    });
+  }, [currentSessionId, dispatchSubmission, isLoading, queuedInputs, selectedProject, selectedSession]);
 
   useEffect(() => {
     inputValueRef.current = input;
@@ -1055,7 +1177,7 @@ export function useChatComposerState({
       tokens: 0,
       can_interrupt: false,
     });
-  }, [canAbortSession, currentSessionId, pendingViewSessionRef, selectedSession?.id, sendMessage, setCanAbortSession, setClaudeStatus, setIsAborting, setPilotDeckStatus]);
+  }, [canAbortSession, currentSessionId, pendingViewSessionRef, selectedSession?.id, sendMessage, setCanAbortSession, setIsAborting, setPilotDeckStatus]);
 
   const handleGrantToolPermission = useCallback(
     (suggestion: { entry: string; toolName: string }) => {
@@ -1223,5 +1345,10 @@ export function useChatComposerState({
     handleGrantSessionToolPermission,
     handleInputFocusChange,
     isInputFocused,
+    queuedInputs,
+    updateQueuedInput,
+    removeQueuedInput,
+    moveQueuedInputUp,
+    moveQueuedInputDown,
   };
 }

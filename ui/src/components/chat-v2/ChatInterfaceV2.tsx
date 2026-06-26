@@ -202,6 +202,11 @@ function ChatInterfaceV2({
     handleGrantToolPermission,
     handleGrantSessionToolPermission,
     handleInputFocusChange,
+    queuedInputs,
+    updateQueuedInput,
+    removeQueuedInput,
+    moveQueuedInputUp,
+    moveQueuedInputDown,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -495,6 +500,11 @@ function ChatInterfaceV2({
       isLoading={isLoading}
       canAbortSession={canAbortSession}
       isAbortPending={isAbortPending}
+      queuedInputs={queuedInputs}
+      onUpdateQueuedInput={updateQueuedInput}
+      onRemoveQueuedInput={removeQueuedInput}
+      onMoveQueuedInputUp={moveQueuedInputUp}
+      onMoveQueuedInputDown={moveQueuedInputDown}
       tokenBudget={tokenBudget}
       pendingPermissionRequests={pendingPermissionRequests}
       handlePermissionDecision={handlePermissionDecision}
