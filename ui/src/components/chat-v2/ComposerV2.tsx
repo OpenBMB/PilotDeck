@@ -249,6 +249,13 @@ function getContextStatus(tokenBudget?: Record<string, unknown> | null): Context
   };
 }
 
+export function getQueuedInputRowsForTest(content: string): number {
+  const visualLines = content.split(/\r\n|\r|\n/).reduce((count, line) => {
+    return count + Math.max(1, Math.ceil(line.length / 72));
+  }, 0);
+  return Math.max(1, Math.min(4, visualLines));
+}
+
 export default function ComposerV2({
   input,
   placeholder,
@@ -499,7 +506,7 @@ export default function ComposerV2({
                         <div className="min-w-0">
                           <textarea
                             value={item.content}
-                            rows={1}
+                            rows={getQueuedInputRowsForTest(item.content)}
                             onChange={(event) => onUpdateQueuedInput(item.id, event.target.value)}
                             aria-invalid={itemBlocked}
                             aria-describedby={itemBlocked ? itemErrorId : undefined}

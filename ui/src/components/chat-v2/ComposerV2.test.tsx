@@ -2,7 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ComposerV2, { type ComposerV2Props } from './ComposerV2';
+import ComposerV2, { getQueuedInputRowsForTest, type ComposerV2Props } from './ComposerV2';
 
 afterEach(() => {
   cleanup();
@@ -75,6 +75,13 @@ function renderComposer(overrides: Partial<ComposerV2Props> = {}) {
 }
 
 describe('ComposerV2 queue feedback', () => {
+  it('sizes queued editors to show multiline content without expanding forever', () => {
+    expect(getQueuedInputRowsForTest('one line')).toBe(1);
+    expect(getQueuedInputRowsForTest('line one\nline two\nline three')).toBe(3);
+    expect(getQueuedInputRowsForTest('1\n2\n3\n4\n5\n6')).toBe(4);
+    expect(getQueuedInputRowsForTest('x'.repeat(160))).toBe(3);
+  });
+
   it('gives icon-only composer controls stable accessible names', () => {
     renderComposer();
 
@@ -177,6 +184,26 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.getByRole('button', { name: 'Move queued message 2 up' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Move queued message 2 down' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove queued message 2' })).toBeTruthy();
+  });
+
+  it('shows multiline queued messages with more editing context', () => {
+    renderComposer({
+      input: '',
+      queuedInputs: [
+        {
+          id: 'queued-multiline',
+          content: 'first line\nsecond line\nthird line',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 1,
+        },
+      ],
+    });
+
+    const queuedEditor = screen.getByRole('textbox', { name: 'Edit queued message 1' });
+
+    expect(queuedEditor.getAttribute('rows')).toBe('3');
   });
 
   it('shows a paused queue status when the first queued message cannot send', () => {
