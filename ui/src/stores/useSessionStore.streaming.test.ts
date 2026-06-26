@@ -40,7 +40,7 @@ function streamingMessage(sessionId: string, content: string): NormalizedMessage
 }
 
 describe('patchMergedStreamingMessage', () => {
-  it('updates merged content in place without replacing the merged array', () => {
+  it('updates merged content and replaces the merged array for subscribers', () => {
     const sessionId = 'web:s_test';
     const streamId = `__streaming_${sessionId}`;
     const merged = [streamingMessage(sessionId, 'hello')];
@@ -54,7 +54,7 @@ describe('patchMergedStreamingMessage', () => {
     const patched = patchMergedStreamingMessage(slot, streamId, 'hello world', PROVIDER);
 
     expect(patched).toBe(true);
-    expect(slot.merged).toBe(mergedBefore);
+    expect(slot.merged).not.toBe(mergedBefore);
     expect(slot.merged[0]?.content).toBe('hello world');
   });
 
