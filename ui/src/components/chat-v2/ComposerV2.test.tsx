@@ -147,4 +147,56 @@ describe('ComposerV2 queue feedback', () => {
     expect(queuedEditor.getAttribute('aria-describedby')).toBe(status.id);
     expect(status.textContent).toContain('Empty queued messages will not send');
   });
+
+  it('shows a paused queue status when the first queued message cannot send', () => {
+    renderComposer({
+      input: '',
+      isLoading: false,
+      queuedInputs: [
+        {
+          id: 'queued-blank',
+          content: '   ',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 1,
+        },
+        {
+          id: 'queued-ready',
+          content: 'send this after the blank item is fixed',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 2,
+        },
+      ],
+    });
+
+    expect(screen.getByText('Fix first item to continue')).toBeTruthy();
+    expect(screen.queryByText('Sending next')).toBeNull();
+  });
+
+  it('marks queued attachments as blocked instead of presenting them as sendable', () => {
+    renderComposer({
+      input: '',
+      queuedInputs: [
+        {
+          id: 'queued-file',
+          content: 'send this with the screenshot',
+          files: [new File(['image'], 'screen.png', { type: 'image/png' })],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 1,
+        },
+      ],
+    });
+
+    const queuedEditor = screen.getByRole('textbox', { name: 'Edit queued message 1' });
+    const status = screen.getByRole('status');
+
+    expect(queuedEditor.getAttribute('aria-invalid')).toBe('true');
+    expect(queuedEditor.getAttribute('aria-describedby')).toBe(status.id);
+    expect(status.textContent).toContain('queued attachment');
+    expect(screen.getByText('Fix first item to continue')).toBeTruthy();
+  });
 });

@@ -327,6 +327,12 @@ export default function ComposerV2({
   const hasDraftContent = input.trim().length > 0 || attachedImages.length > 0;
   const hasUploadingImages = uploadingImages.size > 0;
   const queueBlockedByAttachments = isLoading && attachedImages.length > 0;
+  const firstQueuedInput = queuedInputs[0] ?? null;
+  const firstQueuedInputBlocked = Boolean(
+    firstQueuedInput &&
+    !isLoading &&
+    (firstQueuedInput.content.trim().length === 0 || firstQueuedInput.files.length > 0),
+  );
   const queueAttachmentBlockMessage = t('queue.attachmentsDisabledInline', {
     count: attachedImages.length,
     defaultValue:
@@ -378,6 +384,11 @@ export default function ComposerV2({
       : isLoading
         ? (t('queue.add', { defaultValue: 'Add to queue' }) as string)
         : (t('input.send', { defaultValue: 'Send' }) as string);
+  const queueStatusLabel = isLoading
+    ? (t('queue.waiting', { defaultValue: 'Will send after this run' }) as string)
+    : firstQueuedInputBlocked
+      ? (t('queue.paused', { defaultValue: 'Fix first item to continue' }) as string)
+      : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
 
   return (
     <div
@@ -440,17 +451,31 @@ export default function ComposerV2({
                       defaultValue: `${queuedInputs.length} queued`,
                     })}
                   </div>
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    {isLoading
-                      ? t('queue.waiting', { defaultValue: 'Will send after this run' })
-                      : t('queue.ready', { defaultValue: 'Sending next' })}
+                  <div
+                    aria-live="polite"
+                    className={cn(
+                      'text-[11px] text-neutral-500 dark:text-neutral-400',
+                      firstQueuedInputBlocked && 'font-medium text-red-600 dark:text-red-300',
+                    )}
+                  >
+                    {queueStatusLabel}
                   </div>
                 </div>
                 <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
                   {queuedInputs.map((item, index) => {
                     const hasFiles = item.files.length > 0;
                     const isBlank = item.content.trim().length === 0;
+                    const itemBlocked = isBlank || hasFiles;
                     const itemErrorId = `${queueAttachmentBlockId}-queued-${item.id}-error`;
+                    const itemBlockMessage = isBlank
+                      ? t('queue.emptyItem', {
+                          defaultValue: 'Empty queued messages will not send. Edit or remove this item.',
+                        })
+                      : t('queue.attachmentItem', {
+                          count: item.files.length,
+                          defaultValue:
+                            `${item.files.length} queued attachment${item.files.length === 1 ? '' : 's'} will not send. Remove this item and send it after the current run.`,
+                        });
                     return (
                       <div
                         key={item.id}
@@ -464,34 +489,24 @@ export default function ComposerV2({
                             value={item.content}
                             rows={1}
                             onChange={(event) => onUpdateQueuedInput(item.id, event.target.value)}
-                            aria-invalid={isBlank}
-                            aria-describedby={isBlank ? itemErrorId : undefined}
+                            aria-invalid={itemBlocked}
+                            aria-describedby={itemBlocked ? itemErrorId : undefined}
                             className={cn(
                               'block max-h-24 min-h-7 w-full resize-y rounded bg-transparent px-1 text-[13px] leading-5 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100',
-                              isBlank && 'bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-100 dark:ring-red-900/60',
+                              itemBlocked && 'bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-100 dark:ring-red-900/60',
                             )}
                             aria-label={t('queue.editItem', {
                               index: index + 1,
                               defaultValue: `Edit queued message ${index + 1}`,
                             }) as string}
                           />
-                          {isBlank ? (
+                          {itemBlocked ? (
                             <div
                               id={itemErrorId}
                               role="status"
                               className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-300"
                             >
-                              {t('queue.emptyItem', {
-                                defaultValue: 'Empty queued messages will not send. Edit or remove this item.',
-                              })}
-                            </div>
-                          ) : null}
-                          {hasFiles ? (
-                            <div className="mt-1 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
-                              {t('queue.attachments', {
-                                count: item.files.length,
-                                defaultValue: `${item.files.length} attachment${item.files.length === 1 ? '' : 's'}`,
-                              })}
+                              {itemBlockMessage}
                             </div>
                           ) : null}
                         </div>
