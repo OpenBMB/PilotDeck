@@ -9,6 +9,7 @@ import {
   FileCog,
   GitCommit,
   Globe2,
+  Layers3,
   MessageSquare,
   Palette,
   Radio,
@@ -25,6 +26,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { languages } from '../../../i18n/languages';
 import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { usePilotDeckConfig } from '../../../hooks/usePilotDeckConfig';
+import { useProjectModelSettings, type ProjectModelSettings } from '../../../hooks/useProjectModelSettings';
 import { useSettingsController } from '../hooks/useSettingsController';
 import { useGitVersion } from '../../../hooks/useGitVersion';
 import type {
@@ -42,11 +44,12 @@ import McpServersTab from './tabs/McpServersTab';
 import PermissionsSettingsTab from './tabs/PermissionsSettingsTab';
 import GatewaySettingsTab from './tabs/GatewaySettingsTab';
 
-type SettingsPage = 'main' | 'config' | 'mcp' | 'permissions' | 'chatInput' | 'codeEditor' | 'gateway';
+type SettingsPage = 'main' | 'config' | 'projectModels' | 'mcp' | 'permissions' | 'chatInput' | 'codeEditor' | 'gateway';
 type ThemeMode = 'system' | 'light' | 'dark';
 
 const pageFromInitialTab = (tab: string): SettingsPage => {
   if (tab === 'config') return 'config';
+  if (tab === 'projectModels') return 'projectModels';
   if (tab === 'mcp') return 'mcp';
   if (tab === 'permissions') return 'permissions';
   if (tab === 'gateway') return 'gateway';
@@ -76,6 +79,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
   const title = {
     main: t('title'),
     config: t('mainTabs.config'),
+    projectModels: t('projectModels.title', { defaultValue: 'Project Models' }),
     mcp: t('mcpConfig.title'),
     permissions: t('mainTabs.permissions'),
     chatInput: t('settingsHome.chatInput.title'),
@@ -83,7 +87,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
     gateway: t('gateway.title'),
   }[page];
 
-  const maxWidth = page === 'config' ? 'max-w-[820px]' : 'max-w-[760px]';
+  const maxWidth = page === 'config' || page === 'projectModels' ? 'max-w-[820px]' : 'max-w-[760px]';
 
   return (
     <div className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm md:p-4">
@@ -120,6 +124,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
 
             {page === 'main' && (
               <SettingsHome
+                projects={projects}
                 projectSortOrder={projectSortOrder}
                 onProjectSortOrderChange={setProjectSortOrder}
                 onOpenPage={setPage}
@@ -127,6 +132,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
             )}
 
             {page === 'config' && <PilotDeckConfigTab projects={projects} />}
+            {page === 'projectModels' && <ProjectModelsSettingsPage projects={projects} />}
             {page === 'mcp' && <McpServersTab projects={projects} />}
             {page === 'permissions' && <PermissionsSettingsTab />}
             {page === 'gateway' && <GatewaySettingsTab />}
@@ -148,12 +154,13 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'appearance' }:
 }
 
 type SettingsHomeProps = {
+  projects: SettingsProps['projects'];
   projectSortOrder: ProjectSortOrder;
   onProjectSortOrderChange: (value: ProjectSortOrder) => void;
   onOpenPage: (page: SettingsPage) => void;
 };
 
-function SettingsHome({ projectSortOrder, onProjectSortOrderChange, onOpenPage }: SettingsHomeProps) {
+function SettingsHome({ projects = [], projectSortOrder, onProjectSortOrderChange, onOpenPage }: SettingsHomeProps) {
   const { t, i18n } = useTranslation('settings');
   const { themeMode = 'system', setThemeMode } = useTheme() as {
     themeMode?: ThemeMode;
@@ -196,6 +203,14 @@ function SettingsHome({ projectSortOrder, onProjectSortOrderChange, onOpenPage }
             detail={t('settingsHome.config.detail')}
             onClick={() => onOpenPage('config')}
           />
+          {projects.length > 0 && (
+            <NavigationRow
+              icon={Layers3}
+              title={t('projectModels.title', { defaultValue: 'Project Models' })}
+              detail={t('projectModels.homeDetail', { defaultValue: 'Choose a model mix for each project' })}
+              onClick={() => onOpenPage('projectModels')}
+            />
+          )}
           <NavigationRow
             icon={Server}
             title={t('mcpConfig.title')}
@@ -445,6 +460,302 @@ function CodeEditorSettingsPage({
           </SettingsRow>
         </SettingsCard>
       </SettingsSection>
+    </div>
+  );
+}
+
+type ProjectModelsSettingsPageProps = {
+  projects?: SettingsProps['projects'];
+};
+
+const TOKEN_TIERS = [
+  { key: 'simple', label: 'Simple' },
+  { key: 'medium', label: 'Medium' },
+  { key: 'reasoning', label: 'Reasoning' },
+  { key: 'complex', label: 'Complex' },
+];
+
+function ProjectModelsSettingsPage({ projects = [] }: ProjectModelsSettingsPageProps) {
+  const { t } = useTranslation('settings');
+  const [selectedProjectName, setSelectedProjectName] = useState(() => projects[0]?.name ?? '');
+  const selectedProject = projects.find((project) => project.name === selectedProjectName) ?? projects[0];
+  const {
+    data,
+    draft,
+    setDraft,
+    loading,
+    saving,
+    error,
+    message,
+    dirty,
+    refresh,
+    save,
+  } = useProjectModelSettings(
+    selectedProject?.name,
+    t('projectModels.saved', { defaultValue: 'Saved for this project' }),
+  );
+
+  useEffect(() => {
+    if (!selectedProjectName && projects[0]?.name) {
+      setSelectedProjectName(projects[0].name);
+    }
+  }, [projects, selectedProjectName]);
+
+  const modelOptions = data?.modelOptions ?? [];
+  const modelSelectOptions = [
+    { value: '', label: t('projectModels.inherit', { defaultValue: 'Inherit global default' }) },
+    ...modelOptions.map((option) => ({ value: option.id, label: option.label })),
+  ];
+  const currentMainModel = draft.mainModel ?? '';
+  const effectiveMainModel = data?.effective.mainModel ?? data?.inherited.mainModel ?? '';
+
+  const updateDraft = (updater: (current: ProjectModelSettings) => ProjectModelSettings) => {
+    setDraft((current) => updater({ ...current }));
+  };
+  const updateTokenTier = (tier: string, model: string) => {
+    updateDraft((current) => ({
+      ...current,
+      tokenSaver: {
+        ...(current.tokenSaver ?? {}),
+        tiers: {
+          ...(current.tokenSaver?.tiers ?? {}),
+          [tier]: {
+            ...(current.tokenSaver?.tiers?.[tier] ?? {}),
+            model: model || undefined,
+          },
+        },
+      },
+    }));
+  };
+
+  if (projects.length === 0) {
+    return (
+      <SettingsSection title={t('projectModels.title', { defaultValue: 'Project Models' })}>
+        <SettingsCard>
+          <div className="px-5 py-4 text-sm text-muted-foreground">
+            {t('projectModels.empty', { defaultValue: 'No projects are available yet.' })}
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <SettingsSection
+        title={t('projectModels.title', { defaultValue: 'Project Models' })}
+        description={t('projectModels.description', {
+          defaultValue: 'Store model choices in this project so chats, subagents, routing, and compaction calls use the right mix.',
+        })}
+      >
+        <SettingsCard divided>
+          <SettingsRow
+            label={t('projectModels.project', { defaultValue: 'Project' })}
+            description={selectedProject?.fullPath ?? selectedProject?.path}
+          >
+            <SelectControl
+              value={selectedProject?.name ?? ''}
+              onChange={setSelectedProjectName}
+              options={projects.map((project) => ({
+                value: project.name,
+                label: project.displayName || project.name,
+              }))}
+              className="w-64"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('projectModels.configFile', { defaultValue: 'Project config file' })}
+            description={data?.configPath ?? '.pilotdeck/pilotdeck.yaml'}
+          >
+            <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+              {data?.exists
+                ? t('projectModels.localOverride', { defaultValue: 'Local override' })
+                : t('projectModels.inheritedOnly', { defaultValue: 'Inherited' })}
+            </span>
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('projectModels.mainSection', { defaultValue: 'Main Agent' })}>
+        <SettingsCard divided>
+          <SettingsRow
+            label={t('projectModels.mainModel', { defaultValue: 'Main model' })}
+            description={t('projectModels.mainModelDescription', {
+              model: effectiveMainModel || t('projectModels.inherit', { defaultValue: 'global default' }),
+              defaultValue: `Effective: ${effectiveMainModel || 'global default'}`,
+            })}
+          >
+            <SelectControl
+              value={currentMainModel}
+              onChange={(value) => updateDraft((current) => ({ ...current, mainModel: value || undefined }))}
+              options={modelSelectOptions}
+              className="w-72"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('projectModels.thinking', { defaultValue: 'Extended thinking' })}
+            description={t('projectModels.thinkingDescription', {
+              defaultValue: 'Enable only for models that support thinking.',
+            })}
+          >
+            <SettingsToggle
+              checked={draft.thinking?.enabled === true}
+              onChange={(enabled) => updateDraft((current) => ({
+                ...current,
+                thinking: { ...(current.thinking ?? {}), enabled },
+              }))}
+              ariaLabel={t('projectModels.thinking', { defaultValue: 'Extended thinking' })}
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title={t('projectModels.routingSection', { defaultValue: 'Routing Mix' })}
+        description={t('projectModels.routingDescription', {
+          defaultValue: 'Optional tiers let lightweight turns use smaller models while deeper work uses stronger ones.',
+        })}
+      >
+        <SettingsCard divided>
+          <SettingsRow
+            label={t('projectModels.tokenSaver', { defaultValue: 'Tier router' })}
+            description={t('projectModels.tokenSaverDescription', {
+              defaultValue: 'Classify each turn and choose a tier model.',
+            })}
+          >
+            <SettingsToggle
+              checked={draft.tokenSaver?.enabled === true}
+              onChange={(enabled) => updateDraft((current) => ({
+                ...current,
+                tokenSaver: { ...(current.tokenSaver ?? {}), enabled },
+              }))}
+              ariaLabel={t('projectModels.tokenSaver', { defaultValue: 'Tier router' })}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('projectModels.judgeModel', { defaultValue: 'Judge model' })}
+            description={t('projectModels.judgeModelDescription', {
+              defaultValue: 'Small model used to pick a tier before the main call.',
+            })}
+          >
+            <SelectControl
+              value={draft.tokenSaver?.judge ?? ''}
+              onChange={(value) => updateDraft((current) => ({
+                ...current,
+                tokenSaver: { ...(current.tokenSaver ?? {}), judge: value || undefined },
+              }))}
+              options={modelSelectOptions}
+              className="w-72"
+            />
+          </SettingsRow>
+          {TOKEN_TIERS.map((tier) => (
+            <SettingsRow
+              key={tier.key}
+              label={tier.label}
+              description={t('projectModels.tierDescription', {
+                defaultValue: 'Model for this complexity tier',
+              })}
+            >
+              <SelectControl
+                value={draft.tokenSaver?.tiers?.[tier.key]?.model ?? ''}
+                onChange={(value) => updateTokenTier(tier.key, value)}
+                options={modelSelectOptions}
+                className="w-72"
+              />
+            </SettingsRow>
+          ))}
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('projectModels.orchestrationSection', { defaultValue: 'Subagents' })}>
+        <SettingsCard divided>
+          <SettingsRow
+            label={t('projectModels.autoOrchestrate', { defaultValue: 'Auto orchestration' })}
+            description={t('projectModels.autoOrchestrateDescription', {
+              defaultValue: 'Route complex work through a planner and subagents.',
+            })}
+          >
+            <SettingsToggle
+              checked={draft.autoOrchestrate?.enabled === true}
+              onChange={(enabled) => updateDraft((current) => ({
+                ...current,
+                autoOrchestrate: { ...(current.autoOrchestrate ?? {}), enabled },
+              }))}
+              ariaLabel={t('projectModels.autoOrchestrate', { defaultValue: 'Auto orchestration' })}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('projectModels.orchestratorModel', { defaultValue: 'Orchestrator model' })}
+            description={t('projectModels.orchestratorModelDescription', {
+              defaultValue: 'Optional model for planning delegated work.',
+            })}
+          >
+            <SelectControl
+              value={draft.autoOrchestrate?.mainAgentModel ?? ''}
+              onChange={(value) => updateDraft((current) => ({
+                ...current,
+                autoOrchestrate: { ...(current.autoOrchestrate ?? {}), mainAgentModel: value || undefined },
+              }))}
+              options={modelSelectOptions}
+              className="w-72"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label={t('projectModels.subagentModel', { defaultValue: 'Subagent model' })}
+            description={t('projectModels.subagentModelDescription', {
+              defaultValue: 'Optional model forced for delegated agents.',
+            })}
+          >
+            <SelectControl
+              value={draft.autoOrchestrate?.subagentModel ?? ''}
+              onChange={(value) => updateDraft((current) => ({
+                ...current,
+                autoOrchestrate: { ...(current.autoOrchestrate ?? {}), subagentModel: value || undefined },
+              }))}
+              options={modelSelectOptions}
+              className="w-72"
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      {data?.diagnostics?.length ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          {data.diagnostics.map((diagnostic, index) => (
+            <div key={`${diagnostic.path ?? 'diagnostic'}-${index}`}>{diagnostic.message}</div>
+          ))}
+        </div>
+      ) : null}
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-800 dark:text-green-300">
+          {message}
+        </div>
+      )}
+
+      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-border bg-background/95 py-4 backdrop-blur">
+        <div className="text-xs text-muted-foreground">
+          {loading
+            ? t('projectModels.loading', { defaultValue: 'Loading project settings...' })
+            : dirty
+              ? t('projectModels.unsaved', { defaultValue: 'Unsaved project overrides' })
+              : t('projectModels.ready', { defaultValue: 'Project model settings are up to date' })}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void refresh()} disabled={loading || saving}>
+            {t('projectModels.refresh', { defaultValue: 'Refresh' })}
+          </Button>
+          <Button onClick={() => void save()} disabled={!dirty || loading || saving || modelOptions.length === 0}>
+            {saving
+              ? t('projectModels.saving', { defaultValue: 'Saving...' })
+              : t('projectModels.save', { defaultValue: 'Save Project Models' })}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

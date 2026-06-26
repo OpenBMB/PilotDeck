@@ -5,7 +5,7 @@ import { parseCronConfig } from "../../cron/config/parseCronConfig.js";
 import { parseModelConfig } from "../../model/config/parseModelConfig.js";
 import { isRecord } from "../../model/config/schema.js";
 import { ModelConfigError } from "../../model/protocol/errors.js";
-import { getPilotConfigFilePath, getPilotMemoryRootDir, resolvePilotHome } from "../paths.js";
+import { getPilotConfigFilePath, getPilotMemoryRootDir, getPilotProjectConfigFilePath, resolvePilotHome } from "../paths.js";
 import { sha256, stableStringify } from "./hash.js";
 import { mergeConfigSources } from "./merge.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
@@ -51,6 +51,12 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
 
   const defaultConfigPath = getPilotConfigFilePath(pilotHome);
   const defaultConfig = readYamlSource(defaultConfigPath, "default", 10, loadedAt, diagnostics, sources);
+  const projectConfigPath = options.projectRoot
+    ? getPilotProjectConfigFilePath(options.projectRoot)
+    : undefined;
+  const projectConfig = projectConfigPath
+    ? readYamlSource(projectConfigPath, "project", 20, loadedAt, diagnostics, sources)
+    : undefined;
 
   const envConfig = readEnvOverrides(env);
   if (envConfig) {
@@ -63,7 +69,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     });
   }
 
-  const rawConfig = mergeConfigSources(defaultConfig, envConfig) as PilotRawConfig;
+  const rawConfig = mergeConfigSources(defaultConfig, projectConfig, envConfig) as PilotRawConfig;
   validateTopLevel(rawConfig, diagnostics);
   const schemaVersion = parseSchemaVersion(rawConfig.schemaVersion, diagnostics);
 

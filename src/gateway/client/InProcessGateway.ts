@@ -33,15 +33,19 @@ import type {
   AlwaysOnRerunPlanInput,
   AlwaysOnRerunPlanResult,
   ReloadConfigResult,
+  WebProjectModelSettingsResult,
   WebDescribeProjectInput,
   WebListProjectsResult,
   WebProjectSummary,
+  WebReadProjectModelSettingsInput,
   WebReadSessionMessagesInput,
   WebReadSessionMessagesResult,
   WebReadSubagentMessagesInput,
   WebReadSubagentMessagesResult,
   WebForkSessionInput,
   WebForkSessionResult,
+  WebSaveProjectModelSettingsInput,
+  WebSaveProjectModelSettingsResult,
 } from "../protocol/types.js";
 import type {
   CronCreateInput,
@@ -100,6 +104,8 @@ export type InProcessGatewayOptions = {
    */
   listProjects?: () => Promise<WebListProjectsResult>;
   describeProject?: (input: WebDescribeProjectInput) => Promise<WebProjectSummary>;
+  readProjectModelSettings?: (input: WebReadProjectModelSettingsInput) => Promise<WebProjectModelSettingsResult>;
+  saveProjectModelSettings?: (input: WebSaveProjectModelSettingsInput) => Promise<WebSaveProjectModelSettingsResult>;
   /**
    * Pluggable config-reload handler wired by `createLocalGateway`.
    * When set, `reloadConfig()` delegates to this callback which owns
@@ -127,7 +133,7 @@ export type InProcessGatewayOptions = {
    * Failures are swallowed so a transient yaml read error does not
    * block in-progress chats; the existing snapshot remains in use.
    */
-  refreshConfigBeforeTurn?: () => Promise<void>;
+  refreshConfigBeforeTurn?: (input: GatewaySubmitTurnInput) => Promise<void>;
   /**
    * Authoritative skill CRUD manager backed by `~/.pilotdeck/skills/`.
    * Wired by `createLocalGateway` so every host (CLI, TUI, Web UI bridge,
@@ -284,7 +290,7 @@ export class InProcessGateway implements Gateway {
     // dropped or coalesced.
     if (this.options.refreshConfigBeforeTurn) {
       try {
-        await this.options.refreshConfigBeforeTurn();
+        await this.options.refreshConfigBeforeTurn(input);
       } catch {
         // Intentional: keep streaming on the previous snapshot rather
         // than failing a turn over a transient yaml read error.
@@ -641,6 +647,20 @@ export class InProcessGateway implements Gateway {
       throw new Error("describe_project is not configured.");
     }
     return this.options.describeProject(input);
+  }
+
+  async readProjectModelSettings(input: WebReadProjectModelSettingsInput): Promise<WebProjectModelSettingsResult> {
+    if (!this.options.readProjectModelSettings) {
+      throw new Error("read_project_model_settings is not configured.");
+    }
+    return this.options.readProjectModelSettings(input);
+  }
+
+  async saveProjectModelSettings(input: WebSaveProjectModelSettingsInput): Promise<WebSaveProjectModelSettingsResult> {
+    if (!this.options.saveProjectModelSettings) {
+      throw new Error("save_project_model_settings is not configured.");
+    }
+    return this.options.saveProjectModelSettings(input);
   }
 
   async reloadConfig(): Promise<ReloadConfigResult> {

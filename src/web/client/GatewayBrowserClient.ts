@@ -221,6 +221,23 @@ export class GatewayBrowserClient {
     return this.request<import("./protocol.js").WebProjectSummary>("describe_project", input);
   }
 
+  readProjectModelSettings(input: { projectKey: string }) {
+    return this.request<import("./protocol.js").WebProjectModelSettingsResult>(
+      "read_project_model_settings",
+      input,
+    );
+  }
+
+  saveProjectModelSettings(input: {
+    projectKey: string;
+    settings: import("./protocol.js").WebProjectModelSettings;
+  }) {
+    return this.request<import("./protocol.js").WebProjectModelSettingsResult>(
+      "save_project_model_settings",
+      input,
+    );
+  }
+
   cronCreate(input: unknown) {
     return this.request<unknown>("cron_create", input);
   }

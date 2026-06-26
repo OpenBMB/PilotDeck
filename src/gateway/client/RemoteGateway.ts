@@ -17,13 +17,17 @@ import type {
   ReloadExtensionsResult,
   WebDescribeProjectInput,
   WebListProjectsResult,
+  WebProjectModelSettingsResult,
   WebProjectSummary,
+  WebReadProjectModelSettingsInput,
   WebReadSessionMessagesInput,
   WebReadSessionMessagesResult,
   WebReadSubagentMessagesInput,
   WebReadSubagentMessagesResult,
   WebForkSessionInput,
   WebForkSessionResult,
+  WebSaveProjectModelSettingsInput,
+  WebSaveProjectModelSettingsResult,
 } from "../protocol/types.js";
 import type {
   SkillAddressInput,
@@ -146,6 +150,14 @@ export class RemoteGateway implements Gateway {
 
   async describeProject(input: WebDescribeProjectInput): Promise<WebProjectSummary> {
     return (await this.client.request("describe_project", input)) as WebProjectSummary;
+  }
+
+  async readProjectModelSettings(input: WebReadProjectModelSettingsInput): Promise<WebProjectModelSettingsResult> {
+    return (await this.client.request("read_project_model_settings", input)) as WebProjectModelSettingsResult;
+  }
+
+  async saveProjectModelSettings(input: WebSaveProjectModelSettingsInput): Promise<WebSaveProjectModelSettingsResult> {
+    return (await this.client.request("save_project_model_settings", input)) as WebSaveProjectModelSettingsResult;
   }
 
   async reloadConfig(): Promise<ReloadConfigResult> {

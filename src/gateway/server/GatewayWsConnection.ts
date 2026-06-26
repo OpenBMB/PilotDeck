@@ -216,6 +216,10 @@ export class GatewayWsConnection {
         return this.options.gateway.listProjects();
       case "describe_project":
         return this.options.gateway.describeProject(frame.params as never);
+      case "read_project_model_settings":
+        return this.options.gateway.readProjectModelSettings(frame.params as never);
+      case "save_project_model_settings":
+        return this.options.gateway.saveProjectModelSettings(frame.params as never);
       case "reload_config":
         if (this.options.gateway.reloadConfig) {
           return this.options.gateway.reloadConfig();
