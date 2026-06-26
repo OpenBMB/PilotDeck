@@ -477,8 +477,19 @@
     "exportError": "Failed to export permissions.",
     "importReadError": "Could not read the selected file.",
     "importInvalid": "Not a valid permissions export. Expected JSON with allowedTools / disallowedTools.",
-    "importConfirmBody": "Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?",
-    "importSuccess": "Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.",
+    "importConfirmBody": "Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?{{details}}",
+    "importConfirmDetailsIntro": "This import also changes:",
+    "importConfirmSkipPermissions": "Skip permission prompts: {{value}}",
+    "importConfirmSudoPolicy": "sudo policy: local {{local}}, remote {{remote}}, {{hostText}}",
+    "importConfirmSudoHostSingular": "1 host override",
+    "importConfirmSudoHostPlural": "{{hosts}} host overrides",
+    "importSuccess": "Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.{{details}}",
+    "importSuccessSkipPermissions": "Skip permission prompts updated.",
+    "importSuccessSudoPolicy": "sudo policy updated.",
+    "values": {
+      "enabled": "enabled",
+      "disabled": "disabled"
+    },
     "skipPermissions": {
       "title": "Skip permission prompts",
       "description": "Run tool calls without asking for confirmation. This maps to bypassPermissions and should only be used in trusted workspaces.",

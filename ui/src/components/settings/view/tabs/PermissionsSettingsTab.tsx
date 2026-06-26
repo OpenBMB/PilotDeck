@@ -97,6 +97,13 @@ type PermissionsExport = {
   sudoPolicy: SudoPermissionPolicy;
 };
 
+type ParsedPermissionsImport = {
+  allowedTools: string[];
+  disallowedTools: string[];
+  skipPermissions?: boolean;
+  sudoPolicy?: SudoPermissionPolicy;
+};
+
 function buildExportPayload(): PermissionsExport {
   const settings = getPilotDeckSettings();
   return {
@@ -129,12 +136,7 @@ function downloadJson(filename: string, payload: unknown) {
 // Lenient parser — accepts the canonical shape we export but also any object
 // that has at least one of the known array fields. Anything we don't
 // recognize is silently dropped.
-function parsePermissionsImport(raw: string): {
-  allowedTools: string[];
-  disallowedTools: string[];
-  skipPermissions?: boolean;
-  sudoPolicy?: SudoPermissionPolicy;
-} | null {
+function parsePermissionsImport(raw: string): ParsedPermissionsImport | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -171,6 +173,14 @@ function parsePermissionsImport(raw: string): {
   };
 }
 
+export function getPermissionsImportImpactForTest(parsed: ParsedPermissionsImport) {
+  return {
+    affectsSkipPermissions: parsed.skipPermissions !== undefined,
+    affectsSudoPolicy: parsed.sudoPolicy !== undefined,
+    sudoHostCount: parsed.sudoPolicy?.remoteHosts.length ?? 0,
+  };
+}
+
 const mergeUnique = (a: string[], b: string[]): string[] => {
   const seen = new Set(a);
   const out = [...a];
@@ -182,6 +192,66 @@ const mergeUnique = (a: string[], b: string[]): string[] => {
   }
   return out;
 };
+
+function buildImportConfirmDetails(
+  parsed: ParsedPermissionsImport,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  const details: string[] = [];
+  if (parsed.skipPermissions !== undefined) {
+    details.push(`- ${t('permissions.importConfirmSkipPermissions', {
+      value: parsed.skipPermissions
+        ? t('permissions.values.enabled', { defaultValue: 'enabled' })
+        : t('permissions.values.disabled', { defaultValue: 'disabled' }),
+      defaultValue: 'Skip permission prompts: {{value}}',
+    })}`);
+  }
+  if (parsed.sudoPolicy) {
+    const hostCount = parsed.sudoPolicy.remoteHosts.length;
+    const hostText = hostCount === 1
+      ? t('permissions.importConfirmSudoHostSingular', { defaultValue: '1 host override' })
+      : t('permissions.importConfirmSudoHostPlural', {
+        hosts: hostCount,
+        defaultValue: '{{hosts}} host overrides',
+      });
+    details.push(`- ${t('permissions.importConfirmSudoPolicy', {
+      local: t(`permissions.sudoPolicy.actions.${parsed.sudoPolicy.local}`, {
+        defaultValue: parsed.sudoPolicy.local,
+      }),
+      remote: t(`permissions.sudoPolicy.actions.${parsed.sudoPolicy.remote}`, {
+        defaultValue: parsed.sudoPolicy.remote,
+      }),
+      hostText,
+      defaultValue: 'sudo policy: local {{local}}, remote {{remote}}, {{hostText}}',
+    })}`);
+  }
+
+  if (details.length === 0) {
+    return '';
+  }
+
+  return `\n\n${t('permissions.importConfirmDetailsIntro', {
+    defaultValue: 'This import also changes:',
+  })}\n${details.join('\n')}`;
+}
+
+function buildImportSuccessDetails(
+  parsed: ParsedPermissionsImport,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  const details: string[] = [];
+  if (parsed.skipPermissions !== undefined) {
+    details.push(t('permissions.importSuccessSkipPermissions', {
+      defaultValue: 'Skip permission prompts updated.',
+    }));
+  }
+  if (parsed.sudoPolicy) {
+    details.push(t('permissions.importSuccessSudoPolicy', {
+      defaultValue: 'sudo policy updated.',
+    }));
+  }
+  return details.length ? ` ${details.join(' ')}` : '';
+}
 
 type StatusBanner =
   | { kind: 'success'; message: string }
@@ -365,11 +435,13 @@ export default function PermissionsSettingsTab() {
     // hard reset they can clear entries first or hit "Replace" via the
     // confirm prompt (a real Replace path is a future-nice; merge covers
     // the common "share my allowlist with a teammate" case fully).
+    const importDetails = buildImportConfirmDetails(parsed, t);
     const summary = t('permissions.importConfirmBody', {
       allowed: parsed.allowedTools.length,
       blocked: parsed.disallowedTools.length,
+      details: importDetails,
       defaultValue:
-        'Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?',
+        'Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?{{details}}',
     });
     if (!window.confirm(summary)) {
       setBanner(null);
@@ -403,8 +475,9 @@ export default function PermissionsSettingsTab() {
       message: t('permissions.importSuccess', {
         addedAllowed,
         addedBlocked,
+        details: buildImportSuccessDetails(parsed, t),
         defaultValue:
-          'Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.',
+          'Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.{{details}}',
       }),
     });
   };
