@@ -31,6 +31,11 @@ describe('useSlashCommands dismiss behavior', () => {
     expect(removeActiveSlashQueryForTest('/skill this file', 0)).toBe('this file');
   });
 
+  it('keeps multiline text after a slash query when dismissing the menu', () => {
+    expect(removeActiveSlashQueryForTest('please /skill\nthis file', 7)).toBe('please \nthis file');
+    expect(removeActiveSlashQueryForTest('/skill\nthis file', 0)).toBe('this file');
+  });
+
   it('leaves input unchanged when there is no active slash query', () => {
     expect(removeActiveSlashQueryForTest('please review', -1)).toBe('please review');
     expect(removeActiveSlashQueryForTest('please review', 4)).toBe('please review');
