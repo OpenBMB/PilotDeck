@@ -396,6 +396,37 @@ export default function ComposerV2({
     : firstQueuedInputBlocked
       ? (t('queue.paused', { defaultValue: 'Fix first item to continue' }) as string)
       : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
+  const toggleRunModeMenu = () => {
+    setIsRunModeMenuOpen((open) => {
+      const next = !open;
+      if (next) {
+        setIsPermissionMenuOpen(false);
+        setIsContextPopoverOpen(false);
+      }
+      return next;
+    });
+  };
+  const togglePermissionMenu = () => {
+    if (permissionSelectorDisabled) return;
+    setIsPermissionMenuOpen((open) => {
+      const next = !open;
+      if (next) {
+        setIsRunModeMenuOpen(false);
+        setIsContextPopoverOpen(false);
+      }
+      return next;
+    });
+  };
+  const toggleContextPopover = () => {
+    setIsContextPopoverOpen((open) => {
+      const next = !open;
+      if (next) {
+        setIsRunModeMenuOpen(false);
+        setIsPermissionMenuOpen(false);
+      }
+      return next;
+    });
+  };
 
   return (
     <div
@@ -665,7 +696,7 @@ export default function ComposerV2({
                     >
                       <button
                         type="button"
-                        onClick={() => setIsRunModeMenuOpen((open) => !open)}
+                        onClick={toggleRunModeMenu}
                         className={cn(
                           'inline-flex h-9 max-w-[112px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px] md:h-7',
                           runMode === 'plan'
@@ -826,10 +857,7 @@ export default function ComposerV2({
                     <button
                       type="button"
                       disabled={permissionSelectorDisabled}
-                      onClick={() => {
-                        if (permissionSelectorDisabled) return;
-                        setIsPermissionMenuOpen((open) => !open);
-                      }}
+                      onClick={togglePermissionMenu}
                       className={cn(
                         'inline-flex h-9 max-w-[136px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px] md:h-7',
                         permissionSelectorDisabled
@@ -935,7 +963,7 @@ export default function ComposerV2({
                     >
                       <button
                         type="button"
-                        onClick={() => setIsContextPopoverOpen((open) => !open)}
+                        onClick={toggleContextPopover}
                         className={cn(
                           'inline-flex h-9 min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition md:h-7 md:min-w-[44px]',
                           contextStatus.tone === 'red'
