@@ -84,6 +84,22 @@ describe('ComposerV2 queue feedback', () => {
     expect(onInsertSlash).toHaveBeenCalledTimes(1);
   });
 
+  it('closes the slash command menu instead of inserting another slash when already open', () => {
+    const onInsertSlash = vi.fn();
+    const onCloseCommandMenu = vi.fn();
+    renderComposer({
+      isCommandMenuOpen: true,
+      onInsertSlash,
+      onCloseCommandMenu,
+      filteredCommands: [{ name: '/skill_install', description: 'Install a skill' }],
+    });
+
+    screen.getByTitle('Run a slash command').click();
+
+    expect(onCloseCommandMenu).toHaveBeenCalledTimes(1);
+    expect(onInsertSlash).not.toHaveBeenCalled();
+  });
+
   it('shows a visible explanation when attachments cannot be queued', () => {
     renderComposer({
       isLoading: true,
