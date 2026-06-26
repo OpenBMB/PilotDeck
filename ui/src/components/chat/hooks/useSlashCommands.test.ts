@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { KeyboardEvent } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedFetch } from '../../../utils/api';
 import {
@@ -14,6 +15,12 @@ vi.mock('../../../utils/api', () => ({
 }));
 
 const fetchMock = vi.mocked(authenticatedFetch);
+
+const makeTextareaKeyEvent = (key: string) => ({
+  key,
+  preventDefault: vi.fn(),
+  nativeEvent: {},
+}) as unknown as KeyboardEvent<HTMLTextAreaElement> & { preventDefault: ReturnType<typeof vi.fn> };
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -138,5 +145,120 @@ describe('useSlashCommands query filtering behavior', () => {
     await waitFor(() => {
       expect(result.current.selectedCommandIndex).toBe(0);
     });
+  });
+
+  it('does not let Enter or Tab submit when the open slash menu has no matches', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/unknown' };
+    const setInput = vi.fn();
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/unknown', 8);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(true);
+      expect(result.current.filteredCommands).toHaveLength(0);
+    });
+
+    const enterEvent = makeTextareaKeyEvent('Enter');
+    const tabEvent = makeTextareaKeyEvent('Tab');
+
+    let enterHandled = false;
+    let tabHandled = false;
+    act(() => {
+      enterHandled = result.current.handleCommandMenuKeyDown(enterEvent);
+      tabHandled = result.current.handleCommandMenuKeyDown(tabEvent);
+    });
+
+    expect(enterHandled).toBe(true);
+    expect(tabHandled).toBe(true);
+    expect(enterEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(tabEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(setInput).not.toHaveBeenCalled();
+  });
+
+  it('dismisses an unmatched slash query with Escape instead of leaving it behind', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: 'please /unknown' };
+    const setInput = vi.fn((next: string | ((previous: string) => string)) => {
+      inputValueRef.current = typeof next === 'function' ? next(inputValueRef.current) : next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('please /unknown', 15);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(true);
+      expect(result.current.filteredCommands).toHaveLength(0);
+    });
+
+    const escapeEvent = makeTextareaKeyEvent('Escape');
+
+    let handled = false;
+    act(() => {
+      handled = result.current.handleCommandMenuKeyDown(escapeEvent);
+    });
+
+    expect(handled).toBe(true);
+    expect(escapeEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(inputValueRef.current).toBe('please');
   });
 });
