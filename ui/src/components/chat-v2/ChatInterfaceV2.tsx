@@ -410,6 +410,12 @@ function ChatInterfaceV2({
     const handleGlobalEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) return;
       if (document.querySelector('[data-modal-overlay]')) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-composer-popover-scope="true"]')
+      ) {
+        return;
+      }
       event.preventDefault();
       handleAbortWithPending();
     };
