@@ -88,4 +88,27 @@ describe('ComposerV2 queue feedback', () => {
     expect((submitButton as HTMLButtonElement).disabled).toBe(true);
     expect(submitButton.getAttribute('aria-describedby')).toBe(status.id);
   });
+
+  it('marks blank queued messages instead of letting them disappear silently', () => {
+    renderComposer({
+      input: '',
+      queuedInputs: [
+        {
+          id: 'queued-blank',
+          content: '   ',
+          files: [],
+          thinkingMode: 'none',
+          targetSessionId: 'session-1',
+          createdAt: 1,
+        },
+      ],
+    });
+
+    const queuedEditor = screen.getByRole('textbox', { name: 'Edit queued message 1' });
+    const status = screen.getByRole('status');
+
+    expect(queuedEditor.getAttribute('aria-invalid')).toBe('true');
+    expect(queuedEditor.getAttribute('aria-describedby')).toBe(status.id);
+    expect(status.textContent).toContain('Empty queued messages will not send');
+  });
 });

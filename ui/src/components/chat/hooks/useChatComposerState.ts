@@ -149,6 +149,14 @@ export function canQueueInputForTest(content: string, fileCount: number): boolea
   return content.trim().length > 0 && fileCount === 0;
 }
 
+export function getNextDispatchableQueuedInputForTest(queue: QueuedChatInput[]): QueuedChatInput | null {
+  const next = queue[0];
+  if (!next || !canQueueInputForTest(next.content, next.files.length)) {
+    return null;
+  }
+  return next;
+}
+
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
   {
@@ -939,9 +947,8 @@ export function useChatComposerState({
       return;
     }
 
-    const nextQueuedInput = queuedInputs[0];
-    if (!canQueueInputForTest(nextQueuedInput.content, nextQueuedInput.files.length)) {
-      setQueuedInputs((previous) => previous.slice(1));
+    const nextQueuedInput = getNextDispatchableQueuedInputForTest(queuedInputs);
+    if (!nextQueuedInput) {
       return;
     }
 

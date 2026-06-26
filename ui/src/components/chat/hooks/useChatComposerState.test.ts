@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { QueuedChatInput } from '../types/types';
-import { canQueueInputForTest, moveQueuedInputForTest, shouldCycleRunModeOnKeyDown } from './useChatComposerState';
+import {
+  canQueueInputForTest,
+  getNextDispatchableQueuedInputForTest,
+  moveQueuedInputForTest,
+  shouldCycleRunModeOnKeyDown,
+} from './useChatComposerState';
 
 function keyEvent(key: string, shiftKey = false) {
   return { key, shiftKey };
@@ -60,5 +65,22 @@ describe('useChatComposerState queued input eligibility', () => {
 
   it('rejects queued input with attachments', () => {
     expect(canQueueInputForTest('next step', 1)).toBe(false);
+  });
+
+  it('pauses on an invalid first queued item instead of skipping it', () => {
+    const queue: QueuedChatInput[] = [
+      { id: 'a', content: '   ', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 1 },
+      { id: 'b', content: 'send me later', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 2 },
+    ];
+
+    expect(getNextDispatchableQueuedInputForTest(queue)).toBeNull();
+  });
+
+  it('returns the first valid queued item for dispatch', () => {
+    const queue: QueuedChatInput[] = [
+      { id: 'a', content: 'send me next', files: [], thinkingMode: 'none', targetSessionId: 's1', createdAt: 1 },
+    ];
+
+    expect(getNextDispatchableQueuedInputForTest(queue)?.id).toBe('a');
   });
 });

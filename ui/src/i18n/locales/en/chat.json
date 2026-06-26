@@ -280,7 +280,8 @@
     "moveDown": "Move down",
     "remove": "Remove from queue",
     "add": "Add to queue",
-    "attachmentsDisabledInline": "Attachments cannot be queued. Wait for the current run to finish, then send this message."
+    "attachmentsDisabledInline": "Attachments cannot be queued. Wait for the current run to finish, then send this message.",
+    "emptyItem": "Empty queued messages will not send. Edit or remove this item."
   },
   "commandMenu": {
     "empty": "No commands available",
