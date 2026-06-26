@@ -359,6 +359,25 @@ export default function ComposerV2({
     : (t('input.contextStatusUnknown', {
         defaultValue: 'Context usage unknown. It will appear after the next model response.',
       }) as string);
+  const attachFilesLabel = t('input.attachFiles', {
+    defaultValue: 'Attach photos or files',
+  }) as string;
+  const mentionFileLabel = t('input.mentionFile', {
+    defaultValue: 'Mention a file',
+  }) as string;
+  const slashCommandLabel = t('input.slashCommand', {
+    defaultValue: 'Run a slash command',
+  }) as string;
+  const stopLabel = isAbortPending
+    ? (t('input.stopping', { defaultValue: 'Stopping...' }) as string)
+    : (t('input.stop', { defaultValue: 'Stop' }) as string);
+  const submitLabel = isSubmitPending || hasUploadingImages
+    ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
+    : queueBlockedByAttachments
+      ? queueAttachmentBlockMessage
+      : isLoading
+        ? (t('queue.add', { defaultValue: 'Add to queue' }) as string)
+        : (t('input.send', { defaultValue: 'Send' }) as string);
 
   return (
     <div
@@ -714,47 +733,50 @@ export default function ComposerV2({
                     <button
                       type="button"
                       onClick={openImagePicker}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
-                    title={t('input.attachFiles', { defaultValue: 'Attach photos or files' }) as string}
-                  >
-                    <Paperclip className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onInsertMention}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
-                    title={t('input.mentionFile', { defaultValue: 'Mention a file' }) as string}
-                  >
-                    <AtSign className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
-                  </button>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => {
-                      if (isCommandMenuOpen) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        suppressSlashToolbarClickRef.current = true;
-                        onCloseCommandMenu();
-                      }
-                    }}
-                    onClick={(event) => {
-                      if (suppressSlashToolbarClickRef.current) {
-                        suppressSlashToolbarClickRef.current = false;
-                        event.preventDefault();
-                        return;
-                      }
-                      if (isCommandMenuOpen) {
-                        event.preventDefault();
-                        onCloseCommandMenu();
-                        return;
-                      }
-                      onInsertSlash();
-                    }}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
-                    title={t('input.slashCommand', { defaultValue: 'Run a slash command' }) as string}
-                  >
-                    <Slash className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
-                  </button>
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
+                      title={attachFilesLabel}
+                      aria-label={attachFilesLabel}
+                    >
+                      <Paperclip className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onInsertMention}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
+                      title={mentionFileLabel}
+                      aria-label={mentionFileLabel}
+                    >
+                      <AtSign className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        if (isCommandMenuOpen) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          suppressSlashToolbarClickRef.current = true;
+                          onCloseCommandMenu();
+                        }
+                      }}
+                      onClick={(event) => {
+                        if (suppressSlashToolbarClickRef.current) {
+                          suppressSlashToolbarClickRef.current = false;
+                          event.preventDefault();
+                          return;
+                        }
+                        if (isCommandMenuOpen) {
+                          event.preventDefault();
+                          onCloseCommandMenu();
+                          return;
+                        }
+                        onInsertSlash();
+                      }}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
+                      title={slashCommandLabel}
+                      aria-label={slashCommandLabel}
+                    >
+                      <Slash className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
+                    </button>
                     <div
                       className="relative"
                     onBlur={(event) => {
@@ -956,11 +978,8 @@ export default function ComposerV2({
                           'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600 md:h-8 md:w-8',
                           isAbortPending && 'cursor-wait opacity-70 hover:bg-red-500',
                         )}
-                        title={
-                          isAbortPending
-                            ? (t('input.stopping', { defaultValue: 'Stopping...' }) as string)
-                            : (t('input.stop', { defaultValue: 'Stop' }) as string)
-                        }
+                        title={stopLabel}
+                        aria-label={stopLabel}
                       >
                         {isAbortPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
@@ -972,6 +991,7 @@ export default function ComposerV2({
                     <button
                       type="submit"
                       disabled={disabled}
+                      aria-label={submitLabel}
                       aria-busy={isSubmitPending || hasUploadingImages}
                       aria-describedby={queueBlockedByAttachments ? queueAttachmentBlockId : undefined}
                       className={cn(
@@ -979,15 +999,7 @@ export default function ComposerV2({
                         isLoading && 'bg-neutral-700 dark:bg-neutral-200',
                         (isSubmitPending || hasUploadingImages) && 'cursor-wait',
                       )}
-                      title={
-                        isSubmitPending || hasUploadingImages
-                          ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
-                          : queueBlockedByAttachments
-                            ? queueAttachmentBlockMessage
-                          : isLoading
-                            ? (t('queue.add', { defaultValue: 'Add to queue' }) as string)
-                            : (t('input.send', { defaultValue: 'Send' }) as string)
-                      }
+                      title={submitLabel}
                     >
                       {isSubmitPending || hasUploadingImages ? (
                         <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
