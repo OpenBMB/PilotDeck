@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ComposerV2, { type ComposerV2Props } from './ComposerV2';
 
@@ -94,7 +94,9 @@ describe('ComposerV2 queue feedback', () => {
       filteredCommands: [{ name: '/skill_install', description: 'Install a skill' }],
     });
 
-    screen.getByTitle('Run a slash command').click();
+    const slashButton = screen.getByTitle('Run a slash command');
+    fireEvent.mouseDown(slashButton);
+    fireEvent.click(slashButton);
 
     expect(onCloseCommandMenu).toHaveBeenCalledTimes(1);
     expect(onInsertSlash).not.toHaveBeenCalled();
