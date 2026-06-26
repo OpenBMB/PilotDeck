@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
 import Fuse from 'fuse.js';
 import { authenticatedFetch } from '../../../utils/api';
 import { isImeEnterEvent } from '../../../utils/ime';
 import { safeLocalStorage } from '../utils/chatStorage';
 import type { Project } from '../../../types/app';
-
-const COMMAND_QUERY_DEBOUNCE_MS = 150;
 
 export interface SlashCommand {
   name: string;
@@ -152,22 +150,12 @@ export function useSlashCommands({
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [slashPosition, setSlashPosition] = useState(-1);
 
-  const commandQueryTimerRef = useRef<number | null>(null);
-
-  const clearCommandQueryTimer = useCallback(() => {
-    if (commandQueryTimerRef.current !== null) {
-      window.clearTimeout(commandQueryTimerRef.current);
-      commandQueryTimerRef.current = null;
-    }
-  }, []);
-
   const resetCommandMenuState = useCallback(() => {
     setShowCommandMenu(false);
     setSlashPosition(-1);
     setCommandQuery('');
     setSelectedCommandIndex(-1);
-    clearCommandQueryTimer();
-  }, [clearCommandQueryTimer]);
+  }, []);
 
   const dismissCommandMenu = useCallback(() => {
     if (showCommandMenu && slashPosition >= 0) {
@@ -441,12 +429,9 @@ export function useSlashCommands({
       setShowCommandMenu(true);
       setSelectedCommandIndex(query ? -1 : 0);
 
-      clearCommandQueryTimer();
-      commandQueryTimerRef.current = window.setTimeout(() => {
-        setCommandQuery(query);
-      }, COMMAND_QUERY_DEBOUNCE_MS);
+      setCommandQuery(query);
     },
-    [resetCommandMenuState, clearCommandQueryTimer],
+    [resetCommandMenuState],
   );
 
   const handleCommandMenuKeyDown = useCallback(
@@ -509,13 +494,6 @@ export function useSlashCommands({
       selectCommandFromKeyboard,
       selectedCommandIndex,
     ],
-  );
-
-  useEffect(
-    () => () => {
-      clearCommandQueryTimer();
-    },
-    [clearCommandQueryTimer],
   );
 
   return {

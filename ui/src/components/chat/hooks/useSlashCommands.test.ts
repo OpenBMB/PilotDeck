@@ -1,8 +1,24 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { authenticatedFetch } from '../../../utils/api';
 import {
   buildSlashCommandInsertion,
   removeActiveSlashQueryForTest,
+  useSlashCommands,
 } from './useSlashCommands';
+import type { Project } from '../../../types/app';
+
+vi.mock('../../../utils/api', () => ({
+  authenticatedFetch: vi.fn(),
+}));
+
+const fetchMock = vi.mocked(authenticatedFetch);
+
+afterEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 
 describe('useSlashCommands dismiss behavior', () => {
   it('removes a trailing slash query without leaving toolbar spacing behind', () => {
@@ -55,6 +71,59 @@ describe('useSlashCommands command insertion behavior', () => {
     expect(buildSlashCommandInsertion('please review ', -1, '/skill_install')).toEqual({
       value: 'please review /skill_install ',
       caret: 29,
+    });
+  });
+});
+
+describe('useSlashCommands query filtering behavior', () => {
+  it('updates the slash query synchronously for fast keyboard confirmation', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: '/clear', description: 'Clear chat' },
+          { name: '/skill_install', description: 'Install a skill' },
+        ],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/skill' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/skill', 6);
+    });
+
+    expect(result.current.commandQuery).toBe('skill');
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands.map((command) => command.name)).toEqual([
+        '/skill_install',
+      ]);
     });
   });
 });
