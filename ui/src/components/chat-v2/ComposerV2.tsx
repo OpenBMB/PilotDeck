@@ -434,6 +434,11 @@ export default function ComposerV2({
     setIsPermissionMenuOpen(false);
     setIsContextPopoverOpen(false);
   };
+  const focusMenuItemById = (id: string) => {
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.focus();
+    });
+  };
   const handleComposerPopoverEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (
       event.key !== 'Escape' ||
@@ -444,6 +449,36 @@ export default function ComposerV2({
     event.preventDefault();
     event.stopPropagation();
     closeComposerPopovers();
+  };
+  const handleRunModeButtonKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    handleComposerPopoverEscape(event);
+    if (event.defaultPrevented || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsRunModeMenuOpen(true);
+    setIsPermissionMenuOpen(false);
+    setIsContextPopoverOpen(false);
+
+    const focusOption = RUN_MODE_OPTIONS.find(
+      (option) => option.mode === runMode && !(option.mode === 'plan' && !planModeAvailable),
+    ) || RUN_MODE_OPTIONS.find((option) => !(option.mode === 'plan' && !planModeAvailable));
+    if (focusOption) {
+      focusMenuItemById(`${runModeMenuId}-option-${focusOption.mode}`);
+    }
+  };
+  const handlePermissionButtonKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    handleComposerPopoverEscape(event);
+    if (event.defaultPrevented || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsRunModeMenuOpen(false);
+    setIsPermissionMenuOpen(true);
+    setIsContextPopoverOpen(false);
+    focusMenuItemById(`${permissionMenuId}-option-${permissionMode}`);
   };
   const toggleRunModeMenu = () => {
     setIsRunModeMenuOpen((open) => {
@@ -776,6 +811,7 @@ export default function ComposerV2({
                       <button
                         type="button"
                         onClick={toggleRunModeMenu}
+                        onKeyDown={handleRunModeButtonKeyDown}
                         className={cn(
                           'inline-flex h-9 max-w-[112px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px] md:h-7',
                           runMode === 'plan'
@@ -823,6 +859,7 @@ export default function ComposerV2({
 
                             return (
                               <button
+                                id={`${runModeMenuId}-option-${option.mode}`}
                                 key={option.mode}
                                 type="button"
                                 role="menuitemradio"
@@ -946,35 +983,36 @@ export default function ComposerV2({
                         }
                       }}
                     >
-                    <button
-                      type="button"
-                      disabled={permissionSelectorDisabled}
-                      onClick={togglePermissionMenu}
-                      className={cn(
-                        'inline-flex h-9 max-w-[136px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px] md:h-7',
-                        permissionSelectorDisabled
-                          ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
-                          : permissionMode === 'bypassPermissions'
-                            ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
-                            : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
-                      )}
-                      title={t('input.permissions.change', {
-                        defaultValue: 'Select permission mode',
-                      }) as string}
-                      aria-haspopup="menu"
-                      aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
-                      aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}
-                    >
-                      <SelectedPermissionIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{selectedPermissionLabel}</span>
-                      <ChevronDown
+                      <button
+                        type="button"
+                        disabled={permissionSelectorDisabled}
+                        onClick={togglePermissionMenu}
+                        onKeyDown={handlePermissionButtonKeyDown}
                         className={cn(
-                          'h-3.5 w-3.5 shrink-0 transition-transform',
-                          isPermissionMenuOpen && 'rotate-180',
+                          'inline-flex h-9 max-w-[136px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px] md:h-7',
+                          permissionSelectorDisabled
+                            ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
+                            : permissionMode === 'bypassPermissions'
+                              ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+                              : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
                         )}
-                        strokeWidth={2}
-                      />
-                    </button>
+                        title={t('input.permissions.change', {
+                          defaultValue: 'Select permission mode',
+                        }) as string}
+                        aria-haspopup="menu"
+                        aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
+                        aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}
+                      >
+                        <SelectedPermissionIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                        <span className="truncate">{selectedPermissionLabel}</span>
+                        <ChevronDown
+                          className={cn(
+                            'h-3.5 w-3.5 shrink-0 transition-transform',
+                            isPermissionMenuOpen && 'rotate-180',
+                          )}
+                          strokeWidth={2}
+                        />
+                      </button>
                     {isPermissionMenuOpen ? (
                       <div
                         id={permissionMenuId}
@@ -994,6 +1032,7 @@ export default function ComposerV2({
 
                           return (
                             <button
+                              id={`${permissionMenuId}-option-${option.mode}`}
                               key={option.mode}
                               type="button"
                               role="menuitemradio"

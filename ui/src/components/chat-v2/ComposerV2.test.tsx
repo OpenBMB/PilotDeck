@@ -296,6 +296,26 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('opens run and permission menus from ArrowDown and focuses the current option', async () => {
+    renderComposer();
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.keyDown(runModeButton, { key: 'ArrowDown' });
+
+    const agentItem = screen.getByRole('menuitemradio', { name: /Agent/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(agentItem);
+    });
+
+    const permissionButton = screen.getByTitle('Select permission mode');
+    fireEvent.keyDown(permissionButton, { key: 'ArrowDown' });
+
+    const defaultPermissionItem = screen.getByRole('menuitemradio', { name: /Default Permissions/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(defaultPermissionItem);
+    });
+  });
+
   it('closes composer popovers before running toolbar actions', () => {
     const openImagePicker = vi.fn();
     const onInsertMention = vi.fn();
