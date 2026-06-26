@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ComposerV2, { getQueuedInputRowsForTest, type ComposerV2Props } from './ComposerV2';
 
@@ -142,6 +142,29 @@ describe('ComposerV2 queue feedback', () => {
     fireEvent.mouseEnter(screen.getByRole('option', { name: /ComposerV2.tsx/ }));
 
     expect(onHighlightFile).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps the selected file suggestion scrolled into view for keyboard navigation', async () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      renderComposer({
+        showFileDropdown: true,
+        selectedFileIndex: 1,
+        filteredFiles: [
+          { name: 'README.md', path: 'README.md' },
+          { name: 'ComposerV2.tsx', path: 'ui/src/components/chat-v2/ComposerV2.tsx' },
+        ],
+      });
+
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it('connects the composer textbox to active slash command suggestions', () => {

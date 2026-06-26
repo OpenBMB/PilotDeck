@@ -320,6 +320,7 @@ export default function ComposerV2({
   const [isRunModeMenuOpen, setIsRunModeMenuOpen] = useState(false);
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
   const suppressSlashToolbarClickRef = useRef(false);
+  const selectedFileSuggestionRef = useRef<HTMLDivElement | null>(null);
   const queueAttachmentBlockId = useId();
   const fileSuggestionsId = useId();
   const commandMenuId = useId();
@@ -414,6 +415,16 @@ export default function ComposerV2({
       ? commandMenuId
       : undefined;
   const activeAutocompleteOptionId = selectedFileOptionId ?? selectedCommandOptionId;
+  useEffect(() => {
+    if (!fileSuggestionsOpen || selectedFileIndex < 0) {
+      return;
+    }
+    const selectedSuggestion = selectedFileSuggestionRef.current;
+    if (typeof selectedSuggestion?.scrollIntoView === 'function') {
+      selectedSuggestion.scrollIntoView({ block: 'nearest' });
+    }
+  }, [fileSuggestionsOpen, selectedFileIndex]);
+
   const closeComposerPopovers = () => {
     setIsRunModeMenuOpen(false);
     setIsPermissionMenuOpen(false);
@@ -638,6 +649,7 @@ export default function ComposerV2({
                   <div
                     key={file.path}
                     id={`${fileSuggestionsId}-option-${index}`}
+                    ref={index === selectedFileIndex ? selectedFileSuggestionRef : null}
                     role="option"
                     aria-selected={index === selectedFileIndex}
                     className={cn(
