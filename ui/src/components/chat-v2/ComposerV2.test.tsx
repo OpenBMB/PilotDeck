@@ -146,6 +146,22 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
   });
 
+  it('keeps the composer textbox expanded for an empty slash command menu', () => {
+    renderComposer({
+      isCommandMenuOpen: true,
+      selectedCommandIndex: -1,
+      filteredCommands: [],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'Available commands' });
+
+    expect(listbox.textContent).toContain('No commands available');
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });

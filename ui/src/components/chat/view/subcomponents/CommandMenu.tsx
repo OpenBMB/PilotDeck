@@ -135,6 +135,8 @@ export default function CommandMenu({
       <div
         id={id}
         ref={menuRef}
+        role="listbox"
+        aria-label="Available commands"
         className={cn(containerClass, 'px-4 py-5 text-center text-[13px] text-neutral-500 dark:text-neutral-400')}
         style={{ ...menuPosition, zIndex: 1000 }}
       >
