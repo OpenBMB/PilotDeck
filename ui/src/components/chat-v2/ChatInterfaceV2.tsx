@@ -181,6 +181,7 @@ function ChatInterfaceV2({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    highlightFileSuggestion,
     attachedImages,
     setAttachedImages,
     uploadingImages,
@@ -485,6 +486,7 @@ function ChatInterfaceV2({
       filteredFiles={filteredFiles}
       selectedFileIndex={selectedFileIndex}
       onSelectFile={selectFile}
+      onHighlightFile={highlightFileSuggestion}
       filteredCommands={filteredCommands}
       selectedCommandIndex={selectedCommandIndex}
       onCommandSelect={handleCommandSelect}

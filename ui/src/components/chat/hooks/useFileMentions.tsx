@@ -241,6 +241,18 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     [input, atSymbolPosition, textareaRef, setInput],
   );
 
+  const highlightFileSuggestion = useCallback(
+    (index: number) => {
+      setSelectedFileIndex((previousIndex) => {
+        if (index < 0 || index >= filteredFiles.length) {
+          return previousIndex;
+        }
+        return index;
+      });
+    },
+    [filteredFiles.length],
+  );
+
   const handleFileMentionsKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (!showFileDropdown || filteredFiles.length === 0) {
@@ -293,6 +305,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    highlightFileSuggestion,
     setCursorPosition,
     handleFileMentionsKeyDown,
   };

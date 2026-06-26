@@ -59,4 +59,45 @@ describe('useFileMentions selection behavior', () => {
     expect(result.current.showFileDropdown).toBe(true);
     expect(result.current.selectedFileIndex).toBe(0);
   });
+
+  it('updates the highlighted file suggestion from mouse hover', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { name: 'README.md', type: 'file' },
+        { name: 'src', type: 'directory', children: [{ name: 'ComposerV2.tsx', type: 'file' }] },
+      ],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: '@',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles).toHaveLength(2);
+    });
+
+    act(() => {
+      result.current.highlightFileSuggestion(1);
+    });
+
+    expect(result.current.selectedFileIndex).toBe(1);
+  });
 });
