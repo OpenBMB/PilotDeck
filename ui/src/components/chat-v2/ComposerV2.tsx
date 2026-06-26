@@ -434,6 +434,17 @@ export default function ComposerV2({
     setIsPermissionMenuOpen(false);
     setIsContextPopoverOpen(false);
   };
+  const handleComposerPopoverEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (
+      event.key !== 'Escape' ||
+      (!isRunModeMenuOpen && !isPermissionMenuOpen && !isContextPopoverOpen)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    closeComposerPopovers();
+  };
   const toggleRunModeMenu = () => {
     setIsRunModeMenuOpen((open) => {
       const next = !open;
@@ -752,7 +763,9 @@ export default function ComposerV2({
                 <div className="flex items-end justify-between gap-2 px-1 pt-2 md:items-center md:pt-1">
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 md:flex-nowrap md:gap-0.5">
                     <div
+                      data-composer-popover-scope="true"
                       className="relative mr-1"
+                      onKeyDown={handleComposerPopoverEscape}
                       onBlur={(event) => {
                         const nextTarget = event.relatedTarget as Node | null;
                         if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
@@ -923,14 +936,16 @@ export default function ComposerV2({
                       <Slash className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
                     </button>
                     <div
+                      data-composer-popover-scope="true"
                       className="relative"
-                    onBlur={(event) => {
-                      const nextTarget = event.relatedTarget as Node | null;
-                      if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
-                        setIsPermissionMenuOpen(false);
-                      }
-                    }}
-                  >
+                      onKeyDown={handleComposerPopoverEscape}
+                      onBlur={(event) => {
+                        const nextTarget = event.relatedTarget as Node | null;
+                        if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                          setIsPermissionMenuOpen(false);
+                        }
+                      }}
+                    >
                     <button
                       type="button"
                       disabled={permissionSelectorDisabled}
@@ -1032,7 +1047,9 @@ export default function ComposerV2({
 
                   <div className="ml-1 flex shrink-0 items-center gap-1 md:ml-2">
                     <div
+                      data-composer-popover-scope="true"
                       className="relative"
+                      onKeyDown={handleComposerPopoverEscape}
                       onBlur={(event) => {
                         const nextTarget = event.relatedTarget as Node | null;
                         if (!nextTarget || !event.currentTarget.contains(nextTarget)) {

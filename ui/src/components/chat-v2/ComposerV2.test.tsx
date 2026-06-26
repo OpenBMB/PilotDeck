@@ -272,6 +272,30 @@ describe('ComposerV2 queue feedback', () => {
     expect(contextButton.getAttribute('aria-controls')).toBe(contextPopover.id);
   });
 
+  it('closes composer popovers with Escape without leaving the popover scope', () => {
+    renderComposer();
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.click(runModeButton);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(runModeButton.closest('[data-composer-popover-scope="true"]')).toBeTruthy();
+
+    fireEvent.keyDown(runModeButton, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    const permissionButton = screen.getByTitle('Select permission mode');
+    fireEvent.click(permissionButton);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.keyDown(permissionButton, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
+    fireEvent.click(contextButton);
+    expect(screen.getByRole('status').textContent).toContain('Context window');
+    fireEvent.keyDown(contextButton, { key: 'Escape' });
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('closes composer popovers before running toolbar actions', () => {
     const openImagePicker = vi.fn();
     const onInsertMention = vi.fn();
