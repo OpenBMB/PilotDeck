@@ -115,6 +115,29 @@ export function removeActiveSlashQueryForTest(input: string, slashPosition: numb
   return `${before}${tail}`;
 }
 
+export function buildSlashCommandInsertion(
+  input: string,
+  slashPosition: number,
+  commandName: string,
+): { value: string; caret: number } {
+  if (slashPosition < 0 || slashPosition >= input.length || input[slashPosition] !== '/') {
+    const separator = input.length > 0 && !/\s$/.test(input) ? ' ' : '';
+    const value = `${input}${separator}${commandName} `;
+    return { value, caret: value.length };
+  }
+
+  const before = input.slice(0, slashPosition);
+  const afterSlash = input.slice(slashPosition);
+  const whitespaceIndex = afterSlash.search(/\s/);
+  const tail =
+    whitespaceIndex !== -1 ? afterSlash.slice(whitespaceIndex).replace(/^[ \t]+/, '') : '';
+  const head = `${before}${commandName} `;
+  return {
+    value: `${head}${tail}`,
+    caret: head.length,
+  };
+}
+
 export function useSlashCommands({
   selectedProject,
   input,
@@ -330,16 +353,11 @@ export function useSlashCommands({
   // any trailing text after the query is preserved.
   const insertCommandIntoInput = useCallback(
     (command: SlashCommand) => {
-      // Fall back to slash-prepend when no active slashPosition exists (e.g.
-      // mouse click without prior typing). Keep existing input intact.
-      const slashStart = slashPosition >= 0 ? slashPosition : input.length;
-      const textBeforeSlash = input.slice(0, slashStart);
-      const textAfterSlash = input.slice(slashStart);
-      const spaceIndex = textAfterSlash.indexOf(' ');
-      const textAfterQuery =
-        spaceIndex !== -1 ? textAfterSlash.slice(spaceIndex) : '';
-      const head = `${textBeforeSlash}${command.name} `;
-      const newInput = `${head}${textAfterQuery}`;
+      const { value: newInput, caret } = buildSlashCommandInsertion(
+        input,
+        slashPosition,
+        command.name,
+      );
 
       setInput(newInput);
       if (externalInputValueRef) {
@@ -349,7 +367,6 @@ export function useSlashCommands({
 
       // Defer focus + caret placement until after React commits the new input
       // value; otherwise selectionStart points into stale text.
-      const caret = head.length;
       setTimeout(() => {
         const ta = textareaRef.current;
         if (!ta) return;
