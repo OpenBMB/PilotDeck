@@ -26,6 +26,7 @@ import {
 import type { TFunction } from 'i18next';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
+import { useAppearanceProfile } from '../../contexts/AppearanceProfileContext';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
   projectDisplayName,
@@ -309,6 +310,7 @@ export default function SidebarV2({
 }: SidebarV2Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { activeProfile } = useAppearanceProfile();
   useCustomNamesVersion();
   const safeProjects = Array.isArray(projects) ? projects : [];
 
@@ -1034,18 +1036,24 @@ export default function SidebarV2({
               }
             }}
             aria-label="PilotDeck"
-            title="PilotDeck"
+            title={activeProfile.brandName || 'PilotDeck'}
             className="flex min-w-0 shrink items-center gap-2 rounded-md p-1 transition hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700"
           >
             <img
-              src={pilotdeckLogoLight}
-              alt="PilotDeck"
+              src={activeProfile.logoLight || pilotdeckLogoLight}
+              alt={activeProfile.brandName || 'PilotDeck'}
+              onError={(event) => {
+                event.currentTarget.src = pilotdeckLogoLight;
+              }}
               className="h-7 w-auto max-w-[150px] select-none object-contain dark:hidden"
               draggable={false}
             />
             <img
-              src={pilotdeckLogoDark}
-              alt="PilotDeck"
+              src={activeProfile.logoDark || pilotdeckLogoDark}
+              alt={activeProfile.brandName || 'PilotDeck'}
+              onError={(event) => {
+                event.currentTarget.src = pilotdeckLogoDark;
+              }}
               className="hidden h-7 w-auto max-w-[150px] select-none object-contain dark:block"
               draggable={false}
             />

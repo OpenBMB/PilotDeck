@@ -7,6 +7,7 @@ import {
   Folder,
   PanelLeftOpen,
   Radio,
+  Settings as SettingsIcon,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import type { MainContentProps } from '../main-content/types/types';
 import { cn } from '../../lib/utils.js';
 import { projectDisplayName, sessionDisplayTitle, useCustomNamesVersion } from '../../lib/customNames';
 import { api } from '../../utils/api';
+import { useAppearanceProfile } from '../../contexts/AppearanceProfileContext';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
@@ -76,6 +78,9 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     selectedSession,
     activeTab,
     setActiveTab,
+    isMobile,
+    onMenuClick,
+    onShowSettings,
     isSidebarCollapsed,
     onOpenSidebar,
   } = props;
@@ -84,6 +89,9 @@ export default function MainAreaV2(props: MainAreaV2Props) {
   const [lastViewedAlwaysOnEventMarker, setLastViewedAlwaysOnEventMarker] = useState<string | null>(
     () => localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY),
   );
+  const { activeProfile } = useAppearanceProfile();
+  const compactTools = activeProfile.layout === 'compactTools';
+  const spaciousLayout = activeProfile.layout === 'spacious';
 
   useEffect(() => {
     if (activeTab === 'home') {
@@ -160,7 +168,21 @@ export default function MainAreaV2(props: MainAreaV2Props) {
   return (
     <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       {/* Header: breadcrumb left, tool switcher right. */}
-      <header className="flex h-12 shrink-0 items-center px-6">
+      <header className={cn(
+        'flex shrink-0 items-center',
+        spaciousLayout ? 'h-14 px-7' : compactTools ? 'h-11 px-4' : 'h-12 px-6',
+      )}>
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            aria-label={t('sidebar:actions.menu', { defaultValue: 'Open menu' }) as string}
+            title={t('sidebar:actions.menu', { defaultValue: 'Open menu' }) as string}
+            className="mr-3 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          >
+            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        ) : null}
         {isSidebarCollapsed ? (
           // Just the "expand sidebar" affordance — the PilotDeck logo lives
           // in the sidebar header, so showing a duplicate badge here when
@@ -175,7 +197,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
             <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
           </button>
         ) : null}
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
+        <div className={cn('flex min-w-0 flex-1 items-center text-[13px]', compactTools ? 'gap-1.5' : 'gap-2')}>
           <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
             {selectedProject ? projectDisplayName(selectedProject) : t('navigation.home', { defaultValue: 'Home' })}
           </span>
@@ -183,7 +205,10 @@ export default function MainAreaV2(props: MainAreaV2Props) {
           <span className="shrink-0 font-medium">{tabLabel}</span>
           {sessionSummary ? (
             <span
-              className="ml-2 min-w-0 max-w-[28rem] truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400"
+              className={cn(
+                'ml-2 min-w-0 truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400',
+                compactTools ? 'max-w-[16rem]' : spaciousLayout ? 'max-w-[36rem]' : 'max-w-[28rem]',
+              )}
               title={sessionSummary}
             >
               {sessionSummary}
@@ -194,7 +219,10 @@ export default function MainAreaV2(props: MainAreaV2Props) {
         <div
           role="tablist"
           aria-label="Tools"
-          className="scrollbar-thin ml-4 flex h-9 max-w-[70%] shrink-0 items-center gap-1 overflow-x-auto"
+          className={cn(
+            'scrollbar-thin flex shrink-0 items-center overflow-x-auto',
+            compactTools ? 'ml-2 h-8 max-w-[58%] gap-0.5' : spaciousLayout ? 'ml-5 h-10 max-w-[74%] gap-1.5' : 'ml-4 h-9 max-w-[70%] gap-1',
+          )}
         >
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -205,16 +233,21 @@ export default function MainAreaV2(props: MainAreaV2Props) {
                 type="button"
                 role="tab"
                 aria-selected={isActive}
+                aria-label={t(tab.labelKey) as string}
+                title={t(tab.labelKey) as string}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-colors',
+                  'relative inline-flex shrink-0 items-center rounded-md text-[13px] transition-colors',
+                  compactTools ? 'h-8 w-8 justify-center px-0' : spaciousLayout ? 'h-9 gap-2 px-3' : 'h-8 gap-1.5 px-2.5',
                   isActive
                     ? 'bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                     : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
                 )}
               >
                 <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                <span>{t(tab.labelKey)}</span>
+                <span className={cn(compactTools ? 'sr-only' : undefined)}>
+                  {t(tab.labelKey)}
+                </span>
                 {tab.id === 'always-on' && alwaysOnUnread ? (
                   <span
                     aria-hidden="true"
@@ -225,6 +258,17 @@ export default function MainAreaV2(props: MainAreaV2Props) {
             );
           })}
         </div>
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={onShowSettings}
+            aria-label={t('sidebar:actions.openSettings', { defaultValue: 'Open settings' }) as string}
+            title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
+            className="ml-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          >
+            <SettingsIcon className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        ) : null}
       </header>
 
       {/* Body */}

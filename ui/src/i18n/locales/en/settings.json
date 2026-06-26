@@ -123,6 +123,9 @@
       "light": "Light",
       "dark": "Dark"
     },
+    "appearance": {
+      "detail": "Brand profiles, presets, logo, favicon, fonts, colors, and layout density"
+    },
     "chatInput": {
       "title": "Chat & Input",
       "detail": "Tool display, scroll behavior, and send shortcut"
@@ -201,6 +204,40 @@
     "darkMode": {
       "label": "Dark Mode",
       "description": "Toggle between light and dark themes"
+    },
+    "brand": {
+      "title": "Brand Profiles",
+      "activeProfile": "Active profile",
+      "preset": "Preset",
+      "applyPreset": "Apply Preset",
+      "readonlyPreset": "Built-in presets are read-only. Apply a preset to create an editable copy.",
+      "identity": "Identity",
+      "profileName": "Profile Name",
+      "profileNameDescription": "Saved locally so you can keep multiple appearance setups.",
+      "brandName": "Brand Name",
+      "tagline": "Primary Text",
+      "logoLight": "Light Logo",
+      "logoDark": "Dark Logo",
+      "favicon": "Favicon",
+      "assetDescription": "Use an app path, remote URL, or data URL. Invalid images fall back to PilotDeck assets.",
+      "uploadAsset": "Upload",
+      "assetTooLarge": "Use an image smaller than 1 MB.",
+      "assetReadError": "Could not read that image.",
+      "system": "System Appearance",
+      "font": "Font Pairing",
+      "density": "Layout Density",
+      "comfortable": "Comfortable",
+      "compact": "Compact",
+      "layout": "Control Layout",
+      "layoutBalanced": "Balanced",
+      "layoutCompactTools": "Compact tools",
+      "layoutSpacious": "Spacious",
+      "radius": "Control Radius",
+      "colors": "Color Kit",
+      "manage": "Profile Management",
+      "duplicate": "Duplicate",
+      "reset": "Reset Profiles",
+      "delete": "Delete Profile"
     },
     "projectSorting": {
       "label": "Project Sorting",
