@@ -106,6 +106,26 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.getByRole('option', { name: /ComposerV2.tsx/ }).getAttribute('aria-selected')).toBe('true');
   });
 
+  it('connects the composer textbox to active file mention suggestions', () => {
+    renderComposer({
+      showFileDropdown: true,
+      selectedFileIndex: 1,
+      filteredFiles: [
+        { name: 'README.md', path: 'README.md' },
+        { name: 'ComposerV2.tsx', path: 'ui/src/components/chat-v2/ComposerV2.tsx' },
+      ],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'File suggestions' });
+    const selectedOption = screen.getByRole('option', { name: /ComposerV2.tsx/ });
+
+    expect(textarea.getAttribute('aria-autocomplete')).toBe('list');
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });

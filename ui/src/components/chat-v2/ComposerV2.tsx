@@ -319,6 +319,7 @@ export default function ComposerV2({
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
   const suppressSlashToolbarClickRef = useRef(false);
   const queueAttachmentBlockId = useId();
+  const fileSuggestionsId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
   useEffect(() => {
@@ -396,6 +397,10 @@ export default function ComposerV2({
     : firstQueuedInputBlocked
       ? (t('queue.paused', { defaultValue: 'Fix first item to continue' }) as string)
       : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
+  const fileSuggestionsOpen = showFileDropdown && filteredFiles.length > 0;
+  const selectedFileOptionId = fileSuggestionsOpen && selectedFileIndex >= 0
+    ? `${fileSuggestionsId}-option-${selectedFileIndex}`
+    : undefined;
   const closeComposerPopovers = () => {
     setIsRunModeMenuOpen(false);
     setIsPermissionMenuOpen(false);
@@ -607,8 +612,9 @@ export default function ComposerV2({
               </div>
             ) : null}
 
-            {showFileDropdown && filteredFiles.length > 0 ? (
+            {fileSuggestionsOpen ? (
               <div
+                id={fileSuggestionsId}
                 role="listbox"
                 aria-label={t('input.fileSuggestions', {
                   defaultValue: 'File suggestions',
@@ -618,6 +624,7 @@ export default function ComposerV2({
                 {filteredFiles.map((file, index) => (
                   <div
                     key={file.path}
+                    id={`${fileSuggestionsId}-option-${index}`}
                     role="option"
                     aria-selected={index === selectedFileIndex}
                     className={cn(
@@ -695,6 +702,10 @@ export default function ComposerV2({
                   onBlur={() => onInputFocusChange?.(false)}
                   onInput={onTextareaInput}
                   placeholder={placeholder}
+                  aria-autocomplete="list"
+                  aria-controls={fileSuggestionsOpen ? fileSuggestionsId : undefined}
+                  aria-expanded={fileSuggestionsOpen}
+                  aria-activedescendant={selectedFileOptionId}
                   rows={2}
                   className="relative z-10 block max-h-[34vh] min-h-[56px] w-full resize-none bg-transparent px-2 pt-2 text-[16px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100 dark:placeholder-neutral-500 md:max-h-[40vh] md:min-h-[48px] md:pt-1.5 md:text-[14px]"
                 />
