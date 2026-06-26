@@ -27,13 +27,25 @@ export type PilotDeckElicitationQuestion = {
   multiSelect?: boolean;
 };
 
+export type PilotDeckElicitationField = {
+  id: string;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  kind: "text" | "secret" | "multiline";
+  required?: boolean;
+};
+
 export type PilotDeckElicitationRequest = {
   /** Stable identifier of the underlying tool call. */
   toolCallId: string;
   toolName: string;
   /** Format hint forwarded to the channel. `html` = render previews as HTML. */
   previewFormat?: "html" | "markdown";
+  /** Multiple-choice questions, used by `ask_user_question`. */
   questions: PilotDeckElicitationQuestion[];
+  /** Free-form input fields, used when a running tool needs stdin/credentials. */
+  fields?: PilotDeckElicitationField[];
   /** Free-form metadata forwarded verbatim (e.g. `source: "remember"`). */
   metadata?: Record<string, unknown>;
   /** Cancellation signal: channels MUST honor abort. */
@@ -41,7 +53,12 @@ export type PilotDeckElicitationRequest = {
 };
 
 export type PilotDeckElicitationAnswer =
-  | { type: "answered"; answers: Record<string, string | string[]>; annotations?: Record<string, { preview?: string; notes?: string }> }
+  | {
+      type: "answered";
+      answers: Record<string, string | string[]>;
+      inputs?: Record<string, string>;
+      annotations?: Record<string, { preview?: string; notes?: string }>;
+    }
   | { type: "cancelled"; reason?: string };
 
 export type PilotDeckElicitationChannel = {
@@ -76,6 +93,14 @@ export class InMemoryElicitationChannel implements PilotDeckElicitationChannel {
       }
       answers[q.question] = this.answers.get(q.question)!;
     }
-    return { type: "answered", answers };
+    const inputs: Record<string, string> = {};
+    for (const field of request.fields ?? []) {
+      if (!this.answers.has(field.id)) {
+        throw new Error(`InMemoryElicitationChannel: no canned input for "${field.id}"`);
+      }
+      const value = this.answers.get(field.id)!;
+      inputs[field.id] = Array.isArray(value) ? value.join(", ") : value;
+    }
+    return { type: "answered", answers, ...(Object.keys(inputs).length > 0 ? { inputs } : {}) };
   }
 }

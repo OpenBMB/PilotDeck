@@ -91,6 +91,7 @@ export class GatewayElicitationChannel implements PilotDeckElicitationChannel {
         toolName: request.toolName,
         previewFormat: request.previewFormat,
         questions: request.questions,
+        ...(request.fields ? { fields: request.fields } : {}),
         metadata: request.metadata,
       });
       this.options.dispatchHook?.("Elicitation", { requestId, toolName: request.toolName, toolCallId: request.toolCallId });

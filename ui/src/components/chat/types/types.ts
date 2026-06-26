@@ -211,6 +211,15 @@ export interface Question {
   multiSelect?: boolean;
 }
 
+export interface ElicitationField {
+  id: string;
+  label: string;
+  description?: string;
+  placeholder?: string;
+  kind: 'text' | 'secret' | 'multiline';
+  required?: boolean;
+}
+
 export interface ChatInterfaceProps {
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;

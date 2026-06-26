@@ -22,6 +22,7 @@ import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/in
 import type { SessionInfo as ProjectSessionInfo } from "../../session/index.js";
 import type {
   PilotDeckElicitationAnswer,
+  PilotDeckElicitationField,
   PilotDeckElicitationQuestion,
 } from "../../tool/elicitation/PilotDeckElicitationChannel.js";
 import type {
@@ -161,6 +162,7 @@ export type GatewayEvent =
       toolName: string;
       previewFormat?: "html" | "markdown";
       questions: PilotDeckElicitationQuestion[];
+      fields?: PilotDeckElicitationField[];
       metadata?: Record<string, unknown>;
     }
   /**

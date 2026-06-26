@@ -1,6 +1,10 @@
-import type { PilotDeckToolDefinition } from "../protocol/types.js";
+import type { PilotDeckToolDefinition, PilotDeckToolRuntimeContext } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
-import { NodeShellCommandRunner, type PilotDeckCommandRunner } from "./bash/commandRunner.js";
+import {
+  NodeShellCommandRunner,
+  type PilotDeckCommandInputRequest,
+  type PilotDeckCommandRunner,
+} from "./bash/commandRunner.js";
 import { classifyBashPermission, isReadOnlyShellCommand } from "./bash/permissions.js";
 
 export type BashInput = {
@@ -92,7 +96,61 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
         signal: context.abortSignal,
         onStdout: emitProgress?.("stdout"),
         onStderr: emitProgress?.("stderr"),
+        onInputRequest: async (request) => {
+          const channel = context.elicitation;
+          if (!channel) {
+            return {
+              type: "cancelled",
+              reason: "No elicitation channel is available for interactive command input.",
+            };
+          }
+          emitInteractiveInputProgress(context, request);
+          const fieldId = "stdin";
+          const answer = await channel.askUser({
+            toolCallId: context.currentToolCallId ?? context.turnId,
+            toolName: "bash",
+            questions: [],
+            fields: [
+              {
+                id: fieldId,
+                label: request.prompt,
+                description: request.secret
+                  ? "This value will be sent to the running command and will not be echoed in tool output."
+                  : "This value will be sent to the running command stdin.",
+                kind: request.secret ? "secret" : "text",
+                required: true,
+              },
+            ],
+            metadata: {
+              source: "bash_interactive_input",
+              command,
+              stream: request.stream,
+              secret: request.secret,
+              prompt: request.prompt,
+            },
+            ...(context.abortSignal && { signal: context.abortSignal }),
+          });
+          if (answer.type === "cancelled") {
+            return { type: "cancelled", reason: answer.reason };
+          }
+          const input = answer.inputs?.[fieldId] ?? scalarAnswer(answer.answers[fieldId]);
+          if (typeof input !== "string" || input.length === 0) {
+            return { type: "cancelled", reason: "No input was provided." };
+          }
+          return { type: "answered", input };
+        },
       });
+
+      if (result.interactiveInputCancelled) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_execution_failed",
+          `Command needed interactive input but could not continue${result.interactiveInputCancelledReason ? `: ${result.interactiveInputCancelledReason}` : "."}`,
+          {
+            command,
+            interactions: result.interactions?.map(redactInteraction),
+          },
+        );
+      }
 
       if (result.timedOut) {
         throw new PilotDeckToolRuntimeError("tool_timeout", `Command timed out after ${timeoutMs}ms.`);
@@ -107,6 +165,7 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
           stderr: result.stderr,
           timedOut: result.timedOut,
           durationMs: result.durationMs,
+          ...(result.interactions ? { interactions: result.interactions.map(redactInteraction) } : {}),
         });
       }
 
@@ -124,10 +183,53 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
           stderr: result.stderr,
           timedOut: result.timedOut,
           durationMs: result.durationMs,
+          ...(result.interactions ? { interactions: result.interactions.map(redactInteraction) } : {}),
         },
+        metadata: result.interactions
+          ? { interactions: result.interactions.map(redactInteraction) }
+          : undefined,
       };
     },
   };
+}
+
+function scalarAnswer(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function redactInteraction(interaction: NonNullable<Awaited<ReturnType<PilotDeckCommandRunner["run"]>>["interactions"]>[number]) {
+  return {
+    prompt: interaction.prompt,
+    stream: interaction.stream,
+    secret: interaction.secret,
+    answered: interaction.answered,
+    ...(interaction.cancelledReason ? { cancelledReason: interaction.cancelledReason } : {}),
+  };
+}
+
+function emitInteractiveInputProgress(
+  context: PilotDeckToolRuntimeContext,
+  request: PilotDeckCommandInputRequest,
+): void {
+  try {
+    context.progress?.({
+      type: "tool_progress",
+      sessionId: context.sessionId,
+      turnId: context.turnId,
+      toolCallId: context.currentToolCallId ?? "",
+      toolName: "bash",
+      message: request.secret ? "waiting for secure input" : "waiting for input",
+      metadata: {
+        stream: request.stream,
+        prompt: request.prompt,
+        secret: request.secret,
+      },
+      createdAt: (context.now?.() ?? new Date()).toISOString(),
+    });
+  } catch {
+    // Progress sinks are fire-and-forget.
+  }
 }
 
 function formatShellResult(stdout: string, stderr: string, exitCode: number | null): string {

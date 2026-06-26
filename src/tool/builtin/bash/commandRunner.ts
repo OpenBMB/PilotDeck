@@ -10,6 +10,27 @@ export type PilotDeckCommandOptions = {
   onStdout?: (chunk: string) => void;
   /** Called on each stderr chunk as it arrives. Errors thrown by the callback are swallowed. */
   onStderr?: (chunk: string) => void;
+  /** Called when shell output appears to be waiting for stdin. */
+  onInputRequest?: (request: PilotDeckCommandInputRequest) => Promise<PilotDeckCommandInputResponse>;
+};
+
+export type PilotDeckCommandInputRequest = {
+  prompt: string;
+  stream: "stdout" | "stderr";
+  secret: boolean;
+  outputTail: string;
+};
+
+export type PilotDeckCommandInputResponse =
+  | { type: "answered"; input: string }
+  | { type: "cancelled"; reason?: string };
+
+export type PilotDeckCommandInteraction = {
+  prompt: string;
+  stream: "stdout" | "stderr";
+  secret: boolean;
+  answered: boolean;
+  cancelledReason?: string;
 };
 
 export type PilotDeckCommandResult = {
@@ -18,6 +39,9 @@ export type PilotDeckCommandResult = {
   stderr: string;
   timedOut: boolean;
   durationMs: number;
+  interactions?: PilotDeckCommandInteraction[];
+  interactiveInputCancelled?: boolean;
+  interactiveInputCancelledReason?: string;
 };
 
 export type PilotDeckCommandRunner = {
@@ -39,13 +63,25 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
         shell: true,
         detached: !isWindows,
         windowsHide: isWindows,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
       });
 
       let stdout = "";
       let stderr = "";
       let timedOut = false;
       let settled = false;
+      let inputCancelled = false;
+      let inputCancelledReason: string | undefined;
+      const interactions: PilotDeckCommandInteraction[] = [];
+      const promptDetector = createInteractivePromptDetector();
+
+      function resultMetadata() {
+        return {
+          ...(interactions.length > 0 ? { interactions } : {}),
+          ...(inputCancelled ? { interactiveInputCancelled: true } : {}),
+          ...(inputCancelledReason ? { interactiveInputCancelledReason: inputCancelledReason } : {}),
+        };
+      }
 
       function killProcessGroup() {
         const pid = child.pid;
@@ -85,6 +121,7 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
             stderr: stderr + "\n[PilotDeck] Process did not exit within 15s after termination; force-resolved.",
             timedOut: true,
             durationMs: Date.now() - startedAt,
+            ...resultMetadata(),
           });
         }, ABORT_FORCE_RESOLVE_MS).unref();
       }
@@ -120,7 +157,53 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
           stderr,
           timedOut,
           durationMs: Date.now() - startedAt,
+          ...resultMetadata(),
         });
+      }
+
+      async function maybeAnswerPrompt(stream: "stdout" | "stderr", text: string) {
+        if (settled || !options.onInputRequest || !child.stdin?.writable) return;
+        const detected = promptDetector.observe(stream, text);
+        if (!detected) return;
+
+        const interaction: PilotDeckCommandInteraction = {
+          prompt: detected.prompt,
+          stream,
+          secret: detected.secret,
+          answered: false,
+        };
+        interactions.push(interaction);
+
+        try {
+          const response = await options.onInputRequest({
+            prompt: detected.prompt,
+            stream,
+            secret: detected.secret,
+            outputTail: detected.outputTail,
+          });
+          if (settled) return;
+          if (response.type === "cancelled") {
+            interaction.cancelledReason = response.reason;
+            inputCancelled = true;
+            inputCancelledReason = response.reason;
+            stderr += `\n[PilotDeck] Interactive input cancelled${response.reason ? `: ${response.reason}` : ""}.`;
+            killProcessGroup();
+            forceResolveAfterKill();
+            return;
+          }
+          interaction.answered = true;
+          child.stdin.write(`${response.input}\n`);
+          promptDetector.markAnswered();
+        } catch (error) {
+          if (settled) return;
+          const reason = error instanceof Error ? error.message : String(error);
+          interaction.cancelledReason = reason;
+          inputCancelled = true;
+          inputCancelledReason = reason;
+          stderr += `\n[PilotDeck] Interactive input failed: ${reason}`;
+          killProcessGroup();
+          forceResolveAfterKill();
+        }
       }
 
       child.stdout?.on("data", (chunk: Buffer) => {
@@ -133,6 +216,7 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
             // Progress callbacks are fire-and-forget; never crash the runner.
           }
         }
+        void maybeAnswerPrompt("stdout", text);
       });
       child.stderr?.on("data", (chunk: Buffer) => {
         const text = stderrDecoder.decode(chunk);
@@ -144,6 +228,7 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
             // Progress callbacks are fire-and-forget; never crash the runner.
           }
         }
+        void maybeAnswerPrompt("stderr", text);
       });
       child.on("error", (error) => {
         stdout += stdoutDecoder.flush();
@@ -156,6 +241,7 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
             stderr,
             timedOut: true,
             durationMs: Date.now() - startedAt,
+            ...resultMetadata(),
           });
           return;
         }
@@ -176,6 +262,56 @@ export class NodeShellCommandRunner implements PilotDeckCommandRunner {
       });
     });
   }
+}
+
+type DetectedPrompt = {
+  prompt: string;
+  secret: boolean;
+  outputTail: string;
+};
+
+function createInteractivePromptDetector(): {
+  observe(stream: "stdout" | "stderr", text: string): DetectedPrompt | undefined;
+  markAnswered(): void;
+} {
+  let tail = "";
+  let waitingForAnswer = false;
+
+  return {
+    observe(stream, text) {
+      tail = `${tail}${text}`.slice(-2000);
+      if (waitingForAnswer) return undefined;
+      const detected = detectInteractivePrompt(tail);
+      if (!detected) return undefined;
+      waitingForAnswer = true;
+      return { ...detected, outputTail: tail };
+    },
+    markAnswered() {
+      waitingForAnswer = false;
+      tail = "";
+    },
+  };
+}
+
+export function detectInteractivePrompt(outputTail: string): { prompt: string; secret: boolean } | undefined {
+  const normalized = outputTail.replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+  const last = (lines.at(-1) ?? "").trim();
+  const previous = (lines.at(-2) ?? "").trim();
+  const candidate = last.length > 0 ? last : previous;
+  if (!candidate || candidate.length > 240) return undefined;
+
+  const secret =
+    /\b(password|passphrase|passcode|token|api[ _-]?key|secret|otp|verification code|auth(?:entication)? code)\b/i.test(candidate);
+  const explicitInput =
+    /(?:[:：]\s*$|\?\s*$)/.test(candidate) &&
+    /\b(username|user name|login|email|password|passphrase|passcode|token|api[ _-]?key|secret|otp|verification code|auth(?:entication)? code|enter|input|confirm|continue|yes\/no)\b/i.test(candidate);
+  const sshHostKey = /\(yes\/no(?:\/\[fingerprint\])?\)\?\s*$/i.test(candidate);
+  const sudoPassword = /\[sudo\]\s+password\s+for\s+.+:\s*$/i.test(candidate);
+
+  if (!secret && !explicitInput && !sshHostKey && !sudoPassword) return undefined;
+  if (/^\s*(warning|error|failed):/i.test(candidate) && !secret && !sshHostKey) return undefined;
+  return { prompt: candidate, secret };
 }
 
 export type ShellOutputDecoder = {

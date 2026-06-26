@@ -1266,7 +1266,11 @@ function createAutoElicitationChannel(): PilotDeckElicitationChannel {
           answers[q.question] = "yes";
         }
       }
-      return { type: "answered", answers };
+      const inputs: Record<string, string> = {};
+      for (const field of request.fields ?? []) {
+        inputs[field.id] = "yes";
+      }
+      return { type: "answered", answers, ...(Object.keys(inputs).length > 0 ? { inputs } : {}) };
     },
   };
 }

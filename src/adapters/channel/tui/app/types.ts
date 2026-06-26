@@ -36,6 +36,7 @@ export type TuiAppState = {
     requestId: string;
     toolName: string;
     payload: unknown;
+    isElicitation?: boolean;
   }>;
   dashboardMode: DashboardMode;
   helpTab: "shortcuts" | "settings" | "about";
@@ -97,6 +98,24 @@ export function applyGatewayEventToTuiState(state: TuiEventReducerResult, event:
           { requestId: event.requestId, toolName: event.toolName, payload: event.payload },
         ],
         activity: [{ id: event.requestId, text: `permission: ${event.toolName}`, status: "info" as const }, ...state.activity].slice(0, 8),
+      };
+    case "elicitation_request":
+      return {
+        ...state,
+        pendingPermissions: [
+          ...state.pendingPermissions,
+          {
+            requestId: event.requestId,
+            toolName: event.toolName,
+            payload: {
+              questions: event.questions,
+              fields: event.fields,
+              metadata: event.metadata,
+            },
+            isElicitation: true,
+          },
+        ],
+        activity: [{ id: event.requestId, text: `input: ${event.toolName}`, status: "info" as const }, ...state.activity].slice(0, 8),
       };
     case "structured_output":
       return {

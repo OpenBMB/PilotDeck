@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Check, ChevronLeft, HelpCircle } from 'lucide-react';
 import type { PermissionPanelProps } from '../../configs/permissionPanelRegistry';
-import type { Question } from '../../../types/types';
+import type { ElicitationField, Question } from '../../../types/types';
 import { Button } from '../../../../ui/button';
 import { Input } from '../../../../ui/input';
 import { cn } from '../../../../../lib/utils.js';
@@ -39,12 +39,46 @@ function normalizeQuestions(value: unknown): Question[] {
   return value.map(normalizeQuestion).filter((question): question is Question => Boolean(question));
 }
 
+function normalizeField(field: unknown): ElicitationField | null {
+  if (!field || typeof field !== 'object') return null;
+  const raw = field as Record<string, unknown>;
+  const id = typeof raw.id === 'string' ? raw.id : '';
+  const label = typeof raw.label === 'string' ? raw.label : '';
+  const kind = raw.kind === 'secret' || raw.kind === 'multiline' ? raw.kind : 'text';
+  if (!id.trim() || !label.trim()) return null;
+  return {
+    id,
+    label,
+    kind,
+    description: typeof raw.description === 'string' ? raw.description : undefined,
+    placeholder: typeof raw.placeholder === 'string' ? raw.placeholder : undefined,
+    required: Boolean(raw.required),
+  };
+}
+
+function normalizeFields(value: unknown): ElicitationField[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeField).filter((field): field is ElicitationField => Boolean(field));
+}
+
 export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
   request,
   onDecision,
 }) => {
-  const input = request.input as { questions?: unknown } | undefined;
+  const input = request.input as { questions?: unknown; fields?: unknown } | undefined;
   const questions = normalizeQuestions(input?.questions);
+  const fields = normalizeFields(input?.fields);
+
+  if (fields.length > 0) {
+    return (
+      <ElicitationInputPanel
+        requestId={request.requestId}
+        input={input}
+        fields={fields}
+        onDecision={onDecision}
+      />
+    );
+  }
 
   const [currentStep, setCurrentStep] = useState(0);
   const [selections, setSelections] = useState<Map<number, Set<string>>>(() => new Map());
@@ -415,3 +449,110 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
     </div>
   );
 };
+
+type ElicitationInputPanelProps = {
+  requestId: string;
+  input: { questions?: unknown; fields?: unknown } | undefined;
+  fields: ElicitationField[];
+  onDecision: PermissionPanelProps['onDecision'];
+};
+
+function ElicitationInputPanel({
+  requestId,
+  input,
+  fields,
+  onDecision,
+}: ElicitationInputPanelProps) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const firstInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstInputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    const inputs: Record<string, string> = {};
+    for (const field of fields) {
+      const value = values[field.id] ?? '';
+      if (field.required && value.trim().length === 0) {
+        return;
+      }
+      inputs[field.id] = value;
+    }
+    onDecision(requestId, { allow: true, updatedInput: { ...input, answers: {}, inputs } });
+  }, [fields, input, onDecision, requestId, values]);
+
+  const handleCancel = useCallback(() => {
+    onDecision(requestId, { allow: false, message: 'declined' });
+  }, [onDecision, requestId]);
+
+  return (
+    <div className="w-full rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <HelpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.75} />
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Agent needs your input
+          </div>
+          <div className="text-sm font-medium text-foreground">
+            Continue the running command
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {fields.map((field, index) => {
+          const commonProps = {
+            id: `${requestId}-${field.id}`,
+            value: values[field.id] ?? '',
+            placeholder: field.placeholder,
+            onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+              setValues((current) => ({ ...current, [field.id]: event.target.value })),
+            onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+              if (event.key === 'Enter' && field.kind !== 'multiline' && !isImeEnterEvent(event)) {
+                event.preventDefault();
+                handleSubmit();
+              }
+            },
+          };
+          return (
+            <label key={field.id} htmlFor={`${requestId}-${field.id}`} className="block space-y-1.5">
+              <span className="block text-sm font-medium leading-snug text-foreground">
+                {field.label}
+              </span>
+              {field.description ? (
+                <span className="block text-xs leading-snug text-muted-foreground">
+                  {field.description}
+                </span>
+              ) : null}
+              {field.kind === 'multiline' ? (
+                <textarea
+                  {...commonProps}
+                  rows={3}
+                  className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              ) : (
+                <Input
+                  {...commonProps}
+                  ref={index === 0 ? firstInputRef : undefined}
+                  type={field.kind === 'secret' ? 'password' : 'text'}
+                  autoComplete={field.kind === 'secret' ? 'current-password' : 'off'}
+                />
+              )}
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={handleCancel}>
+          Cancel
+        </Button>
+        <Button type="button" size="sm" onClick={handleSubmit}>
+          <Check className="h-3.5 w-3.5" />
+          Continue
+        </Button>
+      </div>
+    </div>
+  );
+}

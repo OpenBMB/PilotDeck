@@ -466,6 +466,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                             plan: event.metadata?.plan,
                             planFilePath: event.metadata?.planFilePath,
                             questions: event.questions,
+                            fields: event.fields,
                             metadata: event.metadata,
                         },
                         context: { provider, originalToolName: event.toolName },
@@ -482,6 +483,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     toolName: 'AskUserQuestion',
                     input: {
                         questions: event.questions,
+                        fields: event.fields,
                         metadata: event.metadata,
                     },
                     context: { provider, originalToolName: event.toolName },
