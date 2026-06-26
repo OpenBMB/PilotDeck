@@ -174,49 +174,60 @@ export default function MainAreaV2(props: MainAreaV2Props) {
         spaciousLayout ? 'md:h-14 md:px-7' : compactTools ? 'md:h-11 md:px-4' : 'md:h-12 md:px-6',
       )}>
         <div className="flex min-w-0 flex-1 items-center">
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={onMenuClick}
-            aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
-            title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
-            className="mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-600 active:bg-neutral-100 dark:text-neutral-300 dark:active:bg-neutral-800 md:hidden"
-          >
-            <Menu className="h-5 w-5" strokeWidth={1.9} />
-          </button>
-        ) : null}
-        {isSidebarCollapsed ? (
-          // Just the "expand sidebar" affordance — the PilotDeck logo lives
-          // in the sidebar header, so showing a duplicate badge here when
-          // the sidebar is collapsed feels redundant.
-          <button
-            type="button"
-            onClick={onOpenSidebar}
-            aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
-            title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
-            className="mr-4 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-          >
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-        ) : null}
-        <div className={cn('flex min-w-0 flex-1 items-center text-[13px]', compactTools ? 'gap-1.5' : 'gap-2')}>
-          <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
-            {selectedProject ? projectDisplayName(selectedProject) : t('navigation.home', { defaultValue: 'Home' })}
-          </span>
-          <span className="shrink-0 text-neutral-400/60 dark:text-neutral-500/60">/</span>
-          <span className="shrink-0 font-medium">{tabLabel}</span>
-          {sessionSummary ? (
-            <span
-              className={cn(
-                'ml-2 hidden min-w-0 truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400 md:inline',
-                compactTools ? 'max-w-[16rem]' : spaciousLayout ? 'max-w-[36rem]' : 'max-w-[28rem]',
-              )}
-              title={sessionSummary}
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={onMenuClick}
+              aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+              title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+              className="mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-600 active:bg-neutral-100 dark:text-neutral-300 dark:active:bg-neutral-800 md:hidden"
             >
-              {sessionSummary}
-            </span>
+              <Menu className="h-5 w-5" strokeWidth={1.9} />
+            </button>
           ) : null}
-        </div>
+          {isSidebarCollapsed ? (
+            // Just the "expand sidebar" affordance — the PilotDeck logo lives
+            // in the sidebar header, so showing a duplicate badge here when
+            // the sidebar is collapsed feels redundant.
+            <button
+              type="button"
+              onClick={onOpenSidebar}
+              aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+              title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+              className="mr-4 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          ) : null}
+          <div className={cn('flex min-w-0 flex-1 items-center text-[13px]', compactTools ? 'gap-1.5' : 'gap-2')}>
+            <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
+              {selectedProject ? projectDisplayName(selectedProject) : t('navigation.home', { defaultValue: 'Home' })}
+            </span>
+            <span className="shrink-0 text-neutral-400/60 dark:text-neutral-500/60">/</span>
+            <span className="shrink-0 font-medium">{tabLabel}</span>
+            {sessionSummary ? (
+              <span
+                className={cn(
+                  'ml-2 hidden min-w-0 truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400 md:inline',
+                  compactTools ? 'max-w-[16rem]' : spaciousLayout ? 'max-w-[36rem]' : 'max-w-[28rem]',
+                )}
+                title={sessionSummary}
+              >
+                {sessionSummary}
+              </span>
+            ) : null}
+          </div>
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={onShowSettings}
+              aria-label={t('sidebar:actions.openSettings', { defaultValue: 'Open settings' }) as string}
+              title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
+              className="ml-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              <SettingsIcon className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          ) : null}
         </div>
 
         <div
@@ -264,17 +275,6 @@ export default function MainAreaV2(props: MainAreaV2Props) {
             );
           })}
         </div>
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={onShowSettings}
-            aria-label={t('sidebar:actions.openSettings', { defaultValue: 'Open settings' }) as string}
-            title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
-            className="ml-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-          >
-            <SettingsIcon className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-        ) : null}
       </header>
 
       {/* Body */}
