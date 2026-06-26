@@ -75,6 +75,15 @@ function renderComposer(overrides: Partial<ComposerV2Props> = {}) {
 }
 
 describe('ComposerV2 queue feedback', () => {
+  it('gives icon-only composer controls stable accessible names', () => {
+    renderComposer();
+
+    expect(screen.getByRole('button', { name: 'Attach photos or files' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mention a file' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Run a slash command' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });
