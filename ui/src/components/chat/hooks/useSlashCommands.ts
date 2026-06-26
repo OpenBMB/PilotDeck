@@ -133,7 +133,8 @@ export function buildSlashCommandInsertion(
   const whitespaceIndex = afterSlash.search(/\s/);
   const tail =
     whitespaceIndex !== -1 ? afterSlash.slice(whitespaceIndex).replace(/^[ \t]+/, '') : '';
-  const head = `${before}${commandName} `;
+  const separator = tail && /^\r?\n/.test(tail) ? '' : ' ';
+  const head = `${before}${commandName}${separator}`;
   return {
     value: `${head}${tail}`,
     caret: head.length,

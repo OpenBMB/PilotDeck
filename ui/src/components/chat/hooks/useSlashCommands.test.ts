@@ -63,8 +63,12 @@ describe('useSlashCommands command insertion behavior', () => {
 
   it('preserves multiline tail text when replacing the query', () => {
     expect(buildSlashCommandInsertion('/skill\nthis file', 0, '/skill_install')).toEqual({
-      value: '/skill_install \nthis file',
-      caret: 15,
+      value: '/skill_install\nthis file',
+      caret: 14,
+    });
+    expect(buildSlashCommandInsertion('please /skill\nthis file', 7, '/skill_install')).toEqual({
+      value: 'please /skill_install\nthis file',
+      caret: 21,
     });
   });
 
