@@ -1,6 +1,8 @@
 export {
   createDefaultPermissionContext,
+  DEFAULT_SUDO_PERMISSION_POLICY,
   emptyPermissionRuleSet,
+  normalizeSudoPermissionPolicy,
   type PermissionContext,
   type PermissionDecision,
   type PermissionDecisionReason,
@@ -12,6 +14,9 @@ export {
   type PermissionRuleBehavior,
   type PermissionRuleSet,
   type PermissionRuleSource,
+  type SudoPermissionPolicy,
+  type SudoPolicyAction,
+  type SudoRemoteHostPolicy,
 } from "./protocol/types.js";
 export { matchPermissionRule } from "./policy/matchPermissionRule.js";
 export { PermissionRuntime } from "./decision/PermissionRuntime.js";

@@ -42,7 +42,17 @@ export class PermissionRuntime {
       return this.allowSessionRule(tool, input, context, toolCallId, sessionAllowRule);
     }
 
-    // Check user-configured allow rules BEFORE consulting the tool's own
+    // Tool-level safety denials (dangerous bash patterns, sudo policy, etc.)
+    // must win over broad user allow rules such as `bash:*`. Tool-level asks
+    // are still handled after allow rules so "Allow + remember" keeps working
+    // for tools that ask by default.
+    const toolPermission = await tool.checkPermissions?.(input, context);
+    const toolDecision = normalizeToolPermission(toolPermission, tool, input, toolCallId, permissionContext);
+    if (toolDecision && toolDecision.type !== "ask" && toolDecision.type !== "allow") {
+      return toolDecision;
+    }
+
+    // Check user-configured allow rules BEFORE honoring the tool's own
     // checkPermissions, so an explicit "Allow + remember" grant wins
     // over a tool that hardcodes ask (web_fetch / web_search do this).
     // Without this ordering, the user's grant is effectively ignored:
@@ -71,8 +81,6 @@ export class PermissionRuntime {
       }
     }
 
-    const toolPermission = await tool.checkPermissions?.(input, context);
-    const toolDecision = normalizeToolPermission(toolPermission, tool, input, toolCallId, permissionContext);
     if (toolDecision) {
       if (toolDecision.type === "ask") {
         // `bypassPermissions` mode is the user's explicit "approve

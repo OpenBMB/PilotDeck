@@ -435,6 +435,28 @@
       "description": "工具调用不再弹出确认，等同于 bypassPermissions。仅建议在可信工作区中开启。",
       "warning": "当前已跳过权限确认。下方允许/禁用规则仍会保存，但这个全局模式会让智能体无需询问即可运行工具。"
     },
+    "sudoPolicy": {
+      "title": "sudo 策略",
+      "description": "设置 PilotDeck 如何处理本地 sudo、SSH 远程 sudo，以及特定远程主机。",
+      "local": {
+        "label": "本地 sudo",
+        "description": "当 sudo 会在本机执行时适用。"
+      },
+      "remote": {
+        "label": "远程 sudo 默认策略",
+        "description": "当在 ssh 远程命令中检测到 sudo 时适用，除非命中特定主机规则。"
+      },
+      "hosts": {
+        "placeholder": "主机、user@host、IP，或 prod-* 这类通配符",
+        "actionLabel": "主机 sudo 动作",
+        "empty": "尚未配置远程主机覆盖规则。"
+      },
+      "actions": {
+        "deny": "拒绝",
+        "ask": "询问",
+        "allow": "允许"
+      }
+    },
     "allowedTools": {
       "title": "允许的工具",
       "description": "无需权限提示即可自动使用的工具",

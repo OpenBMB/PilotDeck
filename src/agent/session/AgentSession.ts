@@ -82,6 +82,7 @@ export class AgentSession {
       allowPlanModeTools: submitOptions.allowPlanModeTools,
       canPrompt: submitOptions.canPrompt,
       permissionRules: submitOptions.permissionRules,
+      sudoPolicy: submitOptions.sudoPolicy,
       abortSignal: this.state.abortController.signal,
     });
 

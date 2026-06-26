@@ -1,4 +1,9 @@
-import type { PermissionResult } from "../../../permission/index.js";
+import {
+  DEFAULT_SUDO_PERMISSION_POLICY,
+  normalizeSudoPermissionPolicy,
+  type PermissionResult,
+  type SudoPermissionPolicy,
+} from "../../../permission/index.js";
 
 const COMMAND_POSITION = String.raw`(?:^|[;&|]\s*)`;
 const SHELL_SEGMENT = String.raw`[^;&|\n]*`;
@@ -97,13 +102,21 @@ const WINDOWS_READ_COMMANDS = new Set([
 
 const READ_ONLY_GIT_SUBCOMMANDS = new Set(["diff", "log", "show", "status"]);
 
-export function classifyBashPermission(command: string): PermissionResult {
+export function classifyBashPermission(
+  command: string,
+  sudoPolicy: SudoPermissionPolicy = DEFAULT_SUDO_PERMISSION_POLICY,
+): PermissionResult {
   if (HARD_DENY_PATTERNS.some((pattern) => pattern.test(command))) {
     return {
       type: "deny",
       reason: { type: "safety", message: "Dangerous shell command denied." },
       message: "Dangerous shell command denied.",
     };
+  }
+
+  const sudoDecision = decideSudoPermission(command, sudoPolicy);
+  if (sudoDecision) {
+    return sudoDecision;
   }
 
   if (DANGEROUS_ASK_PATTERNS.some((pattern) => pattern.test(command))) {
@@ -115,6 +128,259 @@ export function classifyBashPermission(command: string): PermissionResult {
   }
 
   return askForShellPermission(command);
+}
+
+export function decideSudoPermission(
+  command: string,
+  sudoPolicy: SudoPermissionPolicy = DEFAULT_SUDO_PERMISSION_POLICY,
+): PermissionResult | undefined {
+  if (!/\bsudo\b/.test(command)) {
+    return undefined;
+  }
+
+  const policy = normalizeSudoPermissionPolicy(sudoPolicy);
+  const matches = findSudoMatches(command, policy);
+  const match = matches.find((entry) => entry.action === "deny")
+    ?? matches.find((entry) => entry.action === "ask")
+    ?? matches[0];
+  if (!match) {
+    return {
+      type: "deny",
+      reason: { type: "safety", message: "sudo command could not be classified by sudo policy." },
+      message: "sudo command could not be classified by sudo policy.",
+    };
+  }
+
+  if (match.action === "allow") {
+    if (hasNonSudoShellSegments(command)) {
+      return undefined;
+    }
+    const location = match.scope === "remote" ? `remote host ${match.host}` : "the local machine";
+    return {
+      type: "allow",
+      reason: {
+        type: "tool",
+        toolName: "bash",
+        message: `sudo command on ${location} is allowed by sudo policy.`,
+      },
+    };
+  }
+
+  const location = match.scope === "remote" ? `remote host ${match.host}` : "the local machine";
+  const message = `sudo command on ${location} is ${match.action === "deny" ? "denied" : "waiting for permission"} by sudo policy.`;
+
+  if (match.action === "deny") {
+    return {
+      type: "deny",
+      reason: { type: "safety", message },
+      message,
+    };
+  }
+
+  return {
+    type: "ask",
+    reason: { type: "tool", toolName: "bash", message },
+    request: {
+      toolCallId: "",
+      toolName: "bash",
+      inputSummary: command,
+      reason: { type: "tool", toolName: "bash", message },
+      options: [
+        { id: "allow_once", label: "Allow once" },
+        { id: "deny", label: "Deny" },
+        { id: "cancel", label: "Cancel" },
+      ],
+      metadata: {
+        sudo: {
+          scope: match.scope,
+          host: match.host,
+          action: match.action,
+        },
+      },
+    },
+  };
+}
+
+function hasNonSudoShellSegments(command: string): boolean {
+  return splitShellSegments(command).some((segment) => !/\bsudo\b/.test(segment));
+}
+
+type SudoMatch = {
+  scope: "local" | "remote";
+  host?: string;
+  action: "deny" | "ask" | "allow";
+};
+
+function findSudoMatches(command: string, policy: SudoPermissionPolicy): SudoMatch[] {
+  const segments = splitShellSegments(command).filter((segment) => /\bsudo\b/.test(segment));
+  const targets = segments.length > 0 ? segments : [command];
+  return targets.map((segment) => {
+    const remote = detectRemoteSudo(segment);
+    if (!remote) {
+      return { scope: "local", action: policy.local };
+    }
+    return {
+      scope: "remote",
+      host: remote.host,
+      action: policy.remoteHosts.find((entry) => matchesRemoteHost(entry.host, remote.host))?.action ?? policy.remote,
+    };
+  });
+}
+
+function splitShellSegments(command: string): string[] {
+  const out: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+
+  const push = () => {
+    if (current.trim()) out.push(current);
+    current = "";
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]!;
+    const next = command[index + 1];
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      current += char;
+      quote = char;
+      continue;
+    }
+    if (char === ";" || char === "|") {
+      push();
+      if (char === "|" && next === "|") index += 1;
+      continue;
+    }
+    if (char === "&" && next === "&") {
+      push();
+      index += 1;
+      continue;
+    }
+    current += char;
+  }
+  push();
+  return out;
+}
+
+function detectRemoteSudo(segment: string): { host: string } | undefined {
+  const firstSudoIndex = segment.search(/\bsudo\b/);
+  const firstSshIndex = findFirstSshExecutableIndex(segment);
+  if (firstSudoIndex < 0 || firstSshIndex < 0 || firstSudoIndex < firstSshIndex) {
+    return undefined;
+  }
+
+  const tokens = tokenizeSimpleShell(segment);
+  if (tokens && tokens.length > 0) {
+    const sshIndex = tokens.findIndex((token) => normalizeExecutableName(baseExecutableName(token)) === "ssh");
+    if (sshIndex < 0) return undefined;
+    const hostInfo = parseSshHost(tokens, sshIndex + 1);
+    if (!hostInfo) return undefined;
+    const remoteCommand = tokens.slice(hostInfo.nextIndex).join(" ");
+    return /\bsudo\b/.test(remoteCommand) ? { host: hostInfo.host } : undefined;
+  }
+
+  const match = /(?:^|\s)(?:\S*[\\/])?ssh(?:\.(?:exe|cmd|bat))?\s+(?<args>[\s\S]*)/i.exec(segment);
+  const args = match?.groups?.args;
+  if (!args) return undefined;
+  const host = parseSshHostFromText(args);
+  if (!host) return undefined;
+  const hostIndex = segment.indexOf(host, match.index);
+  return hostIndex >= 0 && segment.slice(hostIndex + host.length).search(/\bsudo\b/) >= 0
+    ? { host }
+    : undefined;
+}
+
+function findFirstSshExecutableIndex(command: string): number {
+  const match = /(?:^|\s)(?:\S*[\\/])?ssh(?:\.(?:exe|cmd|bat))?(?:\s|$)/i.exec(command);
+  if (!match) return -1;
+  return match.index + (match[0].startsWith(" ") ? 1 : 0);
+}
+
+const SSH_OPTIONS_WITH_VALUE = new Set([
+  "-b",
+  "-c",
+  "-D",
+  "-E",
+  "-e",
+  "-F",
+  "-I",
+  "-i",
+  "-J",
+  "-L",
+  "-l",
+  "-m",
+  "-O",
+  "-o",
+  "-p",
+  "-Q",
+  "-R",
+  "-S",
+  "-W",
+  "-w",
+]);
+
+function parseSshHost(tokens: string[], startIndex: number): { host: string; nextIndex: number } | undefined {
+  for (let index = startIndex; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (token === "--") {
+      const host = tokens[index + 1];
+      return host ? { host: normalizeSshHost(host), nextIndex: index + 2 } : undefined;
+    }
+    if (SSH_OPTIONS_WITH_VALUE.has(token)) {
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("-")) {
+      continue;
+    }
+    return { host: normalizeSshHost(token), nextIndex: index + 1 };
+  }
+  return undefined;
+}
+
+function parseSshHostFromText(args: string): string | undefined {
+  const tokens = args.trim().split(/\s+/);
+  return parseSshHost(tokens, 0)?.host;
+}
+
+function normalizeSshHost(host: string): string {
+  return host.replace(/^ssh:\/\//i, "").replace(/\/$/, "");
+}
+
+function baseExecutableName(commandName: string): string {
+  return commandName.split(/[\\/]/).pop() ?? commandName;
+}
+
+function matchesRemoteHost(pattern: string, host: string): boolean {
+  const normalizedPattern = pattern.trim().toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
+  if (!normalizedPattern) return false;
+  if (normalizedPattern === normalizedHost) return true;
+  const hostWithoutUser = normalizedHost.includes("@")
+    ? normalizedHost.slice(normalizedHost.lastIndexOf("@") + 1)
+    : normalizedHost;
+  if (normalizedPattern === hostWithoutUser) return true;
+  const regex = new RegExp(`^${escapeRegex(normalizedPattern).replace(/\\\*/g, ".*")}$`, "i");
+  return regex.test(normalizedHost) || regex.test(hostWithoutUser);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.*]/g, "\\$&");
 }
 
 function askForShellPermission(command: string): PermissionResult {

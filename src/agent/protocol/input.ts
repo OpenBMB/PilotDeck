@@ -1,5 +1,5 @@
 import type { CanonicalContentBlock } from "../../model/index.js";
-import type { PermissionMode, PermissionRuleSet } from "../../permission/index.js";
+import type { PermissionMode, PermissionRuleSet, SudoPermissionPolicy } from "../../permission/index.js";
 
 export type AgentInput =
   | { type: "text"; text: string; isMeta?: boolean }
@@ -16,4 +16,5 @@ export type AgentSubmitOptions = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  sudoPolicy?: Partial<SudoPermissionPolicy>;
 };

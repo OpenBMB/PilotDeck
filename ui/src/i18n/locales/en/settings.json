@@ -435,6 +435,28 @@
       "description": "Run tool calls without asking for confirmation. This maps to bypassPermissions and should only be used in trusted workspaces.",
       "warning": "Permission prompts are currently bypassed. Allowed and blocked rules below are still saved, but this global mode lets the agent run without asking."
     },
+    "sudoPolicy": {
+      "title": "sudo Policy",
+      "description": "Choose how PilotDeck handles sudo locally, over SSH, and for specific remote hosts.",
+      "local": {
+        "label": "Local sudo",
+        "description": "Applies when sudo would run on this machine."
+      },
+      "remote": {
+        "label": "Remote sudo default",
+        "description": "Applies to sudo detected inside ssh remote commands unless a host rule overrides it."
+      },
+      "hosts": {
+        "placeholder": "Host, user@host, IP, or wildcard like prod-*",
+        "actionLabel": "Host sudo action",
+        "empty": "No remote host overrides configured."
+      },
+      "actions": {
+        "deny": "Deny",
+        "ask": "Ask",
+        "allow": "Allow"
+      }
+    },
     "allowedTools": {
       "title": "Allowed Tools",
       "description": "Tools that are automatically allowed without prompting for permission",

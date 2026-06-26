@@ -7,7 +7,7 @@ import type { AgentTranscriptWriter } from "../../session/transcript/TranscriptW
 import { TurnInputProcessor } from "./TurnInputProcessor.js";
 import type { CanonicalMessage, CanonicalUsage } from "../../model/index.js";
 import type { LifecycleRuntime } from "../../lifecycle/index.js";
-import type { PermissionMode, PermissionRuleSet } from "../../permission/index.js";
+import type { PermissionMode, PermissionRuleSet, SudoPermissionPolicy } from "../../permission/index.js";
 import type { AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 
 export type TurnRunnerOptions = {
@@ -23,6 +23,7 @@ export type TurnRunnerOptions = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  sudoPolicy?: Partial<SudoPermissionPolicy>;
   abortSignal?: AbortSignal;
 };
 
@@ -119,6 +120,7 @@ export class TurnRunner {
         allowPlanModeTools: options.allowPlanModeTools,
         canPrompt: options.canPrompt,
         permissionRules: options.permissionRules,
+        sudoPolicy: options.sudoPolicy,
         abortSignal: options.abortSignal,
         onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
       });
