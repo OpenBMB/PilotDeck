@@ -26,6 +26,9 @@ importers:
       '@vscode/ripgrep':
         specifier: ^1.18.0
         version: 1.18.0
+      csv-parse:
+        specifier: ^7.0.0
+        version: 7.0.0
       edgeclaw-memory-core:
         specifier: file:src/context/memory/edgeclaw-memory-core
         version: file:src/context/memory/edgeclaw-memory-core
@@ -44,6 +47,9 @@ importers:
       mupdf:
         specifier: ^1.27.0
         version: 1.27.0
+      parse5:
+        specifier: ^8.0.1
+        version: 8.0.1
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -2588,6 +2594,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@7.0.0:
+    resolution: {integrity: sha512-CSssqPAK5us09FhMI9juM0jnqXUJP+rtWeIfivTYBLNH/8rnxkQlZvoRemF6MAyfNov9XU8mN2wwF/pP68sxTA==}
 
   cytoscape-cose-bilkent@4.1.0:
     resolution: {integrity: sha512-wgQlVIUJF13Quxiv5e1gstZ08rnZj2XaLHGoFMYXz7SkNfCDOOteKBE6SYRfA9WxxI/iBc3ajfDoc6hb/MRAHQ==}
@@ -7933,6 +7942,8 @@ snapshots:
   cssesc@3.0.0: {}
 
   csstype@3.2.3: {}
+
+  csv-parse@7.0.0: {}
 
   cytoscape-cose-bilkent@4.1.0(cytoscape@3.34.0):
     dependencies:

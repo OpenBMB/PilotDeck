@@ -15,6 +15,7 @@ import {
   recordWriteSnapshot,
   validateWriteSnapshotFresh,
 } from "./filesystem/writeSnapshots.js";
+import { formatSyntaxDiagnostics } from "./filesystem/syntaxDiagnostics.js";
 
 export type WriteFileInput = {
   file_path: string;
@@ -187,8 +188,14 @@ export function createWriteFileTool(): PilotDeckToolDefinition<WriteFileInput, W
       await context.fileUpdateNotifier?.didChange?.(update);
       await context.fileUpdateNotifier?.didSave?.(update);
 
+      const successText = `${type === "create" ? "Created" : "Overwrote"} ${resolved.relativePath}.`;
+      const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, input.content);
+
       return {
-        content: [{ type: "text", text: `${type === "create" ? "Created" : "Overwrote"} ${resolved.relativePath}.` }],
+        content: [{
+          type: "text",
+          text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
+        }],
         data,
         metadata: {
           bytesWritten: Buffer.byteLength(input.content, "utf8"),

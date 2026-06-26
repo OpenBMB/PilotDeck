@@ -13,6 +13,7 @@ import {
   validateWriteSnapshotFresh,
 } from "./filesystem/writeSnapshots.js";
 import { findActualString, normalizeEditInput } from "./filesystem/editNormalization.js";
+import { formatSyntaxDiagnostics } from "./filesystem/syntaxDiagnostics.js";
 
 export type EditFileInput = {
   file_path: string;
@@ -215,10 +216,13 @@ export function createEditFileTool(): PilotDeckToolDefinition<EditFileInput> {
       await context.fileUpdateNotifier?.didSave?.(update);
 
       const replacements = input.old_string === "" ? 0 : input.replace_all ? occurrences : 1;
+      const successText =
+        `${action === "created" ? "Created" : "Updated"} ${resolved.relativePath}${replacements > 0 ? ` (${replacements} replacement).` : "."}`;
+      const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, nextContent);
       return {
         content: [{
           type: "text",
-          text: `${action === "created" ? "Created" : "Updated"} ${resolved.relativePath}${replacements > 0 ? ` (${replacements} replacement).` : "."}`,
+          text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
         }],
         data: {
           filePath: resolved.relativePath,
