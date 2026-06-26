@@ -355,7 +355,9 @@ export default function ComposerV2({
     <div
       className={cn(
         'shrink-0',
-        chromeless ? '' : 'bg-white px-6 pb-6 pt-3 dark:bg-neutral-950',
+        chromeless
+          ? ''
+          : 'bg-white px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2 dark:bg-neutral-950 md:px-6 md:pb-6 md:pt-3',
       )}
     >
       <div className={cn(chromeless ? '' : 'mx-auto max-w-[720px]')}>
@@ -534,7 +536,7 @@ export default function ComposerV2({
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 overflow-hidden"
                 >
-                  <div className="block w-full whitespace-pre-wrap break-words px-2 pt-1.5 text-[14px] leading-6 text-transparent">
+                  <div className="block w-full whitespace-pre-wrap break-words px-2 pt-2 text-[16px] leading-6 text-transparent md:pt-1.5 md:text-[14px]">
                     {renderInputWithMentions(input)}
                   </div>
                 </div>
@@ -553,12 +555,12 @@ export default function ComposerV2({
                   onInput={onTextareaInput}
                   placeholder={placeholder}
                   rows={2}
-                  className="relative z-10 block max-h-[40vh] min-h-[48px] w-full resize-none bg-transparent px-2 pt-1.5 text-[14px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100 dark:placeholder-neutral-500"
+                  className="relative z-10 block max-h-[34vh] min-h-[56px] w-full resize-none bg-transparent px-2 pt-2 text-[16px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100 dark:placeholder-neutral-500 md:max-h-[40vh] md:min-h-[48px] md:pt-1.5 md:text-[14px]"
                 />
               </div>
 
-                <div className="flex items-center justify-between px-1 pt-1">
-                  <div className="flex min-w-0 items-center gap-0.5">
+                <div className="flex items-end justify-between gap-2 px-1 pt-2 md:items-center md:pt-1">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 md:flex-nowrap md:gap-0.5">
                     <div
                       className="relative mr-1"
                       onBlur={(event) => {
@@ -572,7 +574,7 @@ export default function ComposerV2({
                         type="button"
                         onClick={() => setIsRunModeMenuOpen((open) => !open)}
                         className={cn(
-                          'inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
+                          'inline-flex h-9 max-w-[112px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px] md:h-7',
                           runMode === 'plan'
                             ? 'text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/30'
                             : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
@@ -675,18 +677,18 @@ export default function ComposerV2({
                     <button
                       type="button"
                       onClick={openImagePicker}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
                     title={t('input.attachFiles', { defaultValue: 'Attach photos or files' }) as string}
                   >
-                    <Paperclip className="h-4 w-4" strokeWidth={1.75} />
+                    <Paperclip className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
                   </button>
                   <button
                     type="button"
                     onClick={onInsertMention}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
                     title={t('input.mentionFile', { defaultValue: 'Mention a file' }) as string}
                   >
-                    <AtSign className="h-4 w-4" strokeWidth={1.75} />
+                    <AtSign className="h-[18px] w-[18px] md:h-4 md:w-4" strokeWidth={1.75} />
                   </button>
                     <div
                       className="relative"
@@ -705,7 +707,7 @@ export default function ComposerV2({
                         setIsPermissionMenuOpen((open) => !open);
                       }}
                       className={cn(
-                        'inline-flex h-7 max-w-[132px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px]',
+                        'inline-flex h-9 max-w-[136px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px] md:h-7',
                         permissionSelectorDisabled
                           ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
                           : permissionMode === 'bypassPermissions'
@@ -797,7 +799,7 @@ export default function ComposerV2({
                   </div>
                   </div>
 
-                  <div className="ml-2 flex shrink-0 items-center gap-1">
+                  <div className="ml-1 flex shrink-0 items-center gap-1 md:ml-2">
                     <div
                       className="relative"
                       onBlur={(event) => {
@@ -811,7 +813,7 @@ export default function ComposerV2({
                         type="button"
                         onClick={() => setIsContextPopoverOpen((open) => !open)}
                         className={cn(
-                          'inline-flex h-7 min-w-[44px] items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition',
+                          'inline-flex h-9 min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition md:h-7 md:min-w-[44px]',
                           contextStatus.tone === 'red'
                             ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
                             : contextStatus.tone === 'amber'
@@ -886,7 +888,7 @@ export default function ComposerV2({
                         onClick={onAbortSession}
                         disabled={isAbortPending}
                         className={cn(
-                          'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600',
+                          'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600 md:h-8 md:w-8',
                           isAbortPending && 'cursor-wait opacity-70 hover:bg-red-500',
                         )}
                         title={
@@ -907,7 +909,7 @@ export default function ComposerV2({
                       disabled={disabled}
                       aria-busy={isSubmitPending || hasUploadingImages}
                       className={cn(
-                        'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
+                        'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900 md:h-8 md:w-8',
                         isLoading && 'bg-neutral-700 dark:bg-neutral-200',
                         (isSubmitPending || hasUploadingImages) && 'cursor-wait',
                       )}

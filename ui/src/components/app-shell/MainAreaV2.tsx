@@ -5,6 +5,7 @@ import {
   Bot,
   Database,
   Folder,
+  Menu,
   PanelLeftOpen,
   Radio,
   Settings as SettingsIcon,
@@ -169,18 +170,19 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       {/* Header: breadcrumb left, tool switcher right. */}
       <header className={cn(
-        'flex shrink-0 items-center',
-        spaciousLayout ? 'h-14 px-7' : compactTools ? 'h-11 px-4' : 'h-12 px-6',
+        'flex shrink-0 flex-col gap-1 px-3 py-1.5 md:flex-row md:items-center md:py-0',
+        spaciousLayout ? 'md:h-14 md:px-7' : compactTools ? 'md:h-11 md:px-4' : 'md:h-12 md:px-6',
       )}>
+        <div className="flex min-w-0 flex-1 items-center">
         {isMobile ? (
           <button
             type="button"
             onClick={onMenuClick}
-            aria-label={t('sidebar:actions.menu', { defaultValue: 'Open menu' }) as string}
-            title={t('sidebar:actions.menu', { defaultValue: 'Open menu' }) as string}
-            className="mr-3 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+            title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+            className="mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-600 active:bg-neutral-100 dark:text-neutral-300 dark:active:bg-neutral-800 md:hidden"
           >
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+            <Menu className="h-5 w-5" strokeWidth={1.9} />
           </button>
         ) : null}
         {isSidebarCollapsed ? (
@@ -206,7 +208,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
           {sessionSummary ? (
             <span
               className={cn(
-                'ml-2 min-w-0 truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400',
+                'ml-2 hidden min-w-0 truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400 md:inline',
                 compactTools ? 'max-w-[16rem]' : spaciousLayout ? 'max-w-[36rem]' : 'max-w-[28rem]',
               )}
               title={sessionSummary}
@@ -215,39 +217,43 @@ export default function MainAreaV2(props: MainAreaV2Props) {
             </span>
           ) : null}
         </div>
+        </div>
 
         <div
           role="tablist"
           aria-label="Tools"
           className={cn(
-            'scrollbar-thin flex shrink-0 items-center overflow-x-auto',
-            compactTools ? 'ml-2 h-8 max-w-[58%] gap-0.5' : spaciousLayout ? 'ml-5 h-10 max-w-[74%] gap-1.5' : 'ml-4 h-9 max-w-[70%] gap-1',
+            'scrollbar-hide flex h-9 w-full shrink-0 items-center gap-1 overflow-x-auto md:w-auto',
+            compactTools
+              ? 'md:ml-2 md:h-8 md:max-w-[58%] md:gap-0.5'
+              : spaciousLayout
+                ? 'md:ml-5 md:h-10 md:max-w-[74%] md:gap-1.5'
+                : 'md:ml-4 md:max-w-[70%]',
           )}
         >
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = displayActiveTab === tab.id;
+            const label = t(tab.labelKey);
             return (
               <button
                 key={tab.id}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                aria-label={t(tab.labelKey) as string}
-                title={t(tab.labelKey) as string}
+                aria-label={label}
+                title={label}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'relative inline-flex shrink-0 items-center rounded-md text-[13px] transition-colors',
-                  compactTools ? 'h-8 w-8 justify-center px-0' : spaciousLayout ? 'h-9 gap-2 px-3' : 'h-8 gap-1.5 px-2.5',
+                  'relative inline-flex h-8 min-w-10 shrink-0 items-center justify-center rounded-lg text-[13px] transition-colors md:min-w-0 md:rounded-md',
+                  compactTools ? 'md:w-8 md:px-0' : spaciousLayout ? 'gap-1.5 px-2.5 md:h-9 md:gap-2 md:px-3' : 'gap-1.5 px-2.5',
                   isActive
                     ? 'bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                     : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
                 )}
               >
-                <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                <span className={cn(compactTools ? 'sr-only' : undefined)}>
-                  {t(tab.labelKey)}
-                </span>
+                <Icon className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
+                <span className={cn('hidden sm:inline', compactTools ? 'md:sr-only' : undefined)}>{label}</span>
                 {tab.id === 'always-on' && alwaysOnUnread ? (
                   <span
                     aria-hidden="true"
