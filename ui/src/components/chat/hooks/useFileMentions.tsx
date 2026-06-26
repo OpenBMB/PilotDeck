@@ -255,7 +255,23 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
 
   const handleFileMentionsKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-      if (!showFileDropdown || filteredFiles.length === 0) {
+      if (!showFileDropdown) {
+        return false;
+      }
+
+      if (filteredFiles.length === 0) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setShowFileDropdown(false);
+          return true;
+        }
+        if (event.key === 'Tab' || event.key === 'Enter') {
+          if (isImeEnterEvent(event)) {
+            return false;
+          }
+          event.preventDefault();
+          return true;
+        }
         return false;
       }
 

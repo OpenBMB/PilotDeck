@@ -127,6 +127,22 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.getAttribute('aria-activedescendant')).toBe(selectedOption.id);
   });
 
+  it('keeps the composer textbox expanded for an empty file mention menu', () => {
+    renderComposer({
+      showFileDropdown: true,
+      selectedFileIndex: -1,
+      filteredFiles: [],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'File suggestions' });
+
+    expect(listbox.textContent).toContain('No matching files');
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
   it('highlights a file suggestion on hover so mouse and keyboard selection stay aligned', () => {
     const onHighlightFile = vi.fn();
     renderComposer({
