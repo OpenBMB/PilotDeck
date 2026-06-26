@@ -432,6 +432,10 @@ export default function ComposerV2({
       return next;
     });
   };
+  const handleComposerSubmit = (event: FormEvent<HTMLFormElement>) => {
+    closeComposerPopovers();
+    onSubmit(event);
+  };
 
   return (
     <div
@@ -456,7 +460,7 @@ export default function ComposerV2({
 
         {!hasBlockingPermissionPanel ? (
           <form
-            onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void}
+            onSubmit={handleComposerSubmit}
             className="relative"
           >
             {attachedImages.length > 0 ? (

@@ -159,6 +159,23 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('closes composer popovers before keyboard/form submit', () => {
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+    });
+    renderComposer({ onSubmit });
+
+    fireEvent.click(screen.getByTitle('Select run mode'));
+    expect(screen.getByRole('menu')).toBeTruthy();
+
+    fireEvent.submit(
+      screen.getByPlaceholderText('Tell PilotDeck what you want to get done...').closest('form') as HTMLFormElement,
+    );
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('shows a visible explanation when attachments cannot be queued', () => {
     renderComposer({
       isLoading: true,
