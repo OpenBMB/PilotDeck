@@ -396,6 +396,11 @@ export default function ComposerV2({
     : firstQueuedInputBlocked
       ? (t('queue.paused', { defaultValue: 'Fix first item to continue' }) as string)
       : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
+  const closeComposerPopovers = () => {
+    setIsRunModeMenuOpen(false);
+    setIsPermissionMenuOpen(false);
+    setIsContextPopoverOpen(false);
+  };
   const toggleRunModeMenu = () => {
     setIsRunModeMenuOpen((open) => {
       const next = !open;
@@ -800,7 +805,10 @@ export default function ComposerV2({
                     </div>
                     <button
                       type="button"
-                      onClick={openImagePicker}
+                      onClick={() => {
+                        closeComposerPopovers();
+                        openImagePicker();
+                      }}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
                       title={attachFilesLabel}
                       aria-label={attachFilesLabel}
@@ -809,7 +817,10 @@ export default function ComposerV2({
                     </button>
                     <button
                       type="button"
-                      onClick={onInsertMention}
+                      onClick={() => {
+                        closeComposerPopovers();
+                        onInsertMention();
+                      }}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
                       title={mentionFileLabel}
                       aria-label={mentionFileLabel}
@@ -823,6 +834,7 @@ export default function ComposerV2({
                           event.preventDefault();
                           event.stopPropagation();
                           suppressSlashToolbarClickRef.current = true;
+                          closeComposerPopovers();
                           onCloseCommandMenu();
                         }
                       }}
@@ -834,9 +846,11 @@ export default function ComposerV2({
                         }
                         if (isCommandMenuOpen) {
                           event.preventDefault();
+                          closeComposerPopovers();
                           onCloseCommandMenu();
                           return;
                         }
+                        closeComposerPopovers();
                         onInsertSlash();
                       }}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 md:h-7 md:w-7"
@@ -1037,7 +1051,10 @@ export default function ComposerV2({
                     {isLoading && canAbortSession ? (
                       <button
                         type="button"
-                        onClick={onAbortSession}
+                        onClick={() => {
+                          closeComposerPopovers();
+                          onAbortSession();
+                        }}
                         disabled={isAbortPending}
                         className={cn(
                           'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600 md:h-8 md:w-8',
@@ -1056,6 +1073,7 @@ export default function ComposerV2({
                     <button
                       type="submit"
                       disabled={disabled}
+                      onClick={closeComposerPopovers}
                       aria-label={submitLabel}
                       aria-busy={isSubmitPending || hasUploadingImages}
                       aria-describedby={queueBlockedByAttachments ? queueAttachmentBlockId : undefined}

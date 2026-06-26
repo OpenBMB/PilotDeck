@@ -135,6 +135,30 @@ describe('ComposerV2 queue feedback', () => {
     expect(screen.getByRole('status').textContent).toContain('Context window');
   });
 
+  it('closes composer popovers before running toolbar actions', () => {
+    const openImagePicker = vi.fn();
+    const onInsertMention = vi.fn();
+    const onInsertSlash = vi.fn();
+    renderComposer({ openImagePicker, onInsertMention, onInsertSlash });
+
+    fireEvent.click(screen.getByTitle('Select permission mode'));
+    expect(screen.getByRole('menu')).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle('Attach photos or files'));
+    expect(openImagePicker).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(screen.getByTitle('Select permission mode'));
+    fireEvent.click(screen.getByTitle('Mention a file'));
+    expect(onInsertMention).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(screen.getByTitle('Select run mode'));
+    fireEvent.click(screen.getByTitle('Run a slash command'));
+    expect(onInsertSlash).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('shows a visible explanation when attachments cannot be queued', () => {
     renderComposer({
       isLoading: true,
