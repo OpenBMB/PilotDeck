@@ -25,27 +25,36 @@ import {
   getURLMarkdownContent,
   MAX_MARKDOWN_LENGTH,
   type RedirectInfo,
+  type WebFetchHttpResult,
   truncateMarkdown,
 } from "./web/urlFetcher.js";
 import { validateURL } from "./web/urlValidation.js";
 
 function isRedirectInfo(
-  result: Awaited<ReturnType<typeof getURLMarkdownContent>>,
+  result: WebFetchHttpResult,
 ): result is RedirectInfo {
   return (result as RedirectInfo).type === "redirect";
 }
 
+export type WebFetchMode = "llm" | "raw";
+
 export type WebFetchInput = {
   url: string;
-  prompt: string;
+  prompt?: string;
+  mode?: WebFetchMode;
 };
 
 export type WebFetchOutput = {
   url: string;
   fromCache: boolean;
+  mode: WebFetchMode;
+  llmUsed: boolean;
   contentType?: string;
   bytes?: number;
   status?: number;
+  truncated?: boolean;
+  rawLength?: number;
+  returnedLength?: number;
   modelResponse?: string;
   redirect?: { redirectUrl: string; statusCode: number };
 };
@@ -65,11 +74,22 @@ export type CreateWebFetchToolOptions = {
   maxOutputTokens?: number;
   /** Temperature for the secondary call. Default: 0. */
   temperature?: number;
+  /** Test seam for replacing the low-level URL fetcher. */
+  fetchUrl?: typeof getURLMarkdownContent;
 };
 
 const DEFAULT_PROVIDER = "openrouter";
 const DEFAULT_MODEL_ID = "moonshotai/kimi-k2.6";
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const DEFAULT_MODE: WebFetchMode = "llm";
+
+function resolveMode(mode: WebFetchInput["mode"]): WebFetchMode {
+  return mode ?? DEFAULT_MODE;
+}
+
+function isTruncated(rawLength: number): boolean {
+  return rawLength > MAX_MARKDOWN_LENGTH;
+}
 
 export function createWebFetchTool(
   options: CreateWebFetchToolOptions = {},
@@ -81,7 +101,7 @@ export function createWebFetchTool(
     kind: "network",
     inputSchema: {
       type: "object",
-      required: ["url", "prompt"],
+      required: ["url"],
       additionalProperties: false,
       properties: {
         url: {
@@ -92,6 +112,12 @@ export function createWebFetchTool(
           type: "string",
           description:
             "Question or extraction directive to apply to the fetched markdown. When no model client is available, the tool returns raw markdown instead of a prompted summary.",
+        },
+        mode: {
+          type: "string",
+          enum: ["llm", "raw"],
+          description:
+            'Fetch mode. "llm" (default) applies prompt with the secondary model. "raw" returns fetched markdown directly without any model processing.',
         },
       },
     },
@@ -130,6 +156,7 @@ export function createWebFetchTool(
       }
       const url = (input as Partial<WebFetchInput>).url;
       const prompt = (input as Partial<WebFetchInput>).prompt;
+      const mode = (input as Partial<WebFetchInput>).mode;
       if (typeof url !== "string" || url.length === 0) {
         return {
           ok: false,
@@ -149,21 +176,37 @@ export function createWebFetchTool(
           ],
         };
       }
-      if (typeof prompt !== "string" || prompt.length === 0) {
+      if (mode !== undefined && mode !== "llm" && mode !== "raw") {
         return {
           ok: false,
-          issues: [{ path: "prompt", code: "required", message: "prompt is required" }],
+          issues: [{ path: "mode", code: "invalid_enum", message: 'mode must be "llm" or "raw"' }],
+        };
+      }
+      const resolvedMode = resolveMode(mode);
+      if (resolvedMode === "llm" && (typeof prompt !== "string" || prompt.length === 0)) {
+        return {
+          ok: false,
+          issues: [{ path: "prompt", code: "required", message: 'prompt is required when mode is "llm"' }],
         };
       }
       return { ok: true, input };
     },
     execute: async (input, context): Promise<PilotDeckToolExecutionOutput<WebFetchOutput>> => {
-      const { url, prompt } = input;
+      const { url } = input;
+      const mode = resolveMode(input.mode);
+      const prompt = input.prompt ?? "";
       const signal = context.abortSignal ?? new AbortController().signal;
+      if (mode === "llm" && prompt.length === 0) {
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          'web_fetch prompt is required when mode is "llm". Use mode "raw" to fetch markdown without a secondary model.',
+        );
+      }
 
-      let httpResult: Awaited<ReturnType<typeof getURLMarkdownContent>>;
+      const fetchUrl = options.fetchUrl ?? getURLMarkdownContent;
+      let httpResult: WebFetchHttpResult;
       try {
-        httpResult = await getURLMarkdownContent(url, signal);
+        httpResult = await fetchUrl(url, signal);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new PilotDeckToolRuntimeError(
@@ -185,6 +228,8 @@ export function createWebFetchTool(
           data: {
             url,
             fromCache: false,
+            mode,
+            llmUsed: false,
             redirect: { redirectUrl: r.redirectUrl, statusCode: r.statusCode },
           },
         };
@@ -192,23 +237,43 @@ export function createWebFetchTool(
 
       const fetched = httpResult;
       const truncated = truncateMarkdown(fetched.content);
+      const rawLength = fetched.content.length;
+      const sourceTruncated = isTruncated(rawLength);
       const isPreapproved = isPreapprovedUrl(url);
 
-      const model = options.model ?? context.model;
-      if (!model) {
-        const text =
-          truncated +
-          (fetched.content.length > MAX_MARKDOWN_LENGTH
-            ? ""
-            : "");
+      if (mode === "raw") {
         return {
-          content: [{ type: "text", text }],
+          content: [{ type: "text", text: truncated }],
           data: {
             url,
             fromCache: fetched.fromCache,
+            mode,
+            llmUsed: false,
             contentType: fetched.contentType,
             bytes: fetched.bytes,
             status: fetched.code,
+            truncated: sourceTruncated,
+            rawLength,
+            returnedLength: truncated.length,
+          },
+        };
+      }
+
+      const model = options.model ?? context.model;
+      if (!model) {
+        return {
+          content: [{ type: "text", text: truncated }],
+          data: {
+            url,
+            fromCache: fetched.fromCache,
+            mode,
+            llmUsed: false,
+            contentType: fetched.contentType,
+            bytes: fetched.bytes,
+            status: fetched.code,
+            truncated: sourceTruncated,
+            rawLength,
+            returnedLength: truncated.length,
           },
         };
       }
@@ -271,9 +336,14 @@ export function createWebFetchTool(
         data: {
           url,
           fromCache: fetched.fromCache,
+          mode,
+          llmUsed: true,
           contentType: fetched.contentType,
           bytes: fetched.bytes,
           status: fetched.code,
+          truncated: sourceTruncated,
+          rawLength,
+          returnedLength: finalText.length,
           modelResponse: finalText,
         },
       };

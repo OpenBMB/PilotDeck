@@ -15,7 +15,9 @@ Usage notes:
   - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
   - The URL must be a fully-formed valid URL
   - HTTP URLs will be automatically upgraded to HTTPS
-  - The prompt should describe what information you want to extract from the page
+  - The prompt should describe what information you want to extract from the page when mode is "llm"
+  - Use mode "raw" for exact, full-text, verification, or copy-the-source tasks where the fetched markdown must not be summarized or rewritten
+  - Use the default mode "llm" for summary, question-answering, and analysis tasks over a page
   - This tool is read-only and does not modify any files
   - Fetched content may be truncated and model responses may be summarized if the page is very large
   - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL

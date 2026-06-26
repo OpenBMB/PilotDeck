@@ -106,6 +106,7 @@ export {
   createWebFetchTool,
   type CreateWebFetchToolOptions,
   type WebFetchInput,
+  type WebFetchMode,
   type WebFetchOutput,
 } from "./builtin/webFetch.js";
 export {
