@@ -209,6 +209,15 @@ export function hasActiveSlashQueryForTest(input: string, cursorPosition: number
   return /(^|\s)\/\S*$/.test(input.slice(0, cursorPosition));
 }
 
+export function formatCommandResultBlockForTest(content: string): string {
+  const longestBacktickRun = Math.max(
+    2,
+    ...Array.from(content.matchAll(/`+/g), (match) => match[0].length),
+  );
+  const fence = '`'.repeat(longestBacktickRun + 1);
+  return `${fence}\n${content}\n${fence}`;
+}
+
 function buildAttachmentPathNote(files: UploadedAttachmentFile[]): string {
   if (!files.length) {
     return '';
@@ -502,7 +511,7 @@ export function useChatComposerState({
         content: [
           'Command result is ready, but the composer changed while it was running.',
           'I left your current draft untouched.',
-          commandContent ? `\n\`\`\`\n${commandContent}\n\`\`\`` : '',
+          commandContent ? `\n${formatCommandResultBlockForTest(commandContent)}` : '',
         ].filter(Boolean).join('\n'),
         timestamp: Date.now(),
       });

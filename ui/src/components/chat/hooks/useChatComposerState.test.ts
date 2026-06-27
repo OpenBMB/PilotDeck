@@ -7,6 +7,7 @@ import type { Project } from '../../../types/app';
 import type { QueuedChatInput } from '../types/types';
 import {
   canQueueInputForTest,
+  formatCommandResultBlockForTest,
   getNextDispatchableQueuedInputForTest,
   hasActiveSlashQueryForTest,
   insertComposerTokenForTest,
@@ -171,6 +172,13 @@ describe('useChatComposerState slash query detection', () => {
     expect(hasActiveSlashQueryForTest('https://example.test', 20)).toBe(false);
     expect(hasActiveSlashQueryForTest('please /', 8)).toBe(true);
     expect(hasActiveSlashQueryForTest('please /', 99)).toBe(false);
+  });
+});
+
+describe('useChatComposerState command result formatting', () => {
+  it('uses a longer fence when command content contains backticks', () => {
+    expect(formatCommandResultBlockForTest('plain result')).toBe('```\nplain result\n```');
+    expect(formatCommandResultBlockForTest('before ``` inside')).toBe('````\nbefore ``` inside\n````');
   });
 });
 
@@ -661,6 +669,93 @@ describe('useChatComposerState slash command submission', () => {
       expect(sendMessage).not.toHaveBeenCalled();
       expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
         content: expect.stringContaining('I left your current draft untouched.'),
+        type: 'assistant',
+      }));
+    });
+  });
+
+  it('keeps late custom command content copyable when it contains markdown fences', async () => {
+    let resolveCommand!: (response: Response) => void;
+    const addMessage = vi.fn();
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/commands/list') {
+        return {
+          ok: true,
+          json: async () => ({
+            builtIn: [],
+            custom: [{ name: '/run', description: 'Run project workflow', path: '/tmp/run.md' }],
+          }),
+        } as Response;
+      }
+      return new Promise<Response>((resolve) => {
+        resolveCommand = resolve;
+      });
+    });
+    localStorage.setItem('draft_input_general', '/run');
+
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useChatComposerState({
+        selectedProject,
+        selectedSession: null,
+        currentSessionId: null,
+        model: 'test-model',
+        permissionMode: 'default',
+        cycleRunMode: vi.fn(),
+        isLoading: false,
+        canAbortSession: false,
+        tokenBudget: null,
+        sendMessage: vi.fn(),
+        sendByCtrlEnter: false,
+        pendingViewSessionRef: { current: null },
+        scrollToBottom: vi.fn(),
+        addMessage,
+        clearMessages: vi.fn(),
+        rewindMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        setCanAbortSession: vi.fn(),
+        setIsAborting: vi.fn(),
+        setClaudeStatus: vi.fn(),
+        setPilotDeckStatus: vi.fn(),
+        setIsUserScrolledUp: vi.fn(),
+        pendingPermissionRequests: [],
+        setPendingPermissionRequests: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: 'new draft', selectionStart: 9 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await act(async () => {
+      resolveCommand({
+        ok: true,
+        json: async () => ({
+          type: 'custom',
+          content: 'keep this fence:\n```bash\necho hi\n```',
+        }),
+      } as Response);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining('````\nkeep this fence:\n```bash\necho hi\n```\n````'),
         type: 'assistant',
       }));
     });
