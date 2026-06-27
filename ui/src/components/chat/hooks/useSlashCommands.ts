@@ -588,8 +588,15 @@ export function useSlashCommands({
       setSelectedCommandIndex(query ? -1 : 0);
 
       setCommandQuery(query);
+      if (!query) {
+        setFilteredCommands(slashCommands);
+      } else if (fuse) {
+        setFilteredCommands(fuse.search(query).map((result) => result.item));
+      } else {
+        setFilteredCommands([]);
+      }
     },
-    [resetCommandMenuState],
+    [fuse, resetCommandMenuState, slashCommands],
   );
 
   const handleCommandMenuKeyDown = useCallback(
