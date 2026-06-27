@@ -147,6 +147,75 @@ describe('useSlashCommands query filtering behavior', () => {
     });
   });
 
+  it('keeps the first visible command highlighted after narrowing to a same-size result set', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: '/apple', description: 'Open apple workflow' },
+          { name: '/apricot', description: 'Open apricot workflow' },
+          { name: '/banana', description: 'Open banana workflow' },
+          { name: '/bandana', description: 'Open bandana workflow' },
+        ],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/ap' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(4);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/ap', 3);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands).toHaveLength(2);
+      expect(result.current.selectedCommandIndex).toBe(0);
+    });
+
+    act(() => {
+      result.current.handleCommandMenuKeyDown(makeTextareaKeyEvent('ArrowDown'));
+    });
+
+    expect(result.current.selectedCommandIndex).toBe(1);
+
+    act(() => {
+      result.current.handleCommandInputChange('/ban', 4);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands).toHaveLength(2);
+      expect(result.current.filteredCommands.map((command) => command.name)).toEqual([
+        '/banana',
+        '/bandana',
+      ]);
+      expect(result.current.selectedCommandIndex).toBe(0);
+    });
+  });
+
   it('does not let Enter or Tab submit when the open slash menu has no matches', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

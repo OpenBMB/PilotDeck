@@ -379,7 +379,7 @@ export function useSlashCommands({
       }
       return previousIndex;
     });
-  }, [displayedCommands.length, showCommandMenu]);
+  }, [displayedCommands, showCommandMenu]);
 
   const trackCommandUsage = useCallback(
     (command: SlashCommand) => {
