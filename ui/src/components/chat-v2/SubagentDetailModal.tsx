@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Loader2 } from 'lucide-react';
 import type { ChatMessage } from '../chat/types/types';
@@ -36,6 +36,10 @@ export default function SubagentDetailModal({
 }: SubagentDetailModalProps) {
   const { t } = useTranslation('chat');
   const overlayRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const closeLabel = t('subagent.closeDetail', {
+    defaultValue: 'Close subagent detail',
+  }) as string;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -89,12 +93,17 @@ export default function SubagentDetailModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={handleOverlayClick}
     >
-      <div className="relative flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900"
+      >
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-6 py-3 dark:border-neutral-700">
-          <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+          <h2 id={titleId} className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
             {t('subagent.detailTitle')}
-            <span className="ml-2 font-mono text-xs text-neutral-400 dark:text-neutral-500">
+            <span aria-hidden="true" className="ml-2 font-mono text-xs text-neutral-400 dark:text-neutral-500">
               {subagentId.slice(0, 8)}
             </span>
           </h2>
@@ -102,7 +111,8 @@ export default function SubagentDetailModal({
             type="button"
             onClick={onClose}
             className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
-            aria-label="Close"
+            aria-label={closeLabel}
+            title={closeLabel}
           >
             <X className="h-4 w-4" strokeWidth={2} />
           </button>
