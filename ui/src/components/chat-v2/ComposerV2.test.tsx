@@ -282,6 +282,9 @@ describe('ComposerV2 queue feedback', () => {
 
     expect(permissionButton.disabled).toBe(false);
     expect(permissionButton.getAttribute('aria-disabled')).toBe('true');
+    expect(permissionButton.hasAttribute('aria-haspopup')).toBe(false);
+    expect(permissionButton.hasAttribute('aria-expanded')).toBe(false);
+    expect(permissionButton.hasAttribute('aria-controls')).toBe(false);
     expect(permissionButton.title).toBe(lockedMessage);
     expect(permissionButton.textContent).toContain('Plan mode');
     expect(permissionButton.textContent).not.toContain('Full Access');
