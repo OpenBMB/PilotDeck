@@ -241,7 +241,9 @@
       "defaultDescription": "需要风险操作时先询问",
       "bypassPermissions": "完全访问权限",
       "bypassPermissionsDescription": "跳过确认并允许完全访问",
-      "change": "选择权限模式"
+      "change": "选择权限模式",
+      "planLockedLabel": "计划模式",
+      "lockedInPlan": "计划期间权限模式会被锁定。切回智能体模式后可更改权限。"
     },
     "runModes": {
       "agent": "智能体",
