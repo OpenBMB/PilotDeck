@@ -634,6 +634,7 @@ export function useChatComposerState({
     input,
     setInput,
     textareaRef,
+    inputValueRef,
   });
 
   const resetComposerDraft = useCallback(() => {

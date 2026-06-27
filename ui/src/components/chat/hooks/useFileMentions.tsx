@@ -23,6 +23,7 @@ interface UseFileMentionsOptions {
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
   textareaRef: RefObject<HTMLTextAreaElement>;
+  inputValueRef?: { current: string };
 }
 
 const flattenFileTree = (files: ProjectFileNode[], basePath = ''): MentionableFile[] => {
@@ -96,7 +97,13 @@ export function buildFileMentionInsertion(
   };
 }
 
-export function useFileMentions({ selectedProject, input, setInput, textareaRef }: UseFileMentionsOptions) {
+export function useFileMentions({
+  selectedProject,
+  input,
+  setInput,
+  textareaRef,
+  inputValueRef: externalInputValueRef,
+}: UseFileMentionsOptions) {
   const [fileList, setFileList] = useState<MentionableFile[]>([]);
   const [fileMentions, setFileMentions] = useState<string[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<MentionableFile[]>([]);
@@ -281,6 +288,9 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       }
 
       setInput(newInput);
+      if (externalInputValueRef) {
+        externalInputValueRef.current = newInput;
+      }
       setCursorPosition(newCursorPosition);
       setFileMentions((previousMentions) =>
         previousMentions.includes(file.path) ? previousMentions : [...previousMentions, file.path],
@@ -304,7 +314,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
         }
       });
     },
-    [input, atSymbolPosition, textareaRef, setInput],
+    [externalInputValueRef, input, atSymbolPosition, textareaRef, setInput],
   );
 
   const highlightFileSuggestion = useCallback(
