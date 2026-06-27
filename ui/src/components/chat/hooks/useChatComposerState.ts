@@ -643,6 +643,7 @@ export function useChatComposerState({
     setInput('');
     inputValueRef.current = '';
     resetCommandMenuState();
+    resetFileMentionMenuState();
     setAttachedImages([]);
     setUploadingImages(new Map());
     setImageErrors(new Map());
@@ -656,7 +657,7 @@ export function useChatComposerState({
     if (selectedProject) {
       safeLocalStorage.removeItem(`draft_input_${selectedProject.name}`);
     }
-  }, [resetCommandMenuState, selectedProject]);
+  }, [resetCommandMenuState, resetFileMentionMenuState, selectedProject]);
 
   const enqueueCurrentInput = useCallback((content: string, targetSessionId: string | null) => {
     if (!canQueueInputForTest(content, 0)) {
@@ -1067,12 +1068,13 @@ export function useChatComposerState({
         event.target.style.height = 'auto';
         setIsTextareaExpanded(false);
         resetCommandMenuState();
+        resetFileMentionMenuState();
         return;
       }
 
       handleCommandInputChange(newValue, cursorPos);
     },
-    [handleCommandInputChange, resetCommandMenuState, setCursorPosition],
+    [handleCommandInputChange, resetCommandMenuState, resetFileMentionMenuState, setCursorPosition],
   );
 
   const insertAtCursor = useCallback(
@@ -1189,12 +1191,13 @@ export function useChatComposerState({
     setInput('');
     inputValueRef.current = '';
     resetCommandMenuState();
+    resetFileMentionMenuState();
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.focus();
     }
     setIsTextareaExpanded(false);
-  }, [resetCommandMenuState]);
+  }, [resetCommandMenuState, resetFileMentionMenuState]);
 
   const handleAbortSession = useCallback(() => {
     if (!canAbortSession) {
