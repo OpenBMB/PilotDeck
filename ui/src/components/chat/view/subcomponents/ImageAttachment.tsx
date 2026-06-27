@@ -40,7 +40,8 @@ interface ImageAttachmentProps {
 const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachmentProps) => {
   const [preview, setPreview] = useState<string | undefined>(undefined);
   const isImage = file.type.startsWith('image/');
-  
+  const removeLabel = `Remove attachment ${file.name}`;
+
   useEffect(() => {
     if (!isImage) {
       setPreview(undefined);
@@ -50,7 +51,7 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file, isImage]);
-  
+
   return (
     <div className="group relative">
       {isImage ? (
@@ -87,7 +88,8 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
         type="button"
         onClick={onRemove}
         className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white opacity-100 transition-opacity focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-        aria-label="Remove attachment"
+        aria-label={removeLabel}
+        title={removeLabel}
       >
         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -98,5 +100,3 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
 };
 
 export default ImageAttachment;
-
-
