@@ -719,6 +719,60 @@ describe('useSlashCommands command history identity', () => {
     expect(savedHistory['/run']).toBeUndefined();
   });
 
+  it('refreshes frequent commands immediately after selecting a command', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [],
+        custom: [
+          {
+            name: '/run',
+            description: 'Run project workflow',
+            path: '/tmp/general/.pilotdeck/commands/run.md',
+          },
+        ],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    expect(result.current.frequentCommands).toHaveLength(0);
+
+    act(() => {
+      result.current.handleCommandSelect(result.current.slashCommands[0], 0, false);
+    });
+
+    await waitFor(() => {
+      expect(result.current.frequentCommands.map((command) => command.path)).toEqual([
+        '/tmp/general/.pilotdeck/commands/run.md',
+      ]);
+    });
+  });
+
   it('records frequent command selections under the original command identity', async () => {
     localStorage.setItem(
       'command_history_general',
