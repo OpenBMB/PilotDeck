@@ -22,6 +22,20 @@ const makeTextareaKeyEvent = (key: string) => ({
   nativeEvent: {},
 }) as unknown as KeyboardEvent<HTMLTextAreaElement> & { preventDefault: ReturnType<typeof vi.fn> };
 
+function createDeferredResponse(body: unknown) {
+  let resolve!: (value: Response) => void;
+  const promise = new Promise<Response>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return {
+    promise,
+    resolve: () => resolve({
+      ok: true,
+      json: async () => body,
+    } as Response),
+  };
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -92,6 +106,85 @@ describe('useSlashCommands command insertion behavior', () => {
 });
 
 describe('useSlashCommands query filtering behavior', () => {
+  it('ignores stale command list responses after switching projects', async () => {
+    const firstProjectResponse = createDeferredResponse({
+      builtIn: [{ name: '/old_project', description: 'Old project command' }],
+      custom: [],
+    });
+    const secondProjectResponse = createDeferredResponse({
+      builtIn: [{ name: '/new_project', description: 'New project command' }],
+      custom: [],
+    });
+    fetchMock
+      .mockReturnValueOnce(firstProjectResponse.promise)
+      .mockReturnValueOnce(secondProjectResponse.promise);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const firstProject = {
+      name: 'old-project',
+      path: '/tmp/old-project',
+      fullPath: '/tmp/old-project',
+    } as Project;
+    const secondProject = {
+      name: 'new-project',
+      path: '/tmp/new-project',
+      fullPath: '/tmp/new-project',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ selectedProject }) =>
+        useSlashCommands({
+          selectedProject,
+          input: inputValueRef.current,
+          setInput,
+          textareaRef,
+          inputValueRef,
+        }),
+      { initialProps: { selectedProject: firstProject } },
+    );
+
+    rerender({ selectedProject: secondProject });
+
+    await act(async () => {
+      secondProjectResponse.resolve();
+      await secondProjectResponse.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.slashCommands.map((command) => command.name)).toEqual([
+        '/new_project',
+      ]);
+    });
+
+    await act(async () => {
+      firstProjectResponse.resolve();
+      await firstProjectResponse.promise;
+    });
+
+    expect(result.current.slashCommands.map((command) => command.name)).toEqual([
+      '/new_project',
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/commands/list',
+      expect.objectContaining({
+        body: JSON.stringify({ projectPath: '/tmp/old-project' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/commands/list',
+      expect.objectContaining({
+        body: JSON.stringify({ projectPath: '/tmp/new-project' }),
+      }),
+    );
+  });
+
   it('updates the slash query synchronously for fast keyboard confirmation', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

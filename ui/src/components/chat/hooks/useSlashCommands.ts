@@ -225,6 +225,8 @@ export function useSlashCommands({
   }, [externalInputValueRef, showCommandMenu, slashPosition, setInput, resetCommandMenuState]);
 
   useEffect(() => {
+    let isStale = false;
+
     const fetchCommands = async () => {
       if (!selectedProject) {
         setSlashCommands([]);
@@ -248,6 +250,9 @@ export function useSlashCommands({
         }
 
         const data = await response.json();
+        if (isStale) {
+          return;
+        }
         const allCommands: SlashCommand[] = [
           ...((data.builtIn || []) as SlashCommand[]).map((command) => ({
             ...command,
@@ -293,12 +298,19 @@ export function useSlashCommands({
 
         setSlashCommands(sortedCommands);
       } catch (error) {
+        if (isStale) {
+          return;
+        }
         console.error('Error fetching slash commands:', error);
         setSlashCommands([]);
       }
     };
 
     fetchCommands();
+
+    return () => {
+      isStale = true;
+    };
   }, [selectedProject]);
 
   useEffect(() => {
