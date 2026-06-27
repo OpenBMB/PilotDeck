@@ -261,12 +261,60 @@ function darkPixelRatio(image, left, top, width, height) {
   return total > 0 ? dark / total : 0;
 }
 
+function summarizeImage(image) {
+  let totalBrightness = 0;
+  let light = 0;
+  let dark = 0;
+  let saturated = 0;
+  let mainNonLight = 0;
+  let mainDark = 0;
+  let mainTotal = 0;
+  const total = image.width * image.height;
+
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const pixel = readPixel(image, x, y);
+      const pixelBrightness = brightness(pixel);
+      const spread = Math.max(pixel.red, pixel.green, pixel.blue) -
+        Math.min(pixel.red, pixel.green, pixel.blue);
+      totalBrightness += pixelBrightness;
+      if (pixelBrightness >= 245) light += 1;
+      if (pixelBrightness < 80) dark += 1;
+      if (spread > 80) saturated += 1;
+      if (x > 250 && y > 60) {
+        mainTotal += 1;
+        if (pixelBrightness < 235) mainNonLight += 1;
+        if (pixelBrightness < 80) mainDark += 1;
+      }
+    }
+  }
+
+  return {
+    averageBrightness: Number((totalBrightness / total).toFixed(1)),
+    lightRatio: Number((light / total).toFixed(3)),
+    darkRatio: Number((dark / total).toFixed(3)),
+    saturatedRatio: Number((saturated / total).toFixed(3)),
+    mainNonLightRatio: Number((mainNonLight / mainTotal).toFixed(3)),
+    mainDarkRatio: Number((mainDark / mainTotal).toFixed(3)),
+  };
+}
+
 function validateScreenshot(screenshotFile, ui) {
   const image = decodePng(readFileSync(screenshotFile));
   const expectedWidth = Math.max(1000, Math.round((ui.bodyWidth || 1280) * 0.9));
   const expectedHeight = Math.max(600, Math.round((ui.rootHeight || 720) * 0.8));
   if (image.width < expectedWidth || image.height < expectedHeight) {
     throw new Error(`Screenshot too small: ${image.width}x${image.height}`);
+  }
+
+  const globalMetrics = summarizeImage(image);
+  if (
+    globalMetrics.lightRatio < 0.9 ||
+    globalMetrics.darkRatio > 0.05 ||
+    globalMetrics.saturatedRatio > 0.03 ||
+    globalMetrics.mainNonLightRatio > 0.08
+  ) {
+    throw new Error(`Screenshot global pixels do not match the expected PilotDeck shell: ${JSON.stringify(globalMetrics)}`);
   }
 
   const samples = {
@@ -290,6 +338,7 @@ function validateScreenshot(screenshotFile, ui) {
   return {
     width: image.width,
     height: image.height,
+    global: globalMetrics,
     brightness: metrics,
     logoDarkRatio: Number(logoDarkRatio.toFixed(3)),
   };
