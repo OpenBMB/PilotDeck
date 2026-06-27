@@ -579,8 +579,10 @@ export function useChatComposerState({
         const result = (await response.json()) as CommandExecutionResult;
         if (result.type === 'builtin') {
           await handleBuiltInCommand(result);
-          setInput('');
-          inputValueRef.current = '';
+          if (!inputValueRef.current.trim()) {
+            setInput('');
+            inputValueRef.current = '';
+          }
         } else if (result.type === 'custom') {
           await handleCustomCommand(result);
         }

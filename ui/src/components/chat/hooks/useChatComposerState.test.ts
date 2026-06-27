@@ -493,6 +493,88 @@ describe('useChatComposerState slash command submission', () => {
       }));
     });
   });
+
+  it('does not clear a newer draft when a built-in slash command succeeds late', async () => {
+    let resolveCommand!: (response: Response) => void;
+    const clearMessages = vi.fn();
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/commands/list') {
+        return {
+          ok: true,
+          json: async () => ({
+            builtIn: [{ name: '/clear', description: 'Clear chat' }],
+            custom: [],
+          }),
+        } as Response;
+      }
+      return new Promise<Response>((resolve) => {
+        resolveCommand = resolve;
+      });
+    });
+    localStorage.setItem('draft_input_general', '/clear');
+
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useChatComposerState({
+        selectedProject,
+        selectedSession: null,
+        currentSessionId: null,
+        model: 'test-model',
+        permissionMode: 'default',
+        cycleRunMode: vi.fn(),
+        isLoading: false,
+        canAbortSession: false,
+        tokenBudget: null,
+        sendMessage: vi.fn(),
+        sendByCtrlEnter: false,
+        pendingViewSessionRef: { current: null },
+        scrollToBottom: vi.fn(),
+        addMessage: vi.fn(),
+        clearMessages,
+        rewindMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        setCanAbortSession: vi.fn(),
+        setIsAborting: vi.fn(),
+        setClaudeStatus: vi.fn(),
+        setPilotDeckStatus: vi.fn(),
+        setIsUserScrolledUp: vi.fn(),
+        pendingPermissionRequests: [],
+        setPendingPermissionRequests: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: 'new draft', selectionStart: 9 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await act(async () => {
+      resolveCommand({
+        ok: true,
+        json: async () => ({ type: 'builtin', action: 'clear', data: {} }),
+      } as Response);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(clearMessages).toHaveBeenCalledTimes(1);
+      expect(result.current.input).toBe('new draft');
+    });
+  });
 });
 
 describe('useChatComposerState queued input ordering', () => {
