@@ -439,6 +439,26 @@ export default function ComposerV2({
       document.getElementById(id)?.focus();
     });
   };
+  const handleMenuItemRovingFocus = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    optionIds: string[],
+    currentIndex: number,
+  ) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+    const lastIndex = optionIds.length - 1;
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? lastIndex
+        : event.key === 'ArrowDown'
+          ? (currentIndex + 1) % optionIds.length
+          : (currentIndex - 1 + optionIds.length) % optionIds.length;
+    focusMenuItemById(optionIds[nextIndex]);
+  };
   const handleComposerPopoverEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (
       event.key !== 'Escape' ||
@@ -846,6 +866,10 @@ export default function ComposerV2({
                             const isSelected = runMode === option.mode;
                             const isPlan = option.mode === 'plan';
                             const optionDisabled = isPlan && !planModeAvailable;
+                            const optionId = `${runModeMenuId}-option-${option.mode}`;
+                            const focusableRunModeIds = RUN_MODE_OPTIONS
+                              .filter((runOption) => !(runOption.mode === 'plan' && !planModeAvailable))
+                              .map((runOption) => `${runModeMenuId}-option-${runOption.mode}`);
                             const label = t(option.labelKey, {
                               defaultValue: option.defaultLabel,
                             }) as string;
@@ -859,13 +883,20 @@ export default function ComposerV2({
 
                             return (
                               <button
-                                id={`${runModeMenuId}-option-${option.mode}`}
+                                id={optionId}
                                 key={option.mode}
                                 type="button"
                                 role="menuitemradio"
                                 aria-checked={isSelected}
                                 disabled={optionDisabled}
                                 onMouseDown={(event) => event.preventDefault()}
+                                onKeyDown={(event) =>
+                                  handleMenuItemRovingFocus(
+                                    event,
+                                    focusableRunModeIds,
+                                    focusableRunModeIds.indexOf(optionId),
+                                  )
+                                }
                                 onClick={() => {
                                   if (optionDisabled) return;
                                   onRunModeChange(option.mode);
@@ -1023,6 +1054,10 @@ export default function ComposerV2({
                           const Icon = option.Icon;
                           const isSelected = permissionMode === option.mode;
                           const isDangerous = option.mode === 'bypassPermissions';
+                          const optionId = `${permissionMenuId}-option-${option.mode}`;
+                          const permissionOptionIds = PERMISSION_MODE_OPTIONS.map(
+                            (permissionOption) => `${permissionMenuId}-option-${permissionOption.mode}`,
+                          );
                           const label = t(option.labelKey, {
                             defaultValue: option.defaultLabel,
                           }) as string;
@@ -1032,12 +1067,19 @@ export default function ComposerV2({
 
                           return (
                             <button
-                              id={`${permissionMenuId}-option-${option.mode}`}
+                              id={optionId}
                               key={option.mode}
                               type="button"
                               role="menuitemradio"
                               aria-checked={isSelected}
                               onMouseDown={(event) => event.preventDefault()}
+                              onKeyDown={(event) =>
+                                handleMenuItemRovingFocus(
+                                  event,
+                                  permissionOptionIds,
+                                  permissionOptionIds.indexOf(optionId),
+                                )
+                              }
                               onClick={() => {
                                 onPermissionModeChange(option.mode);
                                 setIsPermissionMenuOpen(false);
