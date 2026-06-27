@@ -19,6 +19,7 @@ import {
   CircleGauge,
   Hand,
   ListChecks,
+  Lock,
   Loader2,
   Paperclip,
   ShieldAlert,
@@ -1071,19 +1072,23 @@ export default function ComposerV2({
                         title={permissionModeButtonTitle}
                         aria-label={permissionSelectorDisabled ? permissionLockedInPlanMessage : undefined}
                         aria-disabled={permissionSelectorDisabled}
-                        aria-haspopup="menu"
-                        aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
+                        aria-haspopup={permissionSelectorDisabled ? undefined : 'menu'}
+                        aria-expanded={permissionSelectorDisabled ? undefined : isPermissionMenuOpen}
                         aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}
                       >
                         <PermissionModeButtonIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                         <span className="truncate">{permissionModeButtonLabel}</span>
-                        <ChevronDown
-                          className={cn(
-                            'h-3.5 w-3.5 shrink-0 transition-transform',
-                            isPermissionMenuOpen && 'rotate-180',
-                          )}
-                          strokeWidth={2}
-                        />
+                        {permissionSelectorDisabled ? (
+                          <Lock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                        ) : (
+                          <ChevronDown
+                            className={cn(
+                              'h-3.5 w-3.5 shrink-0 transition-transform',
+                              isPermissionMenuOpen && 'rotate-180',
+                            )}
+                            strokeWidth={2}
+                          />
+                        )}
                       </button>
                     {isPermissionMenuOpen ? (
                       <div
