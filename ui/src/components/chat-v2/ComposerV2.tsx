@@ -327,7 +327,9 @@ export default function ComposerV2({
   const queueAttachmentBlockId = useId();
   const fileSuggestionsId = useId();
   const commandMenuId = useId();
+  const runModeButtonId = useId();
   const runModeMenuId = useId();
+  const permissionButtonId = useId();
   const permissionMenuId = useId();
   const contextPopoverId = useId();
   const contextPopoverTitleId = useId();
@@ -845,6 +847,7 @@ export default function ComposerV2({
                       }}
                     >
                       <button
+                        id={runModeButtonId}
                         type="button"
                         ref={runModeButtonRef}
                         onClick={toggleRunModeMenu}
@@ -876,6 +879,7 @@ export default function ComposerV2({
                         <div
                           id={runModeMenuId}
                           role="menu"
+                          aria-labelledby={runModeButtonId}
                           className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
                         >
                           {RUN_MODE_OPTIONS.map((option) => {
@@ -1032,6 +1036,7 @@ export default function ComposerV2({
                       }}
                     >
                       <button
+                        id={permissionButtonId}
                         type="button"
                         ref={permissionButtonRef}
                         disabled={permissionSelectorDisabled}
@@ -1066,6 +1071,7 @@ export default function ComposerV2({
                       <div
                         id={permissionMenuId}
                         role="menu"
+                        aria-labelledby={permissionButtonId}
                         className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
                       >
                         {PERMISSION_MODE_OPTIONS.map((option) => {

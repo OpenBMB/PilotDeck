@@ -251,16 +251,18 @@ describe('ComposerV2 queue feedback', () => {
 
     fireEvent.click(screen.getByTitle('Select run mode'));
     const runModeButton = screen.getByTitle('Select run mode');
-    const runModeMenu = screen.getByRole('menu');
+    const runModeMenu = screen.getByRole('menu', { name: 'Agent' });
     expect(runModeMenu).toBeTruthy();
     expect(runModeButton.getAttribute('aria-controls')).toBe(runModeMenu.id);
+    expect(runModeMenu.getAttribute('aria-labelledby')).toBe(runModeButton.id);
     expect(screen.getByRole('menuitemradio', { name: /Plan/ })).toBeTruthy();
 
     fireEvent.click(screen.getByTitle('Select permission mode'));
     const permissionButton = screen.getByTitle('Select permission mode');
-    const permissionMenu = screen.getAllByRole('menu')[0];
+    const permissionMenu = screen.getByRole('menu', { name: 'Default Permissions' });
     expect(screen.getAllByRole('menu')).toHaveLength(1);
     expect(permissionButton.getAttribute('aria-controls')).toBe(permissionMenu.id);
+    expect(permissionMenu.getAttribute('aria-labelledby')).toBe(permissionButton.id);
     expect(screen.queryByRole('menuitemradio', { name: /Plan/ })).toBeNull();
     expect(screen.getByRole('menuitemradio', { name: /Full Access/ })).toBeTruthy();
 
