@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
+import { inflateSync } from 'node:zlib';
 
 const DEFAULT_CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const DEFAULT_HEALTH_URL = 'http://127.0.0.1:18789/health';
@@ -139,6 +140,161 @@ async function waitForStableUi(client) {
   throw new Error(`Timed out waiting for stable UI: ${JSON.stringify(lastState)}`);
 }
 
+function paethPredictor(left, above, upperLeft) {
+  const estimate = left + above - upperLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const aboveDistance = Math.abs(estimate - above);
+  const upperLeftDistance = Math.abs(estimate - upperLeft);
+  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance) return left;
+  if (aboveDistance <= upperLeftDistance) return above;
+  return upperLeft;
+}
+
+function decodePng(buffer) {
+  const signature = '89504e470d0a1a0a';
+  if (buffer.subarray(0, 8).toString('hex') !== signature) {
+    throw new Error('Screenshot is not a PNG file');
+  }
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  let interlace = 0;
+  const idatChunks = [];
+
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString('ascii');
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    const data = buffer.subarray(dataStart, dataEnd);
+
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === 'IDAT') {
+      idatChunks.push(data);
+    } else if (type === 'IEND') {
+      break;
+    }
+
+    offset = dataEnd + 4;
+  }
+
+  if (bitDepth !== 8 || ![2, 6].includes(colorType) || interlace !== 0) {
+    throw new Error(`Unsupported PNG format: bitDepth=${bitDepth}, colorType=${colorType}, interlace=${interlace}`);
+  }
+
+  const bytesPerPixel = colorType === 6 ? 4 : 3;
+  const rowBytes = width * bytesPerPixel;
+  const inflated = inflateSync(Buffer.concat(idatChunks));
+  const pixels = Buffer.alloc(width * height * 4);
+  let inputOffset = 0;
+  let previousRow = Buffer.alloc(rowBytes);
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[inputOffset];
+    inputOffset += 1;
+    const row = Buffer.from(inflated.subarray(inputOffset, inputOffset + rowBytes));
+    inputOffset += rowBytes;
+
+    for (let x = 0; x < rowBytes; x += 1) {
+      const left = x >= bytesPerPixel ? row[x - bytesPerPixel] : 0;
+      const above = previousRow[x] || 0;
+      const upperLeft = x >= bytesPerPixel ? previousRow[x - bytesPerPixel] || 0 : 0;
+      if (filter === 1) row[x] = (row[x] + left) & 0xff;
+      else if (filter === 2) row[x] = (row[x] + above) & 0xff;
+      else if (filter === 3) row[x] = (row[x] + Math.floor((left + above) / 2)) & 0xff;
+      else if (filter === 4) row[x] = (row[x] + paethPredictor(left, above, upperLeft)) & 0xff;
+      else if (filter !== 0) throw new Error(`Unsupported PNG filter: ${filter}`);
+    }
+
+    for (let x = 0; x < width; x += 1) {
+      const source = x * bytesPerPixel;
+      const target = (y * width + x) * 4;
+      pixels[target] = row[source];
+      pixels[target + 1] = row[source + 1];
+      pixels[target + 2] = row[source + 2];
+      pixels[target + 3] = colorType === 6 ? row[source + 3] : 255;
+    }
+
+    previousRow = row;
+  }
+
+  return { width, height, pixels };
+}
+
+function readPixel(image, x, y) {
+  const clampedX = Math.max(0, Math.min(image.width - 1, Math.round(x)));
+  const clampedY = Math.max(0, Math.min(image.height - 1, Math.round(y)));
+  const offset = (clampedY * image.width + clampedX) * 4;
+  return {
+    red: image.pixels[offset],
+    green: image.pixels[offset + 1],
+    blue: image.pixels[offset + 2],
+    alpha: image.pixels[offset + 3],
+  };
+}
+
+function brightness(pixel) {
+  return (pixel.red + pixel.green + pixel.blue) / 3;
+}
+
+function darkPixelRatio(image, left, top, width, height) {
+  let dark = 0;
+  let total = 0;
+  const right = Math.min(image.width, left + width);
+  const bottom = Math.min(image.height, top + height);
+  for (let y = Math.max(0, top); y < bottom; y += 1) {
+    for (let x = Math.max(0, left); x < right; x += 1) {
+      total += 1;
+      if (brightness(readPixel(image, x, y)) < 80) {
+        dark += 1;
+      }
+    }
+  }
+  return total > 0 ? dark / total : 0;
+}
+
+function validateScreenshot(screenshotFile, ui) {
+  const image = decodePng(readFileSync(screenshotFile));
+  const expectedWidth = Math.max(1000, Math.round((ui.bodyWidth || 1280) * 0.9));
+  const expectedHeight = Math.max(600, Math.round((ui.rootHeight || 720) * 0.8));
+  if (image.width < expectedWidth || image.height < expectedHeight) {
+    throw new Error(`Screenshot too small: ${image.width}x${image.height}`);
+  }
+
+  const samples = {
+    mainTop: readPixel(image, image.width * 0.5, image.height * 0.17),
+    mainLower: readPixel(image, image.width * 0.82, image.height * 0.82),
+    sidebar: readPixel(image, Math.min(120, image.width * 0.1), image.height * 0.18),
+  };
+  const metrics = Object.fromEntries(
+    Object.entries(samples).map(([name, pixel]) => [name, Math.round(brightness(pixel))]),
+  );
+  const logoDarkRatio = darkPixelRatio(image, 10, 18, 34, 34);
+  const lightSurfaceCount = ['mainTop', 'mainLower', 'sidebar'].filter(
+    (name) => metrics[name] >= 210,
+  ).length;
+  if (lightSurfaceCount < 3) {
+    throw new Error(`Screenshot does not match the expected light UI surfaces: ${JSON.stringify(metrics)}`);
+  }
+  if (logoDarkRatio < 0.35) {
+    throw new Error(`Screenshot logo region is not dark enough: ${JSON.stringify({ ...metrics, logoDarkRatio })}`);
+  }
+  return {
+    width: image.width,
+    height: image.height,
+    brightness: metrics,
+    logoDarkRatio: Number(logoDarkRatio.toFixed(3)),
+  };
+}
+
 async function main() {
   const health = await fetchJson(healthUrl, 5000);
   if (health?.ok !== true) {
@@ -190,6 +346,7 @@ async function main() {
       captureBeyondViewport: false,
     });
     writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
+    const screenshotCheck = validateScreenshot(screenshotPath, ui);
     await client.send('Browser.close').catch(() => {});
 
     const chromeLogTail = stderr
@@ -203,6 +360,7 @@ async function main() {
       ui,
       screenshotPath,
       screenshotBytes: statSync(screenshotPath).size,
+      screenshotCheck,
       chromeLogTail,
     }, null, 2));
   } finally {
