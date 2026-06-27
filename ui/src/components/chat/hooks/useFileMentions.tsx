@@ -170,6 +170,15 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
   }, [showFileDropdown, fetchProjectFiles]);
 
   useEffect(() => {
+    if (!selectedProject) {
+      setShowFileDropdown(false);
+      setAtSymbolPosition(-1);
+      setSelectedFileIndex(-1);
+      setFilteredFiles([]);
+      dismissedQueryRef.current = null;
+      return;
+    }
+
     const textBeforeCursor = input.slice(0, cursorPosition);
     const mentionMatch = textBeforeCursor.match(/(^|\s)@(\S*)$/);
 
@@ -206,7 +215,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     setShowFileDropdown(true);
     setSelectedFileIndex(matchingFiles.length > 0 ? 0 : -1);
     setFilteredFiles(matchingFiles);
-  }, [input, cursorPosition, fileList]);
+  }, [input, cursorPosition, fileList, selectedProject]);
 
   const activeFileMentions = useMemo(() => {
     if (!input || fileMentions.length === 0) {
