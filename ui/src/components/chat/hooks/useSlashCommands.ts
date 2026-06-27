@@ -27,6 +27,29 @@ interface UseSlashCommandsOptions {
 
 const getCommandHistoryKey = (projectName: string) => `command_history_${projectName}`;
 
+const normalizeCommandHistory = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, rawCount]) => {
+      const count =
+        typeof rawCount === 'number'
+          ? rawCount
+          : typeof rawCount === 'string' && rawCount.trim()
+            ? Number(rawCount)
+            : NaN;
+
+      if (!Number.isFinite(count) || count <= 0) {
+        return [];
+      }
+
+      return [[key, Math.floor(count)]];
+    }),
+  );
+};
+
 const readCommandHistory = (projectName: string): Record<string, number> => {
   const history = safeLocalStorage.getItem(getCommandHistoryKey(projectName));
   if (!history) {
@@ -34,7 +57,7 @@ const readCommandHistory = (projectName: string): Record<string, number> => {
   }
 
   try {
-    return JSON.parse(history);
+    return normalizeCommandHistory(JSON.parse(history));
   } catch (error) {
     console.error('Error parsing command history:', error);
     return {};
