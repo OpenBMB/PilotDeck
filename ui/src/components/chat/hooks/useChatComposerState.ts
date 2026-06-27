@@ -494,6 +494,20 @@ export function useChatComposerState({
 
   const handleCustomCommand = useCallback(async (result: CommandExecutionResult) => {
     const { content, hasBashCommands, metadata } = result;
+    const commandContent = content || '';
+
+    if (inputValueRef.current.trim()) {
+      addMessage({
+        type: 'assistant',
+        content: [
+          'Command result is ready, but the composer changed while it was running.',
+          'I left your current draft untouched.',
+          commandContent ? `\n\`\`\`\n${commandContent}\n\`\`\`` : '',
+        ].filter(Boolean).join('\n'),
+        timestamp: Date.now(),
+      });
+      return;
+    }
 
     if (hasBashCommands) {
       const confirmed = window.confirm(
@@ -509,7 +523,6 @@ export function useChatComposerState({
       }
     }
 
-    const commandContent = content || '';
     setInput(commandContent);
     inputValueRef.current = commandContent;
 
