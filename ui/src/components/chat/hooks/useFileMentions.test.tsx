@@ -364,6 +364,48 @@ describe('useFileMentions selection behavior', () => {
     expect(setInput).toHaveBeenCalledWith('please README.md this file');
   });
 
+  it('keeps an external input value ref synchronized after selecting a file', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const inputValueRef = { current: '@read' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+        inputValueRef,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleFileMentionsKeyDown(makeTextareaKeyEvent('Enter'));
+    });
+
+    expect(inputValueRef.current).toBe('README.md ');
+  });
+
   it('closes an empty file mention menu with Escape', async () => {
     getFilesMock.mockResolvedValue({
       ok: true,
