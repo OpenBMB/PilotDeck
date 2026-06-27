@@ -190,6 +190,31 @@ const groupCommandsForDisplay = (
   );
 };
 
+const getNextKeyboardCommandIndex = (
+  previousIndex: number,
+  commandCount: number,
+  direction: 'next' | 'previous',
+) => {
+  if (commandCount <= 0) {
+    return -1;
+  }
+
+  if (previousIndex < 0 || previousIndex >= commandCount) {
+    return direction === 'previous' ? commandCount - 1 : 0;
+  }
+
+  if (direction === 'previous') {
+    return previousIndex > 0 ? previousIndex - 1 : commandCount - 1;
+  }
+
+  return previousIndex < commandCount - 1 ? previousIndex + 1 : 0;
+};
+
+const getKeyboardSelectedCommand = (
+  commands: SlashCommand[],
+  selectedIndex: number,
+) => commands[selectedIndex] || commands[0];
+
 export function removeActiveSlashQueryForTest(input: string, slashPosition: number): string {
   if (slashPosition < 0 || slashPosition >= input.length || input[slashPosition] !== '/') {
     return input;
@@ -588,7 +613,7 @@ export function useSlashCommands({
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         setSelectedCommandIndex((previousIndex) =>
-          previousIndex < displayedCommands.length - 1 ? previousIndex + 1 : 0,
+          getNextKeyboardCommandIndex(previousIndex, displayedCommands.length, 'next'),
         );
         return true;
       }
@@ -596,7 +621,7 @@ export function useSlashCommands({
       if (event.key === 'ArrowUp') {
         event.preventDefault();
         setSelectedCommandIndex((previousIndex) =>
-          previousIndex > 0 ? previousIndex - 1 : displayedCommands.length - 1,
+          getNextKeyboardCommandIndex(previousIndex, displayedCommands.length, 'previous'),
         );
         return true;
       }
@@ -606,10 +631,9 @@ export function useSlashCommands({
           return false;
         }
         event.preventDefault();
-        if (selectedCommandIndex >= 0) {
-          selectCommandFromKeyboard(displayedCommands[selectedCommandIndex]);
-        } else if (displayedCommands.length > 0) {
-          selectCommandFromKeyboard(displayedCommands[0]);
+        const selectedCommand = getKeyboardSelectedCommand(displayedCommands, selectedCommandIndex);
+        if (selectedCommand) {
+          selectCommandFromKeyboard(selectedCommand);
         }
         return true;
       }

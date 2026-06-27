@@ -47,6 +47,31 @@ const flattenFileTree = (files: ProjectFileNode[], basePath = ''): MentionableFi
   return flattened;
 };
 
+const getNextKeyboardFileIndex = (
+  previousIndex: number,
+  fileCount: number,
+  direction: 'next' | 'previous',
+) => {
+  if (fileCount <= 0) {
+    return -1;
+  }
+
+  if (previousIndex < 0 || previousIndex >= fileCount) {
+    return direction === 'previous' ? fileCount - 1 : 0;
+  }
+
+  if (direction === 'previous') {
+    return previousIndex > 0 ? previousIndex - 1 : fileCount - 1;
+  }
+
+  return previousIndex < fileCount - 1 ? previousIndex + 1 : 0;
+};
+
+const getKeyboardSelectedFile = (
+  files: MentionableFile[],
+  selectedIndex: number,
+) => files[selectedIndex] || files[0];
+
 export function useFileMentions({ selectedProject, input, setInput, textareaRef }: UseFileMentionsOptions) {
   const [fileList, setFileList] = useState<MentionableFile[]>([]);
   const [fileMentions, setFileMentions] = useState<string[]>([]);
@@ -59,6 +84,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
   // Track the latest in-flight fetch so a refresh triggered by reopening
   // the @ dropdown can supersede the one kicked off on project switch.
   const inFlightFetchRef = useRef<AbortController | null>(null);
+  const dismissedQueryRef = useRef<{ input: string; cursorPosition: number } | null>(null);
 
   const fetchProjectFiles = useCallback(async () => {
     const projectName = selectedProject?.name;
@@ -126,6 +152,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     if (lastAtIndex === -1) {
       setShowFileDropdown(false);
       setAtSymbolPosition(-1);
+      dismissedQueryRef.current = null;
       return;
     }
 
@@ -133,6 +160,18 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     if (textAfterAt.includes(' ')) {
       setShowFileDropdown(false);
       setAtSymbolPosition(-1);
+      dismissedQueryRef.current = null;
+      return;
+    }
+
+    if (
+      dismissedQueryRef.current?.input === input
+      && dismissedQueryRef.current.cursorPosition === cursorPosition
+    ) {
+      setShowFileDropdown(false);
+      setAtSymbolPosition(lastAtIndex);
+      setSelectedFileIndex(-1);
+      setFilteredFiles([]);
       return;
     }
 
@@ -262,6 +301,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       if (filteredFiles.length === 0) {
         if (event.key === 'Escape') {
           event.preventDefault();
+          dismissedQueryRef.current = { input, cursorPosition };
           setShowFileDropdown(false);
           return true;
         }
@@ -278,7 +318,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         setSelectedFileIndex((previousIndex) =>
-          previousIndex < filteredFiles.length - 1 ? previousIndex + 1 : 0,
+          getNextKeyboardFileIndex(previousIndex, filteredFiles.length, 'next'),
         );
         return true;
       }
@@ -286,7 +326,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
       if (event.key === 'ArrowUp') {
         event.preventDefault();
         setSelectedFileIndex((previousIndex) =>
-          previousIndex > 0 ? previousIndex - 1 : filteredFiles.length - 1,
+          getNextKeyboardFileIndex(previousIndex, filteredFiles.length, 'previous'),
         );
         return true;
       }
@@ -296,23 +336,23 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
           return false;
         }
         event.preventDefault();
-        if (selectedFileIndex >= 0) {
-          selectFile(filteredFiles[selectedFileIndex]);
-        } else if (filteredFiles.length > 0) {
-          selectFile(filteredFiles[0]);
+        const selectedFile = getKeyboardSelectedFile(filteredFiles, selectedFileIndex);
+        if (selectedFile) {
+          selectFile(selectedFile);
         }
         return true;
       }
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        dismissedQueryRef.current = { input, cursorPosition };
         setShowFileDropdown(false);
         return true;
       }
 
       return false;
     },
-    [showFileDropdown, filteredFiles, selectedFileIndex, selectFile],
+    [showFileDropdown, filteredFiles, selectedFileIndex, selectFile, input, cursorPosition],
   );
 
   return {
