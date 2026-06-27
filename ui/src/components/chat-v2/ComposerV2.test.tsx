@@ -356,6 +356,62 @@ describe('ComposerV2 queue feedback', () => {
     });
   });
 
+  it('returns focus to composer menu buttons after closing from menu items', async () => {
+    const onRunModeChange = vi.fn();
+    const onPermissionModeChange = vi.fn();
+    renderComposer({ onRunModeChange, onPermissionModeChange });
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.keyDown(runModeButton, { key: 'ArrowDown' });
+    const planItem = screen.getByRole('menuitemradio', { name: /Plan/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /Agent/ }));
+    });
+
+    fireEvent.click(planItem);
+    expect(onRunModeChange).toHaveBeenCalledWith('plan');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(runModeButton);
+    });
+
+    const permissionButton = screen.getByTitle('Select permission mode');
+    fireEvent.keyDown(permissionButton, { key: 'ArrowDown' });
+    const fullAccessItem = screen.getByRole('menuitemradio', { name: /Full Access/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /Default Permissions/ }));
+    });
+
+    fireEvent.click(fullAccessItem);
+    expect(onPermissionModeChange).toHaveBeenCalledWith('bypassPermissions');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(permissionButton);
+    });
+  });
+
+  it('returns focus to the owning button after Escape closes a composer popover', async () => {
+    renderComposer();
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.keyDown(runModeButton, { key: 'ArrowDown' });
+    const agentItem = screen.getByRole('menuitemradio', { name: /Agent/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(agentItem);
+    });
+
+    fireEvent.keyDown(agentItem, { key: 'Escape' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(runModeButton);
+    });
+
+    const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
+    fireEvent.click(contextButton);
+    expect(screen.getByRole('status').textContent).toContain('Context window');
+    fireEvent.keyDown(contextButton, { key: 'Escape' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(contextButton);
+    });
+  });
+
   it('closes composer popovers before running toolbar actions', () => {
     const openImagePicker = vi.fn();
     const onInsertMention = vi.fn();

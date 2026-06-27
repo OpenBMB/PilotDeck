@@ -321,6 +321,9 @@ export default function ComposerV2({
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
   const suppressSlashToolbarClickRef = useRef(false);
   const selectedFileSuggestionRef = useRef<HTMLDivElement | null>(null);
+  const runModeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const permissionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const contextButtonRef = useRef<HTMLButtonElement | null>(null);
   const queueAttachmentBlockId = useId();
   const fileSuggestionsId = useId();
   const commandMenuId = useId();
@@ -429,10 +432,20 @@ export default function ComposerV2({
     }
   }, [fileSuggestionsHaveOptions, fileSuggestionsOpen, selectedFileIndex]);
 
-  const closeComposerPopovers = () => {
+  const focusElement = (element: HTMLElement | null) => {
+    requestAnimationFrame(() => element?.focus());
+  };
+  const closeComposerPopovers = (returnFocusTo?: 'runMode' | 'permission' | 'context') => {
     setIsRunModeMenuOpen(false);
     setIsPermissionMenuOpen(false);
     setIsContextPopoverOpen(false);
+    if (returnFocusTo === 'runMode') {
+      focusElement(runModeButtonRef.current);
+    } else if (returnFocusTo === 'permission') {
+      focusElement(permissionButtonRef.current);
+    } else if (returnFocusTo === 'context') {
+      focusElement(contextButtonRef.current);
+    }
   };
   const focusMenuItemById = (id: string) => {
     requestAnimationFrame(() => {
@@ -468,7 +481,9 @@ export default function ComposerV2({
     }
     event.preventDefault();
     event.stopPropagation();
-    closeComposerPopovers();
+    closeComposerPopovers(
+      isRunModeMenuOpen ? 'runMode' : isPermissionMenuOpen ? 'permission' : 'context',
+    );
   };
   const handleRunModeButtonKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     handleComposerPopoverEscape(event);
@@ -830,6 +845,7 @@ export default function ComposerV2({
                     >
                       <button
                         type="button"
+                        ref={runModeButtonRef}
                         onClick={toggleRunModeMenu}
                         onKeyDown={handleRunModeButtonKeyDown}
                         className={cn(
@@ -900,7 +916,7 @@ export default function ComposerV2({
                                 onClick={() => {
                                   if (optionDisabled) return;
                                   onRunModeChange(option.mode);
-                                  setIsRunModeMenuOpen(false);
+                                  closeComposerPopovers('runMode');
                                 }}
                                 className={cn(
                                   'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition',
@@ -1016,6 +1032,7 @@ export default function ComposerV2({
                     >
                       <button
                         type="button"
+                        ref={permissionButtonRef}
                         disabled={permissionSelectorDisabled}
                         onClick={togglePermissionMenu}
                         onKeyDown={handlePermissionButtonKeyDown}
@@ -1082,7 +1099,7 @@ export default function ComposerV2({
                               }
                               onClick={() => {
                                 onPermissionModeChange(option.mode);
-                                setIsPermissionMenuOpen(false);
+                                closeComposerPopovers('permission');
                               }}
                               className={cn(
                                 'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition',
@@ -1140,6 +1157,7 @@ export default function ComposerV2({
                     >
                       <button
                         type="button"
+                        ref={contextButtonRef}
                         onClick={toggleContextPopover}
                         className={cn(
                           'inline-flex h-9 min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition md:h-7 md:min-w-[44px]',
