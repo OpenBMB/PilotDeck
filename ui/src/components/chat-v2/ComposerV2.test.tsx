@@ -316,6 +316,46 @@ describe('ComposerV2 queue feedback', () => {
     });
   });
 
+  it('moves focus through open composer menus with arrow, Home, and End keys', async () => {
+    renderComposer();
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.keyDown(runModeButton, { key: 'ArrowDown' });
+    const agentItem = screen.getByRole('menuitemradio', { name: /Agent/ });
+    const planItem = screen.getByRole('menuitemradio', { name: /Plan/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(agentItem);
+    });
+
+    fireEvent.keyDown(agentItem, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(planItem);
+    });
+
+    fireEvent.keyDown(planItem, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(agentItem);
+    });
+
+    const permissionButton = screen.getByTitle('Select permission mode');
+    fireEvent.keyDown(permissionButton, { key: 'ArrowDown' });
+    const defaultPermissionItem = screen.getByRole('menuitemradio', { name: /Default Permissions/ });
+    const fullAccessItem = screen.getByRole('menuitemradio', { name: /Full Access/ });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(defaultPermissionItem);
+    });
+
+    fireEvent.keyDown(defaultPermissionItem, { key: 'End' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(fullAccessItem);
+    });
+
+    fireEvent.keyDown(fullAccessItem, { key: 'Home' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(defaultPermissionItem);
+    });
+  });
+
   it('closes composer popovers before running toolbar actions', () => {
     const openImagePicker = vi.fn();
     const onInsertMention = vi.fn();
