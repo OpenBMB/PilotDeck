@@ -439,6 +439,8 @@
   },
   "subagent": {
     "detailTitle": "子任务详情",
+    "closeDetail": "关闭子任务详情",
+    "openDetail": "打开子任务详情：{{description}}",
     "loadError": "加载子任务消息失败：{{error}}",
     "noMessages": "没有可显示的子任务消息。",
     "defaultDescription": "执行任务",

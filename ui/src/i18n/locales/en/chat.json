@@ -451,6 +451,8 @@
   },
   "subagent": {
     "detailTitle": "Subagent Detail",
+    "closeDetail": "Close subagent detail",
+    "openDetail": "Open subagent details: {{description}}",
     "loadError": "Failed to load subagent messages: {{error}}",
     "noMessages": "No displayable subagent messages found.",
     "defaultDescription": "Running task",
