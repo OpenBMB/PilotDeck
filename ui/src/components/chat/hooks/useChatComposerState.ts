@@ -951,8 +951,8 @@ export function useChatComposerState({
       if (skipSlashDetectionOnceRef.current) {
         skipSlashDetectionOnceRef.current = false;
       } else if (trimmedInput.startsWith('/')) {
-        const firstSpace = trimmedInput.indexOf(' ');
-        const commandName = firstSpace > 0 ? trimmedInput.slice(0, firstSpace) : trimmedInput;
+        const firstWhitespace = trimmedInput.search(/\s/);
+        const commandName = firstWhitespace > 0 ? trimmedInput.slice(0, firstWhitespace) : trimmedInput;
         const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
         if (matchedCommand) {
           executeCommand(matchedCommand, trimmedInput);
