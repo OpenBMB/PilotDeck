@@ -75,6 +75,22 @@ const getCommandUsage = (history: Record<string, number>, command: SlashCommand)
     0,
   );
 
+const getPinnedMatchKeys = (command: SlashCommand): string[] => {
+  const normalizedKey = getCommandKey(command);
+  if (getCommandNamespace(command) !== 'pinned') {
+    return [normalizedKey];
+  }
+
+  return [
+    normalizedKey,
+    `${command.name}::builtin::${command.path || ''}`,
+    `${command.name}::custom::${command.path || ''}`,
+    `${command.name}::project::${command.path || ''}`,
+    `${command.name}::user::${command.path || ''}`,
+    `${command.name}::other::${command.path || ''}`,
+  ];
+};
+
 const groupCommandsForDisplay = (
   commands: SlashCommand[],
   frequentCommands: SlashCommand[],
@@ -240,16 +256,22 @@ export function useSlashCommands({
         // Other commands fall back to usage-history sort.
         const pinnedOrderIndex = new Map<string, number>();
         ((data.pinned || []) as SlashCommand[]).forEach((command, index) => {
-          pinnedOrderIndex.set(command.name, index);
+          getPinnedMatchKeys(command).forEach((key) => {
+            if (!pinnedOrderIndex.has(key)) {
+              pinnedOrderIndex.set(key, index);
+            }
+          });
         });
 
         const parsedHistory = readCommandHistory(selectedProject.name);
         const sortedCommands = [...allCommands].sort((commandA, commandB) => {
-          const aPinnedIdx = pinnedOrderIndex.has(commandA.name)
-            ? (pinnedOrderIndex.get(commandA.name) as number)
+          const commandAKey = getCommandKey(commandA);
+          const commandBKey = getCommandKey(commandB);
+          const aPinnedIdx = pinnedOrderIndex.has(commandAKey)
+            ? (pinnedOrderIndex.get(commandAKey) as number)
             : -1;
-          const bPinnedIdx = pinnedOrderIndex.has(commandB.name)
-            ? (pinnedOrderIndex.get(commandB.name) as number)
+          const bPinnedIdx = pinnedOrderIndex.has(commandBKey)
+            ? (pinnedOrderIndex.get(commandBKey) as number)
             : -1;
           if (aPinnedIdx !== -1 || bPinnedIdx !== -1) {
             if (aPinnedIdx === -1) return 1;

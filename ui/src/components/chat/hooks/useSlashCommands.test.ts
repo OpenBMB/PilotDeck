@@ -364,6 +364,73 @@ describe('useSlashCommands command history identity', () => {
     expect(result.current.frequentCommands[0].path).toBe('/tmp/general/.pilotdeck/commands/run.md');
   });
 
+  it('matches pinned commands by identity instead of pinning every duplicate name', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/favorite::custom::/tmp/general/.pilotdeck/commands/favorite.md': 12,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: '/clear', description: 'Clear chat' },
+          { name: '/run', description: 'Run built-in workflow' },
+        ],
+        custom: [
+          {
+            name: '/run',
+            description: 'Run project workflow',
+            path: '/tmp/general/.pilotdeck/commands/run.md',
+          },
+          {
+            name: '/favorite',
+            description: 'Run favorite project workflow',
+            path: '/tmp/general/.pilotdeck/commands/favorite.md',
+          },
+        ],
+        pinned: [
+          { name: '/clear', namespace: 'pinned', description: 'Clear chat' },
+          { name: '/run', namespace: 'pinned', description: 'Run built-in workflow' },
+        ],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(4);
+    });
+
+    expect(result.current.slashCommands.map((command) => command.path || command.name)).toEqual([
+      '/clear',
+      '/run',
+      '/tmp/general/.pilotdeck/commands/favorite.md',
+      '/tmp/general/.pilotdeck/commands/run.md',
+    ]);
+  });
+
   it('records selected command history under the stable command identity', async () => {
     localStorage.setItem(
       'command_history_general',
