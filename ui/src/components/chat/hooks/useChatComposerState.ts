@@ -202,6 +202,13 @@ export function insertComposerTokenForTest(
   };
 }
 
+export function hasActiveSlashQueryForTest(input: string, cursorPosition: number): boolean {
+  if (cursorPosition < 0 || cursorPosition > input.length) {
+    return false;
+  }
+  return /(^|\s)\/\S*$/.test(input.slice(0, cursorPosition));
+}
+
 function buildAttachmentPathNote(files: UploadedAttachmentFile[]): string {
   if (!files.length) {
     return '';
@@ -1072,6 +1079,9 @@ export function useChatComposerState({
         return;
       }
 
+      if (hasActiveSlashQueryForTest(newValue, cursorPos)) {
+        resetFileMentionMenuState();
+      }
       handleCommandInputChange(newValue, cursorPos);
     },
     [handleCommandInputChange, resetCommandMenuState, resetFileMentionMenuState, setCursorPosition],

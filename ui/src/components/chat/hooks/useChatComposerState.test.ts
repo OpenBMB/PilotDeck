@@ -8,6 +8,7 @@ import type { QueuedChatInput } from '../types/types';
 import {
   canQueueInputForTest,
   getNextDispatchableQueuedInputForTest,
+  hasActiveSlashQueryForTest,
   insertComposerTokenForTest,
   moveQueuedInputForTest,
   settleQueuedDispatchForTest,
@@ -157,7 +158,62 @@ describe('useChatComposerState composer token insertion', () => {
   });
 });
 
+describe('useChatComposerState slash query detection', () => {
+  it('detects only the slash query immediately before the caret', () => {
+    expect(hasActiveSlashQueryForTest('/', 1)).toBe(true);
+    expect(hasActiveSlashQueryForTest('please /skill', 13)).toBe(true);
+    expect(hasActiveSlashQueryForTest('please /skill now', 13)).toBe(true);
+    expect(hasActiveSlashQueryForTest('please /skill now', 18)).toBe(false);
+    expect(hasActiveSlashQueryForTest('https://example.test', 20)).toBe(false);
+    expect(hasActiveSlashQueryForTest('please /', 8)).toBe(true);
+    expect(hasActiveSlashQueryForTest('please /', 99)).toBe(false);
+  });
+});
+
 describe('useChatComposerState autocomplete coordination', () => {
+  it('closes file mention suggestions when typing a slash query manually', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+    localStorage.setItem('draft_input_general', '@read');
+
+    const { result } = renderComposerState();
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: '@read', selectionStart: 5 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: '@read /', selectionStart: 7 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    expect(result.current.showFileDropdown).toBe(false);
+    expect(result.current.filteredFiles).toEqual([]);
+    expect(result.current.selectedFileIndex).toBe(-1);
+    expect(result.current.showCommandMenu).toBe(true);
+  });
+
   it('closes file mention suggestions when the composer is cleared', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
