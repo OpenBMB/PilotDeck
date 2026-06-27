@@ -68,6 +68,35 @@ describe('useFileMentions insertion behavior', () => {
 });
 
 describe('useFileMentions selection behavior', () => {
+  it('does not open file suggestions without a selected project', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject: null,
+        input: '@',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(false);
+      expect(result.current.filteredFiles).toEqual([]);
+    });
+    expect(getFilesMock).not.toHaveBeenCalled();
+  });
+
   it('highlights the first matching file by default so Enter selection is visible', async () => {
     getFilesMock.mockResolvedValue({
       ok: true,
