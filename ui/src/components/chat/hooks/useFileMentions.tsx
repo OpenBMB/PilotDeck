@@ -212,13 +212,17 @@ export function useFileMentions({
     }
   }, [showFileDropdown, fetchProjectFiles]);
 
+  const resetFileMentionMenuState = useCallback(() => {
+    setShowFileDropdown(false);
+    setFilteredFiles([]);
+    setSelectedFileIndex(-1);
+    setAtSymbolPosition(-1);
+    dismissedQueryRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (!selectedProject) {
-      setShowFileDropdown(false);
-      setAtSymbolPosition(-1);
-      setSelectedFileIndex(-1);
-      setFilteredFiles([]);
-      dismissedQueryRef.current = null;
+      resetFileMentionMenuState();
       return;
     }
 
@@ -226,9 +230,7 @@ export function useFileMentions({
     const mentionMatch = textBeforeCursor.match(/(^|\s)@(\S*)$/);
 
     if (!mentionMatch) {
-      setShowFileDropdown(false);
-      setAtSymbolPosition(-1);
-      dismissedQueryRef.current = null;
+      resetFileMentionMenuState();
       return;
     }
 
@@ -258,7 +260,7 @@ export function useFileMentions({
     setShowFileDropdown(true);
     setSelectedFileIndex(matchingFiles.length > 0 ? 0 : -1);
     setFilteredFiles(matchingFiles);
-  }, [input, cursorPosition, fileList, selectedProject]);
+  }, [input, cursorPosition, fileList, selectedProject, resetFileMentionMenuState]);
 
   const activeFileMentions = useMemo(() => {
     if (!input || fileMentions.length === 0) {
@@ -454,6 +456,7 @@ export function useFileMentions({
     renderInputWithMentions,
     selectFile,
     highlightFileSuggestion,
+    resetFileMentionMenuState,
     setCursorPosition,
     handleFileMentionsKeyDown,
   };

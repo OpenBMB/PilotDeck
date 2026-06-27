@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ChangeEvent } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { authenticatedFetch } from '../../../utils/api';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api, authenticatedFetch } from '../../../utils/api';
 import type { Project } from '../../../types/app';
 import type { QueuedChatInput } from '../types/types';
 import {
@@ -35,9 +35,18 @@ vi.mock('react-dropzone', () => ({
 }));
 
 const fetchMock = vi.mocked(authenticatedFetch);
+const getFilesMock = vi.mocked(api.getFiles);
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  getFilesMock.mockReset();
+  getFilesMock.mockResolvedValue({
+    ok: true,
+    json: async () => [],
+  } as Response);
+});
 
 afterEach(() => {
-  vi.clearAllMocks();
   localStorage.clear();
 });
 
@@ -149,6 +158,53 @@ describe('useChatComposerState composer token insertion', () => {
 });
 
 describe('useChatComposerState autocomplete coordination', () => {
+  it('closes an open file mention menu before inserting a slash command token', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+    localStorage.setItem('draft_input_general', '@read');
+
+    const { result } = renderComposerState();
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: '@read', selectionStart: 5 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    const textarea = document.createElement('textarea');
+    textarea.value = result.current.input;
+    result.current.textareaRef.current = textarea;
+    textarea.setSelectionRange(5, 5);
+
+    act(() => {
+      result.current.insertAtCursor('/');
+    });
+
+    expect(result.current.input).toBe('@read /');
+    expect(result.current.showFileDropdown).toBe(false);
+    expect(result.current.filteredFiles).toEqual([]);
+    expect(result.current.selectedFileIndex).toBe(-1);
+    expect(result.current.showCommandMenu).toBe(true);
+  });
+
   it('closes an open slash command menu before inserting a file mention token', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
