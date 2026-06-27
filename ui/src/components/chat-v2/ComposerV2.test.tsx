@@ -266,7 +266,7 @@ describe('ComposerV2 queue feedback', () => {
 
     fireEvent.click(screen.getByTitle('Context usage unknown. It will appear after the next model response.'));
     const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
-    const contextPopover = screen.getByRole('status');
+    const contextPopover = screen.getByRole('region', { name: 'Context window' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(contextPopover.textContent).toContain('Context window');
     expect(contextButton.getAttribute('aria-controls')).toBe(contextPopover.id);
@@ -291,9 +291,9 @@ describe('ComposerV2 queue feedback', () => {
 
     const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
     fireEvent.click(contextButton);
-    expect(screen.getByRole('status').textContent).toContain('Context window');
+    expect(screen.getByRole('region', { name: 'Context window' }).textContent).toContain('Context window');
     fireEvent.keyDown(contextButton, { key: 'Escape' });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Context window' })).toBeNull();
   });
 
   it('opens run and permission menus from ArrowDown and focuses the current option', async () => {
@@ -405,7 +405,7 @@ describe('ComposerV2 queue feedback', () => {
 
     const contextButton = screen.getByTitle('Context usage unknown. It will appear after the next model response.');
     fireEvent.click(contextButton);
-    expect(screen.getByRole('status').textContent).toContain('Context window');
+    expect(screen.getByRole('region', { name: 'Context window' }).textContent).toContain('Context window');
     fireEvent.keyDown(contextButton, { key: 'Escape' });
     await waitFor(() => {
       expect(document.activeElement).toBe(contextButton);

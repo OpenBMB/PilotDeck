@@ -330,6 +330,7 @@ export default function ComposerV2({
   const runModeMenuId = useId();
   const permissionMenuId = useId();
   const contextPopoverId = useId();
+  const contextPopoverTitleId = useId();
   const permissionSelectorDisabled = runMode === 'plan';
 
   useEffect(() => {
@@ -1180,11 +1181,12 @@ export default function ComposerV2({
                       {isContextPopoverOpen ? (
                         <div
                           id={contextPopoverId}
-                          role="status"
+                          role="region"
+                          aria-labelledby={contextPopoverTitleId}
                           className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
                         >
                           <div className="mb-1 flex items-center justify-between gap-2">
-                            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                            <span id={contextPopoverTitleId} className="font-medium text-neutral-900 dark:text-neutral-100">
                               {t('input.contextStatusTitle', { defaultValue: 'Context window' })}
                             </span>
                             <span
