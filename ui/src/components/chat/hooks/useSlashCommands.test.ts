@@ -416,6 +416,107 @@ describe('useSlashCommands query filtering behavior', () => {
     expect(result.current.filteredCommands[0].type).toBe('builtin');
   });
 
+  it('ignores malformed command list entries before sorting and searching', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: ' /clear ', description: 42, metadata: 'invalid', path: 123 },
+          { name: 'missing-slash', description: 'Invalid command name' },
+          { description: 'Missing command name' },
+        ],
+        custom: [
+          { name: '/project', namespace: 42, description: 'Run project command' },
+          { name: '/bad command', description: 'Whitespace is not a slash command token' },
+          null,
+        ],
+        pinned: [
+          { name: '/project', namespace: 'pinned', description: 'Run project command' },
+          { name: '/bad command', namespace: 'pinned' },
+        ],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommands.map((command) => command.name)).toEqual([
+        '/project',
+        '/clear',
+      ]);
+    });
+
+    expect(result.current.slashCommands[0].type).toBe('custom');
+    expect(result.current.slashCommands[1].description).toBeUndefined();
+    expect(result.current.slashCommands[1].metadata).toBeUndefined();
+    expect(result.current.slashCommands[1].path).toBeUndefined();
+
+    act(() => {
+      result.current.handleCommandInputChange('/bad', 4);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands).toHaveLength(0);
+    });
+  });
+
+  it('treats malformed command list collections as empty lists', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: { name: '/clear' },
+        custom: 'not-an-array',
+        pinned: { name: '/clear' },
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommands).toEqual([]);
+    });
+  });
+
   it('dismisses an unmatched slash query with Escape instead of leaving it behind', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

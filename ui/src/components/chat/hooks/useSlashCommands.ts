@@ -72,6 +72,35 @@ const saveCommandHistory = (projectName: string, history: Record<string, number>
 const normalizeCommandNamespace = (namespace: unknown) =>
   namespace === 'built-in' ? 'builtin' : typeof namespace === 'string' && namespace ? namespace : 'other';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isSlashCommandName = (name: unknown): name is string =>
+  typeof name === 'string' && /^\/\S+$/.test(name.trim());
+
+const normalizeFetchedCommands = (commands: unknown, sourceType?: string): SlashCommand[] => {
+  if (!Array.isArray(commands)) {
+    return [];
+  }
+
+  return commands.flatMap((command) => {
+    if (!isRecord(command) || !isSlashCommandName(command.name)) {
+      return [];
+    }
+
+    return [{
+      ...command,
+      name: command.name.trim(),
+      description: typeof command.description === 'string' ? command.description : undefined,
+      namespace: typeof command.namespace === 'string' ? command.namespace : undefined,
+      displayNamespace: typeof command.displayNamespace === 'string' ? command.displayNamespace : undefined,
+      path: typeof command.path === 'string' ? command.path : undefined,
+      type: sourceType || (typeof command.type === 'string' ? command.type : undefined),
+      metadata: isRecord(command.metadata) ? command.metadata : undefined,
+    }];
+  });
+};
+
 const getCommandNamespace = (command: SlashCommand) =>
   normalizeCommandNamespace(
     command.namespace === 'pinned' || command.namespace === 'frequent'
@@ -279,21 +308,15 @@ export function useSlashCommands({
           return;
         }
         const allCommands: SlashCommand[] = [
-          ...((data.builtIn || []) as SlashCommand[]).map((command) => ({
-            ...command,
-            type: 'builtin',
-          })),
-          ...((data.custom || []) as SlashCommand[]).map((command) => ({
-            ...command,
-            type: 'custom',
-          })),
+          ...normalizeFetchedCommands(isRecord(data) ? data.builtIn : [], 'builtin'),
+          ...normalizeFetchedCommands(isRecord(data) ? data.custom : [], 'custom'),
         ];
 
         // Pinned commands always come first in fixed server-defined order;
         // backend returns them as `data.pinned` for that exact ordering.
         // Other commands fall back to usage-history sort.
         const pinnedOrderIndex = new Map<string, number>();
-        ((data.pinned || []) as SlashCommand[]).forEach((command, index) => {
+        normalizeFetchedCommands(isRecord(data) ? data.pinned : []).forEach((command, index) => {
           getPinnedMatchKeys(command).forEach((key) => {
             if (!pinnedOrderIndex.has(key)) {
               pinnedOrderIndex.set(key, index);
