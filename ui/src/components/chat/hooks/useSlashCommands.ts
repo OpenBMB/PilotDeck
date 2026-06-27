@@ -203,6 +203,7 @@ export function useSlashCommands({
   const [commandQuery, setCommandQuery] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [slashPosition, setSlashPosition] = useState(-1);
+  const [commandHistoryRevision, setCommandHistoryRevision] = useState(0);
 
   const resetCommandMenuState = useCallback(() => {
     setShowCommandMenu(false);
@@ -365,7 +366,7 @@ export function useSlashCommands({
       .filter((command) => command.usageCount > 0 && getCommandDisplayNamespace(command) !== 'pinned')
       .sort((commandA, commandB) => commandB.usageCount - commandA.usageCount)
       .slice(0, 5);
-  }, [selectedProject, slashCommands]);
+  }, [commandHistoryRevision, selectedProject, slashCommands]);
 
   const displayedCommands = useMemo(() => {
     return groupCommandsForDisplay(
@@ -407,6 +408,7 @@ export function useSlashCommands({
       });
       delete parsedHistory[command.name];
       saveCommandHistory(selectedProject.name, parsedHistory);
+      setCommandHistoryRevision((revision) => revision + 1);
     },
     [selectedProject],
   );
