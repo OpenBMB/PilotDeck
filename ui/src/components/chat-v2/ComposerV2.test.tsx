@@ -384,6 +384,34 @@ describe('ComposerV2 queue feedback', () => {
     });
   });
 
+  it('lets keyboard users inspect unavailable plan mode without selecting it', async () => {
+    const onRunModeChange = vi.fn();
+    renderComposer({ planModeAvailable: false, onRunModeChange });
+
+    const runModeButton = screen.getByTitle('Select run mode');
+    fireEvent.keyDown(runModeButton, { key: 'ArrowDown' });
+    const agentItem = screen.getByRole('menuitemradio', { name: /Agent/ });
+    const planItem = screen.getByRole('menuitemradio', { name: /Plan/ }) as HTMLButtonElement;
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(agentItem);
+    });
+
+    expect(planItem.disabled).toBe(false);
+    expect(planItem.getAttribute('aria-disabled')).toBe('true');
+    expect(planItem.textContent).toContain('Plan mode is only available for Anthropic models.');
+
+    fireEvent.keyDown(agentItem, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(planItem);
+    });
+
+    fireEvent.click(planItem);
+
+    expect(onRunModeChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeTruthy();
+  });
+
   it('returns focus to composer menu buttons after closing from menu items', async () => {
     const onRunModeChange = vi.fn();
     const onPermissionModeChange = vi.fn();

@@ -909,7 +909,6 @@ export default function ComposerV2({
                             const optionDisabled = isPlan && !planModeAvailable;
                             const optionId = `${runModeMenuId}-option-${option.mode}`;
                             const focusableRunModeIds = RUN_MODE_OPTIONS
-                              .filter((runOption) => !(runOption.mode === 'plan' && !planModeAvailable))
                               .map((runOption) => `${runModeMenuId}-option-${runOption.mode}`);
                             const label = t(option.labelKey, {
                               defaultValue: option.defaultLabel,
@@ -929,7 +928,7 @@ export default function ComposerV2({
                                 type="button"
                                 role="menuitemradio"
                                 aria-checked={isSelected}
-                                disabled={optionDisabled}
+                                aria-disabled={optionDisabled}
                                 onMouseDown={(event) => event.preventDefault()}
                                 onKeyDown={(event) =>
                                   handleMenuItemRovingFocus(
