@@ -375,6 +375,21 @@ export default function ComposerV2({
   const selectedPermissionLabel = t(selectedPermissionOption.labelKey, {
     defaultValue: selectedPermissionOption.defaultLabel,
   }) as string;
+  const permissionLockedInPlanLabel = t('input.permissions.planLockedLabel', {
+    defaultValue: 'Plan mode',
+  }) as string;
+  const permissionLockedInPlanMessage = t('input.permissions.lockedInPlan', {
+    defaultValue: 'Permission mode is locked while planning. Switch back to Agent to change permissions.',
+  }) as string;
+  const permissionModeButtonTitle = permissionSelectorDisabled
+    ? permissionLockedInPlanMessage
+    : (t('input.permissions.change', {
+        defaultValue: 'Select permission mode',
+      }) as string);
+  const PermissionModeButtonIcon = permissionSelectorDisabled ? ListChecks : SelectedPermissionIcon;
+  const permissionModeButtonLabel = permissionSelectorDisabled
+    ? permissionLockedInPlanLabel
+    : selectedPermissionLabel;
   const contextStatusTitle = contextStatus.known
     ? (t('input.contextStatus', {
         percent: contextStatus.percent,
@@ -1050,15 +1065,14 @@ export default function ComposerV2({
                               ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
                               : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
                         )}
-                        title={t('input.permissions.change', {
-                          defaultValue: 'Select permission mode',
-                        }) as string}
+                        title={permissionModeButtonTitle}
+                        aria-label={permissionSelectorDisabled ? permissionLockedInPlanMessage : undefined}
                         aria-haspopup="menu"
                         aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
                         aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}
                       >
-                        <SelectedPermissionIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                        <span className="truncate">{selectedPermissionLabel}</span>
+                        <PermissionModeButtonIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                        <span className="truncate">{permissionModeButtonLabel}</span>
                         <ChevronDown
                           className={cn(
                             'h-3.5 w-3.5 shrink-0 transition-transform',

@@ -274,6 +274,22 @@ describe('ComposerV2 queue feedback', () => {
     expect(contextButton.getAttribute('aria-controls')).toBe(contextPopover.id);
   });
 
+  it('explains why permission mode is locked while planning', () => {
+    renderComposer({ runMode: 'plan', permissionMode: 'bypassPermissions' });
+
+    const lockedMessage = 'Permission mode is locked while planning. Switch back to Agent to change permissions.';
+    const permissionButton = screen.getByRole('button', { name: lockedMessage }) as HTMLButtonElement;
+
+    expect(permissionButton.disabled).toBe(true);
+    expect(permissionButton.title).toBe(lockedMessage);
+    expect(permissionButton.textContent).toContain('Plan mode');
+    expect(permissionButton.textContent).not.toContain('Full Access');
+
+    fireEvent.click(permissionButton);
+
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('closes composer popovers with Escape without leaving the popover scope', () => {
     renderComposer();
 

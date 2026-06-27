@@ -258,7 +258,9 @@
       "defaultDescription": "Ask before risky operations",
       "bypassPermissions": "Full Access",
       "bypassPermissionsDescription": "Skip confirmations and allow full access",
-      "change": "Select permission mode"
+      "change": "Select permission mode",
+      "planLockedLabel": "Plan mode",
+      "lockedInPlan": "Permission mode is locked while planning. Switch back to Agent to change permissions."
     },
     "runModes": {
       "agent": "Agent",
