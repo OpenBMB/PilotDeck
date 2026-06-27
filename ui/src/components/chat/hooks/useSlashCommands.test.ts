@@ -500,6 +500,74 @@ describe('useSlashCommands command history identity', () => {
     ]);
   });
 
+  it('keeps used pinned commands in the pinned group instead of moving them to frequent', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/clear::builtin::': 9,
+        '/favorite::custom::/tmp/general/.pilotdeck/commands/favorite.md': 3,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', namespace: 'pinned', description: 'Clear chat' }],
+        custom: [
+          {
+            name: '/favorite',
+            description: 'Run favorite project workflow',
+            path: '/tmp/general/.pilotdeck/commands/favorite.md',
+          },
+        ],
+        pinned: [{ name: '/clear', namespace: 'pinned', description: 'Clear chat' }],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    expect(result.current.frequentCommands.map((command) => command.name)).toEqual([
+      '/favorite',
+    ]);
+
+    act(() => {
+      result.current.handleCommandInputChange('/', 1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands.map((command) => ({
+        name: command.name,
+        group: command.displayNamespace || command.namespace || command.type,
+      }))).toEqual([
+        { name: '/clear', group: 'pinned' },
+        { name: '/favorite', group: 'frequent' },
+      ]);
+    });
+  });
+
   it('records selected command history under the stable command identity', async () => {
     localStorage.setItem(
       'command_history_general',
