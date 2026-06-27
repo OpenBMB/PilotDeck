@@ -171,22 +171,17 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
 
   useEffect(() => {
     const textBeforeCursor = input.slice(0, cursorPosition);
+    const mentionMatch = textBeforeCursor.match(/(^|\s)@(\S*)$/);
+
+    if (!mentionMatch) {
+      setShowFileDropdown(false);
+      setAtSymbolPosition(-1);
+      dismissedQueryRef.current = null;
+      return;
+    }
+
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-
-    if (lastAtIndex === -1) {
-      setShowFileDropdown(false);
-      setAtSymbolPosition(-1);
-      dismissedQueryRef.current = null;
-      return;
-    }
-
-    const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
-    if (/\s/.test(textAfterAt)) {
-      setShowFileDropdown(false);
-      setAtSymbolPosition(-1);
-      dismissedQueryRef.current = null;
-      return;
-    }
+    const textAfterAt = mentionMatch[2] || '';
 
     if (
       dismissedQueryRef.current?.input === input
