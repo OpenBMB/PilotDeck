@@ -535,8 +535,8 @@ export function useChatComposerState({
         return;
       }
 
+      const effectiveInput = rawInput ?? input;
       try {
-        const effectiveInput = rawInput ?? input;
         const rawArgs = effectiveInput.startsWith(command.name)
           ? effectiveInput.slice(command.name.length).trimStart()
           : '';
@@ -587,6 +587,10 @@ export function useChatComposerState({
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error('Error executing command:', error);
+        if (!inputValueRef.current.trim()) {
+          setInput(effectiveInput);
+          inputValueRef.current = effectiveInput;
+        }
         addMessage({
           type: 'assistant',
           content: `Error executing command: ${message}`,

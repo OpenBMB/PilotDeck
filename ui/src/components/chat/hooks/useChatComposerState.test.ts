@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, authenticatedFetch } from '../../../utils/api';
 import type { Project } from '../../../types/app';
@@ -91,6 +91,10 @@ const renderComposerState = () => {
     }),
   );
 };
+
+const submitEvent = () => ({
+  preventDefault: vi.fn(),
+}) as unknown as FormEvent<HTMLFormElement>;
 
 describe('useChatComposerState keyboard shortcuts', () => {
   it('uses Shift+Tab to cycle run mode when no completion menu is open', () => {
@@ -337,6 +341,157 @@ describe('useChatComposerState autocomplete coordination', () => {
     expect(result.current.showCommandMenu).toBe(false);
     expect(result.current.commandQuery).toBe('');
     expect(result.current.filteredCommands).toEqual([]);
+  });
+});
+
+describe('useChatComposerState slash command submission', () => {
+  it('restores the slash command draft when command execution fails', async () => {
+    const addMessage = vi.fn();
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/commands/list') {
+        return {
+          ok: true,
+          json: async () => ({
+            builtIn: [{ name: '/clear', description: 'Clear chat' }],
+            custom: [],
+          }),
+        } as Response;
+      }
+      throw new Error('Command server offline');
+    });
+    localStorage.setItem('draft_input_general', '/clear');
+
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useChatComposerState({
+        selectedProject,
+        selectedSession: null,
+        currentSessionId: null,
+        model: 'test-model',
+        permissionMode: 'default',
+        cycleRunMode: vi.fn(),
+        isLoading: false,
+        canAbortSession: false,
+        tokenBudget: null,
+        sendMessage: vi.fn(),
+        sendByCtrlEnter: false,
+        pendingViewSessionRef: { current: null },
+        scrollToBottom: vi.fn(),
+        addMessage,
+        clearMessages: vi.fn(),
+        rewindMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        setCanAbortSession: vi.fn(),
+        setIsAborting: vi.fn(),
+        setClaudeStatus: vi.fn(),
+        setPilotDeckStatus: vi.fn(),
+        setIsUserScrolledUp: vi.fn(),
+        pendingPermissionRequests: [],
+        setPendingPermissionRequests: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(result.current.input).toBe('/clear');
+      expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: 'Error executing command: Command server offline',
+        type: 'assistant',
+      }));
+    });
+  });
+
+  it('does not overwrite a newer draft when slash command execution fails late', async () => {
+    let rejectCommand!: (error: Error) => void;
+    const addMessage = vi.fn();
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/commands/list') {
+        return {
+          ok: true,
+          json: async () => ({
+            builtIn: [{ name: '/clear', description: 'Clear chat' }],
+            custom: [],
+          }),
+        } as Response;
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        rejectCommand = reject;
+      });
+    });
+    localStorage.setItem('draft_input_general', '/clear');
+
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useChatComposerState({
+        selectedProject,
+        selectedSession: null,
+        currentSessionId: null,
+        model: 'test-model',
+        permissionMode: 'default',
+        cycleRunMode: vi.fn(),
+        isLoading: false,
+        canAbortSession: false,
+        tokenBudget: null,
+        sendMessage: vi.fn(),
+        sendByCtrlEnter: false,
+        pendingViewSessionRef: { current: null },
+        scrollToBottom: vi.fn(),
+        addMessage,
+        clearMessages: vi.fn(),
+        rewindMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        setCanAbortSession: vi.fn(),
+        setIsAborting: vi.fn(),
+        setClaudeStatus: vi.fn(),
+        setPilotDeckStatus: vi.fn(),
+        setIsUserScrolledUp: vi.fn(),
+        pendingPermissionRequests: [],
+        setPendingPermissionRequests: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: 'new draft', selectionStart: 9 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    act(() => {
+      rejectCommand(new Error('Command server offline'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.input).toBe('new draft');
+      expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: 'Error executing command: Command server offline',
+        type: 'assistant',
+      }));
+    });
   });
 });
 
