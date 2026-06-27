@@ -72,6 +72,30 @@ const getKeyboardSelectedFile = (
   selectedIndex: number,
 ) => files[selectedIndex] || files[0];
 
+export function buildFileMentionInsertion(
+  input: string,
+  atSymbolPosition: number,
+  filePath: string,
+): { value: string; caret: number } {
+  if (atSymbolPosition < 0 || atSymbolPosition >= input.length || input[atSymbolPosition] !== '@') {
+    const separator = input.length > 0 && !/\s$/.test(input) ? ' ' : '';
+    const value = `${input}${separator}${filePath} `;
+    return { value, caret: value.length };
+  }
+
+  const before = input.slice(0, atSymbolPosition);
+  const afterAt = input.slice(atSymbolPosition);
+  const whitespaceIndex = afterAt.search(/\s/);
+  const rawTail = whitespaceIndex !== -1 ? afterAt.slice(whitespaceIndex) : '';
+  const tail = rawTail.replace(/^[ \t]+/, '');
+  const separator = tail && /^\r?\n/.test(tail) ? '' : ' ';
+  const head = `${before}${filePath}${separator}`;
+  return {
+    value: `${head}${tail}`,
+    caret: head.length,
+  };
+}
+
 export function useFileMentions({ selectedProject, input, setInput, textareaRef }: UseFileMentionsOptions) {
   const [fileList, setFileList] = useState<MentionableFile[]>([]);
   const [fileMentions, setFileMentions] = useState<string[]>([]);
@@ -157,7 +181,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     }
 
     const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
-    if (textAfterAt.includes(' ')) {
+    if (/\s/.test(textAfterAt)) {
       setShowFileDropdown(false);
       setAtSymbolPosition(-1);
       dismissedQueryRef.current = null;
@@ -242,13 +266,11 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
 
   const selectFile = useCallback(
     (file: MentionableFile) => {
-      const textBeforeAt = input.slice(0, atSymbolPosition);
-      const textAfterAtQuery = input.slice(atSymbolPosition);
-      const spaceIndex = textAfterAtQuery.indexOf(' ');
-      const textAfterQuery = spaceIndex !== -1 ? textAfterAtQuery.slice(spaceIndex) : '';
-
-      const newInput = `${textBeforeAt}${file.path} ${textAfterQuery}`;
-      const newCursorPosition = textBeforeAt.length + file.path.length + 1;
+      const { value: newInput, caret: newCursorPosition } = buildFileMentionInsertion(
+        input,
+        atSymbolPosition,
+        file.path,
+      );
 
       if (textareaRef.current && !textareaRef.current.matches(':focus')) {
         textareaRef.current.focus();
@@ -262,6 +284,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
 
       setShowFileDropdown(false);
       setAtSymbolPosition(-1);
+      dismissedQueryRef.current = null;
 
       if (!textareaRef.current) {
         return;
