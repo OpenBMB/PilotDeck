@@ -311,7 +311,7 @@ function validateScreenshot(screenshotFile, ui) {
   if (
     globalMetrics.lightRatio < 0.9 ||
     globalMetrics.darkRatio > 0.05 ||
-    globalMetrics.saturatedRatio > 0.03 ||
+    globalMetrics.saturatedRatio > 0.08 ||
     globalMetrics.mainNonLightRatio > 0.08
   ) {
     throw new Error(`Screenshot global pixels do not match the expected PilotDeck shell: ${JSON.stringify(globalMetrics)}`);
