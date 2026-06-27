@@ -138,6 +138,51 @@ describe('useFileMentions selection behavior', () => {
     expect(result.current.selectedFileIndex).toBe(0);
   });
 
+  it('ignores malformed file tree nodes before building suggestions', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { name: ' README.md ', type: 'file', path: 42 },
+        { name: '', type: 'file' },
+        { name: 'bad/name.md', type: 'file' },
+        { name: 'src', type: 'directory', children: [
+          { name: 'ComposerV2.tsx', type: 'file', path: 'src/ComposerV2.tsx' },
+          { name: 'nested', type: 'directory', children: 'not-an-array' },
+        ] },
+        { name: 'unknown.md', type: 'unknown' },
+        null,
+      ],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: '@',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles).toEqual([
+        { name: 'README.md', path: 'README.md', relativePath: undefined },
+        { name: 'ComposerV2.tsx', path: 'src/ComposerV2.tsx', relativePath: 'src/ComposerV2.tsx' },
+      ]);
+    });
+  });
+
   it('updates the highlighted file suggestion from mouse hover', async () => {
     getFilesMock.mockResolvedValue({
       ok: true,
