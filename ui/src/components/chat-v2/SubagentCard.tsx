@@ -77,6 +77,10 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail, thin
   };
 
   const isClickable = Boolean(subagentId && onOpenDetail);
+  const openDetailLabel = t('subagent.openDetail', {
+    description,
+    defaultValue: `Open subagent details: ${description}`,
+  }) as string;
   const showThinking = statusLine.icon === 'running' && !hasToolResult && !!thinkingContent?.trim();
 
   const thinkingLines = useMemo(() => {
@@ -92,8 +96,15 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail, thin
     <div
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
+      aria-label={isClickable ? openDetailLabel : undefined}
+      title={isClickable ? openDetailLabel : undefined}
       onClick={isClickable ? handleClick : undefined}
-      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
+      onKeyDown={isClickable ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      } : undefined}
       className={`flex items-stretch gap-0 rounded-lg border border-neutral-200 dark:border-neutral-700 ${
         isClickable
           ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600'
