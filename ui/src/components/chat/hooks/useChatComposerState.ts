@@ -191,8 +191,9 @@ export function insertComposerTokenForTest(
 ): { nextValue: string; nextCursor: number } {
   const beforeSelection = current.slice(0, selectionStart);
   const afterSelection = current.slice(selectionEnd);
-  const insert = token === '/' && beforeSelection.length > 0 && !/\s$/.test(beforeSelection)
-    ? ' /'
+  const isAutocompleteToken = token === '/' || token === '@';
+  const insert = isAutocompleteToken && beforeSelection.length > 0 && !/\s$/.test(beforeSelection)
+    ? ` ${token}`
     : token;
 
   return {

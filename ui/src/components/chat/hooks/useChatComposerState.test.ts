@@ -45,6 +45,13 @@ describe('useChatComposerState composer token insertion', () => {
     });
   });
 
+  it('inserts a separating space before toolbar file mentions after text', () => {
+    expect(insertComposerTokenForTest('please review', 13, 13, '@')).toEqual({
+      nextValue: 'please review @',
+      nextCursor: 15,
+    });
+  });
+
   it('keeps slash commands tight at the start or after existing whitespace', () => {
     expect(insertComposerTokenForTest('', 0, 0, '/')).toEqual({
       nextValue: '/',
@@ -52,6 +59,14 @@ describe('useChatComposerState composer token insertion', () => {
     });
     expect(insertComposerTokenForTest('please ', 7, 7, '/')).toEqual({
       nextValue: 'please /',
+      nextCursor: 8,
+    });
+    expect(insertComposerTokenForTest('', 0, 0, '@')).toEqual({
+      nextValue: '@',
+      nextCursor: 1,
+    });
+    expect(insertComposerTokenForTest('please ', 7, 7, '@')).toEqual({
+      nextValue: 'please @',
       nextCursor: 8,
     });
   });
