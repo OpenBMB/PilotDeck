@@ -46,14 +46,17 @@ const namespaceIcons: Record<string, LucideIcon> = {
   other: LayoutGrid,
 };
 
-const getCommandKey = (command: CommandMenuCommand) =>
-  `${command.name}::${command.namespace || command.type || 'other'}::${command.path || ''}`;
+const normalizeNamespace = (namespace: unknown) =>
+  namespace === 'built-in' ? 'builtin' : typeof namespace === 'string' && namespace ? namespace : 'other';
 
 const getNamespace = (command: CommandMenuCommand) =>
-  command.namespace || command.type || 'other';
+  normalizeNamespace(command.namespace || command.type);
+
+const getCommandKey = (command: CommandMenuCommand) =>
+  `${command.name}::${getNamespace(command)}::${command.path || ''}`;
 
 const getNamespaceLabel = (namespace: string) =>
-  namespace.charAt(0).toUpperCase() + namespace.slice(1);
+  namespace === 'builtin' ? 'Built-in' : namespace.charAt(0).toUpperCase() + namespace.slice(1);
 
 // Anchor the menu to the textarea: above on desktop, full-bleed bottom sheet on
 // mobile. Returns inline styles so we can mix calculated coords with Tailwind

@@ -44,14 +44,36 @@ const saveCommandHistory = (projectName: string, history: Record<string, number>
   safeLocalStorage.setItem(getCommandHistoryKey(projectName), JSON.stringify(history));
 };
 
-const getCommandKey = (command: SlashCommand) =>
-  `${command.name}::${command.namespace || command.type || 'other'}::${command.path || ''}`;
-
-const getCommandUsage = (history: Record<string, number>, command: SlashCommand) =>
-  history[getCommandKey(command)] ?? history[command.name] ?? 0;
+const normalizeCommandNamespace = (namespace: unknown) =>
+  namespace === 'built-in' ? 'builtin' : typeof namespace === 'string' && namespace ? namespace : 'other';
 
 const getCommandNamespace = (command: SlashCommand) =>
-  command.namespace || command.type || 'other';
+  normalizeCommandNamespace(command.namespace || command.type);
+
+const getCommandKey = (command: SlashCommand) =>
+  `${command.name}::${getCommandNamespace(command)}::${command.path || ''}`;
+
+const getLegacyCommandKeys = (command: SlashCommand): string[] => {
+  const currentKey = getCommandKey(command);
+  const rawNamespace = command.namespace || command.type || 'other';
+  const rawKey = `${command.name}::${rawNamespace}::${command.path || ''}`;
+  const keys = new Set<string>();
+
+  if (rawKey !== currentKey) {
+    keys.add(rawKey);
+  }
+  if (getCommandNamespace(command) === 'builtin') {
+    keys.add(`${command.name}::built-in::${command.path || ''}`);
+  }
+
+  return [...keys].filter((key) => key !== currentKey);
+};
+
+const getCommandUsage = (history: Record<string, number>, command: SlashCommand) =>
+  [getCommandKey(command), ...getLegacyCommandKeys(command), command.name].reduce(
+    (usage, key) => usage + (history[key] || 0),
+    0,
+  );
 
 const groupCommandsForDisplay = (
   commands: SlashCommand[],
@@ -205,7 +227,7 @@ export function useSlashCommands({
         const allCommands: SlashCommand[] = [
           ...((data.builtIn || []) as SlashCommand[]).map((command) => ({
             ...command,
-            type: 'built-in',
+            type: 'builtin',
           })),
           ...((data.custom || []) as SlashCommand[]).map((command) => ({
             ...command,
@@ -338,6 +360,9 @@ export function useSlashCommands({
       const parsedHistory = readCommandHistory(selectedProject.name);
       const commandKey = getCommandKey(command);
       parsedHistory[commandKey] = getCommandUsage(parsedHistory, command) + 1;
+      getLegacyCommandKeys(command).forEach((legacyKey) => {
+        delete parsedHistory[legacyKey];
+      });
       delete parsedHistory[command.name];
       saveCommandHistory(selectedProject.name, parsedHistory);
     },

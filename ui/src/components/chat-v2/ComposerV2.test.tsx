@@ -219,6 +219,21 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
   });
 
+  it('shows normalized built-in slash command groups', () => {
+    renderComposer({
+      isCommandMenuOpen: true,
+      selectedCommandIndex: 0,
+      filteredCommands: [
+        { name: '/clear', description: 'Clear chat', type: 'built-in' },
+        { name: '/project', description: 'Run project command', namespace: 'project' },
+      ],
+    });
+
+    expect(screen.getByText('Built-in')).toBeTruthy();
+    expect(screen.getByText('Project')).toBeTruthy();
+    expect(screen.queryByText('Built-In')).toBeNull();
+  });
+
   it('exposes a toolbar button for slash commands', () => {
     const onInsertSlash = vi.fn();
     renderComposer({ onInsertSlash });
