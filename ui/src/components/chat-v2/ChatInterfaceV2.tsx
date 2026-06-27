@@ -515,6 +515,7 @@ function ChatInterfaceV2({
       onSelectFile={selectFile}
       onHighlightFile={highlightFileSuggestion}
       filteredCommands={filteredCommands}
+      commandQuery={commandQuery}
       selectedCommandIndex={selectedCommandIndex}
       onCommandSelect={handleCommandSelect}
       onCloseCommandMenu={dismissCommandMenu}

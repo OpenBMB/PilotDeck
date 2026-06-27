@@ -37,6 +37,7 @@ function renderComposer(overrides: Partial<ComposerV2Props> = {}) {
     onSelectFile: noop,
     onHighlightFile: noop,
     filteredCommands: [],
+    commandQuery: '',
     selectedCommandIndex: 0,
     onCommandSelect: noop,
     onCloseCommandMenu: noop,
@@ -234,6 +235,20 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.getAttribute('aria-expanded')).toBe('true');
     expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
     expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  it('distinguishes unmatched slash command searches from an empty command list', () => {
+    renderComposer({
+      isCommandMenuOpen: true,
+      commandQuery: 'unknown',
+      selectedCommandIndex: -1,
+      filteredCommands: [],
+    });
+
+    const listbox = screen.getByRole('listbox', { name: 'Available commands' });
+
+    expect(listbox.textContent).toContain('No commands match "unknown"');
+    expect(listbox.textContent).not.toContain('No commands available');
   });
 
   it('does not point slash command active descendant at a missing option', () => {
