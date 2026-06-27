@@ -21,6 +21,18 @@ const makeTextareaKeyEvent = (key: string) => ({
   nativeEvent: {},
 }) as unknown as KeyboardEvent<HTMLTextAreaElement> & { preventDefault: ReturnType<typeof vi.fn> };
 
+const getMentionHighlightText = (renderedInput: string | React.ReactNode[]) => {
+  if (!Array.isArray(renderedInput)) {
+    return [];
+  }
+
+  return renderedInput
+    .filter(React.isValidElement)
+    .map((node) => node as React.ReactElement<{ className?: string; children?: React.ReactNode }>)
+    .filter((node) => node.props.className?.includes('bg-blue-200/70'))
+    .map((node) => node.props.children);
+};
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -506,6 +518,117 @@ describe('useFileMentions selection behavior', () => {
     await waitFor(() => {
       expect(result.current.renderInputWithMentions(inputValueRef.current)).toBe(inputValueRef.current);
     });
+  });
+
+  it('highlights selected file mentions only as whitespace-delimited tokens', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const inputValueRef = { current: '@read' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ input }) =>
+        useFileMentions({
+          selectedProject,
+          input,
+          setInput,
+          textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+          inputValueRef,
+        }),
+      { initialProps: { input: inputValueRef.current } },
+    );
+
+    act(() => {
+      result.current.setCursorPosition(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleFileMentionsKeyDown(makeTextareaKeyEvent('Enter'));
+    });
+
+    inputValueRef.current = 'please README.md now';
+    rerender({ input: inputValueRef.current });
+
+    expect(getMentionHighlightText(result.current.renderInputWithMentions(inputValueRef.current))).toEqual([
+      'README.md',
+    ]);
+
+    inputValueRef.current = 'please README.md.bak now';
+    rerender({ input: inputValueRef.current });
+
+    expect(result.current.renderInputWithMentions(inputValueRef.current)).toBe(inputValueRef.current);
+  });
+
+  it('prefers the longest selected file mention when paths overlap', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { name: 'README.md', type: 'file' },
+        { name: 'docs', type: 'directory', children: [{ name: 'README.md', type: 'file' }] },
+      ],
+    } as Response);
+
+    const inputValueRef = { current: '@read' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ input }) =>
+        useFileMentions({
+          selectedProject,
+          input,
+          setInput,
+          textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+          inputValueRef,
+        }),
+      { initialProps: { input: inputValueRef.current } },
+    );
+
+    act(() => {
+      result.current.setCursorPosition(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual([
+        'README.md',
+        'docs/README.md',
+      ]);
+    });
+
+    act(() => {
+      result.current.selectFile({ name: 'README.md', path: 'README.md' });
+      result.current.selectFile({ name: 'README.md', path: 'docs/README.md' });
+    });
+
+    inputValueRef.current = 'compare docs/README.md with README.md';
+    rerender({ input: inputValueRef.current });
+
+    expect(getMentionHighlightText(result.current.renderInputWithMentions(inputValueRef.current))).toEqual([
+      'docs/README.md',
+      'README.md',
+    ]);
   });
 
   it('closes an empty file mention menu with Escape', async () => {
