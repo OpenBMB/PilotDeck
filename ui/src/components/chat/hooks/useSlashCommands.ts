@@ -47,6 +47,9 @@ const saveCommandHistory = (projectName: string, history: Record<string, number>
 const getCommandKey = (command: SlashCommand) =>
   `${command.name}::${command.namespace || command.type || 'other'}::${command.path || ''}`;
 
+const getCommandUsage = (history: Record<string, number>, command: SlashCommand) =>
+  history[getCommandKey(command)] ?? history[command.name] ?? 0;
+
 const getCommandNamespace = (command: SlashCommand) =>
   command.namespace || command.type || 'other';
 
@@ -231,8 +234,8 @@ export function useSlashCommands({
             if (bPinnedIdx === -1) return -1;
             return aPinnedIdx - bPinnedIdx;
           }
-          const commandAUsage = parsedHistory[commandA.name] || 0;
-          const commandBUsage = parsedHistory[commandB.name] || 0;
+          const commandAUsage = getCommandUsage(parsedHistory, commandA);
+          const commandBUsage = getCommandUsage(parsedHistory, commandB);
           return commandBUsage - commandAUsage;
         });
 
@@ -293,7 +296,7 @@ export function useSlashCommands({
     return slashCommands
       .map((command) => ({
         ...command,
-        usageCount: parsedHistory[command.name] || 0,
+        usageCount: getCommandUsage(parsedHistory, command),
       }))
       .filter((command) => command.usageCount > 0)
       .sort((commandA, commandB) => commandB.usageCount - commandA.usageCount)
@@ -333,7 +336,9 @@ export function useSlashCommands({
       }
 
       const parsedHistory = readCommandHistory(selectedProject.name);
-      parsedHistory[command.name] = (parsedHistory[command.name] || 0) + 1;
+      const commandKey = getCommandKey(command);
+      parsedHistory[commandKey] = getCommandUsage(parsedHistory, command) + 1;
+      delete parsedHistory[command.name];
       saveCommandHistory(selectedProject.name, parsedHistory);
     },
     [selectedProject],

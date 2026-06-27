@@ -262,3 +262,163 @@ describe('useSlashCommands query filtering behavior', () => {
     expect(inputValueRef.current).toBe('please');
   });
 });
+
+describe('useSlashCommands command history identity', () => {
+  it('uses command identity instead of name alone when sorting duplicate slash commands', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/run::custom::/tmp/general/.pilotdeck/commands/run.md': 7,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/run', description: 'Run built-in workflow' }],
+        custom: [
+          {
+            name: '/run',
+            description: 'Run project workflow',
+            path: '/tmp/general/.pilotdeck/commands/run.md',
+          },
+        ],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    expect(result.current.slashCommands[0].path).toBe('/tmp/general/.pilotdeck/commands/run.md');
+    expect(result.current.frequentCommands).toHaveLength(1);
+    expect(result.current.frequentCommands[0].path).toBe('/tmp/general/.pilotdeck/commands/run.md');
+  });
+
+  it('records selected command history under the stable command identity', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/run': 4,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [],
+        custom: [
+          {
+            name: '/run',
+            description: 'Run project workflow',
+            path: '/tmp/general/.pilotdeck/commands/run.md',
+          },
+        ],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleCommandSelect(result.current.slashCommands[0], 0, false);
+    });
+
+    const savedHistory = JSON.parse(localStorage.getItem('command_history_general') || '{}');
+    expect(savedHistory).toEqual({
+      '/run::custom::/tmp/general/.pilotdeck/commands/run.md': 5,
+    });
+    expect(savedHistory['/run']).toBeUndefined();
+  });
+
+  it('keeps legacy name-only command history as a migration fallback', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/clear': 3,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: '/help', description: 'Show help' },
+          { name: '/clear', description: 'Clear chat' },
+        ],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    expect(result.current.slashCommands[0].name).toBe('/clear');
+    expect(result.current.frequentCommands[0].name).toBe('/clear');
+  });
+});
