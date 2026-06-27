@@ -587,6 +587,28 @@ describe('ComposerV2 queue feedback', () => {
     expect(submitButton.getAttribute('aria-describedby')).toBe(status.id);
   });
 
+  it('names attachment remove buttons by file and removes the selected attachment', () => {
+    const onRemoveImage = vi.fn();
+    renderComposer({
+      onRemoveImage,
+      attachedImages: [
+        new File(['notes'], 'notes.txt', { type: 'text/plain' }),
+        new File(['report'], 'report.pdf', { type: 'application/pdf' }),
+      ],
+    });
+
+    const notesRemove = screen.getByRole('button', { name: 'Remove attachment notes.txt' });
+    const reportRemove = screen.getByRole('button', { name: 'Remove attachment report.pdf' });
+
+    expect(notesRemove.getAttribute('title')).toBe('Remove attachment notes.txt');
+    expect(reportRemove.getAttribute('title')).toBe('Remove attachment report.pdf');
+
+    fireEvent.click(reportRemove);
+
+    expect(onRemoveImage).toHaveBeenCalledTimes(1);
+    expect(onRemoveImage).toHaveBeenCalledWith(1);
+  });
+
   it('marks blank queued messages instead of letting them disappear silently', () => {
     renderComposer({
       input: '',
