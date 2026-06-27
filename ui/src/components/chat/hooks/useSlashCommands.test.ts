@@ -446,6 +446,77 @@ describe('useSlashCommands query filtering behavior', () => {
     expect(setInput).not.toHaveBeenCalled();
   });
 
+  it('repopulates commands when reopening a dismissed blank slash menu', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [
+          { name: '/clear', description: 'Clear chat' },
+          { name: '/skill_install', description: 'Install a skill' },
+        ],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string | ((previous: string) => string)) => {
+      inputValueRef.current = typeof next === 'function' ? next(inputValueRef.current) : next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/', 1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands.map((command) => command.name)).toEqual([
+        '/clear',
+        '/skill_install',
+      ]);
+    });
+
+    act(() => {
+      result.current.dismissCommandMenu();
+    });
+
+    expect(result.current.showCommandMenu).toBe(false);
+    expect(result.current.filteredCommands).toEqual([]);
+
+    inputValueRef.current = '/';
+    act(() => {
+      result.current.handleCommandInputChange('/', 1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(true);
+      expect(result.current.filteredCommands.map((command) => command.name)).toEqual([
+        '/clear',
+        '/skill_install',
+      ]);
+      expect(result.current.selectedCommandIndex).toBe(0);
+    });
+  });
+
   it('falls back to the first visible command when keyboard confirmation sees a stale selection index', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
