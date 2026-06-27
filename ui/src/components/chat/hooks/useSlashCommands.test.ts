@@ -724,6 +724,7 @@ describe('useSlashCommands command history identity', () => {
       'command_history_general',
       JSON.stringify({
         '/run::custom::/tmp/general/.pilotdeck/commands/run.md': '4',
+        '/tiny::custom::/tmp/general/.pilotdeck/commands/tiny.md': 0.5,
         '/stale::custom::/tmp/general/.pilotdeck/commands/stale.md': 'not-a-number',
       }),
     );
@@ -736,6 +737,11 @@ describe('useSlashCommands command history identity', () => {
             name: '/stale',
             description: 'Run stale project workflow',
             path: '/tmp/general/.pilotdeck/commands/stale.md',
+          },
+          {
+            name: '/tiny',
+            description: 'Run tiny project workflow',
+            path: '/tmp/general/.pilotdeck/commands/tiny.md',
           },
           {
             name: '/run',
@@ -769,7 +775,7 @@ describe('useSlashCommands command history identity', () => {
     );
 
     await waitFor(() => {
-      expect(result.current.slashCommandsCount).toBe(2);
+      expect(result.current.slashCommandsCount).toBe(3);
     });
 
     expect(result.current.frequentCommands.map((command) => command.name)).toEqual([
@@ -784,6 +790,7 @@ describe('useSlashCommands command history identity', () => {
     expect(savedHistory).toEqual({
       '/run::custom::/tmp/general/.pilotdeck/commands/run.md': 5,
     });
+    expect(savedHistory['/tiny::custom::/tmp/general/.pilotdeck/commands/tiny.md']).toBeUndefined();
   });
 
   it('ignores malformed command history payloads without hiding commands', async () => {

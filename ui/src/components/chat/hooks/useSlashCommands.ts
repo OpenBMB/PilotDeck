@@ -41,11 +41,12 @@ const normalizeCommandHistory = (value: unknown): Record<string, number> => {
             ? Number(rawCount)
             : NaN;
 
-      if (!Number.isFinite(count) || count <= 0) {
+      const normalizedCount = Math.floor(count);
+      if (!Number.isFinite(normalizedCount) || normalizedCount <= 0) {
         return [];
       }
 
-      return [[key, Math.floor(count)]];
+      return [[key, normalizedCount]];
     }),
   );
 };
