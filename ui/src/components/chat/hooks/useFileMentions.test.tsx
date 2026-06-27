@@ -5,7 +5,7 @@ import type { KeyboardEvent } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../../utils/api';
 import type { Project } from '../../../types/app';
-import { useFileMentions } from './useFileMentions';
+import { buildFileMentionInsertion, useFileMentions } from './useFileMentions';
 
 vi.mock('../../../utils/api', () => ({
   api: {
@@ -23,6 +23,48 @@ const makeTextareaKeyEvent = (key: string) => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe('useFileMentions insertion behavior', () => {
+  it('replaces a partial file mention with the selected path', () => {
+    expect(buildFileMentionInsertion('please @read', 7, 'README.md')).toEqual({
+      value: 'please README.md ',
+      caret: 17,
+    });
+  });
+
+  it('keeps trailing text with a single separator after the selected path', () => {
+    expect(buildFileMentionInsertion('please @read this file', 7, 'README.md')).toEqual({
+      value: 'please README.md this file',
+      caret: 17,
+    });
+    expect(buildFileMentionInsertion('@read this file', 0, 'README.md')).toEqual({
+      value: 'README.md this file',
+      caret: 10,
+    });
+  });
+
+  it('preserves multiline tail text when replacing the file mention query', () => {
+    expect(buildFileMentionInsertion('@read\nthis file', 0, 'README.md')).toEqual({
+      value: 'README.md\nthis file',
+      caret: 9,
+    });
+    expect(buildFileMentionInsertion('please @read\nthis file', 7, 'README.md')).toEqual({
+      value: 'please README.md\nthis file',
+      caret: 16,
+    });
+  });
+
+  it('falls back to appending the file path with safe spacing when no mention is active', () => {
+    expect(buildFileMentionInsertion('please review', -1, 'README.md')).toEqual({
+      value: 'please review README.md ',
+      caret: 24,
+    });
+    expect(buildFileMentionInsertion('please review ', -1, 'README.md')).toEqual({
+      value: 'please review README.md ',
+      caret: 24,
+    });
+  });
 });
 
 describe('useFileMentions selection behavior', () => {
@@ -155,6 +197,76 @@ describe('useFileMentions selection behavior', () => {
     expect(enterEvent.preventDefault).toHaveBeenCalledTimes(1);
     expect(tabEvent.preventDefault).toHaveBeenCalledTimes(1);
     expect(setInput).not.toHaveBeenCalled();
+  });
+
+  it('closes the file mention menu when the query crosses a newline', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: '@read\nnext line',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(15);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(false);
+    });
+  });
+
+  it('inserts a selected file without adding double spaces before trailing text', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useFileMentions({
+        selectedProject,
+        input: 'please @read this file',
+        setInput,
+        textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+      }),
+    );
+
+    act(() => {
+      result.current.setCursorPosition(12);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleFileMentionsKeyDown(makeTextareaKeyEvent('Enter'));
+    });
+
+    expect(setInput).toHaveBeenCalledWith('please README.md this file');
   });
 
   it('closes an empty file mention menu with Escape', async () => {
