@@ -350,7 +350,7 @@ export function useSlashCommands({
         ...command,
         usageCount: getCommandUsage(parsedHistory, command),
       }))
-      .filter((command) => command.usageCount > 0)
+      .filter((command) => command.usageCount > 0 && getCommandDisplayNamespace(command) !== 'pinned')
       .sort((commandA, commandB) => commandB.usageCount - commandA.usageCount)
       .slice(0, 5);
   }, [selectedProject, slashCommands]);
