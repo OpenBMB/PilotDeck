@@ -33,6 +33,7 @@ type CommandMenuProps = {
   position?: { top: number; left: number; bottom?: number };
   isOpen?: boolean;
   frequentCommands?: CommandMenuCommand[];
+  query?: string;
 };
 
 // Lucide icons replace the legacy ASCII namespace tags ([B]/[P]/[U]/[O]/[*]).
@@ -92,6 +93,7 @@ export default function CommandMenu({
   onClose,
   position = { top: 0, left: 0 },
   isOpen = false,
+  query = '',
 }: CommandMenuProps) {
   const { t } = useTranslation('chat');
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -135,6 +137,14 @@ export default function CommandMenu({
   );
 
   if (commands.length === 0) {
+    const trimmedQuery = query.trim();
+    const emptyMessage = trimmedQuery
+      ? t('commandMenu.noMatches', {
+          query: trimmedQuery,
+          defaultValue: `No commands match "${trimmedQuery}"`,
+        })
+      : t('commandMenu.empty', { defaultValue: 'No commands available' });
+
     return (
       <div
         id={id}
@@ -144,7 +154,7 @@ export default function CommandMenu({
         className={cn(containerClass, 'px-4 py-5 text-center text-[13px] text-neutral-500 dark:text-neutral-400')}
         style={{ ...menuPosition, zIndex: 1000 }}
       >
-        {t('commandMenu.empty', { defaultValue: 'No commands available' })}
+        {emptyMessage}
       </div>
     );
   }

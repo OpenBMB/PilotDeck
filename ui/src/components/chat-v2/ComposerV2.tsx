@@ -77,6 +77,7 @@ export type ComposerV2Props = {
   onHighlightFile: (index: number) => void;
 
   filteredCommands: SlashCommand[];
+  commandQuery: string;
   selectedCommandIndex: number;
   onCommandSelect: (command: SlashCommand, index: number, isHover: boolean) => void;
   onCloseCommandMenu: () => void;
@@ -284,6 +285,7 @@ export default function ComposerV2({
   onSelectFile,
   onHighlightFile,
   filteredCommands,
+  commandQuery,
   selectedCommandIndex,
   onCommandSelect,
   onCloseCommandMenu,
@@ -813,6 +815,7 @@ export default function ComposerV2({
               <CommandMenu
                 id={commandMenuId}
                 commands={filteredCommands}
+                query={commandQuery}
                 selectedIndex={selectedCommandIndex}
                 onSelect={onCommandSelect}
                 onClose={onCloseCommandMenu}
