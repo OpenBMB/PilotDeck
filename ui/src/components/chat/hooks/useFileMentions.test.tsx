@@ -198,6 +198,66 @@ describe('useFileMentions selection behavior', () => {
 
     expect(handled).toBe(true);
     expect(escapeEvent.preventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(false);
+    });
+  });
+
+  it('keeps a dismissed empty file mention menu closed until the query changes', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const setInput = vi.fn();
+    const textareaRef = { current: document.createElement('textarea') };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ input }) =>
+        useFileMentions({
+          selectedProject,
+          input,
+          setInput,
+          textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+        }),
+      { initialProps: { input: '@missing' } },
+    );
+
+    act(() => {
+      result.current.setCursorPosition(8);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles).toHaveLength(0);
+    });
+
+    act(() => {
+      result.current.handleFileMentionsKeyDown(makeTextareaKeyEvent('Escape'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(false);
+    });
+
+    rerender({ input: '@missing' });
+
     expect(result.current.showFileDropdown).toBe(false);
+
+    rerender({ input: '@read' });
+
+    act(() => {
+      result.current.setCursorPosition(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
   });
 });
