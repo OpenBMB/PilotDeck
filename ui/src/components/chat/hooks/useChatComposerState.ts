@@ -1093,6 +1093,8 @@ export function useChatComposerState({
 
       if (char === '/') {
         handleCommandInputChange(nextValue, nextCursor);
+      } else if (char === '@') {
+        resetCommandMenuState();
       }
 
       requestAnimationFrame(() => {
@@ -1108,7 +1110,7 @@ export function useChatComposerState({
         }
       });
     },
-    [handleCommandInputChange, input, setCursorPosition, setInput, textareaRef],
+    [handleCommandInputChange, input, resetCommandMenuState, setCursorPosition, setInput, textareaRef],
   );
 
   const handleKeyDown = useCallback(

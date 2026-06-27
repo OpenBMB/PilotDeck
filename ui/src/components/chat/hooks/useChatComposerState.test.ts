@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ChangeEvent } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { authenticatedFetch } from '../../../utils/api';
+import type { Project } from '../../../types/app';
 import type { QueuedChatInput } from '../types/types';
 import {
   canQueueInputForTest,
@@ -7,11 +12,75 @@ import {
   moveQueuedInputForTest,
   settleQueuedDispatchForTest,
   shouldCycleRunModeOnKeyDown,
+  useChatComposerState,
 } from './useChatComposerState';
+
+vi.mock('../../../utils/api', () => ({
+  authenticatedFetch: vi.fn(),
+  api: {
+    getFiles: vi.fn(() => Promise.resolve({
+      ok: true,
+      json: async () => [],
+    })),
+  },
+}));
+
+vi.mock('react-dropzone', () => ({
+  useDropzone: () => ({
+    getRootProps: () => ({}),
+    getInputProps: () => ({}),
+    isDragActive: false,
+    open: vi.fn(),
+  }),
+}));
+
+const fetchMock = vi.mocked(authenticatedFetch);
+
+afterEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 
 function keyEvent(key: string, shiftKey = false) {
   return { key, shiftKey };
 }
+
+const renderComposerState = () => {
+  const selectedProject = {
+    name: 'general',
+    path: '/tmp/general',
+    fullPath: '/tmp/general',
+  } as Project;
+
+  return renderHook(() =>
+    useChatComposerState({
+      selectedProject,
+      selectedSession: null,
+      currentSessionId: null,
+      model: 'test-model',
+      permissionMode: 'default',
+      cycleRunMode: vi.fn(),
+      isLoading: false,
+      canAbortSession: false,
+      tokenBudget: null,
+      sendMessage: vi.fn(),
+      sendByCtrlEnter: false,
+      pendingViewSessionRef: { current: null },
+      scrollToBottom: vi.fn(),
+      addMessage: vi.fn(),
+      clearMessages: vi.fn(),
+      rewindMessages: vi.fn(),
+      setIsLoading: vi.fn(),
+      setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(),
+      setClaudeStatus: vi.fn(),
+      setPilotDeckStatus: vi.fn(),
+      setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [],
+      setPendingPermissionRequests: vi.fn(),
+    }),
+  );
+};
 
 describe('useChatComposerState keyboard shortcuts', () => {
   it('uses Shift+Tab to cycle run mode when no completion menu is open', () => {
@@ -76,6 +145,49 @@ describe('useChatComposerState composer token insertion', () => {
       nextValue: 'please @ this',
       nextCursor: 8,
     });
+  });
+});
+
+describe('useChatComposerState autocomplete coordination', () => {
+  it('closes an open slash command menu before inserting a file mention token', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+    localStorage.setItem('draft_input_general', '/');
+
+    const { result } = renderComposerState();
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: '/', selectionStart: 1 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(true);
+    });
+
+    const textarea = document.createElement('textarea');
+    textarea.value = result.current.input;
+    result.current.textareaRef.current = textarea;
+    textarea.setSelectionRange(1, 1);
+
+    act(() => {
+      result.current.insertAtCursor('@');
+    });
+
+    expect(result.current.input).toBe('/ @');
+    expect(result.current.showCommandMenu).toBe(false);
+    expect(result.current.commandQuery).toBe('');
+    expect(result.current.filteredCommands).toEqual([]);
   });
 });
 
