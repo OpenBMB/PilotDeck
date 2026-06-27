@@ -26,21 +26,36 @@ interface UseFileMentionsOptions {
   inputValueRef?: { current: string };
 }
 
-const flattenFileTree = (files: ProjectFileNode[], basePath = ''): MentionableFile[] => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isValidFileName = (name: unknown): name is string =>
+  typeof name === 'string' && name.trim().length > 0 && !name.includes('/');
+
+const flattenFileTree = (files: unknown, basePath = ''): MentionableFile[] => {
+  if (!Array.isArray(files)) {
+    return [];
+  }
+
   let flattened: MentionableFile[] = [];
 
   files.forEach((file) => {
-    const fullPath = basePath ? `${basePath}/${file.name}` : file.name;
-    if (file.type === 'directory' && file.children) {
+    if (!isRecord(file) || !isValidFileName(file.name)) {
+      return;
+    }
+
+    const fileName = file.name.trim();
+    const fullPath = basePath ? `${basePath}/${fileName}` : fileName;
+    if (file.type === 'directory' && Array.isArray(file.children)) {
       flattened = flattened.concat(flattenFileTree(file.children, fullPath));
       return;
     }
 
     if (file.type === 'file') {
       flattened.push({
-        name: file.name,
+        name: fileName,
         path: fullPath,
-        relativePath: file.path,
+        relativePath: typeof file.path === 'string' ? file.path : undefined,
       });
     }
   });
@@ -134,7 +149,7 @@ export function useFileMentions({
       if (!response.ok) {
         return;
       }
-      const files = (await response.json()) as ProjectFileNode[];
+      const files = await response.json();
       if (abortController.signal.aborted) {
         return;
       }
