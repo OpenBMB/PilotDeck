@@ -143,6 +143,23 @@ describe('ComposerV2 queue feedback', () => {
     expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
   });
 
+  it('does not point file suggestion active descendant at a missing option', () => {
+    renderComposer({
+      showFileDropdown: true,
+      selectedFileIndex: 5,
+      filteredFiles: [
+        { name: 'README.md', path: 'README.md' },
+      ],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'File suggestions' });
+
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
   it('highlights a file suggestion on hover so mouse and keyboard selection stay aligned', () => {
     const onHighlightFile = vi.fn();
     renderComposer({
@@ -214,6 +231,23 @@ describe('ComposerV2 queue feedback', () => {
     const listbox = screen.getByRole('listbox', { name: 'Available commands' });
 
     expect(listbox.textContent).toContain('No commands available');
+    expect(textarea.getAttribute('aria-expanded')).toBe('true');
+    expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  it('does not point slash command active descendant at a missing option', () => {
+    renderComposer({
+      isCommandMenuOpen: true,
+      selectedCommandIndex: 5,
+      filteredCommands: [
+        { name: '/clear', description: 'Clear chat' },
+      ],
+    });
+
+    const textarea = screen.getByPlaceholderText('Tell PilotDeck what you want to get done...');
+    const listbox = screen.getByRole('listbox', { name: 'Available commands' });
+
     expect(textarea.getAttribute('aria-expanded')).toBe('true');
     expect(textarea.getAttribute('aria-controls')).toBe(listbox.id);
     expect(textarea.hasAttribute('aria-activedescendant')).toBe(false);
