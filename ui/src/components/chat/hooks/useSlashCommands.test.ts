@@ -206,6 +206,54 @@ describe('useSlashCommands query filtering behavior', () => {
     expect(setInput).not.toHaveBeenCalled();
   });
 
+  it('keeps built-in commands in the expected slash menu group order', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [{ name: '/project', namespace: 'project', description: 'Run project command' }],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(2);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/', 1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredCommands.map((command) => command.name)).toEqual([
+        '/clear',
+        '/project',
+      ]);
+    });
+    expect(result.current.filteredCommands[0].type).toBe('builtin');
+  });
+
   it('dismisses an unmatched slash query with Escape instead of leaving it behind', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -420,5 +468,59 @@ describe('useSlashCommands command history identity', () => {
 
     expect(result.current.slashCommands[0].name).toBe('/clear');
     expect(result.current.frequentCommands[0].name).toBe('/clear');
+  });
+
+  it('migrates legacy built-in command history keys to the normalized builtin identity', async () => {
+    localStorage.setItem(
+      'command_history_general',
+      JSON.stringify({
+        '/clear::built-in::': 2,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+
+    const inputValueRef = { current: '/' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        selectedProject,
+        input: inputValueRef.current,
+        setInput,
+        textareaRef,
+        inputValueRef,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    expect(result.current.frequentCommands[0].name).toBe('/clear');
+
+    act(() => {
+      result.current.handleCommandSelect(result.current.slashCommands[0], 0, false);
+    });
+
+    const savedHistory = JSON.parse(localStorage.getItem('command_history_general') || '{}');
+    expect(savedHistory).toEqual({
+      '/clear::builtin::': 3,
+    });
+    expect(savedHistory['/clear::built-in::']).toBeUndefined();
   });
 });
