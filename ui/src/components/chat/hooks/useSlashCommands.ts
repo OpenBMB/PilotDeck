@@ -282,12 +282,15 @@ export function useSlashCommands({
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
   const [slashPosition, setSlashPosition] = useState(-1);
   const [commandHistoryRevision, setCommandHistoryRevision] = useState(0);
+  const selectedProjectPath = selectedProject?.path ?? null;
+  const selectedProjectName = selectedProject?.name ?? null;
 
   const resetCommandMenuState = useCallback(() => {
     setShowCommandMenu(false);
     setSlashPosition(-1);
     setCommandQuery('');
     setSelectedCommandIndex(-1);
+    setFilteredCommands([]);
   }, []);
 
   const dismissCommandMenu = useCallback(() => {
@@ -305,11 +308,12 @@ export function useSlashCommands({
 
   useEffect(() => {
     let isStale = false;
+    resetCommandMenuState();
+    setSlashCommands([]);
+    setFilteredCommands([]);
 
     const fetchCommands = async () => {
-      if (!selectedProject) {
-        setSlashCommands([]);
-        setFilteredCommands([]);
+      if (!selectedProjectPath || !selectedProjectName) {
         return;
       }
 
@@ -320,7 +324,7 @@ export function useSlashCommands({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            projectPath: selectedProject.path,
+            projectPath: selectedProjectPath,
           }),
         });
 
@@ -349,7 +353,7 @@ export function useSlashCommands({
           });
         });
 
-        const parsedHistory = readCommandHistory(selectedProject.name);
+        const parsedHistory = readCommandHistory(selectedProjectName);
         const sortedCommands = [...allCommands].sort((commandA, commandB) => {
           const commandAKey = getCommandKey(commandA);
           const commandBKey = getCommandKey(commandB);
@@ -384,7 +388,7 @@ export function useSlashCommands({
     return () => {
       isStale = true;
     };
-  }, [selectedProject]);
+  }, [resetCommandMenuState, selectedProjectName, selectedProjectPath]);
 
   useEffect(() => {
     if (!showCommandMenu) {

@@ -185,6 +185,84 @@ describe('useSlashCommands query filtering behavior', () => {
     );
   });
 
+  it('clears the open slash command menu when switching projects', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          builtIn: [{ name: '/old_project', description: 'Old project command' }],
+          custom: [],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          builtIn: [{ name: '/new_project', description: 'New project command' }],
+          custom: [],
+        }),
+      } as Response);
+
+    const inputValueRef = { current: '/old' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textarea = document.createElement('textarea');
+    const textareaRef = { current: textarea };
+    const firstProject = {
+      name: 'old-project',
+      path: '/tmp/old-project',
+      fullPath: '/tmp/old-project',
+    } as Project;
+    const secondProject = {
+      name: 'new-project',
+      path: '/tmp/new-project',
+      fullPath: '/tmp/new-project',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ selectedProject }) =>
+        useSlashCommands({
+          selectedProject,
+          input: inputValueRef.current,
+          setInput,
+          textareaRef,
+          inputValueRef,
+        }),
+      { initialProps: { selectedProject: firstProject } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommands.map((command) => command.name)).toEqual([
+        '/old_project',
+      ]);
+    });
+
+    act(() => {
+      result.current.handleCommandInputChange('/old', 4);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(true);
+      expect(result.current.commandQuery).toBe('old');
+      expect(result.current.selectedCommandIndex).toBe(0);
+    });
+
+    rerender({ selectedProject: secondProject });
+
+    await waitFor(() => {
+      expect(result.current.showCommandMenu).toBe(false);
+      expect(result.current.commandQuery).toBe('');
+      expect(result.current.selectedCommandIndex).toBe(-1);
+      expect(result.current.filteredCommands).toEqual([]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.slashCommands.map((command) => command.name)).toEqual([
+        '/new_project',
+      ]);
+    });
+  });
+
   it('updates the slash query synchronously for fast keyboard confirmation', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
