@@ -428,11 +428,17 @@ export default function ComposerV2({
       : (t('queue.ready', { defaultValue: 'Sending next' }) as string);
   const fileSuggestionsOpen = showFileDropdown;
   const fileSuggestionsHaveOptions = filteredFiles.length > 0;
-  const selectedFileOptionId = fileSuggestionsOpen && fileSuggestionsHaveOptions && selectedFileIndex >= 0
+  const selectedFileOptionId = fileSuggestionsOpen
+    && fileSuggestionsHaveOptions
+    && selectedFileIndex >= 0
+    && selectedFileIndex < filteredFiles.length
     ? `${fileSuggestionsId}-option-${selectedFileIndex}`
     : undefined;
   const commandMenuOpen = isCommandMenuOpen;
-  const selectedCommandOptionId = commandMenuOpen && filteredCommands.length > 0 && selectedCommandIndex >= 0
+  const selectedCommandOptionId = commandMenuOpen
+    && filteredCommands.length > 0
+    && selectedCommandIndex >= 0
+    && selectedCommandIndex < filteredCommands.length
     ? `${commandMenuId}-option-${selectedCommandIndex}`
     : undefined;
   const activeAutocompleteId = fileSuggestionsOpen
