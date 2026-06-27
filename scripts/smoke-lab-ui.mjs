@@ -19,6 +19,34 @@ const screenshotPath =
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function waitForProcessExit(child, timeoutMs = 2000) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+function cleanupUserDataDir(userDataDir) {
+  try {
+    rmSync(userDataDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Warning: unable to remove Chrome smoke profile ${userDataDir}: ${message}`);
+  }
+}
+
 async function getFreePort() {
   const server = createServer();
   await new Promise((resolve, reject) => {
@@ -417,7 +445,8 @@ async function main() {
     if (!chrome.killed) {
       chrome.kill('SIGTERM');
     }
-    rmSync(userDataDir, { recursive: true, force: true });
+    await waitForProcessExit(chrome);
+    cleanupUserDataDir(userDataDir);
   }
 }
 
