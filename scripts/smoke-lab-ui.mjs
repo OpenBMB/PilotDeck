@@ -140,6 +140,15 @@ async function waitForStableUi(client) {
         const text = root?.textContent || '';
         const rootRect = root?.getBoundingClientRect();
         const textarea = document.querySelector('textarea');
+        const visibleLogo = Array.from(document.querySelectorAll('button[aria-label="PilotDeck"] img'))
+          .find((img) => {
+            const style = window.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            return style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              rect.width >= 24 &&
+              rect.height >= 16;
+          });
         return {
           title: document.title,
           readyState: document.readyState,
@@ -147,6 +156,7 @@ async function waitForStableUi(client) {
           rootTextLength: text.trim().length,
           hasPrompt: text.includes("What's on the plan today?"),
           hasComposer: Boolean(textarea),
+          logoReady: Boolean(visibleLogo?.complete && visibleLogo.naturalWidth > 0),
           bodyWidth: Math.round(document.body?.getBoundingClientRect().width || 0),
           rootHeight: Math.round(rootRect?.height || 0),
         };
@@ -159,8 +169,10 @@ async function waitForStableUi(client) {
       lastState.rootPresent &&
       lastState.hasPrompt &&
       lastState.hasComposer &&
+      lastState.logoReady &&
       lastState.rootHeight >= 600
     ) {
+      await sleep(150);
       return lastState;
     }
     await sleep(250);
