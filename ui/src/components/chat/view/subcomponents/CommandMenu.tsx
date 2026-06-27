@@ -17,6 +17,7 @@ type CommandMenuCommand = {
   name: string;
   description?: string;
   namespace?: string;
+  displayNamespace?: string;
   path?: string;
   type?: string;
   metadata?: { type?: string; [key: string]: unknown };
@@ -50,7 +51,7 @@ const normalizeNamespace = (namespace: unknown) =>
   namespace === 'built-in' ? 'builtin' : typeof namespace === 'string' && namespace ? namespace : 'other';
 
 const getNamespace = (command: CommandMenuCommand) =>
-  normalizeNamespace(command.namespace || command.type);
+  normalizeNamespace(command.displayNamespace || command.namespace || command.type);
 
 const getCommandKey = (command: CommandMenuCommand) =>
   `${command.name}::${getNamespace(command)}::${command.path || ''}`;

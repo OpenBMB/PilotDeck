@@ -10,6 +10,7 @@ export interface SlashCommand {
   name: string;
   description?: string;
   namespace?: string;
+  displayNamespace?: string;
   path?: string;
   type?: string;
   metadata?: Record<string, unknown>;
@@ -48,7 +49,14 @@ const normalizeCommandNamespace = (namespace: unknown) =>
   namespace === 'built-in' ? 'builtin' : typeof namespace === 'string' && namespace ? namespace : 'other';
 
 const getCommandNamespace = (command: SlashCommand) =>
-  normalizeCommandNamespace(command.namespace || command.type);
+  normalizeCommandNamespace(
+    command.namespace === 'pinned' || command.namespace === 'frequent'
+      ? command.type
+      : command.namespace || command.type,
+  );
+
+const getCommandDisplayNamespace = (command: SlashCommand) =>
+  normalizeCommandNamespace(command.displayNamespace || command.namespace || command.type);
 
 const getCommandKey = (command: SlashCommand) =>
   `${command.name}::${getCommandNamespace(command)}::${command.path || ''}`;
@@ -77,7 +85,7 @@ const getCommandUsage = (history: Record<string, number>, command: SlashCommand)
 
 const getPinnedMatchKeys = (command: SlashCommand): string[] => {
   const normalizedKey = getCommandKey(command);
-  if (getCommandNamespace(command) !== 'pinned') {
+  if (getCommandDisplayNamespace(command) !== 'pinned') {
     return [normalizedKey];
   }
 
@@ -105,7 +113,7 @@ const groupCommandsForDisplay = (
     if (frequentCommandKeys.has(getCommandKey(command))) {
       continue;
     }
-    const namespace = getCommandNamespace(command);
+    const namespace = getCommandDisplayNamespace(command);
     const group = groups.get(namespace) || [];
     group.push(command);
     groups.set(namespace, group);
@@ -116,7 +124,7 @@ const groupCommandsForDisplay = (
       'frequent',
       frequentCommands.map((command) => ({
         ...command,
-        namespace: 'frequent',
+        displayNamespace: 'frequent',
       })),
     );
   }
