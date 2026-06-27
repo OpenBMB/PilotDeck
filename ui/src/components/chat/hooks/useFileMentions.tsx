@@ -170,7 +170,12 @@ export function useFileMentions({
   // Initial fetch + reset on project change.
   useEffect(() => {
     setFileList([]);
+    setFileMentions([]);
     setFilteredFiles([]);
+    setShowFileDropdown(false);
+    setSelectedFileIndex(-1);
+    setAtSymbolPosition(-1);
+    dismissedQueryRef.current = null;
     fetchProjectFiles();
     return () => {
       inFlightFetchRef.current?.abort();

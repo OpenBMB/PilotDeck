@@ -451,6 +451,63 @@ describe('useFileMentions selection behavior', () => {
     expect(inputValueRef.current).toBe('README.md ');
   });
 
+  it('clears selected file mention highlights when switching projects', async () => {
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+
+    const inputValueRef = { current: '@read' };
+    const setInput = vi.fn((next: string) => {
+      inputValueRef.current = next;
+    });
+    const textareaRef = { current: document.createElement('textarea') };
+    const firstProject = {
+      name: 'first',
+      path: '/tmp/first',
+      fullPath: '/tmp/first',
+    } as Project;
+    const secondProject = {
+      name: 'second',
+      path: '/tmp/second',
+      fullPath: '/tmp/second',
+    } as Project;
+
+    const { result, rerender } = renderHook(
+      ({ selectedProject, input }) =>
+        useFileMentions({
+          selectedProject,
+          input,
+          setInput,
+          textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+          inputValueRef,
+        }),
+      { initialProps: { selectedProject: firstProject, input: inputValueRef.current } },
+    );
+
+    act(() => {
+      result.current.setCursorPosition(5);
+    });
+
+    await waitFor(() => {
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleFileMentionsKeyDown(makeTextareaKeyEvent('Enter'));
+    });
+
+    rerender({ selectedProject: firstProject, input: inputValueRef.current });
+
+    expect(Array.isArray(result.current.renderInputWithMentions(inputValueRef.current))).toBe(true);
+
+    rerender({ selectedProject: secondProject, input: inputValueRef.current });
+
+    await waitFor(() => {
+      expect(result.current.renderInputWithMentions(inputValueRef.current)).toBe(inputValueRef.current);
+    });
+  });
+
   it('closes an empty file mention menu with Escape', async () => {
     getFilesMock.mockResolvedValue({
       ok: true,
