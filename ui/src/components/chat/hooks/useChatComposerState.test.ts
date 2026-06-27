@@ -158,6 +158,43 @@ describe('useChatComposerState composer token insertion', () => {
 });
 
 describe('useChatComposerState autocomplete coordination', () => {
+  it('closes file mention suggestions when the composer is cleared', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        builtIn: [{ name: '/clear', description: 'Clear chat' }],
+        custom: [],
+      }),
+    } as Response);
+    getFilesMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ name: 'README.md', type: 'file' }],
+    } as Response);
+    localStorage.setItem('draft_input_general', '@read');
+
+    const { result } = renderComposerState();
+
+    act(() => {
+      result.current.handleInputChange({
+        target: { value: '@read', selectionStart: 5 },
+      } as ChangeEvent<HTMLTextAreaElement>);
+    });
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles.map((file) => file.path)).toEqual(['README.md']);
+    });
+
+    act(() => {
+      result.current.handleClearInput();
+    });
+
+    expect(result.current.input).toBe('');
+    expect(result.current.showFileDropdown).toBe(false);
+    expect(result.current.filteredFiles).toEqual([]);
+    expect(result.current.selectedFileIndex).toBe(-1);
+  });
+
   it('closes an open file mention menu before inserting a slash command token', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
