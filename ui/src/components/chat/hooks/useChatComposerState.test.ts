@@ -584,6 +584,100 @@ describe('useChatComposerState slash command submission', () => {
     });
   });
 
+  it('executes slash commands when arguments start on the next line', async () => {
+    const addMessage = vi.fn();
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/commands/list') {
+        return {
+          ok: true,
+          json: async () => ({
+            builtIn: [{ name: '/status', description: 'Show status' }],
+            custom: [],
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          type: 'builtin',
+          action: 'status',
+          data: {
+            version: '1.0.0',
+            uptime: '1s',
+            model: 'test-model',
+            provider: 'pilotdeck',
+            nodeVersion: 'v20',
+            platform: 'darwin',
+          },
+        }),
+      } as Response;
+    });
+    localStorage.setItem('draft_input_general', '/status\n--json details');
+
+    const selectedProject = {
+      name: 'general',
+      path: '/tmp/general',
+      fullPath: '/tmp/general',
+    } as Project;
+
+    const { result } = renderHook(() =>
+      useChatComposerState({
+        selectedProject,
+        selectedSession: null,
+        currentSessionId: null,
+        model: 'test-model',
+        permissionMode: 'default',
+        cycleRunMode: vi.fn(),
+        isLoading: false,
+        canAbortSession: false,
+        tokenBudget: null,
+        sendMessage: vi.fn(),
+        sendByCtrlEnter: false,
+        pendingViewSessionRef: { current: null },
+        scrollToBottom: vi.fn(),
+        addMessage,
+        clearMessages: vi.fn(),
+        rewindMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        setCanAbortSession: vi.fn(),
+        setIsAborting: vi.fn(),
+        setClaudeStatus: vi.fn(),
+        setPilotDeckStatus: vi.fn(),
+        setIsUserScrolledUp: vi.fn(),
+        pendingPermissionRequests: [],
+        setPendingPermissionRequests: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.slashCommandsCount).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/commands/execute', expect.objectContaining({
+        body: expect.any(String),
+      }));
+    });
+
+    const executeCall = fetchMock.mock.calls.find(([url]) => url === '/api/commands/execute');
+    expect(executeCall).toBeTruthy();
+    const requestBody = JSON.parse(String(executeCall?.[1]?.body));
+    expect(requestBody).toEqual(expect.objectContaining({
+      commandName: '/status',
+      args: ['--json', 'details'],
+      rawArgs: '--json details',
+      rawInput: '/status\n--json details',
+    }));
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'assistant',
+      content: expect.stringContaining('**System Status**'),
+    }));
+  });
+
   it('does not overwrite a newer draft when a custom slash command returns content late', async () => {
     let resolveCommand!: (response: Response) => void;
     const addMessage = vi.fn();
