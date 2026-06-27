@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
+import type { Dispatch, KeyboardEvent, ReactNode, RefObject, SetStateAction } from 'react';
 import { api } from '../../../utils/api';
 import { isImeEnterEvent } from '../../../utils/ime';
-import { escapeRegExp } from '../utils/chatFormatting';
 import type { Project } from '../../../types/app';
 
 interface ProjectFileNode {
@@ -31,6 +30,23 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isValidFileName = (name: unknown): name is string =>
   typeof name === 'string' && name.trim().length > 0 && !name.includes('/');
+
+const isMentionBoundary = (character: string | undefined) =>
+  character === undefined || /\s/.test(character);
+
+const hasFileMentionBoundaries = (text: string, startIndex: number, mentionLength: number) =>
+  isMentionBoundary(text[startIndex - 1]) && isMentionBoundary(text[startIndex + mentionLength]);
+
+const containsBoundedFileMention = (text: string, mention: string) => {
+  let index = text.indexOf(mention);
+  while (index !== -1) {
+    if (hasFileMentionBoundaries(text, index, mention.length)) {
+      return true;
+    }
+    index = text.indexOf(mention, index + 1);
+  }
+  return false;
+};
 
 const flattenFileTree = (files: unknown, basePath = ''): MentionableFile[] => {
   if (!Array.isArray(files)) {
@@ -248,7 +264,7 @@ export function useFileMentions({
     if (!input || fileMentions.length === 0) {
       return [];
     }
-    return fileMentions.filter((path) => input.includes(path));
+    return fileMentions.filter((path) => containsBoundedFileMention(input, path));
   }, [fileMentions, input]);
 
   const sortedFileMentions = useMemo(() => {
@@ -259,40 +275,59 @@ export function useFileMentions({
     return uniqueMentions.sort((mentionA, mentionB) => mentionB.length - mentionA.length);
   }, [activeFileMentions]);
 
-  const fileMentionRegex = useMemo(() => {
-    if (sortedFileMentions.length === 0) {
-      return null;
-    }
-    const pattern = sortedFileMentions.map(escapeRegExp).join('|');
-    return new RegExp(`(${pattern})`, 'g');
-  }, [sortedFileMentions]);
-
-  const fileMentionSet = useMemo(() => new Set(sortedFileMentions), [sortedFileMentions]);
-
   const renderInputWithMentions = useCallback(
     (text: string) => {
       if (!text) {
         return '';
       }
-      if (!fileMentionRegex) {
+      if (sortedFileMentions.length === 0) {
         return text;
       }
 
-      const parts = text.split(fileMentionRegex);
-      return parts.map((part, index) =>
-        fileMentionSet.has(part) ? (
+      const parts: ReactNode[] = [];
+      let cursor = 0;
+      let plainTextStart = 0;
+
+      while (cursor < text.length) {
+        const matchedMention = sortedFileMentions.find(
+          (mention) =>
+            text.startsWith(mention, cursor)
+            && hasFileMentionBoundaries(text, cursor, mention.length),
+        );
+
+        if (!matchedMention) {
+          cursor += 1;
+          continue;
+        }
+
+        if (plainTextStart < cursor) {
+          parts.push(<span key={`text-${parts.length}`}>{text.slice(plainTextStart, cursor)}</span>);
+        }
+
+        parts.push(
           <span
-            key={`mention-${index}`}
+            key={`mention-${parts.length}`}
             className="-ml-0.5 rounded-md bg-blue-200/70 box-decoration-clone px-0.5 text-transparent dark:bg-blue-300/40"
           >
-            {part}
-          </span>
-        ) : (
-          <span key={`text-${index}`}>{part}</span>
-        ),
-      );
+            {matchedMention}
+          </span>,
+        );
+
+        cursor += matchedMention.length;
+        plainTextStart = cursor;
+      }
+
+      if (parts.length === 0) {
+        return text;
+      }
+
+      if (plainTextStart < text.length) {
+        parts.push(<span key={`text-${parts.length}`}>{text.slice(plainTextStart)}</span>);
+      }
+
+      return parts;
     },
-    [fileMentionRegex, fileMentionSet],
+    [sortedFileMentions],
   );
 
   const selectFile = useCallback(
