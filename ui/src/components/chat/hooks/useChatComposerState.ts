@@ -628,6 +628,7 @@ export function useChatComposerState({
     renderInputWithMentions,
     selectFile,
     highlightFileSuggestion,
+    resetFileMentionMenuState,
     setCursorPosition,
     handleFileMentionsKeyDown,
   } = useFileMentions({
@@ -1092,6 +1093,7 @@ export function useChatComposerState({
       setCursorPosition(nextCursor);
 
       if (char === '/') {
+        resetFileMentionMenuState();
         handleCommandInputChange(nextValue, nextCursor);
       } else if (char === '@') {
         resetCommandMenuState();
@@ -1110,7 +1112,15 @@ export function useChatComposerState({
         }
       });
     },
-    [handleCommandInputChange, input, resetCommandMenuState, setCursorPosition, setInput, textareaRef],
+    [
+      handleCommandInputChange,
+      input,
+      resetCommandMenuState,
+      resetFileMentionMenuState,
+      setCursorPosition,
+      setInput,
+      textareaRef,
+    ],
   );
 
   const handleKeyDown = useCallback(
