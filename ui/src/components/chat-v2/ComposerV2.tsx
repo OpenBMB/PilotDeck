@@ -528,6 +528,10 @@ export default function ComposerV2({
     }
 
     event.preventDefault();
+    if (permissionSelectorDisabled) {
+      return;
+    }
+
     setIsRunModeMenuOpen(false);
     setIsPermissionMenuOpen(true);
     setIsContextPopoverOpen(false);
@@ -1054,7 +1058,6 @@ export default function ComposerV2({
                         id={permissionButtonId}
                         type="button"
                         ref={permissionButtonRef}
-                        disabled={permissionSelectorDisabled}
                         onClick={togglePermissionMenu}
                         onKeyDown={handlePermissionButtonKeyDown}
                         className={cn(
@@ -1067,6 +1070,7 @@ export default function ComposerV2({
                         )}
                         title={permissionModeButtonTitle}
                         aria-label={permissionSelectorDisabled ? permissionLockedInPlanMessage : undefined}
+                        aria-disabled={permissionSelectorDisabled}
                         aria-haspopup="menu"
                         aria-expanded={permissionSelectorDisabled ? false : isPermissionMenuOpen}
                         aria-controls={!permissionSelectorDisabled && isPermissionMenuOpen ? permissionMenuId : undefined}

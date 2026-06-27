@@ -280,10 +280,17 @@ describe('ComposerV2 queue feedback', () => {
     const lockedMessage = 'Permission mode is locked while planning. Switch back to Agent to change permissions.';
     const permissionButton = screen.getByRole('button', { name: lockedMessage }) as HTMLButtonElement;
 
-    expect(permissionButton.disabled).toBe(true);
+    expect(permissionButton.disabled).toBe(false);
+    expect(permissionButton.getAttribute('aria-disabled')).toBe('true');
     expect(permissionButton.title).toBe(lockedMessage);
     expect(permissionButton.textContent).toContain('Plan mode');
     expect(permissionButton.textContent).not.toContain('Full Access');
+
+    permissionButton.focus();
+    expect(document.activeElement).toBe(permissionButton);
+
+    fireEvent.keyDown(permissionButton, { key: 'ArrowDown' });
+    expect(screen.queryByRole('menu')).toBeNull();
 
     fireEvent.click(permissionButton);
 
