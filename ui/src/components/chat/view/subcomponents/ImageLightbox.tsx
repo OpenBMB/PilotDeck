@@ -13,6 +13,16 @@ interface ImageLightboxProps {
   onClose: () => void;
 }
 
+export function getLightboxNavigationLabelForTest(
+  direction: 'Previous' | 'Next',
+  image: LightboxImage | undefined,
+  targetIndex: number,
+  total: number,
+) {
+  const imageLabel = image?.name || 'image';
+  return `${direction} image: ${imageLabel} (${targetIndex + 1} of ${total})`;
+}
+
 const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) => {
   const safeStart = useMemo(() => {
     if (images.length === 0) return 0;
@@ -66,6 +76,20 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
   if (images.length === 0) return null;
 
   const active = images[activeIndex];
+  const previousIndex = activeIndex <= 0 ? images.length - 1 : activeIndex - 1;
+  const nextIndex = activeIndex >= images.length - 1 ? 0 : activeIndex + 1;
+  const previousLabel = getLightboxNavigationLabelForTest(
+    'Previous',
+    images[previousIndex],
+    previousIndex,
+    images.length,
+  );
+  const nextLabel = getLightboxNavigationLabelForTest(
+    'Next',
+    images[nextIndex],
+    nextIndex,
+    images.length,
+  );
 
   return createPortal(
     <div
@@ -97,7 +121,8 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
             showPrev();
           }}
           className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          aria-label="Previous image"
+          aria-label={previousLabel}
+          title={previousLabel}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -113,7 +138,8 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
             showNext();
           }}
           className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          aria-label="Next image"
+          aria-label={nextLabel}
+          title={nextLabel}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
