@@ -33,5 +33,5 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isModelProtocol(value: unknown): value is ModelProtocol {
-  return value === "anthropic" || value === "openai";
+  return value === "anthropic" || value === "openai" || value === "google";
 }

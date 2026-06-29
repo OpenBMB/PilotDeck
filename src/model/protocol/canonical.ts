@@ -2,7 +2,7 @@ import type { ModelCapabilities } from "./capabilities.js";
 import type { CanonicalModelError } from "./errors.js";
 import type { MultimodalConstraints } from "./multimodal.js";
 
-export type ModelProtocol = "anthropic" | "openai";
+export type ModelProtocol = "anthropic" | "openai" | "google";
 
 export type CanonicalRole = "user" | "assistant";
 

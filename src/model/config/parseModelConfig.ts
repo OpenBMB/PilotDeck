@@ -6,6 +6,10 @@ import {
   OPENAI_DEFAULT_CAPABILITIES,
   OPENAI_DEFAULT_MULTIMODAL,
 } from "../providers/openai/defaults.js";
+import {
+  GOOGLE_DEFAULT_CAPABILITIES,
+  GOOGLE_DEFAULT_MULTIMODAL,
+} from "../providers/google/defaults.js";
 import type {
   ModelConfig,
   ModelDefinition,
@@ -77,7 +81,9 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
   }
 
   const trimmedUrl = typeof provider.url === "string" ? provider.url.trim() : "";
-  const rawUrl = trimmedUrl.length > 0 ? trimmedUrl : catalogProvider?.defaultUrl;
+  const rawUrl = trimmedUrl.length > 0
+    ? trimmedUrl
+    : resolveDefaultProviderUrl(providerId, protocol, catalogProvider?.defaultUrl);
   if (!rawUrl) {
     throw new ModelConfigError("invalid_config_value", `Provider ${providerId} requires a url.`, { providerId });
   }
@@ -105,6 +111,17 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function resolveDefaultProviderUrl(
+  providerId: string,
+  protocol: ModelProtocol,
+  catalogDefaultUrl: string | undefined,
+): string | undefined {
+  if (providerId === "google" && protocol === "openai") {
+    return "https://generativelanguage.googleapis.com/v1beta/openai";
+  }
+  return catalogDefaultUrl;
 }
 
 function parseRetryConfig(raw: unknown): ProviderRetryConfig | undefined {
@@ -162,7 +179,11 @@ function parseCapabilities(
   catalogCapabilities?: ModelCapabilities,
 ): ModelCapabilities {
   const protocolDefaults =
-    protocol === "anthropic" ? ANTHROPIC_DEFAULT_CAPABILITIES : OPENAI_DEFAULT_CAPABILITIES;
+    protocol === "anthropic"
+      ? ANTHROPIC_DEFAULT_CAPABILITIES
+      : protocol === "google"
+        ? GOOGLE_DEFAULT_CAPABILITIES
+        : OPENAI_DEFAULT_CAPABILITIES;
   const defaults = catalogCapabilities ?? protocolDefaults;
 
   if (rawCapabilities === undefined) {
@@ -215,7 +236,11 @@ function parseMultimodal(
   catalogMultimodal?: MultimodalConstraints,
 ): MultimodalConstraints {
   const protocolDefaults =
-    protocol === "anthropic" ? ANTHROPIC_DEFAULT_MULTIMODAL : OPENAI_DEFAULT_MULTIMODAL;
+    protocol === "anthropic"
+      ? ANTHROPIC_DEFAULT_MULTIMODAL
+      : protocol === "google"
+        ? GOOGLE_DEFAULT_MULTIMODAL
+        : OPENAI_DEFAULT_MULTIMODAL;
   const defaults = catalogMultimodal ?? { ...DEFAULT_MULTIMODAL_CONSTRAINTS, ...protocolDefaults };
 
   if (rawMultimodal === undefined) {

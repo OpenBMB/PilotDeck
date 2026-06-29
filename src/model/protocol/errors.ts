@@ -25,7 +25,7 @@ export type SettingsFix = {
 
 export type CanonicalModelError = {
   provider: string;
-  protocol: "anthropic" | "openai";
+  protocol: "anthropic" | "openai" | "google";
   code: CanonicalModelErrorCode | (string & {});
   status?: number;
   message: string;

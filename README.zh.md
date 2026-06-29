@@ -323,7 +323,7 @@ cd ..
 
 **2. 配置模型 Provider**
 PilotDeck 依赖 `~/.pilotdeck/pilotdeck.yaml` 进行配置。您可以手动创建、运行启动脚本自动生成，**或者在启动 Web UI 后直接在设置界面中进行可视化配置**。
-支持 OpenAI、Anthropic、DeepSeek、Qwen、Kimi、MiniMax 等多种协议。
+支持 OpenAI、Anthropic、原生 Google Gemini、DeepSeek、Qwen、Kimi、MiniMax 等多种协议。
 
 ```yaml
 schemaVersion: 1
@@ -335,6 +335,22 @@ model:
       protocol: openai
       url: https://api.deepseek.com/v1
       apiKey: sk-your-api-key
+```
+
+原生 Gemini 可以使用 `protocol: google`：
+
+```yaml
+schemaVersion: 1
+agent:
+  model: google/gemini-3.1-pro-preview
+model:
+  providers:
+    google:
+      protocol: google
+      url: https://generativelanguage.googleapis.com
+      apiKey: ${GEMINI_API_KEY}
+      models:
+        gemini-3.1-pro-preview: {}
 ```
 
 **3. 启动服务**

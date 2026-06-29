@@ -5,6 +5,7 @@ packages:
 # pnpm install. Keeping this at the workspace root makes Docker/CI installs
 # deterministic and prevents ERR_PNPM_IGNORED_BUILDS failures.
 onlyBuiltDependencies:
+  - '@google/genai'
   - bcrypt
   - better-sqlite3
   - esbuild

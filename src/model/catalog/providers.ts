@@ -329,9 +329,9 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
 
   google: {
     displayName: "Google AI (Gemini)",
-    protocol: "openai",
-    defaultUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    apiKeyEnvVar: "GOOGLE_AI_API_KEY",
+    protocol: "google",
+    defaultUrl: "https://generativelanguage.googleapis.com",
+    apiKeyEnvVar: "GEMINI_API_KEY",
     models: {
       "gemini-2.0-flash": {
         displayName: "Gemini 2.0 Flash",
@@ -415,7 +415,7 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
           supportedImageMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
           imageDetail: "auto",
         },
-        aliases: [],
+        aliases: ["gemini-3.1-pro", "gemini-3-pro"],
       },
     },
   },

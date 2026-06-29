@@ -1,4 +1,7 @@
 import { normalizeModelError } from "../errors/normalizeModelError.js";
+import { createGoogleClient, type GoogleClientFactory } from "../providers/google/client.js";
+import { parseGoogleResponse } from "../providers/google/response.js";
+import type { GoogleRequestBody } from "../providers/google/request.js";
 import { buildModelRequest } from "../request/buildModelRequest.js";
 import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
@@ -11,6 +14,7 @@ import type {
 import { ModelProviderError, parseRetryAfterHeader } from "../protocol/errors.js";
 import { parseModelResponse } from "../response/parseModelResponse.js";
 import { createStreamNormalizerState, normalizeStreamEvent } from "./normalizeStreamEvent.js";
+import { createGoogleStreamState, normalizeGoogleStreamEvent } from "../providers/google/stream.js";
 import { normalizeProviderBaseUrl } from "../normalizeProviderBaseUrl.js";
 import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 
@@ -18,6 +22,7 @@ export type ModelTransport = typeof fetch;
 
 export type ModelRuntimeOptions = {
   fetch?: ModelTransport;
+  googleClientFactory?: GoogleClientFactory;
   signal?: AbortSignal;
 };
 
@@ -35,6 +40,28 @@ export async function complete(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
+    if (provider.protocol === "google") {
+      try {
+        const raw = await sendGoogleCompleteRequest(
+          provider,
+          nonStreamingRequest,
+          options,
+        );
+        return parseGoogleResponse(raw, provider.id);
+      } catch (error) {
+        if (attempt < maxRetries && isRetryableRequestError(error)) {
+          const delayMs = retryBaseDelay * (attempt + 1);
+          console.warn(
+            `[PilotDeck] complete() retry: ${(error as Error).message} ` +
+            `(attempt ${attempt + 1}/${maxRetries}, delay=${delayMs}ms)`,
+          );
+          await delay(delayMs, options.signal);
+          continue;
+        }
+        throw error;
+      }
+    }
+
     const body = buildModelRequest(nonStreamingRequest, config);
     let response: Response;
     try {
@@ -89,6 +116,18 @@ export async function* streamModel(
 
   let currentRequest = streamingRequest;
   const checkpoint = new StreamingCheckpointManager();
+
+  if (provider.protocol === "google") {
+    yield* streamGoogleProviderRequest({
+      request: currentRequest,
+      provider,
+      maxRetries,
+      retryBaseDelay,
+      checkpoint,
+      options,
+    });
+    return;
+  }
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
@@ -170,6 +209,133 @@ export async function* streamModel(
       return;
     }
   }
+}
+
+async function sendGoogleCompleteRequest(
+  provider: ProviderConfig,
+  request: CanonicalModelRequest,
+  options: ModelRuntimeOptions,
+): Promise<unknown> {
+  try {
+    const body = withGoogleAbortSignal(buildModelRequest(request, {
+      providers: { [provider.id]: provider },
+    }) as Record<string, unknown>, options.signal);
+    const client = (options.googleClientFactory ?? createGoogleClient)(provider);
+    return await client.models.generateContent(body as unknown as GoogleRequestBody);
+  } catch (error) {
+    throw toProviderError(provider, error);
+  }
+}
+
+async function* streamGoogleProviderRequest(params: {
+  request: CanonicalModelRequest & { stream: boolean };
+  provider: ProviderConfig;
+  maxRetries: number;
+  retryBaseDelay: number;
+  checkpoint: StreamingCheckpointManager;
+  options: ModelRuntimeOptions;
+}): AsyncIterable<CanonicalModelEvent> {
+  let currentRequest = params.request;
+
+  for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
+    throwIfAborted(params.options.signal);
+    try {
+      const body = withGoogleAbortSignal(buildModelRequest(currentRequest, {
+        providers: { [params.provider.id]: params.provider },
+      }) as Record<string, unknown>, params.options.signal);
+      if (process.env.PILOTDECK_DUMP_REQUEST === "1") {
+        const fs = await import("node:fs");
+        const os = await import("node:os");
+        const path = await import("node:path");
+        const dumpPath = path.join(os.tmpdir(), `pilotdeck_request_${Date.now()}.json`);
+        fs.writeFileSync(dumpPath, JSON.stringify(body, null, 2));
+        console.log(`[model-debug] Request dumped to ${dumpPath} (model=${currentRequest.model})`);
+      }
+
+      const client = (params.options.googleClientFactory ?? createGoogleClient)(params.provider);
+      const stream = await client.models.generateContentStream(body as unknown as GoogleRequestBody);
+      const state = createGoogleStreamState();
+      let sawTerminalEvent = false;
+
+      for await (const chunk of stream) {
+        throwIfAborted(params.options.signal);
+        for (const event of normalizeGoogleStreamEvent(chunk, state)) {
+          if (event.type === "message_end" || event.type === "error") {
+            sawTerminalEvent = true;
+          }
+          params.checkpoint.onEvent(event);
+          yield event;
+        }
+      }
+
+      if (!sawTerminalEvent && !state.ended) {
+        yield { type: "message_end", finishReason: "unknown", raw: undefined };
+      }
+      return;
+    } catch (error) {
+      const providerError = toProviderError(params.provider, error);
+      if (
+        attempt < params.maxRetries &&
+        isRetryableGoogleStreamError(providerError, error) &&
+        params.checkpoint.hasSubstantialContent()
+      ) {
+        currentRequest = buildContinuationRequest(currentRequest, params.checkpoint.get().partialText);
+        params.checkpoint.reset();
+        await delay(params.retryBaseDelay * (attempt + 1), params.options.signal);
+        continue;
+      }
+
+      if (isRetryableGoogleStreamError(providerError, error) && attempt < params.maxRetries) {
+        await delay(params.retryBaseDelay * (attempt + 1), params.options.signal);
+        continue;
+      }
+
+      yield { type: "error", error: providerError.error };
+      return;
+    }
+  }
+}
+
+function isRetryableGoogleStreamError(providerError: ModelProviderError, raw: unknown): boolean {
+  return providerError.error.retryable || isRetryableStreamError(raw);
+}
+
+function withGoogleAbortSignal(body: Record<string, unknown>, signal: AbortSignal | undefined): Record<string, unknown> {
+  if (!signal) {
+    return body;
+  }
+  const config = body.config && typeof body.config === "object"
+    ? { ...(body.config as Record<string, unknown>), abortSignal: signal }
+    : { abortSignal: signal };
+  return { ...body, config };
+}
+
+function toProviderError(provider: ProviderConfig, error: unknown): ModelProviderError {
+  if (error instanceof ModelProviderError) {
+    return error;
+  }
+  return new ModelProviderError(
+    normalizeModelError(provider.id, provider.protocol, error, extractStatus(error)),
+  );
+}
+
+function extractStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+  const record = error as Record<string, unknown>;
+  const status = record.status ?? record.statusCode ?? record.code;
+  if (typeof status === "number" && Number.isInteger(status)) {
+    return status;
+  }
+  const response = record.response;
+  if (response && typeof response === "object") {
+    const responseStatus = (response as Record<string, unknown>).status;
+    if (typeof responseStatus === "number" && Number.isInteger(responseStatus)) {
+      return responseStatus;
+    }
+  }
+  return undefined;
 }
 
 function isRetryableRequestError(error: unknown): boolean {

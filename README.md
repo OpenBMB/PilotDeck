@@ -324,7 +324,7 @@ cd ..
 **2. Configure a model provider**
 
 PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. You can create it manually, let the bootstrap script generate one, **or just open the Web UI and configure providers visually in the settings panel.**
-Supported protocols include OpenAI, Anthropic, DeepSeek, Qwen, Kimi, MiniMax and other OpenAI-compatible endpoints.
+Supported protocols include OpenAI, Anthropic, native Google Gemini, DeepSeek, Qwen, Kimi, MiniMax and other OpenAI-compatible endpoints.
 
 ```yaml
 schemaVersion: 1
@@ -336,6 +336,22 @@ model:
       protocol: openai
       url: https://api.deepseek.com/v1
       apiKey: sk-your-api-key
+```
+
+Native Gemini can be configured with `protocol: google`:
+
+```yaml
+schemaVersion: 1
+agent:
+  model: google/gemini-3.1-pro-preview
+model:
+  providers:
+    google:
+      protocol: google
+      url: https://generativelanguage.googleapis.com
+      apiKey: ${GEMINI_API_KEY}
+      models:
+        gemini-3.1-pro-preview: {}
 ```
 
 **3. Start the services**
