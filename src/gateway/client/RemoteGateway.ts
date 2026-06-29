@@ -44,6 +44,18 @@ import type {
   SkillsListResult,
 } from "../../extension/skills/types.js";
 import type {
+  EvoStartInput,
+  EvoStartResult,
+  EvoStatusInput,
+  EvoStatusResult,
+  EvoReportInput,
+  EvoReportResult,
+  EvoApplyInput,
+  EvoApplyResult,
+  EvoDiscardInput,
+  EvoDiscardResult,
+} from "../../evo/protocol/types.js";
+import type {
   CronCreateInput,
   CronCreateResult,
   CronDeleteInput,
@@ -186,6 +198,26 @@ export class RemoteGateway implements Gateway {
 
   async skillScan(input: SkillScanInput): Promise<SkillScanResult> {
     return (await this.client.request("skill_scan", input)) as SkillScanResult;
+  }
+
+  async evoStart(input: EvoStartInput): Promise<EvoStartResult> {
+    return (await this.client.request("evo_start", input)) as EvoStartResult;
+  }
+
+  async evoStatus(input: EvoStatusInput): Promise<EvoStatusResult> {
+    return (await this.client.request("evo_status", input)) as EvoStatusResult;
+  }
+
+  async evoReport(input: EvoReportInput): Promise<EvoReportResult> {
+    return (await this.client.request("evo_report", input)) as EvoReportResult;
+  }
+
+  async evoApply(input: EvoApplyInput): Promise<EvoApplyResult> {
+    return (await this.client.request("evo_apply", input)) as EvoApplyResult;
+  }
+
+  async evoDiscard(input: EvoDiscardInput): Promise<EvoDiscardResult> {
+    return (await this.client.request("evo_discard", input)) as EvoDiscardResult;
   }
 
   async alwaysOnApply(input: AlwaysOnApplyInput): Promise<AlwaysOnApplyResult> {

@@ -46,6 +46,18 @@ import type {
   SkillsListInput,
   SkillsListResult,
 } from "../../extension/skills/types.js";
+import type {
+  EvoStartInput,
+  EvoStartResult,
+  EvoStatusInput,
+  EvoStatusResult,
+  EvoReportInput,
+  EvoReportResult,
+  EvoApplyInput,
+  EvoApplyResult,
+  EvoDiscardInput,
+  EvoDiscardResult,
+} from "../../evo/protocol/types.js";
 
 export type GatewayChannelKey =
   | "cli" | "tui" | "feishu" | "weixin" | "qq" | "web" | "test"
@@ -419,4 +431,15 @@ export interface Gateway {
   skillImport?(input: SkillImportInput): Promise<SkillImportResult>;
   skillValidate?(input: SkillValidateInput): Promise<SkillValidationResult>;
   skillScan?(input: SkillScanInput): Promise<SkillScanResult>;
+
+  /**
+   * Skill / Harness Evo RPCs. The gateway owns the Evo workspace under
+   * `~/.pilotdeck/evo/`. Optional — hosts backed by an older server without
+   * these methods leave them undefined and should feature-detect.
+   */
+  evoStart?(input: EvoStartInput): Promise<EvoStartResult>;
+  evoStatus?(input: EvoStatusInput): Promise<EvoStatusResult>;
+  evoReport?(input: EvoReportInput): Promise<EvoReportResult>;
+  evoApply?(input: EvoApplyInput): Promise<EvoApplyResult>;
+  evoDiscard?(input: EvoDiscardInput): Promise<EvoDiscardResult>;
 }

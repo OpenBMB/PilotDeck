@@ -70,6 +70,34 @@ type InstallResponse = {
 
 type ToastState = { kind: 'success' | 'error' | 'info'; text: string } | null;
 
+// --- Evo (Skill evolution) -------------------------------------------------
+
+type EvoPolicyMode = 'manual' | 'auto-low-risk' | 'auto-all';
+type EvoRiskLevel = 'low' | 'medium' | 'high';
+type EvoRunStatus = 'proposed' | 'ready' | 'applied' | 'discarded' | 'failed';
+
+type EvoRun = {
+  runId: string;
+  status: EvoRunStatus;
+  policy: EvoPolicyMode;
+  autoApplied: boolean;
+  reason: string;
+  candidate: {
+    baseContent: string;
+    candidateContent: string;
+    hypothesis: string;
+    riskLevel: EvoRiskLevel;
+    riskNotes: string[];
+  };
+  report: { recommendation: 'apply' | 'review' | 'reject' };
+  error?: { code: string; message: string };
+};
+
+type EvoStartResponse = { run: EvoRun | null; error?: { code: string; message: string } };
+type EvoStatusResponse = { policy: EvoPolicyMode; runs: unknown[] };
+type EvoReportResponse = { markdown: string; error?: { code: string; message: string } };
+type EvoApplyResponse = { run: EvoRun | null; error?: { code: string; message: string } };
+
 // ---------------------------------------------------------------------------
 
 function projectCwd(p: Project | null): string | null {
@@ -115,6 +143,7 @@ export default function SkillsV2({ selectedProject, projects }: SkillsV2Props) {
   const [editorLoading, setEditorLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showEvo, setShowEvo] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
   const serverGeneralCwd = Boolean(cwd && serverGeneralCwdPath === cwd);
@@ -310,6 +339,7 @@ export default function SkillsV2({ selectedProject, projects }: SkillsV2Props) {
               onSave={handleSave}
               onDelete={handleDelete}
               onRevert={() => setEditorContent(originalContent)}
+              onEvolve={() => setShowEvo(true)}
               t={t}
             />
           ) : (
@@ -330,6 +360,19 @@ export default function SkillsV2({ selectedProject, projects }: SkillsV2Props) {
           }}
           projectAvailable={Boolean(effectiveProjectPath)}
           projectPath={effectiveProjectPath}
+          t={t}
+        />
+      ) : null}
+
+      {showEvo && activeSkill ? (
+        <EvoModal
+          skill={activeSkill}
+          projectPath={effectiveProjectPath}
+          onClose={() => setShowEvo(false)}
+          onChanged={async () => {
+            await refresh();
+          }}
+          flashToast={flashToast}
           t={t}
         />
       ) : null}
@@ -753,6 +796,7 @@ function SkillDetail({
   onSave,
   onDelete,
   onRevert,
+  onEvolve,
   t,
 }: {
   skill: Skill;
@@ -765,6 +809,7 @@ function SkillDetail({
   onSave: () => void;
   onDelete: () => void;
   onRevert: () => void;
+  onEvolve: () => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   return (
@@ -832,6 +877,15 @@ function SkillDetail({
           <span>{t('skillsTab.delete', { defaultValue: 'Delete' })}</span>
         </button>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onEvolve}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-300 px-2.5 text-[12px] font-medium text-amber-700 transition hover:bg-amber-50 dark:border-amber-700/60 dark:text-amber-300 dark:hover:bg-amber-950/40"
+            title={t('skillsTab.evolveHint', { defaultValue: 'Generate a project-adapted candidate for this skill' }) as string}
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <span>{t('skillsTab.evolve', { defaultValue: 'Evolve' })}</span>
+          </button>
           {isDirty ? (
             <button
               type="button"
@@ -853,6 +907,333 @@ function SkillDetail({
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Evo modal — generate a project-adapted candidate, review diff + report,
+// then Apply / Discard. Mirrors the gateway evo_* RPCs via /api/evo/*.
+// ---------------------------------------------------------------------------
+
+type DiffRow = { type: 'context' | 'added' | 'removed'; text: string };
+
+/**
+ * Minimal line diff: shared prefix + shared suffix as context, the differing
+ * middle of base as removed and of candidate as added. Good enough for the
+ * additive / appended candidates Evo produces.
+ */
+function simpleLineDiff(base: string, candidate: string): DiffRow[] {
+  const a = base.split('\n');
+  const b = candidate.split('\n');
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let endA = a.length - 1;
+  let endB = b.length - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA -= 1;
+    endB -= 1;
+  }
+  const rows: DiffRow[] = [];
+  for (let i = 0; i < start; i += 1) rows.push({ type: 'context', text: a[i] });
+  for (let i = start; i <= endA; i += 1) rows.push({ type: 'removed', text: a[i] });
+  for (let i = start; i <= endB; i += 1) rows.push({ type: 'added', text: b[i] });
+  for (let i = endA + 1; i < a.length; i += 1) rows.push({ type: 'context', text: a[i] });
+  return rows;
+}
+
+const EVO_POLICIES: { value: EvoPolicyMode; labelKey: string; fallback: string }[] = [
+  { value: 'manual', labelKey: 'skillsTab.evoPolicyManual', fallback: 'Manual (review every change)' },
+  { value: 'auto-low-risk', labelKey: 'skillsTab.evoPolicyAutoLow', fallback: 'Auto (low-risk only)' },
+  { value: 'auto-all', labelKey: 'skillsTab.evoPolicyAutoAll', fallback: 'Auto (low + medium risk)' },
+];
+
+function EvoModal({
+  skill,
+  projectPath,
+  onClose,
+  onChanged,
+  flashToast,
+  t,
+}: {
+  skill: Skill;
+  projectPath: string | null;
+  onClose: () => void;
+  onChanged: () => Promise<void> | void;
+  flashToast: (toast: ToastState, ms?: number) => void;
+  t: ReturnType<typeof useTranslation>['t'];
+}) {
+  const [policy, setPolicy] = useState<EvoPolicyMode>('manual');
+  const [testCommand, setTestCommand] = useState('');
+  const [commonPaths, setCommonPaths] = useState('');
+  const [codeStyle, setCodeStyle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [running, setRunning] = useState(false);
+  const [run, setRun] = useState<EvoRun | null>(null);
+  const [reportMd, setReportMd] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<EvoStatusResponse>('/api/evo/status', { projectKey: projectPath })
+      .then((data) => {
+        if (!cancelled && data.policy) setPolicy(data.policy);
+      })
+      .catch(() => {/* keep default */});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  const runEvolve = useCallback(async () => {
+    setRunning(true);
+    setRun(null);
+    setReportMd('');
+    try {
+      const projectFacts = {
+        testCommand: testCommand.trim() || undefined,
+        commonPaths: commonPaths.split(',').map((p) => p.trim()).filter(Boolean),
+        codeStyle: codeStyle.trim() || undefined,
+        notes: notes.trim() || undefined,
+      };
+      const res = await api<EvoStartResponse>('/api/evo/start', {
+        projectKey: projectPath,
+        target: { kind: 'skill', scope: skill.scope, slug: skill.slug },
+        policy,
+        projectFacts,
+        reason: `Adapt skill "${skill.slug}" to the current project.`,
+      });
+      if (res.error) {
+        flashToast({ kind: 'error', text: res.error.message });
+        return;
+      }
+      const started = res.run;
+      setRun(started);
+      if (started) {
+        const rep = await api<EvoReportResponse>('/api/evo/report', { runId: started.runId });
+        setReportMd(rep.markdown || '');
+        if (started.autoApplied) {
+          await onChanged();
+          flashToast({ kind: 'success', text: t('skillsTab.evoAutoApplied', { defaultValue: 'Candidate auto-applied per policy' }) });
+        }
+      }
+    } catch (e) {
+      flashToast({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setRunning(false);
+    }
+  }, [testCommand, commonPaths, codeStyle, notes, projectPath, skill.scope, skill.slug, policy, flashToast, onChanged, t]);
+
+  const apply = useCallback(async () => {
+    if (!run) return;
+    setBusy(true);
+    try {
+      const res = await api<EvoApplyResponse>('/api/evo/apply', { runId: run.runId });
+      if (res.error) {
+        flashToast({ kind: 'error', text: res.error.message });
+        return;
+      }
+      setRun(res.run);
+      await onChanged();
+      flashToast({ kind: 'success', text: t('skillsTab.evoApplied', { defaultValue: 'Candidate applied' }) });
+    } catch (e) {
+      flashToast({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [run, flashToast, onChanged, t]);
+
+  const discard = useCallback(async () => {
+    if (!run) return;
+    setBusy(true);
+    try {
+      await api('/api/evo/discard', { runId: run.runId });
+      flashToast({ kind: 'info', text: t('skillsTab.evoDiscarded', { defaultValue: 'Candidate discarded' }) });
+      onClose();
+    } catch (e) {
+      flashToast({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [run, flashToast, onClose, t]);
+
+  const noChange = run ? run.candidate.baseContent === run.candidate.candidateContent : false;
+  const diff = run && !noChange ? simpleLineDiff(run.candidate.baseContent, run.candidate.candidateContent) : [];
+  const canApply = Boolean(run) && run!.status === 'ready' && !noChange;
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex h-[600px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950">
+        <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-500" strokeWidth={1.75} />
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+              {t('skillsTab.evolveTitle', { defaultValue: 'Evolve' })}: {skill.name}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-900"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          <div className="grid grid-cols-1 gap-3">
+            <label className="text-xxs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              {t('skillsTab.evoPolicy', { defaultValue: 'Project policy' })}
+            </label>
+            <select
+              value={policy}
+              onChange={(e) => setPolicy(e.target.value as EvoPolicyMode)}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              {EVO_POLICIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {t(p.labelKey, { defaultValue: p.fallback })}
+                </option>
+              ))}
+            </select>
+
+            <p className="text-xxs text-neutral-500 dark:text-neutral-400">
+              {t('skillsTab.evoFactsHint', { defaultValue: 'Project facts used to adapt this skill (all optional).' })}
+            </p>
+            <input
+              value={testCommand}
+              onChange={(e) => setTestCommand(e.target.value)}
+              placeholder={t('skillsTab.evoTestCommand', { defaultValue: 'Test command, e.g. npm run test' }) as string}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-[13px] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            />
+            <input
+              value={commonPaths}
+              onChange={(e) => setCommonPaths(e.target.value)}
+              placeholder={t('skillsTab.evoPaths', { defaultValue: 'Common paths, comma-separated, e.g. src/, tests/' }) as string}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-[13px] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            />
+            <input
+              value={codeStyle}
+              onChange={(e) => setCodeStyle(e.target.value)}
+              placeholder={t('skillsTab.evoCodeStyle', { defaultValue: 'Code style notes' }) as string}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-[13px] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            />
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t('skillsTab.evoNotes', { defaultValue: 'Other notes' }) as string}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-[13px] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            />
+
+            <button
+              type="button"
+              onClick={runEvolve}
+              disabled={running}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3 text-[13px] font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
+            >
+              {running ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Sparkles className="h-4 w-4" strokeWidth={1.75} />}
+              <span>{running ? t('skillsTab.evoRunning', { defaultValue: 'Generating candidate…' }) : t('skillsTab.evoGenerate', { defaultValue: 'Generate candidate' })}</span>
+            </button>
+          </div>
+
+          {run ? (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xxs">
+                <RiskBadge level={run.candidate.riskLevel} t={t} />
+                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+                  {t('skillsTab.evoStatus', { defaultValue: 'Status' })}: {run.status}{run.autoApplied ? ' (auto)' : ''}
+                </span>
+                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+                  {t('skillsTab.evoRecommend', { defaultValue: 'Recommendation' })}: {run.report.recommendation}
+                </span>
+              </div>
+
+              {noChange ? (
+                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xxs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+                  {t('skillsTab.evoNoChange', { defaultValue: 'No change proposed — supply project facts above to adapt the skill.' })}
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
+                  <div className="flex items-center gap-1.5 border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xxs font-medium text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+                    <ArrowRightLeft className="h-3 w-3" strokeWidth={1.75} />
+                    {t('skillsTab.evoDiff', { defaultValue: 'Proposed diff' })}
+                  </div>
+                  <div className="max-h-48 overflow-auto font-mono text-[11px] leading-[18px]">
+                    {diff.map((row, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          'whitespace-pre-wrap px-3',
+                          row.type === 'added' && 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
+                          row.type === 'removed' && 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+                          row.type === 'context' && 'text-neutral-500 dark:text-neutral-400',
+                        )}
+                      >
+                        {row.type === 'added' ? '+ ' : row.type === 'removed' ? '- ' : '  '}
+                        {row.text || ' '}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {reportMd ? (
+                <details className="rounded-md border border-neutral-200 dark:border-neutral-800">
+                  <summary className="cursor-pointer px-3 py-1.5 text-xxs font-medium text-neutral-600 dark:text-neutral-300">
+                    {t('skillsTab.evoReport', { defaultValue: 'Report' })}
+                  </summary>
+                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap px-3 pb-3 text-[11px] text-neutral-600 dark:text-neutral-400">{reportMd}</pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-3 dark:border-neutral-800">
+          {run && run.status !== 'applied' ? (
+            <button
+              type="button"
+              onClick={discard}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-300 dark:hover:bg-neutral-900"
+            >
+              <XCircle className="h-4 w-4" strokeWidth={1.75} />
+              {t('skillsTab.evoDiscardBtn', { defaultValue: 'Discard' })}
+            </button>
+          ) : null}
+          {run && run.status === 'applied' ? (
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />
+              {t('skillsTab.evoAppliedLabel', { defaultValue: 'Applied' })}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={apply}
+            disabled={!canApply || busy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white transition hover:bg-neutral-700 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />}
+            {t('skillsTab.evoApplyBtn', { defaultValue: 'Apply candidate' })}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskBadge({ level, t }: { level: EvoRiskLevel; t: ReturnType<typeof useTranslation>['t'] }) {
+  return (
+    <span
+      className={cn(
+        'rounded px-1.5 py-0.5 uppercase tracking-wider',
+        level === 'low' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+        level === 'medium' && 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+        level === 'high' && 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
+      )}
+    >
+      {t('skillsTab.evoRisk', { defaultValue: 'Risk' })}: {level}
+    </span>
   );
 }
 

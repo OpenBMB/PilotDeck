@@ -58,6 +58,19 @@ import type {
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
 import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
+import type { EvoManager } from "../../evo/index.js";
+import type {
+  EvoStartInput,
+  EvoStartResult,
+  EvoStatusInput,
+  EvoStatusResult,
+  EvoReportInput,
+  EvoReportResult,
+  EvoApplyInput,
+  EvoApplyResult,
+  EvoDiscardInput,
+  EvoDiscardResult,
+} from "../../evo/protocol/types.js";
 import { AttachmentResolver, type AttachmentRequest } from "../../context/attachments/AttachmentResolver.js";
 import type {
   SkillAddressInput,
@@ -134,6 +147,12 @@ export type InProcessGatewayOptions = {
    * SDK) reads and writes the same skill directory the agent loads from.
    */
   skillManager?: SkillManager;
+  /**
+   * Skill / Harness Evo manager backed by `~/.pilotdeck/evo/`. Wired by
+   * `createLocalGateway` so the UI and the agent share the same Evo runs and
+   * project policy.
+   */
+  evoManager?: EvoManager;
   dispatchHookForSession?: (sessionKey: string, event: string, payload: Record<string, unknown>) => void;
   /** Directory to persist large tool outputs for TUI/Web viewing. */
   toolResultsDir?: string;
@@ -717,6 +736,47 @@ export class InProcessGateway implements Gateway {
       );
     }
     return this.options.skillManager;
+  }
+
+  // -------------------------------------------------------------------
+  // Skill / Harness Evo — see `EvoManager` for the orchestration. The
+  // gateway methods guard "evo manager configured" and return structured
+  // `not_configured` errors otherwise.
+  // -------------------------------------------------------------------
+
+  async evoStart(input: EvoStartInput): Promise<EvoStartResult> {
+    if (!this.options.evoManager) {
+      return { run: null, error: { code: "not_configured", message: "Evo is not configured on this gateway." } };
+    }
+    return this.options.evoManager.start(input);
+  }
+
+  async evoStatus(input: EvoStatusInput): Promise<EvoStatusResult> {
+    if (!this.options.evoManager) {
+      return { run: null, runs: [], policy: "manual", error: { code: "not_configured", message: "Evo is not configured on this gateway." } };
+    }
+    return this.options.evoManager.status(input);
+  }
+
+  async evoReport(input: EvoReportInput): Promise<EvoReportResult> {
+    if (!this.options.evoManager) {
+      return { report: null, markdown: "", error: { code: "not_configured", message: "Evo is not configured on this gateway." } };
+    }
+    return this.options.evoManager.report(input);
+  }
+
+  async evoApply(input: EvoApplyInput): Promise<EvoApplyResult> {
+    if (!this.options.evoManager) {
+      return { run: null, error: { code: "not_configured", message: "Evo is not configured on this gateway." } };
+    }
+    return this.options.evoManager.apply(input);
+  }
+
+  async evoDiscard(input: EvoDiscardInput): Promise<EvoDiscardResult> {
+    if (!this.options.evoManager) {
+      return { run: null, error: { code: "not_configured", message: "Evo is not configured on this gateway." } };
+    }
+    return this.options.evoManager.discard(input);
   }
 
   async alwaysOnApply(input: AlwaysOnApplyInput): Promise<AlwaysOnApplyResult> {

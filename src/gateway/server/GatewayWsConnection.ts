@@ -242,6 +242,31 @@ export class GatewayWsConnection {
         return requireSkillMethod(this.options.gateway.skillValidate, this.options.gateway)(frame.params as never);
       case "skill_scan":
         return requireSkillMethod(this.options.gateway.skillScan, this.options.gateway)(frame.params as never);
+      case "evo_start":
+        if (this.options.gateway.evoStart) {
+          return this.options.gateway.evoStart(frame.params as never);
+        }
+        return Promise.resolve({ run: null, error: { code: "not_configured", message: "Evo not available" } });
+      case "evo_status":
+        if (this.options.gateway.evoStatus) {
+          return this.options.gateway.evoStatus(frame.params as never);
+        }
+        return Promise.resolve({ run: null, runs: [], policy: "manual", error: { code: "not_configured", message: "Evo not available" } });
+      case "evo_report":
+        if (this.options.gateway.evoReport) {
+          return this.options.gateway.evoReport(frame.params as never);
+        }
+        return Promise.resolve({ report: null, markdown: "", error: { code: "not_configured", message: "Evo not available" } });
+      case "evo_apply":
+        if (this.options.gateway.evoApply) {
+          return this.options.gateway.evoApply(frame.params as never);
+        }
+        return Promise.resolve({ run: null, error: { code: "not_configured", message: "Evo not available" } });
+      case "evo_discard":
+        if (this.options.gateway.evoDiscard) {
+          return this.options.gateway.evoDiscard(frame.params as never);
+        }
+        return Promise.resolve({ run: null, error: { code: "not_configured", message: "Evo not available" } });
       case "always_on_apply":
         if (this.options.gateway.alwaysOnApply) {
           return this.options.gateway.alwaysOnApply(frame.params as never);

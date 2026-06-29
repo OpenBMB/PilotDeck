@@ -1,0 +1,11 @@
+export { EvoManager, EvoManagerError } from "./EvoManager.js";
+export type { EvoManagerOptions } from "./EvoManager.js";
+export { EvoStore } from "./EvoStore.js";
+export { KeywordCoverageEvaluator } from "./EvoEvalRunner.js";
+export type { EvoEvaluator, EvoEvaluateInput } from "./EvoEvalRunner.js";
+export { HeuristicProposer, buildProjectAdaptationSection } from "./proposer.js";
+export type { EvoProposer, EvoProposeContext } from "./proposer.js";
+export { classifyRisk, shouldAutoApply } from "./policy.js";
+export type { RiskClassification } from "./policy.js";
+export { renderReportMarkdown } from "./reportMarkdown.js";
+export * from "./protocol/types.js";

@@ -75,6 +75,7 @@ import type { RouterEventBus, RouterEvent } from "../router/protocol/events.js";
 import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
 import { SkillManager } from "../extension/skills/index.js";
+import { EvoManager } from "../evo/index.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 
@@ -250,6 +251,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       : undefined,
   });
   const skillManager = new SkillManager({ pilotHome });
+  const evoManager = new EvoManager({ pilotHome, skillManager });
   const gateway = new InProcessGateway(router, {
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -257,6 +259,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     toolResultsDir: resolve(tmpdir(), "pilotdeck-tool-output", process.pid.toString()),
     cron: options.cron,
     skillManager,
+    evoManager,
     setSessionCwd: (sessionKey, cwd) => registry.setSessionCwd(sessionKey, cwd),
     readSessionMessages: (input) =>
       readWebSessionMessages(input, {
