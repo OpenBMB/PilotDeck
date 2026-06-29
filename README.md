@@ -298,7 +298,7 @@ We provide a one-line installer for macOS / Linux, plus a source-based workflow 
 curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh | bash
 ```
 
-The script auto-installs Node.js 22, clones the repo, installs dependencies, and builds the frontend. Once it finishes:
+The script auto-installs Node.js 22.13+ (required for the built-in SQLite runtime), clones the repo, installs dependencies, and builds the frontend. Once it finishes:
 
 ```bash
 pilotdeck            # starts the server at http://localhost:3001
@@ -316,6 +316,7 @@ pilotdeck status     # check runtime status
 git clone https://github.com/OpenBMB/PilotDeck.git
 cd PilotDeck
 
+node --version          # must be v22.13.0 or newer
 npm install              # root deps (Gateway runtime)
 cd ui && npm install     # UI deps
 cd ..

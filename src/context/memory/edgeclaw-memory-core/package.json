@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {

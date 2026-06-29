@@ -11,6 +11,8 @@ INSTALL_DIR="${PILOTDECK_INSTALL_DIR:-$HOME/.pilotdeck/app}"
 CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
 BIN_LINK="${PILOTDECK_BIN_LINK:-/usr/local/bin/pilotdeck}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
+MIN_NODE_VERSION="22.13.0"
+NODE_INSTALL_VERSION="${PILOTDECK_NODE_VERSION:-22}"
 APT_UPDATED=0
 
 GREEN='\033[0;32m'
@@ -23,6 +25,71 @@ RESET='\033[0m'
 ok() { printf "  ${GREEN}✓${RESET} %s\n" "$1"; }
 warn() { printf "  ${YELLOW}→${RESET} %s\n" "$1"; }
 fail() { printf "  ${RED}✗${RESET} %s\n" "$1"; exit 1; }
+
+version_at_least() {
+  local version="${1#v}"
+  local minimum="${2#v}"
+  local v_major v_minor v_patch min_major min_minor min_patch
+  IFS=. read -r v_major v_minor v_patch _ <<< "$version"
+  IFS=. read -r min_major min_minor min_patch _ <<< "$minimum"
+  v_major="${v_major:-0}"
+  v_minor="${v_minor:-0}"
+  v_patch="${v_patch:-0}"
+  min_major="${min_major:-0}"
+  min_minor="${min_minor:-0}"
+  min_patch="${min_patch:-0}"
+  v_patch="${v_patch%%[^0-9]*}"
+  min_patch="${min_patch%%[^0-9]*}"
+
+  if (( v_major > min_major )); then return 0; fi
+  if (( v_major < min_major )); then return 1; fi
+  if (( v_minor > min_minor )); then return 0; fi
+  if (( v_minor < min_minor )); then return 1; fi
+  (( v_patch >= min_patch ))
+}
+
+node_supports_sqlite() {
+  node -e "import('node:sqlite').then(() => {}, () => process.exit(1))" >/dev/null 2>&1
+}
+
+install_node_runtime() {
+  if command -v fnm >/dev/null 2>&1; then
+    fnm install "$NODE_INSTALL_VERSION" </dev/null
+    fnm use "$NODE_INSTALL_VERSION"
+  elif command -v nvm >/dev/null 2>&1; then
+    nvm install "$NODE_INSTALL_VERSION" </dev/null
+    nvm use "$NODE_INSTALL_VERSION"
+  else
+    warn "Installing fnm (Fast Node Manager)..."
+    curl -fsSL https://fnm.vercel.app/install | bash
+    export PATH="$HOME/.local/share/fnm:$PATH"
+    eval "$(fnm env)"
+    fnm install "$NODE_INSTALL_VERSION" </dev/null
+    fnm use "$NODE_INSTALL_VERSION"
+  fi
+}
+
+ensure_node_runtime() {
+  local node_version
+
+  if command -v node >/dev/null 2>&1; then
+    node_version="$(node --version)"
+    if version_at_least "$node_version" "$MIN_NODE_VERSION" && node_supports_sqlite; then
+      ok "Node.js ${node_version} found"
+      return
+    fi
+    warn "Node.js ${node_version} is too old or lacks node:sqlite (need >=${MIN_NODE_VERSION}). Installing Node.js ${NODE_INSTALL_VERSION}..."
+  else
+    warn "Node.js not found. Installing via fnm..."
+  fi
+
+  install_node_runtime
+  node_version="$(node --version 2>/dev/null || true)"
+  if [[ -z "$node_version" ]] || ! version_at_least "$node_version" "$MIN_NODE_VERSION" || ! node_supports_sqlite; then
+    fail "Node.js >=${MIN_NODE_VERSION} with node:sqlite is required. Current: ${node_version:-not found}."
+  fi
+  ok "Node.js ${node_version} installed"
+}
 
 # Portable timeout: use GNU timeout if available, else fall back to a bg+kill approach.
 # Returns 124 on timeout (same convention as GNU timeout).
@@ -394,38 +461,7 @@ esac
 echo ""
 
 echo "Checking Node.js..."
-if command -v node >/dev/null 2>&1; then
-  NODE_VERSION="$(node --version)"
-  NODE_MAJOR="$(echo "$NODE_VERSION" | sed 's/v//' | cut -d. -f1)"
-  if [[ "$NODE_MAJOR" -ge 22 ]]; then
-    ok "Node.js ${NODE_VERSION} found"
-  else
-    warn "Node.js ${NODE_VERSION} is too old (need >=22). Installing Node.js 22..."
-    if command -v fnm >/dev/null 2>&1; then
-      fnm install 22
-      fnm use 22
-    elif command -v nvm >/dev/null 2>&1; then
-      nvm install 22 </dev/null
-      nvm use 22
-    else
-      warn "Installing fnm (Fast Node Manager)..."
-      curl -fsSL https://fnm.vercel.app/install | bash
-      export PATH="$HOME/.local/share/fnm:$PATH"
-      eval "$(fnm env)"
-      fnm install 22 </dev/null
-      fnm use 22
-    fi
-    ok "Node.js $(node --version) installed"
-  fi
-else
-  warn "Node.js not found. Installing via fnm..."
-  curl -fsSL https://fnm.vercel.app/install | bash
-  export PATH="$HOME/.local/share/fnm:$PATH"
-  eval "$(fnm env)"
-  fnm install 22 </dev/null
-  fnm use 22
-  ok "Node.js $(node --version) installed"
-fi
+ensure_node_runtime
 echo ""
 
 echo "Checking git..."
@@ -550,9 +586,44 @@ done
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
+MIN_NODE_VERSION="22.13.0"
 
 fail() { printf "pilotdeck: %s\n" "$1" >&2; exit 1; }
 warn() { printf "pilotdeck: %s\n" "$1" >&2; }
+
+version_at_least() {
+  local version="${1#v}"
+  local minimum="${2#v}"
+  local v_major v_minor v_patch min_major min_minor min_patch
+  IFS=. read -r v_major v_minor v_patch _ <<< "$version"
+  IFS=. read -r min_major min_minor min_patch _ <<< "$minimum"
+  v_major="${v_major:-0}"
+  v_minor="${v_minor:-0}"
+  v_patch="${v_patch:-0}"
+  min_major="${min_major:-0}"
+  min_minor="${min_minor:-0}"
+  min_patch="${min_patch:-0}"
+  v_patch="${v_patch%%[^0-9]*}"
+  min_patch="${min_patch%%[^0-9]*}"
+
+  if (( v_major > min_major )); then return 0; fi
+  if (( v_major < min_major )); then return 1; fi
+  if (( v_minor > min_minor )); then return 0; fi
+  if (( v_minor < min_minor )); then return 1; fi
+  (( v_patch >= min_patch ))
+}
+
+ensure_node_runtime() {
+  command -v node >/dev/null 2>&1 || fail "Node.js >=${MIN_NODE_VERSION} is required; re-run install.sh to install it."
+  local node_version
+  node_version="$(node --version)"
+  if ! version_at_least "$node_version" "$MIN_NODE_VERSION"; then
+    fail "Node.js >=${MIN_NODE_VERSION} is required because PilotDeck uses node:sqlite. Current: ${node_version}. Re-run install.sh or switch Node with fnm/nvm."
+  fi
+  if ! node -e "import('node:sqlite').then(() => {}, () => process.exit(1))" >/dev/null 2>&1; then
+    fail "Current Node.js (${node_version}) does not provide node:sqlite. Re-run install.sh or switch to Node.js 22.13+."
+  fi
+}
 
 is_port_free() {
   local port="$1"
@@ -649,6 +720,8 @@ if [[ "$COMMAND" == "status" ]]; then
   printf "Next start:   http://localhost:%s\n" "$NEXT_SERVER_PORT"
   exit 0
 fi
+
+ensure_node_runtime
 
 SERVER_BASE="${SERVER_PORT:-3001}"
 GATEWAY_BASE="${PILOTDECK_GATEWAY_PORT:-18789}"
