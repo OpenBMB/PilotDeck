@@ -557,7 +557,20 @@ function parseStats(
     modelConfig,
     diagnostics,
   );
-  return { enabled, modelPricing, baselineModel };
+  let filePath: string | undefined;
+  if (raw.filePath !== undefined) {
+    if (typeof raw.filePath === "string") {
+      filePath = raw.filePath.trim().length > 0 ? raw.filePath : undefined;
+    } else {
+      diagnostics.push({
+        code: "ROUTER_STATS_FILE_PATH_INVALID",
+        severity: "fatal",
+        path: "router.stats.filePath",
+        message: "filePath must be a string.",
+      });
+    }
+  }
+  return { enabled, modelPricing, filePath, baselineModel };
 }
 
 function parseCustomRouter(
