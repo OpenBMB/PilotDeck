@@ -6,6 +6,10 @@ type CronConfigShape = {
   };
 };
 
+export type WebSearchTestStatus = 'idle' | 'testing' | 'success' | 'error';
+
+const MASK = '********';
+
 export function patch<T>(config: T, path: Path, value: unknown): T {
   // Immutable deep set. Each key cloned along the way so React picks up the
   // change. Numeric segments materialise arrays; everything else materialises
@@ -27,4 +31,26 @@ export function patch<T>(config: T, path: Path, value: unknown): T {
 
 export function isCronConfigEnabled(config: CronConfigShape): boolean {
   return config.cron !== undefined && config.cron.enabled !== false;
+}
+
+export function isMaskedSecret(value: string | undefined): boolean {
+  return value === MASK;
+}
+
+export function hasUsableSecret(value: string | undefined): boolean {
+  const trimmed = (value ?? '').trim();
+  return Boolean(trimmed) && !isMaskedSecret(trimmed) && trimmed !== 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE' && !trimmed.startsWith('PLACEHOLDER_');
+}
+
+export function getWebSearchTestApiKey(value: string | undefined): string {
+  const trimmed = (value ?? '').trim();
+  return hasUsableSecret(value) ? trimmed : '';
+}
+
+export function isWebSearchTestDisabled(status: WebSearchTestStatus): boolean {
+  return status === 'testing';
+}
+
+export function isMissingWebSearchCredentialError(error: unknown): boolean {
+  return typeof error === 'string' && error.trim() === 'API key is required.';
 }

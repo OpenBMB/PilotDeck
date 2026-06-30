@@ -52,7 +52,15 @@ import {
   type CatalogModel,
 } from '../../../../shared/catalogProviders';
 import type { SettingsProject } from '../../types/types';
-import { isCronConfigEnabled, patch } from './pilotDeckConfigForm';
+import {
+  getWebSearchTestApiKey,
+  isCronConfigEnabled,
+  isMissingWebSearchCredentialError,
+  isMaskedSecret,
+  isWebSearchTestDisabled,
+  patch,
+  type WebSearchTestStatus,
+} from './pilotDeckConfigForm';
 
 // ── V2 schema types ────────────────────────────────────────────────────
 // Schema mirrors ~/.pilotdeck/pilotdeck.yaml exactly. No more
@@ -440,12 +448,6 @@ function rewriteProviderRefs(config: PilotDeckConfig, oldProviderId: string, new
   return next;
 }
 
-const MASK = '********';
-
-function isMaskedSecret(value: string | undefined): boolean {
-  return value === MASK;
-}
-
 /** Password fields must not bind MASK/placeholders as value — browsers render them as bullets. */
 function secretDisplayValue(value: string | undefined): string {
   if (!value) return '';
@@ -453,11 +455,6 @@ function secretDisplayValue(value: string | undefined): string {
   if (value === 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE') return '';
   if (value.startsWith('PLACEHOLDER_')) return '';
   return value;
-}
-
-function hasUsableSecret(value: string | undefined): boolean {
-  const trimmed = (value ?? '').trim();
-  return Boolean(trimmed) && !isMaskedSecret(trimmed) && trimmed !== 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE' && !trimmed.startsWith('PLACEHOLDER_');
 }
 
 function providerDisplayName(providerId: string, catalogEntry?: CatalogProvider, emptyFallback = 'Custom Provider'): string {
@@ -1929,7 +1926,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
   // Test-connection state — modeled after onboarding's LlmConfigurationStep
   // so behaviour and accessibility match across the app. Reset whenever the
   // user edits the key or endpoint so a stale ✓ never lies about new input.
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testStatus, setTestStatus] = useState<WebSearchTestStatus>('idle');
   const [testMessage, setTestMessage] = useState('');
 
   const resetTest = () => {
@@ -1988,18 +1985,19 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
   };
 
   const handleTest = async () => {
-    const trimmedKey = hasUsableSecret(apiKey) ? apiKey.trim() : '';
-    if (!trimmedKey) {
-      setTestStatus('error');
-      setTestMessage(t('pilotDeckConfig.panels.tools.test.needsKey'));
-      return;
-    }
+    const trimmedKey = getWebSearchTestApiKey(apiKey);
     setTestStatus('testing');
     setTestMessage('');
     try {
       const res = await authenticatedFetch('/api/config/test-web-search', {
         method: 'POST',
-        body: JSON.stringify({ provider, apiKey: trimmedKey, endpoint: endpointValue.trim(), customProvider: custom }),
+        body: JSON.stringify({
+          provider,
+          apiKey: trimmedKey,
+          endpoint: endpointValue.trim(),
+          customProvider: custom,
+          customEnv: config.customEnv ?? {},
+        }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -2011,9 +2009,12 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
           }),
         );
       } else {
+        const errorMessage = isMissingWebSearchCredentialError(data.error)
+          ? t('pilotDeckConfig.panels.tools.test.needsKey')
+          : (data.error || 'unknown');
         setTestStatus('error');
         setTestMessage(
-          t('pilotDeckConfig.panels.tools.test.failedPrefix', { error: data.error || 'unknown' }),
+          t('pilotDeckConfig.panels.tools.test.failedPrefix', { error: errorMessage }),
         );
       }
     } catch (err) {
@@ -2155,7 +2156,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testStatus === 'testing' || !hasUsableSecret(apiKey)}
+              disabled={isWebSearchTestDisabled(testStatus)}
             >
               {testStatus === 'testing' ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
