@@ -476,7 +476,7 @@ function ChatInterfaceV2({
   // different parent container. Pulled out so we don't drift between the two.
   const composer = sessionIsReadOnly ? (
     <div className="mx-auto w-full max-w-[720px] px-6 pb-6 pt-3">
-      <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+      <div className="rounded-xl border border-border bg-muted px-4 py-3 text-[13px] text-muted-foreground">
         {t('session.readonlyTranscript', {
           defaultValue: 'This transcript is read-only.',
         })}
@@ -553,10 +553,10 @@ function ChatInterfaceV2({
   if (isWelcomeMode) {
     const projectName = selectedProject?.displayName || selectedProject?.name || '';
     return (
-      <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
+      <div className="flex h-full flex-col bg-background">
         <div className="flex flex-1 flex-col items-center justify-center px-3 py-4 md:px-6 md:py-0">
           <div className="w-full max-w-[720px]">
-            <h1 className="mb-5 text-center text-[22px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100 md:mb-8 md:text-[26px]">
+            <h1 className="mb-5 text-center text-[22px] font-medium tracking-tight text-foreground md:mb-8 md:text-[26px]">
               {selectedProject
                 ? t('welcome.greetingWithProject', {
                     project: projectName,
@@ -574,7 +574,7 @@ function ChatInterfaceV2({
   }
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
+    <div className="flex h-full flex-col bg-background">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
         onWheel={handleScroll}
