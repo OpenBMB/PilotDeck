@@ -890,12 +890,12 @@ export default function MessagesPaneV2({
       ref={scrollContainerRef}
       onWheel={onWheel}
       onTouchMove={onTouchMove}
-      className="relative flex-1 overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
+      className="relative flex-1 overflow-y-auto overflow-x-hidden bg-background"
     >
       {hasSessionLoadError ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-3 py-8 text-center md:px-6 md:py-10">
           <XCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" strokeWidth={1.75} />
-          <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="text-[15px] font-medium text-foreground">
             {t('session.loadFailedTitle', { defaultValue: 'Could not load this conversation' })}
           </div>
           <div className="max-w-[520px] text-[13px] leading-5 text-neutral-500 dark:text-neutral-400">
@@ -905,7 +905,7 @@ export default function MessagesPaneV2({
             <button
               type="button"
               onClick={onRetrySessionLoad}
-              className="inline-flex h-8 items-center rounded-md border border-neutral-200 px-3 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
+              className="inline-flex h-8 items-center rounded-md border border-border px-3 text-[13px] font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
             >
               {t('session.retryLoad', { defaultValue: 'Retry' })}
             </button>
@@ -920,7 +920,7 @@ export default function MessagesPaneV2({
         </div>
       ) : isNewConversationEmpty ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-4 px-3 py-8 text-center md:px-6 md:py-10">
-          <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="text-[15px] font-medium text-foreground">
             {selectedProject
               ? t('emptyChat.title', { defaultValue: 'Start a new conversation' })
               : t('emptyChat.noProject', { defaultValue: 'Pick a project from the sidebar' })}
@@ -932,7 +932,7 @@ export default function MessagesPaneV2({
                   key={prompt}
                   type="button"
                   onClick={() => setInput(prompt)}
-                  className="rounded-lg border border-neutral-200 px-3 py-1.5 text-left text-[13px] text-neutral-700 transition hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                  className="rounded-lg border border-border px-3 py-1.5 text-left text-[13px] text-foreground transition hover:bg-accent hover:text-accent-foreground"
                 >
                   {prompt}
                 </button>
@@ -945,7 +945,7 @@ export default function MessagesPaneV2({
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
             <GitBranch className="h-5 w-5 text-neutral-500 dark:text-neutral-400" strokeWidth={2} />
           </div>
-          <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="text-[15px] font-medium text-foreground">
             {t('fork.emptyTitle', { defaultValue: 'New branch ready' })}
           </div>
           <div className="max-w-[520px] text-[13px] leading-5 text-neutral-500 dark:text-neutral-400">
@@ -958,7 +958,7 @@ export default function MessagesPaneV2({
         </div>
       ) : isExistingConversationEmpty ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-2 px-3 py-8 text-center md:px-6 md:py-10">
-          <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="text-[15px] font-medium text-foreground">
             {sessionIsReadOnly
               ? t('emptyChat.readonlyTranscriptTitle', {
                   defaultValue: 'No displayable messages in this read-only transcript',
@@ -1031,7 +1031,7 @@ export default function MessagesPaneV2({
           ) : null}
 
           {isForkedChatSession(selectedSession) ? (
-            <div className="mb-6 flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300">
+            <div className="mb-6 flex items-center gap-2 rounded-xl border border-border bg-muted px-3 py-2 text-[12px] text-muted-foreground">
               <GitBranch className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
               <span>
                 {t('fork.banner', {

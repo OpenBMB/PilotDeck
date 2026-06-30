@@ -212,7 +212,7 @@ function SessionStatusIndicator({
         {SPINNER_DOTS.map((dot) => (
           <span
             key={dot}
-            className="absolute left-1/2 top-1/2 h-1 w-1 rounded-full bg-neutral-500 dark:bg-neutral-300"
+            className="absolute left-1/2 top-1/2 h-1 w-1 rounded-full bg-primary"
             style={{
               transform: `translate(-50%, -50%) rotate(${dot * 45}deg) translateY(-4px)`,
               opacity: 0.35 + dot * 0.08,
@@ -230,8 +230,8 @@ function SessionStatusIndicator({
       className={cn(
         'block h-1.5 w-1.5 rounded-full',
         status === 'unread'
-          ? 'bg-blue-500 dark:bg-blue-400'
-          : 'bg-neutral-300 dark:bg-neutral-600',
+          ? 'bg-primary'
+          : 'bg-muted-foreground/40',
       )}
     />
   );
@@ -764,8 +764,8 @@ export default function SidebarV2({
             className={cn(
               'group/session relative w-full rounded-md transition-colors',
               isSessionActive
-                ? 'bg-neutral-200/70 dark:bg-neutral-800'
-                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                ? 'bg-accent text-accent-foreground'
+                : 'hover:bg-accent/70',
             )}
           >
             {isSessionRenaming ? (
@@ -778,7 +778,7 @@ export default function SidebarV2({
                   onKeyDown={(event) => handleRenameKey(event, 'session')}
                   onClick={(event) => event.stopPropagation()}
                   placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
-                  className="h-9 w-full rounded-sm border border-neutral-300 bg-white px-2 text-[14px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
+                  className="h-9 w-full rounded-sm border border-input bg-background px-2 text-[14px] text-foreground outline-none focus:border-ring md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
                 />
               </div>
             ) : (
@@ -950,7 +950,7 @@ export default function SidebarV2({
                 onKeyDown={(event) => handleRenameKey(event, 'project')}
                 onClick={(event) => event.stopPropagation()}
                 placeholder={t('sidebar:renamePlaceholder', { defaultValue: 'Rename - empty to reset' }) as string}
-                className="h-9 w-full rounded-sm border border-neutral-300 bg-white px-2 text-[14px] text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
+                className="h-9 w-full rounded-sm border border-input bg-background px-2 text-[14px] text-foreground outline-none focus:border-ring md:h-auto md:px-1.5 md:py-0.5 md:text-[12.5px]"
               />
             </div>
           ) : (
@@ -1019,9 +1019,7 @@ export default function SidebarV2({
         // On mobile the parent wraps this aside in an overlay constrained
         // to 85vw, so force the inline width style off with !w-full there.
         'relative flex h-full shrink-0 flex-col max-md:!w-full',
-        'bg-neutral-50 text-neutral-900',
-        'dark:bg-neutral-900 dark:text-neutral-100',
-        'border-r border-neutral-200 dark:border-neutral-800',
+        'border-r border-border bg-card text-card-foreground',
       )}
     >
       <div className="flex h-14 items-center justify-between pl-2 pr-3 md:h-16 md:pr-4">
@@ -1079,7 +1077,7 @@ export default function SidebarV2({
         <div
           role="tablist"
           aria-label={t('sidebar:sectionToggle.label', { defaultValue: 'Sidebar section' }) as string}
-          className="flex w-full rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-900"
+          className="flex w-full rounded-md bg-muted p-0.5"
         >
           <button
             type="button"
@@ -1090,8 +1088,8 @@ export default function SidebarV2({
               'flex-1 rounded text-[13px] font-medium transition-colors md:text-[12px]',
               'h-10 leading-none md:h-7',
               activeSection === 'projects'
-                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
-                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {t('sidebar:projects.title', { defaultValue: 'Projects' })}
@@ -1105,8 +1103,8 @@ export default function SidebarV2({
               'flex-1 rounded text-[13px] font-medium transition-colors md:text-[12px]',
               'h-10 leading-none md:h-7',
               activeSection === 'general'
-                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
-                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {t('sidebar:general.title', { defaultValue: 'General' })}
@@ -1201,7 +1199,7 @@ export default function SidebarV2({
         )}
       </div>
 
-      <div className="border-t border-neutral-200 px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] dark:border-neutral-800">
+      <div className="border-t border-border px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
         <button
           type="button"
           onClick={onShowSettings}
@@ -1221,8 +1219,7 @@ export default function SidebarV2({
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
           className={cn(
-            'fixed z-50 w-44 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg',
-            'dark:border-neutral-700 dark:bg-neutral-900',
+            'fixed z-50 w-44 rounded-lg border border-border bg-popover p-1 shadow-lg',
           )}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -1274,8 +1271,8 @@ export default function SidebarV2({
           'absolute inset-y-0 right-0 z-10 hidden w-1 cursor-col-resize select-none md:block',
           'transition-colors duration-150',
           isResizing
-            ? 'bg-blue-500/60'
-            : 'hover:bg-neutral-300/70 dark:hover:bg-neutral-700/70',
+            ? 'bg-primary/60'
+            : 'hover:bg-border',
         )}
       />
 

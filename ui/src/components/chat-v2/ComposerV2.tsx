@@ -588,7 +588,7 @@ export default function ComposerV2({
         'shrink-0',
         chromeless
           ? ''
-          : 'bg-white px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2 dark:bg-neutral-950 md:px-6 md:pb-6 md:pt-3',
+          : 'bg-background px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2 md:px-6 md:pb-6 md:pt-3',
       )}
     >
       <div className={cn(chromeless ? '' : 'mx-auto max-w-[720px]')}>
@@ -609,7 +609,7 @@ export default function ComposerV2({
             className="relative"
           >
             {attachedImages.length > 0 ? (
-              <div className="mb-2 rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-2 rounded-lg border border-border bg-muted p-2">
                 <div className="flex flex-wrap gap-2">
                   {attachedImages.map((file, index) => (
                     <ImageAttachment
@@ -635,7 +635,7 @@ export default function ComposerV2({
             ) : null}
 
             {queuedInputs.length > 0 ? (
-              <div className="mb-2 rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-2 rounded-lg border border-border bg-muted p-2">
                 <div className="mb-1.5 flex items-center justify-between gap-3 px-1">
                   <div className="min-w-0 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
                     {t('queue.title', {
@@ -683,7 +683,7 @@ export default function ComposerV2({
                     return (
                       <div
                         key={item.id}
-                        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-950"
+                        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-md border border-border bg-card p-2"
                       >
                         <div className="flex h-7 min-w-7 items-center justify-center rounded bg-neutral-100 text-[11px] font-medium tabular-nums text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                           {index + 1}
@@ -696,7 +696,7 @@ export default function ComposerV2({
                             aria-invalid={itemBlocked}
                             aria-describedby={itemBlocked ? itemErrorId : undefined}
                             className={cn(
-                              'block max-h-24 min-h-7 w-full resize-y rounded bg-transparent px-1 text-[13px] leading-5 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100',
+                              'block max-h-24 min-h-7 w-full resize-y rounded bg-transparent px-1 text-[13px] leading-5 text-foreground placeholder:text-muted-foreground outline-none',
                               itemBlocked && 'bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-100 dark:ring-red-900/60',
                             )}
                             aria-label={t('queue.editItem', {
@@ -760,7 +760,7 @@ export default function ComposerV2({
                   defaultValue: 'File suggestions',
                 }) as string}
                 className={cn(
-                  'absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900',
+                  'absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg',
                   !fileSuggestionsHaveOptions && 'px-3 py-4 text-center text-[13px] text-neutral-500 dark:text-neutral-400',
                 )}
               >
@@ -773,10 +773,10 @@ export default function ComposerV2({
                       role="option"
                       aria-selected={index === selectedFileIndex}
                       className={cn(
-                        'cursor-pointer border-b border-neutral-100 px-3 py-2 text-[13px] last:border-b-0 dark:border-neutral-800',
+                        'cursor-pointer border-b border-border px-3 py-2 text-[13px] last:border-b-0',
                         index === selectedFileIndex
-                          ? 'bg-neutral-100 dark:bg-neutral-800'
-                          : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
+                          ? 'bg-accent text-accent-foreground'
+                          : 'hover:bg-accent/70',
                       )}
                       onMouseDown={(event) => {
                         event.preventDefault();
@@ -804,9 +804,7 @@ export default function ComposerV2({
             <div
               {...getRootProps()}
               className={cn(
-                'group rounded-xl border bg-white p-2 shadow-sm transition-colors',
-                'border-neutral-200 focus-within:border-neutral-300',
-                'dark:border-neutral-800 dark:bg-neutral-900 dark:focus-within:border-neutral-700',
+                'group rounded-xl border border-border bg-card p-2 shadow-sm transition-colors focus-within:border-ring',
                 isDragActive && 'border-dashed border-neutral-400 dark:border-neutral-500',
               )}
             >
@@ -858,7 +856,7 @@ export default function ComposerV2({
                   aria-expanded={Boolean(activeAutocompleteId)}
                   aria-activedescendant={activeAutocompleteOptionId}
                   rows={2}
-                  className="relative z-10 block max-h-[34vh] min-h-[56px] w-full resize-none bg-transparent px-2 pt-2 text-[16px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none dark:text-neutral-100 dark:placeholder-neutral-500 md:max-h-[40vh] md:min-h-[48px] md:pt-1.5 md:text-[14px]"
+                  className="relative z-10 block max-h-[34vh] min-h-[56px] w-full resize-none bg-transparent px-2 pt-2 text-[16px] leading-6 text-foreground placeholder:text-muted-foreground outline-none md:max-h-[40vh] md:min-h-[48px] md:pt-1.5 md:text-[14px]"
                 />
               </div>
 
@@ -884,8 +882,8 @@ export default function ComposerV2({
                         className={cn(
                           'inline-flex h-9 max-w-[112px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px] md:h-7',
                           runMode === 'plan'
-                            ? 'text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/30'
-                            : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                            ? 'text-primary hover:bg-accent'
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                         )}
                         title={t('input.runModes.change', {
                           defaultValue: 'Select run mode',
@@ -909,7 +907,7 @@ export default function ComposerV2({
                           id={runModeMenuId}
                           role="menu"
                           aria-labelledby={runModeButtonId}
-                          className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+                          className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-border bg-popover p-1.5 text-left shadow-lg"
                         >
                           {RUN_MODE_OPTIONS.map((option) => {
                             const Icon = option.Icon;
@@ -954,8 +952,8 @@ export default function ComposerV2({
                                 className={cn(
                                   'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition',
                                   isSelected
-                                    ? 'bg-neutral-100 dark:bg-neutral-800'
-                                    : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/70',
+                                    ? 'bg-accent text-accent-foreground'
+                                    : 'hover:bg-accent/70',
                                   optionDisabled && 'cursor-not-allowed opacity-45',
                                 )}
                               >
@@ -963,8 +961,8 @@ export default function ComposerV2({
                                   className={cn(
                                     'h-4 w-4 shrink-0',
                                     isPlan
-                                      ? 'text-blue-600 dark:text-blue-300'
-                                      : 'text-neutral-500 dark:text-neutral-400',
+                                      ? 'text-primary'
+                                      : 'text-muted-foreground',
                                   )}
                                   strokeWidth={1.9}
                                 />
@@ -973,8 +971,8 @@ export default function ComposerV2({
                                     className={cn(
                                       'block truncate text-[13px] font-medium',
                                       isPlan
-                                        ? 'text-blue-700 dark:text-blue-300'
-                                        : 'text-neutral-900 dark:text-neutral-100',
+                                        ? 'text-primary'
+                                        : 'text-foreground',
                                     )}
                                   >
                                     {label}
@@ -1075,7 +1073,7 @@ export default function ComposerV2({
                             ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
                             : permissionMode === 'bypassPermissions'
                               ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
-                              : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                         )}
                         title={permissionModeButtonTitle}
                         aria-label={permissionSelectorDisabled ? permissionLockedInPlanMessage : undefined}
@@ -1103,7 +1101,7 @@ export default function ComposerV2({
                         id={permissionMenuId}
                         role="menu"
                         aria-labelledby={permissionButtonId}
-                        className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+                        className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border border-border bg-popover p-1.5 text-left shadow-lg"
                       >
                         {PERMISSION_MODE_OPTIONS.map((option) => {
                           const Icon = option.Icon;
@@ -1142,8 +1140,8 @@ export default function ComposerV2({
                               className={cn(
                                 'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition',
                                 isSelected
-                                  ? 'bg-neutral-100 dark:bg-neutral-800'
-                                  : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/70',
+                                  ? 'bg-accent text-accent-foreground'
+                                  : 'hover:bg-accent/70',
                               )}
                             >
                               <Icon
@@ -1161,7 +1159,7 @@ export default function ComposerV2({
                                     'block truncate text-[13px] font-medium',
                                     isDangerous
                                       ? 'text-amber-700 dark:text-amber-300'
-                                      : 'text-neutral-900 dark:text-neutral-100',
+                                      : 'text-foreground',
                                   )}
                                 >
                                   {label}
@@ -1204,8 +1202,8 @@ export default function ComposerV2({
                             : contextStatus.tone === 'amber'
                               ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
                               : contextStatus.tone === 'normal'
-                                ? 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
-                                : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+                                ? 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                : 'text-muted-foreground/70 hover:bg-accent hover:text-accent-foreground',
                         )}
                         title={contextStatusTitle}
                         aria-label={contextStatusTitle}
@@ -1220,10 +1218,10 @@ export default function ComposerV2({
                           id={contextPopoverId}
                           role="region"
                           aria-labelledby={contextPopoverTitleId}
-                          className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+                          className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-border bg-popover p-3 text-left text-[12px] leading-5 text-popover-foreground shadow-lg"
                         >
                           <div className="mb-1 flex items-center justify-between gap-2">
-                            <span id={contextPopoverTitleId} className="font-medium text-neutral-900 dark:text-neutral-100">
+                            <span id={contextPopoverTitleId} className="font-medium text-popover-foreground">
                               {t('input.contextStatusTitle', { defaultValue: 'Context window' })}
                             </span>
                             <span
@@ -1300,8 +1298,8 @@ export default function ComposerV2({
                       aria-busy={isSubmitPending || hasUploadingImages}
                       aria-describedby={queueBlockedByAttachments ? queueAttachmentBlockId : undefined}
                       className={cn(
-                        'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900 md:h-8 md:w-8',
-                        isLoading && 'bg-neutral-700 dark:bg-neutral-200',
+                        'inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:opacity-90 disabled:opacity-40 md:h-8 md:w-8',
+                        isLoading && 'opacity-80',
                         (isSubmitPending || hasUploadingImages) && 'cursor-wait',
                       )}
                       title={submitLabel}

@@ -167,7 +167,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
   );
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="flex h-full min-w-0 flex-col bg-background text-foreground">
       {/* Header: breadcrumb left, tool switcher right. */}
       <header className={cn(
         'flex shrink-0 flex-col gap-1 px-3 py-1.5 md:flex-row md:items-center md:py-0',
@@ -259,8 +259,8 @@ export default function MainAreaV2(props: MainAreaV2Props) {
                   'relative inline-flex h-8 min-w-10 shrink-0 items-center justify-center rounded-lg text-[13px] transition-colors md:min-w-0 md:rounded-md',
                   compactTools ? 'md:w-8 md:px-0' : spaciousLayout ? 'gap-1.5 px-2.5 md:h-9 md:gap-2 md:px-3' : 'gap-1.5 px-2.5',
                   isActive
-                    ? 'bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
-                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground',
                 )}
               >
                 <Icon className="h-4 w-4 md:h-3.5 md:w-3.5" strokeWidth={1.75} />
@@ -268,7 +268,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
                 {tab.id === 'always-on' && alwaysOnUnread ? (
                   <span
                     aria-hidden="true"
-                    className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
+                    className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
                   />
                 ) : null}
               </button>

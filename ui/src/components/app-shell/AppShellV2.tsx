@@ -621,7 +621,7 @@ export default function AppShellV2() {
   );
 
   return (
-    <div className="ui-v2 fixed inset-0 flex flex-col bg-white font-sans text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="ui-v2 fixed inset-0 flex flex-col bg-background font-sans text-foreground">
       <ConnectionBanner />
       <div className="flex min-h-0 flex-1">
       {!isMobile ? (
