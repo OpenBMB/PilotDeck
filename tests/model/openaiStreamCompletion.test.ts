@@ -59,6 +59,41 @@ describe("OpenAI-compatible stream completion sentinels", () => {
     ]);
   });
 
+  it("accepts raw [DONE] without a trailing SSE delimiter", async () => {
+    const events: CanonicalModelEvent[] = [];
+    for await (const event of streamModel(request, modelConfig, {
+      fetch: async () => sseResponse([
+        `data: ${JSON.stringify({ id: "1", choices: [{ delta: { content: "hi" } }] })}`,
+        "data: [DONE]",
+      ], { trailingDelimiter: false }),
+    })) {
+      events.push(event);
+    }
+
+    assert.deepEqual(events.map((event) => event.type), [
+      "request_started",
+      "message_start",
+      "text_delta",
+    ]);
+  });
+
+  it("accepts provider finish_reason without a trailing SSE delimiter", async () => {
+    const events: CanonicalModelEvent[] = [];
+    for await (const event of streamModel(request, modelConfig, {
+      fetch: async () => sseResponse([
+        `data: ${JSON.stringify({ id: "1", choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+      ], { trailingDelimiter: false }),
+    })) {
+      events.push(event);
+    }
+
+    assert.deepEqual(events.map((event) => event.type), [
+      "request_started",
+      "message_start",
+      "message_end",
+    ]);
+  });
+
   it("rejects EOF without [DONE] or provider message_end", async () => {
     const events: CanonicalModelEvent[] = [];
     await assert.rejects(
@@ -82,11 +117,15 @@ describe("OpenAI-compatible stream completion sentinels", () => {
   });
 });
 
-function sseResponse(lines: string[]): Response {
+function sseResponse(
+  lines: string[],
+  options: { trailingDelimiter?: boolean } = {},
+): Response {
   const encoder = new TextEncoder();
+  const trailingDelimiter = options.trailingDelimiter ?? true;
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode(`${lines.join("\n\n")}\n\n`));
+      controller.enqueue(encoder.encode(`${lines.join("\n\n")}${trailingDelimiter ? "\n\n" : ""}`));
       controller.close();
     },
   });

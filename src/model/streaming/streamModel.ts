@@ -594,25 +594,35 @@ async function* readServerSentEvents(
       buffer = chunks.pop() ?? "";
 
       for (const chunk of chunks) {
-        const dataLines = chunk
-          .split(/\n/)
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice("data:".length).trim());
+        yield* parseServerSentEventChunk(chunk);
+      }
+    }
 
-        for (const data of dataLines) {
-          if (!data) {
-            continue;
-          }
-          if (data === "[DONE]") {
-            yield { type: "done" };
-            continue;
-          }
-          yield { type: "data", data: JSON.parse(data) };
-        }
+    if (buffer.trim().length > 0) {
+      for (const event of parseServerSentEventChunk(buffer)) {
+        yield event;
       }
     }
   } finally {
     signal?.removeEventListener("abort", cancelReader);
+  }
+}
+
+function* parseServerSentEventChunk(chunk: string): Iterable<ServerSentEvent> {
+  const dataLines = chunk
+    .split(/\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trim());
+
+  for (const data of dataLines) {
+    if (!data) {
+      continue;
+    }
+    if (data === "[DONE]") {
+      yield { type: "done" };
+      continue;
+    }
+    yield { type: "data", data: JSON.parse(data) };
   }
 }
 
