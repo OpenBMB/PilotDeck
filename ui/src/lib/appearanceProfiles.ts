@@ -1,3 +1,6 @@
+import pilotdeckLogoDark from '../assets/pilotdeck-wordmark-dark.png';
+import pilotdeckLogoLight from '../assets/pilotdeck-wordmark-light.png';
+
 export type AppearancePalette = {
   background: string;
   foreground: string;
@@ -51,8 +54,8 @@ export type StoredAppearanceProfiles = {
 export const APPEARANCE_STORAGE_KEY = 'pilotdeck-appearance-profiles';
 export const APPEARANCE_SYNC_EVENT = 'appearance-profiles:sync';
 
-export const DEFAULT_LOGO_LIGHT = '/logo.svg';
-export const DEFAULT_LOGO_DARK = '/logo.svg';
+export const DEFAULT_LOGO_LIGHT = pilotdeckLogoLight;
+export const DEFAULT_LOGO_DARK = pilotdeckLogoDark;
 export const DEFAULT_FAVICON = '/favicon.svg?v=pd1';
 export const MAX_APPEARANCE_ASSET_BYTES = 1024 * 1024;
 
