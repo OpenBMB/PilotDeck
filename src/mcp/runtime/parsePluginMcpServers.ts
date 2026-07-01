@@ -20,6 +20,18 @@ function expandHome(s: string): string {
   return s;
 }
 
+function expandString(value: string): string {
+  return expandHome(value)
+    .replace(/\$\{env:([^}]+)\}/g, (_match, name: string) => process.env[name] ?? "")
+    .replace(/\$\{userHome\}/g, process.env.HOME ?? process.env.USERPROFILE ?? homedir());
+}
+
+function expandStringRecord(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, expandString(value)]),
+  );
+}
+
 export type ParsePluginMcpServersResult = {
   servers: PilotDeckMcpServerSpec[];
   diagnostics: { id: string; message: string }[];
@@ -43,12 +55,12 @@ export function parsePluginMcpServers(
       servers.push({
         id,
         transport: "stdio",
-        command: v.command,
+        command: expandString(v.command),
         args: Array.isArray(v.args)
-          ? (v.args.filter((a): a is string => typeof a === "string").map(expandHome))
+          ? (v.args.filter((a): a is string => typeof a === "string").map(expandString))
           : undefined,
-        env: isStringRecord(v.env) ? (v.env as Record<string, string>) : undefined,
-        cwd: typeof v.cwd === "string" ? v.cwd : undefined,
+        env: isStringRecord(v.env) ? expandStringRecord(v.env as Record<string, string>) : undefined,
+        cwd: typeof v.cwd === "string" ? expandString(v.cwd) : undefined,
         perSession: v.perSession === true ? true : undefined,
       });
       continue;
@@ -58,8 +70,8 @@ export function parsePluginMcpServers(
       servers.push({
         id,
         transport: "streamable_http",
-        url,
-        headers: isStringRecord(v.headers) ? (v.headers as Record<string, string>) : undefined,
+        url: expandString(url),
+        headers: isStringRecord(v.headers) ? expandStringRecord(v.headers as Record<string, string>) : undefined,
       });
       continue;
     }
