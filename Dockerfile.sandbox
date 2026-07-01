@@ -1,0 +1,83 @@
+# PilotDeck headless sandbox image for E2B / containerized eval harnesses.
+#
+# Unlike the main Dockerfile (which boots gateway + Web UI), this image only
+# needs the `pilotdeck` CLI so an external harness (e2b sandbox-runner, Harbor,
+# or a plain `docker exec`) can drive one-shot turns:
+#
+#     pilotdeck "<task prompt>"
+#
+# On E2B the container CMD is overridden to run the mounted /mnt/envd daemon
+# (see the sandbox-runner pilotdeck backend); locally we default to
+# `sleep infinity` so the image can be probed with `docker exec`.
+
+# ── Stage 1: Builder ──────────────────────────────────────────────────
+FROM node:22-bookworm AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Use a fast npm registry mirror for the install (large monorepo + native modules).
+ENV npm_config_registry=https://registry.npmmirror.com
+
+# Manifests first for layer caching. ui/ is a pnpm workspace member, so its
+# package.json + scripts must be present for `pnpm install --frozen-lockfile`.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY src/context/memory/edgeclaw-memory-core/ src/context/memory/edgeclaw-memory-core/
+COPY ui/package.json ui/
+COPY ui/scripts/ ui/scripts/
+
+RUN npm install -g pnpm@10.32.1 \
+    && pnpm --version \
+    && HUSKY=0 pnpm install --frozen-lockfile
+
+# Source (no full ui/ — the headless CLI does not need the Vite frontend).
+COPY src/ src/
+COPY scripts/ scripts/
+COPY skills/ skills/
+
+# Build edgeclaw-memory-core (src/ -> lib/) then the gateway/CLI (tsc -> dist/).
+RUN cd src/context/memory/edgeclaw-memory-core && npm run build
+RUN npm run build
+
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+# Tools the agent commonly shells out to inside the sandbox.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ripgrep git curl ca-certificates procps jq python3 unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g tsx
+
+COPY --from=builder /build/package.json ./
+COPY --from=builder /build/tsconfig.json ./
+COPY --from=builder /build/node_modules/ node_modules/
+COPY --from=builder /build/dist/ dist/
+COPY --from=builder /build/src/ src/
+COPY --from=builder /build/scripts/ scripts/
+COPY --from=builder /build/skills/ skills/
+
+# Expose the CLI on PATH via a wrapper (robust regardless of shebang/uid).
+RUN printf '#!/bin/sh\nexec node /app/dist/src/cli/pilotdeck.js "$@"\n' \
+      > /usr/local/bin/pilotdeck \
+    && chmod 755 /usr/local/bin/pilotdeck
+
+# E2B mounts its agent daemon at /mnt/envd and overrides CMD to launch it.
+# This wrapper is the entry the sandbox-runner backend invokes on E2B.
+RUN printf '#!/bin/sh\nset -eu\nexec /mnt/envd -port "${E2B_ENVD_PORT:-49983}"\n' \
+      > /usr/local/bin/pilotdeck-e2b-entrypoint \
+    && chmod 755 /usr/local/bin/pilotdeck-e2b-entrypoint
+
+ENV NODE_ENV=production
+# PILOT_HOME is set explicitly per-command by the harness (per e2b user home);
+# this default only matters for ad-hoc `docker run` testing as root.
+ENV PILOT_HOME=/root/.pilotdeck
+
+# Default keeps the container alive for `docker exec` based local testing.
+# On E2B this CMD is overridden with `/mnt/envd -port 49983`.
+CMD ["sleep", "infinity"]
