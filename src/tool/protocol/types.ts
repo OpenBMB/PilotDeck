@@ -295,6 +295,17 @@ export type PilotDeckToolRuntimeContext = {
    */
   outputTruncated?: boolean;
   /**
+   * Optional recursive tool executor used by higher-level tools such as
+   * `execute_code` to dispatch nested tool calls through the same ToolRuntime
+   * permission, lifecycle, audit, and result-limiting path as normal model
+   * tool calls. Hosts that execute tools directly may omit this; dependent
+   * tools report `unsupported_tool` instead of bypassing safety checks.
+   */
+  executeTool?: (
+    call: PilotDeckToolCall,
+    contextPatch?: Partial<PilotDeckToolRuntimeContext>,
+  ) => Promise<import("./result.js").PilotDeckToolResult>;
+  /**
    * Optional session-scoped cache for read_file de-duplication. The agent loop
    * keeps the map stable across turns so repeated reads of an unchanged file
    * can return a lightweight stub instead of re-injecting the full payload.

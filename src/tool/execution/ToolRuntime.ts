@@ -36,6 +36,24 @@ export class ToolRuntime {
 
   async execute(call: PilotDeckToolCall, context: PilotDeckToolRuntimeContext): Promise<PilotDeckToolResult> {
     const startedAtDate = now(context);
+    const runtimeContext: PilotDeckToolRuntimeContext = context.executeTool
+      ? context
+      : {
+          ...context,
+          executeTool: (nestedCall, contextPatch) =>
+            {
+              runtimeContext.readFileState ??= new Map();
+              runtimeContext.writeSnapshots ??= new Map();
+              return this.execute(nestedCall, {
+                ...runtimeContext,
+                ...contextPatch,
+                readFileState: runtimeContext.readFileState,
+                writeSnapshots: runtimeContext.writeSnapshots,
+                executeTool: runtimeContext.executeTool,
+              });
+            },
+        };
+    context = runtimeContext;
     const startedAt = startedAtDate.toISOString();
     let tool = this.registry.get(call.name);
     if (!tool) {
@@ -46,8 +64,8 @@ export class ToolRuntime {
     }
     const toolName = tool?.name ?? call.name;
 
-    if (context.abortSignal?.aborted) {
-      return this.errorResult(call.id, toolName, "tool_aborted", "Tool execution was aborted.", startedAt, context);
+    if (runtimeContext.abortSignal?.aborted) {
+      return this.errorResult(call.id, toolName, "tool_aborted", "Tool execution was aborted.", startedAt, runtimeContext);
     }
 
     if (!tool) {
@@ -57,11 +75,11 @@ export class ToolRuntime {
         "tool_not_found",
         `Tool ${call.name} does not exist.`,
         startedAt,
-        context,
+        runtimeContext,
       );
     }
 
-    const planModeViolation = getPlanModeViolation(tool.name, call.input, context);
+    const planModeViolation = getPlanModeViolation(tool.name, call.input, runtimeContext);
     if (planModeViolation) {
       return this.errorResult(
         call.id,
@@ -69,11 +87,11 @@ export class ToolRuntime {
         "plan_mode_violation",
         planModeViolation,
         startedAt,
-        context,
+        runtimeContext,
       );
     }
 
-    const askModeViolation = context.runMode === "ask"
+    const askModeViolation = runtimeContext.runMode === "ask"
       ? getAskModeViolation(tool, call.input)
       : undefined;
     if (askModeViolation) {
@@ -83,7 +101,7 @@ export class ToolRuntime {
         "ask_mode_violation",
         askModeViolation,
         startedAt,
-        context,
+        runtimeContext,
       );
     }
 
@@ -94,23 +112,23 @@ export class ToolRuntime {
         tool.name,
         "invalid_tool_input",
         formatValidationError(tool.name, validation.issues, {
-          maxOutputTokens: context.maxOutputTokens,
-          outputTruncated: context.outputTruncated,
+          maxOutputTokens: runtimeContext.maxOutputTokens,
+          outputTruncated: runtimeContext.outputTruncated,
         }),
         startedAt,
-        context,
+        runtimeContext,
         { issues: validation.issues },
       );
     }
 
-    if (context.permissionContext.canPrompt === false && requiresPromptCapability(tool, call.input)) {
+    if (runtimeContext.permissionContext.canPrompt === false && requiresPromptCapability(tool, call.input)) {
       return this.errorResult(
         call.id,
         tool.name,
         "unsupported_tool",
         `${tool.name} requires user interaction, but this session is running with prompts disabled.`,
         startedAt,
-        context,
+        runtimeContext,
       );
     }
 

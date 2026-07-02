@@ -70,6 +70,12 @@ export { createReadSkillTool, type ReadSkillDeps, type ReadSkillInput } from "./
 export { createGlobTool, extractGlobBaseDirectory, type GlobInput } from "./builtin/glob.js";
 export { createGrepTool, type GrepInput } from "./builtin/grep.js";
 export {
+  createExecuteCodeTool,
+  type ExecuteCodeOutput,
+  type ExecuteCodeStatus,
+  type ExecuteCodeToolCallLogEntry,
+} from "./builtin/executeCode.js";
+export {
   createGetCurrentTimeTool,
   type GetCurrentTimeInput,
   type GetCurrentTimeOutput,

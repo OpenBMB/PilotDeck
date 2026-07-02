@@ -4,6 +4,7 @@ import { createAskUserQuestionTool } from "../builtin/askUserQuestion.js";
 import { createBashTool, type CreateBashToolOptions } from "../builtin/bash.js";
 import { createEditFileTool } from "../builtin/editFile.js";
 import { createEditNotebookTool } from "../builtin/editNotebook.js";
+import { createExecuteCodeTool } from "../builtin/executeCode.js";
 import { createGlobTool } from "../builtin/glob.js";
 import { createGrepTool } from "../builtin/grep.js";
 import { createGetCurrentTimeTool } from "../builtin/getCurrentTime.js";
@@ -95,6 +96,7 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   registry.register(createEditNotebookTool());
   registry.register(createWriteFileTool());
   registry.register(createBashTool(options?.bash));
+  registry.register(createExecuteCodeTool());
   if (options?.webSearch !== false) {
     registry.register(createWebSearchTool(options?.webSearch));
   }
