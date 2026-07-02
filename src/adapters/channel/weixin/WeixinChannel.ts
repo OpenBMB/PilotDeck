@@ -1,12 +1,14 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { ILinkClient, loginWithQR, MessageItemType } from "weixin-ilink";
 import type { ClientOptions, GetUpdatesResp, WeixinMessage, LoginResult } from "weixin-ilink";
 import type { CronResultDelivery } from "../../../cron/index.js";
-import type { Gateway, GatewayChannelKey } from "../../../gateway/index.js";
+import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayOutboundAttachment } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
 import { executeChannelCommand } from "../protocol/ChannelCommandRegistry.js";
+import { ImAttachmentStore } from "../protocol/ImAttachmentStore.js";
 import { deliverChatCronResult } from "../protocol/ImCronDelivery.js";
 import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
@@ -30,6 +32,7 @@ const WEIXIN_CONNECTION_RECOVERED_TEXT = "微信连接已恢复，我会继续�
 const WEIXIN_CONNECTION_RECOVERED_AFTER_LOSS_TEXT = "微信连接刚刚中断过，现在已恢复。我会继续处理当前任务。";
 const WEIXIN_SESSION_EXPIRED_TEXT = "微信登录状态已失效，当前任务无法继续通过微信回复。请重新扫码登录后再试。";
 const WEIXIN_MAX_PENDING_REPLIES_PER_CHAT = 20;
+const WEIXIN_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 let ilinkFetchCompatibilityInstalled = false;
 
 export type WeixinChannelOptions = {
@@ -51,6 +54,8 @@ export type WeixinIlinkClient = {
   cursor: string;
   poll(): Promise<GetUpdatesResp>;
   sendTextChunked(toUserId: string, text: string, contextToken: string, maxLength?: number): Promise<number>;
+  sendMedia(toUserId: string, item: unknown, contextToken: string): Promise<unknown>;
+  getUploadUrl(params: { file_name: string; file_type: "image" | "file"; file_size: number }): Promise<{ upload_url?: string; cdn_url?: string; download_url?: string }>;
   sendTyping(userId: string, contextToken?: string): Promise<void>;
 };
 
@@ -78,6 +83,7 @@ export class WeixinChannel implements ChannelAdapter {
   private connectionIssueChats = new Set<string>();
   private connectionLostNoticeDeliveredChats = new Set<string>();
   private pendingReplies = new Map<string, string[]>();
+  private attachmentStore: ImAttachmentStore;
 
   constructor(options: WeixinChannelOptions = {}) {
     this.credentialsPath = options.credentialsPath ?? CREDENTIALS_PATH;
@@ -85,6 +91,11 @@ export class WeixinChannel implements ChannelAdapter {
     this.liveReplyOptions = options.liveReplyOptions;
     this.clientFactory = options.clientFactory ?? ((clientOptions) => new ILinkClient(clientOptions));
     this.login = options.loginWithQR ?? loginWithQR;
+    this.attachmentStore = new ImAttachmentStore({
+      rootDir: join(homedir(), ".pilotdeck", "im-attachments"),
+      channelKey: this.channelKey,
+      maxBytes: WEIXIN_MAX_ATTACHMENT_BYTES,
+    });
   }
 
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
@@ -225,11 +236,11 @@ export class WeixinChannel implements ChannelAdapter {
       this.contextTokens.set(fromUser, msg.context_token);
     }
 
-    const textItem = msg.item_list?.find((i) => i.type === MessageItemType.TEXT);
-    const text = textItem?.text_item?.text ?? "";
+    const extracted = await this.extractIncomingMessage(msg, fromUser);
+    const text = extracted.text;
 
-    if (!text.trim()) return;
-    this.logger?.info?.(`weixin: received text message from ${fromUser}`);
+    if (!text.trim() && extracted.attachments.length === 0) return;
+    this.logger?.info?.(`weixin: received message from ${fromUser} attachments=${extracted.attachments.length}`);
 
     if (this.elicitation.hasPending(fromUser) && this.gateway) {
       try {
@@ -255,7 +266,8 @@ export class WeixinChannel implements ChannelAdapter {
       return;
     }
 
-    const mapped = this.mapper.resolve({ chatId: fromUser, text });
+    const messageText = text.trim() || (extracted.attachments.length > 0 ? "请查看我发送的附件。" : "");
+    const mapped = this.mapper.resolve({ chatId: fromUser, text: messageText });
     if (mapped.command === "new" && !mapped.message) {
       await this.sendReply(fromUser, "已创建新会话。");
       return;
@@ -285,10 +297,80 @@ export class WeixinChannel implements ChannelAdapter {
 
     this.activeChats.add(fromUser);
     try {
-      await this.processMessage(fromUser, mapped.sessionKey, mapped.message, mapped.projectKey);
+      await this.processMessage(fromUser, mapped.sessionKey, mapped.message, mapped.projectKey, extracted.attachments);
     } finally {
       this.activeChats.delete(fromUser);
     }
+  }
+
+  private async extractIncomingMessage(
+    msg: WeixinMessage,
+    fromUser: string,
+  ): Promise<{ text: string; attachments: ChannelAttachment[] }> {
+    const textParts: string[] = [];
+    const attachments: ChannelAttachment[] = [];
+    const diagnostics: string[] = [];
+    const messageId = String(msg.message_id ?? msg.client_id ?? Date.now());
+
+    for (const item of msg.item_list ?? []) {
+      if (item.type === MessageItemType.TEXT && item.text_item?.text) {
+        textParts.push(item.text_item.text);
+        continue;
+      }
+      try {
+        if (item.type === MessageItemType.IMAGE) {
+          const image = item.image_item;
+          const url = image?.cdn_url ?? image?.url;
+          if (!url) {
+            diagnostics.push("微信图片附件缺少下载 URL，已跳过。");
+            continue;
+          }
+          attachments.push(await this.attachmentStore.saveFromUrl({
+            url,
+            chatId: fromUser,
+            messageId,
+            type: "image",
+            name: `image-${messageId}.jpg`,
+            mimeType: guessMimeTypeFromUrl(url, "image/jpeg"),
+            metadata: { width: image?.width, height: image?.height, itemType: "image" },
+          }));
+          continue;
+        }
+        if (item.type === MessageItemType.FILE) {
+          const file = item.file_item;
+          const url = file?.cdn_url ?? file?.url;
+          if (!url) {
+            diagnostics.push(`微信文件 ${file?.file_name ?? "(unknown)"} 缺少下载 URL，已跳过。`);
+            continue;
+          }
+          attachments.push(await this.attachmentStore.saveFromUrl({
+            url,
+            chatId: fromUser,
+            messageId,
+            type: "file",
+            name: file?.file_name,
+            bytes: file?.file_size,
+            mimeType: guessMimeTypeFromName(file?.file_name),
+            metadata: { itemType: "file" },
+          }));
+          continue;
+        }
+        if (item.type === MessageItemType.VOICE && item.voice_item?.text) {
+          textParts.push(`[微信语音转文字]\n${item.voice_item.text}`);
+          continue;
+        }
+        if (item.type === MessageItemType.VIDEO) {
+          diagnostics.push("微信视频附件暂未接入内容理解，已跳过。");
+        }
+      } catch (error) {
+        diagnostics.push(`微信附件处理失败：${formatWeixinError(error)}`);
+      }
+    }
+
+    if (diagnostics.length > 0) {
+      textParts.push(`[Attachment diagnostics]\n${diagnostics.map((line) => `- ${line}`).join("\n")}`);
+    }
+    return { text: textParts.join("\n").trim(), attachments };
   }
 
   private async processMessage(
@@ -296,6 +378,7 @@ export class WeixinChannel implements ChannelAdapter {
     sessionKey: string,
     message: string,
     projectKey?: string,
+    attachments: ChannelAttachment[] = [],
   ): Promise<void> {
     if (!this.gateway) return;
 
@@ -345,6 +428,7 @@ export class WeixinChannel implements ChannelAdapter {
         sessionKey,
         channelKey: "weixin",
         message,
+        ...(attachments.length > 0 ? { attachments } : {}),
         allowPlanModeTools: false,
         ...(turnTimeoutMs > 0 ? { timeoutMs: turnTimeoutMs } : {}),
         ...(projectKey ? { projectKey } : {}),
@@ -375,6 +459,10 @@ export class WeixinChannel implements ChannelAdapter {
         if (event.type === "error" && event.code === "turn_timeout") {
           watchdogSettled = true;
           await notifyTimedOut();
+          continue;
+        }
+        if (event.type === "assistant_attachment") {
+          await this.sendAttachment(userId, event.attachment);
           continue;
         }
         await liveReply.handleEvent(event);
@@ -433,6 +521,84 @@ export class WeixinChannel implements ChannelAdapter {
       if (options.queueOnFailure) this.queuePendingReply(userId, text);
       return false;
     }
+  }
+
+  private async sendAttachment(userId: string, attachment: GatewayOutboundAttachment): Promise<boolean> {
+    if (!this.client) {
+      await this.sendReply(userId, this.formatAttachmentFallback(attachment), { queueOnFailure: true });
+      return false;
+    }
+    const contextToken = this.contextTokens.get(userId);
+    if (!contextToken) {
+      await this.sendReply(userId, this.formatAttachmentFallback(attachment), { queueOnFailure: true });
+      return false;
+    }
+    if (attachment.source === "local_path" && attachment.path) {
+      await this.sendReply(userId, `附件 ${attachment.path} 需要授权后才能通过微信发送。`);
+      return false;
+    }
+
+    try {
+      const prepared = await this.prepareAttachmentUpload(attachment);
+      const upload = await this.client.getUploadUrl({
+        file_name: prepared.name,
+        file_type: prepared.fileType,
+        file_size: prepared.buffer.byteLength,
+      });
+      if (!upload.upload_url || !upload.cdn_url) {
+        throw new Error("weixin upload url response missing upload_url/cdn_url");
+      }
+      const uploadRes = await fetch(upload.upload_url, {
+        method: "PUT",
+        headers: prepared.mimeType ? { "Content-Type": prepared.mimeType } : undefined,
+        body: new Uint8Array(prepared.buffer),
+      });
+      if (!uploadRes.ok) {
+        throw new Error(`weixin attachment upload HTTP ${uploadRes.status}`);
+      }
+      await this.client.sendMedia(userId, prepared.fileType === "image"
+        ? {
+            type: MessageItemType.IMAGE,
+            image_item: { cdn_url: upload.cdn_url },
+          }
+        : {
+            type: MessageItemType.FILE,
+            file_item: { file_name: prepared.name, file_size: prepared.buffer.byteLength, cdn_url: upload.cdn_url },
+          }, contextToken);
+      this.logger?.info?.(`weixin: sent attachment to ${userId}: ${prepared.name}`);
+      return true;
+    } catch (error) {
+      this.logger?.error?.(`weixin: send attachment failed: ${formatWeixinError(error)}`);
+      await this.sendReply(userId, this.formatAttachmentFallback(attachment), { queueOnFailure: true });
+      return false;
+    }
+  }
+
+  private async prepareAttachmentUpload(attachment: GatewayOutboundAttachment): Promise<{
+    name: string;
+    mimeType?: string;
+    buffer: Buffer;
+    fileType: "image" | "file";
+  }> {
+    const name = sanitizeWeixinFilename(attachment.name ?? attachment.path?.split(/[\\/]/).pop() ?? "attachment");
+    const buffer = attachment.content
+      ? Buffer.from(attachment.content, "base64")
+      : attachment.path
+        ? await readFile(attachment.path)
+        : undefined;
+    if (!buffer) throw new Error("attachment has neither content nor path");
+    if (buffer.byteLength > WEIXIN_MAX_ATTACHMENT_BYTES) {
+      throw new Error(`attachment ${name} is ${buffer.byteLength} bytes (limit ${WEIXIN_MAX_ATTACHMENT_BYTES})`);
+    }
+    const mimeType = attachment.mimeType ?? guessMimeTypeFromName(name);
+    const fileType = attachment.type === "image" || mimeType?.startsWith("image/") ? "image" : "file";
+    return { name, mimeType, buffer, fileType };
+  }
+
+  private formatAttachmentFallback(attachment: GatewayOutboundAttachment): string {
+    const name = attachment.name ?? attachment.path?.split(/[\\/]/).pop() ?? "附件";
+    const pathText = attachment.path ? `，可在本机查看：${attachment.path}` : "";
+    return `附件发送失败：${name}${pathText}`;
   }
 
   private async sendTypingIfPossible(userId: string): Promise<void> {
@@ -647,6 +813,31 @@ function formatElapsed(elapsedMs: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+}
+
+function sanitizeWeixinFilename(name: string): string {
+  return name.replace(/[\x00-\x1f\\/:*?"<>|]+/g, "_").trim().slice(0, 180) || "attachment.bin";
+}
+
+function guessMimeTypeFromUrl(url: string, fallback?: string): string | undefined {
+  try {
+    return guessMimeTypeFromName(new URL(url).pathname) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function guessMimeTypeFromName(name: string | undefined): string | undefined {
+  const lower = name?.toLowerCase() ?? "";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+  if (lower.endsWith(".md")) return "text/markdown";
+  if (lower.endsWith(".json")) return "application/json";
+  return undefined;
 }
 
 function installIlinkFetchCompatibility(): void {

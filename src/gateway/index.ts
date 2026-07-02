@@ -26,6 +26,7 @@ export {
 } from "./server/authToken.js";
 export type {
   ChannelAttachment,
+  GatewayOutboundAttachment,
   Gateway,
   GatewayActiveTurnSnapshot,
   GatewayActiveTurnSnapshotInput,

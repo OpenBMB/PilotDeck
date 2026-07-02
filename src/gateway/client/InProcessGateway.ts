@@ -1212,6 +1212,36 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             }]
           : [],
       );
+      const attachments = event.result.content.flatMap((item): GatewayEvent[] => {
+        if (item.type === "image") {
+          return [{
+            type: "assistant_attachment",
+            attachment: {
+              type: "image",
+              mimeType: item.mimeType,
+              content: item.data,
+              bytes: item.bytes,
+              name: `${safeGatewayPathPart(event.result.toolName)}-${safeGatewayPathPart(event.result.toolCallId)}.${extensionForMime(item.mimeType)}`,
+              source: "tool_result",
+              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName },
+            },
+          }];
+        }
+        if (item.type === "file") {
+          return [{
+            type: "assistant_attachment",
+            attachment: {
+              type: "file",
+              path: item.path,
+              mimeType: item.mimeType,
+              name: item.path.split(/[\\/]/).pop(),
+              source: "tool_result",
+              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName, description: item.description },
+            },
+          }];
+        }
+        return [];
+      });
 
       return [
         {
@@ -1229,6 +1259,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             ? { data: event.result.data as Record<string, unknown> }
             : {}),
         },
+        ...attachments,
       ];
     }
     case "mode_change_requested":
@@ -1268,6 +1299,18 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             type: "tool_result_detail_available",
             toolCallId: block.toolCallId,
             resultPath: block.path,
+          });
+          events.push({
+            type: "assistant_attachment",
+            attachment: {
+              type: block.mediaType === "image" ? "image" : "file",
+              path: block.path,
+              mimeType: block.mimeType,
+              bytes: block.originalBytes,
+              name: block.path.split(/[\\/]/).pop(),
+              source: "media_reference",
+              metadata: { toolCallId: block.toolCallId, reason: block.reason },
+            },
           });
         } else if (block.type === "tool_result") {
           const projFullText = flattenToolResultBlockText(block);
@@ -1608,4 +1651,23 @@ async function attachmentsToContentBlocks(
   }
 
   return blocks;
+}
+
+function sanitizeAttachmentName(name: string): string {
+  return name.replace(/[\r\n]+/g, " ").trim() || "attachment";
+}
+
+function extensionForMime(mimeType: string): string {
+  switch (mimeType.toLowerCase()) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/gif":
+      return "gif";
+    case "image/webp":
+      return "webp";
+    default:
+      return "bin";
+  }
 }
