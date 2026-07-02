@@ -238,17 +238,12 @@ export class AttachmentResolver {
         ],
       };
     }
-    const buffer = await readFile(absolute);
     const estimatedPages = Math.max(1, Math.round(info.size / this.bytesPerPdfPage));
     return {
       blocks: [
         {
-          type: "pdf",
-          source: "base64",
-          data: buffer.toString("base64"),
-          mimeType: "application/pdf",
-          bytes: info.size,
-          pages: estimatedPages,
+          type: "text",
+          text: `[PDF attachment: ${absolute}, ${info.size} bytes, estimated ${estimatedPages} pages. Use read_file on this registered attachment path to inspect it.]`,
         },
       ],
       diagnostics: [
