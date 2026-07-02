@@ -301,6 +301,11 @@ export type PilotDeckToolRuntimeContext = {
    */
   readFileState?: PilotDeckReadFileStateMap;
   /**
+   * Session-scoped exact file paths that read_file may read even when they are
+   * outside the workspace. Used for registered IM attachments only.
+   */
+  allowedReadFiles?: string[];
+  /**
    * Optional session-scoped map of full-text reads that may authorize
    * subsequent write_file overwrites. Only complete text reads populate this.
    */

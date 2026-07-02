@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
+import type { PermissionResult, PermissionRule } from "../../permission/index.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import { resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
 import { readFileInRange } from "./filesystem/readFileInRange.js";
@@ -42,6 +43,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       + "If the User provides a path to a file, assume that path is valid as long as it resolves inside the current workspace. "
       + "It is okay to read a file that does not exist; an error will be returned.\n\nUsage:\n"
       + "- The file_path parameter may be a workspace-relative path or an absolute path, but it must resolve inside the current workspace\n"
+      + "- If the user asks you to send or share a file, use send_attachment instead of read_file; do not inspect arbitrary binary files before sending them\n"
       + "- By default, offset is 1 and the tool reads from the beginning of the file\n"
       + "- You can optionally specify offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters\n"
       + "- Results are returned using cat -n format, with line numbers starting at 1\n"
@@ -84,7 +86,9 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
     },
     maxResultBytes: 200_000,
     isReadOnly: () => true,
-    isConcurrencySafe: () => true,
+    isConcurrencySafe: () => false,
+    checkPermissions: async (input, context): Promise<PermissionResult> =>
+      checkReadFilePermission(input.file_path, context),
     validateInput: async (input, context) => {
       if (input.offset !== undefined && input.offset < 1) {
         return {
@@ -134,13 +138,17 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       if (hasBinaryExtension(absolutePath)) {
         return {
           ok: false,
-          issues: [{ path: "file_path", code: "invalid_schema", message: "binary files are not supported by read_file." }],
+          issues: [{ path: "file_path", code: "invalid_schema", message: "binary files are not supported by read_file. Use send_attachment/send_file when the user wants this file sent back through the current channel." }],
         };
       }
       return { ok: true, input };
     },
     execute: async (input, context) => {
-      const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, { mustExist: true });
+      const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, {
+        mustExist: true,
+        allowRegisteredReadFiles: true,
+        allowOutsideWorkspace: context.currentPermissionDecision?.type === "allow",
+      });
       if (!resolved.ok) {
         throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message, resolved.error.details);
       }
@@ -178,9 +186,25 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           };
         }
         const imageBuffer = await readFile(resolved.absolutePath);
-        const validated = await validateAndRepairImage(imageBuffer, mimeType);
         const maxImageBytes = Math.min(MAX_IMAGE_BYTES, context.modelMultimodal?.maxImageBytes ?? MAX_IMAGE_BYTES);
-        const compressed = await compressImageForBudget(validated.buffer, validated.mimeType, maxImageBytes);
+        const preparedImage = await prepareImageForModel(imageBuffer, mimeType, maxImageBytes);
+        if (!preparedImage.ok) {
+          return {
+            content: [{
+              type: "text",
+              text: `[Image file: ${resolved.relativePath}, ${fileStat.size} bytes, ${mimeType}. Image decoding failed, so it was not attached as model-visible image content. Diagnostic: ${preparedImage.error}]`,
+            }],
+            data: {
+              filePath: resolved.relativePath,
+              kind,
+              mimeType,
+              bytes: imageBuffer.byteLength,
+              imageDecodeFailed: true,
+              error: preparedImage.error,
+            },
+          };
+        }
+        const compressed = preparedImage.image;
         readState.set(dedupKey, {
           mtimeMs: Math.floor(fileStat.mtimeMs),
           kind,
@@ -639,6 +663,27 @@ async function validateAndRepairImage(
   }
 }
 
+async function prepareImageForModel(
+  buffer: Buffer,
+  mimeType: string,
+  maxBytes: number,
+): Promise<
+  | { ok: true; image: { buffer: Buffer; mimeType: string } }
+  | { ok: false; error: string }
+> {
+  try {
+    const validated = await validateAndRepairImage(buffer, mimeType);
+    return { ok: true, image: await compressImageForBudget(validated.buffer, validated.mimeType, maxBytes) };
+  } catch (error) {
+    return { ok: false, error: formatImageDecodeError(error) };
+  }
+}
+
+function formatImageDecodeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, " ").slice(0, 300) || "unknown image decode error";
+}
+
 /**
  * Multi-pass image compressor. We size against a single byte budget (which
  * the model's own `maxImageBytes` constraint also enforces) — there's no
@@ -717,4 +762,73 @@ async function compressImageForBudget(
     );
   }
   return { buffer: output, mimeType: outputMimeType };
+}
+
+function checkReadFilePermission(
+  inputPath: string,
+  context: Parameters<NonNullable<PilotDeckToolDefinition<ReadFileInput>["checkPermissions"]>>[1],
+): PermissionResult {
+  const workspaceResolved = resolvePilotDeckWorkspacePath(inputPath, context, {
+    mustExist: true,
+    allowRegisteredReadFiles: true,
+  });
+  if (workspaceResolved.ok) {
+    return { type: "passthrough" };
+  }
+  if (workspaceResolved.error.code !== "path_not_allowed") {
+    return {
+      type: "deny",
+      reason: { type: "safety", message: workspaceResolved.error.message },
+      message: workspaceResolved.error.message,
+    };
+  }
+
+  const outsideResolved = resolvePilotDeckWorkspacePath(inputPath, context, {
+    mustExist: true,
+    allowOutsideWorkspace: true,
+  });
+  if (!outsideResolved.ok) {
+    return {
+      type: "deny",
+      reason: { type: "safety", message: outsideResolved.error.message },
+      message: outsideResolved.error.message,
+    };
+  }
+
+  const rule = buildRecursiveReadFileRule(outsideResolved.absolutePath);
+  const reason = {
+    type: "tool" as const,
+    toolName: "read_file",
+    message: "read_file targets a path outside the workspace.",
+  };
+  return {
+    type: "ask",
+    reason,
+    request: {
+      toolCallId: "",
+      toolName: "read_file",
+      inputSummary: JSON.stringify({ file_path: outsideResolved.absolutePath }),
+      reason,
+      options: [
+        { id: "allow_once", label: "Allow once" },
+        { id: "allow_session", label: "Allow this folder for this session", rules: [rule] },
+        { id: "deny", label: "Deny" },
+        { id: "cancel", label: "Cancel" },
+      ],
+      metadata: {
+        externalPath: outsideResolved.absolutePath,
+        allowedDirectory: path.dirname(outsideResolved.absolutePath),
+        pattern: rule.pattern,
+      },
+    },
+  };
+}
+
+function buildRecursiveReadFileRule(absolutePath: string): PermissionRule {
+  return {
+    source: "session",
+    behavior: "allow",
+    toolName: "read_file",
+    pattern: path.join(path.dirname(absolutePath), "*"),
+  };
 }

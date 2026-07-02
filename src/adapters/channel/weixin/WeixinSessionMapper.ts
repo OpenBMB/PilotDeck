@@ -49,6 +49,10 @@ export class WeixinSessionMapper {
     return this.state.projectByChatId?.[chatId];
   }
 
+  getSession(chatId: string): string {
+    return this.state.activeByChatId[chatId] ?? `weixin:chat=${chatId}:general`;
+  }
+
   snapshot(): WeixinSessionMapperState {
     return {
       activeByChatId: { ...this.state.activeByChatId },

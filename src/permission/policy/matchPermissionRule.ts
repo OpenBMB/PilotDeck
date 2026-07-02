@@ -2,6 +2,7 @@ import path from "node:path";
 import type { PermissionContext, PermissionRule } from "../protocol/types.js";
 
 const FILE_WRITE_TOOLS = new Set(["write_file", "edit_file"]);
+const FILE_PATH_PATTERN_TOOLS = new Set(["read_file", "send_attachment", "write_file", "edit_file"]);
 
 export function matchPermissionRule(
   rule: PermissionRule,
@@ -33,7 +34,7 @@ function matchRulePattern(
 ): boolean {
   if (!rule.pattern) return true;
   if (toolName === "bash") return matchBashPattern(rule.pattern, input);
-  if (FILE_WRITE_TOOLS.has(toolName)) return matchFilePathPattern(rule.pattern, input, context);
+  if (FILE_PATH_PATTERN_TOOLS.has(toolName)) return matchFilePathPattern(rule.pattern, input, context);
   return true;
 }
 

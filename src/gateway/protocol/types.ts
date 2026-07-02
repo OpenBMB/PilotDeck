@@ -69,6 +69,17 @@ export type ChannelAttachment = {
   metadata?: Record<string, unknown>;
 };
 
+export type GatewayOutboundAttachment = {
+  type: "file" | "image" | "text" | "unknown";
+  name?: string;
+  path?: string;
+  mimeType?: string;
+  content?: string;
+  bytes?: number;
+  source: "tool_result" | "media_reference" | "local_path" | "authorized_path";
+  metadata?: Record<string, unknown>;
+};
+
 export type TurnUsage = CanonicalUsage;
 
 export type GatewaySubmitTurnInput = {
@@ -106,6 +117,7 @@ export type GatewayEvent =
   | { type: "turn_started"; runId: string }
   | { type: "model_request_started"; model?: string; provider?: string }
   | { type: "assistant_text_delta"; text: string }
+  | { type: "assistant_attachment"; attachment: GatewayOutboundAttachment }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "tool_call_started"; toolCallId: string; name: string; argsPreview?: string }
   | {

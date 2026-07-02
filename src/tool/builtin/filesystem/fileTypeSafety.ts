@@ -22,6 +22,7 @@ const BINARY_EXTENSIONS = new Set([
   ".tar",
   ".7z",
   ".rar",
+  ".rp",
   ".mp3",
   ".mp4",
   ".mov",

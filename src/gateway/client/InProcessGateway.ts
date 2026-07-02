@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { writeFile, mkdir } from "node:fs/promises";
+import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent, AgentInput, AgentTurnResult } from "../../agent/index.js";
@@ -381,9 +381,11 @@ export class InProcessGateway implements Gateway {
         // Promote a text-only turn to blocks when the host channel attached
         // files/images. UI uploads come through this path; resolving them here
         // keeps attachment semantics in the gateway for every client.
+        const allowedReadFiles = await collectRegisteredAttachmentReadFiles(input.attachments);
         const agentInput = await buildAgentInputWithAttachments(
           input.message,
           input.attachments,
+          allowedReadFiles,
         );
         for await (const event of session.submit(
           agentInput,
@@ -395,6 +397,7 @@ export class InProcessGateway implements Gateway {
             basePermissionMode,
             allowPlanModeTools,
             canPrompt: input.canPrompt,
+            allowedReadFiles,
             permissionRules: {
               ...persistedRules,
               allow: [...sessionAllowRules, ...persistedRules.allow],
@@ -1225,6 +1228,36 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             }]
           : [],
       );
+      const attachments = event.result.content.flatMap((item): GatewayEvent[] => {
+        if (item.type === "image" && event.result.toolName !== "read_file") {
+          return [{
+            type: "assistant_attachment",
+            attachment: {
+              type: "image",
+              mimeType: item.mimeType,
+              content: item.data,
+              bytes: item.bytes,
+              name: `${safeGatewayPathPart(event.result.toolName)}-${safeGatewayPathPart(event.result.toolCallId)}.${extensionForMime(item.mimeType)}`,
+              source: "tool_result",
+              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName },
+            },
+          }];
+        }
+        if (item.type === "file") {
+          return [{
+            type: "assistant_attachment",
+            attachment: {
+              type: "file",
+              path: item.path,
+              mimeType: item.mimeType,
+              name: item.path.split(/[\\/]/).pop(),
+              source: "tool_result",
+              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName, description: item.description },
+            },
+          }];
+        }
+        return [];
+      });
 
       return [
         {
@@ -1242,6 +1275,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             ? { data: event.result.data as Record<string, unknown> }
             : {}),
         },
+        ...attachments,
       ];
     }
     case "mode_change_requested":
@@ -1281,6 +1315,19 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
             type: "tool_result_detail_available",
             toolCallId: block.toolCallId,
             resultPath: block.path,
+          });
+          if (block.reason === "media_result_too_large") continue;
+          events.push({
+            type: "assistant_attachment",
+            attachment: {
+              type: block.mediaType === "image" ? "image" : "file",
+              path: block.path,
+              mimeType: block.mimeType,
+              bytes: block.originalBytes,
+              name: block.path.split(/[\\/]/).pop(),
+              source: "media_reference",
+              metadata: { toolCallId: block.toolCallId, reason: block.reason },
+            },
           });
         } else if (block.type === "tool_result") {
           const projFullText = flattenToolResultBlockText(block);
@@ -1520,14 +1567,15 @@ function safeGatewayPathPart(value: string): string {
   return value.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "value";
 }
 
-const ATTACHMENT_PATH_NOTE_MARKER = "[Files attached by user and available for reading in the project:]";
+const ATTACHMENT_PATH_NOTE_MARKER = "[Registered attachments available to read_file in this session:]";
 
 async function buildAgentInputWithAttachments(
   message: string,
   attachments: ChannelAttachment[] | undefined,
+  allowedReadFiles: string[],
 ): Promise<AgentInput> {
   const attachmentBlocks = await attachmentsToContentBlocks(attachments);
-  const pathNote = buildImageAttachmentPathNote(attachments);
+  const pathNote = buildImageAttachmentPathNote(attachments, new Set(allowedReadFiles));
   if (attachmentBlocks.length === 0 && !pathNote) {
     return { type: "text", text: message };
   }
@@ -1546,6 +1594,7 @@ async function buildAgentInputWithAttachments(
 
 function buildImageAttachmentPathNote(
   attachments: ChannelAttachment[] | undefined,
+  allowedReadFiles: Set<string>,
 ): CanonicalContentBlock | undefined {
   if (!attachments || attachments.length === 0) return undefined;
   const seen = new Set<string>();
@@ -1553,13 +1602,15 @@ function buildImageAttachmentPathNote(
 
   for (const attachment of attachments) {
     if (!attachment.path) continue;
+    const normalized = safeAllowedAttachmentPath(attachment.path, allowedReadFiles);
+    if (!normalized) continue;
     const isImage = attachment.type === "image" || attachment.mimeType?.startsWith("image/");
-    if (!isImage || seen.has(attachment.path)) continue;
-    seen.add(attachment.path);
+    if (!isImage || seen.has(normalized)) continue;
+    seen.add(normalized);
 
-    const fallbackName = attachment.path.split(/[\\/]/).pop() || "image";
+    const fallbackName = normalized.split(/[\\/]/).pop() || "image";
     const name = String(attachment.name || fallbackName).replace(/[\r\n]+/g, " ").trim() || fallbackName;
-    lines.push(`- ${name}: ${attachment.path}`);
+    lines.push(`- ${name}: ${normalized}`);
   }
 
   if (lines.length === 0) return undefined;
@@ -1567,6 +1618,33 @@ function buildImageAttachmentPathNote(
     type: "text",
     text: `\n\n${ATTACHMENT_PATH_NOTE_MARKER}\n${lines.join("\n")}`,
   };
+}
+
+function safeAllowedAttachmentPath(path: string, allowedReadFiles: Set<string>): string | undefined {
+  const normalized = resolve(path);
+  if (allowedReadFiles.has(normalized)) return normalized;
+  return undefined;
+}
+
+async function collectRegisteredAttachmentReadFiles(
+  attachments: ChannelAttachment[] | undefined,
+): Promise<string[]> {
+  if (!attachments || attachments.length === 0) return [];
+  const allowed = new Set<string>();
+
+  for (const attachment of attachments) {
+    if (!attachment.path || !attachment.metadata?.channelKey) continue;
+    try {
+      const info = await stat(attachment.path);
+      if (!info.isFile()) continue;
+      allowed.add(resolve(attachment.path));
+      allowed.add(resolve(await realpath(attachment.path)));
+    } catch {
+      // Missing or inaccessible attachments are handled by attachment resolution diagnostics.
+    }
+  }
+
+  return [...allowed];
 }
 
 async function attachmentsToContentBlocks(
@@ -1622,4 +1700,23 @@ async function attachmentsToContentBlocks(
   }
 
   return blocks;
+}
+
+function sanitizeAttachmentName(name: string): string {
+  return name.replace(/[\r\n]+/g, " ").trim() || "attachment";
+}
+
+function extensionForMime(mimeType: string): string {
+  switch (mimeType.toLowerCase()) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/gif":
+      return "gif";
+    case "image/webp":
+      return "webp";
+    default:
+      return "bin";
+  }
 }

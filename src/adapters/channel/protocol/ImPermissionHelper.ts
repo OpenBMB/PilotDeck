@@ -10,7 +10,10 @@ type PendingPermission = {
 export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission>();
 
-  capture(chatId: string, sessionKey: string, event: GatewayEvent & { type: "permission_request" }): string {
+  capture(chatId: string, sessionKey: string, event: GatewayEvent & { type: "permission_request" }): string | undefined {
+    if (this.pending.has(chatId)) {
+      return undefined;
+    }
     this.pending.set(chatId, {
       sessionKey,
       requestId: event.requestId,

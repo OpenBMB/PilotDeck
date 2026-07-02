@@ -13,6 +13,7 @@ export type AgentSubmitOptions = {
   metadata?: Record<string, unknown>;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
+  allowedReadFiles?: string[];
   /** The user's actual permission preference before plan-mode override. */
   basePermissionMode?: PermissionMode;
   /** Allow model-visible plan mode tools for this turn. */

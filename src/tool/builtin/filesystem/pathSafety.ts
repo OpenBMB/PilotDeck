@@ -1,5 +1,6 @@
 import path from "node:path";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { PilotDeckToolRuntimeContext } from "../../protocol/types.js";
 import type { PilotDeckToolError } from "../../protocol/errors.js";
 import { toolError } from "../../protocol/errors.js";
@@ -13,7 +14,7 @@ const DEFAULT_WRITE_DENY_DIRECTORIES = new Set([".git", "node_modules", "dist"])
 export function resolvePilotDeckWorkspacePath(
   inputPath: string,
   context: PilotDeckToolRuntimeContext,
-  options?: { forWrite?: boolean; mustExist?: boolean; allowOutsideWorkspace?: boolean },
+  options?: { forWrite?: boolean; mustExist?: boolean; allowOutsideWorkspace?: boolean; allowRegisteredReadFiles?: boolean },
 ): PilotDeckPathSafetyResult {
   if (!inputPath || inputPath.includes("\0")) {
     return {
@@ -41,6 +42,24 @@ export function resolvePilotDeckWorkspacePath(
   const root = roots.find((candidate) => isPathWithinRoot(absolutePath, candidate));
 
   if (!root) {
+    if (!options?.forWrite && options?.allowRegisteredReadFiles) {
+      const real = safeRealpath(absolutePath);
+      if (!real) {
+        return {
+          ok: false,
+          error: toolError("file_not_found", `File ${inputPath} does not exist.`),
+        };
+      }
+      const allowed = (context.allowedReadFiles ?? []).some((allowedPath) => {
+        const allowedReal = safeRealpath(allowedPath) ?? path.resolve(allowedPath);
+        return real === allowedReal;
+      });
+      if (allowed || isManagedImAttachmentFile(real, context)) {
+        const relativePath = path.relative(context.cwd, absolutePath) || ".";
+        return { ok: true, absolutePath, relativePath, root: context.cwd };
+      }
+    }
+
     if (options?.allowOutsideWorkspace) {
       const relativePath = path.relative(context.cwd, absolutePath) || ".";
       if (options?.forWrite && isWriteDenied(relativePath)) {
@@ -106,5 +125,19 @@ function safeRealpath(value: string): string | undefined {
     return realpathSync(value);
   } catch {
     return undefined;
+  }
+}
+
+function isManagedImAttachmentFile(realPath: string, context: PilotDeckToolRuntimeContext): boolean {
+  const pilotHome = path.resolve(context.env?.PILOT_HOME ?? path.join(homedir(), ".pilotdeck"));
+  const root = safeRealpath(path.join(pilotHome, "im-attachments")) ?? path.join(pilotHome, "im-attachments");
+  return isPathWithinRoot(realPath, root) && isRegularFile(realPath);
+}
+
+function isRegularFile(value: string): boolean {
+  try {
+    return statSync(value).isFile();
+  } catch {
+    return false;
   }
 }

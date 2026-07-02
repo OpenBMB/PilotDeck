@@ -11,6 +11,7 @@ export function renderWeixinEvent(event: GatewayEvent): string | undefined {
     case "tool_call_finished":
       if (!event.ok) {
         const name = event.toolName ?? event.toolCallId;
+        if (name === "send_attachment") return "";
         return `\n⚠️ ${name} 执行失败\n`;
       }
       return "";
