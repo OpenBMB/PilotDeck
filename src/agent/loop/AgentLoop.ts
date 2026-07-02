@@ -69,6 +69,7 @@ export type AgentLoopInput = {
   messages: CanonicalMessage[];
   maxTurns?: number;
   permissionMode?: PermissionMode;
+  allowedReadFiles?: string[];
   /** The user's actual permission preference before plan-mode override. */
   basePermissionMode?: PermissionMode;
   /** Allow model-visible plan mode tools for this turn. */
@@ -87,11 +88,13 @@ export type AgentLoopRunResult = {
 export type AgentLoopSeedState = {
   readFileState?: PilotDeckReadFileStateMap;
   writeSnapshots?: PilotDeckWriteSnapshotMap;
+  allowedReadFiles?: string[];
 };
 
 export class AgentLoop {
   private readonly readFileState: PilotDeckReadFileStateMap;
   private readonly writeSnapshots: PilotDeckWriteSnapshotMap;
+  private readonly allowedReadFiles: Set<string>;
 
   constructor(
     private readonly config: AgentRuntimeConfig,
@@ -100,17 +103,22 @@ export class AgentLoop {
   ) {
     this.readFileState = cloneReadFileStateMap(seedState?.readFileState);
     this.writeSnapshots = cloneWriteSnapshotMap(seedState?.writeSnapshots);
+    this.allowedReadFiles = new Set(seedState?.allowedReadFiles ?? []);
   }
 
   snapshotFileState(): AgentLoopSeedState {
     return {
       readFileState: cloneReadFileStateMap(this.readFileState),
       writeSnapshots: cloneWriteSnapshotMap(this.writeSnapshots),
+      allowedReadFiles: [...this.allowedReadFiles],
     };
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
+    for (const filePath of input.allowedReadFiles ?? []) {
+      this.allowedReadFiles.add(filePath);
+    }
     const startedAt = this.now().toISOString();
     let messages = [...input.messages];
     let turnCount = 1;
@@ -1305,6 +1313,7 @@ export class AgentLoop {
       modelMultimodal: this.config.modelMultimodal,
       maxOutputTokens: this.config.maxOutputTokens,
       readFileState: this.readFileState,
+      allowedReadFiles: [...this.allowedReadFiles],
       writeSnapshots: this.writeSnapshots,
       fileUpdateNotifier: this.dependencies.fileUpdateNotifier,
       ...(planTodo ? { planTodo } : {}),

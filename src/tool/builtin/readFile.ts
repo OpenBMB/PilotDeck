@@ -140,7 +140,10 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       return { ok: true, input };
     },
     execute: async (input, context) => {
-      const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, { mustExist: true });
+      const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, {
+        mustExist: true,
+        allowRegisteredReadFiles: true,
+      });
       if (!resolved.ok) {
         throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message, resolved.error.details);
       }

@@ -17,6 +17,7 @@ export type TurnRunnerOptions = {
   input: AgentInput;
   maxTurns?: number;
   permissionMode?: PermissionMode;
+  allowedReadFiles?: string[];
   /** The user's actual permission preference before plan-mode override. */
   basePermissionMode?: PermissionMode;
   /** Allow model-visible plan mode tools for this turn. */
@@ -115,6 +116,7 @@ export class TurnRunner {
         messages,
         maxTurns: options.maxTurns,
         permissionMode: options.permissionMode,
+        allowedReadFiles: options.allowedReadFiles,
         basePermissionMode: options.basePermissionMode,
         allowPlanModeTools: options.allowPlanModeTools,
         canPrompt: options.canPrompt,
