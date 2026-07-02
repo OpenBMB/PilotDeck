@@ -20,7 +20,7 @@ import type {
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
 import { normalizeGoogleModelId } from "./modelId.js";
 import { cleanSchemaForGoogle, normalizeGoogleToolSchema } from "./schema.js";
-import { resolveThinkingPlan } from "../../thinking/registry.js";
+import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 
 export type GoogleRequestBody = GenerateContentParameters;
 
@@ -85,6 +85,7 @@ function toGoogleThinkingConfig(
   model: ModelDefinition,
 ): GenerateContentConfig["thinkingConfig"] {
   const thinkingPlan = resolveThinkingPlan(request.thinking, { id: "google", protocol: "google", url: "", apiKey: "", headers: {}, models: {} }, model);
+  throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   if (!thinkingPlan.enabled || !model.capabilities.supportsThinking) {
     return undefined;
   }

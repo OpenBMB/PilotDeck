@@ -12,7 +12,7 @@ import type {
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
 import { cleanSchemaForGoogle, normalizeGoogleToolSchema } from "../google/schema.js";
 import { normalizeOpenAISchema } from "./schema.js";
-import { resolveThinkingPlan } from "../../thinking/registry.js";
+import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 
 export type OpenAIRequestBody = {
   model: string;
@@ -66,6 +66,7 @@ export function buildOpenAIRequest(
 ): OpenAIRequestBody {
   const googleOpenAICompatible = isGoogleOpenAICompatibleProvider(provider);
   const thinkingPlan = resolveThinkingPlan(request.thinking, provider ?? { id: "openai", protocol: "openai", url: "", apiKey: "", headers: {}, models: {} }, model);
+  throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   const messages = repairOpenAIToolPairing(
     request.messages.flatMap((message, messageIndex) => toOpenAIMessages(message, messageIndex)),
   );

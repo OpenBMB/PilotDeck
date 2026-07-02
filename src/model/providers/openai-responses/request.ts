@@ -9,7 +9,7 @@ import type {
 } from "../../protocol/canonical.js";
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
 import { normalizeOpenAISchema } from "../openai/schema.js";
-import { resolveThinkingPlan } from "../../thinking/registry.js";
+import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 
 export type OpenAIResponsesRequestBody = {
   model: string;
@@ -67,6 +67,7 @@ export function buildOpenAIResponsesRequest(
   _provider?: ProviderConfig,
 ): OpenAIResponsesRequestBody {
   const thinkingPlan = resolveThinkingPlan(request.thinking, _provider ?? { id: "openai", protocol: "openai-responses", url: "", apiKey: "", headers: {}, models: {} }, model);
+  throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   const body: OpenAIResponsesRequestBody = {
     model: request.model,
     input: request.messages.flatMap(toResponsesInputItems),

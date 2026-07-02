@@ -1,4 +1,5 @@
-import type { CanonicalThinkingConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
+import type { CanonicalModelRequest, CanonicalThinkingConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
+import { ModelRequestError } from "../protocol/errors.js";
 
 export type ThinkingMode = NonNullable<CanonicalThinkingConfig["mode"]>;
 
@@ -18,6 +19,7 @@ export type ThinkingPlan = {
   bodyPatch?: Record<string, unknown>;
   useAnthropicOutputEffort?: boolean;
   omitTemperature?: boolean;
+  unsupportedReason?: string;
 };
 
 const GEMINI_25_BUDGETS: Partial<Record<ThinkingMode, number>> = {
@@ -41,7 +43,6 @@ const QWEN_BUDGETS: Partial<Record<ThinkingMode, number>> = {
 export function normalizeThinkingMode(thinking?: CanonicalThinkingConfig): ThinkingMode {
   if (!thinking) return "default";
   if (thinking.mode) return thinking.mode;
-  if (thinking.enabled === false) return "off";
   if (thinking.enabled === true) return "medium";
   return "default";
 }
@@ -52,6 +53,7 @@ export function resolveThinkingPlan(
   model: ModelDefinition,
 ): ThinkingPlan {
   const requestedMode = normalizeThinkingMode(requestThinking);
+  const explicitMode = requestThinking?.mode !== undefined;
   const providerId = provider.id.toLowerCase();
   const providerUrl = (provider.url ?? "").toLowerCase();
   const modelId = model.id.toLowerCase();
@@ -95,7 +97,26 @@ export function resolveThinkingPlan(
   if (model.capabilities.supportsThinking && !isOff) {
     return { mode, enabled: true, budgetTokens };
   }
+  if (explicitMode) {
+    return {
+      mode,
+      enabled: false,
+      unsupportedReason: `Model ${model.id} does not support thinking mode '${mode}'. Switch thinking strength back to Default.`,
+    };
+  }
   return { mode, enabled: false };
+}
+
+export function throwIfUnsupportedThinkingPlan(
+  plan: ThinkingPlan,
+  request: CanonicalModelRequest,
+): void {
+  if (!plan.unsupportedReason) return;
+  throw new ModelRequestError("unsupported_thinking", plan.unsupportedReason, {
+    provider: request.provider,
+    model: request.model,
+    thinkingMode: plan.mode,
+  });
 }
 
 function isOpenAIProvider(providerId: string, providerUrl: string): boolean {
@@ -117,7 +138,11 @@ function openAIPlan(mode: ThinkingMode, modelId: string): ThinkingPlan {
   if (modelId.includes("gpt-5")) {
     return { mode, enabled: true, effort: clampEffort(mode, ["minimal", "low", "medium", "high"]), useOpenAIReasoning: true };
   }
-  return { mode, enabled: false };
+  return {
+    mode,
+    enabled: false,
+    unsupportedReason: `OpenAI-compatible model ${modelId} does not advertise a known thinking mode adapter. Switch thinking strength back to Default.`,
+  };
 }
 
 function anthropicPlan(mode: ThinkingMode, modelId: string, budgetTokens?: number): ThinkingPlan {

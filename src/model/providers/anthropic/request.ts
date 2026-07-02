@@ -7,7 +7,7 @@ import type {
   CanonicalToolSchema,
   ModelDefinition,
 } from "../../protocol/canonical.js";
-import { resolveThinkingPlan } from "../../thinking/registry.js";
+import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 
 export type AnthropicRequestBody = {
   model: string;
@@ -50,6 +50,7 @@ export function buildAnthropicRequest(
   model: ModelDefinition,
 ): AnthropicRequestBody {
   const thinkingPlan = resolveThinkingPlan(request.thinking, { id: "anthropic", protocol: "anthropic", url: "", apiKey: "", headers: {}, models: {} }, model);
+  throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   // A3: lower outputSchema → forced hidden tool. This goes BEFORE the
   // user-supplied tools so the dispatch order is stable, but Anthropic
   // does not actually care about ordering. We force `tool_choice` to point

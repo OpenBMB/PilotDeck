@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildModelRequest } from "../../../src/model/index.js";
+import { ModelRequestError } from "../../../src/model/index.js";
 import type { CanonicalModelRequest, ModelCapabilities, ModelConfig, ModelDefinition, ModelProtocol, ProviderConfig } from "../../../src/model/index.js";
 
 const capabilities: ModelCapabilities = {
@@ -91,7 +92,23 @@ test("Gemini 3.1 Pro uses thinkingLevel not thinkingBudget", () => {
   assert.deepEqual(body.config.thinkingConfig, { includeThoughts: true, thinkingLevel: "medium" });
 });
 
-function bodyFor(providerId: string, protocol: ModelProtocol, modelId: string, thinking: CanonicalModelRequest["thinking"], url?: string): any {
+test("unknown explicit thinking mode returns an actionable unsupported error", () => {
+  assert.throws(
+    () => bodyFor("local", "openai", "plain-chat", { mode: "high", enabled: true }, "https://local.example.invalid/v1", false),
+    (error: unknown) => error instanceof ModelRequestError
+      && error.code === "unsupported_thinking"
+      && /Switch thinking strength back to Default/.test(error.message),
+  );
+});
+
+test("legacy disabled thinking remains a no-op for ordinary models", () => {
+  const body = bodyFor("local", "openai", "plain-chat", { enabled: false }, "https://local.example.invalid/v1", false);
+  assert.equal(body.thinking, undefined);
+  assert.equal(body.reasoning_effort, undefined);
+  assert.equal(body.enable_thinking, undefined);
+});
+
+function bodyFor(providerId: string, protocol: ModelProtocol, modelId: string, thinking: CanonicalModelRequest["thinking"], url?: string, supportsThinking = true): any {
   const request: CanonicalModelRequest = {
     provider: providerId,
     model: modelId,
@@ -99,13 +116,13 @@ function bodyFor(providerId: string, protocol: ModelProtocol, modelId: string, t
     stream: true,
     thinking,
   };
-  return buildModelRequest(request, configFor(providerId, protocol, modelId, url)) as any;
+  return buildModelRequest(request, configFor(providerId, protocol, modelId, url, supportsThinking)) as any;
 }
 
-function configFor(providerId: string, protocol: ModelProtocol, modelId: string, url?: string): ModelConfig {
+function configFor(providerId: string, protocol: ModelProtocol, modelId: string, url?: string, supportsThinking = true): ModelConfig {
   const model: ModelDefinition = {
     id: modelId,
-    capabilities,
+    capabilities: { ...capabilities, supportsThinking },
     multimodal: { input: ["text"] },
   };
   const provider: ProviderConfig = {
