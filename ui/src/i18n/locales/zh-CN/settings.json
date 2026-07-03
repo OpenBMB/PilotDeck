@@ -1045,7 +1045,7 @@
   },
   "gateway": {
     "title": "IM 通道",
-    "description": "配置即时通讯通道（飞书、微信），让 Agent 可通过 IM 应用被访问。",
+    "description": "配置即时通讯通道（飞书、微信、企业微信），让 Agent 可通过 IM 应用被访问。",
     "connected": "已连接",
     "notConfigured": "未配置",
     "enabled": "已启用",
@@ -1080,6 +1080,27 @@
       "loadingQr": "正在生成二维码…",
       "scanPrompt": "请打开微信扫描二维码登录",
       "loginSuccess": "登录成功 — 凭据已保存"
+    },
+    "wecom": {
+      "title": "企业微信 WeCom",
+      "label": "企业微信机器人",
+      "chooseMethod": "选择配置企业微信 AI Bot 的方式：",
+      "qrSetup": "扫码配置",
+      "qrSetupDesc": "用企业微信 App 扫码自动创建或获取机器人凭据",
+      "manualInput": "手动输入",
+      "manualInputDesc": "从企业微信管理后台复制 Bot ID 和 Secret",
+      "startQr": "生成企业微信二维码",
+      "connecting": "正在连接企业微信…",
+      "scanPrompt": "请打开企业微信 App 扫描二维码",
+      "qrSuccess": "企业微信配置成功 — Bot 凭据已保存并启用",
+      "retry": "重试",
+      "botId": "Bot ID",
+      "secret": "Secret",
+      "websocketUrl": "WebSocket URL",
+      "dmPolicy": "私聊策略",
+      "groupPolicy": "群聊策略",
+      "policyHint": "基础策略会写入 pilotdeck.yaml；更细粒度的用户或群白名单可稍后手动编辑 YAML。",
+      "saveSuccess": "企业微信配置已保存"
     }
   }
 }
