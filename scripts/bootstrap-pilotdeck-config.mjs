@@ -61,8 +61,7 @@ adapters:
   #   extra:
   #     secret: ""
   #     websocket_url: "wss://openws.work.weixin.qq.com"
-  #     dm_policy: "allowlist"
-  #     allow_from: []
+  #     dm_policy: "open"
   #     group_policy: "disabled"
 router:
   enabled: true
@@ -209,8 +208,7 @@ adapters:
   #   extra:
   #     secret: ""
   #     websocket_url: "wss://openws.work.weixin.qq.com"
-  #     dm_policy: "allowlist"
-  #     allow_from: []
+  #     dm_policy: "open"
   #     group_policy: "disabled"
 `;
 

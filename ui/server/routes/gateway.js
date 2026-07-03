@@ -69,7 +69,7 @@ function writeWeComConfig(config, input) {
     extra: {
       secret: input.secret,
       websocket_url: input.websocketUrl || WECOM_DEFAULT_WS_URL,
-      dm_policy: normalizeAccessPolicy(input.dmPolicy, 'allowlist'),
+      dm_policy: normalizeAccessPolicy(input.dmPolicy, 'open'),
       group_policy: normalizeAccessPolicy(input.groupPolicy, 'disabled'),
     },
   };
@@ -134,7 +134,7 @@ router.get('/status', (_req, res) => {
         botId: wecom.token ? maskValue(wecom.token) : '',
         hasSecret: !!wecomExtra.secret,
         websocketUrl: wecomExtra.websocket_url || wecomExtra.websocketUrl || WECOM_DEFAULT_WS_URL,
-        dmPolicy: wecomExtra.dm_policy || wecomExtra.dmPolicy || 'allowlist',
+        dmPolicy: wecomExtra.dm_policy || wecomExtra.dmPolicy || 'open',
         groupPolicy: wecomExtra.group_policy || wecomExtra.groupPolicy || 'disabled',
       },
     });
@@ -522,7 +522,7 @@ router.get('/wecom/qr-poll', async (req, res) => {
       botId,
       secret,
       websocketUrl: WECOM_DEFAULT_WS_URL,
-      dmPolicy: 'allowlist',
+      dmPolicy: 'open',
       groupPolicy: 'disabled',
     });
     await persistConfigAndReload(config);

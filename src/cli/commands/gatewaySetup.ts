@@ -289,7 +289,7 @@ async function setupWeCom(rl: ReturnType<typeof createInterface>): Promise<void>
         botId: currentBotId,
         secret: currentSecret,
         websocketUrl: currentWsUrl,
-        dmPolicy: normalizeWeComSetupPolicy(currentWeCom?.extra?.dm_policy, "allowlist"),
+        dmPolicy: normalizeWeComSetupPolicy(currentWeCom?.extra?.dm_policy, "open"),
         allowFrom: coerceSetupList(currentWeCom?.extra?.allow_from ?? currentWeCom?.extra?.allowFrom),
         groupPolicy: normalizeWeComSetupPolicy(currentWeCom?.extra?.group_policy, "disabled"),
         groupAllowFrom: coerceSetupList(currentWeCom?.extra?.group_allow_from ?? currentWeCom?.extra?.groupAllowFrom),
@@ -341,9 +341,9 @@ async function setupWeCom(rl: ReturnType<typeof createInterface>): Promise<void>
   const websocketUrl = websocketInput || WECOM_DEFAULT_WS_URL;
 
   const dmChoice = (await rl.question(
-    "私聊访问策略 [1=allowlist 推荐, 2=open, 3=disabled] (默认 1): ",
+    "私聊访问策略 [1=open 推荐, 2=allowlist, 3=disabled] (默认 1): ",
   )).trim();
-  let dmPolicy = dmChoice === "2" ? "open" : dmChoice === "3" ? "disabled" : "allowlist";
+  let dmPolicy = dmChoice === "2" ? "allowlist" : dmChoice === "3" ? "disabled" : "open";
   let allowFrom: string[] = [];
   if (dmPolicy === "allowlist") {
     const allowed = (await rl.question("允许私聊的企业微信用户 ID（逗号分隔，留空则暂时禁用私聊）: ")).trim();
@@ -478,7 +478,7 @@ function writeWeComConfig(cfg: {
   saveYamlConfig(yamlConfig);
 }
 
-function normalizeWeComSetupPolicy(value: unknown, fallback: "allowlist" | "disabled"): string {
+function normalizeWeComSetupPolicy(value: unknown, fallback: "open" | "allowlist" | "disabled"): string {
   const raw = String(value ?? "").trim().toLowerCase();
   return raw === "open" || raw === "allowlist" || raw === "disabled" ? raw : fallback;
 }
