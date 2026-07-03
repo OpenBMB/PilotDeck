@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
@@ -333,6 +334,105 @@ test("WeComChannel dispatches slash commands without text batching delay", async
   await handle.stop("test");
 });
 
+test("WeComChannel uploads inline tool images and sends native image replies", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const imageBytes = Buffer.from("fake-png-bytes");
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 1 },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({
+    gateway: fakeGatewayWithEvents(captured, [
+      {
+        type: "tool_call_finished",
+        toolCallId: "read-image",
+        ok: true,
+        images: [{ mimeType: "image/png", data: imageBytes.toString("base64"), bytes: imageBytes.length }],
+      },
+      { type: "turn_completed", usage: {}, finishReason: "completed" },
+    ]),
+    logger: noopLogger,
+  });
+  const ws = FakeWebSocket.instances[0];
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "image-inbound-1" },
+    body: {
+      msgid: "image-msg-1",
+      from: { userid: "user-1" },
+      msgtype: "text",
+      text: { content: "show image" },
+    },
+  });
+
+  await waitUntil(() => ws.sent.some((payload) => payload.cmd === "aibot_upload_media_finish"));
+  await waitUntil(() => ws.sent.some((payload) => payload.cmd === "aibot_respond_msg" && payload.body?.msgtype === "image"));
+
+  const init = ws.sent.find((payload) => payload.cmd === "aibot_upload_media_init");
+  assert.equal(init?.body?.type, "image");
+  assert.equal(init?.body?.filename, "tool-read-image-1.png");
+  assert.equal(init?.body?.total_size, imageBytes.length);
+  assert.equal(init?.body?.total_chunks, 1);
+  assert.equal(init?.body?.md5, createHash("md5").update(imageBytes).digest("hex"));
+
+  const chunk = ws.sent.find((payload) => payload.cmd === "aibot_upload_media_chunk");
+  assert.equal(chunk?.body?.upload_id, "upload-1");
+  assert.equal(chunk?.body?.chunk_index, 0);
+  assert.equal(chunk?.body?.base64_data, imageBytes.toString("base64"));
+
+  const mediaReply = ws.sent.find((payload) => payload.cmd === "aibot_respond_msg" && payload.body?.msgtype === "image");
+  assert.equal(mediaReply?.headers?.req_id, "image-inbound-1");
+  assert.equal(mediaReply?.body?.image?.media_id, "media-1");
+
+  await handle.stop("test");
+});
+
+test("WeComChannel converts inbound image media to gateway attachments", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const imageBytes = Buffer.from("inbound-image-bytes");
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 1 },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "inbound-media-1" },
+    body: {
+      msgid: "inbound-media-msg-1",
+      from: { userid: "user-1" },
+      msgtype: "image",
+      image: {
+        base64: imageBytes.toString("base64"),
+        filename: "screenshot.png",
+        content_type: "image/png",
+      },
+    },
+  });
+
+  await waitUntil(() => captured.length === 1);
+  assert.equal(captured[0].message, "用户发送了企业微信附件。");
+  assert.equal(captured[0].attachments?.length, 1);
+  assert.equal(captured[0].attachments?.[0]?.type, "image");
+  assert.equal(captured[0].attachments?.[0]?.name, "screenshot.png");
+  assert.equal(captured[0].attachments?.[0]?.mimeType, "image/png");
+  assert.equal(captured[0].attachments?.[0]?.bytes, imageBytes.length);
+  assert.ok(captured[0].attachments?.[0]?.path);
+
+  await handle.stop("test");
+});
+
 test("WeComChannel reconnects after an unexpected close", async () => {
   FakeWebSocket.reset();
   const channel = new WeComChannel({
@@ -410,6 +510,14 @@ class FakeWebSocket extends EventEmitter {
     const reqId = payload.headers?.req_id;
     if (reqId) {
       queueMicrotask(() => {
+        if (payload.cmd === "aibot_upload_media_init") {
+          this.emitJson({ headers: { req_id: reqId }, body: { errcode: 0, upload_id: "upload-1" } });
+          return;
+        }
+        if (payload.cmd === "aibot_upload_media_finish") {
+          this.emitJson({ headers: { req_id: reqId }, body: { errcode: 0, media_id: "media-1" } });
+          return;
+        }
         this.emitJson({ headers: { req_id: reqId }, body: { errcode: 0 } });
       });
     }
@@ -432,6 +540,15 @@ function fakeGateway(captured: GatewaySubmitTurnInput[]): Gateway {
       captured.push(input);
       yield { type: "assistant_text_delta", text: "agent reply" };
       yield { type: "turn_completed", usage: {}, finishReason: "completed" };
+    },
+  } as unknown as Gateway;
+}
+
+function fakeGatewayWithEvents(captured: GatewaySubmitTurnInput[], events: GatewayEvent[]): Gateway {
+  return {
+    async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+      captured.push(input);
+      for (const event of events) yield event;
     },
   } as unknown as Gateway;
 }
