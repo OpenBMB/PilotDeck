@@ -55,6 +55,15 @@ adapters:
     appSecret: ""
     # connectionMode: stream
     # domainName: feishu
+  # wecom:
+  #   enabled: false
+  #   token: ""
+  #   extra:
+  #     secret: ""
+  #     websocket_url: "wss://openws.work.weixin.qq.com"
+  #     dm_policy: "allowlist"
+  #     allow_from: []
+  #     group_policy: "disabled"
 router:
   enabled: true
   scenarios:
@@ -194,6 +203,15 @@ adapters:
     appSecret: ""
     # connectionMode: stream
     # domainName: feishu
+  # wecom:
+  #   enabled: false
+  #   token: ""
+  #   extra:
+  #     secret: ""
+  #     websocket_url: "wss://openws.work.weixin.qq.com"
+  #     dm_policy: "allowlist"
+  #     allow_from: []
+  #     group_policy: "disabled"
 `;
 
 const DEFAULT_CRON_SNIPPET = `

@@ -341,7 +341,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       await runGatewaySetup(argv.slice(2));
       return;
     }
-    console.error("Usage: pilotdeck gateway setup [feishu|weixin]");
+    console.error("Usage: pilotdeck gateway setup [feishu|weixin|wecom]");
     process.exitCode = 1;
     return;
   }
