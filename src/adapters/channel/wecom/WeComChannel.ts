@@ -1,5 +1,9 @@
-import { randomUUID } from "node:crypto";
-import type { Gateway, GatewayChannelKey } from "../../../gateway/index.js";
+import { createDecipheriv, createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
 import { WeComSessionMapper } from "./WeComSessionMapper.js";
 import { renderWeComEvent } from "./wecom-render.js";
@@ -16,6 +20,9 @@ const APP_CMD_SEND = "aibot_send_msg";
 const APP_CMD_RESPONSE = "aibot_respond_msg";
 const APP_CMD_PING = "ping";
 const APP_CMD_EVENT_CALLBACK = "aibot_event_callback";
+const APP_CMD_UPLOAD_MEDIA_INIT = "aibot_upload_media_init";
+const APP_CMD_UPLOAD_MEDIA_CHUNK = "aibot_upload_media_chunk";
+const APP_CMD_UPLOAD_MEDIA_FINISH = "aibot_upload_media_finish";
 const CALLBACK_COMMANDS = new Set([APP_CMD_CALLBACK, APP_CMD_LEGACY_CALLBACK]);
 const NON_RESPONSE_COMMANDS = new Set([...CALLBACK_COMMANDS, APP_CMD_EVENT_CALLBACK]);
 const MAX_MESSAGE_LENGTH = 4000;
@@ -29,8 +36,16 @@ const WS_OPEN = 1;
 const TEXT_BATCH_DELAY_MS = 600;
 const TEXT_BATCH_SPLIT_DELAY_MS = 2_000;
 const SPLIT_THRESHOLD = 3_900;
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 10 * 1024 * 1024;
+const VOICE_MAX_BYTES = 2 * 1024 * 1024;
+const FILE_MAX_BYTES = 20 * 1024 * 1024;
+const UPLOAD_CHUNK_SIZE = 512 * 1024;
+const MAX_UPLOAD_CHUNKS = 100;
+const VOICE_SUPPORTED_MIMES = new Set(["audio/amr"]);
 
 type WeComAccessPolicy = "open" | "allowlist" | "disabled" | "pairing";
+type WeComMediaType = "image" | "video" | "voice" | "file";
 
 type PendingRequest = {
   resolve: (payload: Record<string, unknown>) => void;
@@ -46,6 +61,29 @@ type WeComTextBatch = {
   text: string;
   replyToMessageId: string;
   lastChunkLength: number;
+};
+
+type WeComMessageParts = {
+  text: string;
+  replyText?: string;
+  attachments: ChannelAttachment[];
+};
+
+type WeComMediaRef = {
+  kind: WeComMediaType;
+  media: Record<string, unknown>;
+};
+
+type PreparedOutboundMedia = {
+  data: Buffer;
+  contentType: string;
+  fileName: string;
+  detectedType: WeComMediaType;
+  finalType: WeComMediaType;
+  rejected: boolean;
+  rejectReason?: string;
+  downgraded: boolean;
+  downgradeNote?: string;
 };
 
 export type WeComChannelOptions = {
@@ -476,9 +514,10 @@ export class WeComChannel implements ChannelAdapter {
       this.rememberChatReqId(chatId, inboundReq);
     }
 
-    const extractedText = this.extractText(body);
+    const parts = await this.extractMessageParts(body);
+    const extractedText = parts.text || parts.replyText || "";
     const text = chatType === "group" ? this.stripLeadingMention(extractedText) : extractedText;
-    if (!text.trim()) return;
+    if (!text.trim() && parts.attachments.length === 0) return;
 
     const interactionKey = this.interactionKey(chatId, senderId, chatType);
     if (this.elicitation.hasPending(interactionKey) && this.gateway) {
@@ -508,6 +547,20 @@ export class WeComChannel implements ChannelAdapter {
         senderId,
         interactionKey,
         text,
+        attachments: parts.attachments,
+        replyToMessageId: messageId,
+      });
+      return;
+    }
+
+    if (parts.attachments.length > 0) {
+      await this.dispatchTextMessage({
+        chatId,
+        chatType,
+        senderId,
+        interactionKey,
+        text: text || "用户发送了企业微信附件。",
+        attachments: parts.attachments,
         replyToMessageId: messageId,
       });
       return;
@@ -568,6 +621,7 @@ export class WeComChannel implements ChannelAdapter {
     senderId: string;
     interactionKey: string;
     text: string;
+    attachments?: ChannelAttachment[];
     replyToMessageId: string;
   }): Promise<void> {
     const mapped = this.mapper.resolve({
@@ -603,6 +657,7 @@ export class WeComChannel implements ChannelAdapter {
         interactionKey: input.interactionKey,
         sessionKey: mapped.sessionKey,
         message: mapped.message,
+        attachments: input.attachments,
         replyToMessageId: input.replyToMessageId,
       });
     } finally {
@@ -610,8 +665,9 @@ export class WeComChannel implements ChannelAdapter {
     }
   }
 
-  private extractText(body: Record<string, unknown>): string {
-    const parts: string[] = [];
+  private async extractMessageParts(body: Record<string, unknown>): Promise<WeComMessageParts> {
+    const textParts: string[] = [];
+    const attachments: ChannelAttachment[] = [];
     const msgtype = String(body.msgtype ?? "").toLowerCase();
 
     if (msgtype === "mixed") {
@@ -622,16 +678,129 @@ export class WeComChannel implements ChannelAdapter {
         if (String(item.msgtype ?? "").toLowerCase() === "text") {
           const tb = (item.text as Record<string, unknown> | undefined) ?? {};
           const c = String(tb.content ?? "").trim();
-          if (c) parts.push(c);
+          if (c) textParts.push(c);
         }
       }
     } else {
       const tb = (body.text as Record<string, unknown> | undefined) ?? {};
       const c = String(tb.content ?? "").trim();
-      if (c) parts.push(c);
+      if (c) textParts.push(c);
+
+      if (msgtype === "voice") {
+        const voice = (body.voice as Record<string, unknown> | undefined) ?? {};
+        const voiceText = String(voice.content ?? "").trim();
+        if (voiceText) textParts.push(voiceText);
+      }
+
+      if (msgtype === "appmsg") {
+        const appmsg = (body.appmsg as Record<string, unknown> | undefined) ?? {};
+        const title = String(appmsg.title ?? "").trim();
+        if (title) textParts.push(title);
+      }
     }
 
-    return parts.join("\n").trim();
+    const quote = (body.quote as Record<string, unknown> | undefined) ?? {};
+    let replyText: string | undefined;
+    const quoteType = String(quote.msgtype ?? "").toLowerCase();
+    if (quoteType === "text") {
+      const quoteText = (quote.text as Record<string, unknown> | undefined) ?? {};
+      replyText = String(quoteText.content ?? "").trim() || undefined;
+    } else if (quoteType === "voice") {
+      const quoteVoice = (quote.voice as Record<string, unknown> | undefined) ?? {};
+      replyText = String(quoteVoice.content ?? "").trim() || undefined;
+    }
+
+    for (const ref of this.extractMediaRefs(body)) {
+      const cached = await this.cacheInboundMedia(ref.kind, ref.media);
+      if (cached) attachments.push(cached);
+    }
+
+    return { text: textParts.join("\n").trim(), replyText, attachments };
+  }
+
+  private extractMediaRefs(body: Record<string, unknown>): WeComMediaRef[] {
+    const refs: WeComMediaRef[] = [];
+    const msgtype = String(body.msgtype ?? "").toLowerCase();
+
+    const addMedia = (kind: WeComMediaType, value: unknown) => {
+      if (isRecord(value)) refs.push({ kind, media: value });
+    };
+
+    if (msgtype === "mixed") {
+      const mixed = (body.mixed as Record<string, unknown> | undefined) ?? {};
+      const items = (mixed.msg_item as unknown[]) ?? [];
+      for (const item of items) {
+        if (!isRecord(item)) continue;
+        const itemType = String(item.msgtype ?? "").toLowerCase();
+        if (itemType === "image") addMedia("image", item.image);
+        if (itemType === "file") addMedia("file", item.file);
+      }
+    } else {
+      addMedia("image", body.image);
+      if (msgtype === "file") addMedia("file", body.file);
+      if (msgtype === "voice") addMedia("voice", body.voice);
+      if (msgtype === "video") addMedia("video", body.video);
+      if (msgtype === "appmsg" && isRecord(body.appmsg)) {
+        addMedia("file", body.appmsg.file);
+        addMedia("image", body.appmsg.image);
+      }
+    }
+
+    const quote = (body.quote as Record<string, unknown> | undefined) ?? {};
+    const quoteType = String(quote.msgtype ?? "").toLowerCase();
+    if (quoteType === "image") addMedia("image", quote.image);
+    if (quoteType === "file") addMedia("file", quote.file);
+
+    return refs;
+  }
+
+  private async cacheInboundMedia(kind: WeComMediaType, media: Record<string, unknown>): Promise<ChannelAttachment | undefined> {
+    let data: Buffer | undefined;
+    if (media.base64) {
+      try {
+        data = Buffer.from(String(media.base64), "base64");
+      } catch (e) {
+        this.logger?.warn?.(`wecom: failed to decode inbound ${kind} base64: ${e}`);
+        return undefined;
+      }
+    } else {
+      const url = String(media.url ?? "").trim();
+      if (!url) return undefined;
+      try {
+        const downloaded = await this.downloadRemoteBytes(url, FILE_MAX_BYTES);
+        data = downloaded.data;
+      } catch (e) {
+        this.logger?.warn?.(`wecom: failed to download inbound ${kind}: ${e}`);
+        return undefined;
+      }
+    }
+
+    const aesKey = String(media.aeskey ?? "").trim();
+    if (aesKey) {
+      try {
+        data = decryptWeComBytes(data, aesKey);
+      } catch (e) {
+        this.logger?.warn?.(`wecom: failed to decrypt inbound ${kind}: ${e}`);
+        return undefined;
+      }
+    }
+
+    const rawName = String(media.filename ?? media.name ?? `wecom_${kind}${defaultExtForMedia(kind)}`).trim();
+    const safeName = safeFileName(rawName || `wecom_${kind}${defaultExtForMedia(kind)}`);
+    const dir = join(tmpdir(), "pilotdeck-wecom-media");
+    await mkdir(dir, { recursive: true });
+    const filePath = join(dir, `${Date.now()}-${this.uuid().replace(/-/g, "")}-${safeName}`);
+    await writeFile(filePath, data, { mode: 0o600 });
+    const mimeType = normalizeContentType(String(media.content_type ?? media.contentType ?? ""), safeName);
+    const attachmentType = kind === "image" ? "image" : "file";
+    return {
+      type: attachmentType,
+      name: safeName,
+      path: filePath,
+      mimeType,
+      bytes: data.length,
+      metadata: { source: "wecom", mediaType: kind },
+    };
   }
 
   private async processMessage(input: {
@@ -640,6 +809,7 @@ export class WeComChannel implements ChannelAdapter {
     interactionKey: string;
     sessionKey: string;
     message: string;
+    attachments?: ChannelAttachment[];
     replyToMessageId: string;
   }): Promise<void> {
     if (!this.gateway) return;
@@ -650,6 +820,7 @@ export class WeComChannel implements ChannelAdapter {
         sessionKey: input.sessionKey,
         channelKey: "wecom",
         message: input.message,
+        attachments: input.attachments,
         allowPlanModeTools: false,
       })) {
         if (event.type === "elicitation_request") {
@@ -670,6 +841,10 @@ export class WeComChannel implements ChannelAdapter {
           }
           continue;
         }
+        await this.sendEventMedia(input.chatId, event, {
+          chatType: input.chatType,
+          replyToMessageId: input.replyToMessageId,
+        });
         const fragment = renderWeComEvent(event);
         if (fragment != null) replyText += fragment;
       }
@@ -723,6 +898,221 @@ export class WeComChannel implements ChannelAdapter {
     }
   }
 
+  private async sendEventMedia(
+    chatId: string,
+    event: GatewayEvent,
+    context: { chatType?: "dm" | "group"; replyToMessageId?: string },
+  ): Promise<void> {
+    if (event.type !== "tool_call_finished" || !event.images?.length) return;
+
+    for (const [index, image] of event.images.entries()) {
+      try {
+        const data = Buffer.from(image.data, "base64");
+        const prepared = this.prepareOutboundMediaBytes(
+          data,
+          image.mimeType,
+          `tool-${event.toolCallId || "image"}-${index + 1}${extForMime(image.mimeType) || ".png"}`,
+        );
+        const ok = await this.sendPreparedMedia(chatId, prepared, context);
+        if (!ok) {
+          await this.sendReply(chatId, "图片结果生成成功，但发送到企业微信失败。", context);
+        }
+      } catch (e) {
+        this.logger?.error?.(`wecom: failed to send inline image result: ${e}`);
+        await this.sendReply(chatId, "图片结果生成成功，但发送到企业微信失败。", context);
+      }
+    }
+  }
+
+  async sendImage(chatId: string, imageSource: string, caption?: string, replyTo?: string): Promise<boolean> {
+    return this.sendMediaSource(chatId, imageSource, { caption, replyTo });
+  }
+
+  async sendImageFile(chatId: string, imagePath: string, caption?: string, replyTo?: string): Promise<boolean> {
+    return this.sendImage(chatId, imagePath, caption, replyTo);
+  }
+
+  async sendDocument(chatId: string, filePath: string, caption?: string, fileName?: string, replyTo?: string): Promise<boolean> {
+    return this.sendMediaSource(chatId, filePath, { caption, fileName, replyTo, forceType: "file" });
+  }
+
+  async sendVoice(chatId: string, audioPath: string, caption?: string, replyTo?: string): Promise<boolean> {
+    return this.sendMediaSource(chatId, audioPath, { caption, replyTo });
+  }
+
+  async sendVideo(chatId: string, videoPath: string, caption?: string, replyTo?: string): Promise<boolean> {
+    return this.sendMediaSource(chatId, videoPath, { caption, replyTo });
+  }
+
+  private async sendMediaSource(
+    chatId: string,
+    source: string,
+    options: { caption?: string; fileName?: string; replyTo?: string; forceType?: WeComMediaType } = {},
+  ): Promise<boolean> {
+    if (!chatId) return false;
+    try {
+      const prepared = await this.loadOutboundMediaSource(source, options.fileName);
+      const finalPrepared = options.forceType
+        ? { ...prepared, finalType: options.forceType, detectedType: options.forceType }
+        : prepared;
+      const context = { replyToMessageId: options.replyTo };
+      const ok = await this.sendPreparedMedia(chatId, finalPrepared, context);
+      if (ok && options.caption) await this.sendReply(chatId, options.caption, context);
+      return ok;
+    } catch (e) {
+      this.logger?.error?.(`wecom: send media source failed: ${e}`);
+      return false;
+    }
+  }
+
+  private prepareOutboundMediaBytes(data: Buffer, contentType: string, fileName: string): PreparedOutboundMedia {
+    const normalizedContentType = normalizeContentType(contentType, fileName);
+    const detectedType = detectWeComMediaType(normalizedContentType);
+    const sizeCheck = applyMediaSizeLimits(data.length, detectedType, normalizedContentType);
+    return {
+      data,
+      contentType: normalizedContentType,
+      fileName: safeFileName(fileName || `wecom_media${defaultExtForMedia(detectedType)}`),
+      detectedType,
+      ...sizeCheck,
+    };
+  }
+
+  private async loadOutboundMediaSource(source: string, fileName?: string): Promise<PreparedOutboundMedia> {
+    const trimmed = source.trim();
+    if (!trimmed) throw new Error("media source is required");
+    let data: Buffer;
+    let resolvedName = fileName;
+    let contentType = "";
+
+    const parsed = tryParseUrl(trimmed);
+    if (parsed?.protocol === "file:") {
+      const path = fileURLToPath(parsed);
+      data = await readFile(path);
+      resolvedName ??= basename(path);
+    } else if (parsed?.protocol === "http:" || parsed?.protocol === "https:") {
+      const downloaded = await this.downloadRemoteBytes(trimmed, FILE_MAX_BYTES);
+      data = downloaded.data;
+      contentType = downloaded.contentType;
+      resolvedName ??= guessFileName(trimmed, downloaded.contentDisposition);
+    } else {
+      const path = resolve(trimmed);
+      const info = await stat(path);
+      if (!info.isFile()) throw new Error(`media source is not a file: ${path}`);
+      data = await readFile(path);
+      resolvedName ??= basename(path);
+    }
+
+    return this.prepareOutboundMediaBytes(data, contentType, resolvedName ?? "wecom_media");
+  }
+
+  private async sendPreparedMedia(
+    chatId: string,
+    prepared: PreparedOutboundMedia,
+    context: { chatType?: "dm" | "group"; replyToMessageId?: string } = {},
+  ): Promise<boolean> {
+    if (prepared.rejected) {
+      await this.sendReply(chatId, prepared.rejectReason ?? "企业微信媒体文件过大，无法发送。", context);
+      return false;
+    }
+
+    try {
+      const upload = await this.uploadMediaBytes(prepared.data, prepared.finalType, prepared.fileName);
+      const mediaId = String(upload.media_id ?? upload.mediaId ?? "").trim();
+      if (!mediaId) throw new Error("media upload did not return media_id");
+
+      const replyReq = this.replyReqIdFor(chatId, context.replyToMessageId);
+      const response = replyReq
+        ? await this.sendReplyMediaMessage(replyReq, prepared.finalType, mediaId)
+        : context.chatType === "group"
+          ? undefined
+          : await this.sendMediaMessage(chatId, prepared.finalType, mediaId);
+
+      if (!response) {
+        this.logger?.warn?.(`wecom: no reply request id for group media ${chatId}, cannot send proactive message`);
+        return false;
+      }
+      const err = this.responseError(response);
+      if (err) {
+        this.logger?.error?.(`wecom: send media error: ${err}`);
+        return false;
+      }
+      if (prepared.downgraded && prepared.downgradeNote) {
+        await this.sendReply(chatId, prepared.downgradeNote, context);
+      }
+      return true;
+    } catch (e) {
+      this.logger?.error?.(`wecom: send media failed: ${e}`);
+      return false;
+    }
+  }
+
+  private async uploadMediaBytes(data: Buffer, mediaType: WeComMediaType, filename: string): Promise<Record<string, unknown>> {
+    if (data.length === 0) throw new Error("Cannot upload empty media");
+    const totalChunks = Math.ceil(data.length / UPLOAD_CHUNK_SIZE);
+    if (totalChunks > MAX_UPLOAD_CHUNKS) {
+      throw new Error(`File too large: ${totalChunks} chunks exceeds maximum of ${MAX_UPLOAD_CHUNKS}`);
+    }
+
+    const initResponse = await this.sendRequest(APP_CMD_UPLOAD_MEDIA_INIT, {
+      type: mediaType,
+      filename,
+      total_size: data.length,
+      total_chunks: totalChunks,
+      md5: createHash("md5").update(data).digest("hex"),
+    });
+    const initErr = this.responseError(initResponse);
+    if (initErr) throw new Error(`media upload init failed: ${initErr}`);
+    const initBody = (initResponse.body as Record<string, unknown> | undefined) ?? {};
+    const uploadId = String(initBody.upload_id ?? initBody.uploadId ?? "").trim();
+    if (!uploadId) throw new Error("media upload init failed: missing upload_id");
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+      const start = chunkIndex * UPLOAD_CHUNK_SIZE;
+      const chunk = data.subarray(start, start + UPLOAD_CHUNK_SIZE);
+      const chunkResponse = await this.sendRequest(APP_CMD_UPLOAD_MEDIA_CHUNK, {
+        upload_id: uploadId,
+        chunk_index: chunkIndex,
+        base64_data: chunk.toString("base64"),
+      });
+      const chunkErr = this.responseError(chunkResponse);
+      if (chunkErr) throw new Error(`media upload chunk ${chunkIndex} failed: ${chunkErr}`);
+    }
+
+    const finishResponse = await this.sendRequest(APP_CMD_UPLOAD_MEDIA_FINISH, { upload_id: uploadId });
+    const finishErr = this.responseError(finishResponse);
+    if (finishErr) throw new Error(`media upload finish failed: ${finishErr}`);
+    const finishBody = (finishResponse.body as Record<string, unknown> | undefined) ?? {};
+    return { ...finishResponse, ...finishBody };
+  }
+
+  private async downloadRemoteBytes(url: string, maxBytes: number): Promise<{
+    data: Buffer;
+    contentType: string;
+    contentDisposition?: string;
+  }> {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`unsupported media URL protocol: ${parsed.protocol}`);
+    }
+    const response = await fetch(url, {
+      headers: { "User-Agent": "PilotDeck/1.0", "Accept": "*/*" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > maxBytes) {
+      throw new Error(`remote media exceeds limit: ${contentLength} bytes > ${maxBytes}`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > maxBytes) throw new Error(`remote media exceeds limit: ${bytes.length} bytes > ${maxBytes}`);
+    return {
+      data: bytes,
+      contentType: response.headers.get("content-type") ?? "",
+      contentDisposition: response.headers.get("content-disposition") ?? undefined,
+    };
+  }
+
   private async sendMarkdownByReqId(reqId: string, text: string): Promise<Record<string, unknown>> {
     return this.sendReplyRequest(reqId, {
       msgtype: "markdown",
@@ -735,6 +1125,29 @@ export class WeComChannel implements ChannelAdapter {
       chatid: chatId,
       msgtype: "markdown",
       markdown: { content: text.slice(0, MAX_MESSAGE_LENGTH) },
+    });
+  }
+
+  private async sendReplyMediaMessage(
+    reqId: string,
+    mediaType: WeComMediaType,
+    mediaId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.sendReplyRequest(reqId, {
+      msgtype: mediaType,
+      [mediaType]: { media_id: mediaId },
+    });
+  }
+
+  private async sendMediaMessage(
+    chatId: string,
+    mediaType: WeComMediaType,
+    mediaId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.sendRequest(APP_CMD_SEND, {
+      chatid: chatId,
+      msgtype: mediaType,
+      [mediaType]: { media_id: mediaId },
     });
   }
 
@@ -806,6 +1219,181 @@ function normalizePolicy(value: unknown): WeComAccessPolicy {
 function coerceNonNegativeMs(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function detectWeComMediaType(contentType: string): WeComMediaType {
+  const normalized = String(contentType || "").split(";", 1)[0].trim().toLowerCase();
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("video/")) return "video";
+  if (normalized.startsWith("audio/") || normalized === "application/ogg") return "voice";
+  return "file";
+}
+
+function applyMediaSizeLimits(
+  fileSize: number,
+  detectedType: WeComMediaType,
+  contentType: string,
+): Pick<PreparedOutboundMedia, "finalType" | "rejected" | "rejectReason" | "downgraded" | "downgradeNote"> {
+  const sizeMb = fileSize / (1024 * 1024);
+  const normalizedContentType = String(contentType || "").split(";", 1)[0].trim().toLowerCase();
+
+  if (fileSize > FILE_MAX_BYTES) {
+    return {
+      finalType: detectedType,
+      rejected: true,
+      rejectReason: `文件大小 ${sizeMb.toFixed(2)}MB 超过企业微信 20MB 限制，无法发送。`,
+      downgraded: false,
+    };
+  }
+
+  if (detectedType === "image" && fileSize > IMAGE_MAX_BYTES) {
+    return {
+      finalType: "file",
+      rejected: false,
+      downgraded: true,
+      downgradeNote: `图片大小 ${sizeMb.toFixed(2)}MB 超过 10MB 限制，已转为文件格式发送。`,
+    };
+  }
+
+  if (detectedType === "video" && fileSize > VIDEO_MAX_BYTES) {
+    return {
+      finalType: "file",
+      rejected: false,
+      downgraded: true,
+      downgradeNote: `视频大小 ${sizeMb.toFixed(2)}MB 超过 10MB 限制，已转为文件格式发送。`,
+    };
+  }
+
+  if (detectedType === "voice") {
+    if (normalizedContentType && !VOICE_SUPPORTED_MIMES.has(normalizedContentType)) {
+      return {
+        finalType: "file",
+        rejected: false,
+        downgraded: true,
+        downgradeNote: `语音格式 ${normalizedContentType} 不支持，企业微信原生语音仅支持 AMR，已转为文件格式发送。`,
+      };
+    }
+    if (fileSize > VOICE_MAX_BYTES) {
+      return {
+        finalType: "file",
+        rejected: false,
+        downgraded: true,
+        downgradeNote: `语音大小 ${sizeMb.toFixed(2)}MB 超过 2MB 限制，已转为文件格式发送。`,
+      };
+    }
+  }
+
+  return { finalType: detectedType, rejected: false, downgraded: false };
+}
+
+function normalizeContentType(contentType: string, filename: string): string {
+  const normalized = String(contentType || "").split(";", 1)[0].trim().toLowerCase();
+  if (normalized && normalized !== "application/octet-stream" && normalized !== "text/plain") return normalized;
+  return mimeForExtension(extname(filename).toLowerCase()) || normalized || "application/octet-stream";
+}
+
+function mimeForExtension(ext: string): string | undefined {
+  switch (ext) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    case ".mp4":
+      return "video/mp4";
+    case ".mov":
+      return "video/quicktime";
+    case ".amr":
+      return "audio/amr";
+    case ".pdf":
+      return "application/pdf";
+    case ".txt":
+      return "text/plain";
+    default:
+      return undefined;
+  }
+}
+
+function extForMime(mimeType: string): string | undefined {
+  const normalized = String(mimeType || "").split(";", 1)[0].trim().toLowerCase();
+  switch (normalized) {
+    case "image/png":
+      return ".png";
+    case "image/jpeg":
+      return ".jpg";
+    case "image/gif":
+      return ".gif";
+    case "image/webp":
+      return ".webp";
+    case "video/mp4":
+      return ".mp4";
+    case "audio/amr":
+      return ".amr";
+    case "application/pdf":
+      return ".pdf";
+    default:
+      return undefined;
+  }
+}
+
+function defaultExtForMedia(kind: WeComMediaType): string {
+  switch (kind) {
+    case "image":
+      return ".jpg";
+    case "video":
+      return ".mp4";
+    case "voice":
+      return ".amr";
+    case "file":
+      return ".bin";
+  }
+}
+
+function safeFileName(value: string): string {
+  const name = basename(value || "wecom_media").replace(/[^\w.\-()\u4e00-\u9fff]+/g, "_");
+  return name || "wecom_media";
+}
+
+function tryParseUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function guessFileName(url: string, contentDisposition?: string): string {
+  const disposition = contentDisposition ?? "";
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+  const quotedMatch = /filename="?([^";]+)"?/i.exec(disposition);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+  const parsed = tryParseUrl(url);
+  const pathName = parsed?.pathname ? basename(parsed.pathname) : "";
+  return pathName || "wecom_media";
+}
+
+function decryptWeComBytes(encryptedData: Buffer, aesKey: string): Buffer {
+  const paddedKey = aesKey + "=".repeat((4 - (aesKey.length % 4)) % 4);
+  const key = Buffer.from(paddedKey, "base64");
+  if (key.length !== 32) {
+    throw new Error(`Invalid WeCom AES key length: expected 32 bytes, got ${key.length}`);
+  }
+  const decipher = createDecipheriv("aes-256-cbc", key, key.subarray(0, 16));
+  decipher.setAutoPadding(false);
+  const decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+  const padLen = decrypted.at(-1) ?? 0;
+  if (padLen < 1 || padLen > 32 || padLen > decrypted.length) {
+    throw new Error(`Invalid PKCS#7 padding value: ${padLen}`);
+  }
+  for (const byte of decrypted.subarray(decrypted.length - padLen)) {
+    if (byte !== padLen) throw new Error("Invalid PKCS#7 padding bytes");
+  }
+  return decrypted.subarray(0, decrypted.length - padLen);
 }
 
 function normalizeEntry(value: string): string {
