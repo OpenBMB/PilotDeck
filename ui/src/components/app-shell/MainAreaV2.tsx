@@ -139,10 +139,9 @@ export default function MainAreaV2(props: MainAreaV2Props) {
   // sidebar overlay (subscribes to localStorage + custom event).
   useCustomNamesVersion();
 
-  // Breadcrumb: "ProjectName / Tab" with optional session summary appended in
-  // mono. Falls back to "Home" when no project is selected so the breadcrumb
-  // never collapses to "/". Project + session strings flow through the
-  // customNames overlay so user renames in the sidebar reflect here too.
+  // Header title: session title first, project context second. Project +
+  // session strings flow through the customNames overlay so user renames in
+  // the sidebar reflect here too.
   const displayActiveTab = activeTab === 'home' ? 'chat' : activeTab;
   const tabLabelKey = TABS.find((tab) => tab.id === displayActiveTab)?.labelKey;
   const tabLabel = tabLabelKey
@@ -151,6 +150,10 @@ export default function MainAreaV2(props: MainAreaV2Props) {
       ? displayActiveTab.replace('plugin:', '')
       : displayActiveTab;
   const sessionSummary = selectedSession ? sessionDisplayTitle(selectedSession) : '';
+  const projectName = selectedProject
+    ? projectDisplayName(selectedProject)
+    : t('navigation.home', { defaultValue: 'Home' });
+  const headerTitle = sessionSummary || tabLabel || projectName;
   const alwaysOnUnread = Boolean(
     latestAlwaysOnEventMarker &&
     activeTab !== 'always-on' &&
@@ -159,8 +162,8 @@ export default function MainAreaV2(props: MainAreaV2Props) {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      {/* Header: breadcrumb left, tool switcher right. */}
-      <header className="flex h-12 shrink-0 items-center px-6">
+      {/* Header: session title left, tool switcher right. */}
+      <header className="flex h-14 shrink-0 items-center px-6">
         {isSidebarCollapsed ? (
           // Just the "expand sidebar" affordance — the PilotDeck logo lives
           // in the sidebar header, so showing a duplicate badge here when
@@ -175,26 +178,25 @@ export default function MainAreaV2(props: MainAreaV2Props) {
             <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
           </button>
         ) : null}
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
-          <span className="shrink-0 text-neutral-500 dark:text-neutral-400">
-            {selectedProject ? projectDisplayName(selectedProject) : t('navigation.home', { defaultValue: 'Home' })}
-          </span>
-          <span className="shrink-0 text-neutral-400/60 dark:text-neutral-500/60">/</span>
-          <span className="shrink-0 font-medium">{tabLabel}</span>
-          {sessionSummary ? (
-            <span
-              className="ml-2 min-w-0 max-w-[28rem] truncate font-mono text-[11px] text-neutral-500 dark:text-neutral-400"
-              title={sessionSummary}
-            >
-              {sessionSummary}
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div
+            className="min-w-0 max-w-[34rem] truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50"
+            title={headerTitle}
+          >
+            {headerTitle}
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-neutral-400 dark:text-neutral-500">
+            <Folder className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+            <span className="min-w-0 max-w-[24rem] truncate" title={projectName}>
+              {projectName}
             </span>
-          ) : null}
+          </div>
         </div>
 
         <div
           role="tablist"
           aria-label="Tools"
-          className="scrollbar-thin ml-4 flex h-9 max-w-[70%] shrink-0 items-center gap-1 overflow-x-auto"
+          className="scrollbar-thin ml-4 flex h-9 max-w-[52%] shrink-0 items-center gap-1 overflow-x-auto"
         >
           {TABS.map((tab) => {
             const Icon = tab.icon;
