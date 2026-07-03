@@ -602,7 +602,7 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
   const [botId, setBotId] = useState('');
   const [secret, setSecret] = useState('');
   const [websocketUrl, setWebsocketUrl] = useState(status.websocketUrl || 'wss://openws.work.weixin.qq.com');
-  const [dmPolicy, setDmPolicy] = useState<WeComAccessPolicy>(normalizeWeComPolicy(status.dmPolicy, 'allowlist'));
+  const [dmPolicy, setDmPolicy] = useState<WeComAccessPolicy>(normalizeWeComPolicy(status.dmPolicy, 'open'));
   const [groupPolicy, setGroupPolicy] = useState<WeComAccessPolicy>(normalizeWeComPolicy(status.groupPolicy, 'disabled'));
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<TestResult>(null);
@@ -610,7 +610,7 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
 
   useEffect(() => {
     setWebsocketUrl(status.websocketUrl || 'wss://openws.work.weixin.qq.com');
-    setDmPolicy(normalizeWeComPolicy(status.dmPolicy, 'allowlist'));
+    setDmPolicy(normalizeWeComPolicy(status.dmPolicy, 'open'));
     setGroupPolicy(normalizeWeComPolicy(status.groupPolicy, 'disabled'));
   }, [status]);
 
@@ -870,8 +870,8 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
                     onChange={(e) => setDmPolicy(e.target.value as WeComAccessPolicy)}
                     className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                   >
-                    <option value="allowlist">allowlist</option>
                     <option value="open">open</option>
+                    <option value="allowlist">allowlist</option>
                     <option value="disabled">disabled</option>
                   </select>
                 </label>

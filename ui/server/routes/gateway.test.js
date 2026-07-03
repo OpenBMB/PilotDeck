@@ -131,7 +131,7 @@ describe('gateway WeCom routes', () => {
       extra: {
         secret: 'secret-from-qr',
         websocket_url: 'wss://openws.work.weixin.qq.com',
-        dm_policy: 'allowlist',
+        dm_policy: 'open',
         group_policy: 'disabled',
       },
     });
