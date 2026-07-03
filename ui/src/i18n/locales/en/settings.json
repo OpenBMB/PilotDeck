@@ -1051,7 +1051,7 @@
   },
   "gateway": {
     "title": "IM Channels",
-    "description": "Configure instant messaging channels (Feishu, WeChat) so the agent can be reached from IM apps.",
+    "description": "Configure instant messaging channels (Feishu, WeChat, WeCom) so the agent can be reached from IM apps.",
     "connected": "Connected",
     "notConfigured": "Not configured",
     "enabled": "Enabled",
@@ -1086,6 +1086,27 @@
       "loadingQr": "Generating QR code…",
       "scanPrompt": "Open WeChat and scan the QR code to log in",
       "loginSuccess": "Login successful — credentials saved"
+    },
+    "wecom": {
+      "title": "Enterprise WeChat / WeCom",
+      "label": "WeCom Bot",
+      "chooseMethod": "Choose how to configure the WeCom AI Bot:",
+      "qrSetup": "QR Code Setup",
+      "qrSetupDesc": "Scan with WeCom to create or retrieve bot credentials",
+      "manualInput": "Manual Input",
+      "manualInputDesc": "Copy Bot ID and Secret from the WeCom admin console",
+      "startQr": "Generate WeCom QR Code",
+      "connecting": "Connecting to WeCom…",
+      "scanPrompt": "Open WeCom and scan the QR code",
+      "qrSuccess": "WeCom configured — bot credentials saved and enabled",
+      "retry": "Retry",
+      "botId": "Bot ID",
+      "secret": "Secret",
+      "websocketUrl": "WebSocket URL",
+      "dmPolicy": "DM Policy",
+      "groupPolicy": "Group Policy",
+      "policyHint": "Basic policies are written to pilotdeck.yaml; edit YAML later for finer user or group allowlists.",
+      "saveSuccess": "WeCom config saved"
     }
   }
 }
