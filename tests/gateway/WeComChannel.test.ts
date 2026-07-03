@@ -51,6 +51,45 @@ test("WeComChannel subscribes with device_id and replies with markdown response 
   await handle.stop("test");
 });
 
+test("WeComChannel accepts legacy aibot_callback payloads", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", dm_policy: "open" },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+  assert.ok(ws);
+
+  ws.emitJson({
+    cmd: "aibot_callback",
+    headers: { req_id: "legacy-inbound-1" },
+    body: {
+      msgid: "legacy-msg-1",
+      from: { userid: "legacy-user-1" },
+      msgtype: "text",
+      text: { content: "hello legacy" },
+    },
+  });
+
+  await waitUntil(() => ws.sent.some((payload) => payload.cmd === "aibot_respond_msg"));
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].sessionKey, "wecom:dm=legacy-user-1:general");
+  assert.equal(captured[0].channelKey, "wecom");
+  assert.equal(captured[0].message, "hello legacy");
+
+  const reply = ws.sent.find((payload) => payload.cmd === "aibot_respond_msg");
+  assert.equal(reply?.headers?.req_id, "legacy-inbound-1");
+  assert.equal(reply?.body?.msgtype, "markdown");
+  assert.equal(reply?.body?.markdown?.content, "agent reply");
+
+  await handle.stop("test");
+});
+
 test("WeComChannel deduplicates msgid and enforces allowlist policy", async () => {
   FakeWebSocket.reset();
   const captured: GatewaySubmitTurnInput[] = [];
