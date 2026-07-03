@@ -5,7 +5,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
-import { WeComSessionMapper } from "./WeComSessionMapper.js";
+import { WeComSessionMapper, type WeComSessionMapperScopeInput } from "./WeComSessionMapper.js";
 import { renderWeComEvent } from "./wecom-render.js";
 import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
@@ -453,15 +453,24 @@ export class WeComChannel implements ChannelAdapter {
   private async handleCommandIfNeeded(
     text: string,
     chatId: string,
+    senderId: string,
     chatType: "dm" | "group",
     messageId: string,
   ): Promise<boolean> {
     if (!this.gateway || !text.trim().startsWith("/")) return false;
+    const scopeInput: WeComSessionMapperScopeInput = {
+      chatId,
+      userId: senderId,
+      chatType,
+      groupSessionsPerUser: this.groupSessionsPerUser,
+    };
     return executeChannelCommand(text, {
       gateway: this.gateway,
       chatId,
       channelKey: "wecom",
       reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }),
+      bindProject: (projectKey) => this.mapper.bindProject(scopeInput, projectKey),
+      getProject: () => this.mapper.getProject(scopeInput),
       logger: this.logger,
     });
   }
@@ -639,7 +648,7 @@ export class WeComChannel implements ChannelAdapter {
       return;
     }
 
-    if (await this.handleCommandIfNeeded(input.text, input.chatId, input.chatType, input.replyToMessageId)) {
+    if (await this.handleCommandIfNeeded(input.text, input.chatId, input.senderId, input.chatType, input.replyToMessageId)) {
       return;
     }
     if (!mapped.message) return;
@@ -656,6 +665,7 @@ export class WeComChannel implements ChannelAdapter {
         chatType: input.chatType,
         interactionKey: input.interactionKey,
         sessionKey: mapped.sessionKey,
+        projectKey: mapped.projectKey,
         message: mapped.message,
         attachments: input.attachments,
         replyToMessageId: input.replyToMessageId,
@@ -808,6 +818,7 @@ export class WeComChannel implements ChannelAdapter {
     chatType: "dm" | "group";
     interactionKey: string;
     sessionKey: string;
+    projectKey?: string;
     message: string;
     attachments?: ChannelAttachment[];
     replyToMessageId: string;
@@ -822,6 +833,7 @@ export class WeComChannel implements ChannelAdapter {
         message: input.message,
         attachments: input.attachments,
         allowPlanModeTools: false,
+        ...(input.projectKey ? { projectKey: input.projectKey } : {}),
       })) {
         if (event.type === "elicitation_request") {
           const questionText = this.elicitation.capture(input.interactionKey, input.sessionKey, event);
