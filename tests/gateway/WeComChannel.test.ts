@@ -11,7 +11,7 @@ test("WeComChannel subscribes with device_id and replies with markdown response 
   const captured: GatewaySubmitTurnInput[] = [];
   const channel = new WeComChannel({
     botKey: "bot-1",
-    extra: { secret: "secret-1", dm_policy: "open" },
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 1 },
     webSocketCtor: FakeWebSocket,
     uuid: sequenceUuid(),
   });
@@ -56,7 +56,7 @@ test("WeComChannel accepts legacy aibot_callback payloads", async () => {
   const captured: GatewaySubmitTurnInput[] = [];
   const channel = new WeComChannel({
     botKey: "bot-1",
-    extra: { secret: "secret-1", dm_policy: "open" },
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 1 },
     webSocketCtor: FakeWebSocket,
     uuid: sequenceUuid(),
   });
@@ -95,7 +95,7 @@ test("WeComChannel deduplicates msgid and enforces allowlist policy", async () =
   const captured: GatewaySubmitTurnInput[] = [];
   const channel = new WeComChannel({
     botKey: "bot-1",
-    extra: { secret: "secret-1", dm_policy: "allowlist", allow_from: ["allowed-user"] },
+    extra: { secret: "secret-1", dm_policy: "allowlist", allow_from: ["allowed-user"], text_batch_delay_ms: 1 },
     webSocketCtor: FakeWebSocket,
     uuid: sequenceUuid(),
   });
@@ -140,7 +140,7 @@ test("WeComChannel maps group sessions per sender and strips leading mention", a
   const captured: GatewaySubmitTurnInput[] = [];
   const channel = new WeComChannel({
     botKey: "bot-1",
-    extra: { secret: "secret-1", group_policy: "open" },
+    extra: { secret: "secret-1", group_policy: "open", text_batch_delay_ms: 1 },
     webSocketCtor: FakeWebSocket,
     uuid: sequenceUuid(),
   });
@@ -164,6 +164,171 @@ test("WeComChannel maps group sessions per sender and strips leading mention", a
   await waitUntil(() => captured.length === 1);
   assert.equal(captured[0].sessionKey, "wecom:group=group-chat:user=user-2:general");
   assert.equal(captured[0].message, "hello group");
+
+  await handle.stop("test");
+});
+
+test("WeComChannel batches rapid text chunks from the same DM sender", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 20 },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "batch-1" },
+    body: {
+      msgid: "batch-msg-1",
+      from: { userid: "user-1" },
+      msgtype: "text",
+      text: { content: "part 1" },
+    },
+  });
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "batch-2" },
+    body: {
+      msgid: "batch-msg-2",
+      from: { userid: "user-1" },
+      msgtype: "text",
+      text: { content: "part 2" },
+    },
+  });
+
+  await nextTick();
+  assert.equal(captured.length, 0);
+  await waitUntil(() => captured.length === 1);
+  assert.equal(captured[0].message, "part 1\npart 2");
+
+  const reply = ws.sent.find((payload) => payload.cmd === "aibot_respond_msg");
+  assert.equal(reply?.headers?.req_id, "batch-2");
+
+  await handle.stop("test");
+});
+
+test("WeComChannel keeps group text batches isolated per sender", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", group_policy: "open", text_batch_delay_ms: 5 },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "group-batch-1" },
+    body: {
+      msgid: "group-batch-msg-1",
+      chatid: "group-chat",
+      chattype: "group",
+      from: { userid: "user-a" },
+      msgtype: "text",
+      text: { content: "@PilotDeck alpha" },
+    },
+  });
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "group-batch-2" },
+    body: {
+      msgid: "group-batch-msg-2",
+      chatid: "group-chat",
+      chattype: "group",
+      from: { userid: "user-b" },
+      msgtype: "text",
+      text: { content: "@PilotDeck beta" },
+    },
+  });
+
+  await waitUntil(() => captured.length === 2);
+  assert.deepEqual(
+    captured.map((input) => input.message).sort(),
+    ["alpha", "beta"],
+  );
+  assert.ok(captured.some((input) => input.sessionKey === "wecom:group=group-chat:user=user-a:general"));
+  assert.ok(captured.some((input) => input.sessionKey === "wecom:group=group-chat:user=user-b:general"));
+
+  await handle.stop("test");
+});
+
+test("WeComChannel uses split delay for chunks near the WeCom split threshold", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: {
+      secret: "secret-1",
+      dm_policy: "open",
+      text_batch_delay_ms: 1,
+      text_batch_split_delay_ms: 50,
+    },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+  const longChunk = "x".repeat(3900);
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "split-delay-1" },
+    body: {
+      msgid: "split-delay-msg-1",
+      from: { userid: "user-1" },
+      msgtype: "text",
+      text: { content: longChunk },
+    },
+  });
+
+  await sleep(10);
+  assert.equal(captured.length, 0);
+  await waitUntil(() => captured.length === 1);
+  assert.equal(captured[0].message, longChunk);
+
+  await handle.stop("test");
+});
+
+test("WeComChannel dispatches slash commands without text batching delay", async () => {
+  FakeWebSocket.reset();
+  const captured: GatewaySubmitTurnInput[] = [];
+  const channel = new WeComChannel({
+    botKey: "bot-1",
+    extra: { secret: "secret-1", dm_policy: "open", text_batch_delay_ms: 1000 },
+    webSocketCtor: FakeWebSocket,
+    uuid: sequenceUuid(),
+  });
+
+  const handle = await channel.start({ gateway: fakeGateway(captured), logger: noopLogger });
+  const ws = FakeWebSocket.instances[0];
+
+  ws.emitJson({
+    cmd: "aibot_msg_callback",
+    headers: { req_id: "slash-1" },
+    body: {
+      msgid: "slash-msg-1",
+      from: { userid: "user-1" },
+      msgtype: "text",
+      text: { content: "/new" },
+    },
+  });
+
+  await waitUntil(
+    () => ws.sent.some((payload) => payload.cmd === "aibot_respond_msg" && payload.body?.markdown?.content === "已创建新会话。"),
+    100,
+  );
+  assert.equal(captured.length, 0);
 
   await handle.stop("test");
 });
@@ -284,6 +449,10 @@ function sequenceUuid(): () => string {
 
 async function nextTick(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {

@@ -26,6 +26,9 @@ const RECONNECT_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000, 60_000] as const;
 const DEDUP_TTL_MS = 5 * 60 * 1000;
 const DEDUP_MAX_SIZE = 1000;
 const WS_OPEN = 1;
+const TEXT_BATCH_DELAY_MS = 600;
+const TEXT_BATCH_SPLIT_DELAY_MS = 2_000;
+const SPLIT_THRESHOLD = 3_900;
 
 type WeComAccessPolicy = "open" | "allowlist" | "disabled" | "pairing";
 
@@ -33,6 +36,16 @@ type PendingRequest = {
   resolve: (payload: Record<string, unknown>) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+};
+
+type WeComTextBatch = {
+  chatId: string;
+  chatType: "dm" | "group";
+  senderId: string;
+  interactionKey: string;
+  text: string;
+  replyToMessageId: string;
+  lastChunkLength: number;
 };
 
 export type WeComChannelOptions = {
@@ -61,6 +74,8 @@ export class WeComChannel implements ChannelAdapter {
   private readonly groupAllowFrom: string[];
   private readonly groups: Record<string, unknown>;
   private readonly groupSessionsPerUser: boolean;
+  private readonly textBatchDelayMs: number;
+  private readonly textBatchSplitDelayMs: number;
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -74,6 +89,8 @@ export class WeComChannel implements ChannelAdapter {
   private reconnectAttempt = 0;
   private intentionalStop = false;
   private activeChats = new Set<string>();
+  private pendingTextBatches = new Map<string, WeComTextBatch>();
+  private pendingTextBatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly elicitation = new ImElicitationHelper();
   private readonly permissions = new ImPermissionHelper();
 
@@ -103,6 +120,14 @@ export class WeComChannel implements ChannelAdapter {
       : typeof ex.groupSessionsPerUser === "boolean"
         ? ex.groupSessionsPerUser
         : true;
+    this.textBatchDelayMs = coerceNonNegativeMs(
+      ex.text_batch_delay_ms ?? ex.textBatchDelayMs,
+      TEXT_BATCH_DELAY_MS,
+    );
+    this.textBatchSplitDelayMs = coerceNonNegativeMs(
+      ex.text_batch_split_delay_ms ?? ex.textBatchSplitDelayMs,
+      TEXT_BATCH_SPLIT_DELAY_MS,
+    );
   }
 
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
@@ -140,6 +165,7 @@ export class WeComChannel implements ChannelAdapter {
         this.replyReqIds.clear();
         this.lastChatReqIds.clear();
         this.seenMessages.clear();
+        this.clearTextBatches();
         await this.cleanupWs();
       },
     };
@@ -268,6 +294,14 @@ export class WeComChannel implements ChannelAdapter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+  }
+
+  private clearTextBatches(): void {
+    for (const timer of this.pendingTextBatchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingTextBatchTimers.clear();
+    this.pendingTextBatches.clear();
   }
 
   private scheduleReconnect(): void {
@@ -467,19 +501,91 @@ export class WeComChannel implements ChannelAdapter {
       return;
     }
 
-    const mapped = this.mapper.resolve({
-      chatId,
-      text,
-      userId: senderId,
-      chatType,
-      groupSessionsPerUser: this.groupSessionsPerUser,
-    });
-    if (mapped.command === "new" && !mapped.message) {
-      await this.sendReply(chatId, "已创建新会话。", { chatType, replyToMessageId: messageId });
+    if (text.trim().startsWith("/")) {
+      await this.dispatchTextMessage({
+        chatId,
+        chatType,
+        senderId,
+        interactionKey,
+        text,
+        replyToMessageId: messageId,
+      });
       return;
     }
 
-    if (await this.handleCommandIfNeeded(text, chatId, chatType, messageId)) {
+    this.enqueueTextBatch({
+      chatId,
+      chatType,
+      senderId,
+      interactionKey,
+      text,
+      replyToMessageId: messageId,
+      lastChunkLength: text.length,
+    });
+  }
+
+  private enqueueTextBatch(batch: WeComTextBatch): void {
+    if (this.textBatchDelayMs <= 0) {
+      void this.dispatchTextMessage(batch);
+      return;
+    }
+
+    const existing = this.pendingTextBatches.get(batch.interactionKey);
+    if (existing) {
+      existing.text = existing.text ? `${existing.text}\n${batch.text}` : batch.text;
+      existing.replyToMessageId = batch.replyToMessageId;
+      existing.lastChunkLength = batch.lastChunkLength;
+    } else {
+      this.pendingTextBatches.set(batch.interactionKey, { ...batch });
+    }
+
+    const priorTimer = this.pendingTextBatchTimers.get(batch.interactionKey);
+    if (priorTimer) clearTimeout(priorTimer);
+
+    const delay = batch.lastChunkLength >= SPLIT_THRESHOLD
+      ? this.textBatchSplitDelayMs
+      : this.textBatchDelayMs;
+    const timer = setTimeout(() => {
+      if (this.pendingTextBatchTimers.get(batch.interactionKey) !== timer) return;
+      this.pendingTextBatchTimers.delete(batch.interactionKey);
+      void this.flushTextBatch(batch.interactionKey);
+    }, delay);
+    timer.unref?.();
+    this.pendingTextBatchTimers.set(batch.interactionKey, timer);
+  }
+
+  private async flushTextBatch(interactionKey: string): Promise<void> {
+    const batch = this.pendingTextBatches.get(interactionKey);
+    if (!batch) return;
+    this.pendingTextBatches.delete(interactionKey);
+    this.logger?.info?.(`wecom: flushing text batch ${interactionKey} (${batch.text.length} chars)`);
+    await this.dispatchTextMessage(batch);
+  }
+
+  private async dispatchTextMessage(input: {
+    chatId: string;
+    chatType: "dm" | "group";
+    senderId: string;
+    interactionKey: string;
+    text: string;
+    replyToMessageId: string;
+  }): Promise<void> {
+    const mapped = this.mapper.resolve({
+      chatId: input.chatId,
+      text: input.text,
+      userId: input.senderId,
+      chatType: input.chatType,
+      groupSessionsPerUser: this.groupSessionsPerUser,
+    });
+    if (mapped.command === "new" && !mapped.message) {
+      await this.sendReply(input.chatId, "已创建新会话。", {
+        chatType: input.chatType,
+        replyToMessageId: input.replyToMessageId,
+      });
+      return;
+    }
+
+    if (await this.handleCommandIfNeeded(input.text, input.chatId, input.chatType, input.replyToMessageId)) {
       return;
     }
     if (!mapped.message) return;
@@ -492,12 +598,12 @@ export class WeComChannel implements ChannelAdapter {
     this.activeChats.add(mapped.sessionKey);
     try {
       await this.processMessage({
-        chatId,
-        chatType,
-        interactionKey,
+        chatId: input.chatId,
+        chatType: input.chatType,
+        interactionKey: input.interactionKey,
         sessionKey: mapped.sessionKey,
         message: mapped.message,
-        replyToMessageId: messageId,
+        replyToMessageId: input.replyToMessageId,
       });
     } finally {
       this.activeChats.delete(mapped.sessionKey);
@@ -695,6 +801,11 @@ function normalizePolicy(value: unknown): WeComAccessPolicy {
     return raw;
   }
   return "pairing";
+}
+
+function coerceNonNegativeMs(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 function normalizeEntry(value: string): string {
