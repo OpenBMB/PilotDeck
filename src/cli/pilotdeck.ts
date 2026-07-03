@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { createAlwaysOnManager, createApplyHandler, SessionConfigOverrides, type AlwaysOnManager, type AlwaysOnConfig } from "../always-on/index.js";
 import { createCronManager, type CronManager, type CronConfig } from "../cron/index.js";
 import { connectRemoteGatewayIfAvailable, type Gateway, type GatewayEvent, type GatewaySubmitTurnInput } from "../gateway/index.js";
-import { CliChannel, TuiChannel, FeishuChannel, WeixinChannel, QQChannel, loadEnabledChannels } from "../adapters/index.js";
+import { CliChannel, TuiChannel, FeishuChannel, WeixinChannel, QQChannel, WeComChannel, loadEnabledChannels } from "../adapters/index.js";
 import {
   migrateSkillsToPilotDeck,
   type SkillMigrationConflictMode,
@@ -262,6 +262,15 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       if (wCfg?.enabled === true) {
         await serverRef.hotStartChannel(new WeixinChannel());
         parts.push("weixin=started");
+      }
+
+      const wcCfg = config.adapters?.wecom;
+      if (wcCfg?.enabled === true) {
+        await serverRef.hotStartChannel(new WeComChannel({
+          botKey: wcCfg.token,
+          extra: wcCfg.extra,
+        }));
+        parts.push("wecom=started");
       }
 
       if (parts.length) {

@@ -6,14 +6,7 @@ import { renderWeComEvent } from "./wecom-render.js";
 import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
 import { executeChannelCommand } from "../protocol/ChannelCommandRegistry.js";
-
-let WebSocketCtor: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  WebSocketCtor = require("ws");
-} catch {
-  // ws not installed — start() will warn
-}
+import WebSocket from "ws";
 
 const DEFAULT_WS_URL = "wss://openws.work.weixin.qq.com";
 const APP_CMD_SUBSCRIBE = "aibot_subscribe";
@@ -95,7 +88,7 @@ export class WeComChannel implements ChannelAdapter {
     this.wsUrl = (String(
       ex.websocket_url ?? ex.websocketUrl ?? process.env.WECOM_WEBSOCKET_URL ?? "",
     ).trim() || DEFAULT_WS_URL);
-    this.webSocketCtor = options.webSocketCtor ?? WebSocketCtor;
+    this.webSocketCtor = options.webSocketCtor ?? WebSocket;
     this.uuid = options.uuid ?? randomUUID;
     this.reconnectBackoffMs = options.reconnectBackoffMs ?? RECONNECT_BACKOFF_MS;
     this.deviceId = this.uuid().replace(/-/g, "");
