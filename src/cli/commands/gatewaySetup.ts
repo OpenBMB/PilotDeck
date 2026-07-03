@@ -10,6 +10,17 @@ const WEIXIN_CREDS_PATH = join(PILOT_HOME, "weixin-credentials.json");
 
 const FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
 const LARK_TOKEN_URL = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal";
+const WECOM_DEFAULT_WS_URL = "wss://openws.work.weixin.qq.com";
+const WECOM_QR_GENERATE_URL = "https://work.weixin.qq.com/ai/qc/generate";
+const WECOM_QR_QUERY_URL = "https://work.weixin.qq.com/ai/qc/query_result";
+const WECOM_QR_CODE_PAGE = "https://work.weixin.qq.com/ai/qc/gen?source=hermes&scode=";
+const WECOM_QR_POLL_INTERVAL_MS = 3000;
+const WECOM_QR_TIMEOUT_MS = 300_000;
+
+export type WeComBotCredentials = {
+  botId: string;
+  secret: string;
+};
 
 // ---------------------------------------------------------------------------
 // Entry
@@ -29,14 +40,19 @@ export async function runGatewaySetup(argv: string[]): Promise<void> {
       await setupFeishu(rl);
     } else if (platform === "weixin" || platform === "wechat") {
       await setupWeixin(rl);
+    } else if (platform === "wecom" || platform === "work-weixin" || platform === "workwechat") {
+      await setupWeCom(rl);
     } else {
       const choice = await selectPlatform(rl);
       if (choice === "feishu") await setupFeishu(rl);
       else if (choice === "weixin") await setupWeixin(rl);
+      else if (choice === "wecom") await setupWeCom(rl);
       else if (choice === "all") {
         await setupFeishu(rl);
         console.log("");
         await setupWeixin(rl);
+        console.log("");
+        await setupWeCom(rl);
       } else {
         console.log("未选择任何平台，退出。");
       }
@@ -48,21 +64,24 @@ export async function runGatewaySetup(argv: string[]): Promise<void> {
 
 async function selectPlatform(
   rl: ReturnType<typeof createInterface>,
-): Promise<"feishu" | "weixin" | "all" | null> {
+): Promise<"feishu" | "weixin" | "wecom" | "all" | null> {
   const currentConfig = loadYamlConfig();
   const feishuStatus = currentConfig?.adapters?.feishu?.enabled ? "✅ 已启用" : "未配置";
   const weixinStatus = existsSync(WEIXIN_CREDS_PATH) ? "✅ 已有凭据" : "未配置";
+  const wecomStatus = currentConfig?.adapters?.wecom?.enabled ? "✅ 已启用" : "未配置";
 
   console.log("可配置的平台：");
   console.log(`  1) 飞书 / Lark      [${feishuStatus}]`);
   console.log(`  2) 微信 (iLink)     [${weixinStatus}]`);
-  console.log(`  3) 全部配置`);
+  console.log(`  3) 企业微信 WeCom   [${wecomStatus}]`);
+  console.log(`  4) 全部配置`);
   console.log(`  q) 退出\n`);
 
-  const answer = (await rl.question("请选择 [1/2/3/q]: ")).trim().toLowerCase();
+  const answer = (await rl.question("请选择 [1/2/3/4/q]: ")).trim().toLowerCase();
   if (answer === "1" || answer === "feishu") return "feishu";
   if (answer === "2" || answer === "weixin") return "weixin";
-  if (answer === "3" || answer === "all") return "all";
+  if (answer === "3" || answer === "wecom") return "wecom";
+  if (answer === "4" || answer === "all") return "all";
   return null;
 }
 
@@ -245,6 +264,237 @@ function writeFeishuConfig(cfg: {
   };
 
   saveYamlConfig(yamlConfig);
+}
+
+// ---------------------------------------------------------------------------
+// WeCom Setup
+// ---------------------------------------------------------------------------
+
+async function setupWeCom(rl: ReturnType<typeof createInterface>): Promise<void> {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  企业微信 WeCom AI Bot 配置");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  const currentConfig = loadYamlConfig();
+  const currentWeCom = currentConfig?.adapters?.wecom;
+  const currentBotId = String(currentWeCom?.token ?? currentWeCom?.extra?.bot_id ?? currentWeCom?.extra?.botId ?? "");
+  const currentSecret = String(currentWeCom?.extra?.secret ?? currentWeCom?.extra?.botSecret ?? "");
+  const currentWsUrl = String(currentWeCom?.extra?.websocket_url ?? currentWeCom?.extra?.websocketUrl ?? WECOM_DEFAULT_WS_URL);
+
+  if (currentBotId && currentSecret) {
+    console.log(`已有企业微信配置 (Bot ID: ${maskSecret(currentBotId)})`);
+    const answer = (await rl.question("重新配置？ [y/N]: ")).trim().toLowerCase();
+    if (answer !== "y" && answer !== "yes") {
+      writeWeComConfig({
+        botId: currentBotId,
+        secret: currentSecret,
+        websocketUrl: currentWsUrl,
+        dmPolicy: normalizeWeComSetupPolicy(currentWeCom?.extra?.dm_policy, "allowlist"),
+        allowFrom: coerceSetupList(currentWeCom?.extra?.allow_from ?? currentWeCom?.extra?.allowFrom),
+        groupPolicy: normalizeWeComSetupPolicy(currentWeCom?.extra?.group_policy, "disabled"),
+        groupAllowFrom: coerceSetupList(currentWeCom?.extra?.group_allow_from ?? currentWeCom?.extra?.groupAllowFrom),
+        groups: isPlainObject(currentWeCom?.extra?.groups) ? currentWeCom.extra.groups : undefined,
+      });
+      console.log("企业微信已启用（使用现有凭据）。\n");
+      return;
+    }
+  }
+
+  console.log("企业微信 AI Bot 通过官方 WebSocket 网关连接，无需公网回调地址。");
+  console.log("请确保你有企业微信组织管理员权限，或已在管理后台拿到 Bot ID 和 Secret。\n");
+
+  let credentials: WeComBotCredentials | null = null;
+  const scanAnswer = (await rl.question("是否扫码自动创建/获取 Bot ID 和 Secret？ [Y/n]: ")).trim().toLowerCase();
+  if (scanAnswer !== "n" && scanAnswer !== "no") {
+    credentials = await qrScanForWeComBotInfo({
+      log: (message) => console.log(message),
+    });
+    if (!credentials) {
+      console.log("\n扫码未完成或接口不可用，将使用手动输入模式。\n");
+    }
+  }
+
+  let botId = credentials?.botId ?? "";
+  let secret = credentials?.secret ?? "";
+
+  if (!botId || !secret) {
+    console.log("手动配置步骤：");
+    console.log("  1. 登录企业微信管理后台");
+    console.log("  2. 进入应用管理，创建 AI Bot / 智能机器人");
+    console.log("  3. 选择 API 模式");
+    console.log("  4. 复制 Bot ID 和 Secret\n");
+
+    const botHint = currentBotId ? ` (当前: ${maskSecret(currentBotId)})` : "";
+    botId = (await rl.question(`Bot ID${botHint}: `)).trim() || currentBotId;
+
+    const secretHint = currentSecret ? " (回车保留当前值)" : "";
+    const secretInput = (await rl.question(`Secret${secretHint}: `)).trim();
+    secret = secretInput || currentSecret;
+  }
+
+  if (!botId || !secret) {
+    console.log("\n未提供完整 Bot ID / Secret，跳过企业微信配置。\n");
+    return;
+  }
+
+  const websocketInput = (await rl.question(`WebSocket URL (默认: ${WECOM_DEFAULT_WS_URL}): `)).trim();
+  const websocketUrl = websocketInput || WECOM_DEFAULT_WS_URL;
+
+  const dmChoice = (await rl.question(
+    "私聊访问策略 [1=allowlist 推荐, 2=open, 3=disabled] (默认 1): ",
+  )).trim();
+  let dmPolicy = dmChoice === "2" ? "open" : dmChoice === "3" ? "disabled" : "allowlist";
+  let allowFrom: string[] = [];
+  if (dmPolicy === "allowlist") {
+    const allowed = (await rl.question("允许私聊的企业微信用户 ID（逗号分隔，留空则暂时禁用私聊）: ")).trim();
+    allowFrom = coerceSetupList(allowed);
+    if (allowFrom.length === 0) {
+      dmPolicy = "disabled";
+    }
+  }
+
+  const groupChoice = (await rl.question(
+    "群聊访问策略 [1=disabled 推荐, 2=open, 3=allowlist] (默认 1): ",
+  )).trim();
+  const groupPolicy = groupChoice === "2" ? "open" : groupChoice === "3" ? "allowlist" : "disabled";
+  let groupAllowFrom: string[] = [];
+  if (groupPolicy === "allowlist") {
+    const groups = (await rl.question("允许响应的群聊 chat_id（逗号分隔）: ")).trim();
+    groupAllowFrom = coerceSetupList(groups);
+  }
+
+  writeWeComConfig({
+    botId,
+    secret,
+    websocketUrl,
+    dmPolicy,
+    allowFrom,
+    groupPolicy,
+    groupAllowFrom,
+  });
+
+  console.log("\n企业微信配置已写入 pilotdeck.yaml");
+  console.log("连接模式: AI Bot WebSocket (无需公网 IP)");
+  console.log("重启 PilotDeck 服务后生效。\n");
+}
+
+export async function qrScanForWeComBotInfo(options: {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  log?: (message: string) => void;
+} = {}): Promise<WeComBotCredentials | null> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? WECOM_QR_TIMEOUT_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? WECOM_QR_POLL_INTERVAL_MS;
+  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const log = options.log ?? (() => undefined);
+
+  try {
+    log("正在连接企业微信生成扫码链接...");
+    const generated = await fetchJson(fetchImpl, `${WECOM_QR_GENERATE_URL}?source=hermes`);
+    const data = isPlainObject(generated.data) ? generated.data : {};
+    const scode = String(data.scode ?? "").trim();
+    const authUrl = String(data.auth_url ?? "").trim();
+    if (!scode || !authUrl) {
+      log("企业微信扫码接口返回格式异常。");
+      return null;
+    }
+
+    const pageUrl = `${WECOM_QR_CODE_PAGE}${encodeURIComponent(scode)}`;
+    log("\n请用企业微信手机端扫描/打开以下链接：");
+    log(authUrl);
+    log(`\n如果无法直接扫码，请打开：\n${pageUrl}\n`);
+    log("等待扫码结果...");
+
+    const deadline = Date.now() + timeoutMs;
+    const queryUrl = `${WECOM_QR_QUERY_URL}?scode=${encodeURIComponent(scode)}`;
+    while (Date.now() < deadline) {
+      const result = await fetchJson(fetchImpl, queryUrl).catch(() => undefined);
+      const resultData = isPlainObject(result?.data) ? result.data : {};
+      const status = String(resultData.status ?? "").toLowerCase();
+      if (status === "success") {
+        const botInfo = isPlainObject(resultData.bot_info) ? resultData.bot_info : {};
+        const botId = String(botInfo.botid ?? botInfo.bot_id ?? "").trim();
+        const secret = String(botInfo.secret ?? "").trim();
+        if (botId && secret) {
+          return { botId, secret };
+        }
+        log("扫码成功但未返回完整 Bot 凭据。");
+        return null;
+      }
+      await sleep(pollIntervalMs);
+    }
+
+    log("企业微信扫码超时。");
+    return null;
+  } catch (e) {
+    log(`企业微信扫码失败: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
+async function fetchJson(fetchImpl: typeof fetch, url: string): Promise<Record<string, unknown>> {
+  const res = await fetchImpl(url, {
+    headers: { "User-Agent": "PilotDeck/1.0" },
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  return isPlainObject(json) ? json : {};
+}
+
+function writeWeComConfig(cfg: {
+  botId: string;
+  secret: string;
+  websocketUrl: string;
+  dmPolicy: string;
+  allowFrom?: string[];
+  groupPolicy: string;
+  groupAllowFrom?: string[];
+  groups?: Record<string, unknown>;
+}): void {
+  const yamlConfig = loadYamlConfig() ?? {};
+  if (!yamlConfig.adapters) yamlConfig.adapters = {};
+
+  const extra: Record<string, unknown> = {
+    secret: cfg.secret,
+    websocket_url: cfg.websocketUrl || WECOM_DEFAULT_WS_URL,
+    dm_policy: cfg.dmPolicy,
+    group_policy: cfg.groupPolicy,
+  };
+  if (cfg.allowFrom?.length) extra.allow_from = cfg.allowFrom;
+  if (cfg.groupAllowFrom?.length) extra.group_allow_from = cfg.groupAllowFrom;
+  if (cfg.groups) extra.groups = cfg.groups;
+
+  yamlConfig.adapters.wecom = {
+    enabled: true,
+    token: cfg.botId,
+    extra,
+  };
+
+  saveYamlConfig(yamlConfig);
+}
+
+function normalizeWeComSetupPolicy(value: unknown, fallback: "allowlist" | "disabled"): string {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw === "open" || raw === "allowlist" || raw === "disabled" ? raw : fallback;
+}
+
+function coerceSetupList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 // ---------------------------------------------------------------------------
