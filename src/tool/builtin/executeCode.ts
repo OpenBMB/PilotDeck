@@ -12,6 +12,7 @@ import { collectPythonSyntaxDiagnostics } from "./filesystem/syntaxDiagnostics.j
 
 type ExecuteCodeInput = {
   code: string;
+  description?: string;
   timeout_seconds?: number;
   max_tool_calls?: number;
 };
@@ -127,6 +128,10 @@ export function createExecuteCodeTool(): PilotDeckToolDefinition<ExecuteCodeInpu
         code: {
           type: "string",
           description: "Python 3 source code to execute. Use `from pilotdeck_tools import ...` to call allowed PilotDeck tools.",
+        },
+        description: {
+          type: "string",
+          description: "Optional human-readable note; ignored by execution.",
         },
         timeout_seconds: {
           type: "integer",

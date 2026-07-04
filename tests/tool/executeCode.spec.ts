@@ -107,6 +107,29 @@ print(os.environ.get("OPENROUTER_API_KEY") == "test-openrouter-secret")`;
   }
 });
 
+test("execute_code accepts optional description and ignores it", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "pilotdeck-execute-code-description-"));
+  try {
+    const result = await execute(
+      {
+        id: "call-description",
+        name: "execute_code",
+        input: {
+          code: 'print("description ignored")',
+          description: "This field should not affect execution or leak into metadata.",
+        },
+      },
+      createContext(cwd),
+    );
+    const output = data(result);
+    assert.equal(output.status, "success");
+    assert.match(output.output, /description ignored/);
+    assert.doesNotMatch(JSON.stringify(result.metadata), /This field should not affect execution/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("execute_code rejects invalid Python syntax before execution", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "pilotdeck-execute-code-syntax-"));
   try {
