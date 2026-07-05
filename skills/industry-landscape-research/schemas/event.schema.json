@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "event.schema.json",
+  "title": "Industry Event (Timeline)",
+  "description": "A milestone event for the industry evolution timeline.",
+  "type": "object",
+  "required": ["id", "date", "company", "racetrack_id", "type", "headline", "sources"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable hash: date + canonical company + type."
+    },
+    "date": {"type": "string", "format": "date"},
+    "date_precision": {
+      "type": "string",
+      "enum": ["day", "month", "quarter", "year", "approximate"],
+      "default": "day"
+    },
+    "company": {
+      "type": "string",
+      "description": "Canonical name of the protagonist company."
+    },
+    "racetrack_id": {"type": "string"},
+    "type": {
+      "type": "string",
+      "enum": [
+        "founding",
+        "product-launch",
+        "funding",
+        "ipo",
+        "acquisition",
+        "merger",
+        "partnership",
+        "regulatory",
+        "lawsuit",
+        "milestone-metric",
+        "executive-change",
+        "controversy",
+        "shutdown"
+      ]
+    },
+    "headline": {
+      "type": "string",
+      "description": "One-line summary, neutral tone."
+    },
+    "details": {"type": "string"},
+    "magnitude": {
+      "type": "string",
+      "enum": ["industry-defining", "company-defining", "noteworthy", "minor"]
+    },
+    "amount_usd_mn": {"type": ["number", "null"]},
+    "involved_parties": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "theme_tag": {
+      "type": "string",
+      "description": "Stage theme (e.g. 'tech-breakthrough', 'commercialization', 'shakeout')."
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "source.schema.json"}
+    }
+  }
+}

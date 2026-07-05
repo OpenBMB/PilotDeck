@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!-- 估值排行榜（双值 IPO首日 vs 当前 + 数据等级标注） -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{INDUSTRY_NAME}} 估值排行榜</title>
+<style>
+  body { background:#0F1115; color:#E5E0D8; font-family:'Inter','Noto Sans SC',sans-serif; margin:0; padding:40px; }
+  h1 { font-family:'Playfair Display',serif; font-size:30px; margin:0 0 8px 0; color:#E5E0D8; }
+  .subtitle { color:#8B8680; font-size:13px; margin-bottom:32px; }
+  table { width:100%; max-width:1400px; border-collapse:collapse; }
+  th, td { padding:12px 14px; text-align:left; border-bottom:1px solid #2A2A2E; }
+  th { color:#C9A87C; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:1px; }
+  td { font-size:13px; }
+  .rank { color:#8B8680; font-family:'JetBrains Mono',monospace; width:40px; }
+  .name { font-weight:600; color:#E5E0D8; }
+  .geo { color:#8B8680; font-size:11px; }
+  .val-current { color:#C9A87C; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .val-ipo { color:#8B8680; font-family:'JetBrains Mono',monospace; }
+  .delta-up { color:#6BE06B; font-size:11px; }
+  .delta-down { color:#E07070; font-size:11px; }
+  .grade { display:inline-block; padding:1px 5px; border-radius:3px; font-size:9px; margin-left:4px; vertical-align:middle; }
+  .L1 { background:#1E3A1E; color:#6BE06B; }
+  .L2 { background:#2A2A1A; color:#C9A87C; }
+  .L3 { background:#3A2A1A; color:#E89060; }
+  .public { color:#6AB0F0; }
+  .private { color:#C9A87C; }
+  .status { font-size:11px; }
+  tr:hover { background:#1A1C20; }
+</style>
+</head>
+<body>
+  <h1>{{INDUSTRY_NAME}} 估值排行榜</h1>
+  <div class="subtitle">数据截止 {{AS_OF_DATE}} · 共 {{TOTAL_COMPANIES}} 家 · 上市公司双值（IPO 首日 vs 当前） · 未上市公司用最新一轮估值 ·  L1+L2 占比 {{L1L2_PCT}}%</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>公司</th>
+        <th>赛道</th>
+        <th>地理</th>
+        <th>状态</th>
+        <th>IPO 首日市值 / 最新一轮</th>
+        <th>当前市值 / 最新估值</th>
+        <th>涨跌</th>
+        <th>关键指标</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- 重复 N 行 -->
+      <tr>
+        <td class="rank">01</td>
+        <td><span class="name">{{COMPANY_1}}</span></td>
+        <td>{{RACETRACK_1}}</td>
+        <td class="geo">{{GEO_1}}</td>
+        <td class="status public">上市</td>
+        <td class="val-ipo">{{IPO_DAY1_MCAP_1}} <span class="grade L1">L1</span></td>
+        <td class="val-current">{{CURRENT_MCAP_1}} <span class="grade L1">L1</span></td>
+        <td class="delta-up">{{DELTA_1}}</td>
+        <td>{{METRIC_1}}</td>
+      </tr>
+      <tr>
+        <td class="rank">02</td>
+        <td><span class="name">{{COMPANY_2}}</span></td>
+        <td>{{RACETRACK_2}}</td>
+        <td class="geo">{{GEO_2}}</td>
+        <td class="status private">未上市</td>
+        <td class="val-ipo">{{LAST_ROUND_2}} <span class="grade L1">L1</span></td>
+        <td class="val-current">{{VALUATION_2}} <span class="grade L1">L1</span></td>
+        <td class="delta-down">{{DELTA_2}}</td>
+        <td>{{METRIC_2}}</td>
+      </tr>
+      <!-- 继续到 #20 -->
+    </tbody>
+  </table>
+
+  <div style="margin-top:32px;color:#8B8680;font-size:11px;">
+    数据等级说明：<span class="grade L1">L1</span> 交易所 / 招股书 ·
+    <span class="grade L2">L2</span> 权威媒体 ·
+    <span class="grade L3">L3</span> 估算 / 内部测算
+  </div>
+</body>
+</html>
