@@ -463,7 +463,12 @@ export function createRouterRuntime(
         provider: decision.provider,
         model: decision.model,
       };
-      const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(passthroughRequest, deps.modelRuntime);
+      const downgradedPassthrough = downgradeRequestForAttempt(
+        passthroughRequest,
+        { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model },
+        deps.modelRuntime,
+      );
+      const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
       let sawErrorEvent = false;
       for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx.abortSignal)) {
         if (item.kind === "event") {
