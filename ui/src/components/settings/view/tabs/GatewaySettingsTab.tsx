@@ -37,6 +37,8 @@ type GatewayStatus = {
     websocketUrl: string;
     dmPolicy: string;
     groupPolicy: string;
+    allowFrom: string[];
+    groupAllowFrom: string[];
   };
 };
 
@@ -604,6 +606,8 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
   const [websocketUrl, setWebsocketUrl] = useState(status.websocketUrl || 'wss://openws.work.weixin.qq.com');
   const [dmPolicy, setDmPolicy] = useState<WeComAccessPolicy>(normalizeWeComPolicy(status.dmPolicy, 'open'));
   const [groupPolicy, setGroupPolicy] = useState<WeComAccessPolicy>(normalizeWeComPolicy(status.groupPolicy, 'disabled'));
+  const [allowFrom, setAllowFrom] = useState((status.allowFrom || []).join(', '));
+  const [groupAllowFrom, setGroupAllowFrom] = useState((status.groupAllowFrom || []).join(', '));
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<TestResult>(null);
   const pollRef = useRef<number | null>(null);
@@ -612,6 +616,8 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
     setWebsocketUrl(status.websocketUrl || 'wss://openws.work.weixin.qq.com');
     setDmPolicy(normalizeWeComPolicy(status.dmPolicy, 'open'));
     setGroupPolicy(normalizeWeComPolicy(status.groupPolicy, 'disabled'));
+    setAllowFrom((status.allowFrom || []).join(', '));
+    setGroupAllowFrom((status.groupAllowFrom || []).join(', '));
   }, [status]);
 
   useEffect(() => {
@@ -664,13 +670,13 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
   };
 
   const handleSave = async () => {
-    if (!botId || !secret) return;
+    if ((!botId && !status.botId) || (!secret && !status.hasSecret)) return;
     setSaving(true);
     setSaveResult(null);
     try {
       const res = await authenticatedFetch('/api/gateway/wecom/save', {
         method: 'POST',
-        body: JSON.stringify({ botId, secret, websocketUrl, dmPolicy, groupPolicy }),
+        body: JSON.stringify({ botId, secret, websocketUrl, dmPolicy, groupPolicy, allowFrom, groupAllowFrom }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -839,7 +845,7 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
                   type="text"
                   value={botId}
                   onChange={(e) => setBotId(e.target.value.trim())}
-                  placeholder="bot_xxxxxxxxxxxx"
+                  placeholder={status.botId || 'bot_xxxxxxxxxxxx'}
                   className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] font-mono text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring focus:ring-1 focus:ring-ring"
                 />
               </label>
@@ -849,7 +855,7 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
                   type="password"
                   value={secret}
                   onChange={(e) => setSecret(e.target.value.trim())}
-                  placeholder="••••••••"
+                  placeholder={status.hasSecret ? 'Keep existing secret' : '••••••••'}
                   className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] font-mono text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring focus:ring-1 focus:ring-ring"
                 />
               </label>
@@ -888,6 +894,30 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
                   </select>
                 </label>
               </div>
+              {dmPolicy === 'allowlist' && (
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-muted-foreground">DM allowlist</span>
+                  <input
+                    type="text"
+                    value={allowFrom}
+                    onChange={(e) => setAllowFrom(e.target.value)}
+                    placeholder="userid1, userid2"
+                    className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] font-mono text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring focus:ring-1 focus:ring-ring"
+                  />
+                </label>
+              )}
+              {groupPolicy === 'allowlist' && (
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-muted-foreground">Group allowlist</span>
+                  <input
+                    type="text"
+                    value={groupAllowFrom}
+                    onChange={(e) => setGroupAllowFrom(e.target.value)}
+                    placeholder="chatid1, chatid2"
+                    className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] font-mono text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring focus:ring-1 focus:ring-ring"
+                  />
+                </label>
+              )}
               <p className="text-[11px] leading-4 text-muted-foreground">{t('gateway.wecom.policyHint')}</p>
 
               {saveResult && (
@@ -905,7 +935,7 @@ function WeComSection({ status, onSaved }: { status: GatewayStatus['wecom']; onS
               )}
 
               <div className="flex items-center gap-2 pt-1">
-                <Button size="sm" onClick={handleSave} disabled={!botId || !secret || saving}>
+                <Button size="sm" onClick={handleSave} disabled={((!botId && !status.botId) || (!secret && !status.hasSecret)) || saving}>
                   {saving ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Check className="mr-1.5 h-3 w-3" />}
                   {t('gateway.save')}
                 </Button>

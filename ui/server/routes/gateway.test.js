@@ -31,6 +31,8 @@ describe('gateway WeCom routes', () => {
             websocket_url: 'wss://custom.example',
             dm_policy: 'open',
             group_policy: 'disabled',
+            allow_from: ['user-a'],
+            group_allow_from: ['group-a'],
           },
         },
       },
@@ -45,6 +47,8 @@ describe('gateway WeCom routes', () => {
       websocketUrl: 'wss://custom.example',
       dmPolicy: 'open',
       groupPolicy: 'disabled',
+      allowFrom: ['user-a'],
+      groupAllowFrom: ['group-a'],
     });
   });
 
@@ -57,8 +61,10 @@ describe('gateway WeCom routes', () => {
         botId: 'bot-manual',
         secret: 'secret-manual',
         websocketUrl: 'wss://custom.example',
-        dmPolicy: 'open',
-        groupPolicy: 'disabled',
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+        allowFrom: 'user-a, user-b',
+        groupAllowFrom: ['group-a', 'group-b'],
       }),
     });
 
@@ -70,8 +76,49 @@ describe('gateway WeCom routes', () => {
       extra: {
         secret: 'secret-manual',
         websocket_url: 'wss://custom.example',
-        dm_policy: 'open',
-        group_policy: 'disabled',
+        dm_policy: 'allowlist',
+        group_policy: 'allowlist',
+        allow_from: ['user-a', 'user-b'],
+        group_allow_from: ['group-a', 'group-b'],
+      },
+    });
+  });
+
+  it('preserves existing WeCom credentials on settings-only saves', async () => {
+    const { request, configPath } = await createGatewayApp({
+      adapters: {
+        wecom: {
+          enabled: true,
+          token: 'bot-existing',
+          extra: {
+            secret: 'secret-existing',
+            websocket_url: 'wss://old.example',
+            dm_policy: 'open',
+            group_policy: 'disabled',
+          },
+        },
+      },
+    });
+
+    const result = await request('/api/gateway/wecom/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        websocketUrl: 'wss://new.example',
+        dmPolicy: 'disabled',
+        groupPolicy: 'open',
+      }),
+    });
+
+    expect(result.ok).toBe(true);
+    const config = parseYaml(readFileSync(configPath, 'utf-8'));
+    expect(config.adapters.wecom).toEqual({
+      enabled: true,
+      token: 'bot-existing',
+      extra: {
+        secret: 'secret-existing',
+        websocket_url: 'wss://new.example',
+        dm_policy: 'disabled',
+        group_policy: 'open',
       },
     });
   });
