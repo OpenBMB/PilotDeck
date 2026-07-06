@@ -1,7 +1,9 @@
 import type {
+  PilotDeckTodoDiagnostics,
   PilotDeckPlanTodoStateHandle,
   PilotDeckPlanTodoStateSnapshot,
   PilotDeckTodoItem,
+  PilotDeckTodoWriteHistoryEntry,
 } from "../../tool/protocol/types.js";
 
 type SessionPlanTodoState = {
@@ -10,6 +12,11 @@ type SessionPlanTodoState = {
   toolCallsSinceLastTodoWrite: number;
   lastMarkdown?: string;
   todos: PilotDeckTodoItem[];
+  todoHistory: PilotDeckTodoWriteHistoryEntry[];
+  largeRewriteCount: number;
+  deletedOpenItemCount: number;
+  completedWithoutActiveCount: number;
+  lastWrite?: PilotDeckTodoDiagnostics["lastWrite"];
 };
 
 export type PlanTodoStateManager = {
@@ -46,6 +53,14 @@ function dedupeById(todos: PilotDeckTodoItem[]): PilotDeckTodoItem[] {
 
 function replaceTodos(todos: PilotDeckTodoItem[]): PilotDeckTodoItem[] {
   return dedupeById(todos).map((todo, index) => normalizeTodoItem(todo, index));
+}
+
+function activeTodos(todos: PilotDeckTodoItem[]): PilotDeckTodoItem[] {
+  return todos.filter((todo) => todo.status === "pending" || todo.status === "in_progress");
+}
+
+function cloneTodos(todos: PilotDeckTodoItem[]): PilotDeckTodoItem[] {
+  return todos.map((todo) => ({ ...todo }));
 }
 
 function mergeTodos(existingTodos: PilotDeckTodoItem[], updates: PilotDeckTodoItem[]): PilotDeckTodoItem[] {
@@ -92,6 +107,81 @@ function mergeTodos(existingTodos: PilotDeckTodoItem[], updates: PilotDeckTodoIt
   return merged;
 }
 
+function buildTodoDiagnostics(state: SessionPlanTodoState): PilotDeckTodoDiagnostics {
+  const activeCount = activeTodos(state.todos).length;
+  const completedCount = state.todos.filter((todo) => todo.status === "completed").length;
+  const cancelledCount = state.todos.filter((todo) => todo.status === "cancelled").length;
+  return {
+    writeCount: state.todoHistory.length,
+    todoCount: state.todos.length,
+    activeCount,
+    completedCount,
+    cancelledCount,
+    largeRewriteCount: state.largeRewriteCount,
+    deletedOpenItemCount: state.deletedOpenItemCount,
+    completedWithoutActiveCount: state.completedWithoutActiveCount,
+    ...(state.lastWrite ? { lastWrite: state.lastWrite } : {}),
+  };
+}
+
+function recordWrite(
+  state: SessionPlanTodoState,
+  nextTodos: PilotDeckTodoItem[],
+  options: { mode: "markdown" | "structured"; merge?: boolean; markdown?: string; reason?: string },
+): PilotDeckTodoItem[] {
+  const previousTodos = state.todos;
+  const previousById = new Map(previousTodos.map((todo) => [todo.id ?? todo.content, todo]));
+  const nextById = new Map(nextTodos.map((todo) => [todo.id ?? todo.content, todo]));
+  const removed = previousTodos.filter((todo) => !nextById.has(todo.id ?? todo.content));
+  const added = nextTodos.filter((todo) => !previousById.has(todo.id ?? todo.content));
+  const changed = nextTodos.filter((todo) => {
+    const previous = previousById.get(todo.id ?? todo.content);
+    return Boolean(previous) && (
+      previous!.content !== todo.content ||
+      previous!.status !== todo.status ||
+      previous!.priority !== todo.priority
+    );
+  });
+  const deletedOpenItemCount = removed.filter((todo) => todo.status === "pending" || todo.status === "in_progress").length;
+  const previousActiveCount = activeTodos(previousTodos).length;
+  const preservedCount = nextTodos.filter((todo) => previousById.has(todo.id ?? todo.content)).length;
+  const largeRewrite = previousTodos.length > 0 && nextTodos.length > 0 && preservedCount < Math.ceil(previousTodos.length / 2);
+  const allCompleted = nextTodos.length > 0 && activeTodos(nextTodos).length === 0 && nextTodos.every((todo) => todo.status === "completed" || todo.status === "cancelled");
+
+  state.todos = cloneTodos(nextTodos);
+  state.lastMarkdown = options.markdown;
+  state.requiresInitialization = false;
+  state.toolCallsSinceLastTodoWrite = 0;
+
+  if (largeRewrite) state.largeRewriteCount += 1;
+  state.deletedOpenItemCount += deletedOpenItemCount;
+  if (allCompleted && previousActiveCount > 0) state.completedWithoutActiveCount += 1;
+
+  state.lastWrite = {
+    mode: options.mode,
+    merge: Boolean(options.merge),
+    ...(options.reason?.trim() ? { reason: options.reason.trim() } : {}),
+    addedCount: added.length,
+    removedCount: removed.length,
+    changedCount: changed.length,
+    deletedOpenItemCount,
+    largeRewrite,
+    allCompleted,
+  };
+
+  const diagnostics = buildTodoDiagnostics(state);
+  state.todoHistory.push({
+    createdAt: new Date().toISOString(),
+    mode: options.mode,
+    merge: Boolean(options.merge),
+    ...(options.reason?.trim() ? { reason: options.reason.trim() } : {}),
+    ...(options.markdown !== undefined ? { markdown: options.markdown } : {}),
+    todos: cloneTodos(state.todos),
+    diagnostics,
+  });
+  return state.todos;
+}
+
 export function createPlanTodoStateManager(): PlanTodoStateManager {
   const states = new Map<string, SessionPlanTodoState>();
 
@@ -102,6 +192,10 @@ export function createPlanTodoStateManager(): PlanTodoStateManager {
         requiresInitialization: false,
         toolCallsSinceLastTodoWrite: 0,
         todos: [],
+        todoHistory: [],
+        largeRewriteCount: 0,
+        deletedOpenItemCount: 0,
+        completedWithoutActiveCount: 0,
       };
       states.set(sessionId, state);
     }
@@ -115,6 +209,9 @@ export function createPlanTodoStateManager(): PlanTodoStateManager {
       toolCallsSinceLastTodoWrite: state.toolCallsSinceLastTodoWrite,
       lastMarkdown: state.lastMarkdown,
       todos: state.todos,
+      activeTodos: activeTodos(state.todos),
+      todoHistory: state.todoHistory,
+      todoDiagnostics: buildTodoDiagnostics(state),
     };
   }
 
@@ -165,19 +262,23 @@ export function createPlanTodoStateManager(): PlanTodoStateManager {
           state.toolCallsSinceLastTodoWrite = 0;
           state.lastMarkdown = undefined;
           state.todos = [];
+          state.todoHistory = [];
+          state.largeRewriteCount = 0;
+          state.deletedOpenItemCount = 0;
+          state.completedWithoutActiveCount = 0;
+          state.lastWrite = undefined;
         },
-        recordTodoWrite(markdown: string, todos: PilotDeckTodoItem[]) {
-          state.lastMarkdown = markdown;
-          state.todos = replaceTodos(todos);
-          state.requiresInitialization = false;
-          state.toolCallsSinceLastTodoWrite = 0;
+        recordTodoWrite(markdown: string, todos: PilotDeckTodoItem[], options?: { reason?: string }) {
+          return recordWrite(state, replaceTodos(todos), { mode: "markdown", markdown, reason: options?.reason });
         },
-        writeTodos(todos: PilotDeckTodoItem[], options?: { markdown?: string; merge?: boolean }) {
-          state.todos = options?.merge ? mergeTodos(state.todos, todos) : replaceTodos(todos);
-          state.lastMarkdown = options?.markdown;
-          state.requiresInitialization = false;
-          state.toolCallsSinceLastTodoWrite = 0;
-          return state.todos;
+        writeTodos(todos: PilotDeckTodoItem[], options?: { markdown?: string; merge?: boolean; reason?: string }) {
+          const nextTodos = options?.merge ? mergeTodos(state.todos, todos) : replaceTodos(todos);
+          return recordWrite(state, nextTodos, {
+            mode: "structured",
+            merge: options?.merge,
+            markdown: options?.markdown,
+            reason: options?.reason,
+          });
         },
         markToolProgressChanged(toolName: string) {
           if (!state.approvedPlan || toolName === TODO_WRITE_TOOL_NAME) {

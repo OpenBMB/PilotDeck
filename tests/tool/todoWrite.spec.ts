@@ -105,4 +105,87 @@ describe("todo_write", () => {
     assert.equal(result.data.todos[0]?.status, "cancelled");
     assert.equal(context.planTodo?.getSnapshot().todos[0]?.status, "cancelled");
   });
+
+  it("records todo history and diagnostics for structural changes", async () => {
+    const tool = createTodoWriteTool();
+    const context = createContext();
+
+    await tool.execute({
+      todos: [
+        { id: "inspect", content: "Inspect implementation", status: "completed" },
+        { id: "patch", content: "Patch implementation", status: "in_progress" },
+        { id: "verify", content: "Verify behavior", status: "pending" },
+      ],
+    }, context);
+
+    const rewrite = await tool.execute({
+      reason: "evidence changed the implementation route",
+      todos: [
+        { id: "new-route", content: "Use revised implementation route", status: "in_progress" },
+      ],
+    }, context);
+
+    assert.ok(rewrite.data?.diagnostics);
+    assert.equal(rewrite.data.diagnostics.writeCount, 2);
+    assert.equal(rewrite.data.diagnostics.largeRewriteCount, 1);
+    assert.equal(rewrite.data.diagnostics.deletedOpenItemCount, 2);
+    assert.equal(rewrite.data.diagnostics.lastWrite?.reason, "evidence changed the implementation route");
+    assert.equal(context.planTodo?.getSnapshot().todoHistory.length, 2);
+  });
+
+  it("exposes active todos separately from completed and cancelled todos", async () => {
+    const tool = createTodoWriteTool();
+    const context = createContext();
+
+    await tool.execute({
+      todos: [
+        { id: "done", content: "Already checked", status: "completed" },
+        { id: "skip", content: "Abandoned route", status: "cancelled" },
+        { id: "next", content: "Continue useful work", status: "pending" },
+      ],
+    }, context);
+
+    assert.deepEqual(context.planTodo?.getSnapshot().activeTodos, [
+      { id: "next", content: "Continue useful work", status: "pending" },
+    ]);
+  });
+
+  it("does not put completed or cancelled todos in active todo context", async () => {
+    const planTodo = createPlanTodoStateManager().forSession("plan-session");
+    planTodo.markPlanApproved("approved plan");
+    planTodo.writeTodos([
+      { id: "done", content: "Completed work", status: "completed" },
+      { id: "old", content: "Cancelled route", status: "cancelled" },
+      { id: "now", content: "Current work", status: "in_progress" },
+    ]);
+
+    const snapshot = planTodo.getSnapshot();
+    assert.deepEqual(snapshot.activeTodos, [
+      { id: "now", content: "Current work", status: "in_progress" },
+    ]);
+    assert.equal(snapshot.todoHistory.length, 1);
+    assert.equal(snapshot.todoDiagnostics.cancelledCount, 1);
+  });
+
+  it("flags all-completed updates after active work", async () => {
+    const tool = createTodoWriteTool();
+    const context = createContext();
+
+    await tool.execute({
+      todos: [
+        { id: "build", content: "Build output", status: "in_progress" },
+        { id: "verify", content: "Verify output", status: "pending" },
+      ],
+    }, context);
+    const done = await tool.execute({
+      merge: true,
+      todos: [
+        { id: "build", content: "Build output", status: "completed" },
+        { id: "verify", content: "Verify output", status: "completed" },
+      ],
+    }, context);
+
+    assert.equal(done.data?.diagnostics?.completedWithoutActiveCount, 1);
+    assert.equal(done.data?.diagnostics?.lastWrite?.allCompleted, true);
+  });
 });

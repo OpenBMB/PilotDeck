@@ -11,7 +11,7 @@ This document defines the common PilotDeck agent workflow for using `todo_write`
 
 ## When To Use Todo
 
-Agents must create a todo list before substantive work when a task has any of these properties:
+Agents should usually do a small amount of exploration before creating a detailed todo list. Use todo once the likely shape of the work is visible, especially when a task has any of these properties:
 
 - Three or more meaningful steps.
 - Multiple requested outcomes or deliverables.
@@ -20,7 +20,7 @@ Agents must create a todo list before substantive work when a task has any of th
 - Any task where verification is expected.
 - Any task where intermediate findings must survive context compaction or handoff.
 
-Short factual answers and single-step local edits do not require todo tracking unless the agent expects the work to grow.
+Short factual answers and single-step local edits do not require todo tracking unless the agent expects the work to grow. Do not let an early todo list lock the agent into a bad route: if evidence contradicts the current approach, cancel the stale item and add a revised one.
 
 ## Editable Todo Rules
 
@@ -29,11 +29,11 @@ Short factual answers and single-step local edits do not require todo tracking u
 - Use stable `id` values for structured todos so later updates can merge by id.
 - Use `merge=true` when updating only part of the list or adding discovered work.
 - Keep at most one item `in_progress` when possible.
-- Mark completed items immediately after the work is actually done.
+- Mark completed items only after checking the relevant evidence.
 - Mark obsolete or superseded work as `cancelled` with a reason instead of silently deleting it.
 - Add newly discovered required work as a new todo rather than burying it in prose.
 - Split oversized todos when they become too broad to verify cleanly.
-- Preserve completed facts when restructuring the list.
+- Preserve completed facts when restructuring the list, but do not keep obsolete active work alive merely because it was previously written down.
 
 Legacy markdown checklist input remains supported for simple replace-style updates. Structured todo input is preferred for long-running work because it is easier to edit safely.
 
@@ -41,7 +41,7 @@ Legacy markdown checklist input remains supported for simple replace-style updat
 
 Agents should keep the user and future context synchronized.
 
-- Update `todo_write` after each meaningful implementation or investigation step.
+- Update `todo_write` after meaningful implementation or investigation steps, not after every trivial command.
 - Send a short progress message before and after high-latency work when the user may otherwise see no movement.
 - When todo structure changes, explain the reason in the tool input `reason` or the next progress note.
 - Before the final response, update `todo_write` so its state matches the final answer.

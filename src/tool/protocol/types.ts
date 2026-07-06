@@ -161,19 +161,54 @@ export type PilotDeckTodoItem = {
   priority?: string;
 };
 
+export type PilotDeckTodoDiagnostics = {
+  writeCount: number;
+  todoCount: number;
+  activeCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  largeRewriteCount: number;
+  deletedOpenItemCount: number;
+  completedWithoutActiveCount: number;
+  lastWrite?: {
+    mode: "markdown" | "structured";
+    merge: boolean;
+    reason?: string;
+    addedCount: number;
+    removedCount: number;
+    changedCount: number;
+    deletedOpenItemCount: number;
+    largeRewrite: boolean;
+    allCompleted: boolean;
+  };
+};
+
+export type PilotDeckTodoWriteHistoryEntry = {
+  createdAt: string;
+  mode: "markdown" | "structured";
+  merge: boolean;
+  reason?: string;
+  markdown?: string;
+  todos: PilotDeckTodoItem[];
+  diagnostics: PilotDeckTodoDiagnostics;
+};
+
 export type PilotDeckPlanTodoStateSnapshot = {
   approvedPlan?: string;
   requiresInitialization: boolean;
   toolCallsSinceLastTodoWrite: number;
   lastMarkdown?: string;
   todos: PilotDeckTodoItem[];
+  activeTodos: PilotDeckTodoItem[];
+  todoHistory: PilotDeckTodoWriteHistoryEntry[];
+  todoDiagnostics: PilotDeckTodoDiagnostics;
 };
 
 export type PilotDeckPlanTodoStateHandle = {
   getSnapshot(): PilotDeckPlanTodoStateSnapshot;
   markPlanApproved(plan: string): void;
-  recordTodoWrite(markdown: string, todos: PilotDeckTodoItem[]): void;
-  writeTodos(todos: PilotDeckTodoItem[], options?: { markdown?: string; merge?: boolean }): PilotDeckTodoItem[];
+  recordTodoWrite(markdown: string, todos: PilotDeckTodoItem[], options?: { reason?: string }): PilotDeckTodoItem[];
+  writeTodos(todos: PilotDeckTodoItem[], options?: { markdown?: string; merge?: boolean; reason?: string }): PilotDeckTodoItem[];
   markToolProgressChanged(toolName: string): void;
   buildPromptAddendum(): string | undefined;
   blockingMessageFor(toolName: string, isReadOnly: boolean): string | undefined;
