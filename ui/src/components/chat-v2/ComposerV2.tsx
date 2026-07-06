@@ -503,14 +503,7 @@ export default function ComposerV2({
                       <button
                         type="button"
                         onClick={() => setIsRunModeMenuOpen((open) => !open)}
-                        className={cn(
-                          'inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
-                          runMode === 'plan'
-                            ? 'text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/30'
-                            : runMode === 'ask'
-                              ? 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30'
-                            : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
-                        )}
+                        className="inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
                         title={t('input.runModes.change', {
                           defaultValue: 'Select run mode',
                         }) as string}
@@ -547,7 +540,7 @@ export default function ComposerV2({
                                 }) as string)
                               : isAsk
                                 ? (t('input.runModes.askDescription', {
-                                    defaultValue: 'Read-only analysis with optional subagents',
+                                    defaultValue: 'Only answers questions without modifying files',
                                   }) as string)
                               : (t('input.runModes.agentDescription', {
                                   defaultValue: 'Directly process and execute the task',
@@ -575,25 +568,16 @@ export default function ComposerV2({
                                 )}
                               >
                                 <Icon
-                                  className={cn(
-                                    'h-4 w-4 shrink-0',
-                                    isPlan
-                                      ? 'text-blue-600 dark:text-blue-300'
-                                      : isAsk
-                                        ? 'text-emerald-600 dark:text-emerald-300'
-                                      : 'text-neutral-500 dark:text-neutral-400',
-                                  )}
+                                  className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400"
                                   strokeWidth={1.9}
                                 />
                                 <span className="min-w-0 flex-1">
                                   <span
                                     className={cn(
-                                      'block truncate text-[13px] font-medium',
-                                      isPlan
-                                        ? 'text-blue-700 dark:text-blue-300'
-                                        : isAsk
-                                          ? 'text-emerald-700 dark:text-emerald-300'
-                                        : 'text-neutral-900 dark:text-neutral-100',
+                                      'block truncate text-[13px]',
+                                      isSelected
+                                        ? 'font-bold text-neutral-900 dark:text-neutral-100'
+                                        : 'font-medium text-neutral-700 dark:text-neutral-300',
                                     )}
                                   >
                                     {label}
