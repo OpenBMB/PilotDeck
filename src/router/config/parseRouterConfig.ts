@@ -365,6 +365,40 @@ function parseTokenSaver(
     }
   }
 
+  let cacheAwareSwitching: RouterTokenSaverConfig["cacheAwareSwitching"] = {
+    enabled: true,
+    minSavingsRatio: 0,
+  };
+  if (raw.cacheAwareSwitching !== undefined) {
+    if (!isRecord(raw.cacheAwareSwitching)) {
+      diagnostics.push({
+        code: "ROUTER_TOKEN_SAVER_CACHE_AWARE_SWITCHING_INVALID",
+        severity: "fatal",
+        path: "router.tokenSaver.cacheAwareSwitching",
+        message: "cacheAwareSwitching must be an object.",
+      });
+    } else {
+      const enabled = typeof raw.cacheAwareSwitching.enabled === "boolean"
+        ? raw.cacheAwareSwitching.enabled
+        : true;
+      const minSavingsRatioRaw = raw.cacheAwareSwitching.minSavingsRatio;
+      let minSavingsRatio = 0;
+      if (minSavingsRatioRaw !== undefined) {
+        if (typeof minSavingsRatioRaw === "number" && Number.isFinite(minSavingsRatioRaw) && minSavingsRatioRaw >= 0) {
+          minSavingsRatio = minSavingsRatioRaw;
+        } else {
+          diagnostics.push({
+            code: "ROUTER_TOKEN_SAVER_CACHE_AWARE_SWITCHING_MIN_SAVINGS_INVALID",
+            severity: "fatal",
+            path: "router.tokenSaver.cacheAwareSwitching.minSavingsRatio",
+            message: "cacheAwareSwitching.minSavingsRatio must be a non-negative number.",
+          });
+        }
+      }
+      cacheAwareSwitching = { enabled, minSavingsRatio };
+    }
+  }
+
   return {
     enabled,
     judge: judgeRef,
@@ -373,6 +407,7 @@ function parseTokenSaver(
     rules,
     subagent,
     judgeTimeoutMs,
+    cacheAwareSwitching,
   };
 }
 

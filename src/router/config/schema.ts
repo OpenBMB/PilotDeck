@@ -1,5 +1,6 @@
 import type { ModelConfig } from "../../model/index.js";
 import type { RouterScenarioType } from "../protocol/decision.js";
+import type { RouterModelPricingMap } from "../utils/modelPricing.js";
 
 export type RouterModelRef = {
   /** Original "provider/model" string. */
@@ -31,6 +32,11 @@ export type RouterTokenSaverConfig = {
     policy: RouterTokenSaverSubagentPolicy;
   };
   judgeTimeoutMs: number;
+  /**
+   * Preserve the session's current model when its cache-read input cost is
+   * cheaper than switching models and re-prefilling the full prompt.
+   */
+  cacheAwareSwitching?: { enabled: boolean; minSavingsRatio: number };
 };
 
 export type RouterAutoOrchestrateConfig = {
@@ -52,7 +58,7 @@ export type RouterAutoOrchestrateConfig = {
 
 export type RouterStatsConfig = {
   enabled: boolean;
-  modelPricing?: Record<string, { input?: number; output?: number; cacheRead?: number }>;
+  modelPricing?: RouterModelPricingMap;
   /** Override the default ~/.pilotdeck/router/stats.json path (useful for tests). */
   filePath?: string;
   /** Provider/model ref used as the "no-router" baseline for savedCost calculation. */

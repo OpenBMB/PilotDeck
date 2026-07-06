@@ -39,6 +39,7 @@ import {
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
+import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
 import {
   collectRequiredInputModalities,
   missingInputModalities,
@@ -63,6 +64,8 @@ export type RouterRuntimeDeps = {
 
 export type InvalidateStickyResult = {
   previousTier?: string;
+  previousProvider?: string;
+  previousModel?: string;
   orchestrating: boolean;
 };
 
@@ -204,6 +207,75 @@ export function createRouterRuntime(
     };
   }
 
+  function maybePreserveStickyForCache(
+    current: RouterModelRef | undefined,
+    next: RouterModelRef,
+    messages: CanonicalModelRequest["messages"],
+  ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
+    const cacheAware = config.tokenSaver?.cacheAwareSwitching;
+    if (cacheAware?.enabled === false || !current) {
+      return { selection: next };
+    }
+    if (current.provider === next.provider && current.model === next.model) {
+      return { selection: next };
+    }
+
+    const estimatedInputTokens = countMessagesTokens(messages);
+    const cachedCost = calculateCacheReadCost(
+      estimatedInputTokens,
+      current.provider,
+      current.model,
+      config.stats?.modelPricing,
+    );
+    const currentPrefillCost = calculateInputCost(
+      estimatedInputTokens,
+      current.provider,
+      current.model,
+      config.stats?.modelPricing,
+    );
+    const prefillCost = calculateInputCost(
+      estimatedInputTokens,
+      next.provider,
+      next.model,
+      config.stats?.modelPricing,
+    );
+    if (prefillCost >= currentPrefillCost) {
+      return { selection: next };
+    }
+
+    const minSavingsRatio = cacheAware?.minSavingsRatio ?? 0;
+    const requiredSavings = cachedCost * minSavingsRatio;
+    const shouldSwitch = prefillCost + Number.EPSILON < cachedCost - requiredSavings;
+    const from = `${current.provider}/${current.model}`;
+    const to = `${next.provider}/${next.model}`;
+
+    if (shouldSwitch) {
+      return {
+        selection: next,
+        mutation: {
+          action: "switched",
+          from,
+          to,
+          cachedCost,
+          prefillCost,
+          estimatedInputTokens,
+        },
+      };
+    }
+
+    return {
+      selection: current,
+      mutation: {
+        action: "kept_sticky",
+        from,
+        to,
+        cachedCost,
+        prefillCost,
+        estimatedInputTokens,
+      },
+    };
+  }
+
   async function resolveCustom(
     input: RouterDecisionInput,
   ): Promise<Partial<RouterDecision> | undefined> {
@@ -267,6 +339,15 @@ export function createRouterRuntime(
     const scenarioOutcome = decideScenario(inputWithUsage, config.scenarios ?? {} as any);
 
     let scenarioType: RouterScenarioType = scenarioOutcome.scenarioType;
+    const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
+      ? {
+        id: `${input.metadata.previousProvider}/${input.metadata.previousModel}`,
+        provider: input.metadata.previousProvider,
+        model: input.metadata.previousModel,
+      }
+      : sticky?.stickyProvider && sticky.stickyModel
+      ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
+      : undefined;
     let selection: RouterModelRef | undefined =
       custom?.provider && custom.model
         ? { id: `${custom.provider}/${custom.model}`, provider: custom.provider, model: custom.model }
@@ -279,6 +360,7 @@ export function createRouterRuntime(
         : "scenario";
 
     let tokenSaverTier: string | undefined;
+    let cacheAwareSwitch: RouterMutationsLog["cacheAwareSwitch"];
     const subagentPolicy = config.tokenSaver?.subagent?.policy ?? DEFAULT_SUBAGENT_POLICY;
     if (
       !custom?.provider &&
@@ -337,8 +419,17 @@ export function createRouterRuntime(
           if (tokenSaver.selection) {
             selection = tokenSaver.selection;
             resolvedFrom = "tokenSaver";
+            const cacheAware = maybePreserveStickyForCache(
+              previousStickySelection,
+              selection,
+              input.request.messages,
+            );
+            selection = cacheAware.selection;
+            cacheAwareSwitch = cacheAware.mutation;
           }
-          tokenSaverTier = tokenSaver.tier;
+          tokenSaverTier = cacheAwareSwitch?.action === "kept_sticky"
+            ? (sticky?.tokenSaverTier ?? input.metadata?.previousTier ?? tokenSaver.tier)
+            : tokenSaver.tier;
         }
       }
     }
@@ -383,6 +474,9 @@ export function createRouterRuntime(
     );
 
     let mutations: RouterMutationsLog = {};
+    if (cacheAwareSwitch) {
+      mutations = { ...mutations, cacheAwareSwitch };
+    }
     if (config.autoOrchestrate?.enabled && orchGate) {
       const orchestrated = applyOrchestration({
         config: config.autoOrchestrate,
@@ -904,6 +998,8 @@ export function createRouterRuntime(
 
     const current = sessionStore.get(sessionId, false);
     const previousTier = current?.tokenSaverTier;
+    const previousProvider = current?.stickyProvider;
+    const previousModel = current?.stickyModel;
     const orchestrating = current?.orchestrating ?? false;
     if (orchestrating && previousTier) {
       // While orchestrating, preserve the tier sticky so continuation turns
@@ -925,7 +1021,7 @@ export function createRouterRuntime(
         updatedAt: (deps.now?.() ?? new Date()).getTime(),
       });
     }
-    return { previousTier, orchestrating };
+    return { previousTier, previousProvider, previousModel, orchestrating };
   }
 
   return {

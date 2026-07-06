@@ -347,7 +347,13 @@ export class AgentLoop {
         request,
         sessionId: input.sessionId,
         isMainAgent: !this.config.isSubagent,
-        metadata: previousTier ? { previousTier } : undefined,
+        metadata: stickyInfo
+          ? {
+            previousTier,
+            previousProvider: stickyInfo.previousProvider,
+            previousModel: stickyInfo.previousModel,
+          }
+          : previousTier ? { previousTier } : undefined,
       });
       const routedMaxOutputTokens = this.dependencies.getModelMaxOutputTokens?.(decision.provider, decision.model);
 
