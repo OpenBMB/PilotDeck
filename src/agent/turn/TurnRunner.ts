@@ -29,6 +29,8 @@ export type TurnRunnerOptions = {
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
   abortSignal?: AbortSignal;
+  /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
+  syntheticMessages?: CanonicalMessage[];
 };
 
 export type TurnRunnerResult = {
@@ -76,13 +78,14 @@ export class TurnRunner {
   async *run(options: TurnRunnerOptions): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
     yield { type: "turn_started", sessionId: options.sessionId, turnId: options.turnId };
     const accepted = this.inputProcessor.accept(options.input);
-    const messages = [...options.messages, ...accepted.messages];
+    const allAcceptedMessages = [...accepted.messages, ...(options.syntheticMessages ?? [])];
+    const messages = [...options.messages, ...allAcceptedMessages];
 
     try {
       await this.transcript.recordAcceptedInput(
         options.sessionId,
         options.turnId,
-        accepted.messages,
+        allAcceptedMessages,
         acceptedInputMetadata(options),
       );
     } catch (error) {

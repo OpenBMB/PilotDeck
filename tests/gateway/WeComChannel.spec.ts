@@ -68,7 +68,10 @@ test("WeCom deliverable MEDIA path uploads a markdown document and keeps the mar
     const markdown = responseBodies(started.ws, "markdown").at(-1);
     assert.equal(markdownContent(markdown), `报告已生成：MEDIA:${reportPath}`);
     assert.equal(responseBodies(started.ws, "file").length, 1);
-    assert.ok(started.gatewayInputs[0].message.includes("[WeCom attachment hint:"));
+    assert.ok(!started.gatewayInputs[0].message.includes("[WeCom attachment hint:"));
+    assert.ok(started.gatewayInputs[0].syntheticMessages?.some(
+      (s) => s.text.includes("[WeCom attachment hint:"),
+    ));
 
     await started.handle.stop("test done");
   } finally {

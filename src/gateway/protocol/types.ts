@@ -111,6 +111,12 @@ export type GatewaySubmitTurnInput = {
     executionKind?: TelemetryExecutionKind;
     phase?: string;
   };
+  /**
+   * Channel-specific synthetic messages appended to the turn input.
+   * These are stored in the transcript with `metadata.synthetic: true`
+   * so they are visible to the model but hidden from the Web UI.
+   */
+  syntheticMessages?: Array<{ text: string; purpose?: string }>;
 };
 
 export type GatewayEvent =

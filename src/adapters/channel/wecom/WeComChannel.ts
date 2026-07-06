@@ -888,9 +888,10 @@ export class WeComChannel implements ChannelAdapter {
       for await (const event of this.gateway.submitTurn({
         sessionKey: input.sessionKey,
         channelKey: "wecom",
-        message: withWeComDeliverableHint(input.message),
+        message: input.message,
         attachments: input.attachments,
         allowPlanModeTools: false,
+        syntheticMessages: [{ text: WECOM_DELIVERABLE_HINT.trim(), purpose: "wecom_deliverable_hint" }],
         ...(input.projectKey ? { projectKey: input.projectKey } : {}),
       })) {
         if (event.type === "elicitation_request") {
@@ -1609,10 +1610,7 @@ function maskRanges(text: string, ranges: Array<[number, number]>): string {
   return chars.join("");
 }
 
-function withWeComDeliverableHint(message: string): string {
-  if (message.includes("[WeCom attachment hint:")) return message;
-  return `${message}${WECOM_DELIVERABLE_HINT}`;
-}
+
 
 function safeFileName(value: string): string {
   const name = basename(value || "wecom_media").replace(/[^\w.\-()\u4e00-\u9fff]+/g, "_");

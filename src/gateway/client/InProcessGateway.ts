@@ -6,6 +6,7 @@ import type { AgentEvent, AgentInput, AgentTurnResult } from "../../agent/index.
 import {
   flattenToolResultBlockText,
   type CanonicalContentBlock,
+  type CanonicalMessage,
   type CanonicalModelEvent,
 } from "../../model/index.js";
 import { contentToText } from "../../tool/index.js";
@@ -387,6 +388,11 @@ export class InProcessGateway implements Gateway {
           input.attachments,
           allowedReadFiles,
         );
+        const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
+          role: "user" as const,
+          content: [{ type: "text" as const, text: s.text }],
+          metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
+        }));
         for await (const event of session.submit(
           agentInput,
           {
@@ -402,6 +408,7 @@ export class InProcessGateway implements Gateway {
               ...persistedRules,
               allow: [...sessionAllowRules, ...persistedRules.allow],
             },
+            ...(syntheticMessages.length > 0 ? { syntheticMessages } : {}),
           },
         )) {
           if (this.turnCompletions.get(input.sessionKey) !== turnDone) {
