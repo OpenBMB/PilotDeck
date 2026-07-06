@@ -21,6 +21,34 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+function resolveUserCommandRoots() {
+  const pilotHome = resolvePilotHome(process.env);
+  return {
+    userCommandsDir: path.join(pilotHome, 'commands'),
+    userSkillsDir: path.join(pilotHome, 'skills'),
+  };
+}
+
+function isUnderDirectory(base, target) {
+  const rel = path.relative(path.resolve(base), path.resolve(target));
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function isSkillCommandFile(commandPath, projectPath) {
+  const resolvedPath = path.resolve(commandPath);
+  if (path.basename(resolvedPath) !== 'SKILL.md') {
+    return false;
+  }
+
+  const { userSkillsDir } = resolveUserCommandRoots();
+  const skillRoots = [userSkillsDir];
+  if (projectPath) {
+    skillRoots.push(path.join(projectPath, '.pilotdeck', 'skills'));
+  }
+
+  return skillRoots.some((root) => isUnderDirectory(root, resolvedPath));
+}
+
 /**
  * Slash commands curated to always appear at the top of the menu in this exact
  * order, regardless of usage history. Names that don't resolve to a real
@@ -885,7 +913,7 @@ Custom commands can be created in:
 router.post('/list', async (req, res) => {
   try {
     const { projectPath } = req.body;
-    const homeDir = os.homedir();
+    const { userCommandsDir, userSkillsDir } = resolveUserCommandRoots();
 
     const customCommandSources = [];
 
@@ -899,8 +927,6 @@ router.post('/list', async (req, res) => {
       customCommandSources.push(...projectCommands, ...projectSkills);
     }
 
-    const userCommandsDir = path.join(homeDir, '.pilotdeck', 'commands');
-    const userSkillsDir = path.join(homeDir, '.pilotdeck', 'skills');
     const [userCommands, userSkills] = await Promise.all([
       scanCommandsDirectory(userCommandsDir, userCommandsDir, 'user'),
       scanSkillsDirectory(userSkillsDir, 'user'),
@@ -976,9 +1002,12 @@ router.post('/load', async (req, res) => {
 
     // Security: Prevent path traversal. Allow paths under any
     const resolvedPath = path.resolve(commandPath);
-    const inHome = resolvedPath.startsWith(path.resolve(os.homedir()));
+    const { userCommandsDir, userSkillsDir } = resolveUserCommandRoots();
+    const inUserCommandRoot = [userCommandsDir, userSkillsDir].some((root) =>
+      isUnderDirectory(root, resolvedPath),
+    );
     const inPilotdeckSubdir = /\.pilotdeck\/(commands|skills)\//.test(resolvedPath);
-    if (!inHome && !inPilotdeckSubdir) {
+    if (!inUserCommandRoot && !inPilotdeckSubdir) {
       return res.status(403).json({
         error: 'Access denied',
         message: 'Command must be in a .pilotdeck/commands or .pilotdeck/skills directory'
@@ -1078,7 +1107,7 @@ router.post('/execute', async (req, res) => {
     // server-side and submitted as raw user input — that would dump the whole
     // SKILL.md body into chat. Instead, passthrough the slash text so the
     // proxy's slash parser invokes SkillTool with the procedural body.
-    if (commandPath && /\/\.pilotdeck\/skills\/[^/]+\/SKILL\.md$/i.test(commandPath)) {
+    if (commandPath && isSkillCommandFile(commandPath, context?.projectPath)) {
       const passthroughContent = buildPassthroughContent();
       return res.json({
         type: 'custom',
@@ -1100,9 +1129,10 @@ router.post('/execute', async (req, res) => {
     // Security: validate commandPath is within allowed directories.
     {
       const resolvedPath = path.resolve(commandPath);
+      const { userCommandsDir, userSkillsDir } = resolveUserCommandRoots();
       const allowedBases = [
-        path.resolve(path.join(os.homedir(), '.pilotdeck', 'commands')),
-        path.resolve(path.join(os.homedir(), '.pilotdeck', 'skills')),
+        path.resolve(userCommandsDir),
+        path.resolve(userSkillsDir),
       ];
       if (context?.projectPath) {
         allowedBases.push(
