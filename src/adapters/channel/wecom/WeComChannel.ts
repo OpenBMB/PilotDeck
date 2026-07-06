@@ -1,7 +1,7 @@
 import { createDecipheriv, createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
@@ -43,6 +43,47 @@ const FILE_MAX_BYTES = 20 * 1024 * 1024;
 const UPLOAD_CHUNK_SIZE = 512 * 1024;
 const MAX_UPLOAD_CHUNKS = 100;
 const VOICE_SUPPORTED_MIMES = new Set(["audio/amr"]);
+const WECOM_DELIVERABLE_HINT = [
+  "",
+  "",
+  "[WeCom attachment hint: If the user explicitly asks you to send a generated file to this WeCom chat, save it to an absolute local path and include MEDIA:/absolute/path in your final answer. Do not use MEDIA for files that were only read or analyzed internally.]",
+].join("");
+const DELIVERABLE_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".svg",
+  ".mp4", ".mov", ".avi", ".mkv", ".webm",
+  ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".flac", ".amr",
+  ".pdf", ".docx", ".doc", ".odt", ".rtf", ".txt", ".md",
+  ".xlsx", ".xls", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml",
+  ".pptx", ".ppt", ".odp",
+  ".zip", ".tar", ".gz", ".tgz", ".bz2", ".7z",
+  ".html", ".htm",
+]);
+const DELIVERABLE_EXT_PATTERN = Array.from(DELIVERABLE_EXTENSIONS)
+  .map((ext) => ext.slice(1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+const MEDIA_TAG_RE = new RegExp(
+  "[\"'`]?MEDIA:\\s*(?:`([^`\\n]+)`|\"([^\"\\n]+)\"|'([^'\\n]+)'|((?:~/|/)\\S+))[\"'`]?",
+  "gi",
+);
+const BARE_DELIVERABLE_RE = new RegExp(
+  `(^|[\\s(:：])((?:~/|/)[^\\s\`"',;:)\\]}]+?\\.(?:${DELIVERABLE_EXT_PATTERN}))(?=$|[\\s\`"',;:)\\]}])`,
+  "gi",
+);
+const DENIED_BASENAMES = new Set([
+  ".env",
+  "auth.json",
+  "credentials",
+  "server-token",
+  "pilotdeck.yaml",
+]);
+const DENIED_SEGMENTS = new Set([
+  ".git",
+  ".ssh",
+  "node_modules",
+  "mcp-tokens",
+  "pairing",
+]);
 
 type WeComAccessPolicy = "open" | "allowlist" | "disabled" | "pairing";
 type WeComMediaType = "image" | "video" | "voice" | "file";
@@ -84,6 +125,23 @@ type PreparedOutboundMedia = {
   rejectReason?: string;
   downgraded: boolean;
   downgradeNote?: string;
+};
+
+type WeComDeliverable = {
+  path: string;
+  mediaType: WeComMediaType;
+};
+
+type WeComDeliverableCandidate = {
+  rawPath: string;
+  start: number;
+  end: number;
+};
+
+type WeComDeliverableExtraction = {
+  text: string;
+  deliverables: WeComDeliverable[];
+  warnings: string[];
 };
 
 export type WeComChannelOptions = {
@@ -830,7 +888,7 @@ export class WeComChannel implements ChannelAdapter {
       for await (const event of this.gateway.submitTurn({
         sessionKey: input.sessionKey,
         channelKey: "wecom",
-        message: input.message,
+        message: withWeComDeliverableHint(input.message),
         attachments: input.attachments,
         allowPlanModeTools: false,
         ...(input.projectKey ? { projectKey: input.projectKey } : {}),
@@ -866,11 +924,23 @@ export class WeComChannel implements ChannelAdapter {
     this.elicitation.clear(input.interactionKey);
     this.permissions.clear(input.interactionKey);
     const finalText = replyText.trim();
-    if (finalText) {
-      await this.sendReply(input.chatId, finalText, {
-        chatType: input.chatType,
-        replyToMessageId: input.replyToMessageId,
-      });
+    if (!finalText) return;
+
+    const context = {
+      chatType: input.chatType,
+      replyToMessageId: input.replyToMessageId,
+    };
+    const delivery = await extractWeComDeliverables(finalText);
+    const visibleParts = [delivery.text, ...delivery.warnings].map((part) => part.trim()).filter(Boolean);
+    const visibleText = visibleParts.join("\n");
+    if (visibleText) {
+      await this.sendReply(input.chatId, visibleText, context);
+    } else if (delivery.deliverables.length > 0) {
+      await this.sendReply(input.chatId, "我已生成附件，正在发送。", context);
+    }
+
+    for (const deliverable of delivery.deliverables) {
+      await this.sendDeliverable(input.chatId, deliverable, context);
     }
   }
 
@@ -952,6 +1022,24 @@ export class WeComChannel implements ChannelAdapter {
 
   async sendVideo(chatId: string, videoPath: string, caption?: string, replyTo?: string): Promise<boolean> {
     return this.sendMediaSource(chatId, videoPath, { caption, replyTo });
+  }
+
+  private async sendDeliverable(
+    chatId: string,
+    deliverable: WeComDeliverable,
+    context: { chatType?: "dm" | "group"; replyToMessageId?: string },
+  ): Promise<boolean> {
+    const replyTo = context.replyToMessageId;
+    switch (deliverable.mediaType) {
+      case "image":
+        return this.sendMediaSource(chatId, deliverable.path, { replyTo });
+      case "video":
+        return this.sendMediaSource(chatId, deliverable.path, { replyTo });
+      case "voice":
+        return this.sendMediaSource(chatId, deliverable.path, { replyTo });
+      case "file":
+        return this.sendMediaSource(chatId, deliverable.path, { replyTo, forceType: "file" });
+    }
   }
 
   private async sendMediaSource(
@@ -1361,6 +1449,169 @@ function defaultExtForMedia(kind: WeComMediaType): string {
     case "file":
       return ".bin";
   }
+}
+
+async function extractWeComDeliverables(text: string): Promise<WeComDeliverableExtraction> {
+  const protectedText = maskProtectedDeliverableSpans(text);
+  const candidates: WeComDeliverableCandidate[] = [];
+  const protectedMediaSpans: Array<[number, number]> = [];
+
+  for (const match of protectedText.matchAll(MEDIA_TAG_RE)) {
+    const rawPath = match[1] ?? match[2] ?? match[3] ?? match[4];
+    if (!rawPath) continue;
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    candidates.push({ rawPath, start, end });
+    protectedMediaSpans.push([start, end]);
+  }
+
+  const bareSearchText = maskRanges(protectedText, protectedMediaSpans);
+  for (const match of bareSearchText.matchAll(BARE_DELIVERABLE_RE)) {
+    const rawPath = match[2];
+    if (!rawPath) continue;
+    const start = (match.index ?? 0) + match[1].length;
+    candidates.push({ rawPath, start, end: start + rawPath.length });
+  }
+
+  const deliverables: WeComDeliverable[] = [];
+  const warnings = new Set<string>();
+  const seenPaths = new Set<string>();
+
+  for (const candidate of candidates.sort((a, b) => a.start - b.start)) {
+    const validated = await validateWeComDeliverablePath(candidate.rawPath);
+    if (!validated.ok) {
+      warnings.add(`附件未发送：${validated.reason}`);
+      continue;
+    }
+    if (seenPaths.has(validated.deliverable.path)) {
+      continue;
+    }
+    seenPaths.add(validated.deliverable.path);
+    deliverables.push(validated.deliverable);
+  }
+
+  return {
+    text: text.trim(),
+    deliverables,
+    warnings: Array.from(warnings),
+  };
+}
+
+async function validateWeComDeliverablePath(rawPath: string): Promise<
+  | { ok: true; deliverable: WeComDeliverable }
+  | { ok: false; reason: string }
+> {
+  const normalized = normalizeDeliverablePath(rawPath);
+  if (!normalized) return { ok: false, reason: "附件路径为空。" };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(normalized) && !normalized.startsWith("file:")) {
+    return { ok: false, reason: "企业微信附件投递仅支持本地文件路径。" };
+  }
+
+  const localPath = normalized.startsWith("file:")
+    ? fileURLToPath(normalized)
+    : normalized.startsWith("~/")
+      ? join(homedir(), normalized.slice(2))
+      : normalized;
+  if (!localPath.startsWith("/")) {
+    return { ok: false, reason: "附件路径必须是绝对路径或 ~/ 路径。" };
+  }
+
+  const resolvedPath = resolve(localPath);
+  const ext = extname(resolvedPath).toLowerCase();
+  if (!DELIVERABLE_EXTENSIONS.has(ext)) {
+    return { ok: false, reason: `不支持的附件类型 ${ext || "(无扩展名)"}。` };
+  }
+  if (isDeniedDeliverablePath(resolvedPath)) {
+    return { ok: false, reason: "该路径位于敏感目录或敏感配置文件中。" };
+  }
+
+  let info: Awaited<ReturnType<typeof stat>>;
+  try {
+    info = await stat(resolvedPath);
+  } catch {
+    return { ok: false, reason: "附件文件不存在。" };
+  }
+  if (!info.isFile()) {
+    return { ok: false, reason: "附件路径不是普通文件。" };
+  }
+
+  const realPath = await realpath(resolvedPath).catch(() => resolvedPath);
+  if (isDeniedDeliverablePath(realPath)) {
+    return { ok: false, reason: "该路径位于敏感目录或敏感配置文件中。" };
+  }
+
+  return {
+    ok: true,
+    deliverable: {
+      path: realPath,
+      mediaType: mediaTypeForDeliverableExt(ext),
+    },
+  };
+}
+
+function normalizeDeliverablePath(rawPath: string): string {
+  return rawPath.trim().replace(/^["'`]+|["'`]+$/g, "").replace(/[.,;:)\]}]+$/g, "");
+}
+
+function mediaTypeForDeliverableExt(ext: string): WeComMediaType {
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".svg"].includes(ext)) return "image";
+  if ([".mp4", ".mov", ".avi", ".mkv", ".webm"].includes(ext)) return "video";
+  if ([".mp3", ".wav", ".ogg", ".opus", ".m4a", ".flac", ".amr"].includes(ext)) return "voice";
+  return "file";
+}
+
+function isDeniedDeliverablePath(path: string): boolean {
+  const normalized = resolve(path);
+  const home = homedir();
+  const pilotHome = process.env.PILOT_HOME || join(home, ".pilotdeck");
+  if (pathUnder(normalized, join(home, ".ssh"))) return true;
+  if (pathUnder(normalized, join(pilotHome, "server-token"))) return true;
+  if (pathUnder(normalized, join(pilotHome, "pilotdeck.yaml"))) return true;
+
+  const lowerBase = basename(normalized).toLowerCase();
+  if (DENIED_BASENAMES.has(lowerBase)) return true;
+
+  const segments = normalized.split(/[\\/]+/).map((segment) => segment.toLowerCase());
+  return segments.some((segment) => DENIED_SEGMENTS.has(segment));
+}
+
+function pathUnder(path: string, root: string): boolean {
+  const resolvedPath = resolve(path);
+  const resolvedRoot = resolve(root);
+  return resolvedPath === resolvedRoot || resolvedPath.startsWith(`${resolvedRoot}${sep}`);
+}
+
+function maskProtectedDeliverableSpans(text: string): string {
+  const ranges: Array<[number, number]> = [];
+  for (const match of text.matchAll(/```[\s\S]*?```/g)) {
+    ranges.push([match.index ?? 0, (match.index ?? 0) + match[0].length]);
+  }
+  for (const match of text.matchAll(/`[^`\n]+`/g)) {
+    const start = match.index ?? 0;
+    const prefix = text.slice(Math.max(0, start - 20), start);
+    if (/MEDIA:\s*$/i.test(prefix)) continue;
+    ranges.push([start, start + match[0].length]);
+  }
+  for (const match of text.matchAll(/^>.*$/gm)) {
+    ranges.push([match.index ?? 0, (match.index ?? 0) + match[0].length]);
+  }
+  return maskRanges(text, ranges);
+}
+
+function maskRanges(text: string, ranges: Array<[number, number]>): string {
+  if (ranges.length === 0) return text;
+  const chars = text.split("");
+  for (const [start, end] of ranges) {
+    for (let i = start; i < end && i < chars.length; i += 1) {
+      if (chars[i] !== "\n") chars[i] = " ";
+    }
+  }
+  return chars.join("");
+}
+
+function withWeComDeliverableHint(message: string): string {
+  if (message.includes("[WeCom attachment hint:")) return message;
+  return `${message}${WECOM_DELIVERABLE_HINT}`;
 }
 
 function safeFileName(value: string): string {
