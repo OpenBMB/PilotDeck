@@ -61,17 +61,32 @@ function normalizeAccessPolicy(value, fallback) {
   return ['open', 'allowlist', 'disabled'].includes(value) ? value : fallback;
 }
 
+function normalizeList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
 function writeWeComConfig(config, input) {
   if (!config.adapters) config.adapters = {};
+  const previous = config.adapters.wecom ?? {};
+  const previousExtra = previous.extra ?? {};
+  const dmPolicy = normalizeAccessPolicy(input.dmPolicy, 'open');
+  const groupPolicy = normalizeAccessPolicy(input.groupPolicy, 'disabled');
+  const extra = {
+    secret: input.secret || previousExtra.secret || '',
+    websocket_url: input.websocketUrl || previousExtra.websocket_url || previousExtra.websocketUrl || WECOM_DEFAULT_WS_URL,
+    dm_policy: dmPolicy,
+    group_policy: groupPolicy,
+  };
+  const allowFrom = normalizeList(input.allowFrom ?? previousExtra.allow_from ?? previousExtra.allowFrom);
+  const groupAllowFrom = normalizeList(input.groupAllowFrom ?? previousExtra.group_allow_from ?? previousExtra.groupAllowFrom);
+  if (dmPolicy === 'allowlist') extra.allow_from = allowFrom;
+  if (groupPolicy === 'allowlist') extra.group_allow_from = groupAllowFrom;
   config.adapters.wecom = {
     enabled: true,
-    token: input.botId,
-    extra: {
-      secret: input.secret,
-      websocket_url: input.websocketUrl || WECOM_DEFAULT_WS_URL,
-      dm_policy: normalizeAccessPolicy(input.dmPolicy, 'open'),
-      group_policy: normalizeAccessPolicy(input.groupPolicy, 'disabled'),
-    },
+    token: input.botId || previous.token || '',
+    extra,
   };
   return config;
 }
@@ -136,6 +151,8 @@ router.get('/status', (_req, res) => {
         websocketUrl: wecomExtra.websocket_url || wecomExtra.websocketUrl || WECOM_DEFAULT_WS_URL,
         dmPolicy: wecomExtra.dm_policy || wecomExtra.dmPolicy || 'open',
         groupPolicy: wecomExtra.group_policy || wecomExtra.groupPolicy || 'disabled',
+        allowFrom: normalizeList(wecomExtra.allow_from ?? wecomExtra.allowFrom),
+        groupAllowFrom: normalizeList(wecomExtra.group_allow_from ?? wecomExtra.groupAllowFrom),
       },
     });
   } catch (error) {
@@ -545,20 +562,29 @@ router.post('/wecom/save', async (req, res) => {
     websocketUrl,
     dmPolicy,
     groupPolicy,
+    allowFrom,
+    groupAllowFrom,
   } = req.body || {};
+  const existing = loadYaml();
+  const existingWeCom = existing.adapters?.wecom ?? {};
+  const existingExtra = existingWeCom.extra ?? {};
   const normalizedBotId = String(botId || '').trim();
   const normalizedSecret = String(secret || '').trim();
-  if (!normalizedBotId || !normalizedSecret) {
+  const resolvedBotId = normalizedBotId || String(existingWeCom.token || '').trim();
+  const resolvedSecret = normalizedSecret || String(existingExtra.secret || '').trim();
+  if (!resolvedBotId || !resolvedSecret) {
     return res.status(400).json({ ok: false, error: 'botId and secret are required' });
   }
 
   try {
-    const config = writeWeComConfig(loadYaml(), {
-      botId: normalizedBotId,
-      secret: normalizedSecret,
+    const config = writeWeComConfig(existing, {
+      botId: resolvedBotId,
+      secret: resolvedSecret,
       websocketUrl: String(websocketUrl || '').trim() || WECOM_DEFAULT_WS_URL,
       dmPolicy,
       groupPolicy,
+      allowFrom,
+      groupAllowFrom,
     });
     await persistConfigAndReload(config);
     res.json({ ok: true, message: 'WeCom config saved' });
