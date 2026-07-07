@@ -59,7 +59,7 @@ import {
 } from '../../../../shared/catalogProviders';
 import { fetchProviderModels, type ApiModelListItem } from '../../../../shared/modelListApi';
 import type { SettingsProject } from '../../types/types';
-import { isCronConfigEnabled, patch } from './pilotDeckConfigForm';
+import { isCronConfigEnabled, patch, rewriteProviderRefs } from './pilotDeckConfigForm';
 
 // ── V2 schema types ────────────────────────────────────────────────────
 // Schema mirrors ~/.pilotdeck/pilotdeck.yaml exactly. No more
@@ -183,6 +183,8 @@ type PilotDeckConfig = {
     };
     autoOrchestrate?: {
       enabled?: boolean;
+      mainAgentModel?: string;
+      subagentModel?: string;
       triggerTiers?: string[];
       slimSystemPrompt?: boolean;
     };
@@ -373,85 +375,6 @@ function safeParseYaml(text: string): PilotDeckConfig | null {
  */
 function configToYamlString(config: PilotDeckConfig): string {
   return stringifyYaml(config, { indent: 2, lineWidth: 0 });
-}
-
-function rewriteProviderRef(value: unknown, oldProviderId: string, newProviderId: string): unknown {
-  const oldPrefix = `${oldProviderId}/`;
-  if (typeof value !== 'string' || !value.startsWith(oldPrefix)) return value;
-  return `${newProviderId}/${value.slice(oldPrefix.length)}`;
-}
-
-function rewriteProviderRefs(config: PilotDeckConfig, oldProviderId: string, newProviderId: string): PilotDeckConfig {
-  let next = config;
-
-  const agentModel = rewriteProviderRef(next.agent?.model, oldProviderId, newProviderId);
-  if (agentModel !== next.agent?.model) {
-    next = patch(next, ['agent', 'model'], agentModel);
-  }
-
-  const subagentDefault = rewriteProviderRef(next.agent?.subagents?.default, oldProviderId, newProviderId);
-  if (subagentDefault !== next.agent?.subagents?.default) {
-    next = patch(next, ['agent', 'subagents', 'default'], subagentDefault);
-  }
-
-  const memoryModel = rewriteProviderRef(next.memory?.model, oldProviderId, newProviderId);
-  if (memoryModel !== next.memory?.model) {
-    next = patch(next, ['memory', 'model'], memoryModel);
-  }
-
-  const memoryLlm = (next.memory as Record<string, unknown> | undefined)?.llm;
-  if (memoryLlm && typeof memoryLlm === 'object' && !Array.isArray(memoryLlm)) {
-    const llm = memoryLlm as Record<string, unknown>;
-    if (llm.provider === oldProviderId) {
-      next = patch(next, ['memory', 'llm', 'provider'], newProviderId);
-    }
-  }
-
-  const scenarios = next.router?.scenarios;
-  if (scenarios) {
-    const rewritten = Object.fromEntries(
-      Object.entries(scenarios).map(([key, ref]) => [key, rewriteProviderRef(ref, oldProviderId, newProviderId) as string]),
-    );
-    if (Object.entries(scenarios).some(([key, ref]) => rewritten[key] !== ref)) {
-      next = patch(next, ['router', 'scenarios'], rewritten);
-    }
-  }
-
-  const fallback = next.router?.fallback;
-  if (fallback) {
-    const rewritten = Object.fromEntries(
-      Object.entries(fallback).map(([key, refs]) => [
-        key,
-        refs.map((ref) => rewriteProviderRef(ref, oldProviderId, newProviderId) as string),
-      ]),
-    );
-    if (Object.entries(fallback).some(([key, refs]) => rewritten[key].some((ref, index) => ref !== refs[index]))) {
-      next = patch(next, ['router', 'fallback'], rewritten);
-    }
-  }
-
-  const judge = rewriteProviderRef(next.router?.tokenSaver?.judge, oldProviderId, newProviderId);
-  if (judge !== next.router?.tokenSaver?.judge) {
-    next = patch(next, ['router', 'tokenSaver', 'judge'], judge);
-  }
-
-  const tiers = next.router?.tokenSaver?.tiers;
-  if (tiers) {
-    const rewritten = Object.fromEntries(
-      Object.entries(tiers).map(([key, tier]) => [
-        key,
-        {
-          ...tier,
-          model: rewriteProviderRef(tier.model, oldProviderId, newProviderId) as string | undefined,
-        },
-      ]),
-    );
-    if (Object.entries(tiers).some(([key, tier]) => rewritten[key].model !== tier.model)) {
-      next = patch(next, ['router', 'tokenSaver', 'tiers'], rewritten);
-    }
-  }
-
-  return next;
 }
 
 function replaceFallbackModelRef(config: PilotDeckConfig, oldRef: string, newRef: string): PilotDeckConfig {
