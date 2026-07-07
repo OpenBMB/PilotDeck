@@ -1,7 +1,7 @@
 import type { WorkspaceType } from '../types';
 
 const SSH_PREFIXES = ['git@', 'ssh://'];
-const WINDOWS_DRIVE_PATTERN = /^[A-Za-z]:\\?$/;
+const WINDOWS_DRIVE_PATTERN = /^[A-Za-z]:[\\/]?$/;
 
 export const isSshGitUrl = (url: string): boolean => {
   const trimmedUrl = url.trim();
@@ -18,6 +18,10 @@ export const isCloneWorkflow = (workspaceType: WorkspaceType, githubUrl: string)
 
 export const getSuggestionRootPath = (inputPath: string): string => {
   const trimmedPath = inputPath.trim();
+  if (/^[A-Za-z]:$/.test(trimmedPath)) {
+    return `${trimmedPath}\\`;
+  }
+
   const lastSeparatorIndex = Math.max(trimmedPath.lastIndexOf('/'), trimmedPath.lastIndexOf('\\'));
   if (lastSeparatorIndex === 2 && /^[A-Za-z]:/.test(trimmedPath)) {
     return `${trimmedPath.slice(0, 2)}\\`;
