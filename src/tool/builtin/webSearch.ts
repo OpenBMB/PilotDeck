@@ -1,6 +1,7 @@
 import type { PermissionResult } from "../../permission/index.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
+  PilotDeckToolAvailabilityContext,
   PilotDeckToolDefinition,
   PilotDeckToolExecutionOutput,
   PilotDeckToolRuntimeContext,
@@ -114,6 +115,7 @@ Usage notes:
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     isOpenWorld: () => true,
+    checkAvailability: (context) => checkWebSearchAvailability(options, context),
     checkPermissions: async (): Promise<PermissionResult> => ({
       type: "ask",
       reason: {
@@ -188,6 +190,36 @@ Usage notes:
       });
     },
   };
+}
+
+function checkWebSearchAvailability(
+  options: CreateWebSearchToolOptions,
+  context: PilotDeckToolAvailabilityContext,
+) {
+  const runtimeContext = {
+    cwd: context.cwd,
+    env: context.env,
+  } as PilotDeckToolRuntimeContext;
+  const provider = resolveProvider(options.provider, options.apiKey, runtimeContext);
+  const apiKey = resolveApiKey(options.apiKey, provider, runtimeContext);
+  const custom = normalizeCustomProviderConfig(options.customProvider);
+
+  if (!apiKey && !(provider === "custom" && custom.auth === "none")) {
+    return {
+      ok: false as const,
+      code: "setup_required" as const,
+      reason: "web_search requires an API key.",
+    };
+  }
+  if (provider === "custom" && !options.endpoint?.trim()) {
+    return {
+      ok: false as const,
+      code: "setup_required" as const,
+      reason: "web_search custom provider requires an endpoint URL.",
+    };
+  }
+
+  return { ok: true as const };
 }
 
 function resolveProvider(

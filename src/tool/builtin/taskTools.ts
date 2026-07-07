@@ -163,6 +163,7 @@ export function createTaskCreateTool(
         command: input.command,
         cwd: context.cwd,
         env: context.env,
+        sessionId: context.sessionId,
         agentId: input.agentId,
         kind: input.kind,
       });

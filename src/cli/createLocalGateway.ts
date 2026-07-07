@@ -68,9 +68,14 @@ import { createSessionTitleGenerator } from "../session/title/SessionTitleGenera
 import { readWebSessionMessages, readSubagentWebMessages } from "../web/server/readSessionMessages.js";
 import { forkWebSession } from "../web/server/forkSession.js";
 import { describeWebProject, listWebProjects } from "../web/server/listProjects.js";
-import { BackgroundTaskRuntime } from "../task/runtime/BackgroundTaskRuntime.js";
-import { createBuiltinRegistry, createPlanFileManager } from "../tool/index.js";
-import type { PilotDeckToolDefinition, ToolRegistry, PilotDeckElicitationChannel } from "../tool/index.js";
+import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
+import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
+import type {
+  PilotDeckElicitationChannel,
+  PilotDeckToolDefinition,
+  PilotDeckUnavailableToolDiagnostic,
+  ToolRegistry,
+} from "../tool/index.js";
 import { createRouterRuntime, type RouterRuntime } from "../router/index.js";
 import { SessionRouterStore } from "../router/session/SessionRouterStore.js";
 import type { RouterEventBus, RouterEvent } from "../router/protocol/events.js";
@@ -406,6 +411,7 @@ type ProjectRuntime = {
   router: RouterRuntime;
   pluginRuntime: PluginRuntime;
   tools: ToolRegistry;
+  unavailableTools?: PilotDeckUnavailableToolDiagnostic[];
   projectStorage: GatewayProjectStorageOptions;
   /** Per-project background task runtime (shared across sessions). C5. */
   backgroundTasks: BackgroundTaskRuntime;
@@ -487,6 +493,26 @@ class ProjectRuntimeRegistry {
 
   setGateway(gateway: InProcessGateway): void {
     this.gateway = gateway;
+  }
+
+  private emitBackgroundTaskCompletion(event: BackgroundTaskCompletionEvent): void {
+    if (!event.sessionId || !this.gateway) {
+      return;
+    }
+    const outputPreview = event.outputPreview.trimEnd();
+    this.gateway.emitForSession(event.sessionId, {
+      type: "agent_status",
+      event: "background_task_completed",
+      detail: {
+        taskId: event.taskId,
+        status: event.status,
+        exitCode: event.exitCode ?? null,
+        totalBytes: event.totalBytes,
+        startedAt: event.startedAt,
+        endedAt: event.endedAt,
+        ...(outputPreview ? { outputPreview } : {}),
+      },
+    });
   }
 
   private buildRouterEventBus(): RouterEventBus {
@@ -629,7 +655,10 @@ class ProjectRuntimeRegistry {
       events: this.buildRouterEventBus(),
       telemetry: this.options.telemetry,
     });
-    const backgroundTasks = new BackgroundTaskRuntime({ now: this.options.now });
+    const backgroundTasks = new BackgroundTaskRuntime({
+      now: this.options.now,
+      onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
+    });
     const webSearchConfig = snapshot.config.tools?.webSearch;
     const tools = createBuiltinRegistry({
       backgroundTasks: { runtime: backgroundTasks },
@@ -900,6 +929,14 @@ class ProjectRuntimeRegistry {
         }
       }
     }
+
+    const availability = await filterAvailableTools(sessionTools, {
+      cwd: runtime.projectRoot,
+      env: this.options.env,
+    });
+    sessionTools = availability.registry;
+    runtime.unavailableTools = availability.unavailable;
+
     // Inject the gateway's interactive permission hook so the agent's
     // PermissionRequest lifecycle is round-tripped through whichever
     // client is streaming this session (Web UI, TUI, etc.) instead of

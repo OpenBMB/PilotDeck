@@ -46,6 +46,8 @@ export {
 } from "./streaming/normalizeStreamEvent.js";
 export {
   extractTextToolCalls,
+  detectFormatByText,
+  getSelfCorrectPrompt,
   hasTextToolCallSyntax,
   type PartialTextToolCallFormat,
   type PartialTextToolCallInfo,

@@ -1,11 +1,19 @@
 import { randomUUID } from "node:crypto";
 import type { CanonicalToolCall } from "../protocol/canonical.js";
+import {
+  detectFormatByText,
+  getSelfCorrectPrompt,
+  getToolCallFormats,
+  registerToolCallFormat,
+} from "./toolCallFormats.js";
 
 export type TextToolCallParseResult = {
   toolCalls: CanonicalToolCall[];
   remainingText: string;
   partialToolCall?: PartialTextToolCallInfo;
   extractedFromText?: boolean;
+  detectedFormat?: PartialTextToolCallFormat;
+  parseError?: boolean;
 };
 
 export type PartialTextToolCallFormat =
@@ -21,6 +29,8 @@ export type PartialTextToolCallInfo = {
   preview: string;
 };
 
+export { detectFormatByText, getSelfCorrectPrompt };
+
 /**
  * Attempt to extract structured tool calls from assistant text content.
  *
@@ -34,16 +44,10 @@ export type PartialTextToolCallInfo = {
  */
 export function extractTextToolCalls(text: string): TextToolCallParseResult {
   let firstPartial: PartialTextToolCallInfo | undefined;
-  const parsers = [
-    tryParseQwenXml,
-    tryParseDeepSeekDsml,
-    tryParseHermesJson,
-    tryParseMistral,
-    tryParseLlama,
-  ];
 
-  for (const parser of parsers) {
-    const result = parser(text);
+  for (const format of getToolCallFormats()) {
+    const markerHit = format.markers.some((marker) => text.includes(marker));
+    const result = format.parse(text);
     if (result?.partialToolCall && !firstPartial) {
       firstPartial = result.partialToolCall;
     }
@@ -51,6 +55,15 @@ export function extractTextToolCalls(text: string): TextToolCallParseResult {
       return {
         ...result,
         extractedFromText: true,
+        detectedFormat: format.id,
+        partialToolCall: result.partialToolCall ?? firstPartial,
+      };
+    }
+    if (markerHit && result) {
+      return {
+        ...result,
+        detectedFormat: format.id,
+        parseError: true,
         partialToolCall: result.partialToolCall ?? firstPartial,
       };
     }
@@ -58,18 +71,12 @@ export function extractTextToolCalls(text: string): TextToolCallParseResult {
 
   const partialToolCall = firstPartial ?? detectPartialTextToolCall(text);
   return partialToolCall
-    ? { toolCalls: [], remainingText: text, partialToolCall }
+    ? { toolCalls: [], remainingText: text, partialToolCall, detectedFormat: partialToolCall.format, parseError: true }
     : { toolCalls: [], remainingText: text };
 }
 
 export function hasTextToolCallSyntax(text: string): boolean {
-  return (
-    hasQwenMarker(text) ||
-    hasDsmlMarker(text) ||
-    hasHermesMarker(text) ||
-    hasMistralMarker(text) ||
-    hasLlamaMarker(text)
-  );
+  return detectFormatByText(text) !== undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -733,3 +740,53 @@ function preview(text: string): string {
 function generateId(): string {
   return `text_tc_${randomUUID().slice(0, 8)}`;
 }
+
+registerToolCallFormat({
+  id: "qwen_xml",
+  displayName: "Qwen XML",
+  modelFamilies: ["qwen"],
+  markers: ["<function=", "</function>", "<parameter=", "</parameter>"],
+  parse: tryParseQwenXml,
+  selfCorrectPrompt: "Use <function=TOOL_NAME> with one <parameter=NAME>VALUE</parameter> block for each argument, and close with </function>.",
+  example: "<function=read_file>\n<parameter=path>/tmp/example.txt</parameter>\n</function>",
+});
+
+registerToolCallFormat({
+  id: "deepseek_dsml",
+  displayName: "DeepSeek DSML",
+  modelFamilies: ["deepseek"],
+  markers: ["\uff5cDSML\uff5c"],
+  parse: tryParseDeepSeekDsml,
+  selfCorrectPrompt: "Use one <｜DSML｜invoke name=\"TOOL_NAME\"> block with <｜DSML｜parameter name=\"ARG\">VALUE</content> children.",
+  example: "<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"read_file\">\n<｜DSML｜parameter name=\"path\">/tmp/example.txt</content>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>",
+});
+
+registerToolCallFormat({
+  id: "hermes_json",
+  displayName: "Hermes JSON",
+  modelFamilies: ["hermes", "nous"],
+  markers: ["<tool_call>", "</tool_call>"],
+  parse: tryParseHermesJson,
+  selfCorrectPrompt: "Use a <tool_call> block containing valid JSON with string field name and object field arguments.",
+  example: "<tool_call>\n{\"name\":\"read_file\",\"arguments\":{\"path\":\"/tmp/example.txt\"}}\n</tool_call>",
+});
+
+registerToolCallFormat({
+  id: "mistral",
+  displayName: "Mistral tool calls",
+  modelFamilies: ["mistral", "mixtral"],
+  markers: [MISTRAL_MARKER],
+  parse: tryParseMistral,
+  selfCorrectPrompt: "Use [TOOL_CALLS] followed by a valid JSON array of tool call objects with name and arguments.",
+  example: "[TOOL_CALLS] [{\"name\":\"read_file\",\"arguments\":{\"path\":\"/tmp/example.txt\"}}]",
+});
+
+registerToolCallFormat({
+  id: "llama",
+  displayName: "Llama python-tag tool call",
+  modelFamilies: ["llama"],
+  markers: [LLAMA_TAG],
+  parse: tryParseLlama,
+  selfCorrectPrompt: "Use <|python_tag|> followed by a valid JSON object with name and arguments.",
+  example: "<|python_tag|>{\"name\":\"read_file\",\"arguments\":{\"path\":\"/tmp/example.txt\"}}",
+});

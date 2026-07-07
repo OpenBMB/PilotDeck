@@ -30,6 +30,7 @@ export type AgentEvent =
   | { type: "compact_started"; sessionId: string; turnId: string; trigger: string; preTokens: number }
   | { type: "compact_completed"; sessionId: string; turnId: string; status: string; preTokens: number; postTokens?: number }
   | { type: "context_budget"; sessionId: string; turnId: string; snapshot: TokenBudgetSnapshot }
+  | { type: "warning"; sessionId: string; turnId: string; code: string; message: string; metadata?: Record<string, unknown> }
   | { type: "agent_status"; sessionId: string; turnId: string; event: string; detail?: Record<string, unknown> }
   | { type: "subagent_started"; sessionId: string; turnId: string; subagentId: string; subagentType: string; toolCallId?: string }
   | { type: "subagent_completed"; sessionId: string; turnId: string; subagentId: string; subagentType: string; success: boolean; durationMs: number }

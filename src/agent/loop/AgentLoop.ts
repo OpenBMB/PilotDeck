@@ -13,8 +13,11 @@ import {
   type CanonicalModelRequest,
   type CanonicalToolSchema,
   type CanonicalUsage,
+  type CanonicalToolCallBlock,
   materializeMediaReferences,
   type PartialTextToolCallInfo,
+  getSelfCorrectPrompt,
+  detectFormatByText,
 } from "../../model/index.js";
 import type {
   PilotDeckToolDefinition,
@@ -52,6 +55,7 @@ import {
   isAskModeAllowedTool,
 } from "../../tool/askModeConstraints.js";
 import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
+import { repairToolName } from "../../model/streaming/repairToolName.js";
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -208,6 +212,7 @@ export class AgentLoop {
     let consecutiveEmptyCount = 0;
     const MAX_JSON_SELF_CORRECT_RETRIES = 3;
     let jsonSelfCorrectCount = 0;
+    let hasAttemptedToolCallRetry = false;
     const largeFileRepair = new LargeFileRepair();
 
     /**
@@ -533,8 +538,14 @@ export class AgentLoop {
 
       const assembled = assembleAssistantMessage(assembler);
       usage = mergeUsage(usage, assembled.usage);
-      finalMessage = assembled.message;
-      const toolCalls = collectToolCalls(assembled.message);
+      let assistantMessage = assembled.message;
+      let toolCalls = collectToolCalls(assistantMessage);
+      if (assembled.hasTextFallbackToolCalls) {
+        const repaired = this.repairTextExtractedToolNames(assistantMessage, toolCalls);
+        assistantMessage = repaired.message;
+        toolCalls = repaired.toolCalls;
+      }
+      finalMessage = assistantMessage;
       expireConsumedTransientPrompts();
 
       if (assembled.hasPartialTextToolCall) {
@@ -665,9 +676,9 @@ export class AgentLoop {
         return { result, messages };
       }
 
-      messages.push(assembled.message);
-      yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: assembled.message };
-      await input.onDurableMessage?.(assembled.message);
+      messages.push(assistantMessage);
+      yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: assistantMessage };
+      await input.onDurableMessage?.(assistantMessage);
 
       if (assembled.error) {
         if (toolCalls.length > 0) {
@@ -812,7 +823,7 @@ export class AgentLoop {
       }
 
       if (toolCalls.length === 0) {
-        const assistantText = textFromMessage(assembled.message);
+        const assistantText = textFromMessage(assistantMessage);
 
         // Global guard: empty assistant response (no text, no tool calls).
         // The model produced nothing visible — typically because extended
@@ -933,9 +944,37 @@ export class AgentLoop {
           continue;
         }
 
+        if (!assembled.hasPartialTextToolCall && assembled.hasUnparsedTextToolCall) {
+          if (!hasAttemptedToolCallRetry) {
+            hasAttemptedToolCallRetry = true;
+            pushTransientSyntheticPrompt(
+              getSelfCorrectPrompt(this.config.toolCallFormat ?? assembled.textToolCallFormat, assistantText),
+              "unparsed_tool_call_retry",
+            );
+            yield {
+              type: "turn_continued",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              reason: "model_error",
+            };
+            continue;
+          }
+
+          yield {
+            type: "warning",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            code: "unparsed_tool_call",
+            message: "Model attempted to call a tool but the output could not be parsed. The response may be incomplete.",
+            metadata: {
+              detectedFormat: assembled.textToolCallFormat ?? detectFormatByText(assistantText)?.id,
+            },
+          };
+        }
+
         const stopHooks = await this.dispatchLifecycle(input, "Stop", {
           stopHookActive: false,
-          lastAssistantMessage: textFromMessage(assembled.message),
+          lastAssistantMessage: textFromMessage(assistantMessage),
         });
         yield { type: "stop_requested", sessionId: input.sessionId, turnId: input.turnId };
         messages.push(...stopHooks.messages);
@@ -1208,6 +1247,7 @@ export class AgentLoop {
         consecutiveEmptyCount = 0;
         hasAttemptedOutputRetry = false;
         hasAttemptedEmptyRetry = false;
+        hasAttemptedToolCallRetry = false;
       }
 
       if (this.config.stopOnStructuredOutput && structuredOutput !== undefined) {
@@ -1361,6 +1401,34 @@ export class AgentLoop {
       stream: true,
       metadata: this.config.metadata,
       cacheBreakpoints: prepared.cacheBreakpoints,
+    };
+  }
+
+  private repairTextExtractedToolNames(
+    message: CanonicalMessage,
+    toolCalls: CanonicalToolCall[],
+  ): { message: CanonicalMessage; toolCalls: CanonicalToolCall[] } {
+    if (toolCalls.length === 0) return { message, toolCalls };
+    const validNames = new Set(this.dependencies.tools.registry.list().map((tool) => tool.name));
+    const repairedById = new Map<string, string>();
+    const repairedToolCalls = toolCalls.map((call) => {
+      const repaired = repairToolName(call.name, validNames, this.config.toolAliases);
+      if (!repaired) return call;
+      repairedById.set(call.id, repaired.name);
+      return { ...call, name: repaired.name };
+    });
+    if (repairedById.size === 0) return { message, toolCalls };
+
+    return {
+      message: {
+        ...message,
+        content: message.content.map((block) => {
+          if (block.type !== "tool_call") return block;
+          const repairedName = repairedById.get(block.id);
+          return repairedName ? ({ ...block, name: repairedName } satisfies CanonicalToolCallBlock) : block;
+        }),
+      },
+      toolCalls: repairedToolCalls,
     };
   }
 

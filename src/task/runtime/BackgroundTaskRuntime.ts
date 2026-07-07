@@ -26,10 +26,24 @@ import { randomUUID } from "node:crypto";
 import { TaskOutputStore } from "../storage/TaskOutputStore.js";
 import type {
   PilotDeckBackgroundBashTask,
+  PilotDeckBackgroundTaskStatus,
   PilotDeckBackgroundTaskKind,
   PilotDeckBackgroundTaskListFilter,
   PilotDeckTaskOutputSlice,
 } from "../protocol/types.js";
+
+export type BackgroundTaskCompletionEvent = {
+  sessionId?: string;
+  taskId: string;
+  status: Extract<PilotDeckBackgroundTaskStatus, "completed" | "failed" | "cancelled">;
+  exitCode?: number | null;
+  outputPreview: string;
+  totalBytes: number;
+  startedAt: string;
+  endedAt: string;
+};
+
+export type BackgroundTaskCompletionHandler = (event: BackgroundTaskCompletionEvent) => void;
 
 export type BackgroundTaskRuntimeOptions = {
   /** Optional dir under which to spill output (default: in-memory only). */
@@ -40,12 +54,17 @@ export type BackgroundTaskRuntimeOptions = {
   spawn?: typeof spawn;
   /** Hard cap on simultaneous tasks (default: 32). */
   maxTasks?: number;
+  /** Optional completion sink for hosts that want one-shot background task notifications. */
+  onCompletion?: BackgroundTaskCompletionHandler;
+  /** Maximum bytes included in completion output previews (default: 4000). */
+  completionPreviewBytes?: number;
 };
 
 export type StartTaskSpec = {
   command: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  sessionId?: string;
   agentId?: string;
   kind?: PilotDeckBackgroundTaskKind;
 };
@@ -64,13 +83,14 @@ type RuntimeEntry = {
 
 const DEFAULT_GRACE_MS = 5_000;
 const DEFAULT_MAX_TASKS = 32;
+const DEFAULT_COMPLETION_PREVIEW_BYTES = 4_000;
 
 export class BackgroundTaskRuntime {
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly options: Required<
     Pick<BackgroundTaskRuntimeOptions, "now" | "spawn" | "maxTasks">
   > &
-    Pick<BackgroundTaskRuntimeOptions, "diskSpillDir">;
+    Pick<BackgroundTaskRuntimeOptions, "diskSpillDir" | "onCompletion" | "completionPreviewBytes">;
 
   constructor(options: BackgroundTaskRuntimeOptions = {}) {
     this.options = {
@@ -78,6 +98,8 @@ export class BackgroundTaskRuntime {
       spawn: options.spawn ?? spawn,
       maxTasks: options.maxTasks ?? DEFAULT_MAX_TASKS,
       diskSpillDir: options.diskSpillDir,
+      onCompletion: options.onCompletion,
+      completionPreviewBytes: options.completionPreviewBytes ?? DEFAULT_COMPLETION_PREVIEW_BYTES,
     };
   }
 
@@ -117,6 +139,7 @@ export class BackgroundTaskRuntime {
       taskId,
       type: "local_bash",
       agentId: spec.agentId,
+      sessionId: spec.sessionId,
       kind: spec.kind ?? "bash",
       command: spec.command,
       cwd: spec.cwd,
@@ -157,6 +180,7 @@ export class BackgroundTaskRuntime {
       output.append(Buffer.from(`spawn error: ${message}\n`));
       task.outputBytes = output.totalBytes();
       this.entries.set(taskId, { task, output, done: Promise.resolve() });
+      this.notifyCompletion(task, output);
       resolveDone();
       return task;
     }
@@ -188,6 +212,7 @@ export class BackgroundTaskRuntime {
         task.status = "failed";
       }
       task.completionStatusSentInAttachment = true;
+      this.notifyCompletion(task, output);
       resolveDone();
     });
 
@@ -256,5 +281,28 @@ export class BackgroundTaskRuntime {
     if (!entry) throw new Error(`Unknown taskId: ${taskId}`);
     await entry.done;
     return entry.task;
+  }
+
+  private notifyCompletion(task: PilotDeckBackgroundBashTask, output: TaskOutputStore): void {
+    if (!this.options.onCompletion || !task.endedAt) {
+      return;
+    }
+    const previewBytes = Math.max(0, this.options.completionPreviewBytes ?? DEFAULT_COMPLETION_PREVIEW_BYTES);
+    const totalBytes = output.totalBytes();
+    const slice = output.readSlice(Math.max(0, totalBytes - previewBytes), previewBytes);
+    try {
+      this.options.onCompletion({
+        taskId: task.taskId,
+        sessionId: task.sessionId,
+        status: task.status as BackgroundTaskCompletionEvent["status"],
+        exitCode: task.exitCode,
+        outputPreview: slice.content,
+        totalBytes,
+        startedAt: task.startedAt.toISOString(),
+        endedAt: task.endedAt.toISOString(),
+      });
+    } catch {
+      // Completion notifications are best-effort and must never break task cleanup.
+    }
   }
 }

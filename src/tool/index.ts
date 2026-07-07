@@ -30,6 +30,8 @@ export type {
 } from "./protocol/schema.js";
 export type {
   PilotDeckToolCall,
+  PilotDeckToolAvailability,
+  PilotDeckToolAvailabilityContext,
   PilotDeckToolDefinition,
   PilotDeckToolExecutionOutput,
   PilotDeckToolSupplementalMessage,
@@ -53,6 +55,11 @@ export type {
 } from "./protocol/types.js";
 export { ToolRegistry } from "./registry/ToolRegistry.js";
 export { createBuiltinRegistry, type CreateBuiltinRegistryOptions } from "./registry/createBuiltinRegistry.js";
+export {
+  filterAvailableTools,
+  type FilterAvailableToolsResult,
+  type PilotDeckUnavailableToolDiagnostic,
+} from "./registry/filterAvailableTools.js";
 export { ConcurrentToolScheduler } from "./scheduler/ConcurrentToolScheduler.js";
 export { SequentialToolScheduler } from "./scheduler/SequentialToolScheduler.js";
 export type { PilotDeckToolScheduler } from "./scheduler/ToolScheduler.js";

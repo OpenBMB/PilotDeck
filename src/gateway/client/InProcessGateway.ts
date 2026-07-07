@@ -1377,6 +1377,12 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
         ratio: event.snapshot.ratio,
         state: event.snapshot.state,
       }];
+    case "warning":
+      return [{
+        type: "agent_status",
+        event: "warning",
+        detail: { code: event.code, message: event.message, metadata: event.metadata },
+      }];
     case "agent_status":
       return [{
         type: "agent_status",
