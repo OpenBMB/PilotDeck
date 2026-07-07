@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validatePilotDeckConfig } from './pilotdeckConfig.js';
+import { sanitizeProviderCredentials, validatePilotDeckConfig } from './pilotdeckConfig.js';
 
 describe('validatePilotDeckConfig gateway validation', () => {
     it('rejects non-object gateway config', () => {
@@ -42,5 +42,45 @@ describe('validatePilotDeckConfig gateway validation', () => {
 
         expect(validation.valid).toBe(true);
         expect(validation.errors).toEqual([]);
+    });
+
+    it('accepts Ollama providers without an apiKey', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'ollama/qwen3:0.6b' },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+        expect(validation.errors).toEqual([]);
+    });
+
+    it('removes blank Ollama apiKeys during sanitization', () => {
+        const config = sanitizeProviderCredentials({
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: ' http://localhost:11434/v1 ',
+                        apiKey: '   ',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(config.model.providers.ollama).not.toHaveProperty('apiKey');
+        expect(config.model.providers.ollama.url).toBe('http://localhost:11434/v1');
     });
 });
