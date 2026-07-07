@@ -221,15 +221,21 @@ function validateRouterModelRefs(config, errors) {
   }
 
   const tokenSaver = router.tokenSaver;
-  if (!isRecord(tokenSaver)) return;
+  if (isRecord(tokenSaver)) {
+    validateModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
 
-  validateModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
-
-  if (isRecord(tokenSaver.tiers)) {
-    for (const [key, tier] of Object.entries(tokenSaver.tiers)) {
-      if (!isRecord(tier)) continue;
-      validateModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+    if (isRecord(tokenSaver.tiers)) {
+      for (const [key, tier] of Object.entries(tokenSaver.tiers)) {
+        if (!isRecord(tier)) continue;
+        validateModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+      }
     }
+  }
+
+  const autoOrchestrate = router.autoOrchestrate;
+  if (isRecord(autoOrchestrate)) {
+    validateModelRef(config, autoOrchestrate.mainAgentModel, 'router.autoOrchestrate.mainAgentModel', errors);
+    validateModelRef(config, autoOrchestrate.subagentModel, 'router.autoOrchestrate.subagentModel', errors);
   }
 }
 
@@ -587,6 +593,14 @@ function purgeBootstrapPlaceholder(config) {
           tier.model = agentRef || tier.model;
         }
       }
+    }
+  }
+  if (isRecord(router.autoOrchestrate)) {
+    if (isOrphanRef(router.autoOrchestrate.mainAgentModel)) {
+      router.autoOrchestrate.mainAgentModel = agentRef || router.autoOrchestrate.mainAgentModel;
+    }
+    if (isOrphanRef(router.autoOrchestrate.subagentModel)) {
+      router.autoOrchestrate.subagentModel = agentRef || router.autoOrchestrate.subagentModel;
     }
   }
 

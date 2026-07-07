@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCronConfigEnabled, patch } from './pilotDeckConfigForm';
+import { isCronConfigEnabled, patch, rewriteProviderRefs } from './pilotDeckConfigForm';
 
 describe('PilotDeckConfigTab Cron settings', () => {
   it.each([
@@ -25,5 +25,26 @@ describe('PilotDeckConfigTab Cron settings', () => {
       cron: { enabled: true },
     });
     expect(config).not.toHaveProperty('cron');
+  });
+});
+
+describe('PilotDeckConfigTab router refs', () => {
+  it('rewrites auto-orchestrate model refs when renaming a provider', () => {
+    const config = {
+      agent: { model: 'old/main' },
+      router: {
+        autoOrchestrate: {
+          mainAgentModel: 'old/main',
+          subagentModel: 'old/sub',
+        },
+      },
+    };
+
+    const updated = rewriteProviderRefs(config, 'old', 'new');
+
+    expect(updated.router?.autoOrchestrate?.mainAgentModel).toBe('new/main');
+    expect(updated.router?.autoOrchestrate?.subagentModel).toBe('new/sub');
+    expect(config.router.autoOrchestrate.mainAgentModel).toBe('old/main');
+    expect(config.router.autoOrchestrate.subagentModel).toBe('old/sub');
   });
 });
