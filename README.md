@@ -355,6 +355,27 @@ model:
         gemini-3.1-pro-preview: {}
 ```
 
+Local Ollama models can be configured without an API key. PilotDeck uses
+Ollama's OpenAI-compatible `/v1/chat/completions` endpoint:
+
+```bash
+ollama serve
+ollama pull qwen3:0.6b
+```
+
+```yaml
+schemaVersion: 1
+agent:
+  model: ollama/qwen3:0.6b
+model:
+  providers:
+    ollama:
+      protocol: openai
+      url: http://localhost:11434/v1
+      models:
+        qwen3:0.6b: {}
+```
+
 **3. Start the services**
 
 ```bash

@@ -1078,4 +1078,60 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
     models: {},
   },
 
+  ollama: {
+    displayName: "Ollama",
+    protocol: "openai",
+    defaultUrl: "http://localhost:11434/v1",
+    models: {
+      "qwen3:0.6b": {
+        displayName: "Qwen3 0.6B (Ollama)",
+        capabilities: {
+          supportsToolUse: true,
+          supportsStreaming: true,
+          supportsParallelToolCalls: false,
+          supportsThinking: false,
+          supportsJsonSchema: false,
+          supportsSystemPrompt: true,
+          supportsPromptCache: false,
+          maxContextTokens: 40_960,
+          maxOutputTokens: 8_192,
+        },
+        multimodal: { input: ["text"] },
+        aliases: [],
+      },
+      "qwen3:8b": {
+        displayName: "Qwen3 8B (Ollama)",
+        capabilities: {
+          supportsToolUse: false,
+          supportsStreaming: true,
+          supportsParallelToolCalls: false,
+          supportsThinking: false,
+          supportsJsonSchema: false,
+          supportsSystemPrompt: true,
+          supportsPromptCache: false,
+          maxContextTokens: 40_960,
+          maxOutputTokens: 8_192,
+        },
+        multimodal: { input: ["text"] },
+        aliases: [],
+      },
+      "llama3.1:8b": {
+        displayName: "Llama 3.1 8B (Ollama)",
+        capabilities: {
+          supportsToolUse: false,
+          supportsStreaming: true,
+          supportsParallelToolCalls: false,
+          supportsThinking: false,
+          supportsJsonSchema: false,
+          supportsSystemPrompt: true,
+          supportsPromptCache: false,
+          maxContextTokens: 131_072,
+          maxOutputTokens: 8_192,
+        },
+        multimodal: { input: ["text"] },
+        aliases: [],
+      },
+    },
+  },
+
 };
