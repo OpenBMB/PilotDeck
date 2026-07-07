@@ -1,5 +1,69 @@
-import { describe, expect, it } from 'vitest';
-import { sanitizeProviderCredentials, validatePilotDeckConfig } from './pilotdeckConfig.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { readPilotDeckConfigFile, sanitizeProviderCredentials, validatePilotDeckConfig } from './pilotdeckConfig.js';
+
+const tempDirs = [];
+
+afterEach(() => {
+    delete process.env.PILOTDECK_CONFIG_PATH;
+    for (const dir of tempDirs.splice(0)) {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+function useTempConfig(contents, filename = 'pilotdeck.yaml') {
+    const dir = mkdtempSync(join(tmpdir(), 'pilotdeck-config-test-'));
+    tempDirs.push(dir);
+    const configPath = join(dir, filename);
+    if (contents !== null) {
+        writeFileSync(configPath, contents, 'utf8');
+    }
+    process.env.PILOTDECK_CONFIG_PATH = configPath;
+    return configPath;
+}
+
+describe('readPilotDeckConfigFile fallback behavior', () => {
+    it('returns defaults when the config file is missing', () => {
+        const configPath = useTempConfig(null);
+
+        const record = readPilotDeckConfigFile();
+
+        expect(record.exists).toBe(false);
+        expect(record.configPath).toBe(configPath);
+        expect(record.raw).toBe('');
+        expect(record.rawYaml).toEqual({});
+        expect(record.parseError).toBeNull();
+        expect(record.config.schemaVersion).toBe(1);
+    });
+
+    it('reads and normalizes valid YAML', () => {
+        useTempConfig('schemaVersion: 1\nmodel:\n  providers: {}\n');
+
+        const record = readPilotDeckConfigFile();
+
+        expect(record.exists).toBe(true);
+        expect(record.parseError).toBeNull();
+        expect(record.rawYaml).toMatchObject({ schemaVersion: 1, model: { providers: {} } });
+        expect(record.config.model.providers).toEqual({});
+        expect(record.config.memory.enabled).toBe(true);
+    });
+
+    it('keeps raw YAML and falls back to defaults when YAML is invalid', () => {
+        const raw = 'schemaVersion: 1\nmodel:\n  providers: [\n';
+        useTempConfig(raw);
+
+        const record = readPilotDeckConfigFile();
+
+        expect(record.exists).toBe(true);
+        expect(record.raw).toBe(raw);
+        expect(record.rawYaml).toBeNull();
+        expect(record.parseError).toEqual(expect.any(String));
+        expect(record.config.schemaVersion).toBe(1);
+        expect(record.config.model.providers).toEqual({});
+    });
+});
 
 describe('validatePilotDeckConfig gateway validation', () => {
     it('rejects non-object gateway config', () => {

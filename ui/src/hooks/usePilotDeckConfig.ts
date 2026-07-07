@@ -29,6 +29,8 @@ type ConfigResponse = {
   exists: boolean;
   path: string;
   raw: string;
+  configDisabled?: boolean;
+  parseError?: string | null;
   validation: ConfigValidation;
   reload?: ConfigReload;
 };
@@ -46,6 +48,8 @@ export function usePilotDeckConfig() {
   const [exists, setExists] = useState(false);
   const [validation, setValidation] = useState<ConfigValidation | null>(null);
   const [reload, setReload] = useState<ConfigReload | null>(null);
+  const [configDisabled, setConfigDisabled] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
   const [lastReloadInfo, setLastReloadInfo] = useState<ReloadInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,6 +83,8 @@ export function usePilotDeckConfig() {
     setRaw(data.raw);
     savedRawRef.current = data.raw;
     setExists(data.exists);
+    setConfigDisabled(data.configDisabled === true);
+    setParseError(data.parseError ?? null);
     setValidation(data.validation);
     setReload((data.reload as ConfigReload | undefined) ?? null);
     setLastReloadInfo({ source, at: Date.now() });
@@ -172,6 +178,8 @@ export function usePilotDeckConfig() {
         );
         setValidation(payload.validation);
         setReload((payload.reload as ConfigReload | undefined) ?? null);
+        setConfigDisabled(payload.configDisabled === true);
+        setParseError(payload.parseError ?? null);
         setPath(payload.path);
         setExists(true);
         setLastReloadInfo({ source, at: Date.now() });
@@ -183,6 +191,8 @@ export function usePilotDeckConfig() {
           exists: true,
           path: payload.path,
           raw: payload.raw ?? '',
+          configDisabled: payload.configDisabled,
+          parseError: payload.parseError,
           validation: payload.validation,
           reload: payload.reload as ConfigReload | undefined,
         },
@@ -260,6 +270,8 @@ export function usePilotDeckConfig() {
     exists,
     validation,
     reload,
+    configDisabled,
+    parseError,
     lastReloadInfo,
     isDirty,
     externalChangeNotice,

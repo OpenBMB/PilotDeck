@@ -480,12 +480,25 @@ export function readPilotDeckConfigFile() {
       raw: '',
       config: buildDefaultPilotDeckConfig(),
       rawYaml: {},
+      parseError: null,
     };
   }
   const raw = fs.readFileSync(configPath, 'utf8');
-  const parsed = parseYaml(raw) || {};
+  let parsed;
+  try {
+    parsed = parseYaml(raw) || {};
+  } catch (error) {
+    return {
+      exists: true,
+      configPath,
+      raw,
+      config: buildDefaultPilotDeckConfig(),
+      rawYaml: null,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
   const config = normalizePilotDeckConfig(parsed);
-  return { exists: true, configPath, raw, config, rawYaml: parsed };
+  return { exists: true, configPath, raw, config, rawYaml: parsed, parseError: null };
 }
 
 // Keep `router.scenarios.default` aligned with `agent.model` whenever we
