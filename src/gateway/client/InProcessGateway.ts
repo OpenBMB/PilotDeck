@@ -79,6 +79,7 @@ import type {
   SkillsListInput,
   SkillsListResult,
 } from "../../extension/skills/types.js";
+import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 
@@ -295,11 +296,25 @@ export class InProcessGateway implements Gateway {
     }
     const runId = input.runId ?? this.uuid();
     if (!this.router.beginTurn(input.sessionKey, runId)) {
+      const message = `Session ${input.sessionKey} already has an active turn.`;
+      const userHint = "Wait for the current turn to finish or stop it before sending another message.";
+      yield {
+        type: "agent_status",
+        event: "session_busy",
+        detail: createVisibleErrorStatusDetail({
+          message,
+          code: "session_busy",
+          userHint,
+          scope: "session",
+          source: "gateway",
+        }),
+      };
       yield {
         type: "error",
         code: "session_busy",
-        message: `Session ${input.sessionKey} already has an active turn.`,
+        message,
         recoverable: true,
+        userHint,
       };
       return;
     }
@@ -319,6 +334,22 @@ export class InProcessGateway implements Gateway {
       truncated: false,
     });
     this.emitSinks.set(input.sessionKey, (event) => queue.enqueue(event));
+    const emitGatewayFailureStatus = (status: GatewayRecordAgentStatusMessageInput["status"]): Promise<void> => {
+      const recorded = this.recordGatewayStatusMessage({
+        sessionKey: input.sessionKey,
+        turnId: runId,
+        projectKey: input.projectKey,
+        status,
+      });
+      const statusEvent: GatewayEvent = {
+        type: "agent_status",
+        event: status.event,
+        detail: status.detail,
+      };
+      this.recordActiveTurnEvent(input.sessionKey, statusEvent);
+      queue.enqueue(statusEvent);
+      return recorded;
+    };
 
     if (input.workspaceCwd && this.options.setSessionCwd) {
       this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
@@ -339,11 +370,20 @@ export class InProcessGateway implements Gateway {
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
+            const message = `Turn exceeded the ${input.timeoutMs}ms timeout.`;
+            void emitGatewayFailureStatus(createGatewayFailureStatus({
+              event: "turn_timeout",
+              code: "turn_timeout",
+              message,
+              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
+              detail: { timeoutMs: input.timeoutMs },
+            }));
             const gatewayEvent: GatewayEvent = {
               type: "error",
               code: "turn_timeout",
-              message: `Turn exceeded the ${input.timeoutMs}ms timeout.`,
+              message,
               recoverable: false,
+              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
             };
             this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
             queue.enqueue(gatewayEvent);
@@ -445,11 +485,19 @@ export class InProcessGateway implements Gateway {
           },
         });
         if (this.turnCompletions.get(input.sessionKey) === turnDone) {
+          const message = error instanceof Error ? error.message : String(error);
+          await emitGatewayFailureStatus(createGatewayFailureStatus({
+            event: "gateway_submit_failed",
+            code: "gateway_submit_failed",
+            message,
+            userHint: "PilotDeck failed before the agent turn could finish. Retry this message; if it repeats, check the gateway logs.",
+          }));
           const gatewayEvent: GatewayEvent = {
             type: "error",
             code: "gateway_submit_failed",
-            message: error instanceof Error ? error.message : String(error),
+            message,
             recoverable: false,
+            userHint: "PilotDeck failed before the agent turn could finish. Retry this message; if it repeats, check the gateway logs.",
           };
           this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
           queue.enqueue(gatewayEvent);
@@ -538,6 +586,17 @@ export class InProcessGateway implements Gateway {
       return { recorded: false };
     }
     return this.options.recordAgentStatusMessage(input);
+  }
+
+  private async recordGatewayStatusMessage(input: GatewayRecordAgentStatusMessageInput): Promise<void> {
+    if (!this.options.recordAgentStatusMessage) {
+      return;
+    }
+    try {
+      await this.options.recordAgentStatusMessage(input);
+    } catch (error) {
+      console.warn("[pilotdeck] failed to record gateway status message:", error);
+    }
   }
 
   async describeServer(): Promise<GatewayServerInfo> {
@@ -822,6 +881,28 @@ function resolveSubmitTurnTelemetry(input: GatewaySubmitTurnInput): {
     ownerModule: input.telemetry?.ownerModule ?? "session",
     executionKind: input.telemetry?.executionKind ?? "user_session",
     phase: input.telemetry?.phase,
+  };
+}
+
+function createGatewayFailureStatus(args: {
+  event: string;
+  code: string;
+  message: string;
+  userHint: string;
+  detail?: Record<string, unknown>;
+}): GatewayRecordAgentStatusMessageInput["status"] {
+  return {
+    event: args.event,
+    kind: "error",
+    text: args.message,
+    detail: createVisibleErrorStatusDetail({
+      message: args.message,
+      code: args.code,
+      userHint: args.userHint,
+      scope: "turn",
+      source: "gateway",
+      detail: args.detail,
+    }),
   };
 }
 

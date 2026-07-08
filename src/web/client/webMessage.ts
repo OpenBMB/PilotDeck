@@ -7,6 +7,7 @@
  */
 
 import type { WebGatewayEvent } from "./protocol.js";
+import { isVisibleFailureStatusDetail } from "../../status/agentStatus.js";
 
 function normalizeToolDisplayName(name: string): string {
   const aliases: Record<string, string> = {
@@ -41,6 +42,35 @@ function normalizeToolErrorCode(errorCode: string | undefined, resultPreview: un
   if (errorCode === "ask_mode_violation") return "ask_mode_denied";
   return isReadOnlyModeToolDenyText(resultPreview) ?? errorCode;
 }
+
+const ERROR_AGENT_STATUS_EVENTS = new Set([
+  "model_empty_response_exhausted",
+  "max_turns_reached",
+  "max_output_recovery_exhausted",
+  "model_request_failed",
+  "tool_call_recovery_exhausted",
+  "tool_error_loop",
+  "lifecycle_blocked",
+  "turn_failed",
+  "turn_timeout",
+  "gateway_submit_failed",
+  "session_busy",
+  "gateway_bridge_error",
+  "gateway_stream_ended_without_completion",
+  "web_http_request_failed",
+  "project_unavailable",
+  "config_invalid",
+  "gateway_unavailable",
+  "channel_submit_failed",
+  "subagent_failed",
+  "content_filter_stop",
+  "unknown_finish_reason",
+]);
+
+const STATUS_AGENT_STATUS_EVENTS = new Set([
+  "structured_output_completed",
+  "turn_aborted",
+]);
 
 export type WebMessageRole =
   | "user"
@@ -116,12 +146,15 @@ export type WebMessageReducerState = {
   currentThinkingId?: string;
   /** Map toolCallId -> message id so we can flip to tool_result on finish. */
   toolMessageByCallId: Record<string, string>;
+  /** True after this turn has already shown a visible failure status. */
+  hasVisibleFailureStatus: boolean;
 };
 
 export function createWebMessageReducerState(): WebMessageReducerState {
   return {
     messages: [],
     toolMessageByCallId: {},
+    hasVisibleFailureStatus: false,
   };
 }
 
@@ -140,6 +173,7 @@ export function applyWebGatewayEvent(
         ...state,
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        hasVisibleFailureStatus: false,
       };
 
     case "assistant_text_delta": {
@@ -397,23 +431,12 @@ export function applyWebGatewayEvent(
     }
 
     case "agent_status": {
-      const errorEvents = new Set([
-        "model_empty_response_exhausted",
-        "max_turns_reached",
-        "max_output_recovery_exhausted",
-        "subagent_failed",
-        "content_filter_stop",
-        "unknown_finish_reason",
-      ]);
-      const statusEvents = new Set([
-        "structured_output_completed",
-        "turn_aborted",
-      ]);
-      if (!errorEvents.has(event.event) && !statusEvents.has(event.event)) {
+      const isErrorStatus = isErrorAgentStatusEvent(event);
+      if (!isErrorStatus && !STATUS_AGENT_STATUS_EVENTS.has(event.event)) {
         return state;
       }
       const detail = event.detail ?? {};
-      const kind = errorEvents.has(event.event) ? "error" : "status";
+      const kind = isErrorStatus ? "error" : "status";
       const text = typeof detail.message === "string" && detail.message.length > 0
         ? detail.message
         : kind === "error"
@@ -429,7 +452,11 @@ export function applyWebGatewayEvent(
         role: kind === "error" ? "error" : "system",
         kind,
         text,
-        payload: { event: event.event, detail },
+        payload: {
+          event: event.event,
+          detail,
+          ...(typeof detail.userHint === "string" ? { userHint: detail.userHint } : {}),
+        },
         source: "live",
       };
       return {
@@ -437,10 +464,19 @@ export function applyWebGatewayEvent(
         messages: [...state.messages, message],
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        hasVisibleFailureStatus: state.hasVisibleFailureStatus
+          || (kind === "error" && detail.visible !== false),
       };
     }
 
     case "error": {
+      if (state.hasVisibleFailureStatus) {
+        return {
+          ...state,
+          currentAssistantId: undefined,
+          currentThinkingId: undefined,
+        };
+      }
       const id = newId();
       const message: WebMessage = {
         id,
@@ -451,7 +487,11 @@ export function applyWebGatewayEvent(
         role: "error",
         kind: "error",
         text: event.message,
-        payload: { code: event.code, recoverable: event.recoverable },
+        payload: {
+          code: event.code,
+          recoverable: event.recoverable,
+          ...(event.userHint ? { userHint: event.userHint } : {}),
+        },
         source: "live",
       };
       return {
@@ -474,4 +514,8 @@ function defaultNewId(): string {
     return c.randomUUID();
   }
   return `web-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
+function isErrorAgentStatusEvent(event: WebGatewayEvent & { type: "agent_status" }): boolean {
+  return ERROR_AGENT_STATUS_EVENTS.has(event.event) || isVisibleFailureStatusDetail(event.detail);
 }

@@ -9,7 +9,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { SessionProvider } from '../types/app';
-import { authenticatedFetch } from '../utils/api';
+import { authenticatedFetch, readAgentStatusErrorFromResponse } from '../utils/api';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -591,10 +591,16 @@ export function useSessionStore() {
 
       const qs = params.toString();
       const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
-      const response = await authenticatedFetch(url);
+      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const statusError = await readAgentStatusErrorFromResponse(response, {
+          event: 'web_http_request_failed',
+          code: 'session_messages_load_failed',
+          message: `Unable to load conversation messages (HTTP ${response.status}).`,
+          scope: 'session',
+        });
+        throw new Error(statusError.message);
       }
 
       const data = await response.json();
@@ -680,8 +686,16 @@ export function useSessionStore() {
     const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
 
     try {
-      const response = await authenticatedFetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
+      if (!response.ok) {
+        const statusError = await readAgentStatusErrorFromResponse(response, {
+          event: 'web_http_request_failed',
+          code: 'session_messages_load_failed',
+          message: `Unable to load conversation messages (HTTP ${response.status}).`,
+          scope: 'session',
+        });
+        throw new Error(statusError.message);
+      }
       const data = await response.json();
       const olderMessages: NormalizedMessage[] = data.messages || [];
 
@@ -962,9 +976,17 @@ export function useSessionStore() {
 
       const qs = params.toString();
       const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
-      const response = await authenticatedFetch(url);
+      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const statusError = await readAgentStatusErrorFromResponse(response, {
+          event: 'web_http_request_failed',
+          code: 'session_messages_load_failed',
+          message: `Unable to refresh conversation messages (HTTP ${response.status}).`,
+          scope: 'session',
+        });
+        throw new Error(statusError.message);
+      }
       const data = await response.json();
 
       const incomingMessages = data.messages || [];

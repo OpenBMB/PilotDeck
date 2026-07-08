@@ -25,6 +25,7 @@ import {
   type ImLiveReplyTransport,
 } from "../protocol/ImLiveReplyController.js";
 import { WeixinSessionMapper, type WeixinSessionMapperState } from "./WeixinSessionMapper.js";
+import { createVisibleErrorStatusDetail } from "../../../status/agentStatus.js";
 
 const CREDENTIALS_PATH = join(homedir(), ".pilotdeck", "weixin-credentials.json");
 const POLL_RETRY_DELAY_MS = 3000;
@@ -674,9 +675,18 @@ export class WeixinChannel implements ChannelAdapter {
     } catch (e) {
       this.logger?.error?.(`weixin: submitTurn error: ${formatWeixinError(e)}`);
       await liveReply.handleEvent({
-        type: "error",
-        message: "处理消息时发生错误，请重试。",
-        recoverable: true,
+        type: "agent_status",
+        event: "channel_submit_failed",
+        detail: createVisibleErrorStatusDetail({
+          message: "处理消息时发生错误，请重试。",
+          code: "channel_submit_failed",
+          userHint: "PilotDeck failed before this IM turn could finish. Retry the message; if it repeats, check the channel and gateway logs.",
+          scope: "channel",
+          source: "im_channel",
+          detail: {
+            channel: "weixin",
+          },
+        }),
       });
     } finally {
       watchdogSettled = true;

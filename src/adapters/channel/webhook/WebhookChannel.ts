@@ -1,11 +1,16 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { CronResultDelivery } from "../../../cron/index.js";
-import type { Gateway, GatewayChannelKey } from "../../../gateway/index.js";
+import type { Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
 import { deliverChatCronResult } from "../protocol/ImCronDelivery.js";
 import { WebhookSessionMapper } from "./WebhookSessionMapper.js";
 import { renderWebhookEvent } from "./webhook-render.js";
+import {
+  createAgentStatusHttpErrorBody,
+  createVisibleErrorStatusDetail,
+  isVisibleFailureStatusDetail,
+} from "../../../status/agentStatus.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8643;
@@ -132,13 +137,26 @@ export class WebhookChannel implements ChannelAdapter {
   private async handleWebhook(req: IncomingMessage, res: ServerResponse, routeName: string): Promise<void> {
     const route = this.routes[routeName];
     if (!route) {
-      sendJson(res, 404, { error: `Unknown route: ${routeName}` });
+      sendJson(res, 404, createWebhookErrorBody({
+        event: "webhook_unknown_route",
+        message: `Unknown route: ${routeName}`,
+        code: "unknown_route",
+        status: 404,
+        userHint: "Check the webhook route name and retry.",
+      }));
       return;
     }
 
     const now = Date.now() / 1000;
     if (!this.checkRateLimit(routeName, now)) {
-      sendJson(res, 429, { error: "Rate limit exceeded" });
+      sendJson(res, 429, createWebhookErrorBody({
+        event: "webhook_rate_limited",
+        message: "Rate limit exceeded",
+        code: "rate_limit_exceeded",
+        status: 429,
+        type: "rate_limit_error",
+        userHint: "Wait for the webhook rate limit window to reset, then retry.",
+      }));
       return;
     }
 
@@ -146,7 +164,13 @@ export class WebhookChannel implements ChannelAdapter {
     try {
       bodyText = await readRequestBody(req, this.maxBodyBytes);
     } catch (e) {
-      sendJson(res, 413, { error: `Request too large or unreadable: ${e}` });
+      sendJson(res, 413, createWebhookErrorBody({
+        event: "webhook_request_too_large",
+        message: `Request too large or unreadable: ${e}`,
+        code: "request_too_large",
+        status: 413,
+        userHint: "Reduce the webhook payload size and retry.",
+      }));
       return;
     }
 
@@ -156,7 +180,13 @@ export class WebhookChannel implements ChannelAdapter {
         req.headers["x-hub-signature-256"] ?? req.headers["x-signature-256"] ?? "",
       );
       if (!this.verifyHmac(bodyText, secret, signature)) {
-        sendJson(res, 401, { error: "Invalid signature" });
+        sendJson(res, 401, createWebhookErrorBody({
+          event: "webhook_invalid_signature",
+          message: "Invalid signature",
+          code: "invalid_signature",
+          status: 401,
+          userHint: "Check the webhook signing secret and signature header.",
+        }));
         return;
       }
     }
@@ -224,27 +254,65 @@ export class WebhookChannel implements ChannelAdapter {
   }
 
   private async processMessage(chatId: string, sessionKey: string, message: string): Promise<void> {
-    if (!this.gateway) return;
+    if (!this.gateway) {
+      await this.deliverStatusReply(chatId, {
+        event: "gateway_unavailable",
+        message: "Gateway not ready",
+        code: "gateway_unavailable",
+        scope: "preflight",
+        userHint: "Start or reconnect the PilotDeck gateway, then retry.",
+      });
+      return;
+    }
 
     let replyText = "";
     try {
+      let hasVisibleFailureStatus = false;
       for await (const event of this.gateway.submitTurn({
         sessionKey,
         channelKey: "webhook",
         message,
       })) {
+        if (isVisibleFailureGatewayEvent(event)) {
+          hasVisibleFailureStatus = true;
+        }
+        if (event.type === "error" && hasVisibleFailureStatus) {
+          continue;
+        }
         const fragment = renderWebhookEvent(event);
         if (fragment != null) replyText += fragment;
       }
     } catch (e) {
       this.logger?.error?.(`webhook: submitTurn error: ${e}`);
-      replyText = "处理消息时发生错误，请重试。";
+      const statusEvent = createWebhookStatusEvent({
+        event: "channel_submit_failed",
+        message: "处理消息时发生错误，请重试。",
+        code: "channel_submit_failed",
+        scope: "channel",
+        userHint: "PilotDeck failed before this webhook turn could finish. Retry the delivery; if it repeats, check webhook and gateway logs.",
+      });
+      replyText = renderWebhookEvent(statusEvent) ?? "处理消息时发生错误，请重试。";
     }
 
     const finalText = replyText.trim();
     if (finalText) {
       await this.deliverReply(chatId, finalText);
     }
+  }
+
+  private async deliverStatusReply(
+    chatId: string,
+    input: {
+      event: string;
+      message: string;
+      code: string;
+      scope: "preflight" | "channel" | "session";
+      userHint: string;
+    },
+  ): Promise<void> {
+    const statusEvent = createWebhookStatusEvent(input);
+    const text = renderWebhookEvent(statusEvent)?.trim() || input.message;
+    await this.deliverReply(chatId, text);
   }
 
   private async deliverReply(chatId: string, text: string): Promise<boolean> {
@@ -320,6 +388,49 @@ export class WebhookChannel implements ChannelAdapter {
       }
     }
   }
+}
+
+function createWebhookErrorBody(input: {
+  event: string;
+  message: string;
+  code?: string;
+  status?: number;
+  type?: string;
+  userHint?: string;
+  scope?: "http" | "preflight" | "session" | "channel";
+  detail?: Record<string, unknown>;
+}) {
+  return createAgentStatusHttpErrorBody({
+    ...input,
+    scope: input.scope ?? "http",
+    source: "webhook",
+  });
+}
+
+function createWebhookStatusEvent(input: {
+  event: string;
+  message: string;
+  code: string;
+  scope: "preflight" | "channel" | "session";
+  userHint: string;
+  detail?: Record<string, unknown>;
+}): GatewayEvent {
+  return {
+    type: "agent_status",
+    event: input.event,
+    detail: createVisibleErrorStatusDetail({
+      message: input.message,
+      code: input.code,
+      userHint: input.userHint,
+      scope: input.scope,
+      source: "webhook",
+      detail: input.detail,
+    }),
+  };
+}
+
+function isVisibleFailureGatewayEvent(event: GatewayEvent): boolean {
+  return event.type === "agent_status" && isVisibleFailureStatusDetail(event.detail);
 }
 
 function readRequestBody(req: IncomingMessage, max: number): Promise<string> {

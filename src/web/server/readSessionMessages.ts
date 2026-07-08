@@ -774,7 +774,8 @@ function attachSubagentIds(
 /**
  * Scan transcript entries for failed turns (`turn_result` with `type === "error"`)
  * and inject corresponding `WebMessage { kind: 'error' }` into the message list
- * so error banners survive history reload.
+ * so error banners survive history reload when no visible semantic status
+ * already represents the same turn.
  */
 function injectErrorTurnMessages(
   entries: AgentTranscriptEntry[],
@@ -782,15 +783,19 @@ function injectErrorTurnMessages(
   sessionKey: string,
   projectKey?: string,
 ): void {
-  const statusTurnIds = new Set(
+  const visibleFailureStatusTurnIds = new Set(
     entries
-      .filter((entry) => entry.type === "agent_status_message" && entry.event === "turn_failed")
+      .filter((entry) =>
+        entry.type === "agent_status_message" &&
+        entry.kind === "error" &&
+        entry.detail?.visible !== false
+      )
       .map((entry) => entry.turnId),
   );
   const errorMessages: WebMessage[] = [];
   for (const entry of entries) {
     if (entry.type !== "turn_result" || entry.result.type !== "error") continue;
-    if (statusTurnIds.has(entry.turnId)) continue;
+    if (visibleFailureStatusTurnIds.has(entry.turnId)) continue;
     const errorTexts = entry.result.errors?.map((e) => e.message).filter(Boolean) ?? [];
     const text = errorTexts.length > 0
       ? errorTexts.join("\n")

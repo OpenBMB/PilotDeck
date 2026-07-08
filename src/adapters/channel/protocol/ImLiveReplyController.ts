@@ -1,4 +1,5 @@
 import type { GatewayEvent } from "../../../gateway/index.js";
+import { isVisibleFailureStatusDetail } from "../../../status/agentStatus.js";
 
 export type ImLiveReplyHandle = unknown;
 
@@ -83,6 +84,34 @@ const DEFAULT_CURSOR = " ▉";
 const DEFAULT_ACTIVITY_ONLY_FINAL_TEXT = "处理完成，但没有可见回复。";
 const DEFAULT_TIMEOUT_FINAL_TEXT = "处理超时，请重新发送或稍后重试。";
 const DEFAULT_ABORT_FINAL_TEXT = "处理已中止，请重新发送或稍后重试。";
+const VISIBLE_FAILURE_STATUS_EVENTS = new Set([
+  "model_empty_response_exhausted",
+  "max_turns_reached",
+  "max_output_recovery_exhausted",
+  "model_request_failed",
+  "tool_call_recovery_exhausted",
+  "tool_error_loop",
+  "lifecycle_blocked",
+  "turn_failed",
+  "turn_timeout",
+  "gateway_submit_failed",
+  "session_busy",
+  "gateway_bridge_error",
+  "gateway_stream_ended_without_completion",
+  "web_http_request_failed",
+  "project_unavailable",
+  "config_invalid",
+  "gateway_unavailable",
+  "channel_submit_failed",
+  "subagent_failed",
+  "content_filter_stop",
+  "unknown_finish_reason",
+]);
+const WARNING_STATUS_EVENTS = new Set([
+  ...VISIBLE_FAILURE_STATUS_EVENTS,
+  "structured_output_completed",
+  "turn_aborted",
+]);
 
 export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private readonly transport: ImLiveReplyTransport<Handle>;
@@ -114,6 +143,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private lastFlushAt = 0;
   private closed = false;
   private turnTimerArmed = false;
+  private hasVisibleFailureStatus = false;
 
   constructor(options: ImLiveReplyControllerOptions<Handle>) {
     this.transport = options.transport;
@@ -142,6 +172,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
     switch (event.type) {
       case "turn_started":
+        this.hasVisibleFailureStatus = false;
         this.armTurnTimer(true);
         this.markActivity("thinking");
         return;
@@ -176,6 +207,9 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
         await this.pauseActivity();
         return;
       case "error":
+        if (this.hasVisibleFailureStatus) {
+          return;
+        }
         await this.append(this.formatError(event));
         return;
       default:
@@ -263,6 +297,11 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   }
 
   private handleAgentStatus(event: GatewayEvent & { type: "agent_status" }): void {
+    const isVisibleFailure = event.detail?.visible !== false
+      && (VISIBLE_FAILURE_STATUS_EVENTS.has(event.event) || isVisibleFailureStatusDetail(event.detail));
+    if (isVisibleFailure) {
+      this.hasVisibleFailureStatus = true;
+    }
     if (event.event === "model_empty_response_exhausted") {
       const detailMessage = typeof event.detail?.message === "string" ? event.detail.message : undefined;
       void this.append(`\n⚠️ ${detailMessage ?? "The model returned empty content repeatedly, so this turn has stopped. Try again later or increase max output tokens."}\n`);
@@ -273,12 +312,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       void this.append(`\n⚠️ ${detailMessage ?? "Reached the maximum number of turns, so this turn has stopped. Increase maxTurns or split the task into smaller steps and try again."}\n`);
       return;
     }
-    if (event.event === "max_output_recovery_exhausted"
-      || event.event === "subagent_failed"
-      || event.event === "content_filter_stop"
-      || event.event === "unknown_finish_reason"
-      || event.event === "structured_output_completed"
-      || event.event === "turn_aborted") {
+    if (WARNING_STATUS_EVENTS.has(event.event) || isVisibleFailureStatusDetail(event.detail)) {
       const detailMessage = typeof event.detail?.message === "string" ? event.detail.message : undefined;
       if (detailMessage) {
         void this.append(`\n⚠️ ${detailMessage}\n`);

@@ -34,11 +34,15 @@ const appendAuthToken = (url) => {
 // Utility function for authenticated API calls
 export const authenticatedFetch = (url, options = {}) => {
   const token = localStorage.getItem('auth-token');
+  const {
+    suppressServerErrorToast = false,
+    ...fetchOptions
+  } = options;
 
   const defaultHeaders = {};
 
   // Only set Content-Type for non-FormData requests
-  if (!(options.body instanceof FormData)) {
+  if (!(fetchOptions.body instanceof FormData)) {
     defaultHeaders['Content-Type'] = 'application/json';
   }
 
@@ -47,17 +51,17 @@ export const authenticatedFetch = (url, options = {}) => {
   }
 
   return fetch(url, {
-    ...options,
+    ...fetchOptions,
     headers: {
       ...defaultHeaders,
-      ...options.headers,
+      ...fetchOptions.headers,
     },
   }).then((response) => {
     const refreshedToken = response.headers.get('X-Refreshed-Token');
     if (refreshedToken) {
       localStorage.setItem('auth-token', refreshedToken);
     }
-    if (response.status >= 500) {
+    if (!suppressServerErrorToast && response.status >= 500) {
       window.dispatchEvent(new CustomEvent('pilotdeck:toast', {
         detail: { kind: 'error', message: `Server error (${response.status}): ${response.statusText || 'Internal Server Error'}` },
       }));
@@ -65,6 +69,88 @@ export const authenticatedFetch = (url, options = {}) => {
     return response;
   });
 };
+
+export const createWebHttpAgentStatus = ({
+  event = 'web_http_request_failed',
+  message,
+  code,
+  status,
+  statusText,
+  userHint,
+  scope = 'http',
+  detail = {},
+} = {}) => ({
+  type: 'agent_status',
+  event,
+  detail: Object.fromEntries(Object.entries({
+    message: message || `Request failed${status ? ` (${status})` : ''}.`,
+    code: code || event,
+    severity: 'error',
+    visible: true,
+    userHint: userHint || defaultWebHttpUserHint(status),
+    scope,
+    source: 'web_http',
+    status,
+    statusText,
+    ...detail,
+  }).filter(([, value]) => value !== undefined)),
+});
+
+export const extractAgentStatusFromBody = (body) => {
+  if (!body || typeof body !== 'object') return null;
+  const status = body.agent_status || body.agentStatus;
+  if (
+    status &&
+    status.type === 'agent_status' &&
+    typeof status.event === 'string' &&
+    status.detail &&
+    typeof status.detail === 'object'
+  ) {
+    return status;
+  }
+  return null;
+};
+
+export const readAgentStatusErrorFromResponse = async (response, options = {}) => {
+  let body = null;
+  try {
+    body = await response.clone().json();
+  } catch {
+    body = null;
+  }
+  const status = extractAgentStatusFromBody(body) || createWebHttpAgentStatus({
+    event: options.event || 'web_http_request_failed',
+    code: options.code,
+    message: options.message || response.statusText || `Request failed with HTTP ${response.status}.`,
+    status: response.status,
+    statusText: response.statusText,
+    userHint: options.userHint,
+    scope: options.scope || 'http',
+  });
+  return {
+    status,
+    message: formatAgentStatusForDisplay(status),
+  };
+};
+
+export const formatAgentStatusForDisplay = (status) => {
+  const detail = status?.detail || {};
+  const message = typeof detail.message === 'string' && detail.message.trim()
+    ? detail.message.trim()
+    : 'Request failed.';
+  const hint = typeof detail.userHint === 'string' && detail.userHint.trim()
+    ? detail.userHint.trim()
+    : '';
+  return hint ? `${message}\n${hint}` : message;
+};
+
+function defaultWebHttpUserHint(status) {
+  if (status === 401 || status === 403) return 'Check authentication and permissions, then retry.';
+  if (status === 429) return 'Wait for the current request or rate limit to clear, then retry.';
+  if (status === 413) return 'Reduce the request size and retry.';
+  if (status && status >= 500) return 'The local server or gateway is unavailable. Retry after it recovers.';
+  return 'Check the request and retry.';
+}
 
 // API endpoints
 export const api = {
