@@ -2,9 +2,17 @@ import type {
   CanonicalMessage,
   CanonicalToolResultBlock,
 } from "../../model/index.js";
+import { flattenToolResultBlockText } from "../../model/index.js";
 import { COMPACTABLE_TOOL_NAMES } from "./CachedMicroCompactionEngine.js";
+import {
+  collectToolNamesByCallId,
+  isProtectedToolCallId,
+  protectedToolNameSet,
+} from "./protectedContext.js";
 
-export const MICROCOMPACT_CLEARED = "[Old tool result content cleared]";
+export const MICROCOMPACT_CLEARED = "[Old tool result content compacted]";
+export const MICROCOMPACT_FAILURES_FOLDED = "[Repeated tool failures compacted]";
+export const MICROCOMPACT_RECOVERED_FAILURE_PREFIX = "[Recovered tool error compacted";
 
 export type MicroCompactionInput = {
   messages: CanonicalMessage[];
@@ -14,6 +22,12 @@ export type MicroCompactionInput = {
   idleMs?: number;
   /** Max bytes per tool_result allowed to remain after rewrite (legacy default ~512). */
   trimToBytes?: number;
+};
+
+export type MicroCompactionEngineOptions = {
+  keepLatest?: number;
+  trimToBytes?: number;
+  protectedToolNames?: Iterable<string>;
 };
 
 export type MicroCompactionResult = {
@@ -32,12 +46,17 @@ export type MicroCompactionResult = {
  * size (base64 data length) rather than relying on the text-only fallback.
  */
 export class MicroCompactionEngine {
-  constructor(private readonly options: { keepLatest?: number; trimToBytes?: number } = {}) {}
+  private readonly protectedToolNames: ReadonlySet<string>;
+
+  constructor(private readonly options: MicroCompactionEngineOptions = {}) {
+    this.protectedToolNames = protectedToolNameSet(options.protectedToolNames);
+  }
 
   apply(input: MicroCompactionInput): MicroCompactionResult {
     const trimToBytes = input.trimToBytes ?? this.options.trimToBytes ?? 1536;
     const keepLatest = this.options.keepLatest ?? 1;
 
+    const toolNamesByCallId = collectToolNamesByCallId(input.messages);
     const compactableCallIds = this.collectCompactableToolCallIds(input.messages);
     const toolResultIndices = this.collectCompactableToolResultIndices(input.messages, compactableCallIds);
 
@@ -80,6 +99,9 @@ export class MicroCompactionEngine {
         if (!compactableCallIds.has(block.toolCallId)) {
           return block;
         }
+        if (isProtectedToolCallId(block.toolCallId, toolNamesByCallId, this.protectedToolNames)) {
+          return block;
+        }
         const size = this.estimateToolResultSize(block as CanonicalToolResultBlock);
         if (size <= trimToBytes) {
           return block;
@@ -92,7 +114,7 @@ export class MicroCompactionEngine {
           content: [
             {
               type: "text" as const,
-              text: MICROCOMPACT_CLEARED,
+              text: compactToolResultText(flattenToolResultBlockText(block as CanonicalToolResultBlock), trimToBytes),
             },
           ],
         };
@@ -148,4 +170,16 @@ export class MicroCompactionEngine {
     }
     return size;
   }
+}
+
+function compactToolResultText(text: string, trimToBytes: number): string {
+  const normalized = text.trim();
+  if (normalized.length === 0) {
+    return MICROCOMPACT_CLEARED;
+  }
+  const previewBudget = Math.max(256, Math.min(trimToBytes, 4_000));
+  const preview = normalized.length > previewBudget
+    ? `${normalized.slice(0, previewBudget)}…`
+    : normalized;
+  return `${MICROCOMPACT_CLEARED}\n\nPreview:\n${preview}`;
 }

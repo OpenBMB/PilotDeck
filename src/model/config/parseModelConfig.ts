@@ -137,7 +137,8 @@ function parseRetryConfig(raw: unknown): ProviderRetryConfig | undefined {
   const result: ProviderRetryConfig = {};
   const numFields = [
     "requestMaxRetries", "streamMaxRetries", "streamIdleTimeoutMs",
-    "baseDelayMs", "maxDelayMs",
+    "maxStreamingDurationMs", "repeatedChunkLimit",
+    "baseDelayMs", "maxDelayMs", "jitter",
   ] as const;
   for (const key of numFields) {
     const value = raw[key];

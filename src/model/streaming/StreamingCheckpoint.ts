@@ -42,7 +42,7 @@ export class StreamingCheckpointManager {
   }
 
   hasSubstantialContent(): boolean {
-    return this.checkpoint.tokensReceived > 50 && this.checkpoint.partialText.length > 100;
+    return this.checkpoint.partialText.trim().length > 0;
   }
 
   reset(): void {

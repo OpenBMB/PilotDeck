@@ -6,6 +6,9 @@ import { getSuggestionRootPath } from '../utils/pathUtils';
 import type { FolderSuggestion, WorkspaceType } from '../types';
 import FolderBrowserModal from './FolderBrowserModal';
 
+const normalizePathForSuggestionMatch = (pathValue: string) =>
+  pathValue.trim().replace(/\\/g, '/').toLowerCase();
+
 type WorkspacePathFieldProps = {
   workspaceType: WorkspaceType;
   value: string;
@@ -26,7 +29,7 @@ export default function WorkspacePathField({
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
   useEffect(() => {
-    if (value.trim().length <= 2) {
+    if (value.trim().length < 2) {
       setPathSuggestions([]);
       setShowPathDropdown(false);
       return;
@@ -37,11 +40,11 @@ export default function WorkspacePathField({
       try {
         const directoryPath = getSuggestionRootPath(value);
         const result = await browseFilesystemFolders(directoryPath);
-        const normalizedInput = value.toLowerCase();
+        const normalizedInput = normalizePathForSuggestionMatch(value);
 
         const matchingSuggestions = result.suggestions
           .filter((suggestion) => {
-            const normalizedSuggestion = suggestion.path.toLowerCase();
+            const normalizedSuggestion = normalizePathForSuggestionMatch(suggestion.path);
             return (
               normalizedSuggestion.startsWith(normalizedInput) &&
               normalizedSuggestion !== normalizedInput

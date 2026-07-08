@@ -21,6 +21,12 @@ import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import {
+  buildProviderChatEndpointCandidates,
+  buildProviderModelsEndpointCandidates,
+  isExpectedProviderModelsResponseShape,
+  isExpectedProviderResponseShape,
+} from '../../../src/model/providerEndpoint.js';
+import {
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
   OFFICE_PREVIEW_SERVICE_NONE,
   getLibreOfficeCandidateStatuses,
@@ -38,6 +44,23 @@ async function notifyGatewayConfigReload() {
 const router = express.Router();
 
 function serializeConfigResponse(record, reloadResult = null) {
+  if (record.parseError) {
+    return {
+      exists: record.exists,
+      path: record.configPath,
+      raw: record.raw,
+      config: maskSecrets(record.config),
+      configDisabled: true,
+      parseError: record.parseError,
+      validation: {
+        valid: false,
+        errors: [`Invalid YAML: ${record.parseError}`],
+        warnings: [],
+      },
+      ...(reloadResult ? { reload: reloadResult } : {}),
+    };
+  }
+
   const validation = validatePilotDeckConfig(record.config);
   const maskedConfig = maskSecrets(record.config);
   // Prefer the disk's actual YAML for the "raw" view so non-ui-internal
@@ -65,50 +88,53 @@ function broadcastConfigEvent(payload) {
   process.emit('pilotdeck:config-broadcast', payload);
 }
 
-function normalizeGoogleProbeModel(model) {
-  const text = String(model || '').trim();
-  const withoutProvider = text.startsWith('google/') ? text.slice('google/'.length) : text;
-  if (withoutProvider === 'gemini-3-pro') return 'gemini-3-pro-preview';
-  if (withoutProvider === 'gemini-3.1-pro') return 'gemini-3.1-pro-preview';
-  if (withoutProvider === 'gemini-3-flash') return 'gemini-3-flash-preview';
-  if (withoutProvider === 'gemini-3.1-flash' || withoutProvider === 'gemini-3.1-flash-preview') {
-    return 'gemini-3-flash-preview';
+function extractProbeText(body, providerKind) {
+  if (!body || typeof body !== 'object') return '';
+
+  if (providerKind === 'anthropic') {
+    const content = Array.isArray(body.content) ? body.content : [];
+    return content
+      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+      .join('')
+      .trim();
   }
-  if (withoutProvider === 'gemini-3.1-flash-lite') return 'gemini-3.1-flash-lite-preview';
-  return withoutProvider;
-}
 
-function buildGoogleGenerateContentUrl(baseUrl, model) {
-  const normalizedBaseUrl = String(baseUrl || 'https://generativelanguage.googleapis.com').trim().replace(/\/+$/, '')
-    || 'https://generativelanguage.googleapis.com';
-  const url = new URL(normalizedBaseUrl);
-  const parts = url.pathname.split('/').filter(Boolean);
-  const last = parts.at(-1);
-  const apiVersion = last === 'v1' || last === 'v1beta' ? last : 'v1beta';
-  const baseParts = last === 'v1' || last === 'v1beta' ? parts.slice(0, -1) : parts;
-  url.pathname = `/${[
-    ...baseParts,
-    apiVersion,
-    'models',
-    `${encodeURIComponent(normalizeGoogleProbeModel(model))}:generateContent`,
-  ].join('/')}`;
-  url.search = '';
-  url.hash = '';
-  return url.toString();
-}
+  if (providerKind === 'google') {
+    const candidates = Array.isArray(body.candidates) ? body.candidates : [];
+    return candidates
+      .flatMap((candidate) => Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [])
+      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+      .join('')
+      .trim();
+  }
 
-function buildGoogleModelsUrl(baseUrl) {
-  const normalizedBaseUrl = String(baseUrl || 'https://generativelanguage.googleapis.com').trim().replace(/\/+$/, '')
-    || 'https://generativelanguage.googleapis.com';
-  const url = new URL(normalizedBaseUrl);
-  const parts = url.pathname.split('/').filter(Boolean);
-  const last = parts.at(-1);
-  const apiVersion = last === 'v1' || last === 'v1beta' ? last : 'v1beta';
-  const baseParts = last === 'v1' || last === 'v1beta' ? parts.slice(0, -1) : parts;
-  url.pathname = `/${[...baseParts, apiVersion, 'models'].join('/')}`;
-  url.search = '';
-  url.hash = '';
-  return url.toString();
+  if (providerKind === 'responses') {
+    if (typeof body.output_text === 'string' && body.output_text.trim()) return body.output_text.trim();
+    const output = Array.isArray(body.output) ? body.output : [];
+    return output
+      .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
+      .map((part) => {
+        if (typeof part?.text === 'string') return part.text;
+        if (typeof part?.output_text === 'string') return part.output_text;
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+
+  const choices = Array.isArray(body.choices) ? body.choices : [];
+  return choices
+    .map((choice) => {
+      const content = choice?.message?.content;
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) {
+        return content.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('');
+      }
+      if (typeof choice?.text === 'string') return choice.text;
+      return '';
+    })
+    .join('')
+    .trim();
 }
 
 function normalizeModelListItem(item) {
@@ -143,6 +169,46 @@ function parseModelListResponse(body) {
     models.push(model);
   }
   return models;
+}
+
+function isEndpointFallbackStatus(status) {
+  return status === 400 || status === 404 || status === 405;
+}
+
+async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null) {
+  let lastResult = null;
+  for (const url of urls) {
+    const response = await fetch(url, options);
+    const responseText = await response.text();
+    if (response.ok) {
+      if (!isExpectedOkBody || urls.length === 1 || isExpectedOkBody(responseText)) {
+        return { url, response, responseText };
+      }
+      lastResult = { url, response, responseText };
+      continue;
+    }
+    if (urls.length === 1 || !isEndpointFallbackStatus(response.status)) {
+      return { url, response, responseText };
+    }
+    lastResult = { url, response, responseText };
+  }
+  return lastResult;
+}
+
+function isExpectedJsonBody(protocol, responseText) {
+  try {
+    return isExpectedProviderResponseShape(protocol, responseText ? JSON.parse(responseText) : {});
+  } catch {
+    return false;
+  }
+}
+
+function isExpectedModelsJsonBody(protocol, responseText) {
+  try {
+    return isExpectedProviderModelsResponseShape(protocol, responseText ? JSON.parse(responseText) : {});
+  } catch {
+    return false;
+  }
 }
 
 router.get('/', (_req, res) => {
@@ -230,10 +296,24 @@ router.put('/', async (req, res) => {
       // Re-hydrate any field the UI received as "********" with the
       // original disk value so saving the masked view back is a no-op
       // for secrets the user didn't actually touch.
-      const restored = preserveMaskedSecrets(parsed, diskRecord.rawYaml ?? {});
+      const restored = diskRecord.parseError
+        ? parsed
+        : preserveMaskedSecrets(parsed, diskRecord.rawYaml ?? {});
       suppressNextWatchEvent();
       saved = await writeRawPilotDeckYaml(restored);
     } else if (req.body?.config && typeof req.body.config === 'object') {
+      if (diskRecord.parseError) {
+        return res.status(400).json({
+          error: 'Invalid config YAML; repair raw YAML before using structured config updates',
+          configDisabled: true,
+          parseError: diskRecord.parseError,
+          validation: {
+            valid: false,
+            errors: [`Invalid YAML: ${diskRecord.parseError}`],
+            warnings: [],
+          },
+        });
+      }
       const restored = preserveMaskedSecrets(req.body.config, diskRecord.config);
       suppressNextWatchEvent();
       saved = await writePilotDeckConfig(restored);
@@ -261,6 +341,18 @@ router.put('/', async (req, res) => {
 router.post('/reload', async (_req, res) => {
   try {
     const record = readPilotDeckConfigFile();
+    if (record.parseError) {
+      return res.status(400).json({
+        error: 'Invalid config YAML',
+        configDisabled: true,
+        parseError: record.parseError,
+        validation: {
+          valid: false,
+          errors: [`Invalid YAML: ${record.parseError}`],
+          warnings: [],
+        },
+      });
+    }
     const validation = validatePilotDeckConfig(record.config);
     if (!validation.valid) {
       return res.status(400).json({ error: 'Invalid config', validation });
@@ -340,23 +432,23 @@ router.post('/models', async (req, res) => {
   const isAnthropic = normalizedType === 'anthropic';
   const isGoogle = normalizedType === 'google';
   const normalizedBaseUrl = String(baseUrl).trim().replace(/\/+$/, '');
+  const protocol = isGoogle ? 'google' : isAnthropic ? 'anthropic' : 'openai';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
 
   try {
-    const url = isGoogle
-      ? buildGoogleModelsUrl(normalizedBaseUrl)
-      : isAnthropic
-        ? `${normalizedBaseUrl}/v1/models`
-        : `${normalizedBaseUrl}/models`;
+    const urls = buildProviderModelsEndpointCandidates({ protocol, baseUrl: normalizedBaseUrl });
     const headers = isGoogle
       ? { 'x-goog-api-key': effectiveApiKey }
       : isAnthropic
         ? { 'x-api-key': effectiveApiKey, 'anthropic-version': '2023-06-01' }
         : { Authorization: `Bearer ${effectiveApiKey}` };
-    const response = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+    const { url, response, responseText } = await fetchWithEndpointFallback(
+      urls,
+      { method: 'GET', headers, signal: controller.signal },
+      (text) => isExpectedModelsJsonBody(protocol, text),
+    );
     clearTimeout(timer);
-    const responseText = await response.text();
     let body;
     try {
       body = responseText ? JSON.parse(responseText) : {};
@@ -401,7 +493,7 @@ router.post('/test-connection', async (req, res) => {
     let fetchOptions;
 
     if (isGoogle) {
-      url = buildGoogleGenerateContentUrl(normalizedBaseUrl, model);
+      url = buildProviderChatEndpointCandidates({ protocol: 'google', baseUrl: normalizedBaseUrl, model });
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -410,12 +502,12 @@ router.post('/test-connection', async (req, res) => {
         },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
-          generationConfig: { maxOutputTokens: 1 },
+          generationConfig: { maxOutputTokens: 8 },
         }),
         signal: controller.signal,
       };
     } else if (isAnthropic) {
-      url = `${normalizedBaseUrl}/v1/messages`;
+      url = buildProviderChatEndpointCandidates({ protocol: 'anthropic', baseUrl: normalizedBaseUrl });
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -425,13 +517,13 @@ router.post('/test-connection', async (req, res) => {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1,
+          max_tokens: 8,
           messages: [{ role: 'user', content: 'Hi' }],
         }),
         signal: controller.signal,
       };
     } else if (isOpenAIResponses) {
-      url = `${normalizedBaseUrl}/responses`;
+      url = buildProviderChatEndpointCandidates({ protocol: 'openai-responses', baseUrl: normalizedBaseUrl });
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -447,7 +539,7 @@ router.post('/test-connection', async (req, res) => {
         signal: controller.signal,
       };
     } else {
-      url = `${normalizedBaseUrl}/chat/completions`;
+      url = buildProviderChatEndpointCandidates({ protocol: 'openai', baseUrl: normalizedBaseUrl });
       fetchOptions = {
         method: 'POST',
         headers: {
@@ -456,16 +548,24 @@ router.post('/test-connection', async (req, res) => {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1,
+          max_tokens: 8,
           messages: [{ role: 'user', content: 'Hi' }],
         }),
         signal: controller.signal,
       };
     }
 
-    const response = await fetch(url, fetchOptions);
+    const responseProtocol = isGoogle
+      ? 'google'
+      : isAnthropic
+        ? 'anthropic'
+        : isOpenAIResponses
+          ? 'openai-responses'
+          : 'openai';
+    const result = await fetchWithEndpointFallback(url, fetchOptions, (responseText) => isExpectedJsonBody(responseProtocol, responseText));
+    const { response, responseText } = result;
+    url = result.url;
     clearTimeout(timer);
-    const responseText = await response.text();
     const expectedShape = isAnthropic
       ? 'Anthropic message'
       : isGoogle
@@ -499,6 +599,15 @@ router.post('/test-connection', async (req, res) => {
         return res.json({
           ok: false,
           error: `Endpoint returned HTTP ${response.status}, but the response was not a valid ${expectedShape}. Check the base URL path.`,
+        });
+      }
+
+      const providerKind = isAnthropic ? 'anthropic' : isGoogle ? 'google' : isOpenAIResponses ? 'responses' : 'openai';
+      const probeText = extractProbeText(body, providerKind);
+      if (!probeText) {
+        return res.json({
+          ok: false,
+          error: `Endpoint returned a valid ${expectedShape}, but the model did not produce any chat text. Check that ${model} supports chat completions.`,
         });
       }
 

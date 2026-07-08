@@ -1,6 +1,7 @@
 import type { CanonicalModelError } from "../../model/index.js";
 import type { RouterFallbackConfig, RouterModelRef } from "../config/schema.js";
 import type { RouterScenarioType } from "../protocol/decision.js";
+import { LITELLM_ROUTER_MAX_FALLBACKS } from "../config/schema.js";
 
 export type FallbackPlan = {
   /** Provider/model pairs to try in order, after the initial decision. */
@@ -16,10 +17,21 @@ export function planFallback(
   }
 
   if (scenarioType === "explicit") {
-    return { attempts: fallback.default ?? [] };
+    return { attempts: capFallbackAttempts(fallback.default ?? [], fallback.maxFallbacks) };
   }
 
-  return { attempts: (fallback as Record<string, RouterModelRef[] | undefined>)[scenarioType] ?? fallback.default ?? [] };
+  return {
+    attempts: capFallbackAttempts(
+      (fallback as Record<string, RouterModelRef[] | undefined>)[scenarioType] ?? fallback.default ?? [],
+      fallback.maxFallbacks,
+    ),
+  };
+}
+
+function capFallbackAttempts(attempts: RouterModelRef[], maxFallbacks: number | undefined): RouterModelRef[] {
+  const cap = maxFallbacks ?? LITELLM_ROUTER_MAX_FALLBACKS;
+  if (cap <= 0) return [];
+  return attempts.slice(0, cap);
 }
 
 /**

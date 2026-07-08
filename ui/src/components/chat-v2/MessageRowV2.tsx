@@ -24,6 +24,7 @@ import { processSummaryToTrace, type ProcessAttachment } from './processGrouping
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
+import { linkifyFilePathsOutsideCode } from './linkifyFilePathsOutsideCode';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
@@ -163,6 +164,10 @@ function MessageRowV2({
   );
   const thinkingDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !!message.isThinking, 4);
   const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6);
+  const linkedContentDisplayText = useMemo(
+    () => (message.isStreaming ? contentDisplayText : linkifyFilePathsOutsideCode(contentDisplayText)),
+    [contentDisplayText, message.isStreaming],
+  );
   const messageImages = useMemo(
     () =>
       Array.isArray(message.images)
@@ -455,7 +460,7 @@ function MessageRowV2({
   }
 
   // Assistant: plain prose, no avatar and no bubble.
-  const hasAssistantProse = formattedContent.trim().length > 0;
+  const hasAssistantProse = linkedContentDisplayText.trim().length > 0;
   const showStreamingCursor = Boolean(message.isStreaming && !contentDisplayText);
   const resolvedShowAssistantActions = showAssistantActions ?? true;
   const showAssistantCopyButton = resolvedShowAssistantActions && hasAssistantProse;
@@ -470,7 +475,7 @@ function MessageRowV2({
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
         <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
-        onFileOpen={onFileOpen} isStreaming={message.isStreaming}>{contentDisplayText}</Markdown>
+        onFileOpen={onFileOpen} isStreaming={message.isStreaming}>{linkedContentDisplayText}</Markdown>
       )}
       {shouldRenderAssistantActions ? (
         <div className="mt-1.5 flex justify-end gap-1">

@@ -576,6 +576,7 @@
 	      "unsavedChanges": "未保存更改",
 	      "noUnsavedChanges": "无未保存更改",
 	      "fixYamlInFilesystem": "请在文件系统中修复配置文件后刷新。",
+	      "fixYamlInRawEditor": "请先修复下方原始 YAML，然后保存以重新启用表单设置。",
 	      "subsystems": {
 	        "pending": "等待配置解析。",
 	        "processEnv": {
@@ -606,8 +607,9 @@
 	      "configInvalidSeeBelow": "配置存在校验错误——见下方",
 	      "errors": "错误",
 	      "warnings": "警告",
-	      "yamlParseError": "配置文件 YAML 解析失败。请在文件系统中修复后刷新。",
-	      "cannotParse": "无法解析配置文件 YAML。请在文件系统中修复后点击刷新。",
+	      "yamlParseError": "配置文件 YAML 解析失败。请修复下方原始 YAML 后保存。",
+	      "yamlParseErrorWithDetail": "配置文件 YAML 解析失败：{{error}}",
+	      "cannotParse": "无法解析配置文件 YAML。请修复上方原始 YAML 后保存，以恢复表单设置。",
 	      "rawYaml": "原始 YAML"
 	    },
     "sectionGroups": {

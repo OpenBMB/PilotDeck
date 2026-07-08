@@ -277,12 +277,18 @@ export type ProviderRetryConfig = {
   requestMaxRetries?: number;
   /** Max retries for dropped SSE streams. Default 2. */
   streamMaxRetries?: number;
-  /** Idle timeout (ms) for streaming responses before treating as lost. Default 300000 (5 min). */
+  /** First-token / idle timeout (ms) for streaming responses. Defaults through request timeout when omitted. */
   streamIdleTimeoutMs?: number;
-  /** Base delay (ms) for exponential backoff. Default 1000. */
+  /** Maximum streaming duration (ms). Default disabled. */
+  maxStreamingDurationMs?: number;
+  /** Repeated non-empty text chunk limit before treating a stream as looping. Default 100. */
+  repeatedChunkLimit?: number;
+  /** Base delay (ms) for retry backoff. Default 500. */
   baseDelayMs?: number;
-  /** Max delay cap (ms) for backoff. Default 30000. */
+  /** Max delay cap (ms) for backoff. Default 8000. */
   maxDelayMs?: number;
+  /** Jitter multiplier for retry backoff. Default 0.75. */
+  jitter?: number;
 };
 
 export type ProviderConfig = {

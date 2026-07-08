@@ -70,7 +70,17 @@ function getGlobalMemorySettings() {
 }
 
 async function saveGlobalMemorySettings(partial = {}) {
-  const { config } = readPilotDeckConfigFile();
+  const record = readPilotDeckConfigFile();
+  if (record.parseError) {
+    const error = new Error('Invalid config YAML; repair raw YAML before updating memory settings');
+    error.validation = {
+      valid: false,
+      errors: [`Invalid YAML: ${record.parseError}`],
+      warnings: [],
+    };
+    throw error;
+  }
+  const { config } = record;
   const current = getGlobalMemorySettingsFromConfig(config);
   const next = {
     reasoningMode: partial.reasoningMode === 'accuracy_first'

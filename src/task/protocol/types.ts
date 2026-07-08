@@ -23,6 +23,8 @@ export type PilotDeckBackgroundBashTask = {
   type: "local_bash";
   /** T4 — owning agent; agent exit triggers `killForAgent(agentId)`. */
   agentId?: string;
+  /** Owning gateway/agent session for best-effort completion notifications. */
+  sessionId?: string;
   /** T5 — UI badge variant (`bash` plain task vs. long-running `monitor`). */
   kind: PilotDeckBackgroundTaskKind;
   command: string;

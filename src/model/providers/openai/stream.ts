@@ -130,6 +130,21 @@ export function normalizeOpenAIStreamEvent(
 ): CanonicalModelEvent[] {
   const chunk = asRecord(raw);
   const events: CanonicalModelEvent[] = [];
+  const error = asRecord(chunk.error);
+  if (Object.keys(error).length > 0) {
+    const code = readNonEmptyString(error.type) ?? readNonEmptyString(error.code) ?? "provider_error";
+    return [{
+      type: "error",
+      error: {
+        provider: "openai",
+        protocol: "openai",
+        code,
+        message: readNonEmptyString(error.message) ?? "OpenAI stream request failed.",
+        retryable: code === "rate_limit_error" || code === "overloaded_error" || code === "server_error" || code === "timeout_error",
+        raw,
+      },
+    }];
+  }
   const responseId = readNonEmptyString(chunk.id);
   if (responseId !== undefined && state.streamResponseId === undefined) {
     state.streamResponseId = responseId;

@@ -62,6 +62,24 @@ async function handleChange(configPath) {
     return;
   }
 
+  if (record.parseError) {
+    onEventHandler?.({
+      source: 'watcher',
+      path: record.configPath,
+      raw: record.raw,
+      configDisabled: true,
+      parseError: record.parseError,
+      validation: {
+        valid: false,
+        errors: [`Invalid YAML: ${record.parseError}`],
+        warnings: [],
+      },
+      reload: null,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   const validation = validatePilotDeckConfig(record.config);
   // Mirror serializeConfigResponse: emit the masked disk YAML so the
   // UI's hot-reload sees full router/gateway/adapters/etc. segments

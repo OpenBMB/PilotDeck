@@ -11,6 +11,7 @@ import type {
   ModelContext,
 } from "./protocol/types.js";
 import type { AutoCompactResult } from "./DefaultContextRuntime.js";
+import type { TokenBudgetSnapshot } from "./budget/TokenBudgetManager.js";
 
 export type AgentContextPrepareInput = ContextPrepareInput;
 export type AgentPreparedContext = ModelContext;
@@ -61,5 +62,7 @@ export type AgentContextRuntime = {
     messages: CanonicalMessage[];
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
+    reservedOutputTokens?: number;
+    budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult>;
 };

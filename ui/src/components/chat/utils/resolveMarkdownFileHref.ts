@@ -69,6 +69,15 @@ export function resolveMarkdownFileHref(
 
   const hasProtocol = /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(trimmed);
 
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      return decodePath(url.pathname) || null;
+    } catch {
+      return null;
+    }
+  }
+
   if (trimmed.startsWith('/')) {
     return resolveProjectPathFromPathname(decodePath(trimmed));
   }

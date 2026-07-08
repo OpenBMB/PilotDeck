@@ -884,15 +884,61 @@ app.get('/api/search/conversations', authenticateToken, async (req, res) => {
     }
 });
 
+const normalizeWindowsDriveRoot = (inputPath) => {
+    if (process.platform !== 'win32' || typeof inputPath !== 'string') {
+        return inputPath;
+    }
+
+    const trimmedPath = inputPath.trim();
+    return /^[A-Za-z]:$/.test(trimmedPath) ? `${trimmedPath}\\` : inputPath;
+};
+
 const expandWorkspacePath = (inputPath) => {
     if (!inputPath) return inputPath;
-    if (inputPath === '~') {
+    const normalizedInput = normalizeWindowsDriveRoot(inputPath);
+    if (normalizedInput === '~') {
         return WORKSPACES_ROOT;
     }
-    if (inputPath.startsWith('~/') || inputPath.startsWith('~\\')) {
-        return path.join(WORKSPACES_ROOT, inputPath.slice(2));
+    if (normalizedInput.startsWith('~/') || normalizedInput.startsWith('~\\')) {
+        return path.join(WORKSPACES_ROOT, normalizedInput.slice(2));
     }
-    return inputPath;
+    return normalizedInput;
+};
+
+const isWindowsDriveBrowserRoot = (inputPath) => {
+    if (process.platform !== 'win32' || typeof inputPath !== 'string') {
+        return false;
+    }
+
+    const trimmedPath = inputPath.trim();
+    return trimmedPath === '/' || trimmedPath === '\\';
+};
+
+const getWindowsDriveSuggestions = async () => {
+    if (process.platform !== 'win32') {
+        return [];
+    }
+
+    const driveLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const driveChecks = driveLetters.map(async (letter) => {
+        const drivePath = `${letter}:\\`;
+        try {
+            const stats = await fsPromises.stat(drivePath);
+            if (!stats.isDirectory()) {
+                return null;
+            }
+            return {
+                path: drivePath,
+                name: drivePath,
+                type: 'directory',
+            };
+        } catch (error) {
+            return null;
+        }
+    });
+
+    const drives = await Promise.all(driveChecks);
+    return drives.filter(Boolean);
 };
 
 function resolvePathInProject(projectRoot, targetPath = '') {
@@ -1107,6 +1153,15 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
         console.log('[API] WORKSPACES_ROOT is:', WORKSPACES_ROOT);
         // Default to home directory if no path provided
         const defaultRoot = WORKSPACES_ROOT;
+
+        if (isWindowsDriveBrowserRoot(dirPath)) {
+            const suggestions = await getWindowsDriveSuggestions();
+            return res.json({
+                path: '/',
+                suggestions,
+            });
+        }
+
         let targetPath = dirPath ? expandWorkspacePath(dirPath) : defaultRoot;
 
         // Resolve and normalize the path

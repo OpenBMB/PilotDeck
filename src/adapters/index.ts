@@ -98,3 +98,5 @@ export {
   type ChannelCommand,
   type CommandExecContext,
 } from "./channel/protocol/ChannelAdapter.js";
+
+export { ChannelStatePersistence, type ChannelStatePersistenceOptions } from "./channel/protocol/ChannelStatePersistence.js";

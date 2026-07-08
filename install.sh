@@ -1071,7 +1071,6 @@ fi
 node "$INSTALL_DIR/scripts/bootstrap-pilotdeck-config.mjs"
 
 printf "pilotdeck: starting at http://localhost:%s\n" "$SERVER_PORT"
-export PILOTDECK_SKIP_DEFAULT_PROJECT=1
 cd "$INSTALL_DIR/ui"
 exec npm run start:built
 EOF
@@ -1173,6 +1172,5 @@ else
   echo -e "${BOLD}Starting server${RESET} — open ${GREEN}http://localhost:${SERVER_PORT}${RESET} to finish onboarding."
 fi
 echo ""
-export PILOTDECK_SKIP_DEFAULT_PROJECT=1
 cd "$INSTALL_DIR/ui"
 exec npm run start:built

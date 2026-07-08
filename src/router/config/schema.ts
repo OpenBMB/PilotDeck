@@ -65,7 +65,12 @@ export type RouterStatsConfig = {
   baselineModel?: { provider: string; model: string };
 };
 
-export type RouterFallbackConfig = Partial<Record<RouterScenarioType, RouterModelRef[]>>;
+export type RouterFallbackConfig = Partial<Record<RouterScenarioType, RouterModelRef[]>> & {
+  /** LiteLLM-compatible max fallback model groups to try after the primary model. Default 5. */
+  maxFallbacks?: number;
+};
+
+export const LITELLM_ROUTER_MAX_FALLBACKS = 5;
 
 export type RouterCustomRouterConfig = {
   extensionId: string;

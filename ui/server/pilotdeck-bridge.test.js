@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { gatewayEventToFrames } from './pilotdeck-bridge.js';
+import {
+    gatewayEventToFrames,
+    isGatewayUnavailableError,
+} from './pilotdeck-bridge.js';
 
 describe('gatewayEventToFrames agent status errors', () => {
     it('uses detail.userHint for model_empty_response_exhausted', () => {
@@ -89,5 +92,18 @@ describe('gatewayEventToFrames agent status errors', () => {
             code: 'gateway_unavailable',
             userHint: 'Start or restart the PilotDeck gateway, then retry this message.',
         });
+    });
+});
+
+describe('isGatewayUnavailableError', () => {
+    it('detects cached gateway websocket disconnects', () => {
+        expect(isGatewayUnavailableError(new Error('Gateway WebSocket is not connected.'))).toBe(true);
+        expect(isGatewayUnavailableError(new Error('Gateway WebSocket closed.'))).toBe(true);
+        expect(isGatewayUnavailableError(new Error('Gateway closed during hello: auth_failed'))).toBe(true);
+        expect(isGatewayUnavailableError(new Error('[pilotdeck-bridge] gateway connect failed after 60000ms'))).toBe(true);
+    });
+
+    it('does not classify generic bridge failures as gateway unavailable', () => {
+        expect(isGatewayUnavailableError(new Error('Unexpected frame payload'))).toBe(false);
     });
 });

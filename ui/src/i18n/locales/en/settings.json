@@ -576,6 +576,7 @@
 	      "unsavedChanges": "Unsaved changes",
 	      "noUnsavedChanges": "No unsaved changes",
 	      "fixYamlInFilesystem": "Fix the config file in the filesystem, then refresh.",
+	      "fixYamlInRawEditor": "Fix the Raw YAML below, then save to re-enable form settings.",
 	      "subsystems": {
 	        "pending": "Waiting for config parsing.",
 	        "processEnv": {
@@ -606,8 +607,9 @@
 	      "configInvalidSeeBelow": "Config has validation errors — see below",
 	      "errors": "Errors",
 	      "warnings": "Warnings",
-	      "yamlParseError": "The config file YAML failed to parse. Fix it in the filesystem, then refresh.",
-	      "cannotParse": "Could not parse the config file YAML. Fix it in the filesystem, then refresh.",
+	      "yamlParseError": "The config file YAML failed to parse. Fix the Raw YAML below, then save.",
+	      "yamlParseErrorWithDetail": "The config file YAML failed to parse: {{error}}",
+	      "cannotParse": "Could not parse the config file YAML. Fix the Raw YAML above, then save to restore form settings.",
 	      "rawYaml": "Raw YAML"
 	    },
     "sectionGroups": {

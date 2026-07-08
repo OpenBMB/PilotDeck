@@ -6,6 +6,10 @@ import {
   stripUnpairedToolCalls,
   stripUnpairedToolResults,
 } from "./toolPairIntegrity.js";
+import {
+  collectProtectedTurnIndexes,
+  protectedToolNameSet,
+} from "./protectedContext.js";
 
 export type SnipEngineOptions = {
   /** Number of head turns to keep (default 2). */
@@ -14,6 +18,8 @@ export type SnipEngineOptions = {
   keepTailTurns?: number;
   /** Master enable flag — when false, `snip` is a no-op (default true). */
   enabled?: boolean;
+  /** Tool names whose turns should be preserved verbatim. */
+  protectedToolNames?: Iterable<string>;
 };
 
 export type SnipResult = {
@@ -78,11 +84,13 @@ export class SnipEngine {
   private readonly keepHeadTurns: number;
   private readonly keepTailTurns: number;
   private readonly enabled: boolean;
+  private readonly protectedToolNames: ReadonlySet<string>;
 
   constructor(options: SnipEngineOptions = {}) {
     this.keepHeadTurns = Math.max(0, options.keepHeadTurns ?? 2);
     this.keepTailTurns = Math.max(1, options.keepTailTurns ?? 4);
     this.enabled = options.enabled ?? true;
+    this.protectedToolNames = protectedToolNameSet(options.protectedToolNames);
   }
 
   snip(messages: CanonicalMessage[]): SnipResult {
@@ -94,27 +102,36 @@ export class SnipEngine {
       return { messages, applied: false, turnsSnipped: 0, danglingToolCallIds: [] };
     }
 
-    const head = turns.slice(0, this.keepHeadTurns).flat();
-    const tail = turns.slice(turns.length - this.keepTailTurns).flat();
-    const turnsSnipped = turns.length - this.keepHeadTurns - this.keepTailTurns;
+    const keepIndexes = new Set<number>();
+    for (let index = 0; index < Math.min(this.keepHeadTurns, turns.length); index += 1) {
+      keepIndexes.add(index);
+    }
+    for (let index = Math.max(this.keepHeadTurns, turns.length - this.keepTailTurns); index < turns.length; index += 1) {
+      keepIndexes.add(index);
+    }
+    for (const index of collectProtectedTurnIndexes(messages, {
+      protectedToolNames: this.protectedToolNames,
+    })) {
+      keepIndexes.add(index);
+    }
+    if (keepIndexes.size >= turns.length) {
+      return { messages, applied: false, turnsSnipped: 0, danglingToolCallIds: [] };
+    }
+
+    const turnsSnipped = turns.length - keepIndexes.size;
+    const projected = stitchKeptTurnsWithBoundaries(turns, keepIndexes, this.keepHeadTurns, this.keepTailTurns);
 
     // S4: tool pair integrity.
-    const tailToolResultIds = collectToolResultIds(tail);
-    const headToolCallIds = collectToolCallIds(head);
-    const tailToolCallIds = collectToolCallIds(tail);
+    const toolResultIds = collectToolResultIds(projected);
+    const toolCallIds = collectToolCallIds(projected);
+    const withoutDanglingCalls = stripUnpairedToolCalls(projected, toolResultIds);
+    const pairedToolCallIds = collectToolCallIds(withoutDanglingCalls);
+    const cleaned = stripUnpairedToolResults(withoutDanglingCalls, pairedToolCallIds);
 
-    // From head: drop tool_calls whose tool_result is in the snipped middle.
-    const headCleaned = stripUnpairedToolCalls(head, tailToolResultIds);
-    // From tail: drop tool_results whose tool_call lives in the snipped middle.
-    const allToolCallIds = new Set<string>([...collectToolCallIds(headCleaned), ...tailToolCallIds]);
-    const tailCleaned = stripUnpairedToolResults(tail, allToolCallIds);
-
-    const dangling = Array.from(headToolCallIds).filter((id) => !tailToolResultIds.has(id));
-
-    const boundary = createSnipBoundary(turnsSnipped, this.keepHeadTurns, this.keepTailTurns);
+    const dangling = Array.from(toolCallIds).filter((id) => !toolResultIds.has(id));
 
     return {
-      messages: ensureTrailingUserMessage([...headCleaned, boundary, ...tailCleaned]),
+      messages: ensureTrailingUserMessage(cleaned),
       applied: true,
       turnsSnipped,
       danglingToolCallIds: dangling,
@@ -152,6 +169,31 @@ function splitIntoTurns(messages: CanonicalMessage[]): CanonicalMessage[][] {
   }
   if (current.length > 0) turns.push(current);
   return turns;
+}
+
+function stitchKeptTurnsWithBoundaries(
+  turns: CanonicalMessage[][],
+  keepIndexes: Set<number>,
+  headTurns: number,
+  tailTurns: number,
+): CanonicalMessage[] {
+  const out: CanonicalMessage[] = [];
+  let skipped = 0;
+  for (let index = 0; index < turns.length; index += 1) {
+    if (!keepIndexes.has(index)) {
+      skipped += 1;
+      continue;
+    }
+    if (skipped > 0) {
+      out.push(createSnipBoundary(skipped, headTurns, tailTurns));
+      skipped = 0;
+    }
+    out.push(...turns[index]!);
+  }
+  if (skipped > 0) {
+    out.push(createSnipBoundary(skipped, headTurns, tailTurns));
+  }
+  return out;
 }
 
 function isToolResultOnly(message: CanonicalMessage): boolean {

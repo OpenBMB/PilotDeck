@@ -11,7 +11,34 @@ export {
 } from "./request/materializeMediaReferences.js";
 export { validateModelRequest, type ResolvedModelRequest } from "./request/validateModelRequest.js";
 export { parseModelResponse } from "./response/parseModelResponse.js";
-export { complete, streamModel, type ModelRuntimeOptions, type ModelTransport } from "./streaming/streamModel.js";
+export {
+  complete,
+  streamModel,
+  LITELLM_COMPLETION_HTTP_FALLBACK_MS,
+  LITELLM_DEFAULT_MAX_RETRIES,
+  LITELLM_DEFAULT_REQUEST_TIMEOUT_MS,
+  LITELLM_INITIAL_RETRY_DELAY_MS,
+  LITELLM_HTTP_CONNECTOR_LIMIT,
+  LITELLM_HTTP_CONNECTOR_LIMIT_PER_HOST,
+  LITELLM_HTTP_KEEPALIVE_TIMEOUT_MS,
+  LITELLM_HTTP_SO_KEEPALIVE,
+  LITELLM_HTTP_TCP_KEEPCNT,
+  LITELLM_HTTP_TCP_KEEPIDLE_SECONDS,
+  LITELLM_HTTP_TCP_KEEPINTVL_SECONDS,
+  LITELLM_HTTP_TTL_DNS_CACHE_MS,
+  LITELLM_MAX_RETRY_DELAY_MS,
+  LITELLM_REPEATED_STREAMING_CHUNK_LIMIT,
+  LITELLM_RETRY_JITTER,
+  LITELLM_STREAM_MAX_DURATION_MS,
+  type ModelRuntimeOptions,
+  type ModelStreamRetryProgress,
+  type ModelTransport,
+} from "./streaming/streamModel.js";
+export {
+  buildLiteLLMContinuationRequest,
+  LITELLM_CONTINUATION_INSTRUCTION,
+  stripLiteLLMContinuationMessages,
+} from "./streaming/continuationRequest.js";
 export {
   normalizeStreamEvent,
   createStreamNormalizerState,
@@ -19,6 +46,8 @@ export {
 } from "./streaming/normalizeStreamEvent.js";
 export {
   extractTextToolCalls,
+  detectFormatByText,
+  getSelfCorrectPrompt,
   hasTextToolCallSyntax,
   type PartialTextToolCallFormat,
   type PartialTextToolCallInfo,
@@ -73,7 +102,9 @@ export {
 export { cloneContentBlock, cloneMessage, cloneMessages } from "./protocol/clone.js";
 export {
   ANTHROPIC_STRUCTURED_OUTPUT_TOOL_NAME,
+  buildAnthropicRequest,
 } from "./providers/anthropic/request.js";
+export { buildOpenAIRequest } from "./providers/openai/request.js";
 export {
   extractStructuredOutput,
   type ExtractStructuredOutputOptions,

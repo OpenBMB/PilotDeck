@@ -60,6 +60,11 @@ export default function FolderBrowserModal({
     [folders, showHiddenFolders],
   );
 
+  const isWindowsDrivePicker = useMemo(
+    () => currentPath === '/' && folders.some((folder) => /^[A-Za-z]:\\$/.test(folder.path)),
+    [currentPath, folders],
+  );
+
   const resetNewFolderState = () => {
     setShowNewFolderInput(false);
     setNewFolderName('');
@@ -72,6 +77,10 @@ export default function FolderBrowserModal({
   };
 
   const handleCreateFolder = useCallback(async () => {
+    if (isWindowsDrivePicker) {
+      return;
+    }
+
     if (!newFolderName.trim()) {
       return;
     }
@@ -89,7 +98,7 @@ export default function FolderBrowserModal({
     } finally {
       setCreatingFolder(false);
     }
-  }, [currentPath, loadFolders, newFolderName]);
+  }, [currentPath, isWindowsDrivePicker, loadFolders, newFolderName]);
 
   const parentPath = getParentPath(currentPath);
 
@@ -128,6 +137,7 @@ export default function FolderBrowserModal({
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               }`}
               title="Create new folder"
+              disabled={isWindowsDrivePicker}
             >
               <Plus className="h-5 w-5" strokeWidth={1.75} />
             </button>
@@ -141,7 +151,7 @@ export default function FolderBrowserModal({
           </div>
         </div>
 
-        {showNewFolderInput && (
+        {showNewFolderInput && !isWindowsDrivePicker && (
           <div className="border-b border-border bg-muted/40 px-4 py-3">
             <div className="flex items-center gap-2">
               <Input
@@ -245,6 +255,7 @@ export default function FolderBrowserModal({
             <Button
               variant="outline"
               onClick={() => onFolderSelected(currentPath, autoAdvanceOnSelect)}
+              disabled={isWindowsDrivePicker}
             >
               Use this folder
             </Button>

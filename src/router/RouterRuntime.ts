@@ -7,6 +7,13 @@ import type {
 import { cloneMessages, downgradeUnsupportedContent, ModelRequestError } from "../model/index.js";
 import type { InputModality } from "../model/index.js";
 import {
+  LITELLM_DEFAULT_MAX_RETRIES,
+  LITELLM_INITIAL_RETRY_DELAY_MS,
+  LITELLM_MAX_RETRY_DELAY_MS,
+  LITELLM_RETRY_JITTER,
+} from "../model/streaming/streamModel.js";
+import { buildLiteLLMContinuationRequest } from "../model/streaming/continuationRequest.js";
+import {
   DEFAULT_SUBAGENT_POLICY,
   type RouterConfig,
   type RouterModelRef,
@@ -81,6 +88,7 @@ export type RouterRuntime = {
     request: CanonicalModelRequest,
     ctx: RouterExecuteContext & { sessionId: string; isMainAgent: boolean; previousTier?: string },
   ): AsyncIterable<CanonicalModelEvent>;
+  materializeRequest(decision: RouterDecision, request: CanonicalModelRequest): CanonicalModelRequest;
   /**
    * Clear routing sticky (provider/model/tier) for a session while preserving
    * orchestration state.  Call at the start of each new user turn so the
@@ -573,7 +581,7 @@ export function createRouterRuntime(
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
       let sawErrorEvent = false;
-      for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx.abortSignal)) {
+      for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx, events)) {
         if (item.kind === "event") {
           if (item.event.type === "error") {
             sawErrorEvent = true;
@@ -617,9 +625,9 @@ export function createRouterRuntime(
     const zeroUsageMax = Math.max(1, config.zeroUsageRetry?.maxAttempts ?? 5);
     const zeroUsageEnabled = config.zeroUsageRetry?.enabled ?? true;
     const transientRetryEnabled = config.transientRetry?.enabled ?? true;
-    const transientRetryMax = Math.max(1, config.transientRetry?.maxAttempts ?? 5);
-    const transientBaseDelayMs = config.transientRetry?.baseDelayMs ?? 1000;
-    const transientMaxDelayMs = config.transientRetry?.maxDelayMs ?? 30000;
+    const transientRetryMax = Math.max(1, config.transientRetry?.maxAttempts ?? LITELLM_DEFAULT_MAX_RETRIES);
+    const transientBaseDelayMs = config.transientRetry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
+    const transientMaxDelayMs = config.transientRetry?.maxDelayMs ?? LITELLM_MAX_RETRY_DELAY_MS;
 
     let lastBuffered: CanonicalModelEvent[] = [];
     let lastError: import("../model/index.js").CanonicalModelError | undefined;
@@ -705,7 +713,7 @@ export function createRouterRuntime(
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
 
-        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx.abortSignal)) {
+        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
           if (item.kind === "outcome") {
             outcome = item.outcome;
             break;
@@ -786,10 +794,7 @@ export function createRouterRuntime(
           ) {
             const delay = outcome.error.retryAfterMs != null
               ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
-              : Math.min(
-                  transientBaseDelayMs * Math.pow(2, transientRetryCount) + Math.random() * 500,
-                  transientMaxDelayMs,
-                );
+              : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
             console.warn(
               `[PilotDeck] transientRetry: ${outcome.error.code} (attempt ${transientRetryCount + 1}/${transientRetryMax}, delay=${Math.round(delay)}ms)`,
             );
@@ -840,13 +845,10 @@ export function createRouterRuntime(
             transientRetryCount < transientRetryMax
           ) {
             const partialText = extractPartialText(outcome.buffered);
-            if (partialText.length > 100) {
+            if (partialText.length > 0) {
               const midDelay = outcome.error.retryAfterMs != null
                 ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
-                : Math.min(
-                    transientBaseDelayMs * Math.pow(2, transientRetryCount) + Math.random() * 500,
-                    transientMaxDelayMs,
-                  );
+                : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
               console.warn(
                 `[PilotDeck] midStreamRetry: ${outcome.error.code} after partial content ` +
                 `(attempt ${transientRetryCount + 1}/${transientRetryMax}, delay=${Math.round(midDelay)}ms)`,
@@ -863,7 +865,7 @@ export function createRouterRuntime(
                 model: attempt.model,
               });
               await abortableDelay(midDelay, ctx.abortSignal);
-              attemptRequest = buildMidStreamContinuationRequest(attemptRequest, partialText);
+              attemptRequest = buildLiteLLMContinuationRequest(attemptRequest, partialText);
               transientRetryCount++;
               continue;
             }
@@ -1048,6 +1050,7 @@ export function createRouterRuntime(
     decide,
     execute,
     stream,
+    materializeRequest: applyDecisionToRequest,
     invalidateSticky,
     observeUsage(sessionId, usage) {
       if (!enabled) return;
@@ -1145,7 +1148,8 @@ function downgradeRequestForAttempt(
 async function* streamAttempt(
   request: CanonicalModelRequest,
   modelRuntime: ModelRuntime,
-  abortSignal?: AbortSignal,
+  ctx: RouterExecuteContext,
+  events: RouterEventBus,
 ): AsyncGenerator<
   | { kind: "event"; event: CanonicalModelEvent }
   | { kind: "outcome"; outcome: AttemptOutcome }
@@ -1153,9 +1157,25 @@ async function* streamAttempt(
   const buffered: CanonicalModelEvent[] = [];
   const state = createZeroUsageState();
   let providerError: import("../model/index.js").CanonicalModelError | undefined;
+  const abortSignal = ctx.abortSignal;
 
   try {
-    for await (const event of modelRuntime.stream(request, { signal: abortSignal })) {
+    for await (const event of modelRuntime.stream(request, {
+      signal: abortSignal,
+      onRetryProgress(progress) {
+        events.emit({
+          type: "pilotdeck_router_retry_progress",
+          sessionId: ctx.sessionId,
+          turnId: ctx.turnId,
+          attempt: progress.attempt,
+          maxAttempts: progress.maxAttempts,
+          delayMs: progress.delayMs,
+          reason: progress.reason,
+          provider: progress.provider,
+          model: progress.model,
+        });
+      },
+    })) {
       if (abortSignal?.aborted) {
         throwAbortError(abortSignal.reason);
       }
@@ -1287,6 +1307,12 @@ function classifyRetryReason(errorCode: string): "rate_limit" | "server_error" |
   return "server_error";
 }
 
+function calculateLiteLLMRetryDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+  const deterministicDelay = baseDelayMs * (attempt + 1);
+  const jitterDelay = deterministicDelay * LITELLM_RETRY_JITTER * Math.random();
+  return Math.min(deterministicDelay + jitterDelay, maxDelayMs);
+}
+
 function createUnsupportedMediaError(
   attempt: RouterModelRef,
   required: readonly InputModality[],
@@ -1314,43 +1340,4 @@ function extractPartialText(buffered: CanonicalModelEvent[]): string {
     }
   }
   return text;
-}
-
-const MID_STREAM_CONTINUATION_MARKER = "Continue from where you left off.";
-
-function buildMidStreamContinuationRequest(
-  original: CanonicalModelRequest,
-  partialText: string,
-): CanonicalModelRequest {
-  const baseMessages = stripPriorContinuation(original.messages);
-  return {
-    ...original,
-    messages: [
-      ...baseMessages,
-      {
-        role: "assistant" as const,
-        content: [{ type: "text" as const, text: partialText }],
-      },
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: MID_STREAM_CONTINUATION_MARKER }],
-      },
-    ],
-  };
-}
-
-function stripPriorContinuation(messages: CanonicalModelRequest["messages"]): CanonicalModelRequest["messages"] {
-  if (messages.length < 2) return messages;
-  const last = messages[messages.length - 1];
-  const secondLast = messages[messages.length - 2];
-  if (
-    last.role === "user" &&
-    secondLast.role === "assistant" &&
-    last.content.length === 1 &&
-    last.content[0].type === "text" &&
-    (last.content[0] as { type: "text"; text: string }).text === MID_STREAM_CONTINUATION_MARKER
-  ) {
-    return messages.slice(0, -2);
-  }
-  return messages;
 }

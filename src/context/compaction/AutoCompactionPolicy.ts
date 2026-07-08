@@ -22,8 +22,19 @@ export class AutoCompactionPolicy {
     this.tokenBudget = options.tokenBudget ?? new TokenBudgetManager();
   }
 
-  evaluate(messages: CanonicalMessage[], maxContextTokens: number): AutoCompactionDecision {
-    const snapshot = this.tokenBudget.evaluate(messages, maxContextTokens);
+  evaluate(
+    messages: CanonicalMessage[],
+    maxContextTokens: number,
+    options: { reservedOutputTokens?: number } = {},
+  ): AutoCompactionDecision {
+    const snapshot = this.tokenBudget.evaluate(messages, maxContextTokens, {
+      usePadding: true,
+      reservedOutputTokens: options.reservedOutputTokens,
+    });
+    return this.evaluateSnapshot(snapshot);
+  }
+
+  evaluateSnapshot(snapshot: TokenBudgetSnapshot): AutoCompactionDecision {
     if (snapshot.state === "blocking") {
       return { type: "trigger", snapshot, reason: "blocking_threshold" };
     }

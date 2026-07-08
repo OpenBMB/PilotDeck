@@ -4,6 +4,7 @@ import type {
   CanonicalModelRequest,
   CanonicalUsage,
 } from "../../model/index.js";
+import type { TokenAccountingRuntime } from "../budget/TokenAccountingRuntime.js";
 import { TokenBudgetManager } from "../budget/TokenBudgetManager.js";
 import type { ContextDiagnostic } from "../protocol/types.js";
 import { stripMultimediaFromMessages } from "./stripMultimedia.js";
@@ -15,6 +16,11 @@ import {
   stripUnpairedToolResults,
 } from "./toolPairIntegrity.js";
 import type { AgentEventEmitter } from "../../agent/protocol/events.js";
+import {
+  collectProtectedTurnIndexes,
+  protectedToolNameSet,
+  splitMessagesIntoTurns,
+} from "./protectedContext.js";
 
 export type CompactionTrigger = "manual" | "auto" | "reactive";
 
@@ -25,6 +31,7 @@ export type CompactionEngineOptions = {
    */
   model: { stream(request: CanonicalModelRequest, signal?: AbortSignal): AsyncIterable<CanonicalModelEvent> };
   tokenBudget?: TokenBudgetManager;
+  tokenAccounting?: TokenAccountingRuntime;
   /** Optional lifecycle dispatcher (PreCompact / PostCompact). */
   lifecycle?: {
     dispatch(input: { event: "PreCompact" | "PostCompact"; payload: Record<string, unknown> }): void | Promise<void>;
@@ -37,6 +44,8 @@ export type CompactionEngineOptions = {
   systemPrompt?: string;
   /** Max output tokens for the summary call (legacy default 20_000). */
   maxOutputTokens?: number;
+  /** Tool names whose turns should be preserved verbatim across full compaction. */
+  protectedToolNames?: Iterable<string>;
   now?: () => Date;
   eventEmitter?: AgentEventEmitter;
 };
@@ -46,6 +55,25 @@ export const COMPACT_SYSTEM_PROMPT_DEFAULT =
   "the early conversation history, so it MUST preserve all information the agent " +
   "needs to continue working without repeating past steps.";
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000;
+
+const SUMMARY_MARKDOWN_HEADINGS = [
+  "Objective",
+  "Current State",
+  "Completed",
+  "Remaining",
+  "Decisions",
+  "Files And Artifacts",
+  "Tool Findings",
+  "Errors And Recovery",
+  "Open Questions",
+] as const;
+
+const CORE_SUMMARY_MARKDOWN_HEADINGS = [
+  "Objective",
+  "Current State",
+  "Remaining",
+  "Files And Artifacts",
+] as const;
 
 export type CompactionResult = {
   trigger: CompactionTrigger;
@@ -90,27 +118,25 @@ const DEFAULT_KEEP_TAIL_RATIO = 0.35;
 export class CompactionEngine {
   private readonly tokenBudget: TokenBudgetManager;
   private readonly options: CompactionEngineOptions;
+  private readonly protectedToolNames: ReadonlySet<string>;
 
   constructor(options: CompactionEngineOptions) {
     this.options = options;
     this.tokenBudget = options.tokenBudget ?? new TokenBudgetManager();
+    this.protectedToolNames = protectedToolNameSet(options.protectedToolNames);
   }
 
   async run(input: CompactionInput): Promise<CompactionResult> {
-    const preTokens = this.tokenBudget.estimateMessagesTokens(input.messages);
+    const preTokens = this.estimateMessages(input.messages);
     const tailRatio = clamp(input.keepTailRatio ?? DEFAULT_KEEP_TAIL_RATIO, 0, 1);
     const keepCount = Math.max(1, Math.floor(input.messages.length * tailRatio));
-    const messagesToSummarize = input.messages.slice(0, input.messages.length - keepCount);
-
-    // Tool pair integrity: the summarize portion will be replaced by a
-    // summary message, so any tool_result in the keep portion whose
-    // tool_call is in the summarize portion (and vice-versa) becomes
-    // dangling and must be stripped.
-    const keptTail = input.messages.slice(-keepCount);
-    const keepToolResultIds = collectToolResultIds(keptTail);
-    const messagesWithPairedToolCalls = stripUnpairedToolCalls(keptTail, keepToolResultIds);
-    const keepToolCallIds = collectToolCallIds(messagesWithPairedToolCalls);
-    const messagesToKeep = stripUnpairedToolResults(messagesWithPairedToolCalls, keepToolCallIds);
+    const compactPlan = planFullCompactionMessages(
+      input.messages,
+      keepCount,
+      this.protectedToolNames,
+    );
+    const messagesToSummarize = compactPlan.messagesToSummarize;
+    const messagesToKeep = compactPlan.messagesToKeep;
 
     await this.options.lifecycle?.dispatch({
       event: "PreCompact",
@@ -146,6 +172,18 @@ export class CompactionEngine {
       summarySucceeded: summaryError === undefined && summaryMessage !== undefined,
     });
 
+    const diagnostics = summaryError
+      ? [
+          {
+            code: "compact_summary_failed",
+            severity: "error" as const,
+            message: summaryError,
+          },
+        ]
+      : summaryMessage
+        ? validateSummaryMarkdownStructure(summaryMessage)
+        : [];
+
     const result: CompactionResult = {
       trigger: input.trigger,
       preTokens,
@@ -154,20 +192,12 @@ export class CompactionEngine {
       messagesToKeep,
       attachments: input.attachments ?? [],
       hookResults: input.hookResults ?? [],
-      diagnostics: summaryError
-        ? [
-            {
-              code: "compact_summary_failed",
-              severity: "error",
-              message: summaryError,
-            },
-          ]
-        : [],
+      diagnostics,
       error: summaryError,
     };
 
     if (summaryMessage) {
-      result.postTokens = this.tokenBudget.estimateMessagesTokens(buildPostCompactMessages(result));
+      result.postTokens = this.estimateMessages(buildPostCompactMessages(result));
     }
 
     await this.options.lifecycle?.dispatch({
@@ -193,6 +223,11 @@ export class CompactionEngine {
     return result;
   }
 
+  private estimateMessages(messages: CanonicalMessage[]): number {
+    return this.options.tokenAccounting?.estimateMessages(messages)
+      ?? this.tokenBudget.estimateMessagesTokens(messages);
+  }
+
   private async summarize(
     messages: CanonicalMessage[],
     userInstruction: string | undefined,
@@ -203,16 +238,7 @@ export class CompactionEngine {
       content: [
         {
           type: "text",
-          text: userInstruction
-            ? `Summarize the conversation so far. ${userInstruction}`
-            : "Summarize the conversation so far. You MUST include:\n" +
-              "1. The original task/goal the user requested\n" +
-              "2. A checklist of completed steps vs remaining steps\n" +
-              "3. Key file paths, URLs, data values, and intermediate results discovered\n" +
-              "4. Any errors encountered and how they were resolved\n" +
-              "5. The current state and what the agent should do next\n" +
-              "Be concise but preserve ALL actionable details. Do NOT omit search results, " +
-              "computed values, or file contents that the agent will need.",
+          text: buildMarkdownSummaryPrompt(userInstruction),
         },
       ],
     };
@@ -286,6 +312,38 @@ export function buildPostCompactMessages(result: CompactionResult): CanonicalMes
   return ensureTrailingUserMessage(out);
 }
 
+function planFullCompactionMessages(
+  messages: CanonicalMessage[],
+  keepCount: number,
+  protectedToolNames?: Iterable<string>,
+): { messagesToSummarize: CanonicalMessage[]; messagesToKeep: CanonicalMessage[] } {
+  const summarizeLimit = Math.max(0, messages.length - keepCount);
+  const prefix = messages.slice(0, summarizeLimit);
+  const tail = messages.slice(summarizeLimit);
+  const protectedIndexes = collectProtectedTurnIndexes(prefix, { protectedToolNames });
+  const protectedMessages: CanonicalMessage[] = [];
+  const messagesToSummarize: CanonicalMessage[] = [];
+
+  for (const turn of splitMessagesIntoTurns(prefix)) {
+    if (protectedIndexes.has(turn.index)) {
+      protectedMessages.push(...turn.messages);
+    } else {
+      messagesToSummarize.push(...turn.messages);
+    }
+  }
+
+  // Tool pair integrity: the summarized portion will be replaced by a summary
+  // message, so any tool_result in the preserved portion whose tool_call was
+  // summarized away (and vice versa) must be stripped.
+  const preserved = [...protectedMessages, ...tail];
+  const preservedToolResultIds = collectToolResultIds(preserved);
+  const withoutDanglingCalls = stripUnpairedToolCalls(preserved, preservedToolResultIds);
+  const pairedToolCallIds = collectToolCallIds(withoutDanglingCalls);
+  const messagesToKeep = stripUnpairedToolResults(withoutDanglingCalls, pairedToolCallIds);
+
+  return { messagesToSummarize, messagesToKeep };
+}
+
 /**
  * Last-resort head truncation: keep the trailing `keepRatio` portion (legacy
  * `truncateHeadForPTLRetry` 25% slice). Single-shot per turn (decision §3.1 #8).
@@ -299,4 +357,40 @@ export function truncateHead(messages: CanonicalMessage[], keepRatio: number): C
 function clamp(value: number, min: number, max: number): number {
   if (Number.isNaN(value)) return min;
   return Math.max(min, Math.min(max, value));
+}
+
+function buildMarkdownSummaryPrompt(userInstruction: string | undefined): string {
+  const headings = SUMMARY_MARKDOWN_HEADINGS.map((heading) => `## ${heading}`).join("\n");
+  const additional = userInstruction?.trim()
+    ? `\n\nAdditional summary instructions:\n${userInstruction.trim()}`
+    : "";
+
+  return "Summarize the conversation so far as a concise Markdown handoff for the next coding agent.\n\n" +
+    "Prefer this section structure, using the headings exactly when they apply:\n" +
+    `${headings}\n\n` +
+    "If a section has no content, write `None` under that heading. Preserve exact file paths, URLs, " +
+    "commands, data values, user decisions, failed attempts and recovery steps, and unfinished TODOs. " +
+    "Do not replay unrelated chat, and do not expand large raw tool outputs that are easy to re-read or rerun." +
+    additional;
+}
+
+function validateSummaryMarkdownStructure(summaryMessage: CanonicalMessage): ContextDiagnostic[] {
+  const text = summaryMessage.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+  const missing = CORE_SUMMARY_MARKDOWN_HEADINGS.filter((heading) => !hasMarkdownHeading(text, heading));
+  if (missing.length === 0) {
+    return [];
+  }
+  return [{
+    code: "compact_summary_structure_weak",
+    severity: "warning",
+    message: `Compact summary is missing recommended Markdown heading(s): ${missing.join(", ")}.`,
+  }];
+}
+
+function hasMarkdownHeading(text: string, heading: string): boolean {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^#{1,6}\\s+${escaped}\\s*$`, "im").test(text);
 }

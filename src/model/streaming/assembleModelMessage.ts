@@ -28,6 +28,8 @@ export type ModelMessageAssemblerState = {
   hasPartialTextToolCall?: boolean;
   partialTextToolCall?: PartialTextToolCallInfo;
   hasTextFallbackToolCalls?: boolean;
+  textToolCallFormat?: PartialTextToolCallInfo["format"];
+  hasUnparsedTextToolCall?: boolean;
 };
 
 export type AssembledAssistantMessage = {
@@ -40,6 +42,8 @@ export type AssembledAssistantMessage = {
   hasPartialTextToolCall?: boolean;
   partialTextToolCall?: PartialTextToolCallInfo;
   hasTextFallbackToolCalls?: boolean;
+  textToolCallFormat?: PartialTextToolCallInfo["format"];
+  hasUnparsedTextToolCall?: boolean;
 };
 
 export function createModelMessageAssemblerState(): ModelMessageAssemblerState {
@@ -106,20 +110,25 @@ export function assembleAssistantMessage(state: ModelMessageAssemblerState): Ass
     );
     if (textIdx >= 0) {
       const textBlock = state.content[textIdx] as CanonicalTextBlock;
-      const { toolCalls, remainingText, partialToolCall } = extractTextToolCalls(textBlock.text);
+      const parseResult = extractTextToolCalls(textBlock.text);
+      const { detectedFormat, parseError, partialToolCall } = parseResult;
+      state.textToolCallFormat = detectedFormat;
       if (partialToolCall) {
         state.hasPartialTextToolCall = true;
         state.partialTextToolCall = partialToolCall;
       }
-      if (toolCalls.length > 0) {
-        console.log(`[text-tool-call-fallback] Extracted ${toolCalls.length} tool call(s) from assistant text`);
+      if (parseError) {
+        state.hasUnparsedTextToolCall = true;
+      }
+      if (parseResult.toolCalls.length > 0) {
+        console.log(`[text-tool-call-fallback] Extracted ${parseResult.toolCalls.length} tool call(s) from assistant text (format: ${detectedFormat ?? "unknown"})`);
         state.hasTextFallbackToolCalls = true;
-        if (remainingText.length > 0) {
-          (state.content[textIdx] as CanonicalTextBlock).text = remainingText;
+        if (parseResult.remainingText.length > 0) {
+          (state.content[textIdx] as CanonicalTextBlock).text = parseResult.remainingText;
         } else {
           state.content.splice(textIdx, 1);
         }
-        for (const tc of toolCalls) {
+        for (const tc of parseResult.toolCalls) {
           state.content.push({ type: "tool_call", ...tc });
           state.toolCalls.push(tc);
         }
@@ -142,6 +151,8 @@ export function assembleAssistantMessage(state: ModelMessageAssemblerState): Ass
     hasPartialTextToolCall: state.hasPartialTextToolCall,
     partialTextToolCall: state.partialTextToolCall,
     hasTextFallbackToolCalls: state.hasTextFallbackToolCalls,
+    textToolCallFormat: state.textToolCallFormat,
+    hasUnparsedTextToolCall: state.hasUnparsedTextToolCall,
   };
 }
 

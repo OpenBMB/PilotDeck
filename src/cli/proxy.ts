@@ -1,6 +1,12 @@
+import {
+  LITELLM_COMPLETION_HTTP_FALLBACK_MS,
+  LITELLM_HTTP_CONNECTOR_LIMIT,
+  LITELLM_HTTP_KEEPALIVE_TIMEOUT_MS,
+} from "../model/streaming/streamModel.js";
+
 type EnvLike = Record<string, string | undefined>;
 
-export const UNDICI_TRANSPORT_TIMEOUT_MS = 600_000;
+export const UNDICI_TRANSPORT_TIMEOUT_MS = LITELLM_COMPLETION_HTTP_FALLBACK_MS;
 
 type ProxyInstallSource = "env" | "config";
 type DispatcherState =
@@ -140,10 +146,17 @@ async function applyGlobalProxy(
   }
 }
 
-function createLongTimeoutOptions(): { headersTimeout: number; bodyTimeout: number } {
+export function createLongTimeoutOptions(): {
+  headersTimeout: number;
+  bodyTimeout: number;
+  connections: number;
+  keepAliveTimeout: number;
+} {
   return {
     headersTimeout: UNDICI_TRANSPORT_TIMEOUT_MS,
     bodyTimeout: UNDICI_TRANSPORT_TIMEOUT_MS,
+    connections: LITELLM_HTTP_CONNECTOR_LIMIT,
+    keepAliveTimeout: LITELLM_HTTP_KEEPALIVE_TIMEOUT_MS,
   };
 }
 

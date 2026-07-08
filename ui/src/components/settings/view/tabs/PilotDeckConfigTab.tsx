@@ -3400,6 +3400,8 @@ export default function PilotDeckConfigTab({
 	    loading,
 	    saving,
 	    opening,
+	    configDisabled,
+	    parseError: serverParseError,
 	    error,
 	    refresh,
 	    save,
@@ -3423,7 +3425,7 @@ export default function PilotDeckConfigTab({
   // truth — every form patch reserialises back into raw, which keeps the
   // existing save/watcher pipeline (and hot-reload) functional unchanged.
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
-  const parseError = !parsedConfig && raw.trim().length > 0;
+  const parseError = configDisabled || (!parsedConfig && raw.trim().length > 0);
 
   // Form patches: take the next config, stringify back into YAML, push into
   // the existing `setRaw`. This is what keeps the save+reload pipeline a
@@ -3553,7 +3555,7 @@ export default function PilotDeckConfigTab({
                   {t('pilotDeckConfig.rawYaml.configInvalid')}
                 </div>
                 <div className="mt-0.5 pl-6 text-[11px] leading-4">
-                  {t('pilotDeckConfig.status.fixYamlInFilesystem')}
+                  {t('pilotDeckConfig.status.fixYamlInRawEditor')}
                 </div>
               </div>
             )}
@@ -3591,14 +3593,16 @@ export default function PilotDeckConfigTab({
             )}
             {parseError && (
               <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                {t('pilotDeckConfig.rawYaml.yamlParseError')}
+                {serverParseError
+                  ? t('pilotDeckConfig.rawYaml.yamlParseErrorWithDetail', { error: serverParseError })
+                  : t('pilotDeckConfig.rawYaml.yamlParseError')}
               </div>
             )}
           </>
         )}
       </SettingsCard>
 
-      {parsedConfig ? (
+      {!configDisabled && parsedConfig ? (
         activeSection ? (
           <div className="space-y-4">
             <button
@@ -3627,8 +3631,23 @@ export default function PilotDeckConfigTab({
           <ConfigSectionHome onSelect={setActiveSection} />
         )
       ) : (
-        <SettingsCard className="p-5 text-xs text-muted-foreground">
-          {t('pilotDeckConfig.rawYaml.cannotParse')}
+        <SettingsCard className="space-y-3 p-5">
+          <div>
+            <div className="text-sm font-semibold text-foreground">{t('pilotDeckConfig.rawYaml.rawYaml')}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{t('pilotDeckConfig.rawYaml.cannotParse')}</div>
+          </div>
+          <textarea
+            value={raw}
+            onChange={(event) => setRaw(event.target.value)}
+            spellCheck={false}
+            className="min-h-[360px] w-full resize-y rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-5 text-foreground outline-none focus:ring-1 focus:ring-ring"
+          />
+          <div className="flex justify-end">
+            <Button type="button" size="sm" onClick={save} disabled={saving || !isDirty} className="h-8 gap-1.5 px-2.5 text-xs">
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              {saving ? t('pilotDeckConfig.actions.saving') : t('pilotDeckConfig.actions.saveAndReloadShort')}
+            </Button>
+          </div>
         </SettingsCard>
       )}
 

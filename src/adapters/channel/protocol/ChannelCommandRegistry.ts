@@ -29,6 +29,8 @@ export type CommandExecContext = {
   bindProject?: (projectKey: string) => void;
   /** Get the currently bound project for this chat. */
   getProject?: () => string | undefined;
+  /** Reset the active session for this chat (equivalent to /new). */
+  resetSession?: () => void;
   logger?: {
     info?(msg: string): void;
     warn?(msg: string): void;
@@ -121,7 +123,8 @@ const commands: ChannelCommand[] = [
         return;
       }
       ctx.bindProject?.(target.projectKey);
-      await ctx.reply(`已切换到项目：${target.name}\n路径：${target.fullPath}`);
+      ctx.resetSession?.();
+      await ctx.reply(`已切换到项目：${target.name}\n路径：${target.fullPath}\n（已自动创建新会话）`);
     },
   },
 

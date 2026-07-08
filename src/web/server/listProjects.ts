@@ -1,13 +1,10 @@
 /**
  * Enumerate PilotDeck projects.
  *
- * Source of truth (Phase 3): the `projects/` directory under `pilotHome`.
+ * Source of truth: the `projects/` directory under `pilotHome`.
  * Each subdirectory is a project ID; we surface its derived name + the
  * encoded `fullPath` we can recover from the ID. Where possible we also
  * include the session count via `listProjectSessions`.
- *
- * When `defaultProjectRoot` is provided, it is appended even if it
- * has no chats yet. Omit it to skip this behaviour (e.g. dev mode).
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -18,13 +15,11 @@ import type { WebListProjectsResult, WebProjectSummary } from "../client/protoco
 
 export type ListWebProjectsOptions = {
   pilotHome: string;
-  defaultProjectRoot?: string;
 };
 
 export async function listWebProjects(
   options: ListWebProjectsOptions,
 ): Promise<WebListProjectsResult> {
-  const seen = new Set<string>();
   const projects: WebProjectSummary[] = [];
 
   const projectsDir = resolve(options.pilotHome, "projects");
@@ -57,16 +52,7 @@ export async function listWebProjects(
       continue;
     }
     const summary = await summarizeProject(fullPath, options);
-    seen.add(summary.projectKey);
     projects.push(summary);
-  }
-
-  if (options.defaultProjectRoot) {
-    const normalizedDefault = resolve(options.defaultProjectRoot);
-    if (!seen.has(normalizedDefault)) {
-      const summary = await summarizeProject(normalizedDefault, options);
-      projects.push(summary);
-    }
   }
 
   projects.sort((left, right) => (right.lastActivity ?? 0) - (left.lastActivity ?? 0));

@@ -74,7 +74,7 @@ export type RouterRetryProgressEvent = {
   attempt: number;
   maxAttempts: number;
   delayMs: number;
-  reason: "rate_limit" | "server_error" | "network_error" | "zero_usage" | "overloaded";
+  reason: "rate_limit" | "server_error" | "network_error" | "zero_usage" | "overloaded" | "continuation";
   provider: string;
   model: string;
 };

@@ -11,6 +11,7 @@ import type { PlanFileManager } from "../../tool/builtin/planFile.js";
 import type { PlanTodoStateManager } from "./PlanTodoState.js";
 import type { LifecycleRuntime } from "../../lifecycle/index.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
+import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 
@@ -23,6 +24,7 @@ import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
  * compaction pass between the routing decision and the model call.
  */
 export type AgentRouterRuntime = Pick<RouterRuntime, "stream" | "decide" | "execute"> & {
+  materializeRequest?: RouterRuntime["materializeRequest"];
   observeUsage?: RouterRuntime["observeUsage"];
   invalidateSticky?: RouterRuntime["invalidateSticky"];
 };
@@ -87,6 +89,7 @@ export type AgentRuntimeDependencies = {
     registry: ToolRegistry;
   };
   context?: AgentContextRuntime;
+  tokenAccounting?: TokenAccountingRuntime;
   /**
    * Look up a model's context-window size by provider/model id. Used after
    * routing to re-evaluate compaction against the target model's window when

@@ -71,13 +71,6 @@ const CHANNEL_LOADERS: Record<
       clientSecret: cfg.extra?.clientSecret as string | undefined,
     });
   },
-  wecom: async (cfg) => {
-    const { WeComChannel } = await import("./wecom/WeComChannel.js");
-    return new WeComChannel({
-      botKey: cfg.token,
-      extra: cfg.extra,
-    });
-  },
   wecomCallback: async (cfg) => {
     const { WeComCallbackChannel } = await import("./wecom-callback/WeComCallbackChannel.js");
     return new WeComCallbackChannel({

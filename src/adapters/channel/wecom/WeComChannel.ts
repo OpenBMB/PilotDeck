@@ -5,7 +5,7 @@ import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
-import { WeComSessionMapper, type WeComSessionMapperScopeInput } from "./WeComSessionMapper.js";
+import { WeComSessionMapper, type WeComSessionMapperScopeInput, type WeComSessionMapperState } from "./WeComSessionMapper.js";
 import { renderWeComEvent } from "./wecom-render.js";
 import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
@@ -151,6 +151,7 @@ export type WeComChannelOptions = {
   webSocketCtor?: any;
   uuid?: () => string;
   reconnectBackoffMs?: readonly number[];
+  onStateChange?: (state: WeComSessionMapperState) => void;
 };
 
 export class WeComChannel implements ChannelAdapter {
@@ -172,6 +173,7 @@ export class WeComChannel implements ChannelAdapter {
   private readonly groupSessionsPerUser: boolean;
   private readonly textBatchDelayMs: number;
   private readonly textBatchSplitDelayMs: number;
+  private readonly onStateChange?: (state: WeComSessionMapperState) => void;
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -224,6 +226,7 @@ export class WeComChannel implements ChannelAdapter {
       ex.text_batch_split_delay_ms ?? ex.textBatchSplitDelayMs,
       TEXT_BATCH_SPLIT_DELAY_MS,
     );
+    this.onStateChange = options.onStateChange;
   }
 
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
@@ -527,8 +530,9 @@ export class WeComChannel implements ChannelAdapter {
       chatId,
       channelKey: "wecom",
       reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }),
-      bindProject: (projectKey) => this.mapper.bindProject(scopeInput, projectKey),
+      bindProject: (projectKey) => { this.mapper.bindProject(scopeInput, projectKey); this.onStateChange?.(this.mapper.snapshot()); },
       getProject: () => this.mapper.getProject(scopeInput),
+      resetSession: () => { this.mapper.resolve({ ...scopeInput, text: "/new" }); this.onStateChange?.(this.mapper.snapshot()); },
       logger: this.logger,
     });
   }
@@ -698,6 +702,9 @@ export class WeComChannel implements ChannelAdapter {
       chatType: input.chatType,
       groupSessionsPerUser: this.groupSessionsPerUser,
     });
+    if (mapped.command === "new") {
+      this.onStateChange?.(this.mapper.snapshot());
+    }
     if (mapped.command === "new" && !mapped.message) {
       await this.sendReply(input.chatId, "已创建新会话。", {
         chatType: input.chatType,

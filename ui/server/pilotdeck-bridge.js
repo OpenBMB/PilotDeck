@@ -224,6 +224,15 @@ function ensureGateway() {
     return gatewayPromise;
 }
 
+function resetGatewayConnection() {
+    gatewayPromise = null;
+}
+
+export function isGatewayUnavailableError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /gateway websocket (closed|is not connected)|failed to connect to gateway websocket|gateway hello timed out|gateway closed during hello|gateway connect failed/i.test(message);
+}
+
 /**
  * Public accessor for the shared gateway client. Other ui/server modules
  * (`projects.js`, etc.) await this so they share one WebSocket
@@ -246,7 +255,11 @@ export function getPilotDeckRepoRoot() {
 const sessionState = new Map();
 
 function isPilotDeckSessionKey(value) {
-    return typeof value === 'string' && /^web[:_-]s_/.test(value);
+    if (typeof value !== 'string' || !value.trim()) return false;
+    if (value.startsWith('new-session-')) return false;
+    if (/^web[:_-]s_/.test(value)) return true;
+    if (/^[a-z]+:/.test(value)) return true;
+    return false;
 }
 
 function newSessionKey() {
@@ -645,11 +658,16 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 ];
             }
             if (event.event === 'retry_progress') {
+                const retryText = detail.reason === 'continuation'
+                    ? 'Continuing response'
+                    : detail.reason === 'rate_limit' || detail.reason === 'overloaded'
+                        ? 'Switching model'
+                        : 'Reconnecting';
                 return [
                     createNormalizedMessage({
                         ...base,
                         kind: 'status',
-                        text: `Reconnecting... ${detail.attempt}/${detail.maxAttempts}`,
+                        text: `${retryText}... ${detail.attempt}/${detail.maxAttempts}`,
                         tokens: 0,
                         canInterrupt: true,
                         retryProgress: {
@@ -1107,7 +1125,10 @@ export async function runChatViaGateway(
         }
     } catch (error) {
         const rawMessage = error instanceof Error ? error.message : String(error);
-        const gatewayUnavailable = !gw;
+        const gatewayUnavailable = !gw || isGatewayUnavailableError(error);
+        if (gatewayUnavailable) {
+            resetGatewayConnection();
+        }
         const message = gatewayUnavailable ? 'PilotDeck gateway is unavailable.' : rawMessage;
         const statusEvent = gatewayUnavailable
             ? createBridgeFailureStatusEvent({

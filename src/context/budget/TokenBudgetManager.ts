@@ -14,6 +14,15 @@ export type TokenBudgetSnapshot = {
   blockingRatio: number;
   state: TokenWarningState;
   ratio: number;
+  source?: "provider" | "local";
+  exact?: boolean;
+  reservedOutputTokens?: number;
+  estimatorError?: string;
+};
+
+export type TokenBudgetEvaluateOptions = {
+  usePadding?: boolean;
+  reservedOutputTokens?: number;
 };
 
 export type TokenBudgetManagerOptions = {
@@ -161,9 +170,32 @@ export class TokenBudgetManager {
     return Math.ceil((raw * ROUGH_PADDING_NUMERATOR) / ROUGH_PADDING_DENOMINATOR);
   }
 
-  evaluate(messages: CanonicalMessage[], maxContextTokens: number): TokenBudgetSnapshot {
-    const tokens = this.estimateMessagesTokens(messages);
-    const ratio = maxContextTokens > 0 ? tokens / maxContextTokens : 0;
+  evaluate(
+    messages: CanonicalMessage[],
+    maxContextTokens: number,
+    options: TokenBudgetEvaluateOptions = {},
+  ): TokenBudgetSnapshot {
+    const tokens = options.usePadding
+      ? this.estimateForMessagesWithPadding(messages)
+      : this.estimateMessagesTokens(messages);
+    return this.snapshotFromTokens(tokens, maxContextTokens, {
+      reservedOutputTokens: options.reservedOutputTokens,
+    });
+  }
+
+  snapshotFromTokens(
+    tokens: number,
+    maxContextTokens: number,
+    options: {
+      reservedOutputTokens?: number;
+      source?: "provider" | "local";
+      exact?: boolean;
+      estimatorError?: string;
+    } = {},
+  ): TokenBudgetSnapshot {
+    const reserved = Math.max(0, Math.floor(options.reservedOutputTokens ?? 0));
+    const promptBudget = Math.max(1, maxContextTokens - reserved);
+    const ratio = promptBudget > 0 ? tokens / promptBudget : 0;
     let state: TokenWarningState = "ok";
     if (ratio >= this.blockingRatio) {
       state = "blocking";
@@ -172,11 +204,15 @@ export class TokenBudgetManager {
     }
     return {
       tokens,
-      maxContextTokens,
+      maxContextTokens: promptBudget,
       warningRatio: this.warningRatio,
       blockingRatio: this.blockingRatio,
       state,
       ratio,
+      source: options.source,
+      exact: options.exact,
+      reservedOutputTokens: reserved,
+      estimatorError: options.estimatorError,
     };
   }
 }
