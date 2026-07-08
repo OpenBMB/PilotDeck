@@ -174,12 +174,14 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     setModelListMessage('');
     try {
       const key = apiKey.trim();
-      const models = await fetchProviderModels({
-        protocol: effectiveProtocol,
-        baseUrl: effectiveUrl,
-        apiKey: hasUsableApiKey(key) ? key : '',
-        providerId: effectiveProviderId,
-      });
+      const models = !isCustomMode && !hasUsableApiKey(key)
+        ? await fetchRemoteDefaultModels(effectiveProviderId)
+        : await fetchProviderModels({
+            protocol: effectiveProtocol,
+            baseUrl: effectiveUrl,
+            apiKey: hasUsableApiKey(key) ? key : '',
+            providerId: effectiveProviderId,
+          });
       const nextModels = !hasUsableApiKey(key) && !isCustomMode && selectedProvider
         ? (models.length > 0 ? models : selectedProvider.models)
         : models;
