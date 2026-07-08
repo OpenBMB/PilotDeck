@@ -347,9 +347,9 @@ export default function ComposerV2({
   const sendTitle = isSubmitPending || hasUploadingImages
     ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
     : isBusySendConfirmed
-      ? (t('input.queuedSendConfirmed', { defaultValue: 'Queued — will send when the current turn finishes' }) as string)
+      ? (t('input.queuedSendConfirmed', { defaultValue: 'Stopping current turn — sending next message' }) as string)
       : isBusySendQueued
-        ? (t('input.queuedSendConfirm', { defaultValue: 'Queued — click send again to send now' }) as string)
+        ? (t('input.queuedSendConfirm', { defaultValue: 'Queued — click send again to stop this turn and send now' }) as string)
       : isLoading
         ? (t('input.queueSend', { defaultValue: 'Queue message' }) as string)
         : (t('input.send', { defaultValue: 'Send' }) as string);
@@ -764,8 +764,8 @@ export default function ComposerV2({
                     <div className="hidden min-w-0 flex-1 items-center justify-end gap-1 px-2 text-[12px] text-amber-700 dark:text-amber-300 sm:flex">
                       <span className="truncate rounded-full bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
                         {isBusySendConfirmed
-                          ? t('input.queuedSendConfirmedInline', { defaultValue: 'Queued; sends after this turn' })
-                          : t('input.queuedSendConfirmInline', { defaultValue: 'Queued; click send again to send now' })}
+                          ? t('input.queuedSendConfirmedInline', { defaultValue: 'Stopping current turn; sending next' })
+                          : t('input.queuedSendConfirmInline', { defaultValue: 'Queued; click again to stop this turn and send now' })}
                       </span>
                       <button
                         type="button"

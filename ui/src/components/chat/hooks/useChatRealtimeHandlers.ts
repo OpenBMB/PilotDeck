@@ -187,7 +187,9 @@ export function useChatRealtimeHandlers({
             const slot = sessionStore.getSessionSlot?.(statusSessionId);
             const hasLiveStreaming = Boolean(slot?.realtimeMessages?.some((message) => (
               message.id === `__streaming_${statusSessionId}`
+              || message.id.startsWith(`__streaming_${statusSessionId}_`)
               || message.id === `__streaming_thinking_${statusSessionId}`
+              || message.id.startsWith(`__streaming_thinking_${statusSessionId}_`)
             )));
             const replayedToolIds = new Set(
               (slot?.realtimeMessages || [])
@@ -312,7 +314,6 @@ export function useChatRealtimeHandlers({
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
       }
-      sessionStore.clearAssistantRealtime?.(sid);
     }
 
     if (msg.kind === 'agent_activity') {
@@ -421,7 +422,7 @@ export function useChatRealtimeHandlers({
       // Finalize thinking if still active (model moved past thinking)
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid);
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
       // Finalize content stream on tool_use / complete / error.
       // The gateway may not send stream_end, so tool_use is the
