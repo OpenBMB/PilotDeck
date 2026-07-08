@@ -13,8 +13,9 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
-    // "checkJs": true, 
-    "types": ["vite/client"]
+    // "checkJs": true,
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["vite/client", "react", "react-dom"]
   },
   "include": ["src", "shared", "vite.config.js"]
 }
