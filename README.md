@@ -322,6 +322,24 @@ pilotdeck            # starts the server at http://localhost:3001
 pilotdeck status     # check runtime status
 ```
 
+#### Windows PowerShell FAQ
+
+**`npm.ps1` cannot be loaded because running scripts is disabled**
+
+This can still happen when you run development commands such as `npm run dev` directly in Windows PowerShell for the first time. PowerShell may resolve `npm` to `npm.ps1`, and the default execution policy can block that shim.
+
+Fix it once for the current user, then reopen PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+If you do not want to change the user policy, run the cmd shim explicitly instead:
+
+```powershell
+npm.cmd run dev
+```
+
 ### Option B: From source (for developers)
 
 **1. Clone and install dependencies**

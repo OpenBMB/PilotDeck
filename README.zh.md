@@ -322,6 +322,24 @@ pilotdeck            # 在 http://localhost:3001 启动服务
 pilotdeck status     # 查看运行状态
 ```
 
+#### Windows PowerShell FAQ
+
+**首次运行 `npm run dev` 报错：`npm.ps1` 因系统禁止运行脚本而无法加载**
+
+这个问题现在仍可能出现：当你在 Windows PowerShell 中直接运行 `npm run dev` 等开发命令时，PowerShell 可能优先解析到 `npm.ps1`，而默认执行策略会阻止该脚本。
+
+对当前用户设置一次执行策略，然后重新打开 PowerShell：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+如果不想修改用户执行策略，也可以显式调用 cmd shim：
+
+```powershell
+npm.cmd run dev
+```
+
 ### 方式二：源码启动 (适合开发者)
 
 **1. 克隆代码与安装依赖**
