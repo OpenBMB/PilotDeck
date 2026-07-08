@@ -353,9 +353,6 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
               }`}
             >
               <div className="font-medium">{provider.displayName}</div>
-              <div className="mt-0.5 text-[11px] opacity-60">
-                {provider.models.length} model{provider.models.length === 1 ? '' : 's'}
-              </div>
               {selectedProvider?.id === provider.id && (
                 <Check className="absolute right-2 top-2 h-4 w-4 text-foreground" strokeWidth={2.5} />
               )}

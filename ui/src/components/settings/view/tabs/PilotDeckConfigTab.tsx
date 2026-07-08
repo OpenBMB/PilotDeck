@@ -1360,9 +1360,6 @@ function CatalogPicker({
             className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
           >
             <div className="font-medium text-foreground">{p.displayName}</div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {t('pilotDeckConfig.panels.models.modelCount', { count: p.models.length })}
-            </div>
           </button>
         ))}
         <button
