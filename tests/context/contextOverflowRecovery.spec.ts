@@ -18,7 +18,7 @@ test("output cap errors retry with adjusted output without compacting", () => {
   const recovery = new ContextOverflowRecovery();
   assert.deepEqual(
     recovery.decide({ error: error({ code: "invalid_request", maxOutputTokens: 32768 }), hasAttemptedCompact: false }),
-    { type: "adjust_output_and_retry", maxOutputTokens: 32768, reason: "provider-output-cap" },
+    { type: "adjust_output_and_retry", maxOutputTokens: 32768, reason: "provider-output-cap", scope: "hard_cap" },
   );
 });
 
@@ -66,6 +66,6 @@ test("mixed context/output errors lower output after compaction when available i
   const recovery = new ContextOverflowRecovery();
   assert.deepEqual(
     recovery.decide({ error: error({ availableOutputTokens: 8_192, recoverableViaCompact: true }), hasAttemptedCompact: true }),
-    { type: "adjust_output_and_retry", maxOutputTokens: 8_192, reason: "provider-output-cap" },
+    { type: "adjust_output_and_retry", maxOutputTokens: 8_192, reason: "provider-output-cap", scope: "attempt" },
   );
 });

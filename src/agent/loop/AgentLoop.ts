@@ -132,6 +132,7 @@ export class AgentLoop {
   private readonly transientTokenCaps = new Map<string, {
     maxContextTokens?: number;
     requestedMaxOutputTokens?: number;
+    attemptMaxOutputTokens?: number;
     hardMaxOutputTokens?: number;
   }>();
 
@@ -469,6 +470,7 @@ export class AgentLoop {
         }
       }
       request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
+      this.clearAttemptOutputTokenCap(decision.provider, decision.model);
       if (pendingContextBudget && !emittedContextBudget) {
         yield {
           type: "context_budget",
@@ -901,7 +903,9 @@ export class AgentLoop {
         if (reactive && reactive.type === "adjust_output_and_retry" && !hasAttemptedOutputRetry) {
           hasAttemptedOutputRetry = true;
           const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
-          this.setTransientTokenCap(decision.provider, decision.model, { hardMaxOutputTokens: reactive.maxOutputTokens });
+          this.setTransientTokenCap(decision.provider, decision.model, reactive.scope === "attempt"
+            ? { attemptMaxOutputTokens: reactive.maxOutputTokens }
+            : { hardMaxOutputTokens: reactive.maxOutputTokens });
           messages = stripTrailingErrorPair(messages);
           yield {
             type: "token_cap_adjusted",
@@ -941,7 +945,7 @@ export class AgentLoop {
           }
           if (reactive.maxOutputTokens !== undefined) {
             const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
-            this.setTransientTokenCap(decision.provider, decision.model, { hardMaxOutputTokens: reactive.maxOutputTokens });
+            this.setTransientTokenCap(decision.provider, decision.model, { attemptMaxOutputTokens: reactive.maxOutputTokens });
             yield {
               type: "token_cap_adjusted",
               sessionId: input.sessionId,
@@ -1803,7 +1807,7 @@ export class AgentLoop {
   private currentMaxOutputTokens(provider: string, model: string): number | undefined {
     const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model));
     const modelMaxOutputTokens = this.getModelTokenLimits(provider, model)?.maxOutputTokens;
-    const requested = transient?.requestedMaxOutputTokens ?? this.config.maxOutputTokens ?? modelMaxOutputTokens;
+    const requested = transient?.attemptMaxOutputTokens ?? transient?.requestedMaxOutputTokens ?? this.config.maxOutputTokens ?? modelMaxOutputTokens;
     const candidates = [requested, modelMaxOutputTokens, transient?.hardMaxOutputTokens]
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
     return candidates.length > 0 ? Math.min(...candidates.map((value) => Math.floor(value))) : undefined;
@@ -1812,11 +1816,20 @@ export class AgentLoop {
   private setTransientTokenCap(provider: string, model: string, cap: {
     maxContextTokens?: number;
     requestedMaxOutputTokens?: number;
+    attemptMaxOutputTokens?: number;
     hardMaxOutputTokens?: number;
   }): void {
     const key = this.tokenCapKey(provider, model);
     const previous = this.transientTokenCaps.get(key) ?? {};
     this.transientTokenCaps.set(key, { ...previous, ...cap });
+  }
+
+  private clearAttemptOutputTokenCap(provider: string, model: string): void {
+    const key = this.tokenCapKey(provider, model);
+    const previous = this.transientTokenCaps.get(key);
+    if (!previous || previous.attemptMaxOutputTokens === undefined) return;
+    const { attemptMaxOutputTokens: _attemptMaxOutputTokens, ...rest } = previous;
+    this.transientTokenCaps.set(key, rest);
   }
 
   private applyTokenCapsToRequest(request: CanonicalModelRequest, provider: string, model: string): CanonicalModelRequest {

@@ -86,7 +86,7 @@ test("output-cap provider errors recover by adjusting output only", () => {
     400,
   );
   const decision = new ContextOverflowRecovery().decide({ error, hasAttemptedCompact: false });
-  assert.deepEqual(decision, { type: "adjust_output_and_retry", maxOutputTokens: 32_768, reason: "provider-output-cap" });
+  assert.deepEqual(decision, { type: "adjust_output_and_retry", maxOutputTokens: 32_768, reason: "provider-output-cap", scope: "hard_cap" });
 });
 
 test("Anthropic available_tokens errors recover by lowering output", () => {
@@ -97,7 +97,7 @@ test("Anthropic available_tokens errors recover by lowering output", () => {
     400,
   );
   const decision = new ContextOverflowRecovery().decide({ error, hasAttemptedCompact: false });
-  assert.deepEqual(decision, { type: "adjust_output_and_retry", maxOutputTokens: 10_000, reason: "provider-output-cap" });
+  assert.deepEqual(decision, { type: "adjust_output_and_retry", maxOutputTokens: 10_000, reason: "provider-output-cap", scope: "attempt" });
 });
 
 test("context-cap provider errors request compaction", () => {

@@ -50,6 +50,7 @@ export class ContextOverflowRecovery {
         type: "adjust_output_and_retry",
         maxOutputTokens: Math.max(1, available),
         reason: "provider-output-cap",
+        scope: "attempt",
       };
     }
 
@@ -59,6 +60,7 @@ export class ContextOverflowRecovery {
         type: "adjust_output_and_retry",
         maxOutputTokens: Math.max(1, Math.floor(parsedOutput)),
         reason: "provider-output-cap",
+        scope: "hard_cap",
       };
     }
     const isContextError =

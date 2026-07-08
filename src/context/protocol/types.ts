@@ -94,7 +94,7 @@ export type ContextRecoveryInput = {
 
 export type ContextRecoveryDecision =
   | { type: "truncate_head_and_retry"; keepRatio: number; reason: string }
-  | { type: "adjust_output_and_retry"; maxOutputTokens: number; reason: string }
+  | { type: "adjust_output_and_retry"; maxOutputTokens: number; reason: string; scope?: "hard_cap" | "attempt" }
   | { type: "compact_and_retry"; maxContextTokens?: number; maxOutputTokens?: number; reason: string }
   | { type: "strip_images_and_retry"; reason: string }
   | { type: "give_up"; reason: string };
