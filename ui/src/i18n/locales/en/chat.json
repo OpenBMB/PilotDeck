@@ -452,5 +452,54 @@
       "thinking": "Thinking",
       "executingTool": "Executing {{toolName}}"
     }
+  },
+  "agentStatus": {
+    "modelRequestFailed": {
+      "message": "{{providerMessage}}\n\nSee the suggested action below.",
+      "actions": {
+        "settingsDefault": "Check Settings → Model Provider and verify the selected provider, base URL, API key, model name, and timeoutMs. If the provider is slow or the network is unstable, increase timeoutMs or check provider status.",
+        "auth": "Update the API key or access permissions for {{provider}} in Settings → Model Provider, or run pilotdeck setup.",
+        "modelNotFound": "Choose a valid model for {{provider}} in Settings → Model Provider, or add it under model.providers.<id>.models in pilotdeck.yaml.",
+        "timeout": "Increase timeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
+        "rateLimit": "Wait for the provider rate limit to reset, reduce concurrency, or switch to another provider/model in Settings.",
+        "billing": "Top up billing/quota on the provider API side, or switch to another provider/model in Settings.",
+        "contextOverflow": "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.",
+        "payloadTooLarge": "Reduce attachments/context size, run /compact, or start a new session before retrying.",
+        "maxOutput": "Increase max output tokens in Settings → Model Provider, or ask the agent to split the answer into smaller parts.",
+        "imageTooLarge": "Resize or remove large images, then retry.",
+        "providerRetry": "Retry later, check provider API status, or switch to another provider/model in Settings if it repeats."
+      }
+    },
+    "emptyResponse": {
+      "message": "The model returned empty content repeatedly, so this turn has stopped. Try again later or increase max output tokens.",
+      "hint": "Increase max output tokens in Settings → Model Provider, retry with a shorter prompt, or check whether this provider/model supports the requested output format."
+    },
+    "maxTurns": {
+      "message": "Reached the maximum number of turns ({{maxTurns}}), so this turn has stopped. Increase maxTurns or split the task into smaller steps and try again.",
+      "hint": "Increase maxTurns in local config if this task legitimately needs more agent steps, or split the task into smaller prompts and try again."
+    },
+    "maxOutputRecoveryExhausted": {
+      "message": "Output token recovery was exhausted, so the visible response may be incomplete. Increase max output tokens or split the task into smaller steps and try again.",
+      "hint": "Increase max output tokens in Settings → Model Provider, or ask the agent to split the answer into smaller parts."
+    },
+    "structuredOutputCompleted": {
+      "message": "Structured output was returned, so this turn has completed."
+    },
+    "contentFilter": {
+      "message": "The response may be incomplete because the model stopped due to content filtering.",
+      "hint": "Retry with a narrower request or adjust the prompt to avoid filtered content; if this seems wrong, check the provider API policy/status for the selected model."
+    },
+    "unknownFinishReason": {
+      "message": "The model stream ended without a normal finish reason, so the response may be incomplete.",
+      "hint": "Retry the turn; if it repeats, check provider API status/logs for stream finish reasons and verify the selected provider/model in Settings → Model Provider."
+    },
+    "turnAborted": {
+      "message": "This turn was aborted before completion.",
+      "hint": "Retry when you are ready to continue. If this was unexpected, check whether you clicked Stop, switched sessions during a run, or lost the gateway connection."
+    },
+    "toolCallRecoveryExhausted": {
+      "message": "{{message}}",
+      "hint": "Retry with a shorter prompt, ask the agent to split large tool inputs into smaller steps, or switch to a model with stronger tool-calling support in Settings → Model Provider."
+    }
   }
 }

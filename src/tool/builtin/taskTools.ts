@@ -258,11 +258,32 @@ export function createTaskListTool(
         endedAt: t.endedAt?.toISOString(),
       }));
       return {
-        content: [{ type: "json", value: { tasks } }],
+        content: [{ type: "text", text: formatTaskListText(tasks) }],
         data: { tasks },
       };
     },
   };
+}
+
+function formatTaskListText(tasks: TaskListOutput["tasks"]): string {
+  const lines = [`task_list count=${tasks.length}`];
+  if (tasks.length === 0) {
+    lines.push("No background tasks matched the filter.");
+    return lines.join("\n");
+  }
+
+  for (const task of tasks) {
+    const exitCode = task.exitCode ?? "null";
+    const pid = task.pid ?? "null";
+    const command = task.command.length > 160 ? `${task.command.slice(0, 157)}...` : task.command;
+    lines.push(
+      `- taskId=${task.taskId} status=${task.status} kind=${task.kind} pid=${pid} exitCode=${exitCode} outputBytes=${task.outputBytes} interrupted=${task.interrupted} command=${JSON.stringify(command)}`,
+    );
+    if (!isTerminalTaskStatus(task.status) || task.outputBytes > 0) {
+      lines.push(`  next: use task_output({ taskId: "${task.taskId}", offset: 0 }) to inspect output, or task_wait for a finite running task.`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export function createTaskOutputTool(

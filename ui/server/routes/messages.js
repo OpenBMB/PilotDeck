@@ -201,6 +201,7 @@ function mapWebMessageToNormalized(message, sessionId) {
         toolId: message.toolCallId,
         content: message.text || '',
         isError: message.ok === false,
+        ...(message.resultPath ? { resultPath: message.resultPath } : {}),
         ...(message.errorCode ? { errorCode: message.errorCode } : {}),
         // Inline tool-result images (e.g. read_file on a PNG). The web
         // server already wraps the bare base64 from canonical messages as
@@ -243,11 +244,24 @@ function mapWebMessageToNormalized(message, sessionId) {
         payload: message.payload,
       });
     case 'status':
-      return createNormalizedMessage({ ...base, kind: 'status', text: message.text || '' });
+      return createNormalizedMessage({
+        ...base,
+        kind: 'status',
+        text: message.text || '',
+        ...(message.contentI18n ? { contentI18n: message.contentI18n } : {}),
+        ...(message.userHintI18n ? { userHintI18n: message.userHintI18n } : {}),
+      });
     case 'complete':
       return createNormalizedMessage({ ...base, kind: 'complete' });
     case 'error':
-      return createNormalizedMessage({ ...base, kind: 'error', content: message.text || '' });
+      return createNormalizedMessage({
+        ...base,
+        kind: 'error',
+        content: message.text || '',
+        ...(message.payload?.detail?.userHint ? { userHint: message.payload.detail.userHint } : {}),
+        ...(message.contentI18n ? { contentI18n: message.contentI18n } : {}),
+        ...(message.userHintI18n ? { userHintI18n: message.userHintI18n } : {}),
+      });
     case 'interrupted':
       return createNormalizedMessage({ ...base, kind: 'interrupted', content: message.text || '' });
     case 'compact_boundary': {

@@ -71,6 +71,7 @@ export type WebGatewayEvent =
         detail?: "auto" | "low" | "high";
       }>;
     }
+  | { type: "tool_result_detail_available"; toolCallId: string; resultPath?: string; fullText?: string }
   | {
       type: "permission_request";
       requestId: string;

@@ -308,6 +308,8 @@ curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh |
   NPM_CONFIG_REGISTRY=https://registry.npmmirror.com bash
 ```
 
+You can also keep the official Node.js host as the primary source and opt in to one or more trusted fallback mirrors with `PILOTDECK_NODE_DIST_FALLBACK_MIRRORS`.
+
 ```bash
 pilotdeck            # starts the server at http://localhost:3001
 pilotdeck status     # check runtime status
@@ -369,7 +371,11 @@ npm.cmd run dev
 
 **Native dependency build errors (`node-gyp`, `MSBuild`, or Python not found)**
 
-The installer normally uses prebuilt packages for native dependencies such as `node-pty`, `sqlite3`, `better-sqlite3`, and `sharp`. On a fresh Windows machine, if npm cannot download a matching prebuild and falls back to compiling from source, install Visual Studio Build Tools with the C++ workload and Python, then rerun the installer.
+The installer normally uses prebuilt packages for native dependencies such as `node-pty`, `better-sqlite3`, `bcrypt`, and `sharp`. On a fresh Windows machine, if npm cannot download a matching prebuild and falls back to compiling from source, install Visual Studio Build Tools with the C++ workload and Python, then rerun the installer.
+
+**GitHub returns `429: Too Many Requests` while downloading `install.ps1`**
+
+GitHub may rate-limit repeated `raw.githubusercontent.com` requests from shared networks. Wait a few minutes and rerun the one-line command, or download `install.ps1` from the repository and run it locally with `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 
 ### Option B: From source (for developers)
 

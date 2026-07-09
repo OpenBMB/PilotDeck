@@ -758,7 +758,7 @@ function parseIntervalInputValue(value, fallbackMinutes, unit) {
 
 function syncSettingsFieldDisplay(fieldKey, minutes) {
   const config = SETTINGS_FIELD_CONFIG[fieldKey];
-  if (!config) return;
+  if (!config || !config.inputEl || !config.unitEl) return;
   const unit = normalizeSettingsUnit(config.unitEl.value);
   config.unitEl.value = unit;
   config.unitEl.dataset.prevUnit = unit;
@@ -767,6 +767,7 @@ function syncSettingsFieldDisplay(fieldKey, minutes) {
 
 function syncSettingsInputsFromState() {
   Object.entries(SETTINGS_FIELD_CONFIG).forEach(([fieldKey, config]) => {
+    if (!config.inputEl || !config.unitEl) return;
     const unit = readSettingsUnitPreference(fieldKey);
     config.unitEl.value = unit;
     config.unitEl.dataset.prevUnit = unit;
@@ -776,14 +777,14 @@ function syncSettingsInputsFromState() {
 
 function getCurrentSettingsFieldMinutes(fieldKey) {
   const config = SETTINGS_FIELD_CONFIG[fieldKey];
-  if (!config) return 0;
+  if (!config || !config.inputEl || !config.unitEl) return 0;
   const unit = normalizeSettingsUnit(config.unitEl.value);
   return parseIntervalInputValue(config.inputEl.value, getSettingsFieldMinutes(fieldKey), unit);
 }
 
 function handleSettingsUnitChange(fieldKey) {
   const config = SETTINGS_FIELD_CONFIG[fieldKey];
-  if (!config) return;
+  if (!config || !config.inputEl || !config.unitEl) return;
   const previousUnit = normalizeSettingsUnit(config.unitEl.dataset.prevUnit);
   const currentMinutes = parseIntervalInputValue(
     config.inputEl.value,
@@ -1136,13 +1137,18 @@ function setActiveTraceTab(tab) { state.activeTraceTab = tab; applyTraceTabChrom
 /* ── Settings Drawer ── */
 
 function openSettingsDrawer() {
+  if (!settingsModalEl) return;
   state.settingsOpen = true;
   settingsModalEl.classList.remove("hidden");
   syncSettingsInputsFromState();
   updateAppScrim();
 }
 
-function closeSettingsDrawer() { state.settingsOpen = false; settingsModalEl.classList.add("hidden"); updateAppScrim(); }
+function closeSettingsDrawer() {
+  state.settingsOpen = false;
+  settingsModalEl?.classList.add("hidden");
+  updateAppScrim();
+}
 
 /* ── Detail Drawer ── */
 
@@ -2010,30 +2016,30 @@ traceSubTabs.forEach((b) => b.addEventListener("click", () => setActiveTraceTab(
 recallCaseSelectEl.addEventListener("change", () => void loadRecallDetail(recallCaseSelectEl.value));
 indexTraceSelectEl.addEventListener("change", () => void loadIndexDetail(indexTraceSelectEl.value));
 dreamTraceSelectEl.addEventListener("change", () => void loadDreamDetail(dreamTraceSelectEl.value));
-settingsToggleBtn.addEventListener("click", () => { if (state.settingsOpen) closeSettingsDrawer(); else openSettingsDrawer(); });
-settingsCloseBtn.addEventListener("click", () => closeSettingsDrawer());
-saveSettingsBtn.addEventListener("click", () => void saveSettings());
-settingAutoIndexUnitEl.addEventListener("change", () => handleSettingsUnitChange("autoIndex"));
-settingAutoDreamUnitEl.addEventListener("change", () => handleSettingsUnitChange("autoDream"));
+settingsToggleBtn?.addEventListener("click", () => { if (state.settingsOpen) closeSettingsDrawer(); else openSettingsDrawer(); });
+settingsCloseBtn?.addEventListener("click", () => closeSettingsDrawer());
+saveSettingsBtn?.addEventListener("click", () => void saveSettings());
+settingAutoIndexUnitEl?.addEventListener("change", () => handleSettingsUnitChange("autoIndex"));
+settingAutoDreamUnitEl?.addEventListener("change", () => handleSettingsUnitChange("autoDream"));
 editorCloseBtn.addEventListener("click", () => closeEditorModal());
 editorCancelBtn.addEventListener("click", () => closeEditorModal());
 editorFormEl.addEventListener("submit", (event) => void handleEditorSubmit(event));
 refreshBtn.addEventListener("click", () => void loadDashboard());
 indexBtn.addEventListener("click", () => void runAction(t("actions.index"), "/api/memory/index/run", {}, { maintenance: true }));
 dreamBtn.addEventListener("click", () => void runAction(t("actions.dream"), "/api/memory/dream/run", {}, { maintenance: true }));
-exportCurrentProjectBtn.addEventListener("click", () => void exportCurrentProjectMemory());
-importCurrentProjectBtn.addEventListener("click", () => importCurrentProjectInput.click());
+exportCurrentProjectBtn?.addEventListener("click", () => void exportCurrentProjectMemory());
+importCurrentProjectBtn?.addEventListener("click", () => importCurrentProjectInput?.click());
 rollbackLastDreamBtn?.addEventListener("click", () => void rollbackLastDream());
-exportAllProjectsBtn.addEventListener("click", () => void exportAllProjectsMemory());
-importAllProjectsBtn.addEventListener("click", () => importAllProjectsInput.click());
-clearProjectBtn.addEventListener("click", () => void clearCurrentProjectMemory());
-clearAllBtn.addEventListener("click", () => void clearAllMemory());
+exportAllProjectsBtn?.addEventListener("click", () => void exportAllProjectsMemory());
+importAllProjectsBtn?.addEventListener("click", () => importAllProjectsInput?.click());
+clearProjectBtn?.addEventListener("click", () => void clearCurrentProjectMemory());
+clearAllBtn?.addEventListener("click", () => void clearAllMemory());
 
 workspaceSearchEl.addEventListener("input", () => { state.workspaceQuery = workspaceSearchEl.value.trim(); if (state.activePage === "project") void loadWorkspace(); });
 workspaceSearchEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); state.workspaceQuery = workspaceSearchEl.value.trim(); void loadWorkspace(); } });
 workspaceSearchBtn.addEventListener("click", () => { state.workspaceQuery = workspaceSearchEl.value.trim(); void loadWorkspace(); });
 
-importCurrentProjectInput.addEventListener("change", async (e) => {
+importCurrentProjectInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0]; if (!file) return;
   try {
     await importBundle(
@@ -2046,7 +2052,7 @@ importCurrentProjectInput.addEventListener("change", async (e) => {
   finally { importCurrentProjectInput.value = ""; }
 });
 
-importAllProjectsInput.addEventListener("change", async (e) => {
+importAllProjectsInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0]; if (!file) return;
   try { await importBundle(file, "/api/memory/import/all-projects", "confirm.importAllProjects", "status.allProjectsMemoryImported"); }
   finally { importAllProjectsInput.value = ""; }
@@ -2054,7 +2060,7 @@ importAllProjectsInput.addEventListener("change", async (e) => {
 
 detailBackBtn.addEventListener("click", () => closeMemoryDetailPage());
 detailCloseBtn.addEventListener("click", () => closeDetailDrawer());
-settingsModalEl.addEventListener("click", (e) => { if (e.target === settingsModalEl) closeSettingsDrawer(); });
+settingsModalEl?.addEventListener("click", (e) => { if (e.target === settingsModalEl) closeSettingsDrawer(); });
 appScrimEl.addEventListener("click", () => { closeSettingsDrawer(); closeDetailDrawer(); closeEditorModal(); });
 
 /* ── Init ── */

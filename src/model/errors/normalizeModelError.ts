@@ -239,7 +239,7 @@ function resolveUserHint(
   switch (code) {
     case "billing":
       return {
-        userHint: "API account balance exhausted or quota depleted.",
+        userHint: `API account balance exhausted or quota depleted${provider ? ` for provider \"${provider}\"` : ""}. Top up provider billing or switch provider/model in Settings.`,
         settingsFix: {
           description: "Top up credits or switch to a different provider.",
           configPath: "model.provider",
@@ -247,7 +247,7 @@ function resolveUserHint(
       };
     case "auth_error":
       return {
-        userHint: "API key rejected by the provider. Verify the key is valid and not expired.",
+        userHint: `API key rejected${provider ? ` by provider \"${provider}\"` : " by the provider"}. Update the key in Settings → Model Provider or run pilotdeck setup.`,
         settingsFix: {
           description: "Reconfigure API key via setup.",
           command: "pilotdeck setup",
@@ -255,7 +255,7 @@ function resolveUserHint(
       };
     case "model_not_found":
       return {
-        userHint: "The requested model does not exist or your account lacks access.",
+        userHint: `The requested model does not exist or your account lacks access${provider ? ` on provider \"${provider}\"` : ""}. Select a valid model in Settings → Model Provider or add it under model.providers.<id>.models in pilotdeck.yaml.`,
         settingsFix: {
           description: "Switch to a valid model.",
           configPath: "model.default",
@@ -264,7 +264,7 @@ function resolveUserHint(
     case "context_overflow":
     case "prompt_too_long":
       return {
-        userHint: "Input exceeds the model context window. Try /compact to compress history or /new for a fresh session.",
+        userHint: "Input exceeds the model context window. Run /compact, start a new session with /new, remove large attachments, or switch to a larger-context model in Settings.",
       };
     case "image_too_large":
       return {
@@ -273,23 +273,23 @@ function resolveUserHint(
     case "payload_too_large":
     case "request_too_large":
       return {
-        userHint: "Request payload too large. Try /compact to reduce context, or start a new session with /new.",
+        userHint: "Request payload too large. Remove attachments, run /compact, start a new session with /new, or reduce the prompt size before retrying.",
       };
     case "rate_limit_error":
       return {
-        userHint: "Rate limited by the provider. The request will be retried automatically after a short wait.",
+        userHint: "Rate limited by the provider. Wait for the limit to reset, reduce concurrent requests, or switch provider/model in Settings.",
       };
     case "overloaded_error":
       return {
-        userHint: "Provider is temporarily overloaded. Retrying with backoff.",
+        userHint: "Provider is temporarily overloaded. Retry later, check provider API status, or switch provider/model in Settings if it repeats.",
       };
     case "max_output_reached":
       return {
-        userHint: "Model output hit the token limit. The system will attempt to resume automatically.",
+        userHint: "Model output hit the token limit. Increase max output tokens in Settings → Model Provider or ask the agent to split the answer into smaller parts.",
       };
     case "timeout":
       return {
-        userHint: "Request timed out. For large prompts, try increasing provider.timeoutMs in config or use streaming mode.",
+        userHint: `Request timed out${provider ? ` for provider \"${provider}\"` : ""}. Increase provider.timeoutMs in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`,
         settingsFix: {
           description: "Increase request timeout for this provider.",
           configPath: "model.providers.<id>.timeoutMs",
@@ -297,7 +297,7 @@ function resolveUserHint(
       };
     case "server_error":
       return {
-        userHint: "Provider returned a server error. Retrying automatically.",
+        userHint: "Provider returned a server error. Check provider API status/logs, retry later, or switch provider/model in Settings if it repeats.",
       };
     default:
       return {};

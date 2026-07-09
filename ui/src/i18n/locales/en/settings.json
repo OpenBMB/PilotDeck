@@ -872,7 +872,7 @@
       },
       "memory": {
         "title": "Memory",
-        "description": "Configure the model used for memory indexing and Dream.",
+        "description": "Configure the memory service, automatic build intervals, and memory data management.",
         "enabled": {
           "label": "Enabled",
           "description": "Toggles the memory service."
@@ -881,6 +881,50 @@
           "label": "Memory Model",
           "description": "Provider/model the memory pipeline calls.",
           "inherit": "inherit (use main agent's model)"
+        },
+        "automation": {
+          "autoIndex": {
+            "label": "Auto index interval (minutes)",
+            "description": "Set to 0 to disable automatic indexing."
+          },
+          "autoDream": {
+            "label": "Auto Dream interval (minutes)",
+            "description": "Automatic Dream only runs after memory files have changed."
+          }
+        },
+        "data": {
+          "title": "Data management",
+          "description": "Export, import, or clear one project or all memory.",
+          "target": {
+            "label": "Managed target",
+            "description": "Choose a project or all memory.",
+            "all": "All memory",
+            "projectFallback": "Untitled project"
+          },
+          "actions": {
+            "export": "Export",
+            "import": "Import",
+            "clear": "Clear"
+          },
+          "status": {
+            "exporting": "Exporting {{target}}...",
+            "exported": "Exported {{target}}.",
+            "importing": "Importing {{target}}...",
+            "imported": "Imported {{target}}.",
+            "clearing": "Clearing {{target}}...",
+            "cleared": "Cleared {{target}}."
+          },
+          "confirm": {
+            "importProject": "Importing will overwrite memory for \"{{target}}\". Continue?",
+            "importAll": "Importing will overwrite all memory. Continue?",
+            "clearProject": "Clear memory for \"{{target}}\"?",
+            "clearAll": "Clear all memory? This deletes every project's memory and the global user background."
+          },
+          "errors": {
+            "missingProject": "No project is available.",
+            "invalidImport": "Choose a valid JSON backup file.",
+            "invalidExport": "The exported content was not valid JSON."
+          }
         }
       },
       "tools": {

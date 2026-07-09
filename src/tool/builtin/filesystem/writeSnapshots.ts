@@ -125,9 +125,9 @@ export async function ensureWriteSnapshotFresh(
 
   const normalizedMtime = Math.floor(fileStat.mtimeMs);
   const previousContent = await readTextFile(absolutePath);
+  const isFullRead = snapshot.offset === undefined && snapshot.limit === undefined;
 
   if (normalizedMtime !== snapshot.mtimeMs) {
-    const isFullRead = snapshot.offset === undefined && snapshot.limit === undefined;
     if (isFullRead) {
       const currentHash = hashText(previousContent);
       if (currentHash === snapshot.contentHash) {
@@ -143,6 +143,10 @@ export async function ensureWriteSnapshotFresh(
         actualMtimeMs: normalizedMtime,
       },
     );
+  }
+
+  if (!isFullRead) {
+    return { exists: true, previousContent, mtimeMs: normalizedMtime };
   }
 
   const currentHash = hashText(previousContent);

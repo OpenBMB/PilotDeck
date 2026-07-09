@@ -308,6 +308,8 @@ curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh |
   NPM_CONFIG_REGISTRY=https://registry.npmmirror.com bash
 ```
 
+如果希望优先使用官方 Node.js 下载地址，也可以通过 `PILOTDECK_NODE_DIST_FALLBACK_MIRRORS` 显式设置一个或多个可信的备用镜像。
+
 ```bash
 pilotdeck            # 在 http://localhost:3001 启动服务
 pilotdeck status     # 查看运行状态
@@ -369,7 +371,11 @@ npm.cmd run dev
 
 **原生依赖构建失败（提示 `node-gyp`、`MSBuild` 或 Python 缺失）**
 
-安装脚本通常会使用 `node-pty`、`sqlite3`、`better-sqlite3`、`sharp` 等原生依赖的预编译包。全新的 Windows 机器上，如果 npm 无法下载匹配的预编译包并回退到源码编译，请先安装带 C++ 工作负载的 Visual Studio Build Tools 和 Python，然后重新运行安装脚本。
+安装脚本通常会使用 `node-pty`、`better-sqlite3`、`bcrypt`、`sharp` 等原生依赖的预编译包。全新的 Windows 机器上，如果 npm 无法下载匹配的预编译包并回退到源码编译，请先安装带 C++ 工作负载的 Visual Studio Build Tools 和 Python，然后重新运行安装脚本。
+
+**下载 `install.ps1` 时 GitHub 返回 `429: Too Many Requests`**
+
+共享网络下频繁访问 `raw.githubusercontent.com` 可能触发 GitHub 限流。请等待几分钟后重新运行一键安装命令，或从仓库下载 `install.ps1` 后用 `powershell -ExecutionPolicy Bypass -File .\install.ps1` 本地执行。
 
 ### 方式二：源码启动 (适合开发者)
 

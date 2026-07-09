@@ -440,5 +440,54 @@
       "thinking": "思考中",
       "executingTool": "正在执行 {{toolName}}"
     }
+  },
+  "agentStatus": {
+    "modelRequestFailed": {
+      "message": "{{providerMessage}}\n\n请查看下方建议操作。",
+      "actions": {
+        "settingsDefault": "请在“设置 → 模型 Provider”中检查当前 provider、Base URL、API Key、模型名称和 timeoutMs。若 provider 响应慢或网络不稳定，请增大 timeoutMs 或检查 provider 状态。",
+        "auth": "请在“设置 → 模型 Provider”中更新 {{provider}} 的 API Key 或访问权限，或运行 pilotdeck setup。",
+        "modelNotFound": "请在“设置 → 模型 Provider”中为 {{provider}} 选择有效模型，或在 pilotdeck.yaml 的 model.providers.<id>.models 下添加该模型。",
+        "timeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 timeoutMs，或检查本机网络、代理和 provider 状态。",
+        "rateLimit": "请等待 provider 限流窗口恢复、减少并发请求，或在设置中切换 provider/model。",
+        "billing": "请在 provider API 侧充值或恢复 quota，或在设置中切换 provider/model。",
+        "contextOverflow": "请运行 /compact、开启新会话、移除大型附件，或在设置中切换到更大上下文模型。",
+        "payloadTooLarge": "请减少附件/上下文大小，运行 /compact，或开启新会话后重试。",
+        "maxOutput": "请在“设置 → 模型 Provider”中增加最大输出 token，或让 agent 将回答拆成更小部分。",
+        "imageTooLarge": "请缩小或移除大型图片后重试。",
+        "providerRetry": "请稍后重试、检查 provider API 状态，若反复出现则在设置中切换 provider/model。"
+      }
+    },
+    "emptyResponse": {
+      "message": "模型连续返回空内容，本轮已停止。请稍后重试或增加最大输出 token。",
+      "hint": "请在“设置 → 模型 Provider”中增加最大输出 token，使用更短 prompt 重试，或确认该 provider/model 是否支持请求的输出格式。"
+    },
+    "maxTurns": {
+      "message": "已达到最大轮数（{{maxTurns}}），本轮已停止。请增加 maxTurns，或把任务拆成更小步骤后重试。",
+      "hint": "如果任务确实需要更多 agent 步数，请在本地配置中增加 maxTurns；否则请把任务拆成更小 prompt 后重试。"
+    },
+    "maxOutputRecoveryExhausted": {
+      "message": "输出 token 恢复已耗尽，可见回复可能不完整。请增加最大输出 token，或把任务拆成更小步骤后重试。",
+      "hint": "请在“设置 → 模型 Provider”中增加最大输出 token，或让 agent 将回答拆成更小部分。"
+    },
+    "structuredOutputCompleted": {
+      "message": "已返回结构化输出，本轮已完成。"
+    },
+    "contentFilter": {
+      "message": "模型因内容过滤停止，回复可能不完整。",
+      "hint": "请缩小请求范围或调整 prompt 以避开过滤内容；如果你认为这是误判，请检查所选模型的 provider API 策略/状态。"
+    },
+    "unknownFinishReason": {
+      "message": "模型流结束时没有正常 finish reason，因此回复可能不完整。",
+      "hint": "请重试；若反复出现，请检查 provider API 状态/日志中的 stream finish reason，并确认“设置 → 模型 Provider”中的 provider/model。"
+    },
+    "turnAborted": {
+      "message": "本轮在完成前已中止。",
+      "hint": "准备好后可重试。如果这不是预期行为，请检查是否点击了停止、运行中切换了会话，或 gateway 连接丢失。"
+    },
+    "toolCallRecoveryExhausted": {
+      "message": "{{message}}",
+      "hint": "请用更短 prompt 重试，让 agent 把大型工具输入拆成更小步骤，或在“设置 → 模型 Provider”中切换到工具调用能力更强的模型。"
+    }
   }
 }

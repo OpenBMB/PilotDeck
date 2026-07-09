@@ -24,6 +24,8 @@ docker info
 
 首次构建会从 Docker Hub 拉取 `node:22-bookworm` 和 `node:22-bookworm-slim` 等基础镜像。如果拉取镜像很慢，或出现 `context deadline exceeded`，请配置 Docker registry mirror 或 Docker Desktop proxy 后重试 `docker compose up -d --build`。Docker Desktop 可在 **Settings → Docker Engine** 中配置 registry mirrors；Linux 可在 `/etc/docker/daemon.json` 中添加 mirror，然后重启 Docker。
 
+容器会在镜像内使用 Node.js 22 和仓库提交的 `pnpm-lock.yaml` 安装依赖，因此不会使用宿主机 Node.js 运行时，也不会受宿主机 CPU 架构影响。PilotDeck 不需要旧的 `sqlite`/`sqlite3` 包，它们不属于源码安装路径。
+
 如果只是临时处理 Docker Hub 连接不稳定问题，可以先从可访问的镜像源拉取所需 Node 镜像，并打成本仓库 Dockerfile 使用的名称：
 
 ```bash

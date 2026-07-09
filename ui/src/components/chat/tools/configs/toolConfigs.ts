@@ -785,8 +785,10 @@ export function shouldHideToolResult(toolName: string, toolResult: any): boolean
 
   if (!config.result) return false;
 
-  // Always hidden
-  if (config.result.hidden) return true;
+  // Hide successful noise (for example read_file content already appears in
+  // the model context), but never hide failures: users need the exact tool
+  // error and recovery hint to understand why the turn got stuck.
+  if (config.result.hidden && !toolResult?.isError) return true;
 
   // Hide on success only
   if (config.result.hideOnSuccess && toolResult && !toolResult.isError) {

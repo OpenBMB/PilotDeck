@@ -144,6 +144,16 @@ function normalizeToolErrorCode(errorCode, resultPreview) {
     return readOnlyModeToolDenyCode(resultPreview) || errorCode;
 }
 
+const MAX_TOOL_RESULT_PREVIEW_CHARS = 20_000;
+
+function limitToolResultPreview(value) {
+    const text = typeof value === 'string' ? value : '';
+    if (text.length <= MAX_TOOL_RESULT_PREVIEW_CHARS) return text;
+    const headLength = Math.floor(MAX_TOOL_RESULT_PREVIEW_CHARS / 2);
+    const tailLength = MAX_TOOL_RESULT_PREVIEW_CHARS - headLength;
+    return `${text.slice(0, headLength)}\n\n... [UI preview truncated: ${text.length - MAX_TOOL_RESULT_PREVIEW_CHARS} characters omitted] ...\n\n${text.slice(-tailLength)}`;
+}
+
 function isVisibleFailureAgentStatus(event) {
     return event?.type === 'agent_status'
         && (visibleFailureAgentStatusEvents.has(event.event) || isVisibleFailureStatusDetail(event.detail))
@@ -467,7 +477,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'tool_result',
                     toolId: event.toolCallId,
-                    content: event.resultPreview ?? '',
+                    content: limitToolResultPreview(event.resultPreview),
                     isError: !event.ok,
                     // errorCode lets the UI distinguish permission denials
                     // (`permission_denied` / `permission_required`) from
@@ -499,6 +509,19 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...(isSearchToolName(event.toolName) && event.data
                         ? { toolUseResult: event.data }
                         : {}),
+                }),
+            ];
+        }
+        case 'tool_result_detail_available': {
+            const detailText = event.resultPath ? `Full tool result persisted at ${event.resultPath}` : 'Full tool result is available.';
+            return [
+                createNormalizedMessage({
+                    ...base,
+                    kind: 'tool_result',
+                    toolId: event.toolCallId,
+                    content: detailText,
+                    isError: false,
+                    ...(event.resultPath ? { resultPath: event.resultPath } : {}),
                 }),
             ];
         }
@@ -687,9 +710,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'The model returned empty content repeatedly, so this turn has stopped. Try again later or increase max output tokens.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -699,9 +724,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'Reached the maximum number of turns, so this turn has stopped. Increase maxTurns or split the task into smaller steps and try again.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -711,9 +738,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'Agent execution stopped before producing a complete response. Please retry or adjust the task.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -723,9 +752,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'status',
                         content: detail.message || 'This turn ended before producing a standard assistant response.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }

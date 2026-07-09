@@ -505,8 +505,9 @@ function flushBlock(
         role: "tool",
         kind: "tool_result",
         toolCallId: block.toolCallId,
-        ok: true,
+        ok: !block.isError,
         text: block.preview,
+        resultPath: block.path,
         payload: {
           path: block.path,
           originalBytes: block.originalBytes,
@@ -846,6 +847,8 @@ function injectAgentStatusMessages(
       role: entry.kind === "error" ? "error" : "system",
       kind: entry.kind,
       text: entry.text,
+      ...(isI18nDescriptor(entry.detail?.messageI18n) ? { contentI18n: entry.detail.messageI18n } : {}),
+      ...(isI18nDescriptor(entry.detail?.userHintI18n) ? { userHintI18n: entry.detail.userHintI18n } : {}),
       payload: { event: entry.event, ...(entry.detail ? { detail: entry.detail } : {}) },
       source: "history",
     });
@@ -863,6 +866,12 @@ function injectAgentStatusMessages(
     }
     allMessages.splice(insertAt, 0, statusMsg);
   }
+}
+
+function isI18nDescriptor(value: unknown): value is { key: string; params?: Record<string, unknown> } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { key?: unknown }).key === "string";
 }
 
 function readToolResultErrorCode(raw: unknown): string | undefined {

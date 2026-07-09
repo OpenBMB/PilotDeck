@@ -187,9 +187,9 @@ function toGoogleParts(block: CanonicalContentBlock, toolNamesById: Map<string, 
         sanitizeGoogleToolCallId(block.toolCallId),
         toolNamesById.get(sanitizeGoogleToolCallId(block.toolCallId)) ?? block.toolCallId,
         block.preview + (block.hasMore
-          ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
+          ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}. Use read_file on this path if you need more of the result.]`
           : ""),
-        false,
+        block.isError,
         [],
       )];
     case "media_reference":

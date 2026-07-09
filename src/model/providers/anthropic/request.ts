@@ -198,10 +198,10 @@ function toAnthropicContentBlock(block: CanonicalContentBlock): unknown {
         content: [{
           type: "text",
           text: block.preview + (block.hasMore
-            ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
+            ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}. Use read_file on this path if you need more of the result.]`
             : ""),
         }],
-        is_error: false,
+        is_error: block.isError,
       };
     case "media_reference":
       return { type: "text", text: block.preview };

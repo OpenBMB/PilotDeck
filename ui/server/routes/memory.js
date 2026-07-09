@@ -55,6 +55,12 @@ function normalizeMemoryInterval(value, fallback) {
   return Math.max(0, Math.min(10_080, Math.floor(parsed)));
 }
 
+function validateReasoningMode(value) {
+  if (value === undefined) return undefined;
+  if (value === 'answer_first' || value === 'accuracy_first') return value;
+  throw new Error('memory.reasoningMode must be answer_first or accuracy_first');
+}
+
 function getGlobalMemorySettingsFromConfig(config) {
   const memory = config?.memory ?? {};
   const reasoningMode = memory.reasoningMode === 'accuracy_first' ? 'accuracy_first' : 'answer_first';
@@ -82,12 +88,9 @@ async function saveGlobalMemorySettings(partial = {}) {
   }
   const { config } = record;
   const current = getGlobalMemorySettingsFromConfig(config);
+  const reasoningMode = validateReasoningMode(partial.reasoningMode);
   const next = {
-    reasoningMode: partial.reasoningMode === 'accuracy_first'
-      ? 'accuracy_first'
-      : partial.reasoningMode === 'answer_first'
-        ? 'answer_first'
-        : current.reasoningMode,
+    reasoningMode: reasoningMode ?? current.reasoningMode,
     autoIndexIntervalMinutes: normalizeMemoryInterval(
       partial.autoIndexIntervalMinutes,
       current.autoIndexIntervalMinutes,
@@ -305,6 +308,15 @@ function getSelectedProjectId(req) {
   return typeof req.query.selectedProjectId === 'string'
     ? req.query.selectedProjectId.trim()
     : '';
+}
+
+function hasDashboardRequestContext(req) {
+  return [
+    req.query?.projectPath,
+    req.body?.projectPath,
+    req.query?.projectName,
+    req.params?.projectName,
+  ].some((value) => typeof value === 'string' && value.trim());
 }
 
 async function withMemoryService(req, res, fn) {
@@ -595,7 +607,20 @@ router.post('/clear', async (req, res) => {
   const scope = req.body?.scope === 'all_memory' ? 'all_memory' : 'current_project';
   if (scope === 'all_memory') {
     try {
-      res.json(await clearAllMemoryData());
+      const result = await clearAllMemoryData();
+      if (!hasDashboardRequestContext(req)) {
+        res.json(result);
+        return;
+      }
+
+      const { service } = await getMemoryServiceForRequest(req);
+      res.json({
+        ...result,
+        dashboard: buildDashboardSnapshot(service, service.repository, {
+          query: getQuery(req),
+          selectedProjectId: getSelectedProjectId(req),
+        }),
+      });
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : String(error),

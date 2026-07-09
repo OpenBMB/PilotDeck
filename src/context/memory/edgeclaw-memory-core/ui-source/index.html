@@ -59,7 +59,6 @@
             <span class="topbar-index-label" data-i18n="topbar.lastIndexed"></span>
             <span id="navLastIndexed" class="topbar-index-time"></span>
           </div>
-          <button id="settingsToggleBtn" class="action-btn action-btn--icon" type="button" data-i18n-title="actions.settings">⚙</button>
         </div>
       </header>
 
@@ -193,87 +192,6 @@
 
         </div>
       </main>
-    </div>
-
-    <!-- ═══ SETTINGS MODAL ═══ -->
-    <div id="settingsModal" class="settings-modal hidden" role="dialog" aria-modal="true">
-      <div class="settings-modal-card">
-        <div class="settings-modal-head">
-          <h3 data-i18n="settings.title"></h3>
-          <button id="settingsCloseBtn" class="settings-modal-close" type="button" aria-label="Close">×</button>
-        </div>
-        <div class="settings-modal-body">
-
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h4 class="settings-section-title" data-i18n="settings.parameters.title"></h4>
-              <button id="saveSettingsBtn" class="settings-save-btn" type="button" data-i18n="actions.saveSettings"></button>
-            </div>
-            <div class="settings-param-grid">
-              <div class="settings-field">
-                <label for="settingAutoIndex" data-i18n="settings.autoIndex.label"></label>
-                <div class="settings-input-row">
-                  <input id="settingAutoIndex" type="number" min="0" step="any" value="30" class="settings-input settings-input--with-unit" />
-                  <select id="settingAutoIndexUnit" class="settings-input settings-unit-select">
-                    <option value="minutes" data-i18n="settings.unit.minutes"></option>
-                    <option value="hours" data-i18n="settings.unit.hours"></option>
-                  </select>
-                </div>
-                <p class="settings-hint" data-i18n="settings.autoIndex.hint"></p>
-              </div>
-              <div class="settings-field">
-                <label for="settingAutoDream" data-i18n="settings.autoDream.label"></label>
-                <div class="settings-input-row">
-                  <input id="settingAutoDream" type="number" min="0" step="any" value="1" class="settings-input settings-input--with-unit" />
-                  <select id="settingAutoDreamUnit" class="settings-input settings-unit-select">
-                    <option value="minutes" data-i18n="settings.unit.minutes"></option>
-                    <option value="hours" data-i18n="settings.unit.hours"></option>
-                  </select>
-                </div>
-                <p class="settings-hint" data-i18n="settings.autoDream.hint"></p>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-section">
-            <h4 class="settings-section-title" data-i18n="settings.dataManagement.title"></h4>
-            <div class="settings-data-groups">
-
-              <div class="settings-data-group" data-variant="default">
-                <div class="settings-data-group-head">
-                  <span class="settings-data-group-icon">📁</span>
-                  <div class="settings-data-group-heading">
-                    <h5 class="settings-data-group-title" data-i18n="settings.data.currentProject"></h5>
-                  </div>
-                </div>
-                <div class="settings-data-actions">
-                  <button id="exportCurrentProjectBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↓</span><span data-i18n="actions.exportCurrentProject"></span></button>
-                  <button id="importCurrentProjectBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↑</span><span data-i18n="actions.importCurrentProject"></span></button>
-                  <hr class="settings-action-divider" />
-                  <button id="clearProjectBtn" class="settings-action-btn settings-action-danger" type="button"><span class="settings-action-icon">✕</span><span data-i18n="actions.clearProject"></span></button>
-                </div>
-              </div>
-
-              <div class="settings-data-group" data-variant="all">
-                <div class="settings-data-group-head">
-                  <span class="settings-data-group-icon">🗄</span>
-                  <h5 class="settings-data-group-title" data-i18n="settings.data.allMemory"></h5>
-                </div>
-                <div class="settings-data-actions">
-                  <button id="exportAllProjectsBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↓</span><span data-i18n="actions.exportAllProjects"></span></button>
-                  <button id="importAllProjectsBtn" class="settings-action-btn" type="button"><span class="settings-action-icon">↑</span><span data-i18n="actions.importAllProjects"></span></button>
-                  <hr class="settings-action-divider" />
-                  <button id="clearAllBtn" class="settings-action-btn settings-action-danger" type="button"><span class="settings-action-icon">✕</span><span data-i18n="actions.clearAll"></span></button>
-                </div>
-              </div>
-
-            </div>
-            <input id="importCurrentProjectInput" type="file" accept="application/json" hidden />
-            <input id="importAllProjectsInput" type="file" accept="application/json" hidden />
-          </section>
-
-        </div>
-      </div>
     </div>
 
     <!-- ═══ DETAIL DRAWER ═══ -->

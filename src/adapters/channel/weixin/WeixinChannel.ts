@@ -678,7 +678,7 @@ export class WeixinChannel implements ChannelAdapter {
         type: "agent_status",
         event: "channel_submit_failed",
         detail: createVisibleErrorStatusDetail({
-          message: "处理消息时发生错误，请重试。",
+          message: "Failed to process this message. Please retry.",
           code: "channel_submit_failed",
           userHint: "PilotDeck failed before this IM turn could finish. Retry the message; if it repeats, check the channel and gateway logs.",
           scope: "channel",

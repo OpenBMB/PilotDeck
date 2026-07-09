@@ -872,7 +872,7 @@
       },
       "memory": {
         "title": "记忆",
-        "description": "配置记忆索引与 Dream 使用的模型。",
+        "description": "配置记忆服务、自动构建间隔，以及项目记忆的数据管理。",
         "enabled": {
           "label": "启用",
           "description": "启用记忆服务的总开关。"
@@ -881,6 +881,50 @@
           "label": "记忆模型",
           "description": "记忆管线使用的提供商/模型。",
           "inherit": "继承（使用主智能体模型）"
+        },
+        "automation": {
+          "autoIndex": {
+            "label": "自动索引间隔（分钟）",
+            "description": "0 表示关闭自动索引任务。"
+          },
+          "autoDream": {
+            "label": "自动 Dream 间隔（分钟）",
+            "description": "只有记忆文件更新后，自动 Dream 才会真正执行。"
+          }
+        },
+        "data": {
+          "title": "数据管理",
+          "description": "导出、导入或清空某个项目，或全部记忆。",
+          "target": {
+            "label": "管理对象",
+            "description": "选择要管理的项目或全部记忆。",
+            "all": "全部记忆",
+            "projectFallback": "未命名项目"
+          },
+          "actions": {
+            "export": "导出",
+            "import": "导入",
+            "clear": "清空"
+          },
+          "status": {
+            "exporting": "正在导出 {{target}}...",
+            "exported": "已导出 {{target}}。",
+            "importing": "正在导入 {{target}}...",
+            "imported": "已导入 {{target}}。",
+            "clearing": "正在清空 {{target}}...",
+            "cleared": "已清空 {{target}}。"
+          },
+          "confirm": {
+            "importProject": "导入会覆盖“{{target}}”的项目记忆。确认继续吗？",
+            "importAll": "导入会覆盖全部记忆。确认继续吗？",
+            "clearProject": "确认清空“{{target}}”的项目记忆吗？",
+            "clearAll": "确认清空全部记忆吗？这会删除所有项目记忆和全局用户背景。"
+          },
+          "errors": {
+            "missingProject": "没有可用项目。",
+            "invalidImport": "请选择有效的 JSON 备份文件。",
+            "invalidExport": "导出的内容不是有效 JSON。"
+          }
         }
       },
       "tools": {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
@@ -8,6 +9,8 @@ type CronTaskFile = {
   schemaVersion: 1;
   tasks: CronTask[];
 };
+
+const taskFileMutationTails = new Map<string, Promise<void>>();
 
 export class CronTaskStore {
   constructor(private readonly paths: CronPaths) {}
@@ -21,39 +24,55 @@ export class CronTaskStore {
   }
 
   async putTask(task: CronTask): Promise<void> {
-    const file = await this.readTaskFile();
-    const index = file.tasks.findIndex((entry) => entry.taskId === task.taskId);
-    const nextTasks = [...file.tasks];
-    if (index >= 0) {
+    await this.mutateTaskFile(async (file) => {
+      const index = file.tasks.findIndex((entry) => entry.taskId === task.taskId);
+      const nextTasks = [...file.tasks];
+      if (index >= 0) {
+        nextTasks[index] = task;
+      } else {
+        nextTasks.push(task);
+      }
+      await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(nextTasks) });
+    });
+  }
+
+  async replaceTask(task: CronTask): Promise<boolean> {
+    return this.mutateTaskFile(async (file) => {
+      const index = file.tasks.findIndex((entry) => entry.taskId === task.taskId);
+      if (index < 0) {
+        return false;
+      }
+      const nextTasks = [...file.tasks];
       nextTasks[index] = task;
-    } else {
-      nextTasks.push(task);
-    }
-    await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(nextTasks) });
+      await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(nextTasks) });
+      return true;
+    });
   }
 
   async updateTask(taskId: string, update: (task: CronTask) => CronTask | undefined): Promise<CronTask | undefined> {
-    const file = await this.readTaskFile();
-    let updated: CronTask | undefined;
-    const tasks = file.tasks.flatMap((task) => {
-      if (task.taskId !== taskId) {
-        return [task];
-      }
-      updated = update(task);
-      return updated ? [updated] : [];
+    return this.mutateTaskFile(async (file) => {
+      let updated: CronTask | undefined;
+      const tasks = file.tasks.flatMap((task) => {
+        if (task.taskId !== taskId) {
+          return [task];
+        }
+        updated = update(task);
+        return updated ? [updated] : [];
+      });
+      await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
+      return updated;
     });
-    await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
-    return updated;
   }
 
   async deleteTask(taskId: string): Promise<boolean> {
-    const file = await this.readTaskFile();
-    const tasks = file.tasks.filter((task) => task.taskId !== taskId);
-    if (tasks.length === file.tasks.length) {
-      return false;
-    }
-    await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
-    return true;
+    return this.mutateTaskFile(async (file) => {
+      const tasks = file.tasks.filter((task) => task.taskId !== taskId);
+      if (tasks.length === file.tasks.length) {
+        return false;
+      }
+      await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
+      return true;
+    });
   }
 
   async appendRun(record: CronRunRecord): Promise<void> {
@@ -118,17 +137,37 @@ export class CronTaskStore {
 
   private async writeTaskFile(file: CronTaskFile): Promise<void> {
     await mkdir(dirname(this.paths.tasksFile), { recursive: true });
-    const tempPath = `${this.paths.tasksFile}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tempPath, JSON.stringify(file, null, 2), "utf-8");
+    const tempPath = `${this.paths.tasksFile}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
     try {
-      await rename(tempPath, this.paths.tasksFile);
-    } catch (err: unknown) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "EPERM" || code === "EACCES") {
-        await copyFile(tempPath, this.paths.tasksFile);
-        await unlink(tempPath).catch(() => {});
-      } else {
-        throw err;
+      await writeFile(tempPath, JSON.stringify(file, null, 2), "utf-8");
+      try {
+        await rename(tempPath, this.paths.tasksFile);
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES") {
+          await copyFile(tempPath, this.paths.tasksFile);
+        } else {
+          throw err;
+        }
+      }
+    } finally {
+      await unlink(tempPath).catch(() => {});
+    }
+  }
+
+  private async mutateTaskFile<T>(mutation: (file: CronTaskFile) => Promise<T>): Promise<T> {
+    const key = this.paths.tasksFile;
+    const previous = taskFileMutationTails.get(key) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => undefined)
+      .then(async () => mutation(await this.readTaskFile()));
+    const tail = operation.then(() => undefined, () => undefined);
+    taskFileMutationTails.set(key, tail);
+    try {
+      return await operation;
+    } finally {
+      if (taskFileMutationTails.get(key) === tail) {
+        taskFileMutationTails.delete(key);
       }
     }
   }

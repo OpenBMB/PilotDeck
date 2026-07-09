@@ -36,6 +36,15 @@ node --version
 
 If your Homebrew Node.js is older than v22.13.0, install a newer Node.js with your preferred Node version manager.
 
+On Intel Macs, make sure your Node.js runtime is the Intel/x64 build, not an Apple Silicon arm64 build launched through Rosetta or copied from another machine. Check both the Node version and architecture before installing dependencies:
+
+```bash
+node --version          # must be v22.13.0 or newer, and below v23
+node -p "process.arch" # should print x64 on Intel Macs
+```
+
+If `process.arch` does not match the Mac you are deploying on, reinstall Node.js 22 for the correct architecture, remove the old dependency folders, and rerun the pnpm install step below. Native packages such as `better-sqlite3`, `node-pty`, `bcrypt`, and `sharp` are architecture-specific, so copying `node_modules` between Apple Silicon and Intel Macs is not supported.
+
 Some Python distributions, especially Python 3.12 installed through package managers, may not include `distutils`, which older `node-gyp` versions still need when native packages compile from source. The one-line installer tries to auto-select a Python that provides `distutils`. If you run npm commands manually and see `ModuleNotFoundError: No module named 'distutils'`, use a Python that provides it, for example:
 
 ```bash
@@ -45,6 +54,19 @@ PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile
 A CLT-only installation is enough; full Xcode is not required. If the tools are installed but `xcrun --find clang` fails, run `sudo xcode-select --reset` or reinstall Xcode Command Line Tools before retrying.
 
 If cloning from GitHub or downloading Git LFS files is slow or fails with network errors such as `fetch-pack: unexpected disconnect`, retry or use a stable network proxy. The source install flow below skips large Git LFS demo media by default.
+
+If you install dependencies with `pnpm`, you can set the pnpm registry directly:
+
+```bash
+pnpm config set registry https://registry.npmmirror.com
+```
+
+When native dependencies such as `node-pty` or `better-sqlite3` fall back to source builds, `node-gyp` also downloads Node.js headers. If downloads from the official Node.js host time out, set a Node.js headers mirror for the current shell:
+
+```bash
+export npm_config_disturl=https://npmmirror.com/mirrors/node
+```
+
 
 ### Debian / Ubuntu
 
@@ -61,6 +83,21 @@ curl -fsSL https://fnm.vercel.app/install | bash
 fnm install 22
 fnm use 22
 node --version
+```
+
+If you do not have sudo access, or do not want to modify the system Node.js installation, install the official Node.js binary into a user directory. This example installs into `~/.local` and only affects the current user and shell:
+
+```bash
+NODE_VERSION=22.13.1
+NODE_DIR="$HOME/.local/node-v${NODE_VERSION}-linux-x64"
+mkdir -p "$HOME/.local"
+curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
+tar -xf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C "$HOME/.local"
+rm "node-v${NODE_VERSION}-linux-x64.tar.xz"
+export PATH="$NODE_DIR/bin:$PATH"
+node --version
+npm install -g pnpm@10.32.1
+pnpm --version
 ```
 
 ### Fedora / RHEL
@@ -131,7 +168,7 @@ docker --version
 docker compose version
 ```
 
-Use the Docker instructions in `README_DOCKER.md` if you choose this path.
+Use the Docker instructions in `README_DOCKER.md` if you choose this path. Docker builds use Node.js 22 and the committed pnpm lockfile inside the container, so they do not depend on the host Node.js architecture.
 
 #### Native Windows PowerShell
 
@@ -153,12 +190,15 @@ Then open a new PowerShell window and run:
 ```powershell
 git lfs install
 node --version   # must be v22.13.0 or newer, and below v23
+node -p "process.arch" # native Windows source installs should print x64
 npm --version
 python --version
 rg --version
 ```
 
 `OpenJS.NodeJS.LTS` may move to a newer major Node.js release over time. If `node --version` is not `v22.x`, switch to Portable Node or a Node version manager before installing dependencies.
+
+Native Windows source installs are tested on x64 Node.js. If `node -p "process.arch"` does not print `x64`, switch to the official x64 Node.js 22 zip or another x64 Node.js runtime before installing dependencies.
 
 Use separate PowerShell lines instead of Bash-style chained commands when following the prerequisite commands above. For PilotDeck's in-app terminal, Git Bash is preferred automatically after Git for Windows is installed. If PowerShell blocks `npm.ps1`, call `npm.cmd` instead of `npm`.
 
@@ -210,7 +250,16 @@ corepack enable         # enables the pinned pnpm version from package.json
 corepack pnpm install --frozen-lockfile
 ```
 
+If Corepack is unavailable, or if you are using a user-directory Portable Node installation, install the pinned pnpm version globally instead:
+
+```bash
+npm install -g pnpm@10.32.1
+pnpm install --frozen-lockfile
+```
+
 Use the committed `pnpm-lock.yaml` for source installs. Do not replace this step with `npm install`; the lockfile and workspace build settings are maintained for pnpm, and pnpm is the path tested by the one-line installer.
+
+The app uses `better-sqlite3` and Node.js 22's built-in `node:sqlite`. It does not require the legacy `sqlite` or `sqlite3` npm packages.
 
 ClawHub CLI is optional, but recommended for skill marketplace features:
 
@@ -230,6 +279,8 @@ node scripts/bootstrap-pilotdeck-config.mjs
 ```
 
 This initializes `~/.pilotdeck/pilotdeck.yaml` for first-run onboarding so the Gateway can boot. Then open the Web UI and finish provider/API key setup in the onboarding/settings panel.
+
+Note: the generated first-run config is a placeholder. It contains `_placeholder/_placeholder`, `https://placeholder.invalid`, and `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE`. Its purpose is to let the Gateway and Web UI boot; the UI still routes to onboarding until you provide a real provider, API key, and model.
 
 ## Start PilotDeck
 
@@ -251,11 +302,21 @@ npm run start
 
 Open <http://localhost:3001>.
 
+If the default ports are already in use, change them with environment variables, for example:
+
+```bash
+SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0.1:18790/ws npm run start
+```
+
 ## Troubleshooting
 
 - `Node.js >=22.13.0 and <23 is required`: switch to Node.js 22.13.0 or newer within the Node.js 22 line, then reinstall dependencies.
 - Native package build errors: make sure Python 3, `make`, and a C/C++ compiler are installed, then rerun `corepack pnpm install --frozen-lockfile`.
+- Linux `node-pty` or `better-sqlite3` builds time out while downloading `node-v*-headers.tar.gz`: run `export npm_config_disturl=https://npmmirror.com/mirrors/node`, then reinstall dependencies.
+- `pnpm install --frozen-lockfile` times out while downloading npm packages: run `pnpm config set registry https://registry.npmmirror.com`, then retry.
 - `ModuleNotFoundError: No module named 'distutils'` on macOS: the one-line installer tries to auto-select a compatible Python; for manual npm commands, retry with `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile`, or use another Python that includes `distutils`.
 - Missing compiler tools on macOS: full Xcode is not required, but `xcrun --find clang` must work. Reinstall Xcode Command Line Tools with `xcode-select --install`, or run `sudo xcode-select --reset` if CLT is already installed.
+- `EADDRINUSE` on startup: the default `3001` or `18789` port is already in use. Set `SERVER_PORT`, `PILOTDECK_GATEWAY_PORT`, and `PILOTDECK_GATEWAY_URL`, then retry.
+- `~/.pilotdeck/pilotdeck.yaml` exists but the UI still opens onboarding: check whether the config still contains `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` or `_placeholder/_placeholder`; replace them with a real provider, API key, and model.
 - Missing demo images/videos: install Git LFS and run `git lfs pull` from the repo root.
 - `rg` not found: install ripgrep for full file/search tool support.

@@ -123,7 +123,7 @@ export const USAGE_LIMIT_PATTERN =
   /usage limit|quota|limit exceeded|key limit exceeded/i;
 
 export const NETWORK_TIMEOUT_PATTERN =
-  /fetch failed|terminated|socket hang up|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network error|request timeout|client disconnected/i;
+  /fetch failed|terminated|socket hang up|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network error|request timeout|stream idle timeout|no data received|client disconnected/i;
 
 export class ModelConfigError extends Error {
   readonly name = "ModelConfigError";
