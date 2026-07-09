@@ -200,6 +200,8 @@ export type GatewayEvent =
       type: "context_budget";
       used: number;
       total: number;
+      effectiveTotal?: number;
+      reservedOutputTokens?: number;
       ratio: number;
       state: "ok" | "warning" | "blocking";
     }

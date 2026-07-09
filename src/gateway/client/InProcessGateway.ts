@@ -1494,10 +1494,16 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
         detail: { status: event.status, preTokens: event.preTokens, postTokens: event.postTokens },
       }];
     case "context_budget":
+      const reservedOutputTokens = event.snapshot.reservedOutputTokens ?? event.snapshot.maxOutputTokens ?? 0;
+      const totalContextTokens = event.snapshot.effectiveContextTokens !== undefined
+        ? event.snapshot.effectiveContextTokens + reservedOutputTokens
+        : event.snapshot.maxContextTokens + reservedOutputTokens;
       return [{
         type: "context_budget",
         used: event.snapshot.tokens,
-        total: event.snapshot.maxContextTokens,
+        total: totalContextTokens,
+        effectiveTotal: event.snapshot.effectiveContextTokens ?? event.snapshot.maxContextTokens,
+        reservedOutputTokens,
         ratio: event.snapshot.ratio,
         state: event.snapshot.state,
       }];

@@ -625,6 +625,8 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     tokenBudget: {
                         used: event.used,
                         total: event.total,
+                        effectiveTotal: event.effectiveTotal,
+                        reservedOutputTokens: event.reservedOutputTokens,
                         ratio: event.ratio,
                         state: event.state,
                     },
@@ -1130,6 +1132,8 @@ export async function runChatViaGateway(
                 state.tokenBudget = {
                     used: event.used,
                     total: event.total,
+                    effectiveTotal: event.effectiveTotal,
+                    reservedOutputTokens: event.reservedOutputTokens,
                     ratio: event.ratio,
                     state: event.state,
                 };
@@ -2203,6 +2207,8 @@ export function registerAlwaysOnNotificationForwarding(clients) {
                 aoState.tokenBudget = {
                     used: event.used,
                     total: event.total,
+                    effectiveTotal: event.effectiveTotal,
+                    reservedOutputTokens: event.reservedOutputTokens,
                     ratio: event.ratio,
                     state: event.state,
                 };
