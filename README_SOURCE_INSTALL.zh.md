@@ -178,6 +178,8 @@ python --version
 rg --version
 ```
 
+`OpenJS.NodeJS.LTS` 可能会随时间切换到更新的 Node.js 大版本。如果 `node --version` 不是 `v22.x`，请先切换到 Portable Node 或 Node 版本管理器，再安装依赖。
+
 执行上面的前置依赖检查命令时，请使用分开的 PowerShell 命令行，不要使用 Bash 风格的链式命令。安装 Git for Windows 后，PilotDeck 内置终端会自动优先使用 Git Bash。如果 PowerShell 拦截 `npm.ps1`，请改用 `npm.cmd`。
 
 #### Portable Node 验证路径
@@ -203,7 +205,7 @@ node --version
 npm.cmd --version
 ```
 
-使用 Portable Node 时，请用 `npm.cmd install`、`npm.cmd run build` 和 `npm.cmd --prefix ui run build`。
+使用 Portable Node 时，仍然请按下面的源码安装命令执行：`corepack pnpm install --frozen-lockfile`、`corepack pnpm run build` 和 `corepack pnpm --prefix ui run build`。只有在确实需要直接调用 npm 且 PowerShell 拦截 `npm.ps1` 时，才改用 `npm.cmd`。
 
 ## 克隆仓库
 

@@ -158,6 +158,8 @@ python --version
 rg --version
 ```
 
+`OpenJS.NodeJS.LTS` may move to a newer major Node.js release over time. If `node --version` is not `v22.x`, switch to Portable Node or a Node version manager before installing dependencies.
+
 Use separate PowerShell lines instead of Bash-style chained commands when following the prerequisite commands above. For PilotDeck's in-app terminal, Git Bash is preferred automatically after Git for Windows is installed. If PowerShell blocks `npm.ps1`, call `npm.cmd` instead of `npm`.
 
 #### Portable Node for verification
@@ -183,7 +185,7 @@ node --version
 npm.cmd --version
 ```
 
-With portable Node, use `npm.cmd install`, `npm.cmd run build`, and `npm.cmd --prefix ui run build`.
+With portable Node, keep using the source install commands below: `corepack pnpm install --frozen-lockfile`, `corepack pnpm run build`, and `corepack pnpm --prefix ui run build`. Use `npm.cmd` only when you need to invoke npm directly and PowerShell blocks `npm.ps1`.
 
 ## Clone the Repository
 
