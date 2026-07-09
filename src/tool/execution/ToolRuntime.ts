@@ -274,7 +274,7 @@ export class ToolRuntime {
     try {
       const output = await tool.execute(executeInput, executeContext);
       const maxResultBytes = tool.maxResultBytes ?? context.maxResultBytes;
-      const limited = applyResultSizeLimit(output.content, maxResultBytes);
+      const previewLimit = applyResultSizeLimit(output.content, maxResultBytes);
       const completedAt = now(context).toISOString();
       const postToolLifecycle = await this.dispatchLifecycle(
         "PostToolUse",
@@ -289,12 +289,15 @@ export class ToolRuntime {
         type: "success",
         toolCallId: call.id,
         toolName: tool.name,
-        content: limited.content,
+        content: output.content,
         supplementalMessages: output.supplementalMessages,
         data: output.data,
         metadata: mergeMetadata(
           output.metadata,
-          mergeMetadata(limited.metadata, lifecycleMetadata(postToolLifecycle)),
+          mergeMetadata(
+            previewLimit.metadata ? { previewLimit: previewLimit.metadata } : undefined,
+            lifecycleMetadata(postToolLifecycle),
+          ),
         ),
         startedAt,
         completedAt,
@@ -355,7 +358,7 @@ export class ToolRuntime {
       toolCallId,
       toolName,
       error: toolError(code, message, details),
-      content: [{ type: "text", text: recovery.message }],
+      content: [{ type: "text", text: formatToolErrorContent(recovery.message, details) }],
       metadata: {
         recovery: recovery.advice,
       },
@@ -416,6 +419,51 @@ export class ToolRuntime {
       nonBlockingErrors: [],
     };
   }
+}
+
+function formatToolErrorContent(
+  recoveryMessage: string,
+  details?: Record<string, unknown>,
+): string {
+  const rawDetails = formatRawToolErrorDetails(details);
+  return rawDetails ? `${recoveryMessage}\n\n${rawDetails}` : recoveryMessage;
+}
+
+function formatRawToolErrorDetails(details?: Record<string, unknown>): string | undefined {
+  if (!details) {
+    return undefined;
+  }
+
+  const lines: string[] = [];
+  const command = readStringDetail(details, "command");
+  const exitCode = details.exitCode;
+  const timedOut = details.timedOut;
+  const durationMs = details.durationMs;
+
+  if (command || exitCode !== undefined || timedOut !== undefined || durationMs !== undefined) {
+    lines.push("Raw tool details:");
+    if (command) lines.push(`- command: ${command}`);
+    if (exitCode !== undefined) lines.push(`- exit_code: ${String(exitCode)}`);
+    if (timedOut !== undefined) lines.push(`- timed_out: ${String(timedOut)}`);
+    if (durationMs !== undefined) lines.push(`- duration_ms: ${String(durationMs)}`);
+  }
+
+  appendRawStream(lines, "stdout", readStringDetail(details, "stdout"));
+  appendRawStream(lines, "stderr", readStringDetail(details, "stderr"));
+
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+function appendRawStream(lines: string[], label: "stdout" | "stderr", value: string | undefined): void {
+  if (!value || value.length === 0) {
+    return;
+  }
+  lines.push("", `${label}:`, value.trimEnd());
+}
+
+function readStringDetail(details: Record<string, unknown>, key: string): string | undefined {
+  const value = details[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 function getPlanModeViolation(

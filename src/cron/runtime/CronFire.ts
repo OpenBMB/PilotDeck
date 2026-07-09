@@ -57,14 +57,20 @@ export class CronFire {
     let error: CronRunRecord["error"];
     let forcedFailure = false;
     let abortRequested = false;
+    let startedRun = false;
     let assistantText = "";
     try {
-      await this.deps.store.putTask({
+      const started = await this.deps.store.replaceTask({
         ...task,
         status: "running",
         lastRunId: runId,
         updatedAt: startedAt.toISOString(),
       });
+      if (!started) {
+        outcome = "aborted";
+        return;
+      }
+      startedRun = true;
       this.deps.onPhaseEvent?.({
         phase: "cron_started",
         runId,
@@ -132,6 +138,9 @@ export class CronFire {
         outcome = "stopped";
       }
       this.deps.unregisterActiveRun(runId);
+      if (!startedRun) {
+        return;
+      }
       const finishedAt = this.deps.now();
       await this.deps.store
         .appendRun({

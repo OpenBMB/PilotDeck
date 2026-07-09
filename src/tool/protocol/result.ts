@@ -159,11 +159,11 @@ export function applyResultSizeLimit(
     return { content };
   }
 
-  const suffix = "\n[Tool output truncated.]";
+  const suffix = "\n[Tool output truncated: head and tail shown.]";
   const suffixBytes = Buffer.byteLength(suffix, "utf8");
   const budget = Math.max(0, maxBytes - suffixBytes);
   const text = content.map(contentToText).join("\n");
-  const truncatedText = truncateUtf8(text, budget) + suffix;
+  const truncatedText = headTailTruncateUtf8(text, budget) + suffix;
   const returnedBytes = Buffer.byteLength(truncatedText, "utf8");
 
   return {
@@ -183,4 +183,35 @@ function truncateUtf8(value: string, maxBytes: number): string {
   }
 
   return bytes.subarray(0, maxBytes).toString("utf8").replace(/\uFFFD$/u, "");
+}
+
+function headTailTruncateUtf8(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) {
+    return value;
+  }
+  if (maxBytes <= 64) {
+    return truncateUtf8(value, maxBytes);
+  }
+
+  const separator = "\n... [middle omitted] ...\n";
+  const separatorBytes = Buffer.byteLength(separator, "utf8");
+  const contentBudget = Math.max(0, maxBytes - separatorBytes);
+  const headBudget = Math.ceil(contentBudget / 2);
+  const tailBudget = Math.floor(contentBudget / 2);
+  const head = truncateUtf8(value, headBudget);
+  const tail = truncateUtf8FromEnd(value, tailBudget);
+  return `${head}${separator}${tail}`;
+}
+
+function truncateUtf8FromEnd(value: string, maxBytes: number): string {
+  const bytes = Buffer.from(value, "utf8");
+  if (bytes.byteLength <= maxBytes) {
+    return value;
+  }
+
+  let start = Math.max(0, bytes.byteLength - maxBytes);
+  while (start < bytes.byteLength && (bytes[start] & 0b11000000) === 0b10000000) {
+    start += 1;
+  }
+  return bytes.subarray(start).toString("utf8").replace(/^\uFFFD/u, "");
 }

@@ -22,6 +22,7 @@ export type ToolResultBudgetState = {
 
 export type ToolResultReplacementRecord = {
   toolCallId: string;
+  isError?: boolean;
   path: string;
   originalBytes: number;
   preview: string;
@@ -194,6 +195,7 @@ export class ToolResultBudget {
     const preview = headTailPreview(flat, this.previewBytes);
     const record: ToolResultReplacementRecord = {
       toolCallId: block.toolCallId,
+      isError: block.isError,
       path,
       originalBytes: byteLength,
       preview,
@@ -208,10 +210,11 @@ export class ToolResultBudget {
     return {
       type: "tool_result_reference",
       toolCallId: record.toolCallId,
+      isError: record.isError,
       path: record.path,
       originalBytes: record.originalBytes,
       preview: record.preview,
-      hasMore: record.preview.length < record.originalBytes,
+      hasMore: Buffer.byteLength(record.preview, "utf8") < record.originalBytes,
       mimeType: record.mimeType,
       reason: record.reason,
     };

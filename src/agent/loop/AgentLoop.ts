@@ -10,6 +10,7 @@ import {
   REQUEST_TOO_LARGE_PATTERN,
   type CanonicalMessage,
   type CanonicalModelError,
+  ModelProviderError,
   type CanonicalModelRequest,
   type CanonicalToolSchema,
   type CanonicalUsage,
@@ -59,6 +60,7 @@ import { repairToolName } from "../../model/streaming/repairToolName.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
+  type AgentStatusI18nDescriptor,
 } from "../../status/agentStatus.js";
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
@@ -520,7 +522,8 @@ export class AgentLoop {
           yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
           return { result, messages };
         }
-        const stopFailureMsg = error instanceof Error ? error.message : String(error);
+        const modelError = error instanceof ModelProviderError ? error.error : undefined;
+        const stopFailureMsg = modelError?.message ?? (error instanceof Error ? error.message : String(error));
         await this.dispatchLifecycle(input, "StopFailure", { error: stopFailureMsg });
         yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: stopFailureMsg };
         const result = this.createTurnResult(input, {
@@ -531,7 +534,7 @@ export class AgentLoop {
           turns: turnCount,
           startedAt,
           finalMessage,
-          errors: [agentError("agent_model_error", stopFailureMsg)],
+          errors: [agentError("agent_model_error", stopFailureMsg, modelError, modelError?.userHint)],
         });
         const abortStatus = createAbortStatus();
         if (abortStatus) {
@@ -539,6 +542,7 @@ export class AgentLoop {
         } else {
           yield await emitStatus(createModelRequestFailedStatus({
             error: result.errors![0]!,
+            modelError,
           }));
         }
         yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: result.errors![0]! };
@@ -2779,22 +2783,117 @@ function createModelRequestFailedStatus(args: {
   error: ReturnType<typeof agentError>;
   modelError?: CanonicalModelError;
 }): AgentStatusMessage {
-  const text = args.error.message || "The model request failed, so this turn has stopped.";
+  const providerMessage = args.error.message || args.modelError?.message || "The model request failed, so this turn has stopped.";
+  const text = formatModelRequestFailureMessage(providerMessage, args.modelError);
+  const action = modelFailureAction(args.modelError);
   return {
     event: "model_request_failed",
     kind: "error",
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: {
+        key: "chat:agentStatus.modelRequestFailed.message",
+        params: { providerMessage },
+      },
       code: args.error.code,
-      userHint: args.error.userHint ?? args.modelError?.userHint ?? defaultModelFailureHint(args.modelError),
+      userHint: action.userHint,
+      userHintI18n: action.userHintI18n,
       detail: {
         provider: args.modelError?.provider,
+        protocol: args.modelError?.protocol,
         status: args.modelError?.status,
         modelErrorCode: args.modelError?.code,
         retryable: args.modelError?.retryable,
+        providerMessage,
+        settingsFix: args.modelError?.settingsFix,
+        fixTarget: action.fixTarget,
       },
     }),
+  };
+}
+
+export function formatModelRequestFailureMessage(providerMessage: string, error: CanonicalModelError | undefined): string {
+  const cleanMessage = providerMessage.trim() || "The model request failed.";
+  const action = modelFailureAction(error);
+  return `${cleanMessage}\n\n${action.shortAction}`;
+}
+
+export function modelFailureAction(error: CanonicalModelError | undefined): {
+  shortAction: string;
+  userHint: string;
+  userHintI18n: AgentStatusI18nDescriptor;
+  fixTarget: "settings" | "provider" | "network" | "prompt" | "retry";
+} {
+  if (!error) {
+    const hint = "Check Settings → Model Provider and verify the selected provider, base URL, API key, model name, and timeoutMs. If the provider is slow or the network is unstable, increase timeoutMs or check provider status.";
+    return modelFailureActionResult(hint, "settings", "settingsDefault");
+  }
+
+  const providerLabel = error.provider ? ` provider "${error.provider}"` : " provider";
+  const modelLabel = error.model ? ` model "${error.model}"` : " selected model";
+
+  if (error.status === 401 || error.status === 403 || error.code === "auth_error") {
+    const hint = `Update the API key or access permissions for${providerLabel} in Settings → Model Provider, or run pilotdeck setup.`;
+    return modelFailureActionResult(hint, "settings", "auth", { provider: error.provider ?? "the provider" });
+  }
+  if (error.code === "model_not_found") {
+    const hint = `Choose a valid${modelLabel} for${providerLabel} in Settings → Model Provider, or add it under model.providers.<id>.models in pilotdeck.yaml.`;
+    return modelFailureActionResult(hint, "settings", "modelNotFound", { provider: error.provider ?? "the provider", model: error.model });
+  }
+  if (error.code === "timeout") {
+    const hint = `Increase timeoutMs for${providerLabel} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`;
+    return modelFailureActionResult(hint, "network", "timeout", { provider: error.provider ?? "the provider" });
+  }
+  if (error.status === 429 || error.code === "rate_limit_error") {
+    const hint = `Wait for the provider rate limit to reset, reduce concurrency, or switch to another provider/model in Settings.`;
+    return modelFailureActionResult(hint, "provider", "rateLimit");
+  }
+  if (error.code === "billing") {
+    const hint = `Top up billing/quota on the provider API side, or switch to another provider/model in Settings.`;
+    return modelFailureActionResult(hint, "provider", "billing");
+  }
+  if (error.code === "prompt_too_long" || error.code === "context_overflow") {
+    const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
+    return modelFailureActionResult(hint, "prompt", "contextOverflow");
+  }
+  if (error.code === "payload_too_large" || error.code === "request_too_large") {
+    const hint = "Reduce attachments/context size, run /compact, or start a new session before retrying.";
+    return modelFailureActionResult(hint, "prompt", "payloadTooLarge");
+  }
+  if (error.code === "max_output_reached") {
+    const hint = "Increase max output tokens in Settings → Model Provider, or ask the agent to split the answer into smaller parts.";
+    return modelFailureActionResult(hint, "settings", "maxOutput");
+  }
+  if (error.code === "image_too_large") {
+    const hint = "Resize or remove large images, then retry.";
+    return modelFailureActionResult(hint, "prompt", "imageTooLarge");
+  }
+  if (error.retryable || error.code === "server_error" || error.code === "overloaded_error") {
+    const hint = `Retry later, check provider API status, or switch to another provider/model in Settings if it repeats.`;
+    return modelFailureActionResult(hint, "provider", "providerRetry");
+  }
+
+  const hint = `Check Settings → Model Provider for base URL/API key/model and timeoutMs. If settings look correct, check local network/proxy and provider API status/logs.`;
+  return modelFailureActionResult(hint, "settings", "settingsDefault");
+}
+
+function modelFailureActionResult(
+  hint: string,
+  fixTarget: "settings" | "provider" | "network" | "prompt" | "retry",
+  key: string,
+  params: Record<string, unknown> = {},
+): {
+  shortAction: string;
+  userHint: string;
+  userHintI18n: AgentStatusI18nDescriptor;
+  fixTarget: "settings" | "provider" | "network" | "prompt" | "retry";
+} {
+  return {
+    shortAction: `Action: ${hint}`,
+    userHint: hint,
+    userHintI18n: { key: `chat:agentStatus.modelRequestFailed.actions.${key}`, params },
+    fixTarget,
   };
 }
 
@@ -2810,8 +2909,10 @@ function createToolCallRecoveryExhaustedStatus(args: {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.toolCallRecoveryExhausted.message", params: { message: text } },
       code: args.error.code,
-      userHint: args.error.userHint ?? "Retry with a shorter prompt or ask the agent to split large tool inputs into smaller steps.",
+      userHint: args.error.userHint ?? "Retry with a shorter prompt, ask the agent to split large tool inputs into smaller steps, or switch to a model with stronger tool-calling support in Settings → Model Provider.",
+      userHintI18n: { key: "chat:agentStatus.toolCallRecoveryExhausted.hint" },
       detail: {
         attempts: args.attempts,
         reason: args.reason,
@@ -2832,7 +2933,7 @@ function createToolErrorLoopStatus(args: {
     detail: createAgentTurnErrorDetail({
       message: text,
       code: args.error.code,
-      userHint: args.error.userHint ?? "Try changing the request, granting the required permission, or switching to a more capable model.",
+      userHint: args.error.userHint ?? "Change the request to avoid repeating the same failing tool call, grant any required permission, or switch to a model with stronger tool-calling support in Settings → Model Provider.",
       detail: {
         repeatedFailures: args.repeatedFailures,
       },
@@ -2891,8 +2992,10 @@ function createEmptyResponseStatus(args: {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.emptyResponse.message" },
       code: "model_empty_response_exhausted",
-      userHint: "Increase max output tokens or retry with a shorter prompt.",
+      userHint: "Increase max output tokens in Settings → Model Provider, retry with a shorter prompt, or check whether this provider/model supports the requested output format.",
+      userHintI18n: { key: "chat:agentStatus.emptyResponse.hint" },
       detail: {
         provider: args.provider,
         model: args.model,
@@ -2913,8 +3016,10 @@ function createMaxTurnsStatus(args: {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.maxTurns.message", params: { maxTurns: args.maxTurns } },
       code: args.error.code,
-      userHint: args.error.userHint ?? "Increase maxTurns or split the task into smaller steps and try again.",
+      userHint: args.error.userHint ?? "Increase maxTurns in local config if this task legitimately needs more agent steps, or split the task into smaller prompts and try again.",
+      userHintI18n: { key: "chat:agentStatus.maxTurns.hint" },
       detail: {
         maxTurns: args.maxTurns,
       },
@@ -2932,9 +3037,11 @@ function createMaxOutputRecoveryExhaustedStatus(args: {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.maxOutputRecoveryExhausted.message" },
       severity: "warning",
       code: "max_output_recovery_exhausted",
-      userHint: "Increase max output tokens or split the task into smaller steps.",
+      userHint: "Increase max output tokens in Settings → Model Provider, or ask the agent to split the answer into smaller parts.",
+      userHintI18n: { key: "chat:agentStatus.maxOutputRecoveryExhausted.hint" },
       detail: {
         attempts: args.attempts,
       },
@@ -2950,6 +3057,7 @@ function createStructuredOutputCompletedStatus(): AgentStatusMessage {
     text,
     detail: createAgentTurnStatusDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.structuredOutputCompleted.message" },
       code: "structured_output_completed",
     }),
   };
@@ -2963,9 +3071,11 @@ function createContentFilterStopStatus(): AgentStatusMessage {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.contentFilter.message" },
       severity: "warning",
       code: "content_filter_stop",
-      userHint: "Retry with a narrower request or adjust the prompt to avoid filtered content.",
+      userHint: "Retry with a narrower request or adjust the prompt to avoid filtered content; if this seems wrong, check the provider API policy/status for the selected model.",
+      userHintI18n: { key: "chat:agentStatus.contentFilter.hint" },
     }),
   };
 }
@@ -2978,9 +3088,11 @@ function createUnknownFinishReasonStatus(): AgentStatusMessage {
     text,
     detail: createAgentTurnErrorDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.unknownFinishReason.message" },
       severity: "warning",
       code: "unknown_finish_reason",
-      userHint: "Retry the turn; if it repeats, check the provider stream and gateway logs.",
+      userHint: "Retry the turn; if it repeats, check provider API status/logs for stream finish reasons and verify the selected provider/model in Settings → Model Provider.",
+      userHintI18n: { key: "chat:agentStatus.unknownFinishReason.hint" },
     }),
   };
 }
@@ -2993,8 +3105,10 @@ function createTurnAbortedStatus(args: { reason?: string }): AgentStatusMessage 
     text,
     detail: createAgentTurnStatusDetail({
       message: text,
+      messageI18n: { key: "chat:agentStatus.turnAborted.message" },
       code: "turn_aborted",
-      userHint: "Retry when you are ready to continue.",
+      userHint: "Retry when you are ready to continue. If this was unexpected, check whether you clicked Stop, switched sessions during a run, or lost the gateway connection.",
+      userHintI18n: { key: "chat:agentStatus.turnAborted.hint" },
       detail: {
         reason: args.reason,
       },
@@ -3011,8 +3125,10 @@ function createFinishReasonStatus(finishReason: string | undefined, assistantTex
 
 function createAgentTurnErrorDetail(input: {
   message: string;
+  messageI18n?: AgentStatusI18nDescriptor;
   code: string;
   userHint: string;
+  userHintI18n?: AgentStatusI18nDescriptor;
   severity?: "error" | "warning";
   detail?: Record<string, unknown>;
 }): Record<string, unknown> {
@@ -3025,8 +3141,10 @@ function createAgentTurnErrorDetail(input: {
 
 function createAgentTurnStatusDetail(input: {
   message: string;
+  messageI18n?: AgentStatusI18nDescriptor;
   code: string;
   userHint?: string;
+  userHintI18n?: AgentStatusI18nDescriptor;
   detail?: Record<string, unknown>;
 }): Record<string, unknown> {
   return createAgentStatusDetail({

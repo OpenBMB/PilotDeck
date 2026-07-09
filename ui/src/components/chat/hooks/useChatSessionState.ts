@@ -150,7 +150,12 @@ function chatMessageToNormalized(
     } as NormalizedMessage;
   }
   if (msg.type === 'error') {
-    return { ...base, kind: 'error', content: msg.content || '' } as NormalizedMessage;
+    return {
+      ...base,
+      kind: 'error',
+      content: msg.content || '',
+      ...((msg as any).userHint ? { userHint: (msg as any).userHint } : {}),
+    } as NormalizedMessage;
   }
   // Carry user-attached image data URLs through the normalize round-trip
   // so the optimistic message render and any re-derivation from the
@@ -654,7 +659,12 @@ export function useChatSessionState({
 
     // Check session status
     if (ws && !sessionIsReadOnly) {
-      sendMessage({ type: 'check-session-status', sessionId: selectedSession.id, provider });
+      sendMessage({
+        type: 'check-session-status',
+        sessionId: selectedSession.id,
+        provider,
+        includeActiveTurnMessages: true,
+      });
     }
 
     lastLoadedSessionKeyRef.current = sessionKey;

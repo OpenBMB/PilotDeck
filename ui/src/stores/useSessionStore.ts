@@ -52,6 +52,8 @@ export interface NormalizedMessage {
   // kind-specific fields (flat for simplicity)
   role?: 'user' | 'assistant';
   content?: string;
+  contentI18n?: { key: string; params?: Record<string, unknown> };
+  userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: string[];
   attachments?: Array<{
     kind?: 'file' | 'document-selection';
@@ -89,6 +91,7 @@ export interface NormalizedMessage {
    * `pilotdeck-bridge.js#tool_call_finished` and `chatPermissions.ts`.
    */
   errorCode?: string;
+  resultPath?: string;
   text?: string;
   tokens?: number;
   canInterrupt?: boolean;
@@ -406,6 +409,16 @@ function upsertRealtimeMessages(
   const updated = [...existing];
   const indexByKey = new Map(updated.map((message, index) => [getUpsertKey(message), index]));
   for (const message of incoming) {
+    if (message.kind === 'tool_result' && message.toolId && message.resultPath) {
+      const existingToolResultIndex = findLatestToolResultIndex(updated, message.toolId);
+      if (existingToolResultIndex >= 0) {
+        updated[existingToolResultIndex] = {
+          ...updated[existingToolResultIndex],
+          resultPath: message.resultPath,
+        };
+        continue;
+      }
+    }
     const key = getUpsertKey(message);
     const existingIndex = indexByKey.get(key);
     if (existingIndex === undefined) {
@@ -416,6 +429,16 @@ function upsertRealtimeMessages(
     }
   }
   return updated;
+}
+
+function findLatestToolResultIndex(messages: NormalizedMessage[], toolId: string): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.kind === 'tool_result' && message.toolId === toolId) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /**

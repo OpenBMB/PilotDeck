@@ -159,7 +159,7 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
         type: "function_call_output",
         call_id: block.toolCallId,
         output: block.preview + (block.hasMore
-          ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
+          ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}. Use read_file on this path if you need more of the result.]`
           : ""),
       });
       continue;

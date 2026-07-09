@@ -107,6 +107,8 @@ export type WebMessage = {
   requestId?: string;
   ok?: boolean;
   text?: string;
+  contentI18n?: { key: string; params?: Record<string, unknown> };
+  userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: Array<{
     data: string;
     name?: string;
@@ -119,6 +121,7 @@ export type WebMessage = {
    * uses this.
    */
   errorCode?: string;
+  resultPath?: string;
   /** UUID of the subagent spawned by this tool_use (agent/Task) call. */
   subagentId?: string;
   payload?: unknown;
@@ -156,6 +159,17 @@ export function createWebMessageReducerState(): WebMessageReducerState {
     toolMessageByCallId: {},
     hasVisibleFailureStatus: false,
   };
+}
+
+const MAX_WEB_TOOL_RESULT_PREVIEW_CHARS = 20_000;
+
+function limitToolResultPreview(value: string | undefined): string | undefined {
+  if (value === undefined || value.length <= MAX_WEB_TOOL_RESULT_PREVIEW_CHARS) {
+    return value;
+  }
+  const headLength = Math.floor(MAX_WEB_TOOL_RESULT_PREVIEW_CHARS / 2);
+  const tailLength = MAX_WEB_TOOL_RESULT_PREVIEW_CHARS - headLength;
+  return `${value.slice(0, headLength)}\n\n... [UI preview truncated: ${value.length - MAX_WEB_TOOL_RESULT_PREVIEW_CHARS} characters omitted] ...\n\n${value.slice(-tailLength)}`;
 }
 
 export function applyWebGatewayEvent(
@@ -287,7 +301,7 @@ export function applyWebGatewayEvent(
                   ...m,
                   kind: "tool_result",
                   ok: event.ok,
-                  text: event.resultPreview ?? m.text,
+                  text: limitToolResultPreview(event.resultPreview) ?? m.text,
                   ...(eventImages ? { images: eventImages } : {}),
                   ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
                 }
@@ -306,7 +320,7 @@ export function applyWebGatewayEvent(
         kind: "tool_result",
         toolCallId: event.toolCallId,
         ok: event.ok,
-        text: event.resultPreview,
+        text: limitToolResultPreview(event.resultPreview),
         ...(eventImages ? { images: eventImages } : {}),
         ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
         source: "live",
@@ -314,6 +328,24 @@ export function applyWebGatewayEvent(
       return {
         ...state,
         messages: [...state.messages, message],
+      };
+    }
+
+    case "tool_result_detail_available": {
+      const matchedId = state.toolMessageByCallId[event.toolCallId];
+      if (!matchedId) {
+        return state;
+      }
+      return {
+        ...state,
+        messages: state.messages.map((m) =>
+          m.id === matchedId
+            ? {
+                ...m,
+                ...(event.resultPath ? { resultPath: event.resultPath } : {}),
+              }
+            : m,
+        ),
       };
     }
 
@@ -452,10 +484,14 @@ export function applyWebGatewayEvent(
         role: kind === "error" ? "error" : "system",
         kind,
         text,
+        ...(isI18nDescriptor(detail.messageI18n) ? { contentI18n: detail.messageI18n } : {}),
+        ...(isI18nDescriptor(detail.userHintI18n) ? { userHintI18n: detail.userHintI18n } : {}),
         payload: {
           event: event.event,
           detail,
           ...(typeof detail.userHint === "string" ? { userHint: detail.userHint } : {}),
+          ...(isI18nDescriptor(detail.messageI18n) ? { contentI18n: detail.messageI18n } : {}),
+          ...(isI18nDescriptor(detail.userHintI18n) ? { userHintI18n: detail.userHintI18n } : {}),
         },
         source: "live",
       };
@@ -514,6 +550,12 @@ function defaultNewId(): string {
     return c.randomUUID();
   }
   return `web-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
+function isI18nDescriptor(value: unknown): value is { key: string; params?: Record<string, unknown> } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { key?: unknown }).key === "string";
 }
 
 function isErrorAgentStatusEvent(event: WebGatewayEvent & { type: "agent_status" }): boolean {

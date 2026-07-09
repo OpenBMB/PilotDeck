@@ -26,6 +26,7 @@ import {
   isExpectedProviderModelsResponseShape,
   isExpectedProviderResponseShape,
 } from '../../../src/model/providerEndpoint.js';
+import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import {
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
   OFFICE_PREVIEW_SERVICE_NONE,
@@ -175,10 +176,23 @@ function isEndpointFallbackStatus(status) {
   return status === 400 || status === 404 || status === 405;
 }
 
+function isNetworkTimeout(error) {
+  return error?.name === 'AbortError' || error?.code === 'network_timeout' || (error instanceof NetworkFetchError && error.code === 'network_timeout');
+}
+
 async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null) {
   let lastResult = null;
   for (const url of urls) {
-    const response = await fetch(url, options);
+    const response = await networkFetch(url, options, {
+      signal: options?.signal,
+      fetchImpl: fetch,
+      retry: {
+        maxRetries: 2,
+        baseDelayMs: 500,
+        maxDelayMs: 5_000,
+        retryOnPost: String(options?.method || 'GET').toUpperCase() === 'POST',
+      },
+    });
     const responseText = await response.text();
     if (response.ok) {
       if (!isExpectedOkBody || urls.length === 1 || isExpectedOkBody(responseText)) {
@@ -434,7 +448,7 @@ router.post('/models', async (req, res) => {
   const normalizedBaseUrl = String(baseUrl).trim().replace(/\/+$/, '');
   const protocol = isGoogle ? 'google' : isAnthropic ? 'anthropic' : 'openai';
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', 'Model list request timed out after 10s.')), 10_000);
 
   try {
     const urls = buildProviderModelsEndpointCandidates({ protocol, baseUrl: normalizedBaseUrl });
@@ -467,7 +481,7 @@ router.post('/models', async (req, res) => {
     res.json({ ok: true, models: parseModelListResponse(body) });
   } catch (error) {
     clearTimeout(timer);
-    const message = error?.name === 'AbortError'
+    const message = isNetworkTimeout(error)
       ? 'Model list request timed out after 10s.'
       : error instanceof Error ? error.message : String(error);
     res.status(500).json({ ok: false, error: message });
@@ -489,7 +503,7 @@ router.post('/test-connection', async (req, res) => {
   const normalizedBaseUrl = String(baseUrl).trim().replace(/\/+$/, '');
   const timeout = 10_000;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', `Connection timed out after ${timeout / 1000}s.`)), timeout);
 
   try {
     let url;
@@ -627,7 +641,7 @@ router.post('/test-connection', async (req, res) => {
     return res.json({ ok: false, error: `${detail}` });
   } catch (err) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') {
+    if (isNetworkTimeout(err)) {
       return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s. Check your network and API URL.` });
     }
     return res.json({ ok: false, error: err.message || String(err) });
@@ -729,11 +743,21 @@ router.post('/test-web-search', async (req, res) => {
 
   const timeout = 15_000;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', `Connection timed out after ${timeout / 1000}s.`)), timeout);
   const t0 = Date.now();
 
   try {
-    const response = await fetch(requestUrl, { ...requestInit, signal: controller.signal });
+    const response = await networkFetch(requestUrl, { ...requestInit, signal: controller.signal }, {
+      timeoutMs: timeout,
+      signal: controller.signal,
+      fetchImpl: fetch,
+      retry: {
+        maxRetries: 2,
+        baseDelayMs: 500,
+        maxDelayMs: 5_000,
+        retryOnPost: requestInit.method === 'POST',
+      },
+    });
     clearTimeout(timer);
     const latencyMs = Date.now() - t0;
 
@@ -763,7 +787,7 @@ router.post('/test-web-search', async (req, res) => {
     return res.json({ ok: true, latencyMs, organicCount });
   } catch (err) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') {
+    if (isNetworkTimeout(err)) {
       return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s.` });
     }
     return res.json({ ok: false, error: err.message || String(err) });

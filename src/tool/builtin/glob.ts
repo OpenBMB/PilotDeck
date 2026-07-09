@@ -114,7 +114,7 @@ export function createGlobTool(): PilotDeckToolDefinition<GlobInput> {
       const workspaceFiles = result.files.map((file) => `${workspacePrefix}${file}`);
 
       return {
-        content: [{ type: "text", text: workspaceFiles.join("\n") }],
+        content: [{ type: "text", text: formatGlobResult(workspaceFiles, result.count, result.truncated, input.limit) }],
         data: {
           files: workspaceFiles,
           count: result.count,
@@ -124,4 +124,13 @@ export function createGlobTool(): PilotDeckToolDefinition<GlobInput> {
       };
     },
   };
+}
+
+function formatGlobResult(files: string[], totalCount: number, truncated: boolean, limit: number | undefined): string {
+  const lines = files.length > 0 ? [...files] : ["[No files matched]"];
+  lines.push("", `[glob pagination] returned=${files.length} total=${totalCount} truncated=${truncated}${limit !== undefined ? ` limit=${limit}` : ""}`);
+  if (truncated) {
+    lines.push("More files are available. Narrow the pattern/path or call glob again with a higher limit if you need the full list.");
+  }
+  return lines.join("\n");
 }

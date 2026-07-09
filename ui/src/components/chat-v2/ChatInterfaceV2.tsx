@@ -18,6 +18,7 @@ import { safeLocalStorage } from '../chat/utils/chatStorage';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
+import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -279,21 +280,25 @@ function ChatInterfaceV2({
     accumulatedStreamRef.current = '';
     streamBufferRef.current = '';
 
-    await sessionStore.refreshFromServer(selectedSession.id, {
-      provider: 'pilotdeck',
-      projectName: selectedProject.name,
-      projectPath: selectedProject.fullPath || selectedProject.path || '',
-      ...sessionRequestParams,
-    });
+    if (shouldRefreshSessionOnReconnect({ isLoading, processingSessions, sessionId: selectedSession.id })) {
+      await refreshSessionAfterReconnect(() =>
+        sessionStore.refreshFromServer(selectedSession.id, {
+          provider: 'pilotdeck',
+          projectName: selectedProject.name,
+          projectPath: selectedProject.fullPath || selectedProject.path || '',
+          ...sessionRequestParams,
+        }),
+      );
+    }
 
     // Ask the backend whether the session is still processing so the
-    // loading indicator and Stop button reflect reality after reconnect.
-    sendMessage({
-      type: 'check-session-status',
-      sessionId: selectedSession.id,
-      provider: 'pilotdeck',
-    });
+    // loading indicator, Stop button, and active turn replay reflect reality
+    // after reconnect. The session-status handler consumes activeTurnMessages
+    // and dedupes replay chunks against existing realtime state.
+    sendMessage(buildReconnectStatusMessage(selectedSession.id));
   }, [
+    isLoading,
+    processingSessions,
     selectedProject,
     selectedSession,
     sessionRequestParams,

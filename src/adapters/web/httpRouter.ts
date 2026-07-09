@@ -2,14 +2,13 @@
  * `/api/web/*` HTTP router.
  *
  * Bound by `GatewayServer` so the Web UI can call REST-style endpoints
- * for file/git/project surfaces that are awkward over the streaming
+ * for file/project surfaces that are awkward over the streaming
  * WebSocket. All endpoints require `Authorization: Bearer <token>`.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { ProjectFileService, WorkspaceBoundaryError } from "./projectFiles.js";
-import { ProjectGitService } from "./projectGit.js";
 import type { Gateway } from "../../gateway/protocol/types.js";
 
 export type WebHttpRouterOptions = {
@@ -96,19 +95,6 @@ export async function handleWebApiRequest(
         sendJson(response, 200, { ok: true });
         return true;
       }
-      if (subPath === "/git/status" && request.method === "GET") {
-        const gitService = new ProjectGitService({ projectRoot });
-        const status = await gitService.status();
-        sendJson(response, 200, status);
-        return true;
-      }
-      if (subPath === "/git/diff" && request.method === "GET") {
-        const path = url.searchParams.get("path") ?? undefined;
-        const gitService = new ProjectGitService({ projectRoot });
-        const diff = await gitService.diff(path);
-        sendJson(response, 200, diff);
-        return true;
-      }
     } catch (error) {
       if (error instanceof WorkspaceBoundaryError) {
         sendJson(response, 403, errorBody("workspace_boundary", error));
@@ -156,5 +142,5 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T | undefined>
   }
 }
 
-export { ProjectFileService, ProjectGitService };
+export { ProjectFileService };
 export { WorkspaceBoundaryError } from "./projectFiles.js";

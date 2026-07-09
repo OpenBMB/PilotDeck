@@ -86,6 +86,8 @@ import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 
 const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个新功能";
+const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
+const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 
 export type InProcessGatewayOptions = {
   now?: () => Date;
@@ -1291,6 +1293,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
       }));
     case "tool_result": {
       const fullText = event.result.content.map(contentToText).join("\n");
+      const resultPreview = limitGatewayToolResultPreview(fullText);
       const lines = fullText.split("\n");
       const lineCount = lines.length;
       const totalBytes = Buffer.byteLength(fullText, "utf-8");
@@ -1364,7 +1367,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           type: "tool_call_finished",
           toolCallId: event.result.toolCallId,
           ok: event.result.type === "success",
-          resultPreview: fullText,
+          resultPreview,
           resultLineCount: lineCount,
           resultBytes: totalBytes,
           toolName: event.result.toolName,
@@ -1372,7 +1375,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           ...(images.length > 0 ? { images } : {}),
           ...(event.result.type === "error" && { errorCode: event.result.error.code }),
           ...(event.result.type === "success" && event.result.data
-            ? { data: event.result.data as Record<string, unknown> }
+            ? { data: sanitizeGatewayToolData(event.result.data) }
             : {}),
         },
         ...attachments,
@@ -1491,10 +1494,16 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
         detail: { status: event.status, preTokens: event.preTokens, postTokens: event.postTokens },
       }];
     case "context_budget":
+      const reservedOutputTokens = event.snapshot.reservedOutputTokens ?? event.snapshot.maxOutputTokens ?? 0;
+      const totalContextTokens = event.snapshot.effectiveContextTokens !== undefined
+        ? event.snapshot.effectiveContextTokens + reservedOutputTokens
+        : event.snapshot.maxContextTokens + reservedOutputTokens;
       return [{
         type: "context_budget",
         used: event.snapshot.tokens,
-        total: event.snapshot.maxContextTokens,
+        total: totalContextTokens,
+        effectiveTotal: event.snapshot.effectiveContextTokens ?? event.snapshot.maxContextTokens,
+        reservedOutputTokens,
         ratio: event.snapshot.ratio,
         state: event.snapshot.state,
       }];
@@ -1544,6 +1553,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
       }));
     case "subagent_tool_result": {
       const fullText = event.result.content.map(contentToText).join("\n");
+      const resultPreview = limitGatewayToolResultPreview(fullText);
       const lines = fullText.split("\n");
       return [{
         type: "agent_status",
@@ -1554,8 +1564,8 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           toolCallId: event.result.toolCallId,
           toolName: event.result.toolName,
           ok: event.result.type === "success",
-          content: fullText,
-          preview: lines.slice(0, 3).join("\n"),
+          content: resultPreview,
+          preview: limitGatewayToolResultPreview(lines.slice(0, 3).join("\n")),
           resultLineCount: lines.length,
           resultBytes: Buffer.byteLength(fullText, "utf-8"),
           ...(event.result.type === "error" && { errorCode: event.result.error.code }),
@@ -1610,6 +1620,66 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
     default:
       return [];
   }
+}
+
+function limitGatewayToolResultPreview(text: string): string {
+  if (text.length <= MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS) {
+    return text;
+  }
+  const marker = `\n\n... [Gateway preview truncated: ${text.length - MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS} characters omitted; full result remains available through persisted tool-result references when shown to the model.] ...\n\n`;
+  const available = Math.max(0, MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS - marker.length);
+  const headLength = Math.ceil(available / 2);
+  const tailLength = Math.floor(available / 2);
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function sanitizeGatewayToolData(value: unknown): Record<string, unknown> {
+  const sanitized = sanitizeGatewayToolDataValue(value);
+  return isRecord(sanitized) ? sanitized : { value: sanitized };
+}
+
+function sanitizeGatewayToolDataValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return limitGatewayToolDataString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeGatewayToolDataValue);
+  }
+  if (isRecord(value)) {
+    const output: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      output[key] = sanitizeGatewayToolDataValue(item);
+    }
+    return output;
+  }
+  return value;
+}
+
+function limitGatewayToolDataString(value: string): string | { preview: string; originalChars: number; originalBytes: number; truncated: true } {
+  if (value.length <= MAX_GATEWAY_TOOL_DATA_STRING_CHARS) {
+    return value;
+  }
+  return {
+    preview: headTailString(value, MAX_GATEWAY_TOOL_DATA_STRING_CHARS, "Gateway data string truncated"),
+    originalChars: value.length,
+    originalBytes: Buffer.byteLength(value, "utf8"),
+    truncated: true,
+  };
+}
+
+function headTailString(text: string, maxChars: number, label: string): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const marker = `\n\n... [${label}: ${text.length - maxChars} characters omitted] ...\n\n`;
+  const available = Math.max(0, maxChars - marker.length);
+  const headLength = Math.ceil(available / 2);
+  const tailLength = Math.floor(available / 2);
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapModelEvent(event: CanonicalModelEvent): GatewayEvent[] {

@@ -52,6 +52,11 @@ type InteractiveOption = {
 
 type PermissionGrantState = 'idle' | 'granted' | 'error';
 
+type I18nDescriptor = {
+  key?: unknown;
+  params?: unknown;
+};
+
 const stringifyMessageContent = (content: unknown): string => {
   if (typeof content === 'string') return content;
   if (content === undefined || content === null) return '';
@@ -61,6 +66,20 @@ const stringifyMessageContent = (content: unknown): string => {
     return String(content);
   }
 };
+
+function translateDescriptor(
+  t: ReturnType<typeof useTranslation>['t'],
+  descriptor: unknown,
+  fallback: string,
+): string {
+  if (!descriptor || typeof descriptor !== 'object') return fallback;
+  const { key, params } = descriptor as I18nDescriptor;
+  if (typeof key !== 'string' || !key.trim()) return fallback;
+  const interpolation = params && typeof params === 'object' && !Array.isArray(params)
+    ? params as Record<string, unknown>
+    : {};
+  return t(key, { ...interpolation, defaultValue: fallback });
+}
 
 function cleanToolUseErrorContent(content: unknown): string {
   return stringifyMessageContent(content)
@@ -132,7 +151,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   const [isExpanded, setIsExpanded] = useState(false);
   const permissionSuggestion = getPilotDeckPermissionSuggestion(message, provider);
   const [permissionGrantState, setPermissionGrantState] = useState<PermissionGrantState>('idle');
-  const messageContent = stringifyMessageContent(message.content);
+  const rawMessageContent = stringifyMessageContent(message.content);
+  const messageContent = translateDescriptor(t, message.contentI18n, rawMessageContent);
+  const userHintContent = translateDescriptor(t, message.userHintI18n, stringifyMessageContent(message.userHint));
   const messageImages = Array.isArray(message.images)
     ? message.images.filter((image) => image && typeof image.data === 'string')
     : [];
@@ -801,12 +822,12 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                   );
                 })()}
 
-                {message.type === 'error' && message.userHint && (
+                {message.type === 'error' && userHintContent && (
                   <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/50 dark:bg-amber-950/30">
                     <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
-                    <span className="text-xs text-amber-700 dark:text-amber-300">{String(message.userHint)}</span>
+                    <span className="text-xs text-amber-700 dark:text-amber-300">{userHintContent}</span>
                   </div>
                 )}
               </div>

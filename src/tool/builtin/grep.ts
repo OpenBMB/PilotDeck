@@ -152,7 +152,7 @@ export function createGrepTool(): PilotDeckToolDefinition<GrepInput> {
             .map((line) => toWorkspaceFile(line.file, target.workspaceBaseDir)),
         );
         return {
-          content: [{ type: "text", text: page.items.join("\n") }],
+          content: [{ type: "text", text: formatPagedTextResult(page.items.join("\n"), page, parsedLines.length, input) }],
           data: {
             mode,
             files,
@@ -175,7 +175,7 @@ export function createGrepTool(): PilotDeckToolDefinition<GrepInput> {
         }));
         const page = paginate(renderedEntries, input.head_limit, input.offset);
         return {
-          content: [{ type: "text", text: page.items.map((entry) => entry.text).join("\n") }],
+          content: [{ type: "text", text: formatPagedTextResult(page.items.map((entry) => entry.text).join("\n"), page, countEntries.length, input) }],
           data: {
             mode,
             files: page.items.map((entry) => entry.file),
@@ -193,7 +193,7 @@ export function createGrepTool(): PilotDeckToolDefinition<GrepInput> {
       const workspaceFiles = sortedFiles.map((file) => toWorkspaceFile(file, target.workspaceBaseDir));
       const page = paginate(workspaceFiles, input.head_limit, input.offset);
       return {
-        content: [{ type: "text", text: page.items.join("\n") }],
+        content: [{ type: "text", text: formatPagedTextResult(page.items.join("\n"), page, workspaceFiles.length, input) }],
         data: {
           mode,
           files: page.items,
@@ -385,20 +385,43 @@ function paginate<T>(
   items: T[],
   headLimit: number | undefined,
   offset: number | undefined,
-): { items: T[]; truncated: boolean } {
+): { items: T[]; truncated: boolean; offset: number; limit?: number; nextOffset?: number } {
   const normalizedOffset = Math.max(0, offset ?? 0);
   if (headLimit === 0) {
     return {
       items: items.slice(normalizedOffset),
       truncated: false,
+      offset: normalizedOffset,
     };
   }
   const normalizedLimit = Math.max(0, headLimit ?? DEFAULT_HEAD_LIMIT);
   const page = items.slice(normalizedOffset, normalizedOffset + normalizedLimit);
+  const nextOffset = normalizedOffset + page.length;
+  const truncated = items.length > normalizedOffset + normalizedLimit;
   return {
     items: page,
-    truncated: items.length > normalizedOffset + normalizedLimit,
+    truncated,
+    offset: normalizedOffset,
+    limit: normalizedLimit,
+    ...(truncated ? { nextOffset } : {}),
   };
+}
+
+function formatPagedTextResult(
+  body: string,
+  page: { items: unknown[]; truncated: boolean; offset: number; limit?: number; nextOffset?: number },
+  totalEntries: number,
+  input: GrepInput,
+): string {
+  const lines = body.length > 0 ? [body] : ["[No matches on this page]"];
+  lines.push(
+    "",
+    `[grep pagination] returned=${page.items.length} total=${totalEntries} offset=${page.offset}${page.limit !== undefined ? ` limit=${page.limit}` : ""} truncated=${page.truncated}`,
+  );
+  if (page.truncated && page.nextOffset !== undefined) {
+    lines.push(`More results are available. Call grep again with offset=${page.nextOffset}${input.head_limit !== undefined ? ` and head_limit=${input.head_limit}` : ""}.`);
+  }
+  return lines.join("\n");
 }
 
 function toWorkspaceFile(file: string, workspaceBaseDir: string): string {

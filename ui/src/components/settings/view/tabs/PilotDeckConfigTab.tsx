@@ -90,6 +90,7 @@ type PilotDeckConfig = {
   agent?: {
     model?: string;
     maxContextTokens?: number;
+    maxOutputTokens?: number;
     params?: Record<string, unknown>;
     subagents?: { default?: string; params?: Record<string, unknown> };
   };
@@ -1512,6 +1513,27 @@ function buildModelRefOptions(config: PilotDeckConfig): Array<{ value: string; l
   return out;
 }
 
+function defaultCapabilitiesForProtocol(protocol?: CatalogProviderProtocol): {
+  maxContextTokens: number;
+  maxOutputTokens: number;
+} {
+  if (protocol === 'google') {
+    return { maxContextTokens: 1_048_576, maxOutputTokens: 65_536 };
+  }
+  if (protocol === 'anthropic') {
+    return { maxContextTokens: 200_000, maxOutputTokens: 65_536 };
+  }
+  return { maxContextTokens: 128_000, maxOutputTokens: 65_536 };
+}
+
+function readPositiveCapability(capabilities: unknown, key: 'maxContextTokens' | 'maxOutputTokens'): number | undefined {
+  if (!capabilities || typeof capabilities !== 'object') return undefined;
+  const value = (capabilities as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
 function activeModelCapabilities(config: PilotDeckConfig): {
   ref: string;
   providerId: string;
@@ -1519,7 +1541,8 @@ function activeModelCapabilities(config: PilotDeckConfig): {
   catalogModel?: CatalogModel;
   catalogProvider?: CatalogProvider;
   multimodalInput: string[] | null;
-  maxOutputTokensOverride: number | undefined;
+  maxContextTokens: number;
+  maxOutputTokens: number;
 } | null {
   const ref = config.agent?.model ?? '';
   if (!ref) return null;
@@ -1541,14 +1564,16 @@ function activeModelCapabilities(config: PilotDeckConfig): {
   const userCapabilities = userDef && typeof userDef === 'object'
     ? (userDef as Record<string, unknown>).capabilities
     : null;
-  let maxOutputTokensOverride: number | undefined;
-  if (userCapabilities && typeof userCapabilities === 'object') {
-    const v = (userCapabilities as Record<string, unknown>).maxOutputTokens;
-    if (typeof v === 'number' && Number.isFinite(v) && v > 0) maxOutputTokensOverride = v;
-  }
   const catalogProvider = findCatalogProviderById(providerId);
   const catalogModel = catalogProvider?.models.find((m) => m.id === modelId);
-  return { ref, providerId, modelId, catalogModel, catalogProvider, multimodalInput, maxOutputTokensOverride };
+  const protocolDefaults = defaultCapabilitiesForProtocol(provider.protocol ?? catalogProvider?.protocol);
+  const maxContextTokens = readPositiveCapability(userCapabilities, 'maxContextTokens')
+    ?? catalogModel?.maxContextTokens
+    ?? protocolDefaults.maxContextTokens;
+  const maxOutputTokens = readPositiveCapability(userCapabilities, 'maxOutputTokens')
+    ?? catalogModel?.maxOutputTokens
+    ?? protocolDefaults.maxOutputTokens;
+  return { ref, providerId, modelId, catalogModel, catalogProvider, multimodalInput, maxContextTokens, maxOutputTokens };
 }
 
 function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
@@ -1598,31 +1623,14 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
     onChange(patch(config, ['model', 'providers', providerId, 'models'], models));
   };
 
-  const setMaxOutputTokens = (value: number | undefined) => {
-    if (!caps) return;
-    const { providerId, modelId } = caps;
-    const providers = config.model?.providers ?? {};
-    const provider = providers[providerId] ?? {};
-    const models = { ...(provider.models ?? {}) };
-    const existingDef = models[modelId];
-    const def: Record<string, unknown> = existingDef && typeof existingDef === 'object'
-      ? { ...(existingDef as Record<string, unknown>) }
-      : {};
-    const capabilities: Record<string, unknown> = def.capabilities && typeof def.capabilities === 'object'
-      ? { ...(def.capabilities as Record<string, unknown>) }
-      : {};
+  const setAgentTokenOverride = (key: 'maxContextTokens' | 'maxOutputTokens', value: number | undefined) => {
+    const next = { ...(config.agent ?? {}) };
     if (value === undefined) {
-      delete capabilities.maxOutputTokens;
+      delete next[key];
     } else {
-      capabilities.maxOutputTokens = value;
+      next[key] = value;
     }
-    if (Object.keys(capabilities).length > 0) {
-      def.capabilities = capabilities;
-    } else {
-      delete def.capabilities;
-    }
-    models[modelId] = def as Record<string, unknown>;
-    onChange(patch(config, ['model', 'providers', providerId, 'models'], models));
+    onChange(patch(config, ['agent'], next));
   };
 
   return (
@@ -1685,13 +1693,13 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
                   <input
                     type="number"
                     min={1}
-                    value={caps.maxOutputTokensOverride ?? ''}
-                    placeholder={String(caps.catalogModel?.maxOutputTokens ?? 16384)}
+                    value={config.agent?.maxOutputTokens ?? ''}
+                    placeholder={String(caps.maxOutputTokens)}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '') return setMaxOutputTokens(undefined);
+                      if (v === '') return setAgentTokenOverride('maxOutputTokens', undefined);
                       const n = Number(v);
-                      if (Number.isFinite(n) && n > 0) setMaxOutputTokens(Math.floor(n));
+                      if (Number.isFinite(n) && n > 0) setAgentTokenOverride('maxOutputTokens', Math.floor(n));
                     }}
                     className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
                   />
@@ -1711,18 +1719,13 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
                     type="number"
                     min={1}
                     value={config.agent?.maxContextTokens ?? ''}
-                    placeholder={String(caps.catalogModel?.maxContextTokens ?? 200000)}
+                    placeholder={String(caps.maxContextTokens)}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '') {
-                        const next = { ...(config.agent ?? {}) };
-                        delete next.maxContextTokens;
-                        onChange(patch(config, ['agent'], next));
-                        return;
-                      }
+                      if (v === '') return setAgentTokenOverride('maxContextTokens', undefined);
                       const n = Number(v);
                       if (Number.isFinite(n) && n > 0) {
-                        onChange(patch(config, ['agent', 'maxContextTokens'], Math.floor(n)));
+                        setAgentTokenOverride('maxContextTokens', Math.floor(n));
                       }
                     }}
                     className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"

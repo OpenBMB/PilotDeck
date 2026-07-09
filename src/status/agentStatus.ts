@@ -16,12 +16,19 @@ export type AgentStatusSource =
 
 export type AgentStatusSeverity = "info" | "warning" | "error";
 
+export type AgentStatusI18nDescriptor = {
+  key: string;
+  params?: Record<string, unknown>;
+};
+
 export type AgentStatusDetailInput = {
   message: string;
+  messageI18n?: AgentStatusI18nDescriptor;
   code?: string;
   severity?: AgentStatusSeverity;
   visible?: boolean;
   userHint?: string;
+  userHintI18n?: AgentStatusI18nDescriptor;
   scope: AgentStatusScope;
   source: AgentStatusSource;
   detail?: Record<string, unknown>;
@@ -48,10 +55,12 @@ export type AgentStatusHttpErrorBody = {
 export function createAgentStatusDetail(input: AgentStatusDetailInput): Record<string, unknown> {
   return pruneUndefined({
     message: input.message,
+    messageI18n: input.messageI18n,
     code: input.code,
     severity: input.severity,
     visible: input.visible ?? true,
     userHint: input.userHint,
+    userHintI18n: input.userHintI18n,
     scope: input.scope,
     source: input.source,
     ...(input.detail ?? {}),
