@@ -104,7 +104,7 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     id: providerId,
     protocol,
     url: rawUrl,
-    apiKey: resolveProviderApiKey(providerId, provider.apiKey, env),
+    apiKey: resolveProviderApiKey(providerId, provider.apiKey, catalogProvider?.apiKeyEnvVar, env),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
     extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
@@ -113,11 +113,19 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
   };
 }
 
-function resolveProviderApiKey(providerId: string, value: unknown, env?: CredentialEnv): string {
+function resolveProviderApiKey(
+  providerId: string,
+  value: unknown,
+  catalogApiKeyEnvVar: string | undefined,
+  env?: CredentialEnv,
+): string {
   if (providerId === "ollama" && value === undefined) {
     return "ollama";
   }
-  return resolveApiKey(value, env);
+  const effectiveValue = value === undefined ? (
+    catalogApiKeyEnvVar ? `\${${catalogApiKeyEnvVar}}` : undefined
+  ) : value;
+  return resolveApiKey(effectiveValue, env);
 }
 
 function resolveDefaultProviderUrl(
