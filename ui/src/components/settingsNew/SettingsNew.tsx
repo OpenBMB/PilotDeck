@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
-import { Button } from "../../shared/view/ui/Button";
-import type { SettingsProps } from "../settings/types/types";
+import type { SettingsProps } from "./shared/types";
 import type { SettingsNewMenuKey } from "./types";
 import SettingsNewSidebar from "./view/SettingsNewSidebar";
 import SettingsNewContent from "./view/SettingsNewContent";
@@ -14,7 +12,7 @@ const mapInitialTabToMenuKey = (
     case "permissions":
       return "privacy";
     case "mcp":
-      return "integrations";
+      return "extensions";
     case "gateway":
       return "advanced";
     case "config":
@@ -27,6 +25,7 @@ const mapInitialTabToMenuKey = (
 export default function SettingsNew({
   isOpen,
   onClose,
+  projects = [],
   initialTab,
 }: SettingsProps) {
   const initialKey = useMemo(
@@ -54,7 +53,7 @@ export default function SettingsNew({
             onSelect={setSelectedKey}
             onClose={onClose}
           />
-          <SettingsNewContent selectedKey={selectedKey} />
+          <SettingsNewContent selectedKey={selectedKey} projects={projects} />
         </div>
       </div>
     </div>
