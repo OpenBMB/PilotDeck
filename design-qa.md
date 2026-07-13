@@ -2,6 +2,13 @@
 
 final result: passed
 
+## File explorer collapse icon follow-up
+
+- Reference: `/var/folders/xt/0thdvc4d0kb_165pd393wz1c0000gn/T/TemporaryItems/NSIRD_screencaptureui_iiL3HH/截屏2026-07-13 17.45.00.png`
+- Implementation: `design-qa/file-explorer-collapse-icon.png`
+- Combined comparison: `design-qa/file-explorer-collapse-comparison.png`
+- Result: the toolbar close `X` was replaced with the matching Lucide panel-collapse control, oriented toward the left edge. The button retains the existing explorer collapse behavior and reopens from the left rail successfully.
+
 ## Visual comparison
 
 - Reference: `/var/folders/xt/0thdvc4d0kb_165pd393wz1c0000gn/T/TemporaryItems/NSIRD_screencaptureui_MMYo3K/截屏2026-07-13 16.54.07.png`

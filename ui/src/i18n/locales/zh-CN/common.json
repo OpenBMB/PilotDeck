@@ -344,6 +344,7 @@
     "newFolder": "新建文件夹 (Cmd+Shift+N)",
     "refresh": "刷新",
     "collapseAll": "全部折叠",
+    "collapsePanel": "收起文件树",
     "context": {
       "rename": "重命名",
       "delete": "删除",
