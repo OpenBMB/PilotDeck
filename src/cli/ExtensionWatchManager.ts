@@ -1,5 +1,5 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
-import { dirname, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 import { getPilotExtensionPaths } from "../pilot/index.js";
 
 export type ExtensionWatchScope =
@@ -177,11 +177,18 @@ function resolveExistingWatchTarget(path: string): string {
   return current;
 }
 
-function shouldHandleWatchSignal(watchTarget: string, watchedPath: string, filename: string): boolean {
+export function shouldHandleWatchSignal(watchTarget: string, watchedPath: string, filename: string): boolean {
   if (filename.length === 0) {
     return true;
   }
   const absoluteChanged = resolve(watchTarget, filename);
+  if (basename(watchedPath) === "skills") {
+    const relativeChanged = relative(watchedPath, absoluteChanged);
+    const firstSegment = relativeChanged.split(sep)[0];
+    if (firstSegment === ".evo") {
+      return false;
+    }
+  }
   return absoluteChanged === watchedPath || absoluteChanged.startsWith(`${watchedPath}${sep}`);
 }
 

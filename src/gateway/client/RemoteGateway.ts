@@ -44,6 +44,18 @@ import type {
   SkillsListResult,
 } from "../../extension/skills/types.js";
 import type {
+  SkillEvolutionApplyInput,
+  SkillEvolutionApplyResult,
+  SkillEvolutionProposeInput,
+  SkillEvolutionProposeResult,
+  SkillEvolutionRecordInput,
+  SkillEvolutionRecordResult,
+  SkillEvolutionRollbackInput,
+  SkillEvolutionRollbackResult,
+  SkillEvolutionStatusInput,
+  SkillEvolutionStatusResult,
+} from "../../extension/skills/skillEvolutionTypes.js";
+import type {
   CronCreateInput,
   CronCreateResult,
   CronDeleteInput,
@@ -191,6 +203,26 @@ export class RemoteGateway implements Gateway {
 
   async skillScan(input: SkillScanInput): Promise<SkillScanResult> {
     return (await this.client.request("skill_scan", input)) as SkillScanResult;
+  }
+
+  async skillEvoStatus(input: SkillEvolutionStatusInput): Promise<SkillEvolutionStatusResult> {
+    return (await this.client.request("skill_evo_status", input)) as SkillEvolutionStatusResult;
+  }
+
+  async skillEvoRecord(input: SkillEvolutionRecordInput): Promise<SkillEvolutionRecordResult> {
+    return (await this.client.request("skill_evo_record", input)) as SkillEvolutionRecordResult;
+  }
+
+  async skillEvoPropose(input: SkillEvolutionProposeInput): Promise<SkillEvolutionProposeResult> {
+    return (await this.client.request("skill_evo_propose", input)) as SkillEvolutionProposeResult;
+  }
+
+  async skillEvoApply(input: SkillEvolutionApplyInput): Promise<SkillEvolutionApplyResult> {
+    return (await this.client.request("skill_evo_apply", input)) as SkillEvolutionApplyResult;
+  }
+
+  async skillEvoRollback(input: SkillEvolutionRollbackInput): Promise<SkillEvolutionRollbackResult> {
+    return (await this.client.request("skill_evo_rollback", input)) as SkillEvolutionRollbackResult;
   }
 
   async alwaysOnApply(input: AlwaysOnApplyInput): Promise<AlwaysOnApplyResult> {

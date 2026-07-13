@@ -1,3 +1,4 @@
+import { basename, dirname, resolve } from "node:path";
 import { resolvePluginDirectories } from "../discovery/PluginDirectoryResolver.js";
 import { discoverPluginPaths, discoverSkillPaths } from "../discovery/discoverLocalPlugins.js";
 import { loadPluginFromPath, loadSkillFromPath } from "../loading/PluginLoader.js";
@@ -55,6 +56,11 @@ export type PluginSkillContribution = {
   name: string;
   description?: string;
   namespace?: string;
+};
+
+export type ManagedSkillAddress = {
+  scope: "user" | "project";
+  slug: string;
 };
 
 export type PluginMcpInstruction = {
@@ -177,6 +183,28 @@ export class PluginRuntime {
     return undefined;
   }
 
+  /**
+   * Resolve a loaded standalone skill back to SkillManager addressing.
+   * Skills contributed by a plugin are intentionally excluded: their owning
+   * plugin, not the standalone skill store, controls those files.
+   */
+  resolveManagedSkillAddress(extensionId: string): ManagedSkillAddress | undefined {
+    for (const plugin of this.registry.list()) {
+      if (plugin.source !== "global" && plugin.source !== "project") continue;
+      const skill = plugin.skills?.find(
+        (entry) => entry.name === extensionId || entry.name.endsWith(`:${extensionId}`),
+      );
+      if (!skill) continue;
+      if (resolve(dirname(skill.path)) !== resolve(plugin.path)) continue;
+      if (basename(skill.path).toLowerCase() !== "skill.md") continue;
+      return {
+        scope: plugin.source === "global" ? "user" : "project",
+        slug: basename(plugin.path),
+      };
+    }
+    return undefined;
+  }
+
   async refresh(): Promise<PilotDeckLoadedPlugin[]> {
     return (await this.refreshWithReport()).next;
   }
@@ -260,4 +288,3 @@ function toSkillContribution(
     namespace: plugin.name,
   };
 }
-

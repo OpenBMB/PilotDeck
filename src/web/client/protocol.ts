@@ -129,6 +129,11 @@ export type WebGatewayMethod =
   | "skill_import"
   | "skill_validate"
   | "skill_scan"
+  | "skill_evo_status"
+  | "skill_evo_record"
+  | "skill_evo_propose"
+  | "skill_evo_apply"
+  | "skill_evo_rollback"
   | "always_on_apply"
   | "always_on_rerun_plan";
 

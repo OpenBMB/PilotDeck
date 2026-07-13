@@ -76,7 +76,11 @@ import { SessionRouterStore } from "../router/session/SessionRouterStore.js";
 import type { RouterEventBus, RouterEvent } from "../router/protocol/events.js";
 import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
-import { SkillManager } from "../extension/skills/index.js";
+import {
+  generateSkillEvolutionWithModel,
+  SkillEvolutionManager,
+  SkillManager,
+} from "../extension/skills/index.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 
@@ -155,6 +159,23 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const telemetry = options.telemetry ?? createTelemetryCollector({ env, pilotHome });
   const ownsTelemetry = !options.telemetry;
   let registry!: ProjectRuntimeRegistry;
+  const skillManager = new SkillManager({ pilotHome });
+  const skillEvolution = new SkillEvolutionManager({
+    pilotHome,
+    skillManager,
+    now,
+    generator: async (input) => {
+      const runtime = registry.resolve(input.projectKey ?? projectRoot);
+      return generateSkillEvolutionWithModel(
+        {
+          modelRuntime: runtime.model,
+          agentModel: runtime.snapshot.config.agent.model,
+          maxOutputTokens: runtime.snapshot.config.agent.maxOutputTokens,
+        },
+        input,
+      );
+    },
+  });
   let router: SessionRouter | undefined;
   const extensionWatchManager = new ExtensionWatchManager({
     pilotHome,
@@ -181,6 +202,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     modelFactory: options.__testModelFactory,
     autoElicitation: options.autoElicitation,
     telemetry,
+    skillEvolution,
     onProjectActivated: (activeProjectRoot) => extensionWatchManager.watchProject(activeProjectRoot),
   });
   const defaultRuntime = registry.resolve();
@@ -251,7 +273,6 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         }
       : undefined,
   });
-  const skillManager = new SkillManager({ pilotHome });
   const gateway = new InProcessGateway(router, {
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -259,6 +280,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     toolResultsDir: resolve(tmpdir(), "pilotdeck-tool-output", process.pid.toString()),
     cron: options.cron,
     skillManager,
+    skillEvolution,
     setSessionCwd: (sessionKey, cwd) => registry.setSessionCwd(sessionKey, cwd),
     readSessionMessages: (input) =>
       readWebSessionMessages(input, {
@@ -396,6 +418,7 @@ type ProjectRuntimeRegistryOptions = {
   modelFactory?: (snapshot: PilotConfigSnapshot) => ModelRuntime;
   autoElicitation?: boolean;
   telemetry: TelemetryClient;
+  skillEvolution: SkillEvolutionManager;
   onProjectActivated?: (projectRoot: string) => void;
 };
 
@@ -634,7 +657,17 @@ class ProjectRuntimeRegistry {
     const tools = createBuiltinRegistry({
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
-        loader: (name) => pluginRuntime.loadSkillPrompt(name),
+        loader: async (name) => {
+          const content = await pluginRuntime.loadSkillPrompt(name);
+          const address = content ? pluginRuntime.resolveManagedSkillAddress(name) : undefined;
+          if (address) {
+            await this.options.skillEvolution.recordUse({
+              ...address,
+              projectKey: address.scope === "project" ? projectRoot : undefined,
+            }).catch(() => undefined);
+          }
+          return content;
+        },
         lister: () => pluginRuntime.getAllSkills(),
       },
       // Pass the YAML-configured web-search provider through to the built-in

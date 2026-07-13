@@ -48,6 +48,18 @@ import type {
   SkillsListInput,
   SkillsListResult,
 } from "../../extension/skills/types.js";
+import type {
+  SkillEvolutionApplyInput,
+  SkillEvolutionApplyResult,
+  SkillEvolutionProposeInput,
+  SkillEvolutionProposeResult,
+  SkillEvolutionRecordInput,
+  SkillEvolutionRecordResult,
+  SkillEvolutionRollbackInput,
+  SkillEvolutionRollbackResult,
+  SkillEvolutionStatusInput,
+  SkillEvolutionStatusResult,
+} from "../../extension/skills/skillEvolutionTypes.js";
 
 export type GatewayChannelKey =
   | "cli" | "tui" | "feishu" | "weixin" | "qq" | "web" | "test"
@@ -450,4 +462,9 @@ export interface Gateway {
   skillImport?(input: SkillImportInput): Promise<SkillImportResult>;
   skillValidate?(input: SkillValidateInput): Promise<SkillValidationResult>;
   skillScan?(input: SkillScanInput): Promise<SkillScanResult>;
+  skillEvoStatus?(input: SkillEvolutionStatusInput): Promise<SkillEvolutionStatusResult>;
+  skillEvoRecord?(input: SkillEvolutionRecordInput): Promise<SkillEvolutionRecordResult>;
+  skillEvoPropose?(input: SkillEvolutionProposeInput): Promise<SkillEvolutionProposeResult>;
+  skillEvoApply?(input: SkillEvolutionApplyInput): Promise<SkillEvolutionApplyResult>;
+  skillEvoRollback?(input: SkillEvolutionRollbackInput): Promise<SkillEvolutionRollbackResult>;
 }

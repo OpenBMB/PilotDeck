@@ -403,6 +403,20 @@ PilotDeck has an open plugin architecture with a strict boundary between the ope
 - **Lifecycle Hooks** — intercept `PreToolUse`, `UserPromptSubmit`, and other critical lifecycle events.
 - **Custom Memory** — plug in your own memory store provider.
 
+### Skill Evolution
+
+PilotDeck includes a Hermes-inspired, consent-first skill evolution loop. Skill reads build a sidecar usage journal; success, failure, and correction feedback can be recorded through the CLI; and the configured model can stage an improved `SKILL.md` as a proposal. The live skill changes only after an explicit apply, which creates a rollback revision and rejects proposals based on stale content.
+
+```bash
+pilotdeck skills evo status
+pilotdeck skills evo record my-skill --outcome failure --feedback "Missing rate-limit recovery"
+pilotdeck skills evo run my-skill --show-content
+pilotdeck skills evo apply my-skill --proposal <proposal-id>
+pilotdeck skills evo rollback my-skill
+```
+
+See [Skill Evolution](docs/skill-evolution.md) for scopes, storage layout, gateway RPCs, and the full CLI workflow.
+
 ---
 
 ## 🤝 Contributing

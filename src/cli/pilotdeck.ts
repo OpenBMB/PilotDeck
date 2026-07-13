@@ -6,9 +6,12 @@ import { connectRemoteGatewayIfAvailable, type Gateway, type GatewayEvent, type 
 import { CliChannel, TuiChannel, FeishuChannel, WeixinChannel, QQChannel, WeComChannel, loadEnabledChannels } from "../adapters/index.js";
 import {
   migrateSkillsToPilotDeck,
+  type SkillEvolutionFeedbackOutcome,
+  type SkillEvolutionSkillStatus,
   type SkillMigrationConflictMode,
   type SkillMigrationItem,
   type SkillMigrationSourceKind,
+  type SkillScope,
 } from "../extension/skills/index.js";
 import { loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
 import { createLocalGateway } from "./createLocalGateway.js";
@@ -533,8 +536,12 @@ async function handleCronCommand(argv: string[]): Promise<void> {
 
 async function handleSkillsCommand(argv: string[]): Promise<void> {
   const command = argv[0];
+  if (command === "evo" || command === "evolution") {
+    await handleSkillEvolutionCommand(argv.slice(1));
+    return;
+  }
   if (command !== "migrate") {
-    console.error("Usage: pilotdeck skills migrate [--execute] [--from cc,openclaw,hermes] [--source <dir>] [--overwrite|--rename]");
+    printSkillsUsage();
     process.exitCode = 1;
     return;
   }
@@ -565,6 +572,240 @@ async function handleSkillsCommand(argv: string[]): Promise<void> {
   if (report.summary.error > 0) {
     process.exitCode = 1;
   }
+}
+
+async function handleSkillEvolutionCommand(argv: string[]): Promise<void> {
+  const command = argv[0];
+  if (!command || command === "help" || argv.includes("--help")) {
+    printSkillEvolutionUsage();
+    return;
+  }
+
+  const projectRoot = resolve(readStringFlag(argv, "--project") ?? process.cwd());
+  const pilotHomeFlag = readStringFlag(argv, "--pilot-home");
+  const pilotHome = pilotHomeFlag ?? resolvePilotHome(process.env);
+  const scope = parseSkillScope(readStringFlag(argv, "--scope"));
+  const opened = await openSkillEvolutionGateway({ projectRoot, pilotHome, preferLocal: !!pilotHomeFlag });
+
+  try {
+    if (command === "status") {
+      if (!opened.gateway.skillEvoStatus) throw skillEvolutionUnavailable();
+      const slug = readPositional(argv, 1);
+      const result = await opened.gateway.skillEvoStatus({
+        projectKey: projectRoot,
+        scope,
+        slug,
+        limit: readNumberFlag(argv, "--limit"),
+      });
+      if (argv.includes("--json")) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        printSkillEvolutionStatus(result.skills);
+      }
+      return;
+    }
+
+    const slug = readPositional(argv, 1);
+    if (!slug) {
+      throw new Error(`Usage: pilotdeck skills evo ${command} <slug> [options]`);
+    }
+    const address = await resolveSkillEvolutionAddress(opened.gateway, slug, scope, projectRoot);
+
+    if (command === "record") {
+      if (!opened.gateway.skillEvoRecord) throw skillEvolutionUnavailable();
+      const outcome = parseSkillOutcome(readStringFlag(argv, "--outcome"));
+      if (!outcome) {
+        throw new Error("record requires --outcome <success|failure|correction>.");
+      }
+      const result = await opened.gateway.skillEvoRecord({
+        ...address,
+        outcome,
+        feedback: readStringFlag(argv, "--feedback"),
+        sessionKey: readStringFlag(argv, "--session"),
+      });
+      if (argv.includes("--json")) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Recorded ${outcome} feedback for ${address.scope}/${slug} (${result.event.id}).`);
+      return;
+    }
+
+    if (command === "run" || command === "propose") {
+      if (!opened.gateway.skillEvoPropose) throw skillEvolutionUnavailable();
+      const rawOutcome = readStringFlag(argv, "--outcome");
+      const outcome = rawOutcome ? parseSkillOutcome(rawOutcome) : undefined;
+      if (rawOutcome && !outcome) {
+        throw new Error("--outcome must be success, failure, or correction.");
+      }
+      const proposal = await opened.gateway.skillEvoPropose({
+        ...address,
+        feedback: readStringFlag(argv, "--feedback"),
+        outcome,
+        sessionKey: readStringFlag(argv, "--session"),
+        instructions: readStringFlag(argv, "--instructions"),
+      });
+      let applied: Awaited<ReturnType<NonNullable<Gateway["skillEvoApply"]>>> | undefined;
+      if (argv.includes("--apply")) {
+        if (!opened.gateway.skillEvoApply) throw skillEvolutionUnavailable();
+        applied = await opened.gateway.skillEvoApply({
+          ...address,
+          proposalId: proposal.proposal.id,
+        });
+      }
+      if (argv.includes("--json")) {
+        console.log(JSON.stringify({ ...proposal, applied }, null, 2));
+      } else {
+        printSkillEvolutionProposal(proposal, !!applied);
+        if (argv.includes("--show-content")) {
+          console.log("");
+          console.log(proposal.candidateContent);
+        }
+      }
+      return;
+    }
+
+    if (command === "apply") {
+      if (!opened.gateway.skillEvoApply) throw skillEvolutionUnavailable();
+      const proposalId = readStringFlag(argv, "--proposal") ?? readPositional(argv, 2);
+      if (!proposalId) throw new Error("apply requires --proposal <proposalId>.");
+      const result = await opened.gateway.skillEvoApply({
+        ...address,
+        proposalId,
+        force: argv.includes("--force"),
+      });
+      if (argv.includes("--json")) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Applied ${proposalId}; rollback revision: ${result.revision.id}`);
+      return;
+    }
+
+    if (command === "rollback") {
+      if (!opened.gateway.skillEvoRollback) throw skillEvolutionUnavailable();
+      const result = await opened.gateway.skillEvoRollback({
+        ...address,
+        revisionId: readStringFlag(argv, "--revision"),
+      });
+      if (argv.includes("--json")) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(
+          `Rolled back ${address.scope}/${slug} to ${result.rolledBackToRevisionId}; `
+          + `current-state backup: ${result.safetyRevision.id}`,
+        );
+      }
+      return;
+    }
+
+    printSkillEvolutionUsage();
+    process.exitCode = 1;
+  } finally {
+    opened.dispose();
+  }
+}
+
+async function openSkillEvolutionGateway(input: {
+  projectRoot: string;
+  pilotHome: string;
+  preferLocal: boolean;
+}): Promise<{ gateway: Gateway; dispose: () => void }> {
+  if (!input.preferLocal) {
+    const remote = await connectRemoteGatewayIfAvailable();
+    if (remote) return { gateway: remote, dispose: () => undefined };
+  }
+  const local = createLocalGateway({ projectRoot: input.projectRoot, pilotHome: input.pilotHome });
+  return { gateway: local.gateway, dispose: local.dispose };
+}
+
+async function resolveSkillEvolutionAddress(
+  gateway: Gateway,
+  slug: string,
+  requestedScope: SkillScope | undefined,
+  projectRoot: string,
+): Promise<{ scope: SkillScope; slug: string; projectKey?: string }> {
+  if (!gateway.skillsList) {
+    throw new Error("The connected PilotDeck gateway does not support skill management.");
+  }
+  const skills = await gateway.skillsList({ projectKey: projectRoot });
+  const inUser = skills.user.some((skill) => skill.slug === slug);
+  const inProject = skills.project.some((skill) => skill.slug === slug);
+  if (requestedScope === "user") {
+    if (!inUser) throw new Error(`User skill "${slug}" was not found.`);
+    return { scope: "user", slug };
+  }
+  if (requestedScope === "project") {
+    if (!inProject) throw new Error(`Project skill "${slug}" was not found.`);
+    return { scope: "project", slug, projectKey: projectRoot };
+  }
+  if (inUser && inProject) {
+    throw new Error(`Skill "${slug}" exists in both scopes; add --scope user or --scope project.`);
+  }
+  if (inProject) return { scope: "project", slug, projectKey: projectRoot };
+  if (inUser) return { scope: "user", slug };
+  throw new Error(`Skill "${slug}" was not found.`);
+}
+
+function parseSkillScope(value: string | undefined): SkillScope | undefined {
+  if (value === undefined) return undefined;
+  if (value === "user" || value === "project") return value;
+  throw new Error("--scope must be user or project.");
+}
+
+function parseSkillOutcome(value: string | undefined): SkillEvolutionFeedbackOutcome | undefined {
+  if (value === "success" || value === "failure" || value === "correction") return value;
+  return undefined;
+}
+
+function printSkillsUsage(): void {
+  console.error("Usage:");
+  console.error("  pilotdeck skills migrate [--execute] [--from cc,openclaw,hermes] [--source <dir>] [--overwrite|--rename]");
+  console.error("  pilotdeck skills evo <status|record|run|apply|rollback> ...");
+}
+
+function printSkillEvolutionUsage(): void {
+  console.log("PilotDeck skill evolution");
+  console.log("");
+  console.log("  pilotdeck skills evo status [slug] [--scope user|project] [--json]");
+  console.log("  pilotdeck skills evo record <slug> --outcome <success|failure|correction> [--feedback <text>]");
+  console.log("  pilotdeck skills evo run <slug> [--feedback <text>] [--instructions <text>] [--show-content|--apply]");
+  console.log("  pilotdeck skills evo apply <slug> --proposal <id> [--force]");
+  console.log("  pilotdeck skills evo rollback <slug> [--revision <id>]");
+  console.log("");
+  console.log("Common options: --scope user|project --project <dir> --pilot-home <dir> --json");
+}
+
+function printSkillEvolutionStatus(skills: SkillEvolutionSkillStatus[]): void {
+  if (skills.length === 0) {
+    console.log("No skills found.");
+    return;
+  }
+  for (const item of skills) {
+    const stats = item.stats;
+    const pending = item.proposals.filter((proposal) => proposal.status === "pending").length;
+    console.log(`${item.skill.scope}/${item.skill.slug}`);
+    console.log(
+      `  usage=${stats.useCount} success=${stats.successCount} failure=${stats.failureCount} `
+      + `correction=${stats.correctionCount} applied=${stats.applyCount} rollback=${stats.rollbackCount}`,
+    );
+    console.log(`  pending=${pending} revisions=${item.revisions.length} last_evolved=${stats.lastEvolvedAt ?? "never"}`);
+    for (const proposal of item.proposals.filter((entry) => entry.status === "pending").slice(0, 3)) {
+      console.log(`  proposal ${proposal.id}: ${proposal.summary}`);
+    }
+  }
+}
+
+function printSkillEvolutionProposal(
+  result: Awaited<ReturnType<NonNullable<Gateway["skillEvoPropose"]>>>,
+  applied: boolean,
+): void {
+  console.log(`${applied ? "Applied" : "Created"} proposal ${result.proposal.id}`);
+  console.log(`Summary: ${result.proposal.summary}`);
+  console.log(`Rationale: ${result.proposal.rationale}`);
+  if (!applied) {
+    console.log(
+      `Apply: pilotdeck skills evo apply ${result.proposal.slug} --scope ${result.proposal.scope} `
+      + `--proposal ${result.proposal.id}`,
+    );
+  }
+}
+
+function skillEvolutionUnavailable(): Error {
+  return new Error("The connected PilotDeck gateway does not support skill evolution.");
 }
 
 function parseSkillMigrationSources(value: string | undefined): Array<Exclude<SkillMigrationSourceKind, "custom">> | undefined {
@@ -658,6 +899,24 @@ function readNumberFlag(argv: string[], flag: string): number | undefined {
   }
   const number = Number.parseInt(value, 10);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function readPositional(argv: string[], position: number): string | undefined {
+  let current = 0;
+  for (let i = 0; i < argv.length; i += 1) {
+    const value = argv[i]!;
+    if (value.startsWith("--")) {
+      if (!isBooleanCliFlag(value)) i += 1;
+      continue;
+    }
+    if (current === position) return value;
+    current += 1;
+  }
+  return undefined;
+}
+
+function isBooleanCliFlag(flag: string): boolean {
+  return ["--apply", "--force", "--json", "--show-content", "--help"].includes(flag);
 }
 
 function inferChannelKey(sessionKey: string): string {

@@ -59,7 +59,11 @@ import type {
 } from "../../cron/protocol/types.js";
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
-import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
+import {
+  SkillManagerError,
+  type SkillEvolutionManager,
+  type SkillManager,
+} from "../../extension/skills/index.js";
 import { AttachmentResolver, type AttachmentRequest } from "../../context/attachments/AttachmentResolver.js";
 import type {
   SkillAddressInput,
@@ -79,6 +83,18 @@ import type {
   SkillsListInput,
   SkillsListResult,
 } from "../../extension/skills/types.js";
+import type {
+  SkillEvolutionApplyInput,
+  SkillEvolutionApplyResult,
+  SkillEvolutionProposeInput,
+  SkillEvolutionProposeResult,
+  SkillEvolutionRecordInput,
+  SkillEvolutionRecordResult,
+  SkillEvolutionRollbackInput,
+  SkillEvolutionRollbackResult,
+  SkillEvolutionStatusInput,
+  SkillEvolutionStatusResult,
+} from "../../extension/skills/skillEvolutionTypes.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 
@@ -137,6 +153,8 @@ export type InProcessGatewayOptions = {
    * SDK) reads and writes the same skill directory the agent loads from.
    */
   skillManager?: SkillManager;
+  /** Hermes-style usage journal, staged proposals, revisions, and rollback. */
+  skillEvolution?: SkillEvolutionManager;
   dispatchHookForSession?: (sessionKey: string, event: string, payload: Record<string, unknown>) => void;
   /** Directory to persist large tool outputs for TUI/Web viewing. */
   toolResultsDir?: string;
@@ -732,6 +750,26 @@ export class InProcessGateway implements Gateway {
     return this.requireSkills().scan(input);
   }
 
+  async skillEvoStatus(input: SkillEvolutionStatusInput): Promise<SkillEvolutionStatusResult> {
+    return this.requireSkillEvolution().status(input);
+  }
+
+  async skillEvoRecord(input: SkillEvolutionRecordInput): Promise<SkillEvolutionRecordResult> {
+    return this.requireSkillEvolution().record(input);
+  }
+
+  async skillEvoPropose(input: SkillEvolutionProposeInput): Promise<SkillEvolutionProposeResult> {
+    return this.requireSkillEvolution().propose(input);
+  }
+
+  async skillEvoApply(input: SkillEvolutionApplyInput): Promise<SkillEvolutionApplyResult> {
+    return this.requireSkillEvolution().apply(input);
+  }
+
+  async skillEvoRollback(input: SkillEvolutionRollbackInput): Promise<SkillEvolutionRollbackResult> {
+    return this.requireSkillEvolution().rollback(input);
+  }
+
   private requireSkills(): SkillManager {
     if (!this.options.skillManager) {
       throw new SkillManagerError(
@@ -740,6 +778,16 @@ export class InProcessGateway implements Gateway {
       );
     }
     return this.options.skillManager;
+  }
+
+  private requireSkillEvolution(): SkillEvolutionManager {
+    if (!this.options.skillEvolution) {
+      throw new SkillManagerError(
+        "not_configured",
+        "Skill evolution is not configured on this gateway.",
+      );
+    }
+    return this.options.skillEvolution;
   }
 
   async alwaysOnApply(input: AlwaysOnApplyInput): Promise<AlwaysOnApplyResult> {
