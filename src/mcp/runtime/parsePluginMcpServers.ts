@@ -38,11 +38,12 @@ export function parsePluginMcpServers(
       continue;
     }
     const v = value as Record<string, unknown>;
-    if (typeof v.command === "string" && v.command.length > 0) {
+    const command = typeof v.command === "string" ? expandMcpString(v.command) : undefined;
+    if (command && command.length > 0) {
       servers.push({
         id,
         transport: "stdio",
-        command: v.command,
+        command,
         args: Array.isArray(v.args)
           ? (v.args.filter((a): a is string => typeof a === "string").map(expandMcpString))
           : undefined,
@@ -52,7 +53,11 @@ export function parsePluginMcpServers(
       });
       continue;
     }
-    const url = typeof v.url === "string" ? v.url : typeof v.httpUrl === "string" ? v.httpUrl : undefined;
+    const url = typeof v.url === "string"
+      ? expandMcpString(v.url)
+      : typeof v.httpUrl === "string"
+        ? expandMcpString(v.httpUrl)
+        : undefined;
     if (url) {
       servers.push({
         id,

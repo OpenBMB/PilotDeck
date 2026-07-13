@@ -80,6 +80,37 @@ test("parsePluginMcpServers expands ${env:*} in stdio env", () => {
   }
 });
 
+test("parsePluginMcpServers expands ${env:*} in stdio command before transport detection", () => {
+  process.env.PILOTDECK_TEST_COMMAND = "node";
+  try {
+    const { servers, diagnostics } = parsePluginMcpServers({
+      myServer: {
+        command: "${env:PILOTDECK_TEST_COMMAND}",
+      },
+    });
+    assert.equal(diagnostics.length, 0);
+    assert.equal(servers.length, 1);
+    const s = servers[0]!;
+    assert.equal(s.transport, "stdio");
+    if (s.transport === "stdio") {
+      assert.equal(s.command, "node");
+    }
+  } finally {
+    delete process.env.PILOTDECK_TEST_COMMAND;
+  }
+});
+
+test("parsePluginMcpServers drops empty expanded stdio command", () => {
+  delete process.env.__PILOTDECK_NONEXISTENT_COMMAND__;
+  const { servers, diagnostics } = parsePluginMcpServers({
+    myServer: {
+      command: "${env:__PILOTDECK_NONEXISTENT_COMMAND__}",
+    },
+  });
+  assert.equal(servers.length, 0);
+  assert.equal(diagnostics[0]?.message, "no recognized transport (need command or url)");
+});
+
 test("parsePluginMcpServers expands ${userHome} in stdio cwd", () => {
   const { servers } = parsePluginMcpServers({
     myServer: {
