@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 运行产物（部署时动态生成，不 commit）
+data/
+logs/
+outputs/
+*.log
+
+# 敏感配置（不 commit 真实 key）
+.env
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 系统
+.DS_Store

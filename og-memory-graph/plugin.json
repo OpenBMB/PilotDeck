@@ -1,0 +1,61 @@
+{
+  "_doc": "og-memory-graph 声明文档（PilotDeck 插件协议演进前的占位）。",
+  "_note": "实际生效的插件清单是 plugins/og-memory-graph/manifest.json；本文件仅作 boards/services 声明文档，PilotDeck 当前不消费 boards/services 字段。",
+
+  "id":          "og-memory-graph",
+  "name":        "记忆图谱",
+  "version":     "0.1.0",
+  "description": "OG 记忆图谱 — 将 workspace 记忆（feedback/ + project/ 下的 .md）转化为知识图谱与 polished7 报告",
+
+  "mcpServers": {
+    "og-research": {
+      "_doc": "stdio MCP server，提供 5 个工具供 agent 调用（init/sync/rebuild/status/graph_summary/report）",
+      "command": "python",
+      "args":    ["-m", "og.mcp_server"],
+      "cwd":     "<og-memory-graph 绝对路径>",
+      "env": {
+        "V5_ROOT": "<og-memory-graph 绝对路径>"
+      }
+    }
+  },
+
+  "services": [
+    {
+      "id":          "og-api",
+      "name":        "OG API Server",
+      "_doc":        "记忆图谱 board 的 iframe 由此服务提供 HTML + REST API；由插件 server.js 管理 lifecycle（healthcheck 优先，未运行才 spawn）",
+      "command":     "uvicorn server.main:app --port 8000 --host 127.0.0.1",
+      "cwd":         "<og-memory-graph 绝对路径>",
+      "healthCheck": "http://localhost:8000/api/status",
+      "autoStart":   true,
+      "port":        8000
+    }
+  ],
+
+  "boards": [
+    {
+      "id":       "memory-graph",
+      "label":    "记忆图谱",
+      "icon":     "graph",
+      "position": "after:files",
+      "type":     "iframe",
+      "src":      "http://localhost:8000/embed/memory-graph",
+      "_param_doc": "workspace = project 根路径；name = workspace 名称；model = LLM 模型名",
+      "params": {
+        "workspace": "{workspace.path}",
+        "name":      "{workspace.name}",
+        "model":     "deepseek"
+      },
+      "actions": [
+        {
+          "id":      "sync",
+          "label":   "同步",
+          "icon":    "refresh",
+          "_doc":    "通过 postMessage 触发 iframe 内的同步逻辑",
+          "trigger": "postMessage",
+          "message": { "type": "og-sync" }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "og-memory-graph",
+  "displayName": "记忆图谱",
+  "entry": "index.js",
+  "type": "module",
+  "slot": "tab",
+  "server": "server.js",
+  "permissions": []
+}
