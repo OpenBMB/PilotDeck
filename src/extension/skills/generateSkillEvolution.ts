@@ -1,5 +1,7 @@
 import {
   extractStructuredOutput,
+  type CanonicalModelRequest,
+  type CanonicalModelResponse,
   type ModelRuntime,
 } from "../../model/index.js";
 import type { PilotAgentModelSelection } from "../../pilot/config/types.js";
@@ -44,37 +46,46 @@ export async function generateSkillEvolutionWithModel(
   const configuredMax = options.maxOutputTokens ?? capabilities.maxOutputTokens;
   const maxOutputTokens = Math.min(configuredMax, capabilities.maxOutputTokens);
   const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? 120_000);
-  const response = await options.modelRuntime.complete(
-    {
-      provider: options.agentModel.provider,
-      model: options.agentModel.model,
-      systemPrompt: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: buildEvolutionPrompt(input) }],
-        },
-      ],
-      maxOutputTokens,
-      temperature: 0.2,
-      ...(capabilities.supportsJsonSchema
-        ? {
-            outputSchema: {
-              name: "skill_evolution",
-              description: "A proposed full revision of one PilotDeck skill.",
-              schema: OUTPUT_SCHEMA,
-              strict: true,
-            },
-          }
-        : {}),
-      metadata: {
-        purpose: "skill_evolution",
-        scope: input.scope,
-        slug: input.slug,
+  const baseRequest: CanonicalModelRequest = {
+    provider: options.agentModel.provider,
+    model: options.agentModel.model,
+    systemPrompt: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: buildEvolutionPrompt(input) }],
       },
+    ],
+    maxOutputTokens,
+    temperature: 0.2,
+    metadata: {
+      purpose: "skill_evolution",
+      scope: input.scope,
+      slug: input.slug,
     },
-    { signal: timeoutSignal },
-  );
+  };
+  let response: CanonicalModelResponse;
+  if (capabilities.supportsJsonSchema) {
+    try {
+      response = await options.modelRuntime.complete(
+        {
+          ...baseRequest,
+          outputSchema: {
+            name: "skill_evolution",
+            description: "A proposed full revision of one PilotDeck skill.",
+            schema: OUTPUT_SCHEMA,
+            strict: true,
+          },
+        },
+        { signal: timeoutSignal },
+      );
+    } catch (error) {
+      if (!isStructuredOutputUnavailable(error)) throw error;
+      response = await options.modelRuntime.complete(baseRequest, { signal: timeoutSignal });
+    }
+  } else {
+    response = await options.modelRuntime.complete(baseRequest, { signal: timeoutSignal });
+  }
 
   if (response.finishReason === "length") {
     throw new SkillManagerError(
@@ -83,7 +94,7 @@ export async function generateSkillEvolutionWithModel(
     );
   }
 
-  const extracted = extractStructuredOutput(response, { validate: isDraft });
+  const extracted = extractDraft(response);
   if (!extracted.ok) {
     throw new SkillManagerError(
       "evolution_invalid_output",
@@ -91,6 +102,31 @@ export async function generateSkillEvolutionWithModel(
     );
   }
   return extracted.value as SkillEvolutionDraft;
+}
+
+function extractDraft(response: CanonicalModelResponse) {
+  const extracted = extractStructuredOutput(response, { validate: isDraft });
+  if (extracted.ok || extracted.reason !== "invalid_json") return extracted;
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.type === "text" ? block.text : "")
+    .join("")
+    .trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(text);
+  try {
+    const value = JSON.parse((fenced?.[1] ?? text).trim()) as unknown;
+    return isDraft(value)
+      ? { ok: true as const, value }
+      : { ok: false as const, reason: "schema_mismatch" as const };
+  } catch {
+    return extracted;
+  }
+}
+
+function isStructuredOutputUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /(response[_ -]?format|json[_ -]?schema|structured output)/iu.test(message)
+    && /(unavailable|unsupported|not supported|does not support|invalid)/iu.test(message);
 }
 
 function buildEvolutionPrompt(input: SkillEvolutionGeneratorInput): string {

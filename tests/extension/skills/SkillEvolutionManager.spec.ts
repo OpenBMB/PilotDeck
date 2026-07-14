@@ -239,3 +239,65 @@ test("model generator requests structured output and parses the full skill draft
   assert.equal(requestedSchema, true);
   assert.equal(result.content, draftContent);
 });
+
+test("model generator falls back when a provider rejects response_format", async () => {
+  let callCount = 0;
+  const draftContent = ORIGINAL_SKILL.replace("version: 1.0.0", "version: 1.0.1");
+  const result = await generateSkillEvolutionWithModel(
+    {
+      agentModel: { id: "test/model", provider: "test", model: "model" },
+      modelRuntime: {
+        getCapabilities: () => ({
+          supportsToolUse: true,
+          supportsStreaming: true,
+          supportsParallelToolCalls: true,
+          supportsThinking: false,
+          supportsJsonSchema: true,
+          supportsSystemPrompt: true,
+          supportsPromptCache: false,
+          maxContextTokens: 32_000,
+          maxOutputTokens: 8_000,
+        }),
+        complete: async (request) => {
+          callCount += 1;
+          if (request.outputSchema) {
+            throw new Error("This response_format type is unavailable now");
+          }
+          return {
+            role: "assistant" as const,
+            content: [{
+              type: "text" as const,
+              text: `\`\`\`json\n${JSON.stringify({
+                summary: "Clarify fallback",
+                rationale: "Failure evidence requested a retry path.",
+                content: draftContent,
+              })}\n\`\`\``,
+            }],
+            finishReason: "stop" as const,
+          };
+        },
+      },
+    },
+    {
+      scope: "user",
+      slug: "demo",
+      projectKey: null,
+      currentContent: ORIGINAL_SKILL,
+      stats: {
+        useCount: 1,
+        successCount: 0,
+        failureCount: 0,
+        correctionCount: 1,
+        applyCount: 0,
+        rollbackCount: 0,
+        lastUsedAt: "2026-07-14T09:00:00.000Z",
+        lastFeedbackAt: "2026-07-14T09:01:00.000Z",
+        lastEvolvedAt: null,
+      },
+      recentEvents: [],
+    },
+  );
+
+  assert.equal(callCount, 2);
+  assert.equal(result.content, draftContent);
+});
