@@ -437,6 +437,29 @@ export function useProjectsState({
     setProjects((prevProjects) => applyProjectsSocketUpdate(prevProjects, updatedProjects));
 
     if (skipSelectedReplacement) {
+      // Still sync display-only fields (title, summary) so the header
+      // title updates immediately when aiTitle is written, without
+      // triggering a full chat reload.
+      if (selectedProject && selectedSession) {
+        const updatedProject = updatedProjects.find(
+          (p) => p.name === selectedProject.name,
+        );
+        const updatedSession = updatedProject
+          ? getProjectSessions(updatedProject).find((s) => s.id === selectedSession.id)
+          : undefined;
+        if (updatedSession) {
+          const displayKeys: Array<keyof ProjectSession> = ['title', 'summary', 'name'];
+          const patch: Partial<ProjectSession> = {};
+          for (const key of displayKeys) {
+            if (updatedSession[key] !== undefined && updatedSession[key] !== selectedSession[key]) {
+              (patch as Record<string, unknown>)[key] = updatedSession[key];
+            }
+          }
+          if (Object.keys(patch).length > 0) {
+            setSelectedSession({ ...selectedSession, ...patch });
+          }
+        }
+      }
       return;
     }
 
