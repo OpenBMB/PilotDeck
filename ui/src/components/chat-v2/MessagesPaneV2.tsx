@@ -29,6 +29,7 @@ import {
   getWebFetchWaitingStep,
   shouldRenderLiveProcessGroup,
   shouldShowWebFetchWaitingHint,
+  splitLiveProcessGroupDetailMessages,
   type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
@@ -768,16 +769,23 @@ export default function MessagesPaneV2({
     const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
     const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? liveStatusStep : null);
     const showWebFetchWaiting = shouldShowWebFetchWaitingHint(group, resolvedPlanModeActive);
+    const expanded = isProcessExpanded(group.id);
+    const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
     return (
       <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
+        {expanded && beforeStatusMessages.length > 0 ? (
+          <div className="pl-5">
+            {renderLiveProcessDetailMessages(beforeStatusMessages, `${group.id}-before-status`)}
+          </div>
+        ) : null}
         <ProcessLiveStatus
           step={step}
           compact
-          expanded={isProcessExpanded(group.id)}
+          expanded={expanded}
           onExpandedChange={(expanded) => handleProcessExpandedChange(group.id, expanded)}
         >
-          {group.detailMessages.length > 0
-            ? renderLiveProcessDetailMessages(group.detailMessages, group.id)
+          {statusDetailMessages.length > 0
+            ? renderLiveProcessDetailMessages(statusDetailMessages, group.id)
             : null}
         </ProcessLiveStatus>
         {showWebFetchWaiting ? (
