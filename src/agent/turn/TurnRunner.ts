@@ -60,9 +60,13 @@ type PendingSessionTitle = {
   cleanup: () => void;
   completed: boolean;
   title: string | null;
+  /** Settles when the title generation finishes (success, failure, or timeout). */
+  promise: Promise<void>;
 };
 
 export class TurnRunner {
+  private pendingSessionTitle: PendingSessionTitle | undefined;
+
   constructor(
     private readonly loop: AgentLoop,
     private readonly transcript: AgentTranscriptWriter,
@@ -275,14 +279,17 @@ export class TurnRunner {
     }
     const metadataStore = this.turnDependencies.metadataStore;
     const generateTitle = this.turnDependencies.sessionTitleGenerator;
-    if (!metadataStore || !generateTitle || options.messages.length > 0) {
+    if (!metadataStore || !generateTitle) {
       return undefined;
     }
     const snapshot = metadataStore.getSnapshot();
     if (snapshot.title || snapshot.aiTitle) {
       return undefined;
     }
-    const text = firstHumanText(acceptedMessages);
+    if (this.pendingSessionTitle && !this.pendingSessionTitle.completed) {
+      return this.pendingSessionTitle;
+    }
+    const text = allHumanText([...options.messages, ...acceptedMessages]);
     if (!text) {
       return undefined;
     }
@@ -294,21 +301,28 @@ export class TurnRunner {
       cleanup,
       completed: false,
       title: null,
-    };
-    void generateTitle({
-      text,
-      sessionId: options.sessionId,
-      turnId: options.turnId,
-      signal: controller.signal,
-    })
-      .then((title) => {
-        pending.title = title;
+      promise: generateTitle({
+        text,
+        sessionId: options.sessionId,
+        turnId: options.turnId,
+        signal: controller.signal,
       })
-      .catch(() => {})
-      .finally(() => {
-        pending.completed = true;
-        cleanup();
-      });
+        .then(async (title) => {
+          pending.title = title;
+          if (title) {
+            const snap = metadataStore.getSnapshot();
+            if (!snap.title && !snap.aiTitle) {
+              await metadataStore.saveAiTitle(title, options.turnId);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          pending.completed = true;
+          cleanup();
+        }),
+    };
+    this.pendingSessionTitle = pending;
     return pending;
   }
 
@@ -320,9 +334,9 @@ export class TurnRunner {
       return;
     }
     if (!pending.completed) {
-      pending.controller.abort("turn_completed");
-      pending.cleanup();
-      return;
+      // The title generation has its own timeout (SESSION_TITLE_TIMEOUT_MS).
+      // Wait for it to settle instead of discarding immediately.
+      await pending.promise;
     }
     if (!pending.title) {
       return;
@@ -374,7 +388,8 @@ function inputToPromptText(input: AgentInput): string {
     .join("\n");
 }
 
-function firstHumanText(messages: CanonicalMessage[]): string | null {
+function allHumanText(messages: CanonicalMessage[]): string | null {
+  const parts: string[] = [];
   for (const message of messages) {
     if (message.role !== "user" || message.metadata?.synthetic) {
       continue;
@@ -385,10 +400,10 @@ function firstHumanText(messages: CanonicalMessage[]): string | null {
       .join("\n")
       .trim();
     if (text) {
-      return text;
+      parts.push(text);
     }
   }
-  return null;
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 function linkAbortSignal(
