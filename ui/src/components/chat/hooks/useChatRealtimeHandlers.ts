@@ -51,6 +51,37 @@ type LatestChatMessage = {
   [key: string]: any;
 };
 
+function normalizeAssistantStreamText(value?: string): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+export function getDuplicateAssistantStreamTextState(
+  incoming: NormalizedMessage,
+  realtimeMessages: NormalizedMessage[],
+): { isDuplicate: boolean; hasActiveStream: boolean } {
+  if (incoming.kind !== 'text' || incoming.role !== 'assistant') {
+    return { isDuplicate: false, hasActiveStream: false };
+  }
+
+  const incomingText = normalizeAssistantStreamText(incoming.content);
+  if (!incomingText) {
+    return { isDuplicate: false, hasActiveStream: false };
+  }
+
+  let hasActiveStream = false;
+  const isDuplicate = realtimeMessages.some((message) => {
+    const isAssistantText = message.kind === 'text' && message.role === 'assistant';
+    const isActiveStream = message.kind === 'stream_delta' && String(message.id || '').startsWith('__streaming_');
+    if (!isAssistantText && !isActiveStream) return false;
+    if (incoming.runId != null && message.runId != null && incoming.runId !== message.runId) return false;
+    if (normalizeAssistantStreamText(message.content) !== incomingText) return false;
+    if (isActiveStream) hasActiveStream = true;
+    return true;
+  });
+
+  return { isDuplicate, hasActiveStream };
+}
+
 
 function getExplicitSessionId(msg: LatestChatMessage): string | null {
   const value = msg.sessionId ?? msg.session_id ?? msg.actualSessionId ?? msg.newSessionId;
@@ -440,12 +471,14 @@ export function useChatRealtimeHandlers({
     // The streaming pipeline (stream_delta → stream_end → finalizeStreaming)
     // already creates a text message in realtimeMessages. If the backend also
     // sends a standalone 'text' message with the same content, skip it.
-    const isDuplicateStreamText =
-      msg.kind === 'text' && msg.role === 'assistant' &&
-      sessionStore.getSessionSlot?.(sid)?.realtimeMessages.some(
-        (m) => m.kind === 'text' && m.role === 'assistant' && m.content === (msg as NormalizedMessage).content,
-      );
-    if (!isDuplicateStreamText) {
+    const duplicateStreamTextState = getDuplicateAssistantStreamTextState(
+      msg as NormalizedMessage,
+      sessionStore.getSessionSlot?.(sid)?.realtimeMessages ?? [],
+    );
+    if (duplicateStreamTextState.hasActiveStream) {
+      sessionStore.finalizeStreaming(sid, msgRunId);
+    }
+    if (!duplicateStreamTextState.isDuplicate) {
       sessionStore.appendRealtime(sid, msg as NormalizedMessage);
     }
 

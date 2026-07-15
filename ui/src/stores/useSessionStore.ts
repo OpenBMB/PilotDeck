@@ -320,6 +320,37 @@ function hasEquivalentServerMessage(
   });
 }
 
+function hasSameTurnServerFinalMessage(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  if (
+    realtimeMessage.isFinal !== true ||
+    (realtimeMessage.kind !== 'text' && realtimeMessage.kind !== 'thinking') ||
+    !realtimeMessage.serverTailIdAtStart
+  ) {
+    return false;
+  }
+
+  const tailIndex = serverMessages.findIndex((message) => (
+    message.id === realtimeMessage.serverTailIdAtStart
+  ));
+  if (tailIndex < 0) return false;
+  const realtimeTimestamp = parseTimestampMs(realtimeMessage.timestamp);
+  if (realtimeTimestamp == null) return false;
+
+  return serverMessages.slice(tailIndex + 1).some((serverMessage) => {
+    if (serverMessage.kind !== realtimeMessage.kind) return false;
+    if (serverMessage.role !== realtimeMessage.role) return false;
+    if (realtimeMessage.runId != null && serverMessage.runId != null && serverMessage.runId !== realtimeMessage.runId) {
+      return false;
+    }
+    const serverTimestamp = parseTimestampMs(serverMessage.timestamp);
+    if (serverTimestamp == null) return false;
+    return serverTimestamp >= realtimeTimestamp;
+  });
+}
+
 export function shouldKeepRealtimeAfterServerRefresh(
   realtimeMessage: NormalizedMessage,
   serverMessages: NormalizedMessage[],
@@ -332,6 +363,9 @@ export function shouldKeepRealtimeAfterServerRefresh(
     realtimeMessage.isFinal === true
     && (realtimeMessage.kind === 'text' || realtimeMessage.kind === 'thinking')
   ) {
+    if (hasSameTurnServerFinalMessage(realtimeMessage, serverMessages)) {
+      return false;
+    }
     return !hasEquivalentServerMessage(realtimeMessage, serverMessages);
   }
 
@@ -343,7 +377,7 @@ export function shouldKeepRealtimeAfterServerRefresh(
  * Server messages take priority (they're the persisted source of truth).
  * Realtime messages that aren't yet in server stay (in-flight streaming).
  */
-function computeMerged(server: NormalizedMessage[], realtime: NormalizedMessage[]): NormalizedMessage[] {
+export function computeMerged(server: NormalizedMessage[], realtime: NormalizedMessage[]): NormalizedMessage[] {
   if (realtime.length === 0) {
     return server;
   }
@@ -356,6 +390,7 @@ function computeMerged(server: NormalizedMessage[], realtime: NormalizedMessage[
     if (serverIds.has(message.id)) return false;
     if (isConfirmedUserMessageDuplicate(message, server)) return false;
     if (isLocalInterruptDuplicate(message, server)) return false;
+    if (hasSameTurnServerFinalMessage(message, server)) return false;
     // Dedup tool_use by toolId (invocation ID) — the message envelope ID
     // may differ between WebSocket replay and server-persisted copy, but
     // the underlying tool invocation is the same.
@@ -463,6 +498,15 @@ function forceRecomputeMerged(slot: SessionSlot): void {
 
 function streamingKey(sessionId: string, runId?: string): string {
   return runId ? `${sessionId}_${runId}` : sessionId;
+}
+
+export function getFinalizedSubagentThinkingId(
+  sessionId: string,
+  subagentId: string,
+  timestamp?: string,
+): string {
+  const timestampSuffix = Date.parse(String(timestamp || '')) || Date.now();
+  return `subagent_thinking_${sessionId}_${subagentId}_${timestampSuffix}`;
 }
 
 /**
@@ -780,9 +824,14 @@ export function useSessionStore() {
 
   const recordSubagentLink = useCallback((sessionId: string, msg: NormalizedMessage) => {
     const slot = getSlot(sessionId);
-    const toolCallId = (msg as Record<string, unknown>).toolCallId as string | undefined;
-    const subagentId = (msg as Record<string, unknown>).subagentId as string | undefined;
-    const subagentType = (msg as Record<string, unknown>).subagentType as string | undefined;
+    const linkMessage = msg as unknown as {
+      toolCallId?: string;
+      subagentId?: string;
+      subagentType?: string;
+    };
+    const toolCallId = linkMessage.toolCallId;
+    const subagentId = linkMessage.subagentId;
+    const subagentType = linkMessage.subagentType;
     if (toolCallId && subagentId) {
       const nextLinks = new Map(slot.subagentLinks);
       nextLinks.set(toolCallId, { subagentId, subagentType: subagentType || 'agent' });
@@ -932,7 +981,7 @@ export function useSessionStore() {
     const updated = [...current];
     updated[existingIndex] = {
       ...stream,
-      id: `subagent_thinking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: getFinalizedSubagentThinkingId(sessionId, subagentId, stream.timestamp),
     };
     const nextMap = new Map(slot.subagentDetailMessages);
     nextMap.set(subagentId, updated);
