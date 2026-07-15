@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "og-impl"
+version = "6.0.0"
+description = "Outline Graph multi-version report generation and evaluation framework"
+requires-python = ">=3.9"
+dependencies = [
+    "networkx>=3.0",
+    "openai>=1.0",
+    "bert-score",
+    "sentence-transformers",
+    "python-dotenv",
+    "nltk",
+    "scikit-learn",
+    "rank-bm25",
+    "numpy",
+    "tqdm",
+]
+
+[project.scripts]
+og = "og.cli.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["og*"]
+
+[tool.setuptools.package-data]
+"og" = ["py.typed"]
+
+# og/mcp_server 使用 Python 标准库实现 MCP stdio，无需额外依赖（兼容 Python 3.9）。
+# 若将来升级到 Python 3.10+，可安装 fastmcp：pip install fastmcp
+# [project.optional-dependencies]
+# mcp = ["fastmcp>=2.0"]

@@ -23,6 +23,7 @@ import type { MainContentProps } from '../main-content/types/types';
 import { cn } from '../../lib/utils.js';
 import { projectDisplayName, sessionDisplayTitle, useCustomNamesVersion } from '../../lib/customNames';
 import { api } from '../../utils/api';
+import { usePlugins } from '../../contexts/PluginsContext';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
@@ -80,6 +81,9 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     onOpenSidebar,
   } = props;
   const [alwaysOnSubTab, setAlwaysOnSubTab] = useState<AlwaysOnSubTab>('dashboard');
+  // Plugin tabs — enabled 插件作为顶栏 Tab 注入（让 og-memory-graph 等插件可从顶栏进入）
+  const { plugins } = usePlugins();
+  const pluginTabs = plugins.filter((p) => p.enabled);
   const [latestAlwaysOnEventMarker, setLatestAlwaysOnEventMarker] = useState<string | null>(null);
   const [lastViewedAlwaysOnEventMarker, setLastViewedAlwaysOnEventMarker] = useState<string | null>(
     () => localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY),
@@ -223,6 +227,27 @@ export default function MainAreaV2(props: MainAreaV2Props) {
                     className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
                   />
                 ) : null}
+              </button>
+            );
+          })}
+          {pluginTabs.map((plugin) => {
+            const pluginTabId = `plugin:${plugin.name}` as AppTab;
+            const isActive = displayActiveTab === pluginTabId;
+            return (
+              <button
+                key={pluginTabId}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(pluginTabId)}
+                className={cn(
+                  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-colors',
+                  isActive
+                    ? 'bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                )}
+              >
+                <span>{plugin.displayName}</span>
               </button>
             );
           })}

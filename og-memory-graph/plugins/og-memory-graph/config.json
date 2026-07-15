@@ -1,0 +1,6 @@
+{
+  "og_root": "/path/to/og-memory-graph",
+  "python": "/path/to/python",
+  "port": 8000,
+  "model": "deepseek"
+}
