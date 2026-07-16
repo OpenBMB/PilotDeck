@@ -37,6 +37,7 @@ import { Button } from '../../../../shared/view/ui';
 import { authenticatedFetch } from '../../../../utils/api';
 import { isImeEnterEvent } from '../../../../utils/ime';
 import {
+  normalizeOfficePreviewService,
   readOfficePreviewStatus,
   type OfficePreviewService,
   type OfficePreviewStatus,
@@ -668,7 +669,7 @@ function FormRow({ label, description, children }: { label: string; description?
 // ── Section components ─────────────────────────────────────────────────
 
 function getOfficePreviewService(config: PilotDeckConfig): OfficePreviewService {
-  return config.webui?.officePreview?.service === 'none' ? 'none' : 'libreoffice';
+  return normalizeOfficePreviewService(config.webui?.officePreview?.service);
 }
 
 function ServiceSection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {

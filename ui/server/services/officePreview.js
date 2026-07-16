@@ -23,12 +23,12 @@ export function getConfiguredOfficePreviewService() {
   try {
     const record = readPilotDeckConfigFile();
     const configured = String(record?.config?.webui?.officePreview?.service || '').trim().toLowerCase();
-    return configured === OFFICE_PREVIEW_SERVICE_NONE
-      ? OFFICE_PREVIEW_SERVICE_NONE
-      : OFFICE_PREVIEW_SERVICE_LIBREOFFICE;
+    return configured === OFFICE_PREVIEW_SERVICE_LIBREOFFICE
+      ? OFFICE_PREVIEW_SERVICE_LIBREOFFICE
+      : OFFICE_PREVIEW_SERVICE_NONE;
   } catch (error) {
-    console.warn('Failed to read Office preview service config; defaulting to LibreOffice:', error.message);
-    return OFFICE_PREVIEW_SERVICE_LIBREOFFICE;
+    console.warn('Failed to read Office preview service config; defaulting to disabled:', error.message);
+    return OFFICE_PREVIEW_SERVICE_NONE;
   }
 }
 
@@ -80,6 +80,22 @@ function getLinuxOptLibreOfficeCandidates() {
     .map((name) => path.join('/opt', name, 'program/soffice'));
 }
 
+export function getWindowsLibreOfficeCandidates(environment = process.env) {
+  const programDirectories = uniqueCandidates([
+    environment.ProgramW6432,
+    environment.ProgramFiles,
+    environment['ProgramFiles(x86)'],
+    'C:\\Program Files',
+    'C:\\Program Files (x86)',
+  ]);
+
+  // soffice.exe is a GUI-subsystem launcher. Running it with --version from
+  // Node can remain alive until the probe times out, while soffice.com is the
+  // console launcher intended for command-line use on Windows.
+  return programDirectories.map((directoryPath) =>
+    path.win32.join(directoryPath, 'LibreOffice', 'program', 'soffice.com'));
+}
+
 function getPlatformLibreOfficeCandidates() {
   const macCandidates = [
     '/Applications/LibreOffice.app/Contents/MacOS/soffice',
@@ -96,10 +112,7 @@ function getPlatformLibreOfficeCandidates() {
     '/opt/libreoffice/program/soffice',
     ...getLinuxOptLibreOfficeCandidates(),
   ];
-  const windowsCandidates = [
-    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-  ];
+  const windowsCandidates = getWindowsLibreOfficeCandidates();
 
   return process.platform === 'darwin'
     ? macCandidates

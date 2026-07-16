@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readPilotDeckConfigFile, sanitizeProviderCredentials, validatePilotDeckConfig } from './pilotdeckConfig.js';
+import {
+    buildDefaultPilotDeckConfig,
+    readPilotDeckConfigFile,
+    sanitizeProviderCredentials,
+    validatePilotDeckConfig,
+} from './pilotdeckConfig.js';
 
 const tempDirs = [];
 
@@ -25,6 +30,13 @@ function useTempConfig(contents, filename = 'pilotdeck.yaml') {
 }
 
 describe('readPilotDeckConfigFile fallback behavior', () => {
+    it('disables Office preview by default', () => {
+        expect(buildDefaultPilotDeckConfig().webui.officePreview).toEqual({
+            service: 'none',
+            binaryPath: '',
+        });
+    });
+
     it('returns defaults when the config file is missing', () => {
         const configPath = useTempConfig(null);
 
@@ -36,6 +48,7 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(record.rawYaml).toEqual({});
         expect(record.parseError).toBeNull();
         expect(record.config.schemaVersion).toBe(1);
+        expect(record.config.webui.officePreview.service).toBe('none');
     });
 
     it('reads and normalizes valid YAML', () => {

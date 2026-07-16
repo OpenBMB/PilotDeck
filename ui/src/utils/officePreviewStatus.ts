@@ -19,8 +19,8 @@ export type OfficePreviewStatus = {
   statusUnavailable?: boolean;
 };
 
-function normalizeOfficePreviewService(value: unknown): OfficePreviewService {
-  return String(value || '').trim().toLowerCase() === 'none' ? 'none' : 'libreoffice';
+export function normalizeOfficePreviewService(value: unknown): OfficePreviewService {
+  return String(value || '').trim().toLowerCase() === 'libreoffice' ? 'libreoffice' : 'none';
 }
 
 async function readJsonBody(response: Response): Promise<any> {
