@@ -226,6 +226,15 @@ export class GatewayWsConnection {
           return this.options.gateway.reloadConfig();
         }
         return Promise.resolve({ reloaded: false, reason: "unsupported" });
+      case "prepare_weixin_login":
+        if (this.options.gateway.prepareWeixinLogin) {
+          return this.options.gateway.prepareWeixinLogin();
+        }
+        return Promise.resolve({
+          requested: false,
+          requestedAt: new Date().toISOString(),
+          reason: "unsupported",
+        });
       case "reload_extensions":
         if (this.options.gateway.reloadExtensions) {
           return this.options.gateway.reloadExtensions(frame.params as never);

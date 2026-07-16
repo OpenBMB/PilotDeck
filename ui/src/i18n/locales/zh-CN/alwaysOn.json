@@ -5,7 +5,7 @@
   },
   "tabs": {
     "dashboard": "仪表盘",
-    "plansCron": "计划与定时任务"
+    "plans": "计划"
   },
   "dashboard": {
     "title": "Always-On 仪表盘",
@@ -60,10 +60,10 @@
     }
   },
   "plansCron": {
-    "title": "计划与定时任务",
-    "subtitle": "所有项目的计划与定时任务。",
-    "loading": "正在加载计划与定时任务…",
-    "empty": "暂无计划或定时任务。",
+    "title": "计划",
+    "subtitle": "所有项目的 Always-On 计划。",
+    "loading": "正在加载计划…",
+    "empty": "暂无计划。",
     "unassigned": "未关联项目",
     "columns": {
       "title": "标题",
@@ -101,6 +101,65 @@
       "applying": "正在应用…",
       "applied": "已应用",
       "archived": "已归档"
+    }
+  },
+  "cron": {
+    "title": "Cron",
+    "subtitle": "所有项目的定时 cron 任务。",
+    "loading": "正在加载 cron 任务...",
+    "empty": "暂无活跃 cron 任务。",
+    "unassigned": "未关联项目",
+    "tabs": {
+      "list": "任务列表",
+      "create": "创建任务"
+    },
+    "columns": {
+      "title": "标题",
+      "createdAt": "创建时间",
+      "nextRunAt": "下次运行",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "actions": {
+      "delete": "删除",
+      "runNow": "立即运行",
+      "stop": "停止"
+    },
+    "status": {
+      "scheduled": "已安排",
+      "running": "运行中"
+    },
+    "create": {
+      "title": "创建 Cron 任务",
+      "subtitle": "安排一次性或周期性的后台提示词任务。",
+      "success": "Cron 任务已创建。",
+      "fields": {
+        "prompt": "提示词",
+        "workspace": "工作区",
+        "scheduleType": "任务类型",
+        "date": "日期",
+        "time": "时间",
+        "timezone": "时区"
+      },
+      "placeholders": {
+        "prompt": "描述 PilotDeck 在任务运行时应该做什么。",
+        "workspace": "选择工作区"
+      },
+      "schedule": {
+        "once": "一次性",
+        "cron": "周期"
+      },
+      "validation": {
+        "messageRequired": "请填写提示词。",
+        "workspaceRequired": "请选择工作区。",
+        "dateRequired": "请选择日期。",
+        "timeRequired": "请选择时间。",
+        "timezoneRequired": "请填写时区。",
+        "runAtFuture": "运行时间必须晚于当前时间。"
+      },
+      "actions": {
+        "submit": "创建任务"
+      }
     }
   }
 }

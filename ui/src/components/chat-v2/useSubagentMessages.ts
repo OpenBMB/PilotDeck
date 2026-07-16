@@ -43,7 +43,7 @@ function normalizeSubagentDetailContainers(messages: ChatMessage[]): ChatMessage
   });
 }
 
-function mergeSubagentDetailMessages(
+export function mergeSubagentDetailMessages(
   snapshotMessages: NormalizedMessage[],
   realtimeMessages: NormalizedMessage[],
   useSnapshotOnly: boolean,
@@ -61,10 +61,27 @@ function mergeSubagentDetailMessages(
   const snapshotToolIds = new Set(
     snapshotMessages.filter(m => m.kind === 'tool_use' && m.toolId).map(m => m.toolId!),
   );
+  const latestSnapshotFinalTimestamp = snapshotMessages.reduce<number | null>((latest, message) => {
+    if (
+      (message.kind !== 'text' || message.role === 'user') &&
+      message.kind !== 'thinking'
+    ) return latest;
+    const parsed = Date.parse(String(message.timestamp || ''));
+    if (!Number.isFinite(parsed)) return latest;
+    return latest == null ? parsed : Math.max(latest, parsed);
+  }, null);
   for (const message of realtimeMessages) {
     if (seenIds.has(message.id)) continue;
     if (message.kind === 'tool_use' && message.toolId && snapshotToolIds.has(message.toolId)) continue;
     if (message.kind === 'tool_result' && message.toolId && snapshotToolIds.has(message.toolId)) continue;
+    if (
+      ((message.kind === 'text' && message.role !== 'user') || message.kind === 'thinking') &&
+      latestSnapshotFinalTimestamp != null &&
+      !String(message.id || '').startsWith('__subagent_thinking_')
+    ) {
+      const parsed = Date.parse(String(message.timestamp || ''));
+      if (!Number.isFinite(parsed) || parsed <= latestSnapshotFinalTimestamp) continue;
+    }
     seenIds.add(message.id);
     merged.push(message);
   }

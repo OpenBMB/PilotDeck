@@ -14,6 +14,11 @@ export type CanonicalModelErrorCode =
   | "context_overflow"
   | "image_too_large"
   | "payload_too_large"
+  | "dns_error"
+  | "connection_reset"
+  | "connection_refused"
+  | "tls_error"
+  | "proxy_error"
   | "unknown";
 
 export type SettingsFix = {
@@ -25,6 +30,7 @@ export type SettingsFix = {
 
 export type CanonicalModelError = {
   provider: string;
+  model?: string;
   protocol: "anthropic" | "openai" | "openai-responses" | "google";
   code: CanonicalModelErrorCode | (string & {});
   status?: number;
@@ -41,6 +47,12 @@ export type CanonicalModelError = {
   userHint?: string;
   /** Structured settings fix info — config path, CLI command, or URL the user can act on. */
   settingsFix?: SettingsFix;
+  /** Provider-reported lower context window parsed from an overflow error. */
+  maxContextTokens?: number;
+  /** Provider-reported output cap parsed from a max_tokens error. */
+  maxOutputTokens?: number;
+  /** Provider-reported output space available for this prompt. */
+  availableOutputTokens?: number;
 };
 
 /**
@@ -111,7 +123,7 @@ export const USAGE_LIMIT_PATTERN =
   /usage limit|quota|limit exceeded|key limit exceeded/i;
 
 export const NETWORK_TIMEOUT_PATTERN =
-  /fetch failed|terminated|socket hang up|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network error|request timeout|client disconnected/i;
+  /fetch failed|terminated|socket hang up|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network error|request timeout|stream idle timeout|no data received|client disconnected/i;
 
 export class ModelConfigError extends Error {
   readonly name = "ModelConfigError";

@@ -1,4 +1,5 @@
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { CodeEditorFile } from '../../types/types';
 
 type CodeEditorLoadErrorProps = {
@@ -8,6 +9,7 @@ type CodeEditorLoadErrorProps = {
   errorMessage: string;
   onRetry: () => void;
   onClose: () => void;
+  headerPrefix?: ReactNode;
   labels: {
     title: string;
     description: string;
@@ -25,6 +27,7 @@ export default function CodeEditorLoadError({
   errorMessage,
   onRetry,
   onClose,
+  headerPrefix,
   labels,
 }: CodeEditorLoadErrorProps) {
   const body = (
@@ -67,16 +70,18 @@ export default function CodeEditorLoadError({
 
   if (isSidebar) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-white dark:bg-neutral-950">
-        {body}
+      <div className="flex h-full w-full flex-col bg-white dark:bg-neutral-950">
+        {headerPrefix}
+        <div className="flex min-h-0 flex-1 items-center justify-center">{body}</div>
       </div>
     );
   }
 
   return (
     <div className="fixed inset-0 z-[9999] md:flex md:items-center md:justify-center md:bg-black/40 md:backdrop-blur-sm">
-      <div className="flex h-full w-full items-center justify-center bg-white dark:bg-neutral-950 md:h-auto md:w-auto md:rounded-xl md:border md:border-neutral-200 dark:md:border-neutral-800">
-        {body}
+      <div className="flex h-full w-full flex-col bg-white dark:bg-neutral-950 md:h-[80vh] md:max-h-[80vh] md:max-w-6xl md:rounded-xl md:border md:border-neutral-200 dark:md:border-neutral-800">
+        {headerPrefix}
+        <div className="flex min-h-0 flex-1 items-center justify-center">{body}</div>
       </div>
     </div>
   );

@@ -144,6 +144,16 @@ function normalizeToolErrorCode(errorCode, resultPreview) {
     return readOnlyModeToolDenyCode(resultPreview) || errorCode;
 }
 
+const MAX_TOOL_RESULT_PREVIEW_CHARS = 20_000;
+
+function limitToolResultPreview(value) {
+    const text = typeof value === 'string' ? value : '';
+    if (text.length <= MAX_TOOL_RESULT_PREVIEW_CHARS) return text;
+    const headLength = Math.floor(MAX_TOOL_RESULT_PREVIEW_CHARS / 2);
+    const tailLength = MAX_TOOL_RESULT_PREVIEW_CHARS - headLength;
+    return `${text.slice(0, headLength)}\n\n... [UI preview truncated: ${text.length - MAX_TOOL_RESULT_PREVIEW_CHARS} characters omitted] ...\n\n${text.slice(-tailLength)}`;
+}
+
 function isVisibleFailureAgentStatus(event) {
     return event?.type === 'agent_status'
         && (visibleFailureAgentStatusEvents.has(event.event) || isVisibleFailureStatusDetail(event.detail))
@@ -406,7 +416,7 @@ function resolvePermissionMode(options) {
  * @returns {object[]} NormalizedMessage frames.
  */
 export function gatewayEventToFrames(event, sessionId, provider) {
-    const base = { sessionId, provider };
+    const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
     switch (event.type) {
         case 'turn_started':
             return [
@@ -467,7 +477,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'tool_result',
                     toolId: event.toolCallId,
-                    content: event.resultPreview ?? '',
+                    content: limitToolResultPreview(event.resultPreview),
                     isError: !event.ok,
                     // errorCode lets the UI distinguish permission denials
                     // (`permission_denied` / `permission_required`) from
@@ -499,6 +509,19 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...(isSearchToolName(event.toolName) && event.data
                         ? { toolUseResult: event.data }
                         : {}),
+                }),
+            ];
+        }
+        case 'tool_result_detail_available': {
+            const detailText = event.resultPath ? `Full tool result persisted at ${event.resultPath}` : 'Full tool result is available.';
+            return [
+                createNormalizedMessage({
+                    ...base,
+                    kind: 'tool_result',
+                    toolId: event.toolCallId,
+                    content: detailText,
+                    isError: false,
+                    ...(event.resultPath ? { resultPath: event.resultPath } : {}),
                 }),
             ];
         }
@@ -601,7 +624,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     text: 'token_budget',
                     tokenBudget: {
                         used: event.used,
+                        displayUsed: event.displayUsed,
+                        budgetUsed: event.budgetUsed,
                         total: event.total,
+                        effectiveTotal: event.effectiveTotal,
+                        reservedOutputTokens: event.reservedOutputTokens,
                         ratio: event.ratio,
                         state: event.state,
                     },
@@ -687,9 +714,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'The model returned empty content repeatedly, so this turn has stopped. Try again later or increase max output tokens.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -699,9 +728,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'Reached the maximum number of turns, so this turn has stopped. Increase maxTurns or split the task into smaller steps and try again.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -711,9 +742,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'error',
                         content: detail.message || 'Agent execution stopped before producing a complete response. Please retry or adjust the task.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -723,9 +756,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                         ...base,
                         kind: 'status',
                         content: detail.message || 'This turn ended before producing a standard assistant response.',
+                        contentI18n: detail.messageI18n,
                         code: event.event,
                         recoverable: false,
                         userHint: detail.userHint,
+                        userHintI18n: detail.userHintI18n,
                     }),
                 ];
             }
@@ -995,6 +1030,7 @@ export async function runChatViaGateway(
     const state = ensureSessionState(sessionKey, projectKey, channelKey);
     const staleRunId = state.active ? state.runId : undefined;
 
+
     if (isNewSession) {
         writer.send(
             createNormalizedMessage({
@@ -1025,18 +1061,33 @@ export async function runChatViaGateway(
     try {
         gw = await ensureGateway();
 
-        // If a previous turn for this session is still in-flight (e.g. the
-        // browser reloaded while a permission prompt was pending), abort it
-        // before starting the new one. Without this the gateway rejects
-        // with session_busy because the old turn's inFlightTurns slot is
-        // still occupied.
         if (staleRunId) {
+            const abortReason = options?.forceStart === true
+                ? 'user:force_start_next_turn'
+                : 'system:stale_turn';
+            const abortAction = options?.forceStart === true ? 'force-start aborting' : 'aborting stale';
             console.log(
-                `[pilotdeck-bridge] aborting stale turn ${staleRunId} for ${sessionKey} before resubmit`,
+                `[pilotdeck-bridge] ${abortAction} turn ${staleRunId} for ${sessionKey} before submit`,
             );
             try {
-                await gw.abortTurn({ sessionKey, runId: staleRunId, reason: 'system:stale_turn' });
+                await gw.abortTurn({ sessionKey, runId: staleRunId, reason: abortReason });
             } catch (err) {
+                if (options?.forceStart === true) {
+                    const message = 'Could not stop the current turn before sending the queued message. Please wait for the current turn to finish or try stopping it again.';
+                    console.warn('[pilotdeck-bridge] force-start abort failed:', err?.message || err);
+                    writer.send(
+                        createNormalizedMessage({
+                            provider,
+                            sessionId: sessionKey,
+                            kind: 'error',
+                            code: 'force_start_abort_failed',
+                            content: message,
+                            userHint: message,
+                        }),
+                    );
+                    clearActiveRunIfCurrent(state, staleRunId);
+                    return;
+                }
                 console.warn('[pilotdeck-bridge] stale abort failed (continuing):', err?.message || err);
             }
         }
@@ -1082,7 +1133,11 @@ export async function runChatViaGateway(
             if (event && event.type === 'context_budget') {
                 state.tokenBudget = {
                     used: event.used,
+                    displayUsed: event.displayUsed,
+                    budgetUsed: event.budgetUsed,
                     total: event.total,
+                    effectiveTotal: event.effectiveTotal,
+                    reservedOutputTokens: event.reservedOutputTokens,
                     ratio: event.ratio,
                     state: event.state,
                 };
@@ -1192,7 +1247,12 @@ export async function abortViaGateway(sessionId, _provider = 'pilotdeck') {
     if (!sessionKey) return false;
     const state = sessionState.get(sessionKey);
     try {
-        await gw.abortTurn({ sessionKey, runId: state?.runId });
+        const runId = state?.runId;
+        await gw.abortTurn({ sessionKey, runId });
+        if (state && (!runId || state.runId === runId)) {
+            state.active = false;
+            state.runId = undefined;
+        }
         return true;
     } catch (error) {
         console.warn('[pilotdeck-bridge] abortTurn failed:', error);
@@ -2150,7 +2210,11 @@ export function registerAlwaysOnNotificationForwarding(clients) {
                 const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
                 aoState.tokenBudget = {
                     used: event.used,
+                    displayUsed: event.displayUsed,
+                    budgetUsed: event.budgetUsed,
                     total: event.total,
+                    effectiveTotal: event.effectiveTotal,
+                    reservedOutputTokens: event.reservedOutputTokens,
                     ratio: event.ratio,
                     state: event.state,
                 };

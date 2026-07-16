@@ -10,7 +10,7 @@ export const OPENAI_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsSystemPrompt: true,
   supportsPromptCache: false,
   maxContextTokens: 128000,
-  maxOutputTokens: 16384,
+  maxOutputTokens: 65_536,
 };
 
 export const OPENAI_DEFAULT_MULTIMODAL: MultimodalConstraints = {

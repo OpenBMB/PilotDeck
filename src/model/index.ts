@@ -99,7 +99,7 @@ export {
   flattenToolResultContentText,
   toolResultContentBlockToText,
 } from "./protocol/toolResultContent.js";
-export { cloneContentBlock, cloneMessage, cloneMessages } from "./protocol/clone.js";
+export { cloneContentBlock, cloneMessage, cloneMessages, messageContent } from "./protocol/clone.js";
 export {
   ANTHROPIC_STRUCTURED_OUTPUT_TOOL_NAME,
   buildAnthropicRequest,
@@ -112,6 +112,7 @@ export {
   type StructuredOutputExtractionError,
 } from "./structuredOutput/extractStructuredOutput.js";
 export type { ModelCapabilities } from "./protocol/capabilities.js";
+export { parseTokenLimitError, type ParsedTokenLimitError } from "./errors/tokenLimitParsing.js";
 export { downgradeUnsupportedContent } from "./protocol/multimodal.js";
 export type { InputModality, MultimodalConstraints } from "./protocol/multimodal.js";
 export {

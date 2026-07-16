@@ -6,7 +6,7 @@ export type ReadSkillInput = {
 
 export type ReadSkillDeps = {
   loader: (name: string) => Promise<string | undefined>;
-  lister: () => { name: string; description?: string }[];
+  lister: () => { name: string; description?: string; path: string }[];
 };
 
 export function createReadSkillTool(deps: ReadSkillDeps): PilotDeckToolDefinition<ReadSkillInput> {
@@ -14,7 +14,7 @@ export function createReadSkillTool(deps: ReadSkillDeps): PilotDeckToolDefinitio
     name: "read_skill",
     aliases: ["ReadSkill"],
     description:
-      "Load a skill recipe by name and return its full SKILL.md content. " +
+      "Load a skill recipe by name and return its resolved SKILL.md path with the full content. " +
       "Use this when the system prompt lists an available skill relevant to the current task.",
     kind: "session",
     inputSchema: {
@@ -32,10 +32,21 @@ export function createReadSkillTool(deps: ReadSkillDeps): PilotDeckToolDefinitio
     isConcurrencySafe: () => true,
     async execute(input) {
       const content = await deps.loader(input.skillName);
-      if (content) {
-        return { content: [{ type: "text", text: content }] };
-      }
       const available = deps.lister();
+      if (content) {
+        const skill = available.find((entry) => entry.name === input.skillName);
+        if (!skill) {
+          return { content: [{ type: "text", text: content }] };
+        }
+        const text = [
+          "<skill>",
+          `<name>${escapeXmlText(skill.name)}</name>`,
+          `<path>${escapeXmlText(skill.path)}</path>`,
+          content,
+          "</skill>",
+        ].join("\n");
+        return { content: [{ type: "text", text }] };
+      }
       if (available.length === 0) {
         return {
           content: [{ type: "text", text: `Skill '${input.skillName}' not found. No skills are currently loaded.` }],
@@ -47,4 +58,8 @@ export function createReadSkillTool(deps: ReadSkillDeps): PilotDeckToolDefinitio
       };
     },
   };
+}
+
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

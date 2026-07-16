@@ -1,6 +1,6 @@
 ---
 name: frontend-slides
-description: Create stunning, animation-rich HTML presentations from scratch or by converting PowerPoint files. Use when the user wants to build a presentation, convert a PPT/PPTX to web, or create slides for a talk/pitch. Helps non-designers discover their aesthetic through visual exploration rather than abstract choices.
+description: Create animation-rich browser-based HTML presentations from scratch, enhance existing HTML decks, or convert PowerPoint files into web presentations. Use only when the requested deliverable is HTML or a browser presentation; do not use when the user needs an editable native .pptx file.
 ---
 
 # Frontend Slides

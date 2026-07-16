@@ -1,7 +1,7 @@
 export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'pilotdeck';
 export type ProjectSessionKind = 'background_task';
 
-export type AppTab = 'home' | 'chat' | 'always-on' | 'files' | 'shell' | 'git' | 'tasks' | 'memory' | 'skills' | 'preview' | 'dashboard' | `plugin:${string}`;
+export type AppTab = 'home' | 'chat' | 'always-on' | 'cron' | 'files' | 'shell' | 'git' | 'tasks' | 'memory' | 'skills' | 'preview' | 'dashboard' | `plugin:${string}`;
 
 export type AlwaysOnSessionTarget =
   | {
@@ -122,6 +122,7 @@ export interface CronJobOverview {
   cron: string;
   prompt: string;
   createdAt: string;
+  nextRunAt?: string;
   recurring: boolean;
   manualOnly: boolean;
   status: CronJobOverviewStatus;
@@ -132,7 +133,7 @@ export interface CronJobsOverviewResponse {
   jobs: CronJobOverview[];
 }
 
-export type AlwaysOnSubTab = 'dashboard' | 'plans-cron';
+export type AlwaysOnSubTab = 'dashboard' | 'plans';
 
 export interface DiscoveryContextCronItem {
   id: string;

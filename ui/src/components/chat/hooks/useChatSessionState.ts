@@ -150,7 +150,12 @@ function chatMessageToNormalized(
     } as NormalizedMessage;
   }
   if (msg.type === 'error') {
-    return { ...base, kind: 'error', content: msg.content || '' } as NormalizedMessage;
+    return {
+      ...base,
+      kind: 'error',
+      content: msg.content || '',
+      ...((msg as any).userHint ? { userHint: (msg as any).userHint } : {}),
+    } as NormalizedMessage;
   }
   // Carry user-attached image data URLs through the normalize round-trip
   // so the optimistic message render and any re-derivation from the
@@ -206,6 +211,25 @@ function hasEquivalentUserMessage(messages: ChatMessage[], pendingUserMessage: C
   });
 }
 
+type ConversationScrollPosition = {
+  top: number;
+  distanceFromBottom: number;
+};
+
+const CONVERSATION_SCROLL_BOTTOM_THRESHOLD = 40;
+
+export function resolveConversationScrollTop(
+  position: ConversationScrollPosition,
+  scrollHeight: number,
+  clientHeight: number,
+): number {
+  const maximumScrollTop = Math.max(0, scrollHeight - clientHeight);
+  if (position.distanceFromBottom <= CONVERSATION_SCROLL_BOTTOM_THRESHOLD) {
+    return maximumScrollTop;
+  }
+  return Math.min(Math.max(0, position.top), maximumScrollTop);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Hook                                                              */
 /* ------------------------------------------------------------------ */
@@ -252,6 +276,11 @@ export function useChatSessionState({
   const pendingInitialScrollRef = useRef(true);
   const messagesOffsetRef = useRef(0);
   const scrollPositionRef = useRef({ height: 0, top: 0 });
+  const conversationScrollPositionsRef = useRef(new Map<string, ConversationScrollPosition>());
+  const pendingConversationScrollRestoreRef = useRef<{
+    key: string;
+    position: ConversationScrollPosition;
+  } | null>(null);
   const loadAllFinishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAllOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedSessionKeyRef = useRef<string | null>(null);
@@ -323,6 +352,9 @@ export function useChatSessionState({
   }
 
   const activeSessionId = selSid ?? effectiveCurrentRef.current;
+  const activeScrollKey = selectedProject && activeSessionId
+    ? `${selectedProject.name}:${activeSessionId}`
+    : null;
   const sessionIsReadOnly = isReadOnlySession(selectedSession);
   const sessionRequestParams = useMemo(
     () => getSessionRequestParams(selectedSession),
@@ -510,6 +542,16 @@ export function useChatSessionState({
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    if (activeScrollKey) {
+      conversationScrollPositionsRef.current.set(activeScrollKey, {
+        top: container.scrollTop,
+        distanceFromBottom: Math.max(
+          0,
+          container.scrollHeight - container.scrollTop - container.clientHeight,
+        ),
+      });
+    }
+
     const nearBottom = isNearBottom();
     setIsUserScrolledUp(!nearBottom);
 
@@ -523,7 +565,7 @@ export function useChatSessionState({
       const didLoad = await loadOlderMessages(container);
       if (didLoad) topLoadLockRef.current = true;
     }
-  }, [isNearBottom, loadOlderMessages]);
+  }, [activeScrollKey, isNearBottom, loadOlderMessages]);
 
   useLayoutEffect(() => {
     if (!pendingScrollRestoreRef.current || !scrollContainerRef.current) return;
@@ -535,15 +577,46 @@ export function useChatSessionState({
   }, [chatMessages.length]);
 
   // Reset scroll/pagination state on session change
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const savedScrollPosition = activeScrollKey
+      ? conversationScrollPositionsRef.current.get(activeScrollKey) ?? null
+      : null;
+    pendingConversationScrollRestoreRef.current = activeScrollKey && savedScrollPosition
+      ? { key: activeScrollKey, position: savedScrollPosition }
+      : null;
     if (!searchScrollActiveRef.current) {
-      pendingInitialScrollRef.current = true;
+      pendingInitialScrollRef.current = !savedScrollPosition;
       setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
     }
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
-    setIsUserScrolledUp(false);
-  }, [selectedProject?.name, selectedSession?.id]);
+    setIsUserScrolledUp(Boolean(
+      savedScrollPosition
+      && savedScrollPosition.distanceFromBottom > CONVERSATION_SCROLL_BOTTOM_THRESHOLD
+    ));
+  }, [activeScrollKey]);
+
+  useLayoutEffect(() => {
+    const pendingRestore = pendingConversationScrollRestoreRef.current;
+    const container = scrollContainerRef.current;
+    if (
+      !pendingRestore
+      || pendingRestore.key !== activeScrollKey
+      || !container
+      || isLoadingSessionMessages
+      || chatMessages.length === 0
+    ) {
+      return;
+    }
+
+    container.scrollTop = resolveConversationScrollTop(
+      pendingRestore.position,
+      container.scrollHeight,
+      container.clientHeight,
+    );
+    pendingConversationScrollRestoreRef.current = null;
+    pendingInitialScrollRef.current = false;
+  }, [activeScrollKey, chatMessages.length, isLoadingSessionMessages]);
 
   // Initial scroll to bottom
   useEffect(() => {
@@ -654,7 +727,12 @@ export function useChatSessionState({
 
     // Check session status
     if (ws && !sessionIsReadOnly) {
-      sendMessage({ type: 'check-session-status', sessionId: selectedSession.id, provider });
+      sendMessage({
+        type: 'check-session-status',
+        sessionId: selectedSession.id,
+        provider,
+        includeActiveTurnMessages: true,
+      });
     }
 
     lastLoadedSessionKeyRef.current = sessionKey;

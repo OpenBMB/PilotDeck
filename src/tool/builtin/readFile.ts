@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 import type { PermissionResult, PermissionRule } from "../../permission/index.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
+import { applyResultSizeLimit } from "../protocol/result.js";
 import { resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
 import { readFileInRange } from "./filesystem/readFileInRange.js";
 import {
@@ -28,6 +29,10 @@ export type ReadFileInput = {
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_TOKENS = 25_000;
+const LARGE_TEXT_AUTO_PAGE_BYTES = 200_000;
+const SAFE_TEXT_BUDGET_BYTES = 80_000;
+const OVERSIZED_LINE_PREVIEW_BYTES = 20_000;
+const DEFAULT_LARGE_TEXT_PREVIEW_LINES = 2_000;
 const MAX_PDF_PAGES_PER_REQUEST = 20;
 const PDF_AT_MENTION_INLINE_THRESHOLD = 10;
 const PDF_EXTRACT_SIZE_THRESHOLD = 3 * 1024 * 1024;
@@ -55,7 +60,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       + "- For large PDFs, provide the pages parameter to validate specific page ranges (e.g., pages: \"1-5\"). Maximum 20 pages per request\n"
       + "- This tool can read Jupyter notebooks (.ipynb files) and returns a text rendering of notebook cells and outputs\n"
       + "- This tool can only read files, not directories\n"
-      + "- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents",
+      + "- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents\n"
+      + "- If a previous tool result says it was persisted, truncated, or preview-only, read the file_path shown in that notice with read_file",
     kind: "filesystem",
     inputSchema: {
       type: "object",
@@ -450,9 +456,40 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         };
       }
 
-      const ranged = await readFileInRange(resolved.absolutePath, offset, input.limit);
-      const text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
-      ensureTokenBudget(text, resolved.relativePath);
+      const effectiveLimit = input.limit ?? (fileStat.size > LARGE_TEXT_AUTO_PAGE_BYTES ? DEFAULT_LARGE_TEXT_PREVIEW_LINES : undefined);
+      let ranged = await readFileInRange(resolved.absolutePath, offset, effectiveLimit);
+      let text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
+      let autoPaged = input.limit === undefined && effectiveLimit !== undefined;
+      let toolResultRefAutoPaged = false;
+      if (autoPaged) {
+        while (isOverTextBudget(text) && ranged.lineCount > 1) {
+          const nextLimit = Math.max(1, Math.floor(ranged.lineCount / 2));
+          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit);
+          text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
+        }
+      }
+      if (!autoPaged && isManagedToolResultRefPath(resolved.relativePath)) {
+        while (isOverTextBudget(text) && ranged.lineCount > 1) {
+          const nextLimit = Math.max(1, Math.floor(ranged.lineCount / 2));
+          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit);
+          text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
+          toolResultRefAutoPaged = true;
+        }
+      }
+      if (isOverTextBudget(text) && input.limit === undefined) {
+        autoPaged = true;
+        text = renderOversizedLinePreview(text, resolved.relativePath, ranged.startLine);
+      }
+      if (isOverTextBudget(text) && toolResultRefAutoPaged) {
+        text = renderOversizedLinePreview(text, resolved.relativePath, ranged.startLine);
+      }
+      ensureTokenBudget(text, resolved.relativePath, ranged.startLine);
+      if (autoPaged && ranged.truncated) {
+        text += renderReadMoreNotice(resolved.relativePath, ranged.endLine + 1, ranged.lineCount);
+      }
+      if (toolResultRefAutoPaged && ranged.truncated) {
+        text += renderToolResultRefReadMoreNotice(resolved.relativePath, ranged.endLine + 1, ranged.lineCount);
+      }
       readState.set(dedupKey, {
         mtimeMs: ranged.mtimeMs,
         kind,
@@ -461,8 +498,11 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         pages: input.pages,
       });
       recordWriteSnapshot(
-        context, resolved.absolutePath, ranged.fullContent, ranged.mtimeMs,
-        { offset: input.offset, limit: input.limit },
+        context,
+        resolved.absolutePath,
+        ranged.fullContent ?? ranged.content,
+        ranged.mtimeMs,
+        { offset: input.offset, limit: input.limit ?? (ranged.fullContent === undefined ? ranged.lineCount : undefined) },
       );
       return {
         content: [{ type: "text", text }],
@@ -473,6 +513,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           endLine: ranged.endLine,
           totalLines: ranged.totalLines,
           truncated: ranged.truncated,
+          autoPaged: autoPaged || toolResultRefAutoPaged,
+          nextOffset: ranged.truncated ? ranged.endLine + 1 : undefined,
         },
         metadata: { truncated: ranged.truncated },
       };
@@ -514,6 +556,45 @@ function renderReadableRange(content: string, startLine: number, totalLines: num
 
 function renderNumberedLines(lines: string[], startLine: number): string {
   return lines.map((line, index) => `${startLine + index}|${line}`).join("\n");
+}
+
+function renderReadMoreNotice(filePath: string, nextOffset: number, limit: number): string {
+  return "\n<system-reminder>"
+    + `The file is too large to read in one response, so read_file returned the first ${limit} lines. `
+    + `Continue with read_file({ file_path: "${filePath}", offset: ${nextOffset}, limit: ${limit} }) if you need more.`
+    + "</system-reminder>";
+}
+
+function renderToolResultRefReadMoreNotice(filePath: string, nextOffset: number, limit: number): string {
+  return "\n<system-reminder>"
+    + `The persisted tool result was too large for the requested range, so read_file returned ${limit} lines. `
+    + `Continue with read_file({ file_path: "${filePath}", offset: ${nextOffset}, limit: ${limit} }) if you need more.`
+    + "</system-reminder>";
+}
+
+function isManagedToolResultRefPath(filePath: string): boolean {
+  return /^\.pilotdeck[\\/]tool-results[\\/]refs[\\/]result-\d+\.(?:txt|json)$/.test(filePath);
+}
+
+function renderOversizedLinePreview(text: string, filePath: string, offset: number): string {
+  const limitedContent = applyResultSizeLimit([{ type: "text", text }], OVERSIZED_LINE_PREVIEW_BYTES).content[0];
+  const limited = limitedContent?.type === "text" ? limitedContent.text : text;
+  return limited
+    + "\n<system-reminder>"
+    + "This line range is still too large for the model context, so read_file returned a head/tail preview. "
+    + `Use a smaller line range, for example read_file({ file_path: "${filePath}", offset: ${offset}, limit: 1 }), or use grep to find the relevant section.`
+    + "</system-reminder>";
+}
+
+function isOverTextBudget(text: string): boolean {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > LARGE_TEXT_AUTO_PAGE_BYTES) {
+    return true;
+  }
+  if (bytes <= SAFE_TEXT_BUDGET_BYTES) {
+    return false;
+  }
+  return countTokens(text) > MAX_TEXT_TOKENS;
 }
 
 async function renderPdfPagesAsImages(
@@ -610,11 +691,14 @@ function sliceRenderedText(
   };
 }
 
-function ensureTokenBudget(text: string, filePath: string): void {
-  if (countTokens(text) > MAX_TEXT_TOKENS) {
+function ensureTokenBudget(text: string, filePath: string, suggestedOffset?: number): void {
+  if (isOverTextBudget(text)) {
+    const action = suggestedOffset === undefined
+      ? "Use offset and limit to read a smaller portion."
+      : `Use a smaller limit, for example read_file({ file_path: "${filePath}", offset: ${suggestedOffset}, limit: 500 }).`;
     throw new PilotDeckToolRuntimeError(
       "result_too_large",
-      `File content from ${filePath} exceeds the text token budget. Use offset and limit to read a smaller portion.`,
+      `File content from ${filePath} exceeds the text token budget. ${action}`,
     );
   }
 }

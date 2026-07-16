@@ -1,0 +1,17 @@
+{
+  "name": "pilotdeck-spreadsheets-skill-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned JavaScript runtime for the PilotDeck spreadsheets skill",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@xmldom/xmldom": "0.9.10",
+    "csv-parse": "7.0.1",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.1",
+    "sharp": "0.35.3"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

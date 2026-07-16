@@ -4,9 +4,8 @@
   "description": "Browser automation powered by @playwright/mcp (Microsoft)",
   "mcpServers": {
     "browser-use": {
-      "command": "npx",
+      "command": "/usr/local/bin/playwright-mcp",
       "args": [
-        "@playwright/mcp@0.0.75",
         "--browser",
         "chromium",
         "--allow-unrestricted-file-access"

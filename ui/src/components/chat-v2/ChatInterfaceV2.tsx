@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MessageSquare } from 'lucide-react';
 import { useTasksSettings } from '../../contexts/TasksSettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { api } from '../../utils/api';
@@ -14,10 +15,11 @@ import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
 import { getThinkingModeAvailability } from '../chat/constants/thinkingModeAvailability';
 import { useSessionStore } from '../../stores/useSessionStore';
-import { safeLocalStorage } from '../chat/utils/chatStorage';
+import { getDraftInputStorageKey, safeLocalStorage } from '../chat/utils/chatStorage';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
+import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -60,6 +62,7 @@ function ChatInterfaceV2({
   externalMessageUpdate,
   forceWelcome,
   onExitWelcome,
+  compact = false,
 }: ChatInterfaceProps) {
   const { t } = useTranslation('chat');
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
@@ -220,6 +223,9 @@ function ChatInterfaceV2({
     handleGrantToolPermission,
     handleGrantSessionToolPermission,
     handleInputFocusChange,
+    isBusySendQueued,
+    isBusySendConfirmed,
+    cancelBusySendQueue,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -276,21 +282,25 @@ function ChatInterfaceV2({
     accumulatedStreamRef.current = '';
     streamBufferRef.current = '';
 
-    await sessionStore.refreshFromServer(selectedSession.id, {
-      provider: 'pilotdeck',
-      projectName: selectedProject.name,
-      projectPath: selectedProject.fullPath || selectedProject.path || '',
-      ...sessionRequestParams,
-    });
+    if (shouldRefreshSessionOnReconnect({ isLoading, processingSessions, sessionId: selectedSession.id })) {
+      await refreshSessionAfterReconnect(() =>
+        sessionStore.refreshFromServer(selectedSession.id, {
+          provider: 'pilotdeck',
+          projectName: selectedProject.name,
+          projectPath: selectedProject.fullPath || selectedProject.path || '',
+          ...sessionRequestParams,
+        }),
+      );
+    }
 
     // Ask the backend whether the session is still processing so the
-    // loading indicator and Stop button reflect reality after reconnect.
-    sendMessage({
-      type: 'check-session-status',
-      sessionId: selectedSession.id,
-      provider: 'pilotdeck',
-    });
+    // loading indicator, Stop button, and active turn replay reflect reality
+    // after reconnect. The session-status handler consumes activeTurnMessages
+    // and dedupes replay chunks against existing realtime state.
+    sendMessage(buildReconnectStatusMessage(selectedSession.id));
   }, [
+    isLoading,
+    processingSessions,
     selectedProject,
     selectedSession,
     sessionRequestParams,
@@ -381,10 +391,11 @@ function ChatInterfaceV2({
         : message.type === 'user'
           ? message.content || ''
           : '';
+      const forkDraftStorageKey = getDraftInputStorageKey(selectedProject.name, newSessionId);
       if (forkDraft) {
-        safeLocalStorage.setItem(`draft_input_${selectedProject.name}`, forkDraft);
+        safeLocalStorage.setItem(forkDraftStorageKey, forkDraft);
       } else {
-        safeLocalStorage.removeItem(`draft_input_${selectedProject.name}`);
+        safeLocalStorage.removeItem(forkDraftStorageKey);
       }
 
       onNavigateToSession?.(newSessionId);
@@ -521,6 +532,9 @@ function ChatInterfaceV2({
       isLoading={isLoading}
       canAbortSession={canAbortSession}
       isAbortPending={isAbortPending}
+      isBusySendQueued={isBusySendQueued}
+      isBusySendConfirmed={isBusySendConfirmed}
+      onCancelBusySendQueue={cancelBusySendQueue}
       tokenBudget={tokenBudget}
       thinkingMode={thinkingMode}
       thinkingModeAvailability={thinkingModeAvailability}
@@ -535,12 +549,32 @@ function ChatInterfaceV2({
       planModeAvailable={true}
       onPlanExecutionApproved={handlePlanExecutionApproved}
       sendByCtrlEnter={sendByCtrlEnter}
-      chromeless={isWelcomeMode}
+      chromeless={isWelcomeMode && !compact}
     />
   );
 
   if (isWelcomeMode) {
     const projectName = selectedProject?.displayName || selectedProject?.name || '';
+    if (compact) {
+      return (
+        <div className="flex h-full min-w-0 flex-col bg-white dark:bg-neutral-950">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <MessageSquare className="h-4 w-4" strokeWidth={1.8} />
+            </div>
+            <p className="text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+              {t('workspace.emptyTitle', { defaultValue: 'Ask PilotDeck about this project' })}
+            </p>
+            <p className="mt-1 max-w-56 text-[12px] leading-5 text-neutral-400 dark:text-neutral-500">
+              {t('workspace.emptyDescription', {
+                defaultValue: 'Reference a workspace file with @ when you want it included.',
+              })}
+            </p>
+          </div>
+          {composer}
+        </div>
+      );
+    }
     return (
       <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
         <div className="flex flex-1 flex-col items-center justify-center px-6">

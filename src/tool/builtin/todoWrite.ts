@@ -154,7 +154,7 @@ export function createTodoWriteTool(): PilotDeckToolDefinition<TodoWriteInput, T
       const diagnostics = snapshot?.todoDiagnostics;
 
       return {
-        content: [{ type: "text", text: mode === "read" ? "Todo list read" : "Todo list updated" }],
+        content: [{ type: "text", text: formatTodoWriteResult(mode, todos, { merge, reason, diagnostics }) }],
         data: {
           ...(typeof input.markdown === "string" ? { markdown: input.markdown } : {}),
           todos,
@@ -171,4 +171,32 @@ export function createTodoWriteTool(): PilotDeckToolDefinition<TodoWriteInput, T
       };
     },
   };
+}
+
+function formatTodoWriteResult(
+  mode: TodoWriteOutput["mode"],
+  todos: PilotDeckTodoItem[],
+  options: {
+    merge: boolean;
+    reason?: string;
+    diagnostics?: PilotDeckTodoDiagnostics;
+  },
+): string {
+  const lines = [mode === "read" ? "Todo list read:" : "Todo list updated:"];
+  lines.push(`mode=${mode} merge=${options.merge} count=${todos.length}`);
+  if (options.reason) {
+    lines.push(`reason: ${options.reason}`);
+  }
+  if (todos.length === 0) {
+    lines.push("No todos are currently recorded.");
+  } else {
+    for (const todo of todos) {
+      const priority = todo.priority ? ` priority=${todo.priority}` : "";
+      lines.push(`- [${todo.status}] id=${todo.id}${priority} ${todo.content}`);
+    }
+  }
+  if (options.diagnostics) {
+    lines.push("", "Diagnostics:", JSON.stringify(options.diagnostics));
+  }
+  return lines.join("\n");
 }

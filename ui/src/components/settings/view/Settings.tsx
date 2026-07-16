@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
+  AlertTriangle,
   ArrowUpDown,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Code2,
@@ -27,6 +29,7 @@ import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { usePilotDeckConfig } from '../../../hooks/usePilotDeckConfig';
 import { useSettingsController } from '../hooks/useSettingsController';
 import { useGitVersion } from '../../../hooks/useGitVersion';
+import { useDesktopVersion } from '../../../hooks/useDesktopVersion';
 import type {
   CodeEditorSettingsState,
   ProjectSortOrder,
@@ -571,18 +574,31 @@ function SelectControl({
   );
 }
 
+const isDesktopApp = typeof window !== 'undefined' && !!(window as any).pilotdeckDesktop;
+
 function VersionUpdateSection() {
+  return isDesktopApp ? <DesktopVersionUpdateSection /> : <GitVersionUpdateSection />;
+}
+
+function GitVersionUpdateSection() {
   const { t } = useTranslation('settings');
   const { info, loading, triggerUpdate, triggerRestart, fetchVersion } = useGitVersion();
   const [phase, setPhase] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+  const [manualChecking, setManualChecking] = useState(false);
 
-  const handleUpdate = async () => {
+  const handleCheck = useCallback(async () => {
+    setManualChecking(true);
+    await fetchVersion();
+    setManualChecking(false);
+  }, [fetchVersion]);
+
+  const handleUpdate = useCallback(async () => {
     setPhase('updating');
     const result = await triggerUpdate();
     setPhase(result.success ? 'success' : 'error');
-  };
+  }, [triggerUpdate]);
 
-  const handleRestart = async () => {
+  const handleRestart = useCallback(async () => {
     document.title = 'Restarting PilotDeck...';
     document.body.innerHTML = '';
     document.body.style.cssText = 'margin:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh';
@@ -600,13 +616,25 @@ function VersionUpdateSection() {
         if (res.ok) { clearInterval(poll); window.location.reload(); }
       } catch { /* still down */ }
     }, 2000);
-  };
+  }, [triggerRestart]);
 
-  const statusText = !info
+  const isChecking = !info || manualChecking;
+
+  const statusText = isChecking
     ? t('about.checking')
-    : info.hasUpdate
-      ? t('about.updateAvailable')
-      : t('about.upToDate');
+    : info.checkUnavailable
+      ? t('about.unavailable')
+      : info.hasUpdate
+        ? t('about.updateAvailable')
+        : t('about.upToDate');
+
+  const StatusIcon = isChecking
+    ? null
+    : info?.checkUnavailable
+      ? AlertTriangle
+      : info?.hasUpdate
+        ? Download
+        : CheckCircle2;
 
   return (
     <SettingsGroup title={t('about.title')}>
@@ -615,21 +643,38 @@ function VersionUpdateSection() {
           <GitCommit className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-semibold leading-5 text-foreground">{t('about.version')}</div>
-            <div className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              {statusText}
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs leading-5 text-muted-foreground">
+              {isChecking && <RefreshCw className="h-3 w-3 animate-spin" />}
+              {!isChecking && StatusIcon && (
+                <StatusIcon className={cn('h-3 w-3', info?.checkUnavailable ? 'text-amber-500' : info?.hasUpdate ? 'text-blue-500' : 'text-green-500')} />
+              )}
+              <span>{statusText}</span>
             </div>
           </div>
-          {info?.hasUpdate && phase === 'idle' && (
-            <button
-              type="button"
-              onClick={handleUpdate}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              <Download className="h-3 w-3" />
-              {t('about.updateNow')}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {!isChecking && phase === 'idle' && (
+              <button
+                type="button"
+                onClick={handleCheck}
+                disabled={manualChecking}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                title={t('about.checkForUpdates')}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', manualChecking && 'animate-spin')} />
+              </button>
+            )}
+            {info?.hasUpdate && !info.checkUnavailable && phase === 'idle' && (
+              <button
+                type="button"
+                onClick={handleUpdate}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                <Download className="h-3 w-3" />
+                {t('about.updateNow')}
+              </button>
+            )}
+          </div>
         </div>
 
         {phase === 'updating' && (
@@ -670,6 +715,154 @@ function VersionUpdateSection() {
               {t('about.dismiss')}
             </button>
           </div>
+        )}
+      </GroupedCard>
+    </SettingsGroup>
+  );
+}
+
+function DesktopVersionUpdateSection() {
+  const { t } = useTranslation('settings');
+  const { info, checking, download, fetchStatus, triggerDownload, triggerInstall, cancelDownload } = useDesktopVersion();
+
+  const handleCheck = useCallback(async () => {
+    await fetchStatus();
+  }, [fetchStatus]);
+
+  const isChecking = !info || checking;
+
+  const statusText = isChecking
+    ? t('about.checking')
+    : info.checkUnavailable
+      ? t('about.unavailable')
+      : info.hasUpdate
+        ? t('about.updateAvailable')
+        : t('about.upToDate');
+
+  const StatusIcon = isChecking
+    ? null
+    : info?.checkUnavailable
+      ? AlertTriangle
+      : info?.hasUpdate
+        ? Download
+        : CheckCircle2;
+
+  const downloadState = download?.state;
+  const downloadPercent = download ? Math.round((download.progress ?? 0) * 100) : 0;
+
+  return (
+    <SettingsGroup title={t('about.title')}>
+      <GroupedCard divided>
+        {/* Status row */}
+        <div className="flex min-h-[66px] items-center gap-3.5 px-5 py-3">
+          <GitCommit className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold leading-5 text-foreground">{t('about.version')}</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs leading-5 text-muted-foreground">
+              {isChecking && <RefreshCw className="h-3 w-3 animate-spin" />}
+              {!isChecking && StatusIcon && (
+                <StatusIcon className={cn('h-3 w-3', info?.checkUnavailable ? 'text-amber-500' : info?.hasUpdate ? 'text-blue-500' : 'text-green-500')} />
+              )}
+              <span>{statusText}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isChecking && !downloadState && (
+              <button
+                type="button"
+                onClick={handleCheck}
+                disabled={checking}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                title={t('about.checkForUpdates')}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Version details (desktop only) */}
+        {info && !info.checkUnavailable && !isChecking && (
+          <div className="space-y-1 px-5 py-3 text-xs text-muted-foreground">
+            <div>{t('about.currentVersion', { version: info.currentVersion })}</div>
+            {info.latestVersion && (
+              <div>{t('about.latestVersion', { version: info.latestVersion })}</div>
+            )}
+          </div>
+        )}
+
+        {/* Update action: download / progress / install */}
+        {info?.hasUpdate && !info.checkUnavailable && (
+          <>
+            {!downloadState || downloadState === 'idle' || downloadState === 'cancelled' ? (
+              <div className="flex min-h-[56px] items-center gap-3.5 px-5 py-3">
+                <div className="min-w-0 flex-1" />
+                <button
+                  type="button"
+                  onClick={triggerDownload}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                  <Download className="h-3 w-3" />
+                  {t('about.downloadUpdate')}
+                </button>
+              </div>
+            ) : null}
+
+            {downloadState === 'downloading' && (
+              <div className="px-5 py-3 space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                    <span>{t('about.downloading', { percent: downloadPercent })}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelDownload}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {t('about.cancelDownload')}
+                  </button>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${downloadPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {downloadState === 'downloaded' && (
+              <div className="flex min-h-[56px] items-center gap-3.5 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-green-700 dark:text-green-400">{t('about.downloadComplete')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={triggerInstall}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                >
+                  <Download className="h-3 w-3" />
+                  {t('about.installUpdate')}
+                </button>
+              </div>
+            )}
+
+            {downloadState === 'failed' && (
+              <div className="flex min-h-[56px] items-center gap-3.5 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-red-700 dark:text-red-400">{t('about.downloadFailed')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={triggerDownload}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {t('about.downloadUpdate')}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </GroupedCard>
     </SettingsGroup>

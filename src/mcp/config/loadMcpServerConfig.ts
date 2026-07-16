@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
+
+import { expandMcpConfig } from "./expandPlaceholders.js";
 
 export const MCP_CONFIG_FILE_NAME = "mcp.json";
 
@@ -64,26 +65,7 @@ function readMcpConfig(
     return {};
   }
 
-  return { mcpServers: expandConfig(rawServers) as Record<string, unknown> };
-}
-
-function expandConfig(value: unknown): unknown {
-  if (typeof value === "string") {
-    return expandString(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(expandConfig);
-  }
-  if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, expandConfig(entry)]));
-  }
-  return value;
-}
-
-function expandString(value: string): string {
-  return value
-    .replace(/\$\{env:([^}]+)\}/g, (_match, name: string) => process.env[name] ?? "")
-    .replace(/\$\{userHome\}/g, process.env.HOME ?? process.env.USERPROFILE ?? homedir());
+  return { mcpServers: expandMcpConfig(rawServers) as Record<string, unknown> };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

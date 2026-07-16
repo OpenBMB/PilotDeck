@@ -730,6 +730,8 @@ export function buildRenderableMessageItems(
         if (groupStart < 0) groupStart = i;
         if (!msg.isThinking) hasNonThinking = true;
         else pendingThinkingIndices.push(i);
+      } else if (isEmptyAssistantShell(msg)) {
+        continue;
       } else {
         if (groupStart >= 0 && !hasNonThinking) {
           for (const idx of pendingThinkingIndices) {
@@ -879,6 +881,16 @@ export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessa
     .flatMap((group) => group.detailMessages);
 }
 
+export function splitLiveProcessGroupDetailMessages(group: LiveProcessGroup): {
+  beforeStatusMessages: ChatMessage[];
+  statusDetailMessages: ChatMessage[];
+} {
+  return {
+    beforeStatusMessages: [],
+    statusDetailMessages: group.detailMessages,
+  };
+}
+
 export function getLiveProcessGroups(
   messages: ChatMessage[],
   options: BuildRenderableMessageItemsOptions = {},
@@ -938,7 +950,6 @@ export function getLiveProcessGroups(
     }
 
     if (isEmptyAssistantShell(message)) {
-      finishGroup(index);
       continue;
     }
 

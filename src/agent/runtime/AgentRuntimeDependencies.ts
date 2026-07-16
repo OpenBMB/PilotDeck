@@ -103,6 +103,7 @@ export type AgentRuntimeDependencies = {
    * the selected model already receives from the catalog.
    */
   getModelMaxOutputTokens?: (provider: string, model: string) => number | undefined;
+  getModelTokenLimits?: (provider: string, model: string) => { maxContextTokens: number; maxOutputTokens: number } | undefined;
   now?: () => Date;
   uuid?: () => string;
   auditRecorder?: PilotDeckToolAuditRecorder;

@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronsLeftRight, ChevronsRightLeft, Code2, Download, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronsLeftRight, ChevronsRightLeft, Code2, Download, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import type { CodeEditorFile } from '../../types/types';
 
 type CodeEditorHeaderProps = {
@@ -23,6 +23,8 @@ type CodeEditorHeaderProps = {
   onSave: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
+  showClose?: boolean;
+  compact?: boolean;
   labels: {
     showingChanges: string;
     editMarkdown: string;
@@ -58,6 +60,8 @@ export default function CodeEditorHeader({
   onSave,
   onToggleFullscreen,
   onClose,
+  showClose = true,
+  compact = false,
   labels,
 }: CodeEditorHeaderProps) {
   const saveTitle = saveSuccess ? labels.saved : saving ? labels.saving : labels.save;
@@ -66,8 +70,13 @@ export default function CodeEditorHeader({
     'flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
 
   return (
-    <div className="flex min-w-0 flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="flex min-w-0 flex-1 shrink items-center gap-2">
+    <div
+      className={compact
+        ? 'absolute right-2 top-1 z-10 flex h-8 items-center rounded-md bg-neutral-50 pl-2 dark:bg-neutral-900'
+        : 'flex min-w-0 flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950'}
+    >
+      {!compact ? (
+        <div className="flex min-w-0 flex-1 shrink items-center gap-2">
         {canGoBack && onGoBack ? (
           <button
             type="button"
@@ -97,7 +106,8 @@ export default function CodeEditorHeader({
             {file.path}
           </p>
         </div>
-      </div>
+        </div>
+      ) : null}
 
       <div className="flex shrink-0 items-center gap-0.5">
         {isMarkdownFile && (
@@ -110,6 +120,7 @@ export default function CodeEditorHeader({
                 : iconBtn
             }
             title={markdownPreview ? labels.editMarkdown : labels.previewMarkdown}
+            aria-label={markdownPreview ? labels.editMarkdown : labels.previewMarkdown}
           >
             {markdownPreview ? (
               <Code2 className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -119,7 +130,7 @@ export default function CodeEditorHeader({
           </button>
         )}
 
-        <button type="button" onClick={onDownload} className={iconBtn} title={labels.download}>
+        <button type="button" onClick={onDownload} className={iconBtn} title={labels.download} aria-label={labels.download}>
           <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>
 
@@ -133,17 +144,10 @@ export default function CodeEditorHeader({
               : `${iconBtn} disabled:opacity-50`
           }
           title={saveTitle}
+          aria-label={saveTitle}
         >
           {saveSuccess ? (
-            <svg
-              className="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+            <Check className="h-3.5 w-3.5" strokeWidth={2} />
           ) : (
             <Save className="h-3.5 w-3.5" strokeWidth={1.75} />
           )}
@@ -180,9 +184,11 @@ export default function CodeEditorHeader({
           </button>
         ) : null}
 
-        <button type="button" onClick={onClose} className={iconBtn} title={labels.close}>
-          <X className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </button>
+        {showClose ? (
+          <button type="button" onClick={onClose} className={iconBtn} title={labels.close}>
+            <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        ) : null}
       </div>
     </div>
   );

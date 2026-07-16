@@ -99,6 +99,9 @@ export type ComposerV2Props = {
   isLoading: boolean;
   canAbortSession: boolean;
   isAbortPending?: boolean;
+  isBusySendQueued?: boolean;
+  isBusySendConfirmed?: boolean;
+  onCancelBusySendQueue?: () => void;
   isSubmitPending?: boolean;
   tokenBudget?: Record<string, unknown> | null;
   thinkingMode: ThinkingModeId;
@@ -135,6 +138,7 @@ type ContextStatus = {
   known: boolean;
   used: number;
   total: number;
+  displayTotal: number;
   percent: number;
   usedLabel: string;
   totalLabel: string;
@@ -224,13 +228,17 @@ function formatTokenCount(value: number): string {
 }
 
 function getContextStatus(tokenBudget?: Record<string, unknown> | null): ContextStatus {
-  const used = readNumber(tokenBudget?.used) ?? 0;
+  const used = readNumber(tokenBudget?.displayUsed) ?? readNumber(tokenBudget?.used) ?? 0;
+  const budgetUsed = readNumber(tokenBudget?.budgetUsed) ?? readNumber(tokenBudget?.used) ?? used;
   const total = readNumber(tokenBudget?.total) ?? 0;
-  if (total <= 0) {
+  const effectiveTotal = readNumber(tokenBudget?.effectiveTotal);
+  const displayTotal = effectiveTotal && effectiveTotal > 0 ? effectiveTotal : total;
+  if (displayTotal <= 0) {
     return {
       known: false,
       used: 0,
       total: 0,
+      displayTotal: 0,
       percent: 0,
       usedLabel: '--',
       totalLabel: '--',
@@ -238,7 +246,7 @@ function getContextStatus(tokenBudget?: Record<string, unknown> | null): Context
     };
   }
 
-  const percent = Math.max(0, Math.min(999, Math.round((used / total) * 100)));
+  const percent = Math.max(0, Math.min(999, Math.round((budgetUsed / displayTotal) * 100)));
   const snapshotState = typeof tokenBudget?.state === 'string' ? tokenBudget.state : null;
   const tone = snapshotState === 'blocking'
     ? 'red'
@@ -253,9 +261,10 @@ function getContextStatus(tokenBudget?: Record<string, unknown> | null): Context
     known: true,
     used,
     total,
+    displayTotal,
     percent,
     usedLabel: formatTokenCount(used),
-    totalLabel: formatTokenCount(total),
+    totalLabel: formatTokenCount(displayTotal),
     tone,
   };
 }
@@ -300,6 +309,9 @@ export default function ComposerV2({
   isLoading,
   canAbortSession,
   isAbortPending = false,
+  isBusySendQueued = false,
+  isBusySendConfirmed = false,
+  onCancelBusySendQueue,
   isSubmitPending = false,
   tokenBudget,
   thinkingMode,
@@ -336,7 +348,17 @@ export default function ComposerV2({
   const hasDraftContent = input.trim().length > 0 || attachedImages.length > 0 || documentReferences.length > 0;
   const hasUploadingImages = uploadingImages.size > 0;
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
-  const disabled = !hasDraftContent || isLoading || isSubmitPending || hasUploadingImages;
+  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
+  const showAbortButton = isLoading && canAbortSession && !hasDraftContent;
+  const sendTitle = isSubmitPending || hasUploadingImages
+    ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
+    : isBusySendConfirmed
+      ? (t('input.queuedSendConfirmed', { defaultValue: 'Stopping current turn — sending next message' }) as string)
+      : isBusySendQueued
+        ? (t('input.queuedSendConfirm', { defaultValue: 'Queued — click send again to stop this turn and send now' }) as string)
+      : isLoading
+        ? (t('input.queueSend', { defaultValue: 'Queue message' }) as string)
+        : (t('input.send', { defaultValue: 'Send' }) as string);
   const contextStatus = getContextStatus(tokenBudget);
   const effectiveThinkingMode = getEffectiveThinkingMode(thinkingMode, thinkingModeAvailability);
   const selectedThinkingMode = thinkingModes.find((option) => option.id === effectiveThinkingMode) || thinkingModes[0];
@@ -744,6 +766,24 @@ export default function ComposerV2({
                   </div>
                   </div>
 
+                  {isBusySendQueued ? (
+                    <div className="hidden min-w-0 flex-1 items-center justify-end gap-1 px-2 text-[12px] text-amber-700 dark:text-amber-300 sm:flex">
+                      <span className="truncate rounded-full bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
+                        {isBusySendConfirmed
+                          ? t('input.queuedSendConfirmedInline', { defaultValue: 'Stopping current turn; sending next' })
+                          : t('input.queuedSendConfirmInline', { defaultValue: 'Queued; click again to stop this turn and send now' })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={onCancelBusySendQueue}
+                        className="rounded-full px-2 py-1 text-amber-700 transition hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                        title={t('input.cancelQueuedSend', { defaultValue: 'Cancel queued message' }) as string}
+                      >
+                        {t('input.cancelQueuedSendShort', { defaultValue: 'Cancel' })}
+                      </button>
+                    </div>
+                  ) : null}
+
                   <div className="pd-composer-toolbar-right ml-auto flex shrink-0 items-center gap-1">
                     <div
                       className="relative"
@@ -803,9 +843,9 @@ export default function ComposerV2({
                               <div className="text-neutral-500 dark:text-neutral-400">
                                 {t('input.contextStatusUsed', {
                                   used: contextStatus.used.toLocaleString(),
-                                  total: contextStatus.total.toLocaleString(),
+                                  total: contextStatus.displayTotal.toLocaleString(),
                                   defaultValue:
-                                    `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.total.toLocaleString()}.`,
+                                    `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
                                 })}
                               </div>
                               <div className="mt-2 text-neutral-500 dark:text-neutral-400">
@@ -903,7 +943,7 @@ export default function ComposerV2({
                       ) : null}
                     </div>
 
-                    {isLoading && canAbortSession ? (
+                    {showAbortButton ? (
                       <button
                         type="button"
                         onClick={onAbortSession}
@@ -924,28 +964,29 @@ export default function ComposerV2({
                           <Square className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />
                         )}
                       </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        disabled={disabled}
-                        aria-busy={isSubmitPending || hasUploadingImages}
-                        className={cn(
-                          'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
-                          (isSubmitPending || hasUploadingImages) && 'cursor-wait',
-                        )}
-                        title={
-                          isSubmitPending || hasUploadingImages
-                            ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
-                            : (t('input.send', { defaultValue: 'Send' }) as string)
-                        }
-                      >
-                        {isSubmitPending || hasUploadingImages ? (
-                          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
-                        ) : (
-                          <ArrowUp className="h-4 w-4" strokeWidth={2} />
-                        )}
-                      </button>
-                    )}
+                    ) : null}
+                    <button
+                      type="submit"
+                      disabled={disabled}
+                      aria-busy={isSubmitPending || hasUploadingImages || isBusySendConfirmed}
+                      className={cn(
+                        'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
+                        isBusySendQueued && 'bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-400 dark:text-neutral-950 dark:hover:bg-amber-300',
+                        isBusySendConfirmed && 'cursor-wait',
+                        (isSubmitPending || hasUploadingImages) && 'cursor-wait',
+                      )}
+                      title={sendTitle}
+                    >
+                      {isSubmitPending || hasUploadingImages ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                      ) : isBusySendConfirmed ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                      ) : isBusySendQueued ? (
+                        <Check className="h-4 w-4" strokeWidth={2.25} />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" strokeWidth={2} />
+                      )}
+                    </button>
                   </div>
                 </div>
             </div>

@@ -8,6 +8,8 @@ import type {
   ModelDefinition,
 } from "../../protocol/canonical.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
+import { messageContent } from "../../protocol/clone.js";
+import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 
 export type AnthropicRequestBody = {
   model: string;
@@ -127,7 +129,7 @@ function toAnthropicMessage(
   message: CanonicalMessage,
   markCacheBreakpoint: boolean,
 ): AnthropicMessage {
-  const content = message.content.map(toAnthropicContentBlock);
+  const content = messageContent(message).map(toAnthropicContentBlock);
 
   // A4: attach `cache_control: { type: "ephemeral" }` to the LAST content
   // block of this message. Anthropic anchors the cache breakpoint at this
@@ -197,11 +199,9 @@ function toAnthropicContentBlock(block: CanonicalContentBlock): unknown {
         tool_use_id: block.toolCallId,
         content: [{
           type: "text",
-          text: block.preview + (block.hasMore
-            ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
-            : ""),
+          text: formatToolResultReferenceText(block),
         }],
-        is_error: false,
+        is_error: block.isError,
       };
     case "media_reference":
       return { type: "text", text: block.preview };

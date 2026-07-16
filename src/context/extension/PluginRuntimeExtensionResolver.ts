@@ -63,6 +63,7 @@ export class PluginRuntimeExtensionResolver implements ExtensionResolver {
         (skill): ContributedSkill => ({
           name: skill.name,
           description: typeof skill.frontmatter?.description === "string" ? skill.frontmatter.description : undefined,
+          path: skill.path,
           namespace: plugin.name,
         }),
       ),

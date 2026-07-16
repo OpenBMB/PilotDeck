@@ -3,7 +3,7 @@ import type { PilotAgentModelSelection } from "../../pilot/config/types.js";
 
 export const SESSION_TITLE_MAX_INPUT_CHARS = 1200;
 export const SESSION_TITLE_MAX_OUTPUT_CHARS = 80;
-export const SESSION_TITLE_TIMEOUT_MS = 15_000;
+export const SESSION_TITLE_TIMEOUT_MS = 30_000;
 
 const SESSION_TITLE_SYSTEM_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. The title should be clear enough that the user recognizes the session in a list. Use sentence case: capitalize only the first word and proper nouns.
 
@@ -61,7 +61,7 @@ export function createSessionTitleGenerator(
               content: [{ type: "text", text: prompt }],
             },
           ],
-          maxOutputTokens: 1000,
+          maxOutputTokens: 4096,
           temperature: 0,
           metadata: {
             purpose: "session_title_generation",

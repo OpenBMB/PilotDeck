@@ -178,6 +178,11 @@ export const api = {
     authenticatedFetch(`/api/always-on/events?limit=${encodeURIComponent(limit)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
   allCronJobs: () =>
     authenticatedFetch('/api/always-on/cron-jobs'),
+  cronCreate: (payload) =>
+    authenticatedFetch('/api/always-on/cron-jobs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   cronRunNow: (taskId) =>
     authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST' }),
   cronStop: (taskId) =>

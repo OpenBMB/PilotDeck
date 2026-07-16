@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../utils/api';
 import type { CodeEditorFile } from '../types/types';
 import { isBinaryFile } from '../utils/binaryFile';
@@ -22,6 +22,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
   // user sees an error panel instead. Otherwise a stray Ctrl+S would
   // persist the placeholder text and overwrite the user's real file.
   const [content, setContent] = useState('');
+  const [savedContent, setSavedContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -33,8 +34,16 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
   const filePath = file.path;
   const fileDiffNewString = file.diffInfo?.new_string;
   const fileDiffOldString = file.diffInfo?.old_string;
+  const renamedFromPath = file.renamedFromPath;
+  const loadedFilePathRef = useRef(filePath);
 
   useEffect(() => {
+    const previousFilePath = loadedFilePathRef.current;
+    loadedFilePathRef.current = filePath;
+    if (renamedFromPath === previousFilePath && previousFilePath !== filePath) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     const loadFileContent = async () => {
@@ -45,6 +54,8 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
 
         if (isBinaryFile(file.name)) {
           if (cancelled) return;
+          setContent('');
+          setSavedContent('');
           setIsBinary(true);
           setLoading(false);
           return;
@@ -54,6 +65,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
         if (file.diffInfo && fileDiffNewString !== undefined && fileDiffOldString !== undefined) {
           if (cancelled) return;
           setContent(fileDiffNewString);
+          setSavedContent(fileDiffNewString);
           setLoading(false);
           return;
         }
@@ -69,7 +81,9 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
 
         const data = await response.json();
         if (cancelled) return;
-        setContent(data.content ?? '');
+        const nextContent = data.content ?? '';
+        setContent(nextContent);
+        setSavedContent(nextContent);
       } catch (error) {
         if (cancelled) return;
         const message = getErrorMessage(error);
@@ -91,7 +105,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
     return () => {
       cancelled = true;
     };
-  }, [file.diffInfo, file.name, fileDiffNewString, fileDiffOldString, filePath, fileProjectName, reloadToken]);
+  }, [file.diffInfo, file.name, fileDiffNewString, fileDiffOldString, filePath, fileProjectName, reloadToken, renamedFromPath]);
 
   const reload = useCallback(() => {
     setReloadToken((token) => token + 1);
@@ -134,6 +148,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
 
       await response.json();
 
+      setSavedContent(content);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
@@ -170,6 +185,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
     saveSuccess,
     saveError,
     isBinary,
+    isDirty: !loading && !loadError && !isBinary && content !== savedContent,
     projectName: fileProjectName,
     handleSave,
     handleDownload,

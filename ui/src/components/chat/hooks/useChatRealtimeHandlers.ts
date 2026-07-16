@@ -51,6 +51,58 @@ type LatestChatMessage = {
   [key: string]: any;
 };
 
+function normalizeAssistantStreamText(value?: string): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function parseAssistantStreamTimestamp(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isCompatibleAssistantStreamRun(incoming: NormalizedMessage, existing: NormalizedMessage): boolean {
+  if (incoming.runId != null && existing.runId != null) return incoming.runId === existing.runId;
+  const isActiveStream = existing.kind === 'stream_delta' && String(existing.id || '').startsWith('__streaming_');
+  if (!isActiveStream) return false;
+  const incomingTimestamp = parseAssistantStreamTimestamp(incoming.timestamp);
+  const existingTimestamp = parseAssistantStreamTimestamp(existing.timestamp);
+  if (incomingTimestamp == null || existingTimestamp == null) return false;
+  return Math.abs(incomingTimestamp - existingTimestamp) <= 10_000;
+}
+
+export function getDuplicateAssistantStreamTextState(
+  incoming: NormalizedMessage,
+  realtimeMessages: NormalizedMessage[],
+): { isDuplicate: boolean; hasActiveStream: boolean; activeStreamRunId?: string | null } {
+  if (incoming.kind !== 'text' || incoming.role !== 'assistant') {
+    return { isDuplicate: false, hasActiveStream: false };
+  }
+
+  const incomingText = normalizeAssistantStreamText(incoming.content);
+  if (!incomingText) {
+    return { isDuplicate: false, hasActiveStream: false };
+  }
+
+  let hasActiveStream = false;
+  let activeStreamRunId: string | null | undefined;
+  const isDuplicate = realtimeMessages.some((message) => {
+    const isAssistantText = message.kind === 'text' && message.role === 'assistant';
+    const isActiveStream = message.kind === 'stream_delta' && String(message.id || '').startsWith('__streaming_');
+    if (!isAssistantText && !isActiveStream) return false;
+    if (isAssistantText && (incoming.runId == null || message.runId == null)) return false;
+    if (!isCompatibleAssistantStreamRun(incoming, message)) return false;
+    if (normalizeAssistantStreamText(message.content) !== incomingText) return false;
+    if (isActiveStream) {
+      hasActiveStream = true;
+      activeStreamRunId = message.runId ?? null;
+    }
+    return true;
+  });
+
+  return { isDuplicate, hasActiveStream, activeStreamRunId };
+}
+
 
 function getExplicitSessionId(msg: LatestChatMessage): string | null {
   const value = msg.sessionId ?? msg.session_id ?? msg.actualSessionId ?? msg.newSessionId;
@@ -187,7 +239,9 @@ export function useChatRealtimeHandlers({
             const slot = sessionStore.getSessionSlot?.(statusSessionId);
             const hasLiveStreaming = Boolean(slot?.realtimeMessages?.some((message) => (
               message.id === `__streaming_${statusSessionId}`
+              || message.id.startsWith(`__streaming_${statusSessionId}_`)
               || message.id === `__streaming_thinking_${statusSessionId}`
+              || message.id.startsWith(`__streaming_thinking_${statusSessionId}_`)
             )));
             const replayedToolIds = new Set(
               (slot?.realtimeMessages || [])
@@ -288,6 +342,8 @@ export function useChatRealtimeHandlers({
       warnDroppedFrame(msg);
       return;
     }
+    const msgRunId = typeof msg.runId === 'string' && msg.runId.trim() ? msg.runId.trim() : undefined;
+    const streamKey = msgRunId ? `${sid}_${msgRunId}` : sid;
 
     if (!getExplicitSessionId(msg) && fallbackSessionId) {
       warnResolvedSessionId(msg, sid);
@@ -304,6 +360,12 @@ export function useChatRealtimeHandlers({
     // until some other state change (like clicking stop) triggers a re-render.
     if (isForActiveView) {
       sessionStore.setActiveSession(sid);
+    }
+
+    if (msg.kind === 'text' && msg.role === 'user') {
+      if (thinkingBySessionRef.current.has(sid)) {
+        thinkingBySessionRef.current.delete(sid);
+      }
     }
 
     if (msg.kind === 'agent_activity') {
@@ -368,13 +430,13 @@ export function useChatRealtimeHandlers({
       // Content starting means thinking is done
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid);
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
       const slot = sessionStore.getSessionSlot?.(sid);
-      const streamId = `__streaming_${sid}`;
+      const streamId = `__streaming_${streamKey}`;
       const existing = slot?.realtimeMessages.find((m: any) => m.id === streamId);
       const currentText = existing?.content || '';
-      sessionStore.updateStreaming(sid, currentText + text, provider);
+      sessionStore.updateStreaming(sid, currentText + text, provider, msgRunId);
       return;
     }
 
@@ -386,10 +448,10 @@ export function useChatRealtimeHandlers({
       thinkingBySessionRef.current.set(sid, true as any);
       // Read current thinking content and append delta
       const slot = sessionStore.getSessionSlot?.(sid);
-      const streamId = `__streaming_thinking_${sid}`;
+      const streamId = `__streaming_thinking_${streamKey}`;
       const existing = slot?.realtimeMessages.find((m: any) => m.id === streamId);
       const currentText = existing?.content || '';
-      sessionStore.updateStreamingThinking(sid, currentText + text, provider);
+      sessionStore.updateStreamingThinking(sid, currentText + text, provider, msgRunId);
       return;
     }
 
@@ -398,9 +460,9 @@ export function useChatRealtimeHandlers({
       // Finalize thinking if still active
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid);
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
-      sessionStore.finalizeStreaming(sid);
+      sessionStore.finalizeStreaming(sid, msgRunId);
       return;
     }
 
@@ -412,16 +474,16 @@ export function useChatRealtimeHandlers({
       // Finalize thinking if still active (model moved past thinking)
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid);
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
       // Finalize content stream on tool_use / complete / error.
       // The gateway may not send stream_end, so tool_use is the
       // reliable signal that the text block has ended.
       if (msg.kind === 'tool_use' || msg.kind === 'complete' || msg.kind === 'error') {
-        sessionStore.finalizeStreaming(sid);
+        sessionStore.finalizeStreaming(sid, msgRunId);
       }
       if (msg.kind === 'complete' || msg.kind === 'error') {
-        sessionStore.finalizeStreamingThinking(sid);
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
     }
 
@@ -430,12 +492,14 @@ export function useChatRealtimeHandlers({
     // The streaming pipeline (stream_delta → stream_end → finalizeStreaming)
     // already creates a text message in realtimeMessages. If the backend also
     // sends a standalone 'text' message with the same content, skip it.
-    const isDuplicateStreamText =
-      msg.kind === 'text' && msg.role === 'assistant' &&
-      sessionStore.getSessionSlot?.(sid)?.realtimeMessages.some(
-        (m) => m.kind === 'text' && m.role === 'assistant' && m.content === (msg as NormalizedMessage).content,
-      );
-    if (!isDuplicateStreamText) {
+    const duplicateStreamTextState = getDuplicateAssistantStreamTextState(
+      msg as NormalizedMessage,
+      sessionStore.getSessionSlot?.(sid)?.realtimeMessages ?? [],
+    );
+    if (duplicateStreamTextState.hasActiveStream) {
+      sessionStore.finalizeStreaming(sid, duplicateStreamTextState.activeStreamRunId ?? undefined);
+    }
+    if (!duplicateStreamTextState.isDuplicate) {
       sessionStore.appendRealtime(sid, msg as NormalizedMessage);
     }
 
@@ -473,8 +537,8 @@ export function useChatRealtimeHandlers({
           if (thinkingBySessionRef.current.has(sid)) {
             thinkingBySessionRef.current.delete(sid);
           }
-          sessionStore.finalizeStreamingThinking(sid);
-          sessionStore.finalizeStreaming(sid);
+          sessionStore.finalizeStreamingThinking(sid, msgRunId);
+          sessionStore.finalizeStreaming(sid, msgRunId);
         }
 
         if (isForActiveView) {

@@ -20,6 +20,7 @@ import {
   validateURL,
 } from "./urlValidation.js";
 import { parseRetryAfterHeader } from "../../../model/index.js";
+import { networkFetch } from "../../../network/fetch.js";
 
 export const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024;
 export const FETCH_TIMEOUT_MS = 60_000;
@@ -95,11 +96,19 @@ export type FetchHook = (
 }>;
 
 const defaultFetchHook: FetchHook = async (url, init) => {
-  const res = await fetch(url, {
+  const res = await networkFetch(url, {
     method: "GET",
     redirect: "manual",
     headers: init.headers,
     signal: init.signal,
+  }, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    signal: init.signal,
+    retry: {
+      maxRetries: 2,
+      baseDelayMs: 500,
+      maxDelayMs: 5_000,
+    },
   });
   const headers: Record<string, string> = {};
   res.headers.forEach((v, k) => {

@@ -106,7 +106,7 @@ export type CreateAgentToolOptions = {
   temperature?: number;
 };
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 4_096;
+const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;

@@ -14,13 +14,14 @@
  */
 
 import type { CanonicalMessage } from "../../model/index.js";
+import { messageContent } from "../../model/protocol/clone.js";
 
 export function filterIncompleteToolCalls(
   messages: CanonicalMessage[],
 ): CanonicalMessage[] {
   const completedIds = new Set<string>();
   for (const message of messages) {
-    for (const block of message.content) {
+    for (const block of messageContent(message)) {
       if (block.type === "tool_result" || block.type === "tool_result_reference") {
         completedIds.add(block.toolCallId);
       }
@@ -32,7 +33,7 @@ export function filterIncompleteToolCalls(
       out.push(message);
       continue;
     }
-    const filtered = message.content.filter((block) => {
+    const filtered = messageContent(message).filter((block) => {
       if (block.type !== "tool_call") return true;
       return completedIds.has(block.id);
     });

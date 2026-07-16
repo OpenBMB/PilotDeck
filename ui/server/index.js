@@ -53,6 +53,7 @@ import fetch from 'node-fetch';
 import mime from 'mime-types';
 import JSZip from 'jszip';
 import { readPermissionSettings } from './services/permissionSettings.js';
+import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 
 import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
@@ -490,8 +491,8 @@ app.use('/api/mcp-utils', authenticateToken, mcpUtilsRoutes);
 app.use('/api/commands', authenticateToken, commandsRoutes);
 
 // Skills API Routes (protected) — list/edit/install skills surfaced in the
-// top-right Skills tab. Backed by ~/.pilotdeck/skills/ and project-level
-// .pilotdeck/skills/ via PilotDeck plugin runtime.
+// top-right Skills tab. Backed by bundled skills, ~/.pilotdeck/skills/, and
+// project-level .pilotdeck/skills/ via PilotDeck plugin runtime.
 app.use('/api/skills', authenticateToken, skillsRoutes);
 
 // Settings API Routes (protected)
@@ -580,6 +581,43 @@ app.get('/api/always-on/cron-jobs', authenticateToken, async (_req, res) => {
     } catch (error) {
         console.error('[always-on-cron-jobs] failed:', error);
         res.status(500).json({ error: error?.message || 'always-on-cron-jobs failed' });
+    }
+});
+
+app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
+    try {
+        const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+        const projectKey = typeof req.body?.projectKey === 'string' ? req.body.projectKey : '';
+        const schedule = req.body?.schedule;
+        const timezone = typeof req.body?.timezone === 'string' && req.body.timezone.trim()
+            ? req.body.timezone.trim()
+            : undefined;
+
+        if (!message) {
+            res.status(400).json({ error: 'Cron message is required.' });
+            return;
+        }
+        if (!projectKey) {
+            res.status(400).json({ error: 'Cron projectKey is required.' });
+            return;
+        }
+        if (!schedule || typeof schedule !== 'object') {
+            res.status(400).json({ error: 'Cron schedule is required.' });
+            return;
+        }
+
+        const gateway = await getPilotDeckGateway();
+        const result = await gateway.cronCreate({
+            message,
+            projectKey,
+            schedule,
+            timezone,
+            channelKey: 'web',
+        });
+        res.json(result);
+    } catch (error) {
+        console.error('[always-on-cron-create] failed:', error);
+        res.status(500).json({ error: error?.message || 'cron create failed' });
     }
 });
 
@@ -2470,6 +2508,9 @@ function handleShellConnection(ws) {
                         return;
                     }
 
+                    // Prefer Git Bash on Windows so agent commands can use POSIX shell syntax.
+                    const shellConfig = getDefaultPtyShell();
+
                     // Build shell command — use cwd for project path (never interpolate into shell string)
                     let shellCommand;
                     if (isPlainShell) {
@@ -2484,12 +2525,9 @@ function handleShellConnection(ws) {
                     } else if (provider === 'codex') {
                         // Use codex command; attempt to resume and fall back to a new session when the resume fails.
                         if (hasSession && sessionId) {
-                            if (os.platform() === 'win32') {
-                                // PowerShell syntax for fallback
-                                shellCommand = `codex resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { codex }`;
-                            } else {
-                                shellCommand = `codex resume "${sessionId}" || codex`;
-                            }
+                            shellCommand = shellConfig.kind === 'powershell'
+                                ? `codex resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { codex }`
+                                : `codex resume "${sessionId}" || codex`;
                         } else {
                             shellCommand = 'codex';
                         }
@@ -2522,22 +2560,18 @@ function handleShellConnection(ws) {
                     } else if (provider === 'pilotdeck') {
                         const command = initialCommand || 'pilotdeck';
                         if (hasSession && sessionId) {
-                            if (os.platform() === 'win32') {
-                                shellCommand = `pilotdeck --resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { pilotdeck }`;
-                            } else {
-                                shellCommand = `pilotdeck --resume "${sessionId}" || pilotdeck`;
-                            }
+                            shellCommand = shellConfig.kind === 'powershell'
+                                ? `pilotdeck --resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { pilotdeck }`
+                                : `pilotdeck --resume "${sessionId}" || pilotdeck`;
                         } else {
                             shellCommand = command;
                         }
                     } else {
                         const command = initialCommand || 'claude';
                         if (hasSession && sessionId) {
-                            if (os.platform() === 'win32') {
-                                shellCommand = `claude --resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { claude }`;
-                            } else {
-                                shellCommand = `claude --resume "${sessionId}" || claude`;
-                            }
+                            shellCommand = shellConfig.kind === 'powershell'
+                                ? `claude --resume "${sessionId}"; if ($LASTEXITCODE -ne 0) { claude }`
+                                : `claude --resume "${sessionId}" || claude`;
                         } else {
                             shellCommand = command;
                         }
@@ -2545,9 +2579,8 @@ function handleShellConnection(ws) {
 
                     console.log('🔧 Executing shell command:', shellCommand);
 
-                    // Use appropriate shell based on platform
-                    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-                    const shellArgs = os.platform() === 'win32' ? ['-Command', shellCommand] : ['-c', shellCommand];
+                    const shell = shellConfig.shell;
+                    const shellArgs = shellConfig.args(shellCommand);
 
                     // Use terminal dimensions from client if provided, otherwise use defaults
                     const termCols = data.cols || 80;

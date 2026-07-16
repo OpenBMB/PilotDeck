@@ -4,7 +4,7 @@ import type {
   CanonicalMediaReferenceBlock,
   CanonicalMessage,
 } from "../protocol/canonical.js";
-import { cloneMessages } from "../protocol/clone.js";
+import { cloneMessages, messageContent } from "../protocol/clone.js";
 
 export type MediaReferenceMaterializationDiagnostic = {
   code:
@@ -30,7 +30,7 @@ export async function materializeMediaReferences(
   await Promise.all(
     cloned.map(async (message) => {
       const content = await Promise.all(
-        message.content.map((block) => materializeBlock(block, diagnostics)),
+        messageContent(message).map((block) => materializeBlock(block, diagnostics)),
       );
       message.content = content;
     }),

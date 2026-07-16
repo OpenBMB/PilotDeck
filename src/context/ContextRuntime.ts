@@ -1,4 +1,4 @@
-import type { CanonicalMessage } from "../model/index.js";
+import type { CanonicalMessage, CanonicalUsage } from "../model/index.js";
 import type {
   ContextBoundary,
   ContextCaptureTurnInput,
@@ -63,6 +63,7 @@ export type AgentContextRuntime = {
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
     reservedOutputTokens?: number;
-    budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
+    lastUsage?: CanonicalUsage;
+    budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult>;
 };

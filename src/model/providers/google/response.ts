@@ -25,7 +25,9 @@ export function parseGoogleResponse(raw: unknown, provider = "google"): Canonica
 export function normalizeGoogleUsage(raw: unknown): CanonicalUsage | undefined {
   const usage = asRecord(raw);
   const inputTokens = readNumber(usage.promptTokenCount);
-  const outputTokens = readNumber(usage.candidatesTokenCount) ?? readNumber(usage.responseTokenCount);
+  const responseTokens = readNumber(usage.candidatesTokenCount) ?? readNumber(usage.responseTokenCount);
+  const thinkingTokens = readNumber(usage.thoughtsTokenCount);
+  const outputTokens = sumDefined(responseTokens, thinkingTokens);
   const cacheReadTokens = readNumber(usage.cachedContentTokenCount);
   const totalTokens = readNumber(usage.totalTokenCount) ?? sumDefined(inputTokens, outputTokens, cacheReadTokens);
   const result: CanonicalUsage = {

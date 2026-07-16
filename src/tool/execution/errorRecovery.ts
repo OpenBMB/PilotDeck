@@ -1,4 +1,5 @@
 import type { PilotDeckToolErrorCode } from "../protocol/errors.js";
+import type { PilotDeckToolValidationIssue } from "../protocol/schema.js";
 
 export type ToolErrorFailureClass =
   | "fix_input"
@@ -14,6 +15,7 @@ export type ToolErrorRecoveryAdvice = {
   nextActions: string[];
   avoidRetryReason?: string;
   salientEvidence?: string[];
+  originalError?: string;
 };
 
 export type ToolErrorRecoveryResult = {
@@ -31,17 +33,21 @@ export function buildToolErrorRecovery(options: {
 }): ToolErrorRecoveryResult {
   const evidence = extractSalientEvidence(options.message, options.details);
   const advice: ToolErrorRecoveryAdvice = {
-    summary: summarizeError(options.code, options.toolName, options.message, evidence),
+    summary: summarizeError(options.code, options.toolName, options.message, evidence, options.details),
     failureClass: classifyError(options.code, options.toolName, options.message, options.details),
     nextActions: baseNextActions(options.code, options.toolName, {
       cwd: options.cwd,
       permissionMode: options.permissionMode,
-    }, options.details),
+    }, options.message, options.details),
     salientEvidence: evidence,
   };
   const avoidRetryReason = defaultAvoidRetryReason(options.code);
   if (avoidRetryReason) {
     advice.avoidRetryReason = avoidRetryReason;
+  }
+  const originalError = formatOriginalError(options.message);
+  if (originalError) {
+    advice.originalError = originalError;
   }
 
   advice.nextActions = uniqueStrings(advice.nextActions).slice(0, 3);
@@ -74,6 +80,10 @@ function formatRecoveryMessage(
     lines.push(`Do not retry unchanged: ${advice.avoidRetryReason}`);
   }
 
+  if (advice.originalError) {
+    lines.push("Original error:", advice.originalError);
+  }
+
   if (advice.nextActions.length > 0) {
     lines.push("Next actions:");
     advice.nextActions.forEach((action, index) => {
@@ -89,9 +99,21 @@ function summarizeError(
   toolName: string,
   rawMessage: string,
   evidence: string[],
+  details?: Record<string, unknown>,
 ): string {
   if (code === "invalid_tool_input") {
-    return `The ${toolName} input did not match the tool schema.`;
+    const firstIssue = readValidationIssues(details)[0];
+    if (firstIssue?.message) {
+      return trimSentence(firstIssue.message);
+    }
+    const firstLine = firstMeaningfulLine(rawMessage);
+    if (firstLine) {
+      return trimSentence(firstLine);
+    }
+    if (evidence.length > 0) {
+      return trimSentence(evidence[0]);
+    }
+    return `The ${toolName} input is invalid.`;
   }
   if (code === "tool_not_found") {
     return `The model emitted a tool name that is not registered: ${toolName}.`;
@@ -204,6 +226,7 @@ function baseNextActions(
   code: PilotDeckToolErrorCode,
   toolName: string,
   context: { cwd: string; permissionMode: string },
+  rawMessage: string,
   details?: Record<string, unknown>,
 ): string[] {
   if (toolName === "web_fetch") {
@@ -215,13 +238,7 @@ function baseNextActions(
 
   switch (code) {
     case "invalid_tool_input":
-      if (toolName === "write_file" || toolName === "edit_file") {
-        return [
-          "Fix the tool arguments to match the schema before calling the tool again.",
-          "Create or edit a smaller valid chunk first, then continue with focused follow-up edits.",
-        ];
-      }
-      return ["Fix the tool arguments to match the schema before calling the tool again."];
+      return invalidToolInputNextActions(toolName, rawMessage, details);
     case "tool_not_found":
       return ["Use a registered canonical tool name from the current tool list."];
     case "plan_mode_violation":
@@ -257,6 +274,90 @@ function baseNextActions(
     default:
       return [`Inspect the evidence, change the approach, then retry only with corrected inputs. Current permission mode: ${context.permissionMode}.`];
   }
+}
+
+function invalidToolInputNextActions(
+  toolName: string,
+  rawMessage: string,
+  details?: Record<string, unknown>,
+): string[] {
+  const issues = readValidationIssues(details);
+  const haystack = [rawMessage, ...issues.map((issue) => `${issue.path}: ${issue.message}`)].join("\n");
+
+  if (/File has not been read yet/i.test(haystack)) {
+    return [
+      "Call read_file with the same file_path to establish the current file snapshot before writing.",
+      `Retry ${toolName} only after reading the file, or use edit_file for a focused change based on the current contents.`,
+    ];
+  }
+
+  if (/File has changed since the last read/i.test(haystack)) {
+    return [
+      "Call read_file with the same file_path again to refresh the file snapshot.",
+      `Retry ${toolName} using the refreshed contents so you do not overwrite concurrent changes.`,
+    ];
+  }
+
+  if (/String to replace not found|old_string.*not found|not appear in the target file/i.test(haystack)) {
+    return [
+      "Call read_file with the same file_path and copy the exact current text you need to replace.",
+      "Retry edit_file with a precise old_string that appears exactly once in the current file.",
+    ];
+  }
+
+  if (/Found \d+ matches of old_string|multiple matches|replace_all/i.test(haystack)) {
+    return [
+      "Use a more specific old_string that uniquely identifies the intended edit, including nearby context if needed.",
+      "If every occurrence should change, set replace_all to true and ensure that broad replacement is intended.",
+    ];
+  }
+
+  if (toolName === "bash" && /timeout \d+ms exceeds|timeout .*exceeds|exceeds the maximum|maximum of 600000/i.test(haystack)) {
+    return [
+      "Use timeout=600000 or less for foreground bash.",
+      "For a finite long-running command that should finish, use task_create and then task_wait to block for completion.",
+      "For long-lived services or watchers, use task_create with task_output for progress and task_stop for cleanup.",
+    ];
+  }
+
+  if (toolName === "bash" && /background|nohup|disown|setsid|task_create|task_wait/i.test(haystack)) {
+    return [
+      "Run short commands directly in foreground bash with a timeout of 600000ms or less.",
+      "For finite background work, use task_create and then task_wait so completion output returns to the model context.",
+      "For long-lived services or watchers, use task_create with task_output for progress checks and task_stop for cleanup.",
+    ];
+  }
+
+  const missing = issues.find((issue) => issue.code === "required");
+  if (missing) {
+    const param = cleanIssuePath(missing.path);
+    const actions = [`Include the required parameter ${formatParam(param)} in the next ${toolName} call.`];
+    if (/content|output truncated|token limit|output token/i.test(haystack)) {
+      actions.push("Create a smaller but complete draft first, then continue with focused follow-up edits or patches.");
+    }
+    return actions;
+  }
+
+  const invalidType = issues.find((issue) => issue.code === "invalid_type");
+  if (invalidType) {
+    return [`Change ${formatParam(cleanIssuePath(invalidType.path))} to the expected type before retrying: ${trimSentence(invalidType.message)}.`];
+  }
+
+  const unknown = issues.find((issue) => issue.code === "unknown_property");
+  if (unknown) {
+    return [`Remove or rename the unexpected parameter ${formatParam(cleanIssuePath(unknown.path))}; use only parameters from the tool schema.`];
+  }
+
+  const enumIssue = issues.find((issue) => issue.code === "invalid_enum");
+  if (enumIssue) {
+    return [`Use one of the allowed values for ${formatParam(cleanIssuePath(enumIssue.path))}: ${trimSentence(enumIssue.message)}.`];
+  }
+
+  if (issues.length > 0) {
+    return [`Fix ${formatParam(cleanIssuePath(issues[0].path))}: ${trimSentence(issues[0].message)}`];
+  }
+
+  return ["Fix the specific invalid argument described in the error message before calling the tool again."];
 }
 
 function webFetchNextActions(
@@ -326,12 +427,13 @@ function defaultAvoidRetryReason(code: PilotDeckToolErrorCode): string | undefin
 }
 
 function extractSalientEvidence(rawMessage: string, details?: Record<string, unknown>): string[] {
+  const issueEvidence = readValidationIssues(details).map(formatIssueEvidence);
   const lines = rawMessage
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !/^TOOL_ERROR\[/i.test(line));
-  const evidence = lines.slice(0, 2);
+  const evidence = [...issueEvidence, ...lines.slice(0, 2)];
   const status = readNumber(details, "status");
   if (typeof status === "number") {
     const statusText = readString(details, "statusText");
@@ -354,6 +456,46 @@ function extractSalientEvidence(rawMessage: string, details?: Record<string, unk
     evidence.push(firstMeaningfulLine(stderr));
   }
   return uniqueStrings(evidence.filter(Boolean).map(trimSentence));
+}
+
+function readValidationIssues(details?: Record<string, unknown>): PilotDeckToolValidationIssue[] {
+  const issues = details?.issues;
+  if (!Array.isArray(issues)) {
+    return [];
+  }
+  return issues.flatMap((issue): PilotDeckToolValidationIssue[] => {
+    if (!issue || typeof issue !== "object") {
+      return [];
+    }
+    const record = issue as Record<string, unknown>;
+    const path = typeof record.path === "string" ? record.path : "input";
+    const message = typeof record.message === "string" ? record.message : "Invalid tool input.";
+    const code = typeof record.code === "string" ? record.code : "invalid_schema";
+    if (!isValidationIssueCode(code)) {
+      return [{ path, code: "invalid_schema", message }];
+    }
+    return [{ path, code, message }];
+  });
+}
+
+function isValidationIssueCode(value: string): value is PilotDeckToolValidationIssue["code"] {
+  return value === "required"
+    || value === "unknown_property"
+    || value === "invalid_type"
+    || value === "invalid_enum"
+    || value === "invalid_schema";
+}
+
+function formatIssueEvidence(issue: PilotDeckToolValidationIssue): string {
+  return `${cleanIssuePath(issue.path)}: ${issue.message}`;
+}
+
+function cleanIssuePath(path: string): string {
+  return path.replace(/^\$\.?/, "") || "input";
+}
+
+function formatParam(path: string): string {
+  return `\`${path}\``;
 }
 
 function errorHaystack(rawMessage: string, details?: Record<string, unknown>): string {
@@ -385,6 +527,24 @@ function trimSentence(value: string): string {
     return compact;
   }
   return compact.slice(0, 217).trimEnd() + "...";
+}
+
+const ORIGINAL_ERROR_MAX_CHARS = 2_000;
+
+function formatOriginalError(rawMessage: string): string | undefined {
+  const cleaned = rawMessage
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => !/^TOOL_ERROR\[/i.test(line.trim()))
+    .join("\n")
+    .trim();
+  if (!cleaned) {
+    return undefined;
+  }
+  if (cleaned.length <= ORIGINAL_ERROR_MAX_CHARS) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, ORIGINAL_ERROR_MAX_CHARS).trimEnd()}\n... [original error truncated; ${cleaned.length} chars total]`;
 }
 
 function uniqueStrings(values: string[]): string[] {

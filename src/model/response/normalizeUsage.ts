@@ -31,7 +31,11 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
     readNumber(raw.total_cost) ??
     readNumber(raw.estimated_cost);
 
-  const details = isRecord(raw.prompt_tokens_details) ? raw.prompt_tokens_details : undefined;
+  const details = isRecord(raw.prompt_tokens_details)
+    ? raw.prompt_tokens_details
+    : isRecord(raw.input_tokens_details)
+      ? raw.input_tokens_details
+      : undefined;
   const cacheReadTokens = readNumber(details?.cached_tokens) ?? readNumber(raw.cache_read_input_tokens);
   const cacheWriteTokens = readNumber(details?.cache_write_tokens) ?? readNumber(raw.cache_creation_input_tokens);
 

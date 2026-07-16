@@ -16,6 +16,7 @@ export type {
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
+  PrepareWeixinLoginResult,
   ReloadConfigResult,
   TurnUsage,
 } from "./types.js";

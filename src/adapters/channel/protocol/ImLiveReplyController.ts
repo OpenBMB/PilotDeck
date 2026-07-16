@@ -986,7 +986,19 @@ function defaultToolErrorFormatter(event: GatewayEvent & { type: "tool_call_fini
 }
 
 function defaultErrorFormatter(event: GatewayEvent & { type: "error" }): string {
-  return `\n❌ ${event.message}\n`;
+  const provider = event.providerError;
+  const providerLines = provider
+    ? [
+        "",
+        "Provider error:",
+        provider.provider ? `- provider: ${provider.provider}` : undefined,
+        provider.status !== undefined ? `- status: ${provider.status}` : undefined,
+        provider.code ? `- code: ${provider.code}` : undefined,
+        provider.message ? `- message: ${provider.message}` : undefined,
+        provider.raw ? `- raw: ${provider.raw}` : undefined,
+      ].filter((line): line is string => line !== undefined).join("\n")
+    : "";
+  return `\n❌ ${event.message}${providerLines}\n`;
 }
 
 function defaultActivityFormatter(activity: Omit<ImLiveReplyActivity, "text">): string {

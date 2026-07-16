@@ -83,7 +83,7 @@ export type CreateWebFetchToolOptions = {
 
 const DEFAULT_PROVIDER = "openrouter";
 const DEFAULT_MODEL_ID = "moonshotai/kimi-k2.6";
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_MODE: WebFetchMode = "llm";
 
 function resolveMode(mode: WebFetchInput["mode"]): WebFetchMode {

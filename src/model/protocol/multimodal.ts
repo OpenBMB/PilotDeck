@@ -4,6 +4,7 @@ import type {
   CanonicalMessage,
   CanonicalToolResultContentBlock,
 } from "./canonical.js";
+import { messageContent } from "./clone.js";
 
 export const SUPPORTED_INPUT_MODALITIES = ["text", "image", "pdf", "audio"] as const;
 
@@ -44,8 +45,9 @@ export function downgradeUnsupportedContent(
   if (allowed.has("image") && allowed.has("pdf") && allowed.has("audio")) return;
 
   for (const msg of messages) {
-    for (let i = 0; i < msg.content.length; i++) {
-      const block = msg.content[i];
+    const content = messageContent(msg);
+    for (let i = 0; i < content.length; i++) {
+      const block = content[i]!;
 
       if (block.type === "tool_result") {
         let changed = false;
@@ -67,7 +69,7 @@ export function downgradeUnsupportedContent(
 
       const placeholder = mediaBlockToPlaceholder(block, allowed);
       if (placeholder) {
-        (msg.content as CanonicalContentBlock[])[i] = { type: "text", text: placeholder };
+        content[i] = { type: "text", text: placeholder };
       }
     }
   }

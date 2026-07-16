@@ -1,4 +1,4 @@
-import type { CanonicalMessage, CanonicalModelEvent, CanonicalToolCall } from "../../model/index.js";
+import type { CanonicalMessage, CanonicalModelError, CanonicalModelEvent, CanonicalToolCall } from "../../model/index.js";
 import type { PilotDeckToolResult } from "../../tool/index.js";
 import type { AgentError } from "./errors.js";
 import type { AgentTurnResult } from "./result.js";
@@ -32,6 +32,28 @@ export type AgentEvent =
   | { type: "context_budget"; sessionId: string; turnId: string; snapshot: TokenBudgetSnapshot }
   | { type: "warning"; sessionId: string; turnId: string; code: string; message: string; metadata?: Record<string, unknown> }
   | { type: "agent_status"; sessionId: string; turnId: string; event: string; detail?: Record<string, unknown> }
+  | {
+      type: "token_cap_adjusted";
+      sessionId: string;
+      turnId: string;
+      provider: string;
+      model: string;
+      cap: "context" | "output";
+      previous?: number;
+      next: number;
+      reason: string;
+    }
+  | {
+      type: "empty_output_recovery";
+      sessionId: string;
+      turnId: string;
+      provider: string;
+      model: string;
+      finishReason: string;
+      previousMaxOutputTokens?: number;
+      nextMaxOutputTokens?: number;
+    }
+  | { type: "model_recovery_failed"; sessionId: string; turnId: string; provider: string; model: string; error: CanonicalModelError }
   | { type: "subagent_started"; sessionId: string; turnId: string; subagentId: string; subagentType: string; toolCallId?: string }
   | { type: "subagent_completed"; sessionId: string; turnId: string; subagentId: string; subagentType: string; success: boolean; durationMs: number }
   | {

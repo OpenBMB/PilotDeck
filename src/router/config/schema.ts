@@ -41,9 +41,6 @@ export type RouterTokenSaverConfig = {
 
 export type RouterAutoOrchestrateConfig = {
   enabled: boolean;
-  mainAgentModel?: RouterModelRef;
-  /** Force subagents spawned during orchestration to use this model instead of the tier-resolved one. */
-  subagentModel?: RouterModelRef;
   skillExtensionId?: string;
   /** Inline orchestration prompt injected when skillExtensionId is absent. */
   orchestrationPrompt?: string;

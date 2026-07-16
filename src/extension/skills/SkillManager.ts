@@ -54,29 +54,35 @@ const RISKY_EXTS = new Set([
 export type SkillManagerOptions = {
   /** Resolved `~/.pilotdeck` root. Required. */
   pilotHome: string;
+  /** Read-only skills shipped with the active PilotDeck build. */
+  builtinSkillsRoot?: string;
   /**
    * "General chat" cwds we treat as not-a-real-project. Defaults to
    * `pilotHome` (~/.pilotdeck). When the caller passes a `projectKey`
    * matching one of these, the manager behaves as if no project was set —
-   * only user-scope skills are visible.
+   * built-in and user-scope skills are visible, but project skills are not.
    */
   generalCwdPaths?: string[];
 };
 
 /**
  * Authoritative skill-CRUD layer used by every host (gateway clients,
- * UI server, future SDK callers). Owns the on-disk layout under
- * `~/.pilotdeck/skills/` (user scope) and `<projectRoot>/.pilotdeck/skills/`
- * (project scope). Legacy third-party skill directories are intentionally
- * not consulted — conflating them with PilotDeck's layout caused the
- * UI/agent skill drift the migration fixes.
+ * UI server, future SDK callers). Reads the release's bundled skill root and
+ * owns the editable layouts under `~/.pilotdeck/skills/` (user scope) and
+ * `<projectRoot>/.pilotdeck/skills/` (project scope). Legacy third-party skill
+ * directories are intentionally not consulted — conflating them with
+ * PilotDeck's layout caused the UI/agent skill drift the migration fixes.
  */
 export class SkillManager {
   private readonly pilotHome: string;
+  private readonly builtinSkillsRootPath: string | null;
   private readonly generalCwdPaths: string[];
 
   constructor(options: SkillManagerOptions) {
     this.pilotHome = resolve(options.pilotHome);
+    this.builtinSkillsRootPath = options.builtinSkillsRoot
+      ? resolve(options.builtinSkillsRoot)
+      : null;
     const defaults = [this.pilotHome];
     this.generalCwdPaths = (options.generalCwdPaths ?? defaults).map((p) => resolve(p));
   }
@@ -87,6 +93,13 @@ export class SkillManager {
 
   private userSkillsRoot(): string {
     return getPilotExtensionPaths(this.pilotHome, this.pilotHome).globalSkillsDir;
+  }
+
+  private builtinSkillsRoot(): string {
+    if (!this.builtinSkillsRootPath) {
+      throw new SkillManagerError("not_configured", "Built-in skills root is not configured.");
+    }
+    return this.builtinSkillsRootPath;
   }
 
   private projectSkillsRoot(projectRoot: string): string {
@@ -100,6 +113,9 @@ export class SkillManager {
 
   /** Resolve a `(scope, slug, projectKey)` triple to a target dir. */
   private resolveScopeRoot(scope: SkillScope, projectKey: string | null | undefined): string {
+    if (scope === "builtin") {
+      return this.builtinSkillsRoot();
+    }
     if (scope === "project") {
       if (!projectKey || this.isGeneralCwd(projectKey)) {
         throw new SkillManagerError(
@@ -110,6 +126,15 @@ export class SkillManager {
       return this.projectSkillsRoot(projectKey);
     }
     return this.userSkillsRoot();
+  }
+
+  private assertMutableScope(scope: SkillScope): void {
+    if (scope === "builtin") {
+      throw new SkillManagerError(
+        "read_only",
+        "Built-in skills are read-only. Create a user or project override to edit this skill.",
+      );
+    }
   }
 
   private resolveSkillDir(input: SkillAddressInput): string {
@@ -131,14 +156,36 @@ export class SkillManager {
     const projectKey = input.projectKey ?? null;
     const effectiveProject = this.isGeneralCwd(projectKey) ? null : projectKey;
 
+    const builtinSkills = this.builtinSkillsRootPath
+      ? await listSkillsIn(this.builtinSkillsRootPath, "builtin")
+      : [];
     const userSkills = await listSkillsIn(this.userSkillsRoot(), "user");
     const projectSkills = effectiveProject
       ? await listSkillsIn(this.projectSkillsRoot(effectiveProject), "project")
       : [];
 
+    const builtinSlugs = new Set(builtinSkills.map((skill) => skill.slug));
+    const userSlugs = new Set(userSkills.map((skill) => skill.slug));
+    const projectSlugs = new Set(projectSkills.map((skill) => skill.slug));
+
     return {
-      user: userSkills,
-      project: projectSkills,
+      builtin: builtinSkills.map((skill) => ({
+        ...skill,
+        ...(projectSlugs.has(skill.slug)
+          ? { overriddenBy: "project" as const }
+          : userSlugs.has(skill.slug)
+            ? { overriddenBy: "user" as const }
+            : {}),
+      })),
+      user: userSkills.map((skill) => ({
+        ...skill,
+        ...(builtinSlugs.has(skill.slug) ? { overridesBuiltin: true } : {}),
+        ...(projectSlugs.has(skill.slug) ? { overriddenBy: "project" as const } : {}),
+      })),
+      project: projectSkills.map((skill) => ({
+        ...skill,
+        ...(builtinSlugs.has(skill.slug) ? { overridesBuiltin: true } : {}),
+      })),
       projectPath: effectiveProject,
     };
   }
@@ -160,6 +207,7 @@ export class SkillManager {
   }
 
   async write(input: SkillWriteInput): Promise<SkillWriteResult> {
+    this.assertMutableScope(input.scope);
     if (typeof input.content !== "string") {
       throw new SkillManagerError("invalid_input", "content (string) is required.");
     }
@@ -172,6 +220,7 @@ export class SkillManager {
   }
 
   async create(input: SkillCreateInput): Promise<SkillCreateResult> {
+    this.assertMutableScope(input.scope);
     const skillDir = this.resolveSkillDir(input);
     let exists = false;
     try {
@@ -208,6 +257,7 @@ export class SkillManager {
   }
 
   async delete(input: SkillDeleteInput): Promise<SkillDeleteResult> {
+    this.assertMutableScope(input.scope);
     const skillDir = this.resolveSkillDir(input);
     try {
       await fs.rm(skillDir, { recursive: true, force: true });
@@ -233,6 +283,7 @@ export class SkillManager {
   }
 
   async import(input: SkillImportInput): Promise<SkillImportResult> {
+    this.assertMutableScope(input.scope);
     if (typeof input.sourcePath !== "string" || !input.sourcePath.trim()) {
       throw new SkillManagerError("invalid_input", "sourcePath is required.");
     }
@@ -561,6 +612,7 @@ async function readSkillMeta(skillDir: string, scope: SkillScope): Promise<Skill
     skillFile,
     skillDir,
     scope,
+    readonly: scope === "builtin",
     mtime,
   };
 }

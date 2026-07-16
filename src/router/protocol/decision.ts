@@ -17,7 +17,6 @@ export type RouterMutationsLog = {
   orchestrationActivated?: { tier: string; continued: boolean };
   asyncAgentLaunchedRewritten?: boolean;
   subagentTagStripped?: boolean;
-  subagentModelOverride?: boolean;
   mediaCapabilityRerouted?: {
     required: import("../../model/protocol/multimodal.js").InputModality[];
     from: string;

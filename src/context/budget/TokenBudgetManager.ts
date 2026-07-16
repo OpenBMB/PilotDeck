@@ -2,14 +2,22 @@ import {
   flattenToolResultBlockText,
   type CanonicalContentBlock,
   type CanonicalMessage,
+  type CanonicalUsage,
 } from "../../model/index.js";
 import { countTokens } from "./tokenizer.js";
+import { effectiveInputContextTokens } from "./effectiveContext.js";
 
 export type TokenWarningState = "ok" | "warning" | "blocking";
 
 export type TokenBudgetSnapshot = {
   tokens: number;
+  displayTokens?: number;
+  budgetTokens?: number;
+  estimateSource?: "estimator" | "usage";
+  usageTokens?: number;
   maxContextTokens: number;
+  effectiveContextTokens?: number;
+  maxOutputTokens?: number;
   warningRatio: number;
   blockingRatio: number;
   state: TokenWarningState;
@@ -23,6 +31,7 @@ export type TokenBudgetSnapshot = {
 export type TokenBudgetEvaluateOptions = {
   usePadding?: boolean;
   reservedOutputTokens?: number;
+  lastUsage?: CanonicalUsage;
 };
 
 export type TokenBudgetManagerOptions = {
@@ -173,13 +182,20 @@ export class TokenBudgetManager {
   evaluate(
     messages: CanonicalMessage[],
     maxContextTokens: number,
-    options: TokenBudgetEvaluateOptions = {},
+    optionsOrMaxOutputTokens: TokenBudgetEvaluateOptions | number = {},
+    lastUsage?: CanonicalUsage,
   ): TokenBudgetSnapshot {
-    const tokens = options.usePadding
+    const options = typeof optionsOrMaxOutputTokens === "number"
+      ? { reservedOutputTokens: optionsOrMaxOutputTokens, lastUsage }
+      : optionsOrMaxOutputTokens;
+    const estimatedTokens = options.usePadding
       ? this.estimateForMessagesWithPadding(messages)
       : this.estimateMessagesTokens(messages);
+    const usageTokens = tokensFromUsage(options.lastUsage);
+    const tokens = usageTokens !== undefined ? Math.max(usageTokens, estimatedTokens) : estimatedTokens;
     return this.snapshotFromTokens(tokens, maxContextTokens, {
       reservedOutputTokens: options.reservedOutputTokens,
+      usageTokens,
     });
   }
 
@@ -191,11 +207,15 @@ export class TokenBudgetManager {
       source?: "provider" | "local";
       exact?: boolean;
       estimatorError?: string;
+      usageTokens?: number;
+      displayTokens?: number;
+      budgetTokens?: number;
     } = {},
   ): TokenBudgetSnapshot {
+    const budgetTokens = options.budgetTokens !== undefined ? Math.max(options.budgetTokens, tokens) : tokens;
     const reserved = Math.max(0, Math.floor(options.reservedOutputTokens ?? 0));
-    const promptBudget = Math.max(1, maxContextTokens - reserved);
-    const ratio = promptBudget > 0 ? tokens / promptBudget : 0;
+    const promptBudget = effectiveInputContextTokens(maxContextTokens, reserved);
+    const ratio = promptBudget > 0 ? budgetTokens / promptBudget : 0;
     let state: TokenWarningState = "ok";
     if (ratio >= this.blockingRatio) {
       state = "blocking";
@@ -204,7 +224,13 @@ export class TokenBudgetManager {
     }
     return {
       tokens,
+      ...(options.displayTokens !== undefined && options.displayTokens !== tokens ? { displayTokens: options.displayTokens } : {}),
+      ...(budgetTokens !== tokens ? { budgetTokens } : {}),
+      estimateSource: options.usageTokens !== undefined ? "usage" : "estimator",
+      ...(options.usageTokens !== undefined ? { usageTokens: options.usageTokens } : {}),
       maxContextTokens: promptBudget,
+      effectiveContextTokens: promptBudget,
+      maxOutputTokens: reserved,
       warningRatio: this.warningRatio,
       blockingRatio: this.blockingRatio,
       state,
@@ -215,6 +241,17 @@ export class TokenBudgetManager {
       estimatorError: options.estimatorError,
     };
   }
+}
+
+function tokensFromUsage(usage: CanonicalUsage | undefined): number | undefined {
+  if (!usage) return undefined;
+  const input = usage.inputTokens;
+  const output = usage.outputTokens;
+  if (typeof input === "number" && Number.isFinite(input) && input > 0) {
+    const safeOutput = typeof output === "number" && Number.isFinite(output) && output > 0 ? output : 0;
+    return Math.ceil(input + safeOutput);
+  }
+  return undefined;
 }
 
 /**

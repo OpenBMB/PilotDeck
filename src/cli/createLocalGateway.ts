@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
-import { resolve, join as joinPath } from "node:path";
+import { dirname, resolve, join as joinPath } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import type { EdgeClawMemoryService } from "edgeclaw-memory-core";
 import type { SessionConfigOverrides } from "../always-on/runtime/SessionConfigOverrides.js";
 import {
@@ -83,13 +84,15 @@ import { SessionRouterStore } from "../router/session/SessionRouterStore.js";
 import type { RouterEventBus, RouterEvent } from "../router/protocol/events.js";
 import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
-import { SkillManager } from "../extension/skills/index.js";
+import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 
 export type CreateLocalGatewayOptions = {
   projectRoot?: string;
   pilotHome?: string;
+  /** Read-only skills shipped with this PilotDeck build. Auto-discovered when omitted. */
+  builtinSkillsRoot?: string;
   env?: Record<string, string | undefined>;
   permissionMode?: AgentRuntimeConfig["permissionMode"];
   /** Tools merged into every per-project ToolRegistry. */
@@ -160,6 +163,20 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const pilotHome = options.pilotHome ?? resolvePilotHome(baseEnv);
   const env = options.pilotHome ? { ...baseEnv, PILOT_HOME: pilotHome } : baseEnv;
+  const builtinSkillsRoot = resolveBuiltinSkillsRoot(options.builtinSkillsRoot, env);
+  const legacySkillMigration = migrateLegacyBundledSkillCopies({ pilotHome, builtinSkillsRoot });
+  if (legacySkillMigration.migrated.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[pilotdeck] Activated bundled skills directly; moved ${legacySkillMigration.migrated.length} ` +
+      `unchanged legacy ${legacySkillMigration.migrated.length === 1 ? "copy" : "copies"} to ` +
+      `${joinPath(pilotHome, "skill-backups", "legacy-bundled-v1")}.`,
+    );
+  }
+  for (const failure of legacySkillMigration.failures) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pilotdeck] Could not migrate legacy skill '${failure.slug}': ${failure.message}`);
+  }
   const now = () => new Date();
   const telemetry = options.telemetry ?? createTelemetryCollector({ env, pilotHome });
   const ownsTelemetry = !options.telemetry;
@@ -167,6 +184,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   let router: SessionRouter | undefined;
   const extensionWatchManager = new ExtensionWatchManager({
     pilotHome,
+    builtinSkillsRoot,
     onChange: (event) => {
       handleExtensionWatchEvent(event, registry, router);
     },
@@ -182,6 +200,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   registry = new ProjectRuntimeRegistry({
     fallbackProjectRoot,
     pilotHome,
+    builtinSkillsRoot,
     env,
     permissionMode: options.permissionMode ?? "default",
     now,
@@ -261,7 +280,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         }
       : undefined,
   });
-  const skillManager = new SkillManager({ pilotHome });
+  const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot });
   const gateway = new InProcessGateway(router, {
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -274,6 +293,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       readWebSessionMessages(input, {
         projectRoot: input.projectKey ? input.projectKey : fallbackProjectRoot,
         pilotHome,
+        maxContextTokens: defaultRuntime.snapshot.config.agent.maxContextTokens,
+        maxOutputTokens: defaultRuntime.snapshot.config.agent.maxOutputTokens,
         now,
       }),
     readSubagentMessages: (input) =>
@@ -393,9 +414,26 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   };
 }
 
+function resolveBuiltinSkillsRoot(
+  configuredRoot: string | undefined,
+  env: Record<string, string | undefined>,
+): string {
+  const explicit = configuredRoot ?? env.PILOTDECK_BUNDLED_SKILLS_DIR;
+  if (explicit) return resolve(explicit);
+
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    joinPath(moduleDir, "..", "..", "skills"),
+    joinPath(moduleDir, "..", "..", "..", "skills"),
+    joinPath(process.cwd(), "skills"),
+  ];
+  return resolve(candidates.find((candidate) => existsSync(candidate)) ?? candidates[2]);
+}
+
 type ProjectRuntimeRegistryOptions = {
   fallbackProjectRoot: string;
   pilotHome: string;
+  builtinSkillsRoot?: string;
   env: Record<string, string | undefined>;
   permissionMode: AgentRuntimeConfig["permissionMode"];
   now: () => Date;
@@ -652,6 +690,7 @@ class ProjectRuntimeRegistry {
     const pluginRuntime = new PluginRuntime({
       projectRoot,
       pilotHome: this.options.pilotHome,
+      builtinSkillsRoot: this.options.builtinSkillsRoot,
       builtinPlugins: loadBuiltinPlugins(),
       builtinPluginsEnabled: snapshot.config.extension.builtinPluginsEnabled,
     });
@@ -1014,6 +1053,14 @@ class ProjectRuntimeRegistry {
           return undefined;
         }
       },
+      getModelTokenLimits: (provider, model) => {
+        try {
+          const caps = runtime.model.getCapabilities(provider, model);
+          return { maxContextTokens: caps.maxContextTokens, maxOutputTokens: caps.maxOutputTokens };
+        } catch {
+          return undefined;
+        }
+      },
     };
     const sessionTitleGenerator = createSessionTitleGenerator({
       modelRuntime: runtime.model,
@@ -1209,15 +1256,17 @@ class ProjectRuntimeRegistry {
       // Model or provider not found — fall back to text-only.
     }
     let maxContextTokens: number | undefined;
+    let maxOutputTokens: number | undefined;
     try {
       const caps = runtime.model.getCapabilities(agent.model.provider, agent.model.model);
       maxContextTokens = agent.maxContextTokens ?? caps.maxContextTokens;
+      maxOutputTokens = caps.maxOutputTokens;
     } catch {
       maxContextTokens = agent.maxContextTokens;
     }
-    const maxOutputTokens = readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
+    maxOutputTokens = readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
       ?? agent.maxOutputTokens
-      ?? undefined;
+      ?? maxOutputTokens;
     return {
       provider: agent.model.provider,
       model: agent.model.model,

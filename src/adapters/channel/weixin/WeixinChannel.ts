@@ -7,6 +7,7 @@ import type { ClientOptions, GetUpdatesResp, WeixinMessage, LoginResult } from "
 import type { CronResultDelivery } from "../../../cron/index.js";
 import type { ChannelAttachment, Gateway, GatewayChannelKey, GatewayOutboundAttachment } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
+import type { ChannelRuntimeStatusReporter } from "../protocol/ChannelRuntimeStatus.js";
 import { executeChannelCommand } from "../protocol/ChannelCommandRegistry.js";
 import {
   formatImAttachmentFallback,
@@ -112,9 +113,12 @@ export class WeixinChannel implements ChannelAdapter {
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
+  private reportChannelStatus?: ChannelRuntimeStatusReporter;
   private client?: WeixinIlinkClient;
   private loopAbort = new AbortController();
+  private startGeneration = 0;
   private pollPromise: Promise<void> | null = null;
+  private loginPromise: Promise<void> | null = null;
   private activeChats = new Set<string>();
   private activeLiveReplies = new Map<string, ImLiveReplyController<void>>();
   private readonly elicitation = new ImElicitationHelper();
@@ -129,6 +133,7 @@ export class WeixinChannel implements ChannelAdapter {
   private attachmentStore: ImAttachmentStore;
   private loginRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private loginRecoveryPromise: Promise<void> | null = null;
+  private currentLoginQrUrl: string | undefined;
 
   constructor(options: WeixinChannelOptions = {}) {
     this.credentialsPath = options.credentialsPath ?? CREDENTIALS_PATH;
@@ -147,25 +152,31 @@ export class WeixinChannel implements ChannelAdapter {
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
     this.gateway = deps.gateway;
     this.logger = deps.logger;
+    this.reportChannelStatus = deps.reportChannelStatus;
+    this.startGeneration++;
     this.loopAbort = new AbortController();
 
-    const creds = await this.ensureLoggedIn();
+    const creds = this.loadCredentials();
     if (creds) {
+      this.logger?.info?.(`weixin: loaded saved credentials (account: ${creds.accountId})`);
       this.startPollingWithCredentials(creds);
     } else {
-      this.startLoginRecoveryWatcher();
+      this.startQrLoginInBackground(this.startGeneration);
     }
 
     return {
       stop: async (reason?: string) => {
         this.logger?.info?.(`weixin: stopping (${reason ?? "no reason"})`);
+        this.startGeneration++;
         this.loopAbort.abort();
         this.clearLoginRecoveryTimer();
         this.saveCursor();
         try { await this.pollPromise; } catch { /* ignore */ }
         try { await this.loginRecoveryPromise; } catch { /* ignore */ }
         this.pollPromise = null;
+        this.loginPromise = null;
         this.loginRecoveryPromise = null;
+        this.reportStatus("stopped", "weixin: stopped");
       },
     };
   }
@@ -188,6 +199,7 @@ export class WeixinChannel implements ChannelAdapter {
     this.loopAbort = new AbortController();
     this.pollPromise = this.pollLoop();
     this.logger?.info?.("weixin: connected, poll loop started");
+    this.reportStatus("connected", "weixin: connected", { accountId: creds.accountId });
   }
 
   private startLoginRecoveryWatcher(): void {
@@ -248,24 +260,38 @@ export class WeixinChannel implements ChannelAdapter {
     this.loginRecoveryTimer = null;
   }
 
-  private async ensureLoggedIn(): Promise<SavedCredentials | null> {
-    const saved = this.loadCredentials();
-    if (saved) {
-      this.logger?.info?.(`weixin: loaded saved credentials (account: ${saved.accountId})`);
-      return saved;
+  private startQrLoginInBackground(generation: number): void {
+    if (this.loginPromise) {
+      this.logger?.warn?.("weixin: QR login already running");
+      return;
     }
 
     this.logger?.info?.("weixin: no credentials found, starting QR login...");
+    this.currentLoginQrUrl = undefined;
+    this.reportStatus("waiting_for_login", "微信等待扫码登录");
     console.log("\n╔══════════════════════════════════════════════╗");
     console.log("║  微信 iLink 登录 — 请用微信扫描二维码        ║");
     console.log("╚══════════════════════════════════════════════╝\n");
+    console.log("[weixin] 等待扫码登录；PilotDeck Web UI 已可继续使用。\n");
 
+    this.loginPromise = this.runQrLogin(generation).finally(() => {
+      if (this.startGeneration === generation) {
+        this.loginPromise = null;
+      }
+    });
+  }
+
+  private async runQrLogin(generation: number): Promise<void> {
     try {
       const result: LoginResult = await this.login({
         onQRCode: (url) => {
+          if (this.isStaleGeneration(generation)) return;
+          this.currentLoginQrUrl = url;
+          this.reportStatus("waiting_for_login", "微信等待扫码登录", { qrUrl: url });
           console.log(`[weixin] 扫码登录链接:\n${url}\n`);
         },
         onStatusChange: (status) => {
+          if (this.isStaleGeneration(generation)) return;
           const labels: Record<string, string> = {
             waiting: "等待扫码...",
             scanned: "已扫码，等待确认...",
@@ -273,8 +299,14 @@ export class WeixinChannel implements ChannelAdapter {
             refreshing: "刷新中...",
           };
           console.log(`[weixin] ${labels[status] ?? status}`);
+          if (status === "waiting" || status === "scanned" || status === "refreshing") {
+            this.reportStatus("waiting_for_login", `weixin: ${labels[status] ?? status}`, {
+              qrUrl: this.currentLoginQrUrl,
+            });
+          }
         },
       });
+      if (this.isStaleGeneration(generation)) return;
 
       const creds: SavedCredentials = {
         baseUrl: result.baseUrl,
@@ -282,14 +314,31 @@ export class WeixinChannel implements ChannelAdapter {
         accountId: result.accountId,
       };
       this.saveCredentials(creds);
+      this.currentLoginQrUrl = undefined;
       console.log(`[weixin] 登录成功! accountId: ${result.accountId}\n`);
       this.logger?.info?.(`weixin: login successful, accountId=${result.accountId}`);
-      return creds;
+      this.startPollingWithCredentials(creds);
     } catch (e) {
+      if (this.isStaleGeneration(generation)) return;
+      const message = formatWeixinError(e);
+      this.currentLoginQrUrl = undefined;
       this.logger?.error?.(`weixin: QR login failed: ${e}`);
       console.error(`[weixin] 登录失败: ${e}`);
-      return null;
+      this.reportStatus("failed", "weixin: QR login failed", { error: message });
+      this.startLoginRecoveryWatcher();
     }
+  }
+
+  private isStaleGeneration(generation: number): boolean {
+    return this.loopAbort.signal.aborted || this.startGeneration !== generation;
+  }
+
+  private reportStatus(
+    state: "starting" | "connected" | "waiting_for_login" | "expired" | "failed" | "stopped",
+    message: string,
+    details: { accountId?: string; error?: string; qrUrl?: string } = {},
+  ): void {
+    this.reportChannelStatus?.(this.channelKey, { state, message, ...details });
   }
 
   private async pollLoop(): Promise<void> {
@@ -302,6 +351,7 @@ export class WeixinChannel implements ChannelAdapter {
           this.logger?.error?.("weixin: session expired (errcode -14), need re-login");
           console.error("[weixin] Session 过期，请删除凭证文件并重启以重新扫码登录:");
           console.error(`[weixin]   rm ${this.credentialsPath}`);
+          this.reportStatus("expired", "微信登录已过期，请重新扫码登录");
           await this.notifyActiveChats(WEIXIN_SESSION_EXPIRED_TEXT);
           break;
         }
@@ -678,7 +728,7 @@ export class WeixinChannel implements ChannelAdapter {
         type: "agent_status",
         event: "channel_submit_failed",
         detail: createVisibleErrorStatusDetail({
-          message: "处理消息时发生错误，请重试。",
+          message: "Failed to process this message. Please retry.",
           code: "channel_submit_failed",
           userHint: "PilotDeck failed before this IM turn could finish. Retry the message; if it repeats, check the channel and gateway logs.",
           scope: "channel",

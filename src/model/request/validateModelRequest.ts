@@ -1,4 +1,5 @@
 import type { CanonicalModelRequest, ModelConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
+import { messageContent } from "../protocol/clone.js";
 import { ModelRequestError } from "../protocol/errors.js";
 import { assertContentSupported } from "../protocol/multimodal.js";
 
@@ -40,7 +41,7 @@ export function validateModelRequest(
   }
 
   for (const message of request.messages) {
-    assertContentSupported(message.content, model.multimodal);
+    assertContentSupported(messageContent(message), model.multimodal);
   }
 
   return { provider, model };

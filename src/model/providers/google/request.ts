@@ -18,9 +18,11 @@ import type {
   ModelDefinition,
 } from "../../protocol/canonical.js";
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
+import { messageContent } from "../../protocol/clone.js";
 import { normalizeGoogleModelId } from "./modelId.js";
 import { cleanSchemaForGoogle, normalizeGoogleToolSchema } from "./schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
+import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 
 export type GoogleRequestBody = GenerateContentParameters;
 
@@ -131,7 +133,7 @@ function toGoogleContents(messages: CanonicalMessage[]): Content[] {
       currentParts.push(...parts);
     };
 
-    for (const block of message.content) {
+    for (const block of messageContent(message)) {
       const role = googleRoleForBlock(message.role, block);
       push(role, toGoogleParts(block, toolNamesById));
     }
@@ -186,10 +188,8 @@ function toGoogleParts(block: CanonicalContentBlock, toolNamesById: Map<string, 
       return [toGoogleFunctionResponsePart(
         sanitizeGoogleToolCallId(block.toolCallId),
         toolNamesById.get(sanitizeGoogleToolCallId(block.toolCallId)) ?? block.toolCallId,
-        block.preview + (block.hasMore
-          ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
-          : ""),
-        false,
+        formatToolResultReferenceText(block),
+        block.isError,
         [],
       )];
     case "media_reference":
@@ -266,7 +266,7 @@ function sanitizeGoogleContents(contents: Content[]): Content[] {
 function collectToolCallNames(messages: CanonicalMessage[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const message of messages) {
-    for (const block of message.content) {
+    for (const block of messageContent(message)) {
       if (block.type === "tool_call") {
         map.set(sanitizeGoogleToolCallId(block.id), block.name);
       }

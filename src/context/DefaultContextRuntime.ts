@@ -1,4 +1,4 @@
-import type { CanonicalMessage } from "../model/index.js";
+import type { CanonicalMessage, CanonicalUsage } from "../model/index.js";
 import { ToolResultBudget } from "./budget/ToolResultBudget.js";
 import type { TokenBudgetManager, TokenBudgetSnapshot } from "./budget/TokenBudgetManager.js";
 import type { AutoCompactionPolicy } from "./compaction/AutoCompactionPolicy.js";
@@ -302,7 +302,8 @@ export class DefaultContextRuntime implements ContextRuntime {
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
     reservedOutputTokens?: number;
-    budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
+    lastUsage?: CanonicalUsage;
+    budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult> {
     const effectiveMaxContextTokens = input.maxContextTokens ?? this.maxContextTokens;
     if (!this.autoCompactionPolicy || !this.tokenBudget) {
@@ -320,14 +321,15 @@ export class DefaultContextRuntime implements ContextRuntime {
     }
     let messages = input.messages;
     const budgetOptions = { reservedOutputTokens: input.reservedOutputTokens };
-    const evaluateBudget = (candidate: CanonicalMessage[]) =>
+    const evaluateBudget = (candidate: CanonicalMessage[], lastUsage?: CanonicalUsage) =>
       input.budgetEvaluator
-        ? input.budgetEvaluator(candidate)
+        ? input.budgetEvaluator(candidate, lastUsage)
         : Promise.resolve(this.tokenBudget!.evaluate(candidate, effectiveMaxContextTokens, {
             usePadding: true,
             ...budgetOptions,
+            lastUsage,
           }));
-    const initialSnapshot = await evaluateBudget(messages);
+    const initialSnapshot = await evaluateBudget(messages, input.lastUsage);
     const decision = this.autoCompactionPolicy.evaluateSnapshot(initialSnapshot);
     if (decision.type !== "trigger") {
       return { type: "skipped", snapshot: decision.snapshot };

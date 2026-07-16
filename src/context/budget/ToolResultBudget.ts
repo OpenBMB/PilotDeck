@@ -1,5 +1,6 @@
-import { mkdir, writeFile, access } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, writeFile, access, copyFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { basename, dirname, extname, relative, resolve } from "node:path";
 import type {
   CanonicalContentBlock,
   CanonicalMessage,
@@ -10,19 +11,28 @@ import type {
   CanonicalToolResultReferenceBlock,
 } from "../../model/index.js";
 import { flattenToolResultBlockText } from "../../model/index.js";
+import { countTokens } from "./tokenizer.js";
 
-/** Default aggregate cap (chars) — mirrors legacy `DEFAULT_MAX_RESULT_SIZE_CHARS`. */
-export const DEFAULT_MAX_RESULT_SIZE_CHARS = 50_000;
+/** Default model-visible text cap for inline tool results. */
+export const DEFAULT_MAX_RESULT_SIZE_TOKENS = 10_000;
+/** Byte safety cap used as a cheap guardrail before tokenization can dominate. */
+export const DEFAULT_MAX_RESULT_SIZE_CHARS = 200_000;
 /** Inline preview length included alongside the persisted reference. */
-export const PREVIEW_SIZE_BYTES = 2_000;
+export const PREVIEW_SIZE_BYTES = 12_000;
+
+const EXACT_TOKEN_COUNT_MAX_BYTES = 40_000;
+const TOKEN_ESTIMATE_SAMPLE_BYTES = 6_000;
 
 export type ToolResultBudgetState = {
   replacements: Map<string, ToolResultReplacementRecord>;
+  nextReadFileAliasIndex?: number;
 };
 
 export type ToolResultReplacementRecord = {
   toolCallId: string;
+  isError?: boolean;
   path: string;
+  readFilePath?: string;
   originalBytes: number;
   preview: string;
   mimeType?: string;
@@ -44,6 +54,7 @@ export type MediaReplacementRecord = {
 
 export type ToolResultBudgetOptions = {
   maxResultSizeChars?: number;
+  maxResultSizeTokens?: number;
   previewBytes?: number;
   toolResultsDir: string;
   state?: ToolResultBudgetState;
@@ -54,7 +65,7 @@ export type ToolResultBudgetApplyOptions = {
 };
 
 export function createToolResultBudgetState(): ToolResultBudgetState {
-  return { replacements: new Map() };
+  return { replacements: new Map(), nextReadFileAliasIndex: 1 };
 }
 
 /**
@@ -65,12 +76,14 @@ export function createToolResultBudgetState(): ToolResultBudgetState {
  */
 export class ToolResultBudget {
   private readonly maxResultSizeChars: number;
+  private readonly maxResultSizeTokens: number;
   private readonly previewBytes: number;
   private readonly toolResultsDir: string;
   private readonly state: ToolResultBudgetState;
 
   constructor(options: ToolResultBudgetOptions) {
     this.maxResultSizeChars = options.maxResultSizeChars ?? DEFAULT_MAX_RESULT_SIZE_CHARS;
+    this.maxResultSizeTokens = options.maxResultSizeTokens ?? DEFAULT_MAX_RESULT_SIZE_TOKENS;
     this.previewBytes = options.previewBytes ?? PREVIEW_SIZE_BYTES;
     this.toolResultsDir = resolve(options.toolResultsDir);
     this.state = options.state ?? createToolResultBudgetState();
@@ -176,7 +189,7 @@ export class ToolResultBudget {
 
     const flat = flattenToolResultBlockText(block);
     const byteLength = Buffer.byteLength(flat, "utf8");
-    if (byteLength <= this.maxResultSizeChars) {
+    if (this.shouldInlineTextResult(flat, byteLength)) {
       return block;
     }
 
@@ -190,11 +203,14 @@ export class ToolResultBudget {
     } catch {
       await writeFile(path, flat, { flag: "wx", mode: 0o600, encoding: "utf8" });
     }
+    const readFilePath = await this.createReadFileAlias(path, ext);
 
     const preview = headTailPreview(flat, this.previewBytes);
     const record: ToolResultReplacementRecord = {
       toolCallId: block.toolCallId,
+      isError: block.isError,
       path,
+      readFilePath,
       originalBytes: byteLength,
       preview,
       mimeType: isJson ? "application/json" : "text/plain",
@@ -204,16 +220,60 @@ export class ToolResultBudget {
     return this.toReferenceBlock(record);
   }
 
+  private shouldInlineTextResult(text: string, byteLength: number): boolean {
+    if (byteLength > this.maxResultSizeChars) {
+      return false;
+    }
+    return estimateTokens(text, byteLength) <= this.maxResultSizeTokens;
+  }
+
   private toReferenceBlock(record: ToolResultReplacementRecord): CanonicalToolResultReferenceBlock {
     return {
       type: "tool_result_reference",
       toolCallId: record.toolCallId,
+      isError: record.isError,
       path: record.path,
+      readFilePath: record.readFilePath,
       originalBytes: record.originalBytes,
       preview: record.preview,
-      hasMore: record.preview.length < record.originalBytes,
+      hasMore: Buffer.byteLength(record.preview, "utf8") < record.originalBytes,
       mimeType: record.mimeType,
       reason: record.reason,
+    };
+  }
+
+  private async createReadFileAlias(sourcePath: string, ext: string): Promise<string> {
+    const { refsDir, workspaceRoot } = this.resolveReadFileAliasLocation();
+    await mkdir(refsDir, { recursive: true, mode: 0o700 });
+
+    const normalizedExt = extname(ext) ? ext.slice(1) : ext;
+    while (true) {
+      const index = this.state.nextReadFileAliasIndex ?? 1;
+      this.state.nextReadFileAliasIndex = index + 1;
+      const aliasPath = resolve(refsDir, `result-${String(index).padStart(4, "0")}.${normalizedExt || "txt"}`);
+      try {
+        await copyFile(sourcePath, aliasPath, fsConstants.COPYFILE_EXCL);
+        return relative(workspaceRoot, aliasPath);
+      } catch (error) {
+        if (isFileExistsError(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  private resolveReadFileAliasLocation(): { refsDir: string; workspaceRoot: string } {
+    const maybeToolResultsRoot = dirname(this.toolResultsDir);
+    if (basename(maybeToolResultsRoot) === "tool-results") {
+      return {
+        refsDir: resolve(maybeToolResultsRoot, "refs"),
+        workspaceRoot: dirname(dirname(maybeToolResultsRoot)),
+      };
+    }
+    return {
+      refsDir: resolve(this.toolResultsDir, "refs"),
+      workspaceRoot: dirname(dirname(this.toolResultsDir)),
     };
   }
 
@@ -318,6 +378,35 @@ export function flattenToolResultText(block: CanonicalToolResultBlock): string {
   return flattenToolResultBlockText(block);
 }
 
+function estimateTokens(text: string, byteLength: number): number {
+  if (byteLength <= EXACT_TOKEN_COUNT_MAX_BYTES) {
+    return countTokens(text);
+  }
+  const samples = sampleTextForTokenEstimate(text);
+  let sampledBytes = 0;
+  let sampledTokens = 0;
+  for (const sample of samples) {
+    sampledBytes += Buffer.byteLength(sample, "utf8");
+    sampledTokens += countTokens(sample);
+  }
+  if (sampledBytes === 0) {
+    return 0;
+  }
+  return Math.ceil((sampledTokens / sampledBytes) * byteLength);
+}
+
+function sampleTextForTokenEstimate(text: string): string[] {
+  if (text.length <= TOKEN_ESTIMATE_SAMPLE_BYTES * 3) {
+    return [text];
+  }
+  const middleStart = Math.max(0, Math.floor((text.length - TOKEN_ESTIMATE_SAMPLE_BYTES) / 2));
+  return [
+    text.slice(0, TOKEN_ESTIMATE_SAMPLE_BYTES),
+    text.slice(middleStart, middleStart + TOKEN_ESTIMATE_SAMPLE_BYTES),
+    text.slice(-TOKEN_ESTIMATE_SAMPLE_BYTES),
+  ];
+}
+
 function isToolResultMediaBlock(
   block: CanonicalToolResultContentBlock,
 ): block is Extract<CanonicalToolResultContentBlock, { type: "image" | "pdf" }> {
@@ -336,6 +425,10 @@ function scopedToolResultKey(toolCallId: string, turnId: string | undefined): st
 
 function safePathPart(value: string): string {
   return value.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
 }
 
 function extensionForMedia(mediaType: "image" | "pdf" | "audio", mimeType: string): string {

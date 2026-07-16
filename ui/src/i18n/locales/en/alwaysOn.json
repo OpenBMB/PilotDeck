@@ -5,7 +5,7 @@
   },
   "tabs": {
     "dashboard": "Dashboard",
-    "plansCron": "Plans & Cron Jobs"
+    "plans": "Plans"
   },
   "dashboard": {
     "title": "Always-On Dashboard",
@@ -26,7 +26,7 @@
     },
     "runDetail": {
       "back": "Back to events",
-      "backToPlans": "Back to Plans & Cron Jobs",
+      "backToPlans": "Back to Plans",
       "loading": "Loading…",
       "untitled": "Untitled Plan",
       "workspaceStrategy": "Workspace",
@@ -60,10 +60,10 @@
     }
   },
   "plansCron": {
-    "title": "Plans & Cron Jobs",
-    "subtitle": "All plans and cron jobs across projects.",
-    "loading": "Loading plans and cron jobs…",
-    "empty": "No plans or cron jobs found.",
+    "title": "Plans",
+    "subtitle": "Always-On plans across projects.",
+    "loading": "Loading plans…",
+    "empty": "No plans found.",
     "unassigned": "Unassigned",
     "columns": {
       "title": "Title",
@@ -101,6 +101,65 @@
       "applying": "Applying…",
       "applied": "Applied",
       "archived": "Archived"
+    }
+  },
+  "cron": {
+    "title": "Cron",
+    "subtitle": "Scheduled cron jobs across projects.",
+    "loading": "Loading cron jobs...",
+    "empty": "No active cron jobs found.",
+    "unassigned": "Unassigned",
+    "tabs": {
+      "list": "Task List",
+      "create": "Create Task"
+    },
+    "columns": {
+      "title": "Title",
+      "createdAt": "Created",
+      "nextRunAt": "Next Run",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "delete": "Delete",
+      "runNow": "Run Now",
+      "stop": "Stop"
+    },
+    "status": {
+      "scheduled": "Scheduled",
+      "running": "Running"
+    },
+    "create": {
+      "title": "Create Cron Task",
+      "subtitle": "Schedule a one-time or recurring background prompt.",
+      "success": "Cron task created.",
+      "fields": {
+        "prompt": "Prompt",
+        "workspace": "Workspace",
+        "scheduleType": "Schedule Type",
+        "date": "Date",
+        "time": "Time",
+        "timezone": "Timezone"
+      },
+      "placeholders": {
+        "prompt": "Describe what PilotDeck should do when this task runs.",
+        "workspace": "Select a workspace"
+      },
+      "schedule": {
+        "once": "One-time",
+        "cron": "Recurring"
+      },
+      "validation": {
+        "messageRequired": "Prompt is required.",
+        "workspaceRequired": "Workspace is required.",
+        "dateRequired": "Date is required.",
+        "timeRequired": "Time is required.",
+        "timezoneRequired": "Timezone is required.",
+        "runAtFuture": "Run time must be in the future."
+      },
+      "actions": {
+        "submit": "Create Task"
+      }
     }
   }
 }

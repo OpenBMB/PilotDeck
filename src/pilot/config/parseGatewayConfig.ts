@@ -81,6 +81,7 @@ export function parseAdaptersConfig(rawAdapters: unknown, diagnostics: PilotConf
     tui: parseAutoConnect(rawAdapters.tui),
     feishu: parseFeishu(rawAdapters.feishu),
     weixin: parseEnabledOnly(rawAdapters.weixin),
+    qq: parseQQ(rawAdapters.qq),
   };
 
   for (const key of PLATFORM_KEYS) {
@@ -132,6 +133,27 @@ function parseFeishu(raw: unknown): PilotAdaptersConfig["feishu"] {
     defaultSessionLabel: stringField(raw, "defaultSessionLabel", "general") ?? "general",
     connectionMode: mode === "stream" || mode === "webhook" ? mode : undefined,
     domainName: domain === "feishu" || domain === "lark" ? domain : undefined,
+  };
+}
+
+function parseQQ(raw: unknown): PilotAdaptersConfig["qq"] {
+  if (!isRecord(raw)) return undefined;
+  const groups = Array.isArray(raw.allowGroups)
+    ? (raw.allowGroups as unknown[]).filter((v): v is string => typeof v === "string")
+    : undefined;
+  const prefixes = Array.isArray(raw.triggerPrefixes)
+    ? (raw.triggerPrefixes as unknown[]).filter((v): v is string => typeof v === "string")
+    : undefined;
+  const maxLen = typeof raw.maxMessageLength === "number" && Number.isFinite(raw.maxMessageLength)
+    ? raw.maxMessageLength
+    : undefined;
+  return {
+    enabled: booleanField(raw, "enabled", false),
+    appId: stringField(raw, "appId"),
+    clientSecret: stringField(raw, "clientSecret"),
+    allowGroups: groups,
+    triggerPrefixes: prefixes,
+    maxMessageLength: maxLen,
   };
 }
 

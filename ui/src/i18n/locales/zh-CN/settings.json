@@ -856,7 +856,7 @@
       },
       "cron": {
         "title": "Cron",
-        "description": "配置 Cron 任务使用的后台调度器。任务创建和管理仍在 Always-On > Plans & Cron Jobs 中完成。",
+        "description": "配置 Cron 任务使用的后台调度器。任务创建和管理在 Cron 模块中完成。",
         "enabled": {
           "label": "启用",
           "description": "定时 Cron 后台任务的总开关。"
@@ -872,7 +872,7 @@
       },
       "memory": {
         "title": "记忆",
-        "description": "配置记忆索引与 Dream 使用的模型。",
+        "description": "配置记忆服务、自动构建间隔，以及项目记忆的数据管理。",
         "enabled": {
           "label": "启用",
           "description": "启用记忆服务的总开关。"
@@ -881,6 +881,50 @@
           "label": "记忆模型",
           "description": "记忆管线使用的提供商/模型。",
           "inherit": "继承（使用主智能体模型）"
+        },
+        "automation": {
+          "autoIndex": {
+            "label": "自动索引间隔（分钟）",
+            "description": "0 表示关闭自动索引任务。"
+          },
+          "autoDream": {
+            "label": "自动 Dream 间隔（分钟）",
+            "description": "只有记忆文件更新后，自动 Dream 才会真正执行。"
+          }
+        },
+        "data": {
+          "title": "数据管理",
+          "description": "导出、导入或清空某个项目，或全部记忆。",
+          "target": {
+            "label": "管理对象",
+            "description": "选择要管理的项目或全部记忆。",
+            "all": "全部记忆",
+            "projectFallback": "未命名项目"
+          },
+          "actions": {
+            "export": "导出",
+            "import": "导入",
+            "clear": "清空"
+          },
+          "status": {
+            "exporting": "正在导出 {{target}}...",
+            "exported": "已导出 {{target}}。",
+            "importing": "正在导入 {{target}}...",
+            "imported": "已导入 {{target}}。",
+            "clearing": "正在清空 {{target}}...",
+            "cleared": "已清空 {{target}}。"
+          },
+          "confirm": {
+            "importProject": "导入会覆盖“{{target}}”的项目记忆。确认继续吗？",
+            "importAll": "导入会覆盖全部记忆。确认继续吗？",
+            "clearProject": "确认清空“{{target}}”的项目记忆吗？",
+            "clearAll": "确认清空全部记忆吗？这会删除所有项目记忆和全局用户背景。"
+          },
+          "errors": {
+            "missingProject": "没有可用项目。",
+            "invalidImport": "请选择有效的 JSON 备份文件。",
+            "invalidExport": "导出的内容不是有效 JSON。"
+          }
         }
       },
       "tools": {
@@ -1090,11 +1134,21 @@
     "checking": "正在检查更新...",
     "upToDate": "已是最新版本",
     "updateAvailable": "有新版本可用",
+    "unavailable": "无法获取更新信息",
+    "checkForUpdates": "检查更新",
+    "currentVersion": "当前版本：{{version}}",
+    "latestVersion": "最新版本：{{version}}",
     "updateNow": "立即更新",
     "updating": "更新中...",
     "updateComplete": "更新完成！",
     "updateFailed": "更新失败",
     "restartToApply": "重启以应用",
+    "downloadUpdate": "下载更新",
+    "downloading": "下载中... {{percent}}%",
+    "downloadComplete": "下载完成",
+    "downloadFailed": "下载失败",
+    "installUpdate": "安装更新",
+    "cancelDownload": "取消下载",
     "dismiss": "关闭"
   },
   "gateway": {
@@ -1103,6 +1157,7 @@
     "connected": "已连接",
     "notConfigured": "未配置",
     "enabled": "已启用",
+    "loadFailed": "无法加载 IM 通道状态，请稍后重试",
     "edit": "编辑",
     "setup": "配置",
     "testConnection": "测试连接",
@@ -1133,7 +1188,13 @@
       "relogin": "重新登录",
       "loadingQr": "正在生成二维码…",
       "scanPrompt": "请打开微信扫描二维码登录",
-      "loginSuccess": "登录成功 — 凭据已保存"
+      "loginSuccess": "登录成功 — 凭据已保存",
+      "waitingForLogin": "微信等待扫码登录",
+      "starting": "微信通道正在启动",
+      "expired": "微信登录已过期，请重新扫码",
+      "failed": "微信通道启动失败",
+      "qrPreparing": "微信后台通道正在准备二维码，请稍后再试",
+      "noRuntimeQr": "当前没有可用二维码，请确认微信通道已启用并正在等待登录"
     },
     "wecom": {
       "title": "企业微信 WeCom",

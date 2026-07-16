@@ -16,6 +16,10 @@ export {
   type LoadMcpServerConfigResult,
 } from "./config/loadMcpServerConfig.js";
 export {
+  expandMcpConfig,
+  expandMcpString,
+} from "./config/expandPlaceholders.js";
+export {
   createMcpToolDefinitionsFromRuntime,
   type CreateToolDefinitionsOptions,
 } from "./runtime/PluginToToolBridge.js";

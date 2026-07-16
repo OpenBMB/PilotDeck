@@ -4,7 +4,7 @@ import { parseHooksConfig } from "../../hooks/config/parseHooksConfig.js";
 import type { PilotDeckPluginManifest } from "../protocol/manifest.js";
 import type { PilotDeckLoadedPlugin, PilotDeckPluginSourceKind } from "../protocol/plugin.js";
 import { parsePluginManifest } from "../config/parsePluginManifest.js";
-import { loadPluginCommands } from "./PluginCommandLoader.js";
+import { loadPluginCommands, loadStandaloneSkill } from "./PluginCommandLoader.js";
 
 /**
  * Loads a standalone skill directory (containing SKILL.md) as a pseudo-plugin.
@@ -15,13 +15,13 @@ export async function loadSkillFromPath(
   source: PilotDeckPluginSourceKind,
 ): Promise<PilotDeckLoadedPlugin> {
   const name = skillDir.split(/[\\/]/u).at(-1) ?? "skill";
-  const skills = await loadPluginCommands({ pluginName: name, baseDir: skillDir });
+  const skill = await loadStandaloneSkill({ name, skillDir });
   return {
     name,
     path: skillDir,
     source,
     manifest: { name, version: "0.0.0" },
-    skills,
+    skills: [skill],
   };
 }
 

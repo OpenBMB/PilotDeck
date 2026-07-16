@@ -18,6 +18,12 @@
   "header": {
     "showingChanges": "Showing changes"
   },
+  "tabs": {
+    "tabList": "Open files",
+    "closeTab": "Close {{fileName}}",
+    "modified": "Modified",
+    "unsavedConfirm": "Close {{fileName}} and discard unsaved changes?"
+  },
   "actions": {
     "download": "Download file",
     "save": "Save",

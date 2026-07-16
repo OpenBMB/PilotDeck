@@ -254,4 +254,7 @@ export interface ChatInterfaceProps {
   // Fired the moment the user submits their first message from welcome
   // mode so the parent can leave any legacy welcome-only state.
   onExitWelcome?: () => void;
+  // Files workbench: render a quieter, narrow-panel empty state and keep the
+  // composer docked to the bottom instead of using the large welcome hero.
+  compact?: boolean;
 }

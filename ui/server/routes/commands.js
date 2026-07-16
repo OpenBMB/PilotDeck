@@ -759,7 +759,7 @@ Custom commands can be created in:
       workdir = effectiveProjectPath;
       dir = path.join('.pilotdeck', 'skills');
     } else {
-      workdir = path.join(os.homedir(), '.pilotdeck');
+      workdir = resolvePilotHome(process.env);
       dir = 'skills';
     }
     const installPath = path.join(workdir, dir, slug);
@@ -885,7 +885,7 @@ Custom commands can be created in:
 router.post('/list', async (req, res) => {
   try {
     const { projectPath } = req.body;
-    const homeDir = os.homedir();
+    const pilotHome = resolvePilotHome(process.env);
 
     const customCommandSources = [];
 
@@ -899,8 +899,8 @@ router.post('/list', async (req, res) => {
       customCommandSources.push(...projectCommands, ...projectSkills);
     }
 
-    const userCommandsDir = path.join(homeDir, '.pilotdeck', 'commands');
-    const userSkillsDir = path.join(homeDir, '.pilotdeck', 'skills');
+    const userCommandsDir = path.join(pilotHome, 'commands');
+    const userSkillsDir = path.join(pilotHome, 'skills');
     const [userCommands, userSkills] = await Promise.all([
       scanCommandsDirectory(userCommandsDir, userCommandsDir, 'user'),
       scanSkillsDirectory(userSkillsDir, 'user'),
@@ -1100,9 +1100,10 @@ router.post('/execute', async (req, res) => {
     // Security: validate commandPath is within allowed directories.
     {
       const resolvedPath = path.resolve(commandPath);
+      const pilotHome = resolvePilotHome(process.env);
       const allowedBases = [
-        path.resolve(path.join(os.homedir(), '.pilotdeck', 'commands')),
-        path.resolve(path.join(os.homedir(), '.pilotdeck', 'skills')),
+        path.resolve(path.join(pilotHome, 'commands')),
+        path.resolve(path.join(pilotHome, 'skills')),
       ];
       if (context?.projectPath) {
         allowedBases.push(

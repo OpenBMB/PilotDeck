@@ -186,6 +186,8 @@ bun.lock
 
 # npm lock file (project uses pnpm)
 package-lock.json
+!skills/pptx/runtime/package-lock.json
+!skills/spreadsheets/runtime/package-lock.json
 
 # Test output
 test-results/

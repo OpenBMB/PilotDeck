@@ -273,9 +273,10 @@ export type DashboardV2Props = {
   projectFilter?: string | null;
   projectFullPath?: string | null;
   onSelectProject?: (projectName: string) => void;
+  compact?: boolean;
 };
 
-export default function DashboardV2({ projectFilter, projectFullPath, onSelectProject }: DashboardV2Props = {}) {
+export default function DashboardV2({ projectFilter, projectFullPath, onSelectProject, compact = false }: DashboardV2Props = {}) {
   const { t } = useTranslation('routing');
   const { data, loading, error, refresh } = useRoutingDashboard();
   const [scope, setScope] = useState<DashboardScope>(() => (projectFilter ? 'project' : 'total'));
@@ -392,16 +393,22 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
 
   return (
     <div className="h-full overflow-y-auto bg-white dark:bg-neutral-950">
-      <div className="mx-auto w-full max-w-[960px] px-8 py-8">
+      <div className={cn(
+        'mx-auto w-full',
+        compact ? 'px-4 py-5' : 'max-w-[960px] px-8 py-8',
+      )}>
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
+        <div className={cn(
+          'flex items-start justify-between gap-4',
+          compact && 'flex-col',
+        )}>
           <div>
             <h2 className="text-[20px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
               {t('dashboard.title', { defaultValue: 'Dashboard' })}
             </h2>
             <p className="mt-0.5 text-[13px] text-neutral-500 dark:text-neutral-400">{subtitle}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className={cn('flex shrink-0 items-center gap-2', compact && 'w-full flex-wrap')}>
             {hasProjectScope ? (
               <div
                 role="tablist"
@@ -442,7 +449,10 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
         </div>
 
         {/* Overall stat cards */}
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className={cn(
+          'mt-6 grid grid-cols-1 gap-3',
+          !compact && 'md:grid-cols-3',
+        )}>
           <StatCard
             icon={<Activity className="h-3.5 w-3.5" strokeWidth={1.75} />}
             label={t('dashboard.stats.requests', { defaultValue: 'Requests' })}
@@ -529,7 +539,7 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
         )}
 
         {pricedSessions.length > 0 && (
-          <PriceSection sessions={pricedSessions} />
+          <PriceSection sessions={pricedSessions} compact={compact} />
         )}
 
         {/* Global view: project cost cards grid + recent routes */}
@@ -540,7 +550,7 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
                 <div className="text-xxs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                   {t('dashboard.projects.title', { defaultValue: 'By project' })}
                 </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className={cn('grid grid-cols-1 gap-3', !compact && 'md:grid-cols-2')}>
                   {groups.map((grp) => (
                     <ProjectCostCard key={grp.name} group={grp} onClick={onSelectProject ? () => onSelectProject(grp.name) : undefined} />
                   ))}
@@ -549,7 +559,10 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
               </div>
             )}
 
-            <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-950">
+            <div className={cn(
+              'mt-6 rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950',
+              compact ? 'p-4' : 'p-5',
+            )}>
               <div className="text-xxs mb-4 uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                 {t('dashboard.recent.title', { defaultValue: 'Recent routes' })}
               </div>
@@ -561,7 +574,8 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
                   })}
                 </p>
               ) : (
-                <table className="w-full text-[13px]">
+                <div className="overflow-x-auto">
+                <table className={cn('w-full text-[13px]', compact && 'min-w-[420px]')}>
                   <thead className="text-xxs text-neutral-500 dark:text-neutral-400">
                     <tr className="text-left">
                       <th className="pb-2 font-normal">
@@ -595,6 +609,7 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </>
@@ -778,7 +793,7 @@ type PriceTotals = {
   tokens: number;
 };
 
-function PriceSection({ sessions }: { sessions: DashboardSession[] }) {
+function PriceSection({ sessions, compact = false }: { sessions: DashboardSession[]; compact?: boolean }) {
   const { t } = useTranslation('routing');
   const pricedSessions = sessions.filter((session) => session.routing);
   const totals = pricedSessions.reduce<PriceTotals>(
@@ -817,7 +832,8 @@ function PriceSection({ sessions }: { sessions: DashboardSession[] }) {
         ) : (
           <>
             <div className={cn(
-              'grid grid-cols-1 divide-y md:grid-cols-3 md:divide-x md:divide-y-0',
+              'grid grid-cols-1 divide-y',
+              !compact && 'md:grid-cols-3 md:divide-x md:divide-y-0',
               hasBaseline
                 ? savedIsPositive
                   ? 'divide-emerald-100 dark:divide-emerald-900/40'
@@ -864,7 +880,10 @@ function PriceSection({ sessions }: { sessions: DashboardSession[] }) {
                   : 'border-amber-100 dark:border-amber-900/40'
                 : 'border-neutral-100 dark:border-neutral-800',
             )}>
-              <div className="hidden grid-cols-[minmax(0,1fr)_112px_112px_112px] gap-4 px-5 py-2 text-[11px] leading-[14px] text-neutral-500 dark:text-neutral-400 md:grid">
+              <div className={cn(
+                'grid-cols-[minmax(0,1fr)_112px_112px_112px] gap-4 px-5 py-2 text-[11px] leading-[14px] text-neutral-500 dark:text-neutral-400',
+                compact ? 'hidden' : 'hidden md:grid',
+              )}>
                 <span>{t('dashboard.price.session', { defaultValue: 'Session' })}</span>
                 <span className="text-right">{t('dashboard.price.actualShort', { defaultValue: 'Actual' })}</span>
                 <span className="text-right">{t('dashboard.price.baselineShort', { defaultValue: 'No router' })}</span>
@@ -888,7 +907,10 @@ function PriceSection({ sessions }: { sessions: DashboardSession[] }) {
                   return (
                     <div
                       key={session.sessionId}
-                      className="grid grid-cols-1 gap-2 px-5 py-3 text-[13px] md:grid-cols-[minmax(0,1fr)_112px_112px_112px] md:items-center md:gap-4"
+                      className={cn(
+                        'grid grid-cols-1 gap-2 px-5 py-3 text-[13px]',
+                        !compact && 'md:grid-cols-[minmax(0,1fr)_112px_112px_112px] md:items-center md:gap-4',
+                      )}
                     >
                       <div className="min-w-0">
                         <div className="truncate font-medium text-neutral-800 dark:text-neutral-200">

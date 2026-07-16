@@ -199,13 +199,31 @@ export type GatewayEvent =
   | {
       type: "context_budget";
       used: number;
+      displayUsed?: number;
+      budgetUsed?: number;
       total: number;
+      effectiveTotal?: number;
+      reservedOutputTokens?: number;
       ratio: number;
       state: "ok" | "warning" | "blocking";
     }
   | { type: "turn_completed"; usage: TurnUsage; finishReason: AgentTurnResult["stopReason"] | string }
   | { type: "agent_status"; event: string; detail?: Record<string, unknown> }
-  | { type: "error"; message: string; code?: string; recoverable: boolean; userHint?: string };
+  | {
+      type: "error";
+      message: string;
+      code?: string;
+      recoverable: boolean;
+      userHint?: string;
+      providerError?: {
+        provider?: string;
+        protocol?: string;
+        status?: number;
+        code?: string;
+        message?: string;
+        raw?: string;
+      };
+    };
 
 export type GatewayActiveTurnSnapshotInput = {
   sessionKey: string;
@@ -312,6 +330,12 @@ export type ReloadConfigResult = {
   reason?: "unsupported" | "unchanged";
 };
 
+export type PrepareWeixinLoginResult = {
+  requested: boolean;
+  requestedAt: string;
+  reason?: "unsupported";
+};
+
 export type ReloadExtensionsInput = {
   projectKey?: string;
   changedPaths?: string[];
@@ -413,6 +437,13 @@ export interface Gateway {
   reloadConfig?(): Promise<ReloadConfigResult>;
 
   /**
+   * Ask the gateway host to start or restart the Weixin channel so it can
+   * generate a runtime QR code. The host owns channel construction; UI/server
+   * callers must not invoke `weixin-ilink.loginWithQR()` directly.
+   */
+  prepareWeixinLogin?(): Promise<PrepareWeixinLoginResult>;
+
+  /**
    * Trigger a plugin/skill/MCP extension reload without waiting for the file
    * watcher. Used by UI config writers that already know an extension-backed
    * file changed (for example `mcp.json`).
@@ -421,8 +452,8 @@ export interface Gateway {
 
   /**
    * Skill-management RPCs. The gateway is the authoritative owner of
-   * `~/.pilotdeck/skills/` (user scope) and `<project>/.pilotdeck/skills/`
-   * (project scope). The Web UI's REST endpoints under `/api/skills/*`
+   * bundled read-only skills, `~/.pilotdeck/skills/` (user scope), and
+   * `<project>/.pilotdeck/skills/` (project scope). The Web UI's REST endpoints under `/api/skills/*`
    * are now thin shims that forward here, so a skill the agent loads
    * and a skill the UI shows always come from the same place.
    *

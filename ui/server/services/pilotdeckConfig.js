@@ -91,7 +91,7 @@ export function buildDefaultPilotDeckConfig() {
         workspacesRoot: os.homedir(),
       },
       officePreview: {
-        service: 'libreoffice',
+        service: 'none',
         binaryPath: '',
       },
     },

@@ -6,8 +6,8 @@ import { connectRemoteGatewayIfAvailable, type Gateway, type GatewayEvent, type 
 import {
   CliChannel, TuiChannel, FeishuChannel, WeixinChannel, QQChannel, WeComChannel,
   loadEnabledChannels, ChannelStatePersistence,
-  FeishuSessionMapper, WeixinSessionMapper, WeComSessionMapper,
-  type FeishuSessionMapperState, type WeixinSessionMapperState, type WeComSessionMapperState,
+  FeishuSessionMapper, WeixinSessionMapper, QQSessionMapper, WeComSessionMapper,
+  type FeishuSessionMapperState, type WeixinSessionMapperState, type QQSessionMapperState, type WeComSessionMapperState,
 } from "../adapters/index.js";
 import {
   migrateSkillsToPilotDeck,
@@ -251,6 +251,15 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
     let serverRef: Awaited<ReturnType<typeof startPilotDeckServer>> | undefined;
 
+    async function hotStartWeixinChannel(): Promise<void> {
+      if (!serverRef) return;
+      const savedWeixin = await channelStatePersistence.load<WeixinSessionMapperState>("weixin");
+      await serverRef.hotStartChannel(new WeixinChannel({
+        mapper: savedWeixin ? new WeixinSessionMapper(savedWeixin) : undefined,
+        onStateChange: (state) => channelStatePersistence.save("weixin", state),
+      }));
+    }
+
     async function handleAdapterHotReload(config: (typeof snapshot)["config"]): Promise<void> {
       if (!serverRef) return;
       const parts: string[] = [];
@@ -274,12 +283,23 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
       const wCfg = config.adapters?.weixin;
       if (wCfg?.enabled === true) {
-        const savedWeixin = await channelStatePersistence.load<WeixinSessionMapperState>("weixin");
-        await serverRef.hotStartChannel(new WeixinChannel({
-          mapper: savedWeixin ? new WeixinSessionMapper(savedWeixin) : undefined,
-          onStateChange: (state) => channelStatePersistence.save("weixin", state),
-        }));
+        await hotStartWeixinChannel();
         parts.push("weixin=started");
+      }
+
+      const qqCfg = config.adapters?.qq;
+      if (qqCfg?.enabled === true) {
+        const savedQQ = await channelStatePersistence.load<QQSessionMapperState>("qq");
+        await serverRef.hotStartChannel(new QQChannel({
+          appId: qqCfg.appId,
+          clientSecret: qqCfg.clientSecret,
+          allowGroups: qqCfg.allowGroups,
+          triggerPrefixes: qqCfg.triggerPrefixes,
+          maxMessageLength: qqCfg.maxMessageLength,
+          mapper: savedQQ ? new QQSessionMapper(savedQQ) : undefined,
+          onStateChange: (state) => channelStatePersistence.save("qq", state),
+        }));
+        parts.push("qq=started");
       }
 
       const wcCfg = config.adapters?.wecom;
@@ -292,6 +312,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           onStateChange: (state) => channelStatePersistence.save("wecom", state),
         }));
         parts.push("wecom=started");
+      }
+
+      const extraChannels = await loadEnabledChannels(config.adapters);
+      for (const ch of extraChannels) {
+        await serverRef.hotStartChannel(ch);
+        parts.push(`${ch.channelKey}=started`);
       }
 
       if (parts.length) {
@@ -325,6 +351,19 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           onStateChange: (state) => channelStatePersistence.save("weixin", state),
         })
       : undefined;
+    const qqCfg = snapshot.config.adapters?.qq;
+    const savedQQState = await channelStatePersistence.load<QQSessionMapperState>("qq");
+    const qqChannel = qqCfg?.enabled === true
+      ? new QQChannel({
+          appId: qqCfg.appId,
+          clientSecret: qqCfg.clientSecret,
+          allowGroups: qqCfg.allowGroups,
+          triggerPrefixes: qqCfg.triggerPrefixes,
+          maxMessageLength: qqCfg.maxMessageLength,
+          mapper: savedQQState ? new QQSessionMapper(savedQQState) : undefined,
+          onStateChange: (state) => channelStatePersistence.save("qq", state),
+        })
+      : undefined;
     const wecomCfg = snapshot.config.adapters?.wecom;
     const savedWeComState = await channelStatePersistence.load<WeComSessionMapperState>("wecom");
     const wecomChannel = wecomCfg?.enabled === true
@@ -342,11 +381,25 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       staticAssetsPath: resolve(projectRoot, "ui/dist"),
       feishu: feishuChannel,
       weixin: weixinChannel,
-      qq: new QQChannel(),
+      qq: qqChannel,
       channels: allChannels,
       config: snapshot.config,
     });
     serverRef = server;
+    (
+      gateway as {
+        setPrepareWeixinLogin?: (
+          handler: () => Promise<{ requested: boolean; requestedAt: string; reason?: "unsupported" }>
+        ) => void;
+      }
+    ).setPrepareWeixinLogin?.(async () => {
+      const requestedAt = new Date().toISOString();
+      if (!serverRef) {
+        return { requested: false, requestedAt, reason: "unsupported" };
+      }
+      await hotStartWeixinChannel();
+      return { requested: true, requestedAt };
+    });
     bindServer(server);
     deferredBroadcast = (name, payload) => server.broadcastNotification(name, payload);
     console.log(`PilotDeck server listening: ${server.url}`);

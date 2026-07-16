@@ -7,8 +7,10 @@ import {
   flattenToolResultBlockText,
   type CanonicalContentBlock,
   type CanonicalMessage,
+  type CanonicalModelError,
   type CanonicalModelEvent,
 } from "../../model/index.js";
+import type { AgentError } from "../../agent/index.js";
 import { contentToText } from "../../tool/index.js";
 import type { SessionRouter } from "../SessionRouter.js";
 import { GatewayElicitationBus } from "../elicitation/GatewayElicitationBus.js";
@@ -30,6 +32,7 @@ import type {
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
+  PrepareWeixinLoginResult,
   AlwaysOnApplyInput,
   AlwaysOnApplyResult,
   AlwaysOnRerunPlanInput,
@@ -84,6 +87,8 @@ import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 
 const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个新功能";
+const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
+const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 
 export type InProcessGatewayOptions = {
   now?: () => Date;
@@ -110,6 +115,7 @@ export type InProcessGatewayOptions = {
    * the PilotConfigStore + ProjectRuntimeRegistry lifecycle.
    */
   reloadConfig?: () => Promise<ReloadConfigResult>;
+  prepareWeixinLogin?: () => Promise<PrepareWeixinLoginResult>;
   /**
    * Pluggable extension/MCP reload handler wired by `createLocalGateway`.
    * Unlike `reloadConfig`, this does not depend on `pilotdeck.yaml` changing.
@@ -133,7 +139,7 @@ export type InProcessGatewayOptions = {
    */
   refreshConfigBeforeTurn?: () => Promise<void>;
   /**
-   * Authoritative skill CRUD manager backed by `~/.pilotdeck/skills/`.
+   * Authoritative skill CRUD manager for built-in, user, and project skills.
    * Wired by `createLocalGateway` so every host (CLI, TUI, Web UI bridge,
    * SDK) reads and writes the same skill directory the agent loads from.
    */
@@ -466,6 +472,19 @@ export class InProcessGateway implements Gateway {
             phase: telemetryContext.phase,
           });
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
+            if (gatewayEvent.type === "context_budget") {
+              this.recordGatewayStatusMessage({
+                sessionKey: input.sessionKey,
+                turnId: runId,
+                projectKey: input.projectKey,
+                status: {
+                  event: "context_budget",
+                  kind: "status",
+                  text: "context_budget",
+                  detail: { ...gatewayEvent },
+                },
+              }).catch(() => {});
+            }
             this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
             queue.enqueue(gatewayEvent);
           }
@@ -732,6 +751,17 @@ export class InProcessGateway implements Gateway {
     return this.options.reloadConfig();
   }
 
+  async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {
+    if (!this.options.prepareWeixinLogin) {
+      return {
+        requested: false,
+        requestedAt: new Date().toISOString(),
+        reason: "unsupported",
+      };
+    }
+    return this.options.prepareWeixinLogin();
+  }
+
   async reloadExtensions(input?: import("../protocol/types.js").ReloadExtensionsInput): Promise<import("../protocol/types.js").ReloadExtensionsResult> {
     if (!this.options.reloadExtensions) {
       return { reloaded: false, reason: "unsupported" };
@@ -749,6 +779,10 @@ export class InProcessGateway implements Gateway {
 
   setAlwaysOnRerunPlan(handler: InProcessGatewayOptions["alwaysOnRerunPlan"]): void {
     (this.options as { alwaysOnRerunPlan?: InProcessGatewayOptions["alwaysOnRerunPlan"] }).alwaysOnRerunPlan = handler;
+  }
+
+  setPrepareWeixinLogin(handler: InProcessGatewayOptions["prepareWeixinLogin"]): void {
+    (this.options as { prepareWeixinLogin?: InProcessGatewayOptions["prepareWeixinLogin"] }).prepareWeixinLogin = handler;
   }
 
   // -------------------------------------------------------------------
@@ -1289,6 +1323,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
       }));
     case "tool_result": {
       const fullText = event.result.content.map(contentToText).join("\n");
+      const resultPreview = limitGatewayToolResultPreview(fullText);
       const lines = fullText.split("\n");
       const lineCount = lines.length;
       const totalBytes = Buffer.byteLength(fullText, "utf-8");
@@ -1362,7 +1397,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           type: "tool_call_finished",
           toolCallId: event.result.toolCallId,
           ok: event.result.type === "success",
-          resultPreview: fullText,
+          resultPreview,
           resultLineCount: lineCount,
           resultBytes: totalBytes,
           toolName: event.result.toolName,
@@ -1370,7 +1405,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           ...(images.length > 0 ? { images } : {}),
           ...(event.result.type === "error" && { errorCode: event.result.error.code }),
           ...(event.result.type === "success" && event.result.data
-            ? { data: event.result.data as Record<string, unknown> }
+            ? { data: sanitizeGatewayToolData(event.result.data) }
             : {}),
         },
         ...attachments,
@@ -1388,8 +1423,46 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           message: event.error.message,
           recoverable: false,
           userHint: event.error.userHint,
+          providerError: providerErrorFromAgentError(event.error),
         },
       ];
+    case "token_cap_adjusted":
+      return [{
+        type: "agent_status",
+        event: "token_cap_adjusted",
+        detail: {
+          provider: event.provider,
+          model: event.model,
+          cap: event.cap,
+          previous: event.previous,
+          next: event.next,
+          reason: event.reason,
+        },
+      }];
+    case "empty_output_recovery":
+      return [{
+        type: "agent_status",
+        event: "empty_output_recovery",
+        detail: {
+          provider: event.provider,
+          model: event.model,
+          finishReason: event.finishReason,
+          previousMaxOutputTokens: event.previousMaxOutputTokens,
+          nextMaxOutputTokens: event.nextMaxOutputTokens,
+        },
+      }];
+    case "model_recovery_failed":
+      return [{
+        type: "agent_status",
+        event: "model_recovery_failed",
+        detail: {
+          provider: event.provider,
+          model: event.model,
+          code: event.error.code,
+          message: event.error.message,
+          providerError: providerErrorFromModelError(event.error),
+        },
+      }];
     case "session_aborted":
       return [
         {
@@ -1451,10 +1524,18 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
         detail: { status: event.status, preTokens: event.preTokens, postTokens: event.postTokens },
       }];
     case "context_budget":
+      const reservedOutputTokens = event.snapshot.reservedOutputTokens ?? event.snapshot.maxOutputTokens ?? 0;
+      const totalContextTokens = event.snapshot.effectiveContextTokens !== undefined
+        ? event.snapshot.effectiveContextTokens + reservedOutputTokens
+        : event.snapshot.maxContextTokens + reservedOutputTokens;
       return [{
         type: "context_budget",
         used: event.snapshot.tokens,
-        total: event.snapshot.maxContextTokens,
+        displayUsed: event.snapshot.displayTokens,
+        budgetUsed: event.snapshot.budgetTokens,
+        total: totalContextTokens,
+        effectiveTotal: event.snapshot.effectiveContextTokens ?? event.snapshot.maxContextTokens,
+        reservedOutputTokens,
         ratio: event.snapshot.ratio,
         state: event.snapshot.state,
       }];
@@ -1504,6 +1585,7 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
       }));
     case "subagent_tool_result": {
       const fullText = event.result.content.map(contentToText).join("\n");
+      const resultPreview = limitGatewayToolResultPreview(fullText);
       const lines = fullText.split("\n");
       return [{
         type: "agent_status",
@@ -1514,8 +1596,8 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
           toolCallId: event.result.toolCallId,
           toolName: event.result.toolName,
           ok: event.result.type === "success",
-          content: fullText,
-          preview: lines.slice(0, 3).join("\n"),
+          content: resultPreview,
+          preview: limitGatewayToolResultPreview(lines.slice(0, 3).join("\n")),
           resultLineCount: lines.length,
           resultBytes: Buffer.byteLength(fullText, "utf-8"),
           ...(event.result.type === "error" && { errorCode: event.result.error.code }),
@@ -1570,6 +1652,66 @@ export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] 
     default:
       return [];
   }
+}
+
+function limitGatewayToolResultPreview(text: string): string {
+  if (text.length <= MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS) {
+    return text;
+  }
+  const marker = `\n\n... [Gateway preview truncated: ${text.length - MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS} characters omitted; full result remains available through persisted tool-result references when shown to the model.] ...\n\n`;
+  const available = Math.max(0, MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS - marker.length);
+  const headLength = Math.ceil(available / 2);
+  const tailLength = Math.floor(available / 2);
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function sanitizeGatewayToolData(value: unknown): Record<string, unknown> {
+  const sanitized = sanitizeGatewayToolDataValue(value);
+  return isRecord(sanitized) ? sanitized : { value: sanitized };
+}
+
+function sanitizeGatewayToolDataValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return limitGatewayToolDataString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeGatewayToolDataValue);
+  }
+  if (isRecord(value)) {
+    const output: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      output[key] = sanitizeGatewayToolDataValue(item);
+    }
+    return output;
+  }
+  return value;
+}
+
+function limitGatewayToolDataString(value: string): string | { preview: string; originalChars: number; originalBytes: number; truncated: true } {
+  if (value.length <= MAX_GATEWAY_TOOL_DATA_STRING_CHARS) {
+    return value;
+  }
+  return {
+    preview: headTailString(value, MAX_GATEWAY_TOOL_DATA_STRING_CHARS, "Gateway data string truncated"),
+    originalChars: value.length,
+    originalBytes: Buffer.byteLength(value, "utf8"),
+    truncated: true,
+  };
+}
+
+function headTailString(text: string, maxChars: number, label: string): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const marker = `\n\n... [${label}: ${text.length - maxChars} characters omitted] ...\n\n`;
+  const available = Math.max(0, maxChars - marker.length);
+  const headLength = Math.ceil(available / 2);
+  const tailLength = Math.floor(available / 2);
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapModelEvent(event: CanonicalModelEvent): GatewayEvent[] {
@@ -1837,6 +1979,59 @@ async function attachmentsToContentBlocks(
 
 function sanitizeAttachmentName(name: string): string {
   return name.replace(/[\r\n]+/g, " ").trim() || "attachment";
+}
+
+function providerErrorFromAgentError(error: AgentError): GatewayEventProviderError | undefined {
+  const details = error.details;
+  if (!details || typeof details !== "object") return undefined;
+  return providerErrorFromRecord(details as Record<string, unknown>);
+}
+
+function providerErrorFromModelError(error: CanonicalModelError): GatewayEventProviderError {
+  return {
+    provider: error.provider,
+    protocol: error.protocol,
+    status: error.status,
+    code: error.code,
+    message: error.message,
+    raw: stringifyProviderRaw(error.raw),
+  };
+}
+
+type GatewayEventProviderError = NonNullable<Extract<GatewayEvent, { type: "error" }>["providerError"]>;
+
+function providerErrorFromRecord(details: Record<string, unknown>): GatewayEventProviderError | undefined {
+  const provider = stringOrUndefined(details.provider);
+  const protocol = stringOrUndefined(details.protocol);
+  const status = numberOrUndefined(details.status);
+  const code = stringOrUndefined(details.code);
+  const message = stringOrUndefined(details.message);
+  const raw = stringifyProviderRaw(details.raw);
+  if (!provider && !protocol && status === undefined && !code && !message && !raw) return undefined;
+  return { provider, protocol, status, code, message, raw };
+}
+
+function stringifyProviderRaw(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const text = typeof raw === "string" ? raw : safeJsonStringify(raw);
+  if (!text) return undefined;
+  return text.length > 1_200 ? `${text.slice(0, 1_200)}…` : text;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function safeJsonStringify(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function extensionForMime(mimeType: string): string {

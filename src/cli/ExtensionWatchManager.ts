@@ -13,6 +13,7 @@ export type ExtensionWatchEvent = {
 
 export type ExtensionWatchManagerOptions = {
   pilotHome: string;
+  builtinSkillsRoot?: string;
   debounceMs?: number;
   onChange(event: ExtensionWatchEvent): void;
   onError?(scope: ExtensionWatchScope, error: Error): void;
@@ -98,6 +99,7 @@ export class ExtensionWatchManager {
         resolve(this.options.pilotHome, "mcp.json"),
         resolve(this.options.pilotHome, "plugins"),
         resolve(this.options.pilotHome, "skills"),
+        ...(this.options.builtinSkillsRoot ? [resolve(this.options.builtinSkillsRoot)] : []),
       ];
     }
     const paths = getPilotExtensionPaths(scope.projectRoot, this.options.pilotHome);

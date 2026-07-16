@@ -9,7 +9,6 @@ allowBuilds:
   node-pty: true
   protobufjs: true
   sharp: true
-  sqlite3: true
   unrs-resolver: true
 
 # Native/build-time packages that are allowed to run lifecycle scripts during
@@ -23,5 +22,4 @@ onlyBuiltDependencies:
   - node-pty
   - protobufjs
   - sharp
-  - sqlite3
   - unrs-resolver

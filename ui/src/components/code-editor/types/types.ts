@@ -9,7 +9,14 @@ export type CodeEditorFile = {
   path: string;
   projectName?: string;
   diffInfo?: CodeEditorDiffInfo | null;
+  renamedFromPath?: string;
   [key: string]: unknown;
+};
+
+export type CodeEditorTab = {
+  id: string;
+  fileStack: CodeEditorFile[];
+  dirty: boolean;
 };
 
 export type CodeEditorSettingsState = {

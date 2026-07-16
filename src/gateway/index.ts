@@ -42,6 +42,7 @@ export type {
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
+  PrepareWeixinLoginResult,
   ReloadConfigResult,
   TurnUsage,
 } from "./protocol/index.js";

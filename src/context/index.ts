@@ -32,6 +32,7 @@ export {
 } from "./projection/MessageProjector.js";
 export {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
+  DEFAULT_MAX_RESULT_SIZE_TOKENS,
   PREVIEW_SIZE_BYTES,
   ToolResultBudget,
   createToolResultBudgetState,
@@ -68,6 +69,7 @@ export {
   type TokenCountResult,
   type TokenCountSource,
 } from "./budget/TokenAccountingRuntime.js";
+export { effectiveInputContextTokens } from "./budget/effectiveContext.js";
 export { countTokens, getTokenizer } from "./budget/tokenizer.js";
 export {
   CompactionEngine,

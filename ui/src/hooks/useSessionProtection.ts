@@ -29,7 +29,10 @@ export function useSessionProtection() {
       return;
     }
 
-    setProcessingSessions((prev) => new Set([...prev, sessionId]));
+    setProcessingSessions((prev) => {
+      if (prev.has(sessionId)) return prev;
+      return new Set([...prev, sessionId]);
+    });
   }, []);
 
   const markSessionAsNotProcessing = useCallback((sessionId?: string | null) => {
@@ -38,6 +41,7 @@ export function useSessionProtection() {
     }
 
     setProcessingSessions((prev) => {
+      if (!prev.has(sessionId)) return prev;
       const next = new Set(prev);
       next.delete(sessionId);
       return next;

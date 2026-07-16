@@ -45,7 +45,6 @@ export type CCRConfig = {
     autoOrchestrate?: {
       enabled: boolean;
       triggerTiers: string[];
-      mainAgentModel: string;
       skillPath?: string;
       slimSystemPrompt?: boolean;
     };

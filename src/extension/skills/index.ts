@@ -1,5 +1,15 @@
 export { SkillManager, SkillManagerError, SkillValidationError } from "./SkillManager.js";
 export type { SkillManagerOptions } from "./SkillManager.js";
+export {
+  hashDirectoryTree,
+  migrateLegacyBundledSkillCopies,
+} from "./migrateLegacyBundledSkills.js";
+export type {
+  LegacyBundledSkillMigrationFailure,
+  LegacyBundledSkillMigrationItem,
+  LegacyBundledSkillMigrationReport,
+  MigrateLegacyBundledSkillsOptions,
+} from "./migrateLegacyBundledSkills.js";
 export { migrateSkillsToPilotDeck } from "./migrateSkills.js";
 export type {
   MigrateSkillsToPilotDeckOptions,

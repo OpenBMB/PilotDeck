@@ -201,6 +201,7 @@ export {
   createTaskListTool,
   createTaskOutputTool,
   createTaskStopTool,
+  createTaskWaitTool,
   createTaskTools,
   type CreateTaskToolsOptions,
   type TaskCreateInput,
@@ -211,6 +212,8 @@ export {
   type TaskOutputResult,
   type TaskStopInput,
   type TaskStopResult,
+  type TaskWaitInput,
+  type TaskWaitResult,
 } from "./builtin/taskTools.js";
 export {
   createTodoWriteTool,

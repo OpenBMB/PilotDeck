@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "canvas": {
+    "layout": "LAYOUT_WIDE",
+    "width": 13.333,
+    "height": 7.5,
+    "marginX": 0.72,
+    "marginTop": 0.58,
+    "marginBottom": 0.42
+  },
+  "colors": {
+    "paper": "F7F8FA",
+    "white": "FFFFFF",
+    "ink": "16202A",
+    "muted": "667085",
+    "navy": "102A43",
+    "accent": "F26B38",
+    "cyan": "1C9AB7",
+    "rule": "D7DDE5",
+    "positive": "18794E",
+    "negative": "B42318"
+  },
+  "typography": {
+    "headFontFace": "Aptos Display",
+    "bodyFontFace": "Aptos",
+    "deckTitle": 50,
+    "slideTitle": 36,
+    "statement": 34,
+    "subheading": 24,
+    "body": 18,
+    "caption": 11,
+    "metric": 42
+  },
+  "spacing": {
+    "xs": 0.12,
+    "sm": 0.22,
+    "md": 0.36,
+    "lg": 0.58,
+    "xl": 0.84
+  }
+}

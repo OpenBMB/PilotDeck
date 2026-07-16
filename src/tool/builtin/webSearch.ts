@@ -1,4 +1,5 @@
 import type { PermissionResult } from "../../permission/index.js";
+import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
   PilotDeckToolAvailabilityContext,
@@ -306,7 +307,7 @@ async function performTavilySearch(
 
   let response: Response;
   try {
-    response = await fetchImpl(endpoint, {
+    response = await networkFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -314,9 +315,14 @@ async function performTavilySearch(
       },
       body: JSON.stringify(body),
       signal: controller.signal,
+    }, {
+      timeoutMs,
+      signal: controller.signal,
+      fetchImpl,
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: true },
     });
   } catch (error) {
-    if (controller.signal.aborted && context.abortSignal?.aborted !== true) {
+    if (isLocalTimeout(error, controller.signal, context.abortSignal)) {
       throw new PilotDeckToolRuntimeError(
         "tool_timeout",
         `web_search (tavily) timed out after ${timeoutMs}ms.`,
@@ -416,7 +422,7 @@ async function performGlmSearch(
 
   let response: Response;
   try {
-    response = await fetchImpl(endpoint, {
+    response = await networkFetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -425,9 +431,14 @@ async function performGlmSearch(
       },
       body: JSON.stringify(body),
       signal: controller.signal,
+    }, {
+      timeoutMs,
+      signal: controller.signal,
+      fetchImpl,
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: true },
     });
   } catch (error) {
-    if (controller.signal.aborted && context.abortSignal?.aborted !== true) {
+    if (isLocalTimeout(error, controller.signal, context.abortSignal)) {
       throw new PilotDeckToolRuntimeError(
         "tool_timeout",
         `web_search timed out after ${timeoutMs}ms.`,
@@ -545,14 +556,19 @@ async function performCustomSearch(
 
   let response: Response;
   try {
-    response = await fetchImpl(url.toString(), {
+    response = await networkFetch(url.toString(), {
       method,
       headers,
       ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
+    }, {
+      timeoutMs,
+      signal: controller.signal,
+      fetchImpl,
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: method === "POST" },
     });
   } catch (error) {
-    if (controller.signal.aborted && context.abortSignal?.aborted !== true) {
+    if (isLocalTimeout(error, controller.signal, context.abortSignal)) {
       throw new PilotDeckToolRuntimeError(
         "tool_timeout",
         `web_search (custom) timed out after ${timeoutMs}ms.`,
@@ -708,4 +724,16 @@ function forwardAbort(source: AbortSignal | undefined, target: AbortController):
   const onAbort = () => target.abort(source.reason);
   source.addEventListener("abort", onAbort, { once: true });
   return () => source.removeEventListener("abort", onAbort);
+}
+
+function isLocalTimeout(error: unknown, localSignal: AbortSignal, parentSignal: AbortSignal | undefined): boolean {
+  if (parentSignal?.aborted) return false;
+  return localSignal.aborted || isNetworkTimeoutError(error);
+}
+
+function isNetworkTimeoutError(error: unknown): boolean {
+  return (
+    (error instanceof NetworkFetchError && error.code === "network_timeout") ||
+    (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "network_timeout")
+  );
 }

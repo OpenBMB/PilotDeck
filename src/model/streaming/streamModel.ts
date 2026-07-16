@@ -19,6 +19,7 @@ import { normalizeProviderBaseUrl } from "../normalizeProviderBaseUrl.js";
 import { buildProviderChatEndpointCandidates, isExpectedProviderResponseShape } from "../providerEndpoint.js";
 import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
+import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 
 export type ModelTransport = typeof fetch;
 
@@ -595,7 +596,7 @@ async function sendProviderRequest(
   const detachAbort = signal ? forwardAbort(signal, controller) : undefined;
   const effectiveTimeoutMs = stream ? resolveStreamIdleTimeout(provider, options) : provider.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const timeout = effectiveTimeoutMs
-    ? setTimeout(() => controller.abort("request_timeout"), effectiveTimeoutMs)
+    ? setTimeout(() => controller.abort(new NetworkFetchError("network_timeout", `Model request timed out after ${effectiveTimeoutMs}ms.`)), effectiveTimeoutMs)
     : undefined;
 
   const finalBody = provider.extraBody
@@ -643,7 +644,12 @@ async function sendWithEndpointFallback(
   const endpoints = buildProviderChatEndpointCandidates({ protocol: provider.protocol, baseUrl: provider.url });
   let lastResponse: Response | undefined;
   for (const endpoint of endpoints) {
-    const response = await transport(endpoint, fetchOptions);
+    const response = await networkFetch(endpoint, fetchOptions, {
+      signal: fetchOptions.signal instanceof AbortSignal ? fetchOptions.signal : undefined,
+      fetchImpl: transport === fetch ? undefined : transport,
+      timeoutMs: provider.timeoutMs,
+      retry: { maxRetries: 0, retryOnPost: true },
+    });
     if (await shouldUseEndpointResponse(provider, response, stream, endpoints.length)) {
       return response;
     }

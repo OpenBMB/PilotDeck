@@ -3,7 +3,7 @@ import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } f
 import { QQBotGateway, type QQBotCredentials, type QQGroupMessageEvent, type QQC2CMessageEvent } from "./qqbot-gateway.js";
 import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
-import { QQSessionMapper } from "./QQSessionMapper.js";
+import { QQSessionMapper, type QQSessionMapperState } from "./QQSessionMapper.js";
 import { renderQQEvent } from "./qq-render.js";
 
 export type QQChannelOptions = {
@@ -13,6 +13,7 @@ export type QQChannelOptions = {
   triggerPrefixes?: string[];
   mapper?: QQSessionMapper;
   maxMessageLength?: number;
+  onStateChange?: (state: QQSessionMapperState) => void;
 };
 
 const DEFAULT_PREFIXES = ["/ask", "/chat"];
@@ -26,6 +27,7 @@ export class QQChannel implements ChannelAdapter {
   private readonly triggerPrefixes: string[];
   private readonly mapper: QQSessionMapper;
   private readonly maxMessageLength: number;
+  private readonly onStateChange?: (state: QQSessionMapperState) => void;
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -43,6 +45,7 @@ export class QQChannel implements ChannelAdapter {
     this.triggerPrefixes = options.triggerPrefixes ?? DEFAULT_PREFIXES;
     this.mapper = options.mapper ?? new QQSessionMapper();
     this.maxMessageLength = options.maxMessageLength ?? DEFAULT_MAX_MSG_LEN;
+    this.onStateChange = options.onStateChange;
   }
 
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
@@ -151,6 +154,9 @@ export class QQChannel implements ChannelAdapter {
     }
 
     const mapped = this.mapper.resolve({ groupId: groupOpenId, userId: userOpenId, text });
+    if (mapped.command === "new") {
+      this.onStateChange?.(this.mapper.snapshot());
+    }
 
     if (mapped.command === "new" && !mapped.message) {
       await this.sendReply(groupOpenId, "已创建新会话。", event.id);

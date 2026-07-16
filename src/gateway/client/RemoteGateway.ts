@@ -12,6 +12,7 @@ import type {
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
+  PrepareWeixinLoginResult,
   ReloadConfigResult,
   ReloadExtensionsInput,
   ReloadExtensionsResult,
@@ -155,6 +156,10 @@ export class RemoteGateway implements Gateway {
 
   async reloadConfig(): Promise<ReloadConfigResult> {
     return parseReloadConfigResult(await this.client.request("reload_config", {}));
+  }
+
+  async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {
+    return (await this.client.request("prepare_weixin_login", {})) as PrepareWeixinLoginResult;
   }
 
   async reloadExtensions(input: ReloadExtensionsInput = {}): Promise<ReloadExtensionsResult> {

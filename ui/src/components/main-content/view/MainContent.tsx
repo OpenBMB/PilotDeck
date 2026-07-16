@@ -1,5 +1,18 @@
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  BarChart3,
+  Database,
+  FileText,
+  FolderOpen,
+  MessageSquare,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Radio,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import ChatInterfaceV2 from '../../chat-v2/ChatInterfaceV2';
 import PluginTabContent from '../../plugins/view/PluginTabContent';
 import { cn } from '../../../lib/utils.js';
@@ -12,14 +25,19 @@ import EditorSidebar from '../../code-editor/view/EditorSidebar';
 import type { CodeEditorDiffInfo } from '../../code-editor/types/types';
 import type {
   AlwaysOnSessionTarget,
+  AppTab,
   Project,
   ProjectSession,
 } from '../../../types/app';
+import { isReadOnlySession } from '../../../types/app';
 import { api } from '../../../utils/api';
 import MainContentStateView from './subcomponents/MainContentStateView';
+import ConversationSwitcher from './subcomponents/ConversationSwitcher';
 import ErrorBoundary from './ErrorBoundary';
+import ToolSidePanel from './subcomponents/ToolSidePanel';
 
 const AlwaysOnV2 = React.lazy(() => import('../../main-content-v2/AlwaysOnV2'));
+const CronV2 = React.lazy(() => import('../../main-content-v2/CronV2'));
 const FilesV2 = React.lazy(() => import('../../main-content-v2/FilesV2'));
 const ShellV2 = React.lazy(() => import('../../main-content-v2/ShellV2'));
 const GitV2 = React.lazy(() => import('../../main-content-v2/GitV2'));
@@ -49,10 +67,50 @@ type TasksSettingsContextValue = {
 
 type MainContentToast = { kind: 'error' | 'info'; text: string } | null;
 
-const FILES_CHAT_DEFAULT_WIDTH = 460;
-const FILES_CHAT_MIN_WIDTH = 320;
-const FILES_TREE_MIN_WIDTH = 280;
-const FILES_TREE_ONLY_WIDTH = 300;
+const FILES_EXPLORER_DEFAULT_WIDTH = 300;
+const FILES_EXPLORER_MIN_WIDTH = 240;
+const FILES_EXPLORER_MAX_WIDTH = 420;
+const FILES_ASSISTANT_DEFAULT_WIDTH = 380;
+const FILES_ASSISTANT_MIN_WIDTH = 320;
+const FILES_ASSISTANT_MAX_WIDTH = 480;
+const FILES_ARTIFACT_MIN_WIDTH = 480;
+const FILES_NARROW_BREAKPOINT = 1040;
+const FILES_ASSISTANT_STORAGE_KEY = 'pilotdeck:files-assistant-width';
+const TOOL_PANEL_STORAGE_KEY = 'pilotdeck:dashboard-panel-width';
+const TOOL_PANEL_DEFAULT_WIDTH = 480;
+const TOOL_PANEL_MIN_WIDTH = 360;
+const TOOL_PANEL_MAX_WIDTH = 720;
+const TOOL_PANEL_MAX_LAYOUT_RATIO = 0.48;
+
+type DashboardPanelTab = Extract<AppTab, 'skills' | 'dashboard' | 'memory' | 'always-on'>;
+
+const DASHBOARD_PANEL_TABS = new Set<AppTab>(['skills', 'dashboard', 'memory', 'always-on']);
+const DASHBOARD_PANEL_META: Record<DashboardPanelTab, { labelKey: string; icon: LucideIcon }> = {
+  skills: { labelKey: 'tabs.skills', icon: Sparkles },
+  dashboard: { labelKey: 'tabs.dashboard', icon: BarChart3 },
+  memory: { labelKey: 'tabs.memory', icon: Database },
+  'always-on': { labelKey: 'tabs.alwaysOn', icon: Radio },
+};
+
+function readStoredFilesAssistantWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(FILES_ASSISTANT_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0
+      ? Math.min(Math.max(stored, FILES_ASSISTANT_MIN_WIDTH), FILES_ASSISTANT_MAX_WIDTH)
+      : FILES_ASSISTANT_DEFAULT_WIDTH;
+  } catch {
+    return FILES_ASSISTANT_DEFAULT_WIDTH;
+  }
+}
+
+function readStoredToolPanelWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(TOOL_PANEL_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : TOOL_PANEL_DEFAULT_WIDTH;
+  } catch {
+    return TOOL_PANEL_DEFAULT_WIDTH;
+  }
+}
 
 async function readJsonPayload<T>(response: Response): Promise<T | null> {
   try {
@@ -83,6 +141,7 @@ function MainContent({
   onSessionNotProcessing,
   onSessionActivityBump,
   processingSessions,
+  unreadSessionIds,
   onReplaceTemporarySession,
   onNavigateToSession,
   onStartNewSession,
@@ -104,9 +163,10 @@ function MainContent({
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
 
   const {
+    editorTabs,
+    activeEditorTabId,
+    activeFilePath,
     editingFile,
-    canGoBack,
-    parentFile,
     editorWidth,
     editorExpanded,
     hasManualWidth,
@@ -114,7 +174,11 @@ function MainContent({
     handleFileOpen,
     handlePreviewFileOpen,
     handleFileGoBack,
-    handleCloseEditor,
+    handleTabSelect,
+    handleTabClose,
+    handleTabDirtyChange,
+    handleFileRename,
+    handleFileDelete,
     handleToggleEditorExpand,
     handleResizeStart,
   } = useEditorSidebar({
@@ -122,19 +186,25 @@ function MainContent({
     isMobile,
   });
 
+  const openFileInWorkspace = useCallback((
+    filePath: string,
+    diffInfo: CodeEditorDiffInfo | null = null,
+  ) => {
+    handleFileOpen(filePath, diffInfo);
+    setActiveTab('files');
+  }, [handleFileOpen, setActiveTab]);
+
   const handledMisroutedFileRef = useRef<string | null>(null);
   useEffect(() => {
     if (!misroutedFileFromUrl || !selectedProject) return;
     if (handledMisroutedFileRef.current === misroutedFileFromUrl) return;
     handledMisroutedFileRef.current = misroutedFileFromUrl;
-    handleFileOpen(misroutedFileFromUrl);
-    setActiveTab('chat');
+    openFileInWorkspace(misroutedFileFromUrl);
     onMisroutedFileUrlHandled?.();
   }, [
     misroutedFileFromUrl,
     selectedProject,
-    handleFileOpen,
-    setActiveTab,
+    openFileInWorkspace,
     onMisroutedFileUrlHandled,
   ]);
 
@@ -310,7 +380,7 @@ function MainContent({
     );
   }
 
-  if (!selectedProject && activeTab !== 'dashboard') {
+  if (!selectedProject && activeTab !== 'dashboard' && activeTab !== 'cron') {
     return (
       <MainContentStateView
         mode="empty"
@@ -336,7 +406,7 @@ function MainContent({
           ws={ws}
           sendMessage={sendMessage}
           latestMessage={latestMessage}
-          handleFileOpen={handleFileOpen}
+          handleFileOpen={openFileInWorkspace}
           onInputFocusChange={onInputFocusChange}
           onSessionActive={onSessionActive}
           onSessionInactive={onSessionInactive}
@@ -344,8 +414,11 @@ function MainContent({
           onSessionNotProcessing={onSessionNotProcessing}
           onSessionActivityBump={onSessionActivityBump}
           processingSessions={processingSessions}
+          unreadSessionIds={unreadSessionIds}
           onReplaceTemporarySession={onReplaceTemporarySession}
           onNavigateToSession={onNavigateToSession}
+          onStartNewSession={onStartNewSession}
+          onSelectSession={onSelectSession}
           onShowSettings={onShowSettings}
           externalMessageUpdate={externalMessageUpdate}
           autoExpandTools={autoExpandTools}
@@ -358,28 +431,29 @@ function MainContent({
           handleOpenExecutionSession={handleOpenExecutionSession}
           editorExpanded={editorExpanded}
           hasEditor={editingFile !== null}
+          activeFilePath={activeFilePath}
+          onFileRename={handleFileRename}
+          onFileDelete={handleFileDelete}
           onSelectProjectByName={onSelectProjectByName}
+          isMobile={isMobile}
+          editorSidebarProps={{
+            editorTabs,
+            activeEditorTabId,
+            isMobile,
+            editorExpanded,
+            editorWidth,
+            hasManualWidth,
+            resizeHandleRef,
+            onResizeStart: handleResizeStart,
+            onTabSelect: handleTabSelect,
+            onTabClose: handleTabClose,
+            onTabDirtyChange: handleTabDirtyChange,
+            onToggleEditorExpand: handleToggleEditorExpand,
+            onPreviewFileOpen: handlePreviewFileOpen,
+            onGoBack: handleFileGoBack,
+            projectPath: selectedProject?.path,
+          }}
         />
-
-        {selectedProject && (
-          <EditorSidebar
-            editingFile={editingFile}
-            isMobile={isMobile}
-            editorExpanded={editorExpanded}
-            editorWidth={editorWidth}
-            hasManualWidth={hasManualWidth}
-            resizeHandleRef={resizeHandleRef}
-            onResizeStart={handleResizeStart}
-            onCloseEditor={handleCloseEditor}
-            onToggleEditorExpand={handleToggleEditorExpand}
-            onPreviewFileOpen={handlePreviewFileOpen}
-            canGoBack={canGoBack}
-            parentFile={parentFile}
-            onGoBack={handleFileGoBack}
-            projectPath={selectedProject.path}
-            fillSpace={activeTab === 'files'}
-          />
-        )}
       </div>
       {toast ? (
         <div
@@ -396,14 +470,13 @@ function MainContent({
   );
 }
 
-// V2 split body: the Agent surface owns both the new-session welcome state
-// and existing transcripts. Files can pair with Agent in split view; focused
-// tools such as Always-On, Dashboard, Tasks, and Memory render full-screen.
+// V2 split body: chat is the persistent primary surface, Files is a dedicated
+// workbench, and the management dashboards open in a resizable side panel.
 type SplitBodyProps = {
   projects: Project[];
   selectedProject: Project | null;
-  selectedSession: any;
-  activeTab: string;
+  selectedSession: ProjectSession | null;
+  activeTab: AppTab;
   shouldShowTasksTab: boolean;
   tasksEnabled: boolean;
   setActiveTab: (tab: any) => void;
@@ -423,9 +496,12 @@ type SplitBodyProps = {
     sessionId: string,
     optimisticTitle?: string,
   ) => void;
-  processingSessions: any;
+  processingSessions: Set<string>;
+  unreadSessionIds: Set<string>;
   onReplaceTemporarySession: any;
   onNavigateToSession: (sessionId: string) => void;
+  onStartNewSession: MainContentProps['onStartNewSession'];
+  onSelectSession: MainContentProps['onSelectSession'];
   onShowSettings: any;
   externalMessageUpdate: any;
   autoExpandTools: any;
@@ -438,10 +514,16 @@ type SplitBodyProps = {
   handleOpenExecutionSession: (projectKey: string, runId: string, projectName?: string) => void;
   editorExpanded: boolean;
   hasEditor: boolean;
+  activeFilePath: string | null;
+  onFileRename: (oldPath: string, newPath: string) => void;
+  onFileDelete: (deletedPath: string) => void;
   onSelectProjectByName?: (projectName: string) => void;
+  isMobile: boolean;
+  editorSidebarProps: React.ComponentProps<typeof EditorSidebar>;
 };
 
 function SplitBody(props: SplitBodyProps) {
+  const { t } = useTranslation();
   const {
     projects,
     selectedProject,
@@ -463,8 +545,11 @@ function SplitBody(props: SplitBodyProps) {
     onSessionNotProcessing,
     onSessionActivityBump,
     processingSessions,
+    unreadSessionIds,
     onReplaceTemporarySession,
     onNavigateToSession,
+    onStartNewSession,
+    onSelectSession,
     onShowSettings,
     externalMessageUpdate,
     autoExpandTools,
@@ -477,83 +562,139 @@ function SplitBody(props: SplitBodyProps) {
     handleOpenExecutionSession,
     editorExpanded,
     hasEditor,
+    activeFilePath,
+    onFileRename,
+    onFileDelete,
     onSelectProjectByName,
+    isMobile,
+    editorSidebarProps,
   } = props;
 
-  // Render-mode taxonomy:
-  //   - 'chat':    Agent surface. No session shows the welcome composer;
-  //                existing sessions show the transcript.
-  //   - 'split':   Files tab only. Chat on the left, file tree/editor on right.
-  //   - 'tool':    Always-On / Dashboard / Memory / Tasks / Shell / Git /
-  //                plugin tabs. Tool fills the whole main area, no chat
-  //                alongside — matches the legacy single-pane layout users
-  //                expect when they tab into a focused tool.
-  //
-  // Note: Shell + Git aren't surfaced in the V2 top tab bar (see TABS in
-  // MainAreaV2.tsx) but plugins / programmatic activeTab values still hit
-  // those code paths, so we keep them here as full-screen tool views.
+  // Shell, Git, Tasks, and plugin tabs retain their legacy full-screen mode.
+  // Skills, Routing, Memory, and Always-On are auxiliary dashboards paired
+  // with chat. Files stays a separate explorer + artifact + assistant mode.
   const isPlugin = typeof activeTab === 'string' && activeTab.startsWith('plugin:');
   const fullScreenToolTabs = new Set([
     'shell',
     'git',
-    'always-on',
-    'dashboard',
-    'memory',
-    'skills',
+    'cron',
     'tasks',
   ]);
   const isFullScreenTool = fullScreenToolTabs.has(activeTab) || isPlugin;
+  const isDashboardPanel = DASHBOARD_PANEL_TABS.has(activeTab);
+  const dashboardPanelTab = isDashboardPanel ? activeTab as DashboardPanelTab : null;
   // Tasks tab is conditional — fall back to chat if the project hasn't
   // enabled it yet so we don't render a black hole.
   const renderTasksAsTool = activeTab === 'tasks' && shouldShowTasksTab;
   const isFiles = activeTab === 'files';
   const filesSplitContainerRef = useRef<HTMLDivElement | null>(null);
-  const [filesChatWidth, setFilesChatWidth] = useState(FILES_CHAT_DEFAULT_WIDTH);
-  const [isFilesSplitResizing, setIsFilesSplitResizing] = useState(false);
+  const [filesExplorerWidth, setFilesExplorerWidth] = useState(FILES_EXPLORER_DEFAULT_WIDTH);
+  const [filesAssistantWidth, setFilesAssistantWidth] = useState(readStoredFilesAssistantWidth);
+  const [filesResizeTarget, setFilesResizeTarget] = useState<'explorer' | 'assistant' | null>(null);
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const [assistantCollapsed, setAssistantCollapsed] = useState(false);
+  const [assistantOverlayOpen, setAssistantOverlayOpen] = useState(false);
+  const [workbenchWidth, setWorkbenchWidth] = useState(0);
+  const [toolPanelWidth, setToolPanelWidth] = useState(readStoredToolPanelWidth);
+  const [toolPanelResizing, setToolPanelResizing] = useState(false);
+  const isNarrowWorkbench = workbenchWidth > 0 && workbenchWidth < FILES_NARROW_BREAKPOINT;
+  const toolPanelMaxWidth = workbenchWidth > 0
+    ? Math.max(
+        TOOL_PANEL_MIN_WIDTH,
+        Math.min(TOOL_PANEL_MAX_WIDTH, workbenchWidth * TOOL_PANEL_MAX_LAYOUT_RATIO),
+      )
+    : TOOL_PANEL_MAX_WIDTH;
 
-  const clampFilesChatWidth = useCallback((width: number, containerWidth: number) => {
-    const maxWidth = Math.max(FILES_CHAT_MIN_WIDTH, containerWidth - FILES_TREE_MIN_WIDTH);
-    return Math.min(Math.max(width, FILES_CHAT_MIN_WIDTH), maxWidth);
+  useEffect(() => {
+    const container = filesSplitContainerRef.current;
+    if (!container) return undefined;
+
+    const updateWidth = () => setWorkbenchWidth(container.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
+    setToolPanelWidth((width) => Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth));
+  }, [toolPanelMaxWidth]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOOL_PANEL_STORAGE_KEY, String(Math.round(toolPanelWidth)));
+    } catch {
+      // The panel remains usable when localStorage is unavailable.
+    }
+  }, [toolPanelWidth]);
+
+  useEffect(() => {
+    if (!isNarrowWorkbench) setAssistantOverlayOpen(false);
+  }, [isNarrowWorkbench]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILES_ASSISTANT_STORAGE_KEY, String(Math.round(filesAssistantWidth)));
+    } catch {
+      // Resizing remains available when persistent storage is unavailable.
+    }
+  }, [filesAssistantWidth]);
+
+  const clampFilesAssistantWidth = useCallback((width: number) => {
+    const explorerWidth = explorerCollapsed ? 44 : filesExplorerWidth;
+    const availableWidth = workbenchWidth > 0
+      ? workbenchWidth - explorerWidth - FILES_ARTIFACT_MIN_WIDTH
+      : FILES_ASSISTANT_MAX_WIDTH;
+    const maxWidth = Math.max(
+      FILES_ASSISTANT_MIN_WIDTH,
+      Math.min(FILES_ASSISTANT_MAX_WIDTH, availableWidth),
+    );
+    return Math.min(Math.max(width, FILES_ASSISTANT_MIN_WIDTH), maxWidth);
+  }, [explorerCollapsed, filesExplorerWidth, workbenchWidth]);
+
+  const handleFilesAssistantResizeBy = useCallback((delta: number) => {
+    setFilesAssistantWidth((width) => clampFilesAssistantWidth(width + delta));
+  }, [clampFilesAssistantWidth]);
+
+  useEffect(() => {
+    setFilesAssistantWidth((width) => clampFilesAssistantWidth(width));
+  }, [clampFilesAssistantWidth]);
+
+  const handleFilesResizeStart = useCallback((
+    target: 'explorer' | 'assistant',
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
     if (!isFiles) return;
-    const container = filesSplitContainerRef.current;
-    if (!container) return;
-    const containerWidth = container.getBoundingClientRect().width;
-    if (hasEditor) {
-      setFilesChatWidth(FILES_CHAT_DEFAULT_WIDTH);
-    } else {
-      setFilesChatWidth(Math.max(FILES_CHAT_MIN_WIDTH, containerWidth - FILES_TREE_ONLY_WIDTH));
-    }
-  }, [hasEditor, isFiles]);
-
-  const handleFilesSplitResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!isFiles) {
-      return;
-    }
-
-    setIsFilesSplitResizing(true);
+    setFilesResizeTarget(target);
     event.preventDefault();
   }, [isFiles]);
 
   useEffect(() => {
-    if (!isFilesSplitResizing) {
-      return undefined;
-    }
+    if (!filesResizeTarget) return undefined;
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       const container = filesSplitContainerRef.current;
-      if (!container) {
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      if (filesResizeTarget === 'explorer') {
+        const available = rect.width - filesAssistantWidth - FILES_ARTIFACT_MIN_WIDTH;
+        const maxWidth = Math.max(
+          FILES_EXPLORER_MIN_WIDTH,
+          Math.min(FILES_EXPLORER_MAX_WIDTH, available),
+        );
+        setFilesExplorerWidth(Math.min(
+          Math.max(event.clientX - rect.left, FILES_EXPLORER_MIN_WIDTH),
+          maxWidth,
+        ));
         return;
       }
 
-      const rect = container.getBoundingClientRect();
-      setFilesChatWidth(clampFilesChatWidth(event.clientX - rect.left, rect.width));
+      setFilesAssistantWidth(clampFilesAssistantWidth(rect.right - event.clientX));
     };
 
     const handleMouseUp = () => {
-      setIsFilesSplitResizing(false);
+      setFilesResizeTarget(null);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -567,7 +708,45 @@ function SplitBody(props: SplitBodyProps) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [clampFilesChatWidth, isFilesSplitResizing]);
+  }, [clampFilesAssistantWidth, filesAssistantWidth, filesExplorerWidth, filesResizeTarget]);
+
+  const clampToolPanelWidth = useCallback((width: number) => (
+    Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth)
+  ), [toolPanelMaxWidth]);
+
+  const handleToolPanelResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dashboardPanelTab || isMobile) return;
+    event.preventDefault();
+    setToolPanelResizing(true);
+  }, [dashboardPanelTab, isMobile]);
+
+  const handleToolPanelResizeBy = useCallback((delta: number) => {
+    setToolPanelWidth((width) => clampToolPanelWidth(width + delta));
+  }, [clampToolPanelWidth]);
+
+  useEffect(() => {
+    if (!toolPanelResizing) return undefined;
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      const container = filesSplitContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      setToolPanelWidth(clampToolPanelWidth(rect.right - event.clientX));
+    };
+    const handleMouseUp = () => setToolPanelResizing(false);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [clampToolPanelWidth, toolPanelResizing]);
 
   const renderTool = () => {
     if (activeTab === 'shell') {
@@ -590,12 +769,14 @@ function SplitBody(props: SplitBodyProps) {
           onSubTabChange={onAlwaysOnSubTabChange ?? (() => undefined)}
           onApplyWorkCycle={applyAndLaunchCycle}
           onOpenExecutionSession={handleOpenExecutionSession}
+          compact
         />
       );
     }
-    if (activeTab === 'dashboard') return <DashboardV2 projectFilter={selectedProject?.name} projectFullPath={selectedProject?.fullPath} onSelectProject={onSelectProjectByName} />;
+    if (activeTab === 'cron') return <CronV2 />;
+    if (activeTab === 'dashboard') return <DashboardV2 projectFilter={selectedProject?.name} projectFullPath={selectedProject?.fullPath} onSelectProject={onSelectProjectByName} compact />;
     if (activeTab === 'memory') return <MemoryPanel selectedProject={selectedProject} />;
-    if (activeTab === 'skills') return <SkillsV2 selectedProject={selectedProject} projects={projects} />;
+    if (activeTab === 'skills') return <SkillsV2 selectedProject={selectedProject} projects={projects} compact />;
     if (renderTasksAsTool) return <TasksV2 isVisible />;
     if (isPlugin) {
       return (
@@ -611,13 +792,24 @@ function SplitBody(props: SplitBodyProps) {
 
   const showFullScreenTool = isFullScreenTool && (activeTab !== 'tasks' || shouldShowTasksTab);
   const showChat = !showFullScreenTool;
-
+  const assistantVisible = isFiles
+    && showChat
+    && !editorExpanded
+    && !isMobile
+    && !assistantCollapsed
+    && (!isNarrowWorkbench || assistantOverlayOpen);
+  const assistantIsOverlay = assistantVisible && isNarrowWorkbench;
+  const showAssistantRail = isFiles
+    && showChat
+    && !editorExpanded
+    && !isMobile
+    && !assistantVisible;
   return (
     <div
-      ref={isFiles && showChat ? filesSplitContainerRef : undefined}
-      className={cn('flex min-h-0 min-w-0 flex-1 overflow-hidden', editorExpanded && 'hidden')}
+      ref={filesSplitContainerRef}
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
     >
-      {/* Full-screen tool surface (Memory, Dashboard, Always-On, etc.) */}
+      {/* Legacy full-screen surfaces (Shell, Git, Tasks, plugin tabs). */}
       {showFullScreenTool && (
         <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
           <Suspense fallback={<TabSkeleton />}>
@@ -626,24 +818,125 @@ function SplitBody(props: SplitBodyProps) {
         </div>
       )}
 
-      {/* Agent surface — kept mounted even when a full-screen tool is active
-          so that the session store, WebSocket subscriptions, and streaming
-          state survive tab switches. Hidden via CSS to avoid layout cost. */}
+      {/* Files workbench explorer. On mobile it yields to the opened artifact. */}
+      {isFiles && showChat && !editorExpanded && (!isMobile || !hasEditor) ? (
+        explorerCollapsed && !isMobile ? (
+          <div className="flex h-full w-11 flex-shrink-0 flex-col items-center border-r border-neutral-200 bg-neutral-50/60 py-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <button
+              type="button"
+              onClick={() => setExplorerCollapsed(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              title={t('filesWorkbench.openExplorer')}
+              aria-label={t('filesWorkbench.openExplorer')}
+            >
+              <PanelLeftOpen className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+            <FolderOpen className="mt-3 h-4 w-4 text-neutral-400 dark:text-neutral-500" strokeWidth={1.7} />
+          </div>
+        ) : (
+          <>
+            <div
+              className="flex h-full min-w-0 flex-shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
+              style={isMobile ? { width: '100%' } : { width: filesExplorerWidth }}
+            >
+              <Suspense fallback={<TabSkeleton />}>
+                <FilesV2
+                  key={selectedProject?.name ?? ''}
+                  selectedProject={selectedProject}
+                  onFileOpen={handleFileOpen}
+                  activeFilePath={activeFilePath}
+                  onFileRename={onFileRename}
+                  onFileDelete={onFileDelete}
+                  onClose={isMobile ? () => setActiveTab('chat') : () => setExplorerCollapsed(true)}
+                  canAddToChat={!isReadOnlySession(selectedSession)}
+                />
+              </Suspense>
+            </div>
+            {!isMobile ? (
+              <div
+                onMouseDown={(event) => handleFilesResizeStart('explorer', event)}
+                className="group relative z-20 w-px flex-shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-neutral-400 dark:bg-neutral-800 dark:hover:bg-neutral-600"
+                title={t('filesWorkbench.resizeExplorer')}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
+                <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-neutral-600" />
+              </div>
+            ) : null}
+          </>
+        )
+      ) : null}
+
+      {/* Artifact canvas — the visual center and primary surface in Files. */}
+      {isFiles && showChat && (hasEditor || !isMobile) ? (
+        <div className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col overflow-hidden bg-neutral-50/40 dark:bg-neutral-950">
+          {hasEditor && selectedProject ? (
+            <EditorSidebar {...editorSidebarProps} workspaceMode />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-400 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-500">
+                <FileText className="h-5 w-5" strokeWidth={1.6} />
+              </div>
+              <p className="text-[14px] font-medium text-neutral-700 dark:text-neutral-300">
+                {t('filesWorkbench.openFileTitle')}
+              </p>
+              <p className="mt-1 max-w-64 text-[12px] leading-5 text-neutral-400 dark:text-neutral-500">
+                {t('filesWorkbench.openFileDescription')}
+              </p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* Agent surface stays mounted so streaming state survives tab switches. */}
       <div
+        key="agent-surface"
         className={cn(
-          'flex min-h-0 min-w-0 flex-col',
-          showChat
-            ? (isFiles ? 'flex-shrink-0' : 'flex-1')
-            : 'invisible absolute h-0 w-0 overflow-hidden',
+          'flex min-h-0 min-w-0 flex-col bg-white dark:bg-neutral-950',
+          !showChat && 'invisible absolute h-0 w-0 overflow-hidden',
+          showChat && !isFiles && 'flex-1',
+          assistantVisible && !assistantIsOverlay && 'flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800',
+          assistantIsOverlay && 'absolute inset-y-0 right-0 z-40 border-l border-neutral-200 shadow-2xl dark:border-neutral-800',
+          isFiles && !assistantVisible && 'invisible absolute h-0 w-0 overflow-hidden',
         )}
-        style={showChat && isFiles
-          ? {
-              minWidth: `${FILES_CHAT_MIN_WIDTH}px`,
-              width: `min(${filesChatWidth}px, calc(100% - ${FILES_TREE_MIN_WIDTH}px))`,
-            }
-          : undefined}
-        aria-hidden={!showChat}
+        style={assistantVisible ? { width: filesAssistantWidth } : undefined}
+        aria-hidden={!showChat || (isFiles && !assistantVisible)}
       >
+        {isFiles ? (
+          <div className="relative z-50 flex h-12 flex-shrink-0 items-center gap-1 border-b border-neutral-200 px-2 dark:border-neutral-800">
+            {selectedProject ? (
+              <ConversationSwitcher
+                project={selectedProject}
+                selectedSession={selectedSession}
+                processingSessions={processingSessions}
+                unreadSessionIds={unreadSessionIds}
+                onSelectSession={(session) => {
+                  if (onSelectSession) {
+                    onSelectSession(selectedProject, session.id, session, {
+                      preserveActiveTab: true,
+                    });
+                    return;
+                  }
+                  onNavigateToSession(session.id);
+                }}
+                onNewSession={() => onStartNewSession(selectedProject, {
+                  preserveActiveTab: true,
+                })}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (isNarrowWorkbench) setAssistantOverlayOpen(false);
+                else setAssistantCollapsed(true);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              title={t('filesWorkbench.collapseAssistant')}
+              aria-label={t('filesWorkbench.collapseAssistant')}
+            >
+              <PanelRightClose className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+        ) : null}
         <ErrorBoundary showDetails>
           <ChatInterfaceV2
             selectedProject={selectedProject}
@@ -671,38 +964,93 @@ function SplitBody(props: SplitBodyProps) {
             externalMessageUpdate={externalMessageUpdate}
             onShowAllTasks={tasksEnabled ? () => setActiveTab('tasks') : null}
             forceWelcome={false}
-            onExitWelcome={() => setActiveTab('chat')}
+            onExitWelcome={isFiles ? undefined : () => setActiveTab('chat')}
+            compact={isFiles}
           />
         </ErrorBoundary>
       </div>
 
-      {/* Right half — only mounted when the user is on Files (chat-paired
-          file tree + editor). */}
-      {isFiles && showChat ? (
-        <>
-          <div
-            onMouseDown={handleFilesSplitResizeStart}
-            className="group relative z-10 w-px flex-shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-neutral-400 dark:bg-neutral-800 dark:hover:bg-neutral-600"
-            title="Drag to resize"
-          >
-            <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
-            <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-neutral-600" />
-          </div>
-          <div
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-            style={{ minWidth: `${FILES_TREE_MIN_WIDTH}px` }}
-          >
-            <Suspense fallback={<TabSkeleton />}>
-              <FilesV2
-                key={selectedProject?.name ?? ''}
-                selectedProject={selectedProject}
-                onFileOpen={handleFileOpen}
-                onClose={() => setActiveTab('chat')}
-              />
-            </Suspense>
-          </div>
-        </>
+      {dashboardPanelTab ? (
+        <ToolSidePanel
+          title={t(DASHBOARD_PANEL_META[dashboardPanelTab].labelKey)}
+          icon={DASHBOARD_PANEL_META[dashboardPanelTab].icon}
+          width={toolPanelWidth}
+          minWidth={TOOL_PANEL_MIN_WIDTH}
+          maxWidth={toolPanelMaxWidth}
+          isMobile={isMobile}
+          closeLabel={t('dashboardSwitcher.closePanel', {
+            defaultValue: 'Close {{tool}} dashboard',
+            tool: t(DASHBOARD_PANEL_META[dashboardPanelTab].labelKey),
+          })}
+          resizeLabel={t('dashboardSwitcher.resizePanel', {
+            defaultValue: 'Resize {{tool}} dashboard',
+            tool: t(DASHBOARD_PANEL_META[dashboardPanelTab].labelKey),
+          })}
+          onClose={() => setActiveTab('chat')}
+          onResizeStart={handleToolPanelResizeStart}
+          onResizeBy={handleToolPanelResizeBy}
+        >
+          <Suspense fallback={<TabSkeleton />}>
+            {renderTool()}
+          </Suspense>
+        </ToolSidePanel>
       ) : null}
+
+      {assistantVisible && !assistantIsOverlay ? (
+        <div
+          onMouseDown={(event) => handleFilesResizeStart('assistant', event)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              handleFilesAssistantResizeBy(16);
+            } else if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              handleFilesAssistantResizeBy(-16);
+            } else if (event.key === 'Home') {
+              event.preventDefault();
+              setFilesAssistantWidth(clampFilesAssistantWidth(FILES_ASSISTANT_MIN_WIDTH));
+            } else if (event.key === 'End') {
+              event.preventDefault();
+              setFilesAssistantWidth(clampFilesAssistantWidth(FILES_ASSISTANT_MAX_WIDTH));
+            }
+          }}
+          className="group absolute inset-y-0 z-30 w-px cursor-col-resize bg-neutral-200 outline-none transition-colors hover:bg-neutral-400 focus:bg-blue-500 dark:bg-neutral-800 dark:hover:bg-neutral-600 dark:focus:bg-blue-400"
+          style={{ right: filesAssistantWidth }}
+          title={t('filesWorkbench.resizeAssistant')}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('filesWorkbench.resizeAssistant')}
+          aria-valuemin={FILES_ASSISTANT_MIN_WIDTH}
+          aria-valuemax={FILES_ASSISTANT_MAX_WIDTH}
+          aria-valuenow={Math.round(filesAssistantWidth)}
+          tabIndex={0}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
+          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-neutral-600" />
+        </div>
+      ) : null}
+
+      {showAssistantRail ? (
+        <div className="flex h-full w-11 flex-shrink-0 flex-col items-center border-l border-neutral-200 bg-neutral-50/60 py-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (isNarrowWorkbench) setAssistantOverlayOpen(true);
+                else setAssistantCollapsed(false);
+              }}
+              title={t('filesWorkbench.openAssistant')}
+              aria-label={t('filesWorkbench.openAssistant')}
+            >
+              <PanelRightOpen className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+          <MessageSquare className="mt-3 h-4 w-4 text-neutral-400 dark:text-neutral-500" strokeWidth={1.7} />
+        </div>
+      ) : null}
+
     </div>
   );
 }

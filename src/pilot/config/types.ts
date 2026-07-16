@@ -193,6 +193,14 @@ export type PilotAdaptersConfig = {
     domainName?: "feishu" | "lark";
   };
   weixin?: { enabled: boolean };
+  qq?: {
+    enabled: boolean;
+    appId?: string;
+    clientSecret?: string;
+    allowGroups?: string[];
+    triggerPrefixes?: string[];
+    maxMessageLength?: number;
+  };
   telegram?: PilotPlatformAdapterConfig;
   discord?: PilotPlatformAdapterConfig;
   slack?: PilotPlatformAdapterConfig;

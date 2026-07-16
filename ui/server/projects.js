@@ -516,6 +516,7 @@ async function getProjectCronJobsOverview(projectName) {
                 cron: isCron ? task.schedule.expression : '',
                 prompt: task.message || '',
                 createdAt: task.createdAt,
+                nextRunAt: task.nextRunAt,
                 recurring: isCron,
                 permanent: isCron,
                 manualOnly: false,

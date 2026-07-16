@@ -447,18 +447,16 @@ function parseAutoOrchestrate(
     return undefined;
   }
   const enabled = typeof raw.enabled === "boolean" ? raw.enabled : true;
-  const mainAgentModel = optionalRef(
-    raw.mainAgentModel,
-    "router.autoOrchestrate.mainAgentModel",
-    modelConfig,
-    diagnostics,
-  );
-  const subagentModel = optionalRef(
-    raw.subagentModel,
-    "router.autoOrchestrate.subagentModel",
-    modelConfig,
-    diagnostics,
-  );
+  for (const deprecated of ["mainAgentModel", "subagentModel"] as const) {
+    if (raw[deprecated] !== undefined) {
+      diagnostics.push({
+        code: "ROUTER_AUTO_ORCHESTRATE_DEPRECATED_FIELD",
+        severity: "warning",
+        path: `router.autoOrchestrate.${deprecated}`,
+        message: `router.autoOrchestrate.${deprecated} is deprecated and ignored.`,
+      });
+    }
+  }
   let triggerTiers: string[] = [...DEFAULT_TRIGGER_TIERS];
   if (raw.triggerTiers !== undefined) {
     if (Array.isArray(raw.triggerTiers) && raw.triggerTiers.every((entry) => typeof entry === "string")) {
@@ -550,8 +548,6 @@ function parseAutoOrchestrate(
 
   return {
     enabled,
-    mainAgentModel,
-    subagentModel,
     triggerTiers,
     allowedTools,
     blockedTools,

@@ -12,7 +12,12 @@ CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
 BIN_LINK="${PILOTDECK_BIN_LINK:-/usr/local/bin/pilotdeck}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
 MIN_NODE_VERSION="22.13.0"
+MAX_NODE_MAJOR="22"
 NODE_INSTALL_VERSION="${PILOTDECK_NODE_VERSION:-22}"
+NODE_FALLBACK_VERSION="${PILOTDECK_NODE_FALLBACK_VERSION:-22.13.0}"
+NODE_DIRECT_INSTALL_ROOT="$HOME/.local/share/pilotdeck-node"
+NODE_DIST_MIRROR="${PILOTDECK_NODE_DIST_MIRROR:-https://nodejs.org/dist}"
+NODE_DIST_FALLBACK_MIRRORS="${PILOTDECK_NODE_DIST_FALLBACK_MIRRORS:-}"
 APT_UPDATED=0
 # 1 = repo was (re)cloned or its HEAD changed; drives whether we reinstall/rebuild.
 REPO_CHANGED=1
@@ -321,11 +326,79 @@ version_at_least() {
   (( v_patch >= min_patch ))
 }
 
+node_major() {
+  local version="${1#v}"
+  printf "%s" "${version%%.*}"
+}
+
+expected_node_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) printf "x64" ;;
+    arm64|aarch64) printf "arm64" ;;
+    *) return 1 ;;
+  esac
+}
+
+node_arch_matches_host() {
+  local expected actual
+  expected="$(expected_node_arch 2>/dev/null || true)"
+  [[ -n "$expected" ]] || return 0
+  actual="$(node -p "process.arch" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]]
+}
+
+node_tarball_platform() {
+  local os
+  local arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os" in
+    Linux) os="linux" ;;
+    Darwin) os="darwin" ;;
+    *) return 1 ;;
+  esac
+  case "$arch" in
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+  printf "%s-%s" "$os" "$arch"
+}
+
+load_direct_node_runtime() {
+  local platform
+  local node_dir
+  platform="$(node_tarball_platform 2>/dev/null || true)"
+  [[ -n "$platform" ]] || return 0
+  node_dir="$NODE_DIRECT_INSTALL_ROOT/node-v${NODE_FALLBACK_VERSION}-${platform}"
+  if [[ -x "$node_dir/bin/node" ]]; then
+    export PATH="$node_dir/bin:$PATH"
+    export npm_config_nodedir="${npm_config_nodedir:-$node_dir}"
+    export npm_config_disturl="${npm_config_disturl:-${NODE_DIST_MIRROR%/}}"
+  fi
+}
+
 node_supports_sqlite() {
   node -e "import('node:sqlite').then(() => {}, () => process.exit(1))" >/dev/null 2>&1
 }
 
+load_node_managers() {
+  if ! command -v fnm >/dev/null 2>&1 && [[ -d "$HOME/.local/share/fnm" ]]; then
+    export PATH="$HOME/.local/share/fnm:$PATH"
+    if command -v fnm >/dev/null 2>&1; then
+      eval "$(fnm env --shell bash)"
+    fi
+  fi
+
+  if ! command -v nvm >/dev/null 2>&1 && [[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]]; then
+    # nvm is a shell function, so non-interactive scripts must source it.
+    # shellcheck disable=SC1090
+    source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+  fi
+}
+
 install_node_runtime() {
+  load_node_managers
   if command -v fnm >/dev/null 2>&1; then
     fnm install "$NODE_INSTALL_VERSION" </dev/null
     fnm use "$NODE_INSTALL_VERSION"
@@ -333,33 +406,79 @@ install_node_runtime() {
     nvm install "$NODE_INSTALL_VERSION" </dev/null
     nvm use "$NODE_INSTALL_VERSION"
   else
-    warn "$(L "Installing fnm (Fast Node Manager)..." "正在安装 fnm(Fast Node Manager)...")"
-    curl -fsSL https://fnm.vercel.app/install | bash
-    export PATH="$HOME/.local/share/fnm:$PATH"
-    eval "$(fnm env)"
-    fnm install "$NODE_INSTALL_VERSION" </dev/null
-    fnm use "$NODE_INSTALL_VERSION"
+    install_node_tarball
   fi
+}
+
+install_node_tarball() {
+  local platform
+  local tarball
+  local url
+  local install_root
+  local node_dir
+  local tmp_dir
+  local mirrors
+  local mirror
+  local downloaded=0
+
+  platform="$(node_tarball_platform)" || fail "$(L "Unsupported platform for direct Node.js download. Please install Node.js 22 manually." "当前平台不支持直接下载 Node.js。请手动安装 Node.js 22。")"
+  tarball="node-v${NODE_FALLBACK_VERSION}-${platform}.tar.xz"
+  install_root="$NODE_DIRECT_INSTALL_ROOT"
+  node_dir="$install_root/node-v${NODE_FALLBACK_VERSION}-${platform}"
+  tmp_dir="$(mktemp -d)"
+
+  mirrors="$NODE_DIST_MIRROR"
+  if [[ -n "$NODE_DIST_FALLBACK_MIRRORS" ]]; then
+    mirrors="$mirrors $NODE_DIST_FALLBACK_MIRRORS"
+  fi
+
+  for mirror in $mirrors; do
+    url="${mirror%/}/v${NODE_FALLBACK_VERSION}/${tarball}"
+    warn "$(L "Downloading Node.js ${NODE_FALLBACK_VERSION} from ${url}" "正在从 ${url} 下载 Node.js ${NODE_FALLBACK_VERSION}")"
+    if run_with_timeout 180 curl -fL "$url" -o "$tmp_dir/$tarball"; then
+      downloaded=1
+      NODE_DIST_MIRROR="${mirror%/}"
+      break
+    fi
+    warn "$(L "Node.js download failed from ${mirror}; trying the next mirror if available." "从 ${mirror} 下载 Node.js 失败;如果还有镜像,将尝试下一个。")"
+  done
+
+  if [[ "$downloaded" != "1" ]]; then
+    rm -rf "$tmp_dir"
+    fail "$(L "Could not download Node.js. Check your network/proxy, or explicitly set PILOTDECK_NODE_DIST_MIRROR / PILOTDECK_NODE_DIST_FALLBACK_MIRRORS to a trusted reachable Node.js mirror." "无法下载 Node.js。请检查网络/代理，或显式将 PILOTDECK_NODE_DIST_MIRROR / PILOTDECK_NODE_DIST_FALLBACK_MIRRORS 设置为可信且可访问的 Node.js 镜像。")"
+  fi
+
+  mkdir -p "$install_root"
+  rm -rf "$node_dir"
+  tar -xJf "$tmp_dir/$tarball" -C "$install_root"
+  rm -rf "$tmp_dir"
+  export PATH="$node_dir/bin:$PATH"
+  export npm_config_nodedir="$node_dir"
+  export npm_config_disturl="${NODE_DIST_MIRROR%/}"
+  ok "$(L "Node.js installed directly at ${node_dir}" "已直接安装 Node.js 到 ${node_dir}")"
 }
 
 ensure_node_runtime() {
   local node_version
 
+  load_node_managers
+  load_direct_node_runtime
+
   if command -v node >/dev/null 2>&1; then
     node_version="$(node --version)"
-    if version_at_least "$node_version" "$MIN_NODE_VERSION" && node_supports_sqlite; then
+    if version_at_least "$node_version" "$MIN_NODE_VERSION" && [[ "$(node_major "$node_version")" == "$MAX_NODE_MAJOR" ]] && node_supports_sqlite && node_arch_matches_host; then
       ok "$(L "Node.js ${node_version} found" "已找到 Node.js ${node_version}")"
       return
     fi
-    warn "$(L "Node.js ${node_version} is too old or lacks node:sqlite (need >=${MIN_NODE_VERSION}). Installing Node.js ${NODE_INSTALL_VERSION}..." "Node.js ${node_version} 版本过低或缺少 node:sqlite(需要 >=${MIN_NODE_VERSION})。正在安装 Node.js ${NODE_INSTALL_VERSION}...")"
+    warn "$(L "Node.js ${node_version} is not the supported Node.js 22 runtime for this machine (need >=${MIN_NODE_VERSION}, <23, node:sqlite, and matching CPU architecture). Installing/using Node.js ${NODE_INSTALL_VERSION}..." "Node.js ${node_version} 不是当前机器支持的 Node.js 22 运行时(需要 >=${MIN_NODE_VERSION} 且 <23、支持 node:sqlite,并匹配 CPU 架构)。正在安装/使用 Node.js ${NODE_INSTALL_VERSION}...")"
   else
-    warn "$(L "Node.js not found. Installing via fnm..." "未找到 Node.js,正在通过 fnm 安装...")"
+    warn "$(L "Node.js not found. Installing Node.js ${NODE_FALLBACK_VERSION}..." "未找到 Node.js,正在安装 Node.js ${NODE_FALLBACK_VERSION}...")"
   fi
 
   install_node_runtime
   node_version="$(node --version 2>/dev/null || true)"
-  if [[ -z "$node_version" ]] || ! version_at_least "$node_version" "$MIN_NODE_VERSION" || ! node_supports_sqlite; then
-    fail "$(L "Node.js >=${MIN_NODE_VERSION} with node:sqlite is required. Current: ${node_version:-not found}." "需要带 node:sqlite 的 Node.js >=${MIN_NODE_VERSION}。当前:${node_version:-未找到}。")"
+  if [[ -z "$node_version" ]] || ! version_at_least "$node_version" "$MIN_NODE_VERSION" || [[ "$(node_major "$node_version")" != "$MAX_NODE_MAJOR" ]] || ! node_supports_sqlite || ! node_arch_matches_host; then
+    fail "$(L "Node.js >=${MIN_NODE_VERSION} and <23 with node:sqlite and matching CPU architecture is required. Current: ${node_version:-not found}, arch $(node -p "process.arch" 2>/dev/null || printf unknown), host $(uname -m)." "需要带 node:sqlite、且匹配当前 CPU 架构的 Node.js >=${MIN_NODE_VERSION} 且 <23。当前:${node_version:-未找到}, 架构 $(node -p "process.arch" 2>/dev/null || printf unknown), 主机 $(uname -m)。")"
   fi
   ok "$(L "Node.js ${node_version} installed" "已安装 Node.js ${node_version}")"
 }
@@ -398,6 +517,99 @@ run_as_root() {
   fi
 }
 
+has_linux_package_manager() {
+  command -v apt-get >/dev/null 2>&1 || \
+    command -v dnf >/dev/null 2>&1 || \
+    command -v yum >/dev/null 2>&1 || \
+    command -v pacman >/dev/null 2>&1 || \
+    command -v zypper >/dev/null 2>&1
+}
+
+can_install_system_packages() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+  command -v sudo >/dev/null 2>&1
+}
+
+can_install_optional_system_packages() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+  command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1
+}
+
+missing_required_linux_system_packages() {
+  local missing=()
+  command -v git >/dev/null 2>&1 || missing+=(git)
+  command -v python3 >/dev/null 2>&1 || missing+=(python3)
+  command -v make >/dev/null 2>&1 || missing+=(make)
+  has_cxx_compiler || missing+=(c++-compiler)
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    printf "%s" "${missing[*]}"
+  fi
+}
+
+print_minimum_requirements() {
+  if [[ "$PLATFORM" == "linux" ]]; then
+    warn "$(L "Minimum requirements: bash, curl, network access, git, Python 3, make, and a C++ compiler. sudo/root is only needed when required system packages are missing." "最低要求:bash、curl、网络访问、git、Python 3、make 和 C++ 编译器。仅当缺少必需系统软件包时才需要 sudo/root。")"
+  else
+    warn "$(L "Minimum requirements: bash, curl, network access, and Xcode Command Line Tools. Homebrew is only needed if optional tools such as ripgrep or Git LFS are missing." "最低要求:bash、curl、网络访问和 Xcode 命令行工具。仅当缺少 ripgrep 或 Git LFS 等可选工具时才需要 Homebrew。")"
+  fi
+}
+
+check_bootstrap_requirements() {
+  print_minimum_requirements
+
+  if [[ -z "${BASH_VERSION:-}" ]]; then
+    fail "$(L "This installer must run with bash. Try: curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh | bash" "该安装器必须使用 bash 运行。请尝试:curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh | bash")"
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    fail "$(L "curl is required to install Node.js and optional browser assets. Please install curl and re-run this installer." "安装 Node.js 和可选浏览器资源需要 curl。请先安装 curl 后重新运行安装器。")"
+  fi
+  ok "$(L "curl found" "已找到 curl")"
+
+  if ! command -v tar >/dev/null 2>&1; then
+    fail "$(L "tar is required to unpack Node.js. Please install tar and re-run this installer." "解压 Node.js 需要 tar。请先安装 tar 后重新运行安装器。")"
+  fi
+  ok "$(L "tar found" "已找到 tar")"
+
+  if ! tar --help 2>/dev/null | grep -q -- '-J'; then
+    warn "$(L "tar may not support .tar.xz archives; install xz/xz-utils if the Node.js download cannot be unpacked." "当前 tar 可能不支持 .tar.xz;如果 Node.js 下载后无法解压,请安装 xz/xz-utils。")"
+  fi
+
+  if [[ "$PLATFORM" == "linux" ]]; then
+    local missing_packages
+    missing_packages="$(missing_required_linux_system_packages)"
+    if [[ -z "$missing_packages" ]]; then
+      ok "$(L "required Linux build dependencies already present" "Linux 必需构建依赖已齐备")"
+      return
+    fi
+
+    warn "$(L "Missing required Linux build dependencies: ${missing_packages}" "缺少 Linux 必需构建依赖:${missing_packages}")"
+
+    if ! has_linux_package_manager; then
+      fail "$(L "Unsupported Linux package manager. Please install apt, dnf, yum, pacman, or zypper, or install dependencies manually before re-running." "不支持当前 Linux 包管理器。请安装 apt、dnf、yum、pacman 或 zypper,或先手动安装依赖后再重新运行。")"
+    fi
+    ok "$(L "supported Linux package manager found" "已找到支持的 Linux 包管理器")"
+
+    if ! can_install_system_packages; then
+      fail "$(L "Installing missing required system packages needs root or sudo. Please run as root, configure sudo, or preinstall git, python3, make, and a C++ compiler." "安装缺失的必需系统软件包需要 root 或 sudo。请以 root 身份运行、配置 sudo,或预先安装 git、python3、make 和 C++ 编译器。")"
+    fi
+    ok "$(L "root user or sudo command available for system package installs" "root 用户或 sudo 命令可用于安装系统软件包")"
+  else
+    if ! command -v xcode-select >/dev/null 2>&1 || ! xcode-select -p >/dev/null 2>&1; then
+      fail "$(L "macOS requires Xcode Command Line Tools for git, lsof, and native module builds. Install them with: xcode-select --install" "macOS 需要 Xcode 命令行工具来提供 git、lsof 和原生模块构建能力。请运行:xcode-select --install")"
+    fi
+    ok "$(L "Xcode Command Line Tools found" "已找到 Xcode 命令行工具")"
+
+    if ! command -v brew >/dev/null 2>&1; then
+      warn "$(L "Homebrew is not installed. If ripgrep or Git LFS are missing, install Homebrew first, then run: brew install ripgrep git-lfs" "未安装 Homebrew。若缺少 ripgrep 或 Git LFS,请先安装 Homebrew,然后运行:brew install ripgrep git-lfs")"
+    fi
+  fi
+}
 install_linux_packages() {
   local requested=("$@")
   local apt_packages=()
@@ -482,8 +694,69 @@ has_cxx_compiler() {
   command -v g++ >/dev/null 2>&1 || command -v c++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1
 }
 
+python_has_distutils() {
+  local python_bin="${PYTHON:-python3}"
+  command -v "$python_bin" >/dev/null 2>&1 || return 1
+  "$python_bin" - <<'PY' >/dev/null 2>&1
+import distutils.version
+PY
+}
+
+select_python_with_distutils() {
+  local candidates=()
+  if [[ -n "${PYTHON:-}" ]]; then
+    candidates+=("$PYTHON")
+  fi
+  candidates+=(python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 python)
+
+  local candidate resolved
+  local seen=""
+  for candidate in "${candidates[@]}"; do
+    if ! command -v "$candidate" >/dev/null 2>&1; then
+      continue
+    fi
+    resolved="$(command -v "$candidate")"
+    case " $seen " in
+      *" $resolved "*) continue ;;
+    esac
+    seen="${seen} ${resolved}"
+    if "$resolved" - <<'PY' >/dev/null 2>&1
+import distutils.version
+PY
+    then
+      export PYTHON="$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+macos_has_usable_xcode_tools() {
+  # A CLT-only installation commonly does not provide xcodebuild and may lack
+  # pkgutil receipts, but it is still sufficient for node-gyp when xcrun can
+  # locate a compiler through the selected developer directory.
+  command -v xcrun >/dev/null 2>&1 || return 1
+  xcode-select -p >/dev/null 2>&1 || return 1
+  xcrun --find clang >/dev/null 2>&1 || return 1
+  xcrun --find clang++ >/dev/null 2>&1 || return 1
+  return 0
+}
+
 ensure_native_build_tools() {
   if command -v python3 >/dev/null 2>&1 && command -v make >/dev/null 2>&1 && has_cxx_compiler; then
+    if [[ "$PLATFORM" == "macos" ]]; then
+      if ! python_has_distutils && ! select_python_with_distutils; then
+        fail "$(L "Python distutils is required when native npm packages build from source. Install/use a Python that provides distutils, e.g. set PYTHON=/usr/bin/python3 before running the installer, or install setuptools for your Python." "原生 npm 依赖从源码编译时需要 Python distutils。请安装/使用带 distutils 的 Python,例如运行安装器前设置 PYTHON=/usr/bin/python3,或为当前 Python 安装 setuptools。")"
+      fi
+      ok "$(L "Python with distutils found: ${PYTHON:-python3}" "已找到带 distutils 的 Python:${PYTHON:-python3}")"
+      if ! macos_has_usable_xcode_tools; then
+        if command -v xcode-select >/dev/null 2>&1; then
+          warn "$(L "Opening Xcode Command Line Tools installer prompt..." "正在打开 Xcode Command Line Tools 安装提示...")"
+          xcode-select --install >/dev/null 2>&1 || true
+        fi
+        fail "$(L "macOS native npm builds require a complete Xcode Command Line Tools installation. Run: xcode-select --install. If it is already installed but broken, reinstall it or run: sudo xcode-select --reset" "macOS 原生 npm 编译需要完整的 Xcode Command Line Tools。请运行:xcode-select --install。如果已安装但状态异常,请重新安装或运行:sudo xcode-select --reset")"
+      fi
+    fi
     ok "$(L "native build tools found" "已找到原生编译工具")"
     return
   fi
@@ -628,7 +901,7 @@ checkout_existing_installation() {
 
   # Fetch from the configured (HTTPS) URL rather than the existing "origin"
   # remote, which may be an SSH URL (git@github.com) that hangs when port 22
-  # is blocked. Cap the fetch so a dead network can't stall the installer.
+  # connectivity is unavailable. Cap the fetch so a bad network can't stall the installer.
   if run_with_timeout "${PILOTDECK_FETCH_TIMEOUT:-45}" env GIT_LFS_SKIP_SMUDGE=1 git fetch "$REPO_URL" "$BRANCH"; then
     GIT_LFS_SKIP_SMUDGE=1 git checkout -B "$BRANCH" FETCH_HEAD || return 1
   else
@@ -730,6 +1003,22 @@ deps_up_to_date() {
   return 0
 }
 
+run_pnpm() {
+  if command -v pnpm >/dev/null 2>&1; then
+    pnpm "$@"
+  elif command -v corepack >/dev/null 2>&1 && corepack pnpm --version >/dev/null 2>&1; then
+    corepack pnpm "$@"
+  elif command -v npm >/dev/null 2>&1; then
+    local pnpm_version
+    pnpm_version="$(node -e "const pm=require('./package.json').packageManager||'pnpm@10.32.1'; console.log(pm.replace(/^pnpm@/, ''))")"
+    warn "$(L "Corepack pnpm is unavailable; installing pnpm@${pnpm_version} with npm..." "Corepack pnpm 不可用;正在用 npm 安装 pnpm@${pnpm_version}...")"
+    npm install -g "pnpm@${pnpm_version}" --loglevel=error </dev/null
+    pnpm "$@"
+  else
+    fail "$(L "pnpm is required but pnpm, corepack, and npm are unavailable. Install Node.js 22 or pnpm manually." "需要 pnpm,但未找到 pnpm、corepack 或 npm。请手动安装 Node.js 22 或 pnpm。")"
+  fi
+}
+
 has_playwright_chrome_for_testing() {
   local candidate
   for candidate in \
@@ -774,6 +1063,7 @@ case "$(uname -s)" in
     fail "$(L "Unsupported OS: $(uname -s). This installer supports macOS and Linux." "不支持的操作系统:$(uname -s)。该安装器仅支持 macOS 和 Linux。")"
     ;;
 esac
+check_bootstrap_requirements
 echo ""
 
 echo "$(L "Checking Node.js..." "正在检查 Node.js...")"
@@ -805,6 +1095,8 @@ fi
 echo "$(L "Checking ripgrep..." "正在检查 ripgrep...")"
 if command -v rg >/dev/null 2>&1; then
   ok "$(L "ripgrep $(rg --version | head -1) found" "已找到 ripgrep $(rg --version | head -1)")"
+elif ! can_install_optional_system_packages; then
+  warn "$(L "ripgrep not found and sudo is unavailable; continuing because PilotDeck uses its bundled ripgrep dependency." "未找到 ripgrep 且 sudo 不可用;PilotDeck 会使用内置 ripgrep 依赖,继续安装。")"
 else
   warn "$(L "ripgrep not found. Installing..." "未找到 ripgrep,正在安装...")"
   install_ripgrep
@@ -814,10 +1106,16 @@ echo ""
 
 echo "$(L "Checking lsof..." "正在检查 lsof...")"
 if ! command -v lsof >/dev/null 2>&1; then
-  warn "$(L "lsof not found. Installing..." "未找到 lsof,正在安装...")"
-  install_lsof
+  if can_install_optional_system_packages; then
+    warn "$(L "lsof not found. Installing..." "未找到 lsof,正在安装...")"
+    install_lsof
+  else
+    warn "$(L "lsof not found and sudo is unavailable; continuing with a built-in port check fallback." "未找到 lsof 且 sudo 不可用;将使用内置端口检查回退逻辑继续安装。")"
+  fi
 fi
-ok "$(L "lsof found" "已找到 lsof")"
+if command -v lsof >/dev/null 2>&1; then
+  ok "$(L "lsof found" "已找到 lsof")"
+fi
 echo ""
 
 echo "$(L "Checking native build tools..." "正在检查原生编译工具...")"
@@ -834,21 +1132,18 @@ if deps_up_to_date; then
   warn "$(L "Set PILOTDECK_FORCE_DEPS=1 to force a full reinstall & rebuild." "如需强制重装并重新构建,请设置 PILOTDECK_FORCE_DEPS=1。")"
   echo ""
 else
-  echo "$(L "Installing root dependencies..." "正在安装根依赖...")"
-  echo -e "  ${DIM}$(L "This can take several minutes — native modules (node-pty, better-sqlite3) compile from source and npm output is quiet." "这一步可能需要数分钟 —— 原生模块(node-pty、better-sqlite3)需从源码编译,且 npm 输出为静默模式。")${RESET}"
+  echo "$(L "Installing dependencies..." "正在安装依赖...")"
+  echo -e "  ${DIM}$(L "This can take several minutes — native modules use prebuilt packages when available, and pnpm output is quiet." "这一步可能需要数分钟 —— 原生模块会优先使用预编译包,且 pnpm 输出为静默模式。")${RESET}"
   cd "$INSTALL_DIR"
-  HUSKY=0 npm install --no-audit --no-fund --loglevel=error </dev/null
-  ok "$(L "Root dependencies installed" "根依赖已安装")"
-  warn "$(L "Keeping root dev dependencies because runtime uses tsx from source." "保留根 dev 依赖,因为运行时需从源码使用 tsx。")"
+  HUSKY=0 run_pnpm install --frozen-lockfile --reporter=append-only </dev/null
+  ok "$(L "Dependencies installed" "依赖已安装")"
+  warn "$(L "Keeping dev dependencies because runtime uses source tooling." "保留 dev 依赖,因为运行时需使用源码工具链。")"
   echo ""
 
-  echo "$(L "Installing UI dependencies & building frontend..." "正在安装 UI 依赖并构建前端...")"
-  cd "$INSTALL_DIR/ui"
-  HUSKY=0 npm install --no-audit --no-fund --loglevel=error </dev/null
-  ok "$(L "UI dependencies installed" "UI 依赖已安装")"
-  npm run build
+  echo "$(L "Building frontend..." "正在构建前端...")"
+  cd "$INSTALL_DIR"
+  run_pnpm --filter pilotdeck-ui run build
   ok "$(L "Frontend built" "前端已构建")"
-  warn "$(L "Keeping UI dev dependencies because production start uses concurrently/vite build tooling." "保留 UI dev 依赖,因为生产启动会用到 concurrently/vite 构建工具。")"
   echo ""
 fi
 
@@ -859,6 +1154,7 @@ if has_playwright_chrome_for_testing; then
   ok "$(L "Chrome for Testing already installed" "Chrome for Testing 已安装")"
 elif [[ "${PILOTDECK_SKIP_BROWSER_INSTALL:-1}" == "1" ]]; then
   warn "$(L "Skipping Chrome for Testing download (default) to keep install fast." "默认跳过 Chrome for Testing 下载,以加快安装速度。")"
+  warn "$(L "PilotDeck core features are still available without this optional browser-use dependency." "缺少该可选 browser-use 依赖时,PilotDeck 核心功能仍可正常使用。")"
   warn "$(L "To enable browser-use, run: cd \"$INSTALL_DIR\" && npm run install:browser" "如需启用 browser-use,请运行:cd \"$INSTALL_DIR\" && npm run install:browser")"
   warn "$(L "Or re-run the installer with PILOTDECK_SKIP_BROWSER_INSTALL=0." "或以 PILOTDECK_SKIP_BROWSER_INSTALL=0 重新运行安装器。")"
 else
@@ -912,6 +1208,11 @@ INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
 MIN_NODE_VERSION="22.13.0"
+MAX_NODE_MAJOR="22"
+NODE_INSTALL_VERSION="${PILOTDECK_NODE_VERSION:-22}"
+NODE_FALLBACK_VERSION="${PILOTDECK_NODE_FALLBACK_VERSION:-22.13.0}"
+NODE_DIRECT_INSTALL_ROOT="$HOME/.local/share/pilotdeck-node"
+NODE_DIST_MIRROR="${PILOTDECK_NODE_DIST_MIRROR:-https://nodejs.org/dist}"
 
 fail() { printf "pilotdeck: %s\n" "$1" >&2; exit 1; }
 warn() { printf "pilotdeck: %s\n" "$1" >&2; }
@@ -938,15 +1239,95 @@ version_at_least() {
   (( v_patch >= min_patch ))
 }
 
+node_major() {
+  local version="${1#v}"
+  printf "%s" "${version%%.*}"
+}
+
+node_tarball_platform() {
+  local os
+  local arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os" in
+    Linux) os="linux" ;;
+    Darwin) os="darwin" ;;
+    *) return 1 ;;
+  esac
+  case "$arch" in
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+  printf "%s-%s" "$os" "$arch"
+}
+
+expected_node_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) printf "x64" ;;
+    arm64|aarch64) printf "arm64" ;;
+    *) return 1 ;;
+  esac
+}
+
+node_arch_matches_host() {
+  local expected actual
+  expected="$(expected_node_arch 2>/dev/null || true)"
+  [[ -n "$expected" ]] || return 0
+  actual="$(node -p "process.arch" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]]
+}
+
+load_direct_node_runtime() {
+  local platform
+  local node_dir
+  platform="$(node_tarball_platform 2>/dev/null || true)"
+  [[ -n "$platform" ]] || return 0
+  node_dir="$NODE_DIRECT_INSTALL_ROOT/node-v${NODE_FALLBACK_VERSION}-${platform}"
+  if [[ -x "$node_dir/bin/node" ]]; then
+    export PATH="$node_dir/bin:$PATH"
+    export npm_config_nodedir="${npm_config_nodedir:-$node_dir}"
+    export npm_config_disturl="${npm_config_disturl:-${NODE_DIST_MIRROR%/}}"
+  fi
+}
+
+load_node_managers() {
+  if ! command -v fnm >/dev/null 2>&1 && [[ -d "$HOME/.local/share/fnm" ]]; then
+    export PATH="$HOME/.local/share/fnm:$PATH"
+    if command -v fnm >/dev/null 2>&1; then
+      eval "$(fnm env --shell bash)"
+    fi
+  fi
+
+  if ! command -v nvm >/dev/null 2>&1 && [[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+  fi
+}
+
+use_supported_node_runtime() {
+  load_node_managers
+  load_direct_node_runtime
+  if command -v fnm >/dev/null 2>&1; then
+    fnm use "$NODE_INSTALL_VERSION" >/dev/null 2>&1 || true
+  elif command -v nvm >/dev/null 2>&1; then
+    nvm use "$NODE_INSTALL_VERSION" >/dev/null 2>&1 || true
+  fi
+}
+
 ensure_node_runtime() {
+  use_supported_node_runtime
   command -v node >/dev/null 2>&1 || fail "Node.js >=${MIN_NODE_VERSION} is required; re-run install.sh to install it."
   local node_version
   node_version="$(node --version)"
-  if ! version_at_least "$node_version" "$MIN_NODE_VERSION"; then
-    fail "Node.js >=${MIN_NODE_VERSION} is required because PilotDeck uses node:sqlite. Current: ${node_version}. Re-run install.sh or switch Node with fnm/nvm."
+  if ! version_at_least "$node_version" "$MIN_NODE_VERSION" || [[ "$(node_major "$node_version")" != "$MAX_NODE_MAJOR" ]]; then
+    fail "Node.js >=${MIN_NODE_VERSION} and <23 is required because PilotDeck uses node:sqlite and native packages are tested on Node.js 22. Current: ${node_version}. Re-run install.sh or switch Node with fnm/nvm."
   fi
   if ! node -e "import('node:sqlite').then(() => {}, () => process.exit(1))" >/dev/null 2>&1; then
     fail "Current Node.js (${node_version}) does not provide node:sqlite. Re-run install.sh or switch to Node.js 22.13+."
+  fi
+  if ! node_arch_matches_host; then
+    fail "Node.js architecture must match this machine before native dependencies are used. Current Node arch: $(node -p "process.arch" 2>/dev/null || printf unknown); host: $(uname -m). Re-run install.sh or reinstall Node.js 22 for this Mac."
   fi
 }
 

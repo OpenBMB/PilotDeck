@@ -18,6 +18,8 @@ export const DEFAULT_PROTECTED_TOOL_RESULT_NAMES: ReadonlySet<string> = new Set(
   "TaskList",
   "task_output",
   "TaskOutput",
+  "task_wait",
+  "TaskWait",
   "task_stop",
   "TaskStop",
 ]);

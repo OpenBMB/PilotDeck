@@ -1,6 +1,7 @@
 import type { ChannelAttachment, Gateway, GatewayChannelKey } from "../../../gateway/index.js";
 import type { CronResultDelivery } from "../../../cron/index.js";
 import type { PilotConfig } from "../../../pilot/index.js";
+import type { ChannelRuntimeStatusReporter } from "./ChannelRuntimeStatus.js";
 
 export type ChannelLogger = {
   info?(message: string, metadata?: Record<string, unknown>): void;
@@ -12,6 +13,7 @@ export type ChannelStartDeps = {
   gateway: Gateway;
   config?: PilotConfig;
   logger?: ChannelLogger;
+  reportChannelStatus?: ChannelRuntimeStatusReporter;
 };
 
 export type ChannelHandle = {

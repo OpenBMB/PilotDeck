@@ -10,9 +10,11 @@ import type {
   ProviderConfig,
 } from "../../protocol/canonical.js";
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
+import { messageContent } from "../../protocol/clone.js";
 import { cleanSchemaForGoogle, normalizeGoogleToolSchema } from "../google/schema.js";
 import { normalizeOpenAISchema } from "./schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
+import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 
 export type OpenAIRequestBody = {
   model: string;
@@ -138,16 +140,18 @@ function toOpenAIMessages(message: CanonicalMessage, messageIndex: number): Open
     return toOpenAIUserMessages(message);
   }
 
-  const toolResultBlocks = message.content
+  const content = messageContent(message);
+
+  const toolResultBlocks = content
     .filter((block) => block.type === "tool_result");
   const toolResultMessages = toolResultBlocks.map(toOpenAIToolResultMessage);
   const toolResultVisualMessages = toolResultBlocks.flatMap(toOpenAIToolResultVisualMessages);
 
-  const toolResultRefMessages = message.content
+  const toolResultRefMessages = content
     .filter((block) => block.type === "tool_result_reference")
     .map(toOpenAIToolResultReferenceMessage);
 
-  const assistantToolCalls = message.content
+  const assistantToolCalls = content
     .filter((block) => block.type === "tool_call")
     .map((block) => ({
       // Preserve the canonical id until `repairOpenAIToolPairing` can see the
@@ -160,8 +164,8 @@ function toOpenAIMessages(message: CanonicalMessage, messageIndex: number): Open
       },
     }));
 
-  const thinkingBlocks = message.content.filter((block) => block.type === "thinking");
-  const normalContent = message.content.filter(
+  const thinkingBlocks = content.filter((block) => block.type === "thinking");
+  const normalContent = content.filter(
     (block) =>
       block.type !== "tool_result" &&
       block.type !== "tool_result_reference" &&
@@ -192,6 +196,7 @@ function toOpenAIMessages(message: CanonicalMessage, messageIndex: number): Open
 function toOpenAIUserMessages(message: CanonicalMessage): OpenAIMessage[] {
   const messages: OpenAIMessage[] = [];
   let normalContent: CanonicalContentBlock[] = [];
+  const content = messageContent(message);
 
   const flushNormalContent = () => {
     if (normalContent.length === 0) return;
@@ -202,13 +207,13 @@ function toOpenAIUserMessages(message: CanonicalMessage): OpenAIMessage[] {
     normalContent = [];
   };
 
-  for (let i = 0; i < message.content.length; i += 1) {
-    const block = message.content[i];
+  for (let i = 0; i < content.length; i += 1) {
+    const block = content[i]!;
     if (block.type === "tool_result") {
       flushNormalContent();
       const visualContent: CanonicalContentBlock[] = [];
-      while (i < message.content.length) {
-        const toolBlock = message.content[i];
+      while (i < content.length) {
+        const toolBlock = content[i]!;
         if (toolBlock.type === "tool_result") {
           messages.push(toOpenAIToolResultMessage(toolBlock));
           visualContent.push(...toolResultVisualContent(toolBlock));
@@ -287,9 +292,7 @@ function toOpenAIToolResultReferenceMessage(
   return {
     role: "tool",
     tool_call_id: block.toolCallId,
-    content: block.preview + (block.hasMore
-      ? `\n\n[Truncated: original ${block.originalBytes} bytes, file: ${block.path}]`
-      : ""),
+    content: formatToolResultReferenceText(block),
   };
 }
 

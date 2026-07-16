@@ -130,7 +130,9 @@ const PHASE_META: Record<
 };
 
 function formatRelativeTime(iso: string): string {
-  const diff = Date.now() - Date.parse(iso);
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return '—';
+  const diff = Math.max(0, Date.now() - parsed);
   const sec = Math.round(diff / 1000);
   if (sec < 60) return 'just now';
   const min = Math.round(sec / 60);
@@ -188,9 +190,10 @@ function getEventClickAction(phase: AlwaysOnDashboardEventPhase): EventClickActi
 
 type AlwaysOnDashboardProps = {
   onOpenExecutionSession?: (projectKey: string, runId: string, projectName?: string) => void;
+  compact?: boolean;
 };
 
-export default function AlwaysOnDashboard({ onOpenExecutionSession }: AlwaysOnDashboardProps) {
+export default function AlwaysOnDashboard({ onOpenExecutionSession, compact = false }: AlwaysOnDashboardProps) {
   const { t } = useTranslation('alwaysOn');
   const [events, setEvents] = useState<AlwaysOnDashboardEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -283,13 +286,14 @@ export default function AlwaysOnDashboard({ onOpenExecutionSession }: AlwaysOnDa
         events={events}
         onBack={() => setSelectedRunId(null)}
         onOpenExecutionSession={onOpenExecutionSession}
+        compact={compact}
       />
     );
   }
 
   return (
-    <div className="w-full space-y-5 px-8 py-5">
-      <div className="flex items-start justify-between">
+    <div className={cn('w-full space-y-5 py-5', compact ? 'px-4' : 'px-8')}>
+      <div className={cn('flex items-start justify-between gap-3', compact && 'flex-col')}>
         <div>
           <h2 className="text-[20px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
             {t('dashboard.title', { defaultValue: 'Always-On Dashboard' })}
@@ -310,7 +314,7 @@ export default function AlwaysOnDashboard({ onOpenExecutionSession }: AlwaysOnDa
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className={cn('grid gap-3', compact ? 'grid-cols-1' : 'grid-cols-3')}>
         <div className="rounded-lg border border-neutral-200 p-3.5 dark:border-neutral-800">
           <div className="text-xxs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             {t('dashboard.stats.todayEvents', { defaultValue: 'Today\'s Events' })}

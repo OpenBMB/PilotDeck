@@ -504,17 +504,7 @@ export function createRouterRuntime(
       if (orchestrated.applied) {
         mutations = { ...mutations, ...orchestrated.mutations };
         decision.orchestrating = true;
-        if (config.autoOrchestrate.mainAgentModel) {
-          decision.provider = config.autoOrchestrate.mainAgentModel.provider;
-          decision.model = config.autoOrchestrate.mainAgentModel.model;
-        }
       }
-    }
-
-    if (!input.isMainAgent && config.autoOrchestrate?.subagentModel) {
-      decision.provider = config.autoOrchestrate.subagentModel.provider;
-      decision.model = config.autoOrchestrate.subagentModel.model;
-      mutations = { ...mutations, subagentModelOverride: true };
     }
 
     if (scenarioOutcome.subagentModelHint || decision.isSubagent) {
@@ -996,7 +986,7 @@ export function createRouterRuntime(
           }
         }
       }
-      yield { type: "error", error: lastError };
+      yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
     }
   }
 

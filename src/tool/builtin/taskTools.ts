@@ -5,6 +5,7 @@
  *   - task_create  → `BackgroundTaskRuntime.start`
  *   - task_list    → `BackgroundTaskRuntime.list`
  *   - task_output  → `BackgroundTaskRuntime.getOutput` (incremental polling)
+ *   - task_wait    → `BackgroundTaskRuntime.wait` + final output slice
  *   - task_stop    → `BackgroundTaskRuntime.stop`
  *
  * The runtime is injected once at registry construction (no per-call
@@ -75,6 +76,18 @@ export type TaskOutputResult = {
   exitCode?: number | null;
 };
 
+export type TaskWaitInput = {
+  taskId: string;
+  timeoutMs?: number;
+  offset?: number;
+  maxBytes?: number;
+};
+
+export type TaskWaitResult = TaskOutputResult & {
+  waitedMs: number;
+  timedOut: boolean;
+};
+
 export type TaskStopInput = {
   taskId: string;
   graceMs?: number;
@@ -90,6 +103,8 @@ const TERMINAL_TASK_STATUSES = new Set<PilotDeckBackgroundTaskStatus>([
   "failed",
   "cancelled",
 ]);
+const DEFAULT_TASK_WAIT_TIMEOUT_MS = 600_000;
+const MAX_TASK_WAIT_TIMEOUT_MS = 600_000;
 
 function ensureRuntime(runtime: BackgroundTaskRuntime | undefined): BackgroundTaskRuntime {
   if (!runtime) {
@@ -125,6 +140,22 @@ function formatTaskOutputText(data: TaskOutputResult, requestedOffset: number): 
   return `${header}\n${data.content}`;
 }
 
+function formatTaskWaitText(data: TaskWaitResult, requestedOffset: number): string {
+  const exitCode = data.exitCode ?? "null";
+  const header = `task_wait taskId=${data.taskId} status=${data.status} waitedMs=${data.waitedMs} offset=${requestedOffset} nextOffset=${data.nextOffset} totalBytes=${data.totalBytes} truncated=${data.truncated} exitCode=${exitCode}`;
+  const hasNewOutput = data.content.length > 0;
+  const isFinished = isTerminalTaskStatus(data.status) && data.nextOffset >= data.totalBytes;
+  const body = hasNewOutput ? `\n${data.content}` : "";
+
+  if (isFinished) {
+    return `${header}${body}\nTask finished; no further polling is needed.`;
+  }
+  if (data.timedOut) {
+    return `${header}${body}\nTask is still running after timeoutMs; use task_wait again to block or task_output for progress.`;
+  }
+  return `${header}${body}`;
+}
+
 export function createTaskCreateTool(
   runtime?: BackgroundTaskRuntime,
 ): PilotDeckToolDefinition<TaskCreateInput, TaskCreateOutput> {
@@ -132,7 +163,7 @@ export function createTaskCreateTool(
     name: "task_create",
     aliases: ["TaskCreate"],
     description:
-      "Spawn a shell command as a detached background task. Returns immediately with a taskId; poll task_output / task_stop to manage it.",
+      "Spawn a shell command as a detached background task. Returns immediately with a taskId; it does not automatically push completion output back into the model context. For long-running tasks that should finish, call task_wait next. Use task_output for progress checks and task_stop for long-lived processes.",
     kind: "shell",
     inputSchema: {
       type: "object",
@@ -227,11 +258,32 @@ export function createTaskListTool(
         endedAt: t.endedAt?.toISOString(),
       }));
       return {
-        content: [{ type: "json", value: { tasks } }],
+        content: [{ type: "text", text: formatTaskListText(tasks) }],
         data: { tasks },
       };
     },
   };
+}
+
+function formatTaskListText(tasks: TaskListOutput["tasks"]): string {
+  const lines = [`task_list count=${tasks.length}`];
+  if (tasks.length === 0) {
+    lines.push("No background tasks matched the filter.");
+    return lines.join("\n");
+  }
+
+  for (const task of tasks) {
+    const exitCode = task.exitCode ?? "null";
+    const pid = task.pid ?? "null";
+    const command = task.command.length > 160 ? `${task.command.slice(0, 157)}...` : task.command;
+    lines.push(
+      `- taskId=${task.taskId} status=${task.status} kind=${task.kind} pid=${pid} exitCode=${exitCode} outputBytes=${task.outputBytes} interrupted=${task.interrupted} command=${JSON.stringify(command)}`,
+    );
+    if (!isTerminalTaskStatus(task.status) || task.outputBytes > 0) {
+      lines.push(`  next: use task_output({ taskId: "${task.taskId}", offset: 0 }) to inspect output, or task_wait for a finite running task.`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export function createTaskOutputTool(
@@ -241,7 +293,7 @@ export function createTaskOutputTool(
     name: "task_output",
     aliases: ["TaskOutput"],
     description:
-      "Read newly-produced output for a background task (incremental polling). Use nextOffset for the next read. Stop polling when status is completed, failed, or cancelled and nextOffset >= totalBytes.",
+      "Read newly-produced output for a background task (incremental progress polling). Use task_wait when you need to block until a finite task completes. Use nextOffset for the next read. Stop polling when status is completed, failed, or cancelled and nextOffset >= totalBytes.",
     kind: "shell",
     inputSchema: {
       type: "object",
@@ -287,6 +339,108 @@ export function createTaskOutputTool(
       };
       return {
         content: [{ type: "text", text: formatTaskOutputText(data, requestedOffset) }],
+        data,
+      };
+    },
+  };
+}
+
+export function createTaskWaitTool(
+  runtime?: BackgroundTaskRuntime,
+): PilotDeckToolDefinition<TaskWaitInput, TaskWaitResult> {
+  return {
+    name: "task_wait",
+    aliases: ["TaskWait"],
+    description:
+      "Block until a background task finishes or timeoutMs elapses, then return the task status and output. Use this immediately after task_create for long-running commands that should eventually complete. It does not stop the task when timeoutMs elapses.",
+    kind: "shell",
+    inputSchema: {
+      type: "object",
+      required: ["taskId"],
+      additionalProperties: false,
+      properties: {
+        taskId: {
+          type: "string",
+          description: "The task id returned by task_create.",
+        },
+        timeoutMs: {
+          type: "integer",
+          description: "Maximum time to block in milliseconds. Defaults to 600000. Max 600000.",
+        },
+        offset: {
+          type: "integer",
+          description: "Byte offset to start reading output from after waiting. Defaults to 0.",
+        },
+        maxBytes: {
+          type: "integer",
+          description: "Maximum bytes to return in this read. Defaults to tool limit.",
+        },
+      },
+    },
+    maxResultBytes: 200_000,
+    isReadOnly: () => true,
+    isConcurrencySafe: () => true,
+    validateInput: async (input) => {
+      if (input.timeoutMs !== undefined && input.timeoutMs > MAX_TASK_WAIT_TIMEOUT_MS) {
+        return {
+          ok: false,
+          issues: [{ path: "timeoutMs", code: "invalid_schema", message: `timeoutMs must be <= ${MAX_TASK_WAIT_TIMEOUT_MS}.` }],
+        };
+      }
+      if (input.timeoutMs !== undefined && input.timeoutMs < 0) {
+        return {
+          ok: false,
+          issues: [{ path: "timeoutMs", code: "invalid_schema", message: "timeoutMs must be non-negative." }],
+        };
+      }
+      if (input.offset !== undefined && input.offset < 0) {
+        return {
+          ok: false,
+          issues: [{ path: "offset", code: "invalid_schema", message: "offset must be non-negative." }],
+        };
+      }
+      return { ok: true, input };
+    },
+    execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskWaitResult>> => {
+      const rt = ensureRuntime(runtime);
+      const task = rt.get(input.taskId);
+      if (!task) {
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          `Unknown taskId: ${input.taskId}`,
+        );
+      }
+      const requestedOffset = input.offset ?? 0;
+      const waited = await rt.wait(input.taskId, {
+        timeoutMs: input.timeoutMs ?? DEFAULT_TASK_WAIT_TIMEOUT_MS,
+        abortSignal: context.abortSignal,
+      });
+      if (!waited) {
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          `Unknown taskId: ${input.taskId}`,
+        );
+      }
+      if (waited.outcome === "aborted") {
+        throw new PilotDeckToolRuntimeError(
+          "tool_aborted",
+          `task_wait aborted before task ${input.taskId} finished.`,
+        );
+      }
+      const slice = rt.getOutput(input.taskId, requestedOffset, input.maxBytes);
+      const data: TaskWaitResult = {
+        taskId: input.taskId,
+        content: slice.content,
+        nextOffset: slice.nextOffset,
+        totalBytes: slice.totalBytes,
+        truncated: slice.truncated,
+        status: waited.task.status,
+        exitCode: waited.task.exitCode,
+        waitedMs: waited.waitedMs,
+        timedOut: waited.timedOut,
+      };
+      return {
+        content: [{ type: "text", text: formatTaskWaitText(data, requestedOffset) }],
         data,
       };
     },
@@ -346,12 +500,14 @@ export function createTaskTools(options: CreateTaskToolsOptions): {
   create: ReturnType<typeof createTaskCreateTool>;
   list: ReturnType<typeof createTaskListTool>;
   output: ReturnType<typeof createTaskOutputTool>;
+  wait: ReturnType<typeof createTaskWaitTool>;
   stop: ReturnType<typeof createTaskStopTool>;
 } {
   return {
     create: createTaskCreateTool(options.runtime),
     list: createTaskListTool(options.runtime),
     output: createTaskOutputTool(options.runtime),
+    wait: createTaskWaitTool(options.runtime),
     stop: createTaskStopTool(options.runtime),
   };
 }

@@ -19,6 +19,9 @@ export const ASK_MODE_ALLOWED_TOOLS = new Set([
   "agent",
   "execute_code",
   "bash",
+  "task_list",
+  "task_output",
+  "task_wait",
 ]);
 
 export const ASK_MODE_DESCRIPTION_SUFFIX: Record<string, string> = {

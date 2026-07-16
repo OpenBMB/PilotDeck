@@ -5,7 +5,11 @@ import { WeixinChannel } from "../adapters/index.js";
 import { QQChannel } from "../adapters/index.js";
 import type { Gateway } from "../gateway/index.js";
 import { startGatewayServer, type GatewayServer } from "../gateway/index.js";
-import type { PilotConfig } from "../pilot/index.js";
+import { resolvePilotHome, type PilotConfig } from "../pilot/index.js";
+import {
+  createChannelRuntimeStatusReporter,
+  type ChannelRuntimeStatusReporter,
+} from "../adapters/channel/protocol/ChannelRuntimeStatus.js";
 
 export type StartPilotDeckServerOptions = {
   gateway: Gateway;
@@ -42,12 +46,26 @@ export async function startPilotDeckServer(options: StartPilotDeckServerOptions)
     warn: (msg: string) => console.warn(msg),
     error: (msg: string) => console.error(msg),
   };
-  const baseDeps = { gateway: options.gateway, config: options.config, logger: consoleLogger };
+  const reportChannelStatus = createSafeChannelStatusReporter(
+    createChannelRuntimeStatusReporter(resolvePilotHome(process.env)),
+    consoleLogger,
+  );
+  const baseDeps = {
+    gateway: options.gateway,
+    config: options.config,
+    logger: consoleLogger,
+    reportChannelStatus,
+  };
 
   const runningHandles = new Map<string, ChannelHandle>();
   const runningChannels = new Map<string, ChannelAdapter>();
+  const channelStarts = new Map<string, Promise<void>>();
 
   async function startAndTrack(ch: ChannelAdapter): Promise<void> {
+    reportChannelStatus(ch.channelKey, {
+      state: "starting",
+      message: `${ch.channelKey}: starting in background`,
+    });
     const existing = runningHandles.get(ch.channelKey);
     if (existing) {
       await existing.stop("hot-reload").catch(() => {});
@@ -57,20 +75,6 @@ export async function startPilotDeckServer(options: StartPilotDeckServerOptions)
     const handle = await ch.start(baseDeps);
     runningHandles.set(ch.channelKey, handle);
     runningChannels.set(ch.channelKey, ch);
-  }
-
-  if (options.feishu) await startAndTrack(options.feishu);
-  if (options.weixin) await startAndTrack(options.weixin);
-  if (options.qq) await startAndTrack(options.qq);
-
-  if (options.channels?.length) {
-    await Promise.all(
-      options.channels.map((ch) =>
-        startAndTrack(ch).catch((e) => {
-          console.error(`[adapters] channel ${ch.channelKey} start failed: ${e}`);
-        }),
-      ),
-    );
   }
 
   const gwServer = await startGatewayServer({
@@ -83,9 +87,41 @@ export async function startPilotDeckServer(options: StartPilotDeckServerOptions)
       : undefined,
   });
 
+  function startChannelInBackground(channel: ChannelAdapter): Promise<void> {
+    const start = startAndTrack(channel)
+      .then(() => {
+        consoleLogger.info(`[adapters] channel ${channel.channelKey} startup task completed`);
+      })
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : String(e);
+        consoleLogger.error(`[adapters] channel ${channel.channelKey} start failed: ${message}`);
+        reportChannelStatus(channel.channelKey, {
+          state: "failed",
+          message: `${channel.channelKey}: startup failed`,
+          error: message,
+        });
+      })
+      .finally(() => {
+        channelStarts.delete(channel.channelKey);
+      });
+    channelStarts.set(channel.channelKey, start);
+    return start;
+  }
+
+  const startupChannels = [
+    ...(options.feishu ? [options.feishu] : []),
+    ...(options.weixin ? [options.weixin] : []),
+    ...(options.qq ? [options.qq] : []),
+    ...(options.channels ?? []),
+  ];
+  for (const channel of startupChannels) {
+    void startChannelInBackground(channel);
+  }
+
   return Object.assign(gwServer, {
-    async hotStartChannel(channel: ChannelAdapter) {
-      await startAndTrack(channel);
+    hotStartChannel(channel: ChannelAdapter) {
+      void startChannelInBackground(channel);
+      return Promise.resolve();
     },
     async deliverCronResult(delivery: CronResultDelivery) {
       const channel = runningChannels.get(delivery.originChannelKey ?? delivery.channelKey);
@@ -93,4 +129,21 @@ export async function startPilotDeckServer(options: StartPilotDeckServerOptions)
       return channel.deliverCronResult(delivery);
     },
   });
+}
+
+function createSafeChannelStatusReporter(
+  reporter: ChannelRuntimeStatusReporter,
+  logger: { warn(message: string): void },
+): ChannelRuntimeStatusReporter {
+  return (channelKey, update) => {
+    try {
+      reporter(channelKey, update);
+    } catch (error) {
+      logger.warn(
+        `[adapters] failed to write runtime status for ${channelKey}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  };
 }

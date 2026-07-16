@@ -22,6 +22,9 @@ export const PLAN_MODE_ALLOWED_TOOLS = new Set([
   "structured_output",
   "agent",
   "bash",
+  "task_list",
+  "task_output",
+  "task_wait",
   "write_file",
   "edit_file",
 ]);

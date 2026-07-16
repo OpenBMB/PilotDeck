@@ -290,7 +290,7 @@ https://github.com/user-attachments/assets/a7245467-ee3c-4939-a055-c56576ac56d1
 
 ## 📦 Installation & Quick Start
 
-We provide a one-line installer for macOS / Linux, plus a source-based workflow for developers.
+We provide one-line installers for macOS / Linux and Windows PowerShell, plus a source-based workflow for developers.
 
 ### Option A: One-line install (recommended, macOS / Linux)
 
@@ -298,34 +298,116 @@ We provide a one-line installer for macOS / Linux, plus a source-based workflow 
 curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh | bash
 ```
 
-The script auto-installs Node.js 22.13+ (required for the built-in SQLite runtime), clones the repo, installs dependencies, and builds the frontend. Once it finishes:
+The script checks/uses the supported Node.js 22 runtime (22.13+ and <23, required for the built-in SQLite runtime), clones the repo, installs dependencies, and builds the frontend. On Linux it can install missing system packages when `sudo` and a supported package manager are available. On macOS, make sure Xcode Command Line Tools and a Python with `distutils` are usable before running the installer. Once it finishes:
+
+If Node.js or npm package downloads are slow or unreliable on your network, set reachable mirrors before running the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.sh | \
+  PILOTDECK_NODE_DIST_MIRROR=https://npmmirror.com/mirrors/node \
+  NPM_CONFIG_REGISTRY=https://registry.npmmirror.com bash
+```
+
+You can also keep the official Node.js host as the primary source and opt in to one or more trusted fallback mirrors with `PILOTDECK_NODE_DIST_FALLBACK_MIRRORS`.
 
 ```bash
 pilotdeck            # starts the server at http://localhost:3001
 pilotdeck status     # check runtime status
 ```
 
+To open PilotDeck again later on macOS / Linux, run `pilotdeck` in a terminal and open the printed URL in your browser. If your shell has not picked up the PATH update yet, open a new terminal or source your shell profile first.
+
+```bash
+pilotdeck
+# then open http://localhost:3001, or the URL printed by the command
+```
+
+### Option A2: One-line install (Windows PowerShell)
+
+Run PowerShell as a normal user, then execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/OpenBMB/PilotDeck/main/install.ps1 | iex"
+```
+
+The PowerShell installer uses Windows-native paths under `%USERPROFILE%\.pilotdeck`, checks Node.js 22.13+ with `node:sqlite`, installs missing prerequisites with `winget` when available, builds PilotDeck, and creates a `pilotdeck.cmd` launcher in `%USERPROFILE%\.pilotdeck\bin`. Git LFS media assets are optional for the core app; if Git LFS is unavailable or times out, the installer continues without demo videos/GIFs.
+
+After installation, the script starts PilotDeck and prints the UI URL, usually `http://localhost:3001`. It does not automatically open a browser, so copy that URL into your browser to finish onboarding (provider + API key). You can also open it from PowerShell:
+
+```powershell
+Start-Process http://localhost:3001
+```
+
+If this is your first install, open a new PowerShell window after the script updates your user `PATH`, then run:
+
+```powershell
+pilotdeck            # starts the server at http://localhost:3001
+pilotdeck status     # check runtime status
+```
+
+To open PilotDeck again later, run `pilotdeck` from a new PowerShell window, then open the printed URL in your browser. If `pilotdeck` is not yet on `PATH`, run the launcher directly:
+
+```powershell
+& "$HOME\.pilotdeck\bin\pilotdeck.cmd"
+```
+
+#### Windows PowerShell FAQ
+
+**`npm.ps1` cannot be loaded because running scripts is disabled**
+
+This can still happen when you run development commands such as `npm run dev` directly in Windows PowerShell for the first time. PowerShell may resolve `npm` to `npm.ps1`, and the default execution policy can block that shim.
+
+Fix it once for the current user, then reopen PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+If you do not want to change the user policy, run the cmd shim explicitly instead:
+
+```powershell
+npm.cmd run dev
+```
+
+**Native dependency build errors (`node-gyp`, `MSBuild`, or Python not found)**
+
+The installer normally uses prebuilt packages for native dependencies such as `node-pty`, `better-sqlite3`, `bcrypt`, and `sharp`. On a fresh Windows machine, if npm cannot download a matching prebuild and falls back to compiling from source, install Visual Studio Build Tools with the C++ workload and Python, then rerun the installer.
+
+**GitHub returns `429: Too Many Requests` while downloading `install.ps1`**
+
+GitHub may rate-limit repeated `raw.githubusercontent.com` requests from shared networks. Wait a few minutes and rerun the one-line command, or download `install.ps1` from the repository and run it locally with `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
+
 ### Option B: From source (for developers)
+
+> Need platform-specific dependency installation commands? See the [Source Installation Guide](./README_SOURCE_INSTALL.md).
 
 **1. Clone and install dependencies**
 
-> This repo uses [Git LFS](https://git-lfs.com/) for large media assets. Make sure `git lfs` is installed before cloning.
-> If you don't need the demo videos/GIFs, add `GIT_LFS_SKIP_SMUDGE=1` before `git clone` to skip downloading them.
+> By default, skip large Git LFS demo media to keep the source install lightweight. If you need the demo videos/GIFs later, run `git lfs pull` after cloning.
 
 ```bash
-git clone https://github.com/OpenBMB/PilotDeck.git
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/OpenBMB/PilotDeck.git
 cd PilotDeck
 
-node --version          # must be v22.13.0 or newer
-npm install              # root deps (Gateway runtime)
-cd ui && npm install     # UI deps
-cd ..
+node --version          # must be v22.13.0 or newer, and below v23
+corepack enable         # enables the pinned pnpm version from package.json
+corepack pnpm install --frozen-lockfile
 ```
+
+PilotDeck uses the committed `pnpm-lock.yaml` for reproducible source installs. Prefer the `corepack pnpm ...` command above instead of `npm install`; on macOS, this also avoids unnecessary native rebuild fallbacks when matching prebuilt packages are available.
 
 **2. Configure a model provider**
 
 PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. You can create it manually, let the bootstrap script generate one, **or just open the Web UI and configure providers visually in the settings panel.**
 Supported protocols include OpenAI, Anthropic, native Google Gemini, DeepSeek, Qwen, Kimi, MiniMax and other OpenAI-compatible endpoints.
+
+If you do not already have a config file, prepare the Web UI onboarding flow before starting in production mode:
+
+```bash
+node scripts/bootstrap-pilotdeck-config.mjs
+```
+
+This initializes `~/.pilotdeck/pilotdeck.yaml` for first-run onboarding so the Gateway can boot. Then open the Web UI and finish provider/API key setup in the onboarding/settings panel.
 
 ```yaml
 schemaVersion: 1
@@ -389,8 +471,10 @@ cd ui && npm run start   # production mode, visit http://localhost:3001
 If Docker is installed, you can start PilotDeck with:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
+
+For full Docker configuration, see [README_DOCKER.md](README_DOCKER.md).
 
 ---
 
@@ -446,7 +530,6 @@ PilotDeck builds upon the following outstanding open-source projects:
 - [UltraRAG](https://github.com/OpenBMB/UltraRAG) — RAG framework
 - [Anthropic Skills](https://github.com/anthropics/skills) — Agent skill framework and built-in skills (skill-creator)
 - [Vercel Labs Skills](https://github.com/vercel-labs/skills) — find-skills skill
-- [MiniMax-AI Skills](https://github.com/MiniMax-AI/skills) — minimax-pdf skill
 - [frontend-slides](https://github.com/zarazhangrui/frontend-slides) — Create beautiful slides on the web using a coding agent's frontend skills
 - [Karpathy Guidelines](https://x.com/karpathy/status/2015883857489522876) — LLM coding behavioral guidelines
 - [Vite](https://github.com/vitejs/vite) — Frontend build tool

@@ -17,6 +17,8 @@ export type ContributedCommand = {
 export type ContributedSkill = {
   name: string;
   description?: string;
+  /** Absolute path to the resolved SKILL.md selected by the runtime. */
+  path: string;
   namespace?: string;
 };
 

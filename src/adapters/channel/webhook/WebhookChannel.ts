@@ -286,12 +286,12 @@ export class WebhookChannel implements ChannelAdapter {
       this.logger?.error?.(`webhook: submitTurn error: ${e}`);
       const statusEvent = createWebhookStatusEvent({
         event: "channel_submit_failed",
-        message: "处理消息时发生错误，请重试。",
+        message: "Failed to process this message. Please retry.",
         code: "channel_submit_failed",
         scope: "channel",
         userHint: "PilotDeck failed before this webhook turn could finish. Retry the delivery; if it repeats, check webhook and gateway logs.",
       });
-      replyText = renderWebhookEvent(statusEvent) ?? "处理消息时发生错误，请重试。";
+      replyText = renderWebhookEvent(statusEvent) ?? "Failed to process this message. Please retry.";
     }
 
     const finalText = replyText.trim();

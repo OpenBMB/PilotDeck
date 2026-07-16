@@ -21,6 +21,7 @@ import {
   type CanonicalContentBlock,
   type CanonicalImageBlock,
   type CanonicalMessage,
+  type CanonicalUsage,
 } from "../../model/index.js";
 import { listProjectSessions, readTranscript, findLastCompactBoundaryIndex, type SessionInfo } from "../../session/index.js";
 import type { AgentTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
@@ -36,9 +37,13 @@ import type { WebMessage, WebMessageKind, WebMessageRole } from "../client/webMe
 export type ReadWebSessionMessagesOptions = {
   projectRoot: string;
   pilotHome: string;
+  maxContextTokens?: number;
+  maxOutputTokens?: number;
   /** Override clock for deterministic tests. */
   now?: () => Date;
 };
+
+const DEFAULT_HISTORY_CONTEXT_TOKENS = 200_000;
 
 export async function readWebSessionMessages(
   input: WebReadSessionMessagesInput,
@@ -120,6 +125,7 @@ export async function readWebSessionMessages(
         ? String(offset + slice.length)
         : undefined,
     total: allMessages.length,
+    tokenUsage: tokenUsageFromTranscript(entries, options),
     session: {
       sessionId: sessionInfo?.sessionId ?? input.sessionKey,
       sessionKey: input.sessionKey,
@@ -138,6 +144,110 @@ export async function readWebSessionMessages(
       forkedFromTurnId: sessionInfo?.forkedFromTurnId,
     },
   };
+}
+
+function tokenUsageFromTranscript(
+  entries: AgentTranscriptEntry[],
+  options: Pick<ReadWebSessionMessagesOptions, "maxContextTokens" | "maxOutputTokens">,
+): Record<string, unknown> | undefined {
+  const latestBudget = latestContextBudget(entries);
+  if (latestBudget) {
+    return latestBudget;
+  }
+  const latestTurn = latestTurnUsage(entries);
+  if (!latestTurn) {
+    return undefined;
+  }
+  const inputTokens = positiveNumber(latestTurn.inputTokens);
+  const outputTokens = positiveNumber(latestTurn.outputTokens) ?? 0;
+  const cacheReadTokens = positiveNumber(latestTurn.cacheReadTokens) ?? 0;
+  const cacheWriteTokens = positiveNumber(latestTurn.cacheWriteTokens) ?? 0;
+  const totalTokens = positiveNumber(latestTurn.totalTokens);
+  const used = inputTokens !== undefined
+    ? Math.ceil(inputTokens + cacheReadTokens + cacheWriteTokens)
+    : totalTokens !== undefined
+      ? Math.max(0, Math.ceil(totalTokens - outputTokens))
+      : undefined;
+  if (used === undefined || used <= 0) {
+    return undefined;
+  }
+  const total = positiveNumber(options.maxContextTokens) ?? DEFAULT_HISTORY_CONTEXT_TOKENS;
+  const reservedOutputTokens = positiveNumber(options.maxOutputTokens) ?? 0;
+  const effectiveTotal = Math.max(1, total - reservedOutputTokens);
+  return {
+    used,
+    total,
+    effectiveTotal,
+    reservedOutputTokens,
+    source: "history",
+    exact: true,
+    breakdown: {
+      input: inputTokens ?? 0,
+      cacheRead: cacheReadTokens,
+      cacheWrite: cacheWriteTokens,
+      output: outputTokens,
+      total: totalTokens ?? Math.ceil(used + outputTokens),
+    },
+  };
+}
+
+function latestContextBudget(entries: AgentTranscriptEntry[]): Record<string, unknown> | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type !== "agent_status_message" || entry.event !== "context_budget") {
+      continue;
+    }
+    const detail = isRecord(entry.detail) ? entry.detail : undefined;
+    if (!detail) {
+      continue;
+    }
+    const used = positiveNumber(detail.displayUsed) ?? positiveNumber(detail.used);
+    const total = positiveNumber(detail.total);
+    const effectiveTotal = positiveNumber(detail.effectiveTotal) ?? total;
+    if (used === undefined || total === undefined || effectiveTotal === undefined) {
+      continue;
+    }
+    return {
+      used,
+      ...(positiveNumber(detail.displayUsed) !== undefined ? { displayUsed: positiveNumber(detail.displayUsed) } : {}),
+      ...(positiveNumber(detail.budgetUsed) !== undefined ? { budgetUsed: positiveNumber(detail.budgetUsed) } : {}),
+      total,
+      effectiveTotal,
+      reservedOutputTokens: positiveNumber(detail.reservedOutputTokens) ?? 0,
+      ...(typeof detail.state === "string" ? { state: detail.state } : {}),
+      ...(typeof detail.ratio === "number" && Number.isFinite(detail.ratio) ? { ratio: detail.ratio } : {}),
+      source: "history",
+      exact: true,
+    };
+  }
+  return undefined;
+}
+
+function latestTurnUsage(entries: AgentTranscriptEntry[]): CanonicalUsage | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type === "turn_result" && hasPositiveUsage(entry.result.usage)) {
+      return entry.result.usage;
+    }
+  }
+  return undefined;
+}
+
+function hasPositiveUsage(usage: CanonicalUsage | undefined): boolean {
+  if (!usage) return false;
+  return positiveNumber(usage.inputTokens) !== undefined ||
+    positiveNumber(usage.outputTokens) !== undefined ||
+    positiveNumber(usage.cacheReadTokens) !== undefined ||
+    positiveNumber(usage.cacheWriteTokens) !== undefined ||
+    positiveNumber(usage.totalTokens) !== undefined;
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -505,8 +615,9 @@ function flushBlock(
         role: "tool",
         kind: "tool_result",
         toolCallId: block.toolCallId,
-        ok: true,
+        ok: !block.isError,
         text: block.preview,
+        resultPath: block.path,
         payload: {
           path: block.path,
           originalBytes: block.originalBytes,
@@ -846,6 +957,8 @@ function injectAgentStatusMessages(
       role: entry.kind === "error" ? "error" : "system",
       kind: entry.kind,
       text: entry.text,
+      ...(isI18nDescriptor(entry.detail?.messageI18n) ? { contentI18n: entry.detail.messageI18n } : {}),
+      ...(isI18nDescriptor(entry.detail?.userHintI18n) ? { userHintI18n: entry.detail.userHintI18n } : {}),
       payload: { event: entry.event, ...(entry.detail ? { detail: entry.detail } : {}) },
       source: "history",
     });
@@ -863,6 +976,12 @@ function injectAgentStatusMessages(
     }
     allMessages.splice(insertAt, 0, statusMsg);
   }
+}
+
+function isI18nDescriptor(value: unknown): value is { key: string; params?: Record<string, unknown> } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { key?: unknown }).key === "string";
 }
 
 function readToolResultErrorCode(raw: unknown): string | undefined {

@@ -16,6 +16,7 @@ import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import MessageRowV2 from './MessageRowV2';
 import SubagentDetailModal from './SubagentDetailModal';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
+import { useRegisterChatHistorySearchControls } from './ChatHistorySearchController';
 import { useChatHistorySearch } from './useChatHistorySearch';
 import { useSubagentMessages } from './useSubagentMessages';
 import { ProcessLiveStatus, ProcessRunHeader, StreamingThinkingPreview, type ProcessTraceStep } from './ProcessTrace';
@@ -28,6 +29,7 @@ import {
   getWebFetchWaitingStep,
   shouldRenderLiveProcessGroup,
   shouldShowWebFetchWaitingHint,
+  splitLiveProcessGroupDetailMessages,
   type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
@@ -471,15 +473,21 @@ export default function MessagesPaneV2({
   );
   const renderableMessages = useMemo(
     () => {
-      const filtered = visibleMessages.filter((message) =>
+      const lastUserIndex = isAssistantWorking
+        ? visibleMessages.reduce((lastIndex, message, index) => (
+            message.type === 'user' ? index : lastIndex
+          ), -1)
+        : -1;
+      const filtered = visibleMessages.filter((message, index) =>
         !message.isAgentActivity &&
         !isSubagentThinkingPlaceholder(message) &&
+        !(isAssistantWorking && message.isThinking && !message.isStreaming && index < lastUserIndex) &&
         (!inlineThinking && isStreamingThinkingMessage(message) ? false : true) &&
         !(message.isThinking && !showThinking)
       );
       return filtered;
     },
-    [visibleMessages, showThinking, inlineThinking],
+    [visibleMessages, showThinking, inlineThinking, isAssistantWorking],
   );
   const liveProcessDetailMessages = useMemo(
     () => isAssistantWorking ? getLiveProcessDetailMessages(renderableMessages) : [],
@@ -761,16 +769,23 @@ export default function MessagesPaneV2({
     const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
     const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? liveStatusStep : null);
     const showWebFetchWaiting = shouldShowWebFetchWaitingHint(group, resolvedPlanModeActive);
+    const expanded = isProcessExpanded(group.id);
+    const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
     return (
       <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
+        {expanded && beforeStatusMessages.length > 0 ? (
+          <div className="pl-5">
+            {renderLiveProcessDetailMessages(beforeStatusMessages, `${group.id}-before-status`)}
+          </div>
+        ) : null}
         <ProcessLiveStatus
           step={step}
           compact
-          expanded={isProcessExpanded(group.id)}
+          expanded={expanded}
           onExpandedChange={(expanded) => handleProcessExpandedChange(group.id, expanded)}
         >
-          {group.detailMessages.length > 0
-            ? renderLiveProcessDetailMessages(group.detailMessages, group.id)
+          {statusDetailMessages.length > 0
+            ? renderLiveProcessDetailMessages(statusDetailMessages, group.id)
             : null}
         </ProcessLiveStatus>
         {showWebFetchWaiting ? (
@@ -947,6 +962,7 @@ export default function MessagesPaneV2({
     loadAllMessages,
     sessionId,
   });
+  useRegisterChatHistorySearchControls(chatHistorySearch);
 
   return (
     <div className="relative min-h-0 flex-1">

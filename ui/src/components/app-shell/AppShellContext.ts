@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
-import type { SessionLifecycleHandler } from '../main-content/types/types';
+import type { SessionLifecycleHandler, SessionNavigationOptions } from '../main-content/types/types';
 
 // Everything the V2 routes need from the shell. Mirrors what legacy
 // MainContentProps exposed but carries the route context in a single bag so
@@ -29,7 +29,7 @@ export type AppShellContextValue = {
   onSessionNotProcessing: SessionLifecycleHandler;
   onReplaceTemporarySession: SessionLifecycleHandler;
   onNavigateToSession: (sessionId: string) => void;
-  onStartNewSession: (project: Project) => void;
+  onStartNewSession: (project: Project, options?: SessionNavigationOptions) => void;
   onShowSettings: () => void;
   onMenuClick: () => void;
   onInputFocusChange: (focused: boolean) => void;

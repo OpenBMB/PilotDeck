@@ -26,6 +26,7 @@ export type CatalogProvider = {
   displayName: string;
   protocol: CatalogProviderProtocol;
   defaultUrl: string;
+  modelListUrl?: string;
   models: CatalogModel[];
 };
 
@@ -90,6 +91,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'DeepSeek',
     protocol: 'openai',
     defaultUrl: 'https://api.deepseek.com/v1',
+    modelListUrl: 'https://api.deepseek.com/models',
     models: [
       { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', maxContextTokens: 1048576, maxOutputTokens: 393216 },
       { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', maxContextTokens: 1048576, maxOutputTokens: 393216 },
@@ -125,7 +127,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     id: 'minimax',
     displayName: 'MiniMax',
     protocol: 'openai',
-    defaultUrl: 'https://api.minimaxi.com/v1',
+    defaultUrl: 'https://api.minimax.io/v1',
     models: [
       { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5', maxContextTokens: 1000000 },
       { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000 },

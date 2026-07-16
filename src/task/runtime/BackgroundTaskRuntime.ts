@@ -73,6 +73,18 @@ export type StopTaskOptions = {
   graceMs?: number;
 };
 
+export type WaitTaskOptions = {
+  timeoutMs?: number;
+  abortSignal?: AbortSignal;
+};
+
+export type WaitTaskResult = {
+  task: PilotDeckBackgroundBashTask;
+  timedOut: boolean;
+  outcome: "completed" | "timeout" | "aborted";
+  waitedMs: number;
+};
+
 type RuntimeEntry = {
   task: PilotDeckBackgroundBashTask;
   child?: ChildProcess;
@@ -119,6 +131,50 @@ export class BackgroundTaskRuntime {
 
   get(taskId: string): PilotDeckBackgroundBashTask | undefined {
     return this.entries.get(taskId)?.task;
+  }
+
+  async wait(taskId: string, options: WaitTaskOptions = {}): Promise<WaitTaskResult | undefined> {
+    const entry = this.entries.get(taskId);
+    if (!entry) return undefined;
+
+    const startedAt = Date.now();
+    const timeoutMs = Math.max(0, Math.floor(options.timeoutMs ?? 0));
+    const timeoutPromise = timeoutMs > 0
+      ? new Promise<"timeout">((resolve) => {
+          setTimeout(() => resolve("timeout"), timeoutMs).unref?.();
+        })
+      : undefined;
+    let abortHandler: (() => void) | undefined;
+    const abortPromise = options.abortSignal
+      ? new Promise<"aborted">((resolve) => {
+          if (options.abortSignal?.aborted) {
+            resolve("aborted");
+            return;
+          }
+          abortHandler = () => resolve("aborted");
+          options.abortSignal?.addEventListener("abort", abortHandler, { once: true });
+        })
+      : undefined;
+
+    const waits: Array<Promise<void | "timeout" | "aborted">> = [entry.done];
+    if (timeoutPromise) waits.push(timeoutPromise);
+    if (abortPromise) waits.push(abortPromise);
+    const result = await Promise.race(waits);
+    if (abortHandler) {
+      options.abortSignal?.removeEventListener("abort", abortHandler);
+    }
+
+    const outcome = result === "timeout"
+      ? "timeout"
+      : result === "aborted"
+        ? "aborted"
+        : "completed";
+    return {
+      task: entry.task,
+      timedOut: outcome === "timeout" || outcome === "aborted",
+      outcome,
+      waitedMs: Date.now() - startedAt,
+    };
   }
 
   /**

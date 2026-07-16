@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "library": "pilotdeck-core",
+  "layouts": [
+    { "id": "title", "export": "titleSlide", "family": "opening", "useWhen": "Open the deck with one clear promise", "slots": ["eyebrow", "title", "subtitle", "meta"], "densityBudget": "low" },
+    { "id": "section", "export": "sectionSlide", "family": "divider", "useWhen": "Introduce a new narrative chapter", "slots": ["number", "title", "subtitle"], "densityBudget": "low" },
+    { "id": "statement", "export": "statementSlide", "family": "editorial", "useWhen": "Land one memorable conclusion", "slots": ["kicker", "statement", "support"], "densityBudget": "low" },
+    { "id": "split", "export": "splitSlide", "family": "media", "useWhen": "Pair a concise argument with one visual", "slots": ["title", "body", "media"], "densityBudget": "medium" },
+    { "id": "two-column", "export": "twoColumnSlide", "family": "content", "useWhen": "Explain two related dimensions", "slots": ["title", "left", "right"], "densityBudget": "medium" },
+    { "id": "metrics", "export": "metricSlide", "family": "evidence", "useWhen": "Show two to four headline metrics", "slots": ["title", "metrics", "source"], "densityBudget": "medium" },
+    { "id": "comparison", "export": "comparisonSlide", "family": "decision", "useWhen": "Contrast two alternatives", "slots": ["title", "left", "right", "takeaway"], "densityBudget": "medium" },
+    { "id": "timeline", "export": "timelineSlide", "family": "process", "useWhen": "Show three to five ordered stages", "slots": ["title", "steps", "footer"], "densityBudget": "medium" },
+    { "id": "chart", "export": "chartSlide", "family": "data", "useWhen": "Make one quantitative comparison", "slots": ["title", "series", "takeaway", "source"], "densityBudget": "medium" },
+    { "id": "table", "export": "tableSlide", "family": "data", "useWhen": "Show compact exact values", "slots": ["title", "rows", "source"], "densityBudget": "high" },
+    { "id": "quote", "export": "quoteSlide", "family": "evidence", "useWhen": "Feature one short attributed quotation", "slots": ["quote", "attribution", "context"], "densityBudget": "low" },
+    { "id": "closing", "export": "closingSlide", "family": "closing", "useWhen": "End with one action or contact point", "slots": ["title", "action", "contact"], "densityBudget": "low" }
+  ]
+}

@@ -82,8 +82,12 @@ export type CanonicalToolResultContentBlock =
 export type CanonicalToolResultReferenceBlock = {
   type: "tool_result_reference";
   toolCallId: string;
+  /** Mirrors CanonicalToolResultBlock.isError when a large error result is persisted. */
+  isError?: boolean;
   /** Absolute path to the persisted file. */
   path: string;
+  /** Workspace-relative path that can be read with read_file when available. */
+  readFilePath?: string;
   /** Original size in bytes / characters of the full result. */
   originalBytes: number;
   /** Truncated preview (UTF-8 text) sent inline alongside the reference. */

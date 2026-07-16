@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Box,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
@@ -13,11 +14,12 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  MessageSquarePlus,
+  PanelLeftClose,
   Pencil,
   RefreshCw,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react';
 import type { Project } from '../../types/app';
 import { useFileTreeData } from '../file-tree/hooks/useFileTreeData';
@@ -27,11 +29,19 @@ import { cn } from '../../lib/utils.js';
 import { api } from '../../utils/api';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { isImeEnterEvent } from '../../utils/ime';
+import {
+  ADD_WORKSPACE_FILE_MENTION_EVENT,
+  getWorkspaceRelativePath,
+} from '../../utils/workspaceFileMention';
 
 type FilesV2Props = {
   selectedProject: Project | null;
   onFileOpen?: (filePath: string) => void;
+  activeFilePath?: string | null;
+  onFileRename?: (oldPath: string, newPath: string) => void;
+  onFileDelete?: (deletedPath: string) => void;
   onClose?: () => void;
+  canAddToChat?: boolean;
 };
 
 type FlattenedNode = {
@@ -51,7 +61,7 @@ type InlineEdit =
   | { kind: 'create'; parentPath: string; type: 'file' | 'directory'; depth: number };
 
 const CONTEXT_MENU_WIDTH = 180;
-const CONTEXT_MENU_HEIGHT = 200;
+const CONTEXT_MENU_HEIGHT = 240;
 const CONTEXT_MENU_MARGIN = 8;
 
 function clampMenuPosition(x: number, y: number) {
@@ -79,7 +89,15 @@ function flatten(
   return out;
 }
 
-export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV2Props) {
+export default function FilesV2({
+  selectedProject,
+  onFileOpen,
+  activeFilePath,
+  onFileRename,
+  onFileDelete,
+  onClose,
+  canAddToChat = true,
+}: FilesV2Props) {
   const { t } = useTranslation();
   const { files, loading, refreshFiles } = useFileTreeData(selectedProject);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -101,6 +119,12 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
     setInlineEdit(null);
     setUploadMenuOpen(false);
   }, [selectedProject?.name]);
+
+  useEffect(() => {
+    if (activeFilePath !== undefined) {
+      setActivePath(activeFilePath);
+    }
+  }, [activeFilePath]);
 
   const setFolderInputRef = useCallback((el: HTMLInputElement | null) => {
     folderInputRef.current = el;
@@ -222,6 +246,9 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
             oldPath: inlineEdit.path,
             newName: trimmed,
           });
+          const slashIndex = inlineEdit.path.lastIndexOf('/');
+          const parentPath = slashIndex >= 0 ? inlineEdit.path.slice(0, slashIndex + 1) : '';
+          onFileRename?.(inlineEdit.path, `${parentPath}${trimmed}`);
         } else {
           const parentPath = inlineEdit.parentPath || '';
           await api.createFile(projectName, {
@@ -243,7 +270,7 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
       }
       setInlineEdit(null);
     },
-    [inlineEdit, projectName, refreshFiles, selectedProject],
+    [inlineEdit, onFileRename, projectName, refreshFiles, selectedProject],
   );
 
   const handleInlineKeyDown = useCallback(
@@ -328,12 +355,16 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
           path: node.path,
           type: node.type === 'directory' ? 'directory' : 'file',
         });
+        onFileDelete?.(node.path);
+        setActivePath((previous) => (
+          previous === node.path || previous?.startsWith(`${node.path}/`) ? null : previous
+        ));
         await refreshFiles();
       } catch (error) {
         console.error('Delete failed:', error);
       }
     },
-    [closeContextMenu, projectName, refreshFiles, selectedProject],
+    [closeContextMenu, onFileDelete, projectName, refreshFiles, selectedProject],
   );
 
   const handleCopyPath = useCallback(
@@ -347,6 +378,7 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
   const handleOpen = useCallback(
     (node: FileTreeNode) => {
       closeContextMenu();
+      setActivePath(node.path);
       onFileOpen?.(node.path);
     },
     [closeContextMenu, onFileOpen],
@@ -355,6 +387,27 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
   // --- Upload / Download / Preview ---
 
   const projectRoot = selectedProject?.fullPath || selectedProject?.path || '';
+
+  const handleAddToChat = useCallback(
+    (node: FileTreeNode) => {
+      closeContextMenu();
+      if (!canAddToChat || !selectedProject?.name || node.type !== 'file') return;
+
+      const relativePath = getWorkspaceRelativePath(node.path, projectRoot);
+      if (!relativePath) {
+        console.error('Cannot add file mention outside the current workspace:', node.path);
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent(ADD_WORKSPACE_FILE_MENTION_EVENT, {
+        detail: {
+          projectName: selectedProject.name,
+          relativePath,
+        },
+      }));
+    },
+    [canAddToChat, closeContextMenu, projectRoot, selectedProject?.name],
+  );
 
   const uploadSelectedFiles = useCallback(
     async (fileList: FileList | null) => {
@@ -518,7 +571,8 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
   return (
     <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
       <div className="shrink-0 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="flex h-7 items-center px-3 pt-1">
+        <div className="flex h-7 items-center gap-1.5 px-3 pt-1">
+          <Box className="h-3 w-3 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={1.75} />
           <span className="truncate font-mono text-xxs text-neutral-500 dark:text-neutral-400">
             {cwd}
           </span>
@@ -645,10 +699,10 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
               type="button"
               onClick={onClose}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              title={t('fileTree.close', { defaultValue: 'Close file tree' }) as string}
-              aria-label={t('fileTree.close', { defaultValue: 'Close file tree' }) as string}
+              title={t('fileTree.collapsePanel', { defaultValue: 'Collapse file explorer' }) as string}
+              aria-label={t('fileTree.collapsePanel', { defaultValue: 'Collapse file explorer' }) as string}
             >
-              <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <PanelLeftClose className="h-4 w-4" strokeWidth={1.8} />
             </button>
           ) : null}
         </div>
@@ -882,6 +936,21 @@ export default function FilesV2({ selectedProject, onFileOpen, onClose }: FilesV
                 <ClipboardCopy className={menuIconClass} strokeWidth={1.75} />
                 {t('fileTree.context.copyPath', { defaultValue: 'Copy Path' })}
               </button>
+              {contextMenu.node.type === 'file' ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canAddToChat}
+                  onClick={() => handleAddToChat(contextMenu.node!)}
+                  className={cn(
+                    menuItemClass,
+                    !canAddToChat && 'pointer-events-none cursor-not-allowed opacity-45',
+                  )}
+                >
+                  <MessageSquarePlus className={menuIconClass} strokeWidth={1.75} />
+                  {t('fileTree.context.addToChat', { defaultValue: 'Add to Conversation' })}
+                </button>
+              ) : null}
               <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
               <button
                 type="button"

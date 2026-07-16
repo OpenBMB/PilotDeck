@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock,
   Database,
+  Download,
   FileCog,
   FileText,
   FolderOpen,
@@ -25,6 +26,7 @@ import {
   Search,
   Server,
   Trash2,
+  Upload,
   Wifi,
   XCircle,
   Zap,
@@ -35,6 +37,7 @@ import { Button } from '../../../../shared/view/ui';
 import { authenticatedFetch } from '../../../../utils/api';
 import { isImeEnterEvent } from '../../../../utils/ime';
 import {
+  normalizeOfficePreviewService,
   readOfficePreviewStatus,
   type OfficePreviewService,
   type OfficePreviewStatus,
@@ -57,13 +60,15 @@ import {
   type CatalogProviderProtocol,
   type CatalogModel,
 } from '../../../../shared/catalogProviders';
-import { fetchProviderModels, type ApiModelListItem } from '../../../../shared/modelListApi';
+import { fetchProviderModels, fetchRemoteDefaultModels, type ApiModelListItem } from '../../../../shared/modelListApi';
 import type { SettingsProject } from '../../types/types';
 import { isCronConfigEnabled, patch } from './pilotDeckConfigForm';
 
 // ── V2 schema types ────────────────────────────────────────────────────
 // Schema mirrors ~/.pilotdeck/pilotdeck.yaml exactly. No more
 // pre-/post-translation in the backend — disk shape === UI shape.
+
+type MemoryReasoningMode = 'answer_first' | 'accuracy_first';
 
 type V2Provider = {
   protocol?: CatalogProviderProtocol;
@@ -86,6 +91,7 @@ type PilotDeckConfig = {
   agent?: {
     model?: string;
     maxContextTokens?: number;
+    maxOutputTokens?: number;
     params?: Record<string, unknown>;
     subagents?: { default?: string; params?: Record<string, unknown> };
   };
@@ -96,7 +102,7 @@ type PilotDeckConfig = {
     enabled?: boolean;
     model?: string;
     apiType?: string;
-    reasoningMode?: string;
+    reasoningMode?: MemoryReasoningMode;
     autoIndexIntervalMinutes?: number;
     autoDreamIntervalMinutes?: number;
     captureStrategy?: string;
@@ -663,7 +669,7 @@ function FormRow({ label, description, children }: { label: string; description?
 // ── Section components ─────────────────────────────────────────────────
 
 function getOfficePreviewService(config: PilotDeckConfig): OfficePreviewService {
-  return config.webui?.officePreview?.service === 'none' ? 'none' : 'libreoffice';
+  return normalizeOfficePreviewService(config.webui?.officePreview?.service);
 }
 
 function ServiceSection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
@@ -1036,20 +1042,45 @@ function ProviderCard({
     }
   };
   const visibleModels: Array<ApiModelListItem | CatalogModel> = apiModels ?? catalogEntry?.models ?? [];
-  const canFetchModels = Boolean(effectiveUrl && provider.apiKey);
+  const hasProviderApiKey = Boolean(provider.apiKey) && !isMaskedKey;
+  const canFetchModels = Boolean(effectiveUrl);
   const refreshModels = async () => {
     if (!canFetchModels) return;
     setApiModelsStatus('loading');
     setApiModelsError('');
     try {
-      const models = await fetchProviderModels({ protocol, baseUrl: effectiveUrl, apiKey: provider.apiKey ?? '', providerId });
-      setApiModels(models);
+      const models = hasProviderApiKey || !catalogEntry || ![catalogEntry.defaultUrl, catalogEntry.modelListUrl].includes(effectiveUrl)
+        ? await fetchProviderModels({ protocol, baseUrl: effectiveUrl, apiKey: hasProviderApiKey ? provider.apiKey : '', providerId })
+        : await fetchRemoteDefaultModels(providerId);
+      setApiModels(!hasProviderApiKey && catalogEntry && models.length === 0 ? catalogEntry.models : models);
       setApiModelsStatus('idle');
     } catch (error) {
       setApiModelsStatus('error');
       setApiModelsError(error instanceof Error ? error.message : String(error));
     }
   };
+
+  useEffect(() => {
+    if (!catalogEntry || hasProviderApiKey) return;
+    const catalogModels = catalogEntry.models;
+    const controller = new AbortController();
+    setApiModelsStatus('loading');
+    setApiModelsError('');
+    fetchRemoteDefaultModels(providerId)
+      .then((models) => {
+        if (controller.signal.aborted) return;
+        setApiModels(models.length > 0 ? models : catalogModels);
+        setApiModelsStatus('idle');
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setApiModels(catalogModels);
+        setApiModelsStatus('idle');
+        const message = error instanceof Error ? error.message : String(error);
+        setApiModelsError(`Using bundled model list. Remote model list unavailable: ${message}`);
+      });
+    return () => controller.abort();
+  }, [catalogEntry, hasProviderApiKey, providerId]);
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-background/50 p-4 transition-colors">
@@ -1166,11 +1197,16 @@ function ProviderCard({
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw className={cn('h-2.5 w-2.5', apiModelsStatus === 'loading' && 'animate-spin')} />
-            Fetch API models
+            {hasProviderApiKey || !catalogEntry ? 'Fetch API models' : 'Fetch remote models'}
           </button>
         </div>
         {apiModelsStatus === 'error' && apiModelsError && (
           <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1 text-[11px] text-destructive">
+            {apiModelsError}
+          </div>
+        )}
+        {apiModelsStatus === 'idle' && apiModelsError && (
+          <div className="mb-2 rounded-md border border-border bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground">
             {apiModelsError}
           </div>
         )}
@@ -1330,9 +1366,6 @@ function CatalogPicker({
             className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
           >
             <div className="font-medium text-foreground">{p.displayName}</div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {t('pilotDeckConfig.panels.models.modelCount', { count: p.models.length })}
-            </div>
           </button>
         ))}
         <button
@@ -1481,6 +1514,27 @@ function buildModelRefOptions(config: PilotDeckConfig): Array<{ value: string; l
   return out;
 }
 
+function defaultCapabilitiesForProtocol(protocol?: CatalogProviderProtocol): {
+  maxContextTokens: number;
+  maxOutputTokens: number;
+} {
+  if (protocol === 'google') {
+    return { maxContextTokens: 1_048_576, maxOutputTokens: 65_536 };
+  }
+  if (protocol === 'anthropic') {
+    return { maxContextTokens: 200_000, maxOutputTokens: 65_536 };
+  }
+  return { maxContextTokens: 128_000, maxOutputTokens: 65_536 };
+}
+
+function readPositiveCapability(capabilities: unknown, key: 'maxContextTokens' | 'maxOutputTokens'): number | undefined {
+  if (!capabilities || typeof capabilities !== 'object') return undefined;
+  const value = (capabilities as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
 function activeModelCapabilities(config: PilotDeckConfig): {
   ref: string;
   providerId: string;
@@ -1488,7 +1542,8 @@ function activeModelCapabilities(config: PilotDeckConfig): {
   catalogModel?: CatalogModel;
   catalogProvider?: CatalogProvider;
   multimodalInput: string[] | null;
-  maxOutputTokensOverride: number | undefined;
+  maxContextTokens: number;
+  maxOutputTokens: number;
 } | null {
   const ref = config.agent?.model ?? '';
   if (!ref) return null;
@@ -1510,14 +1565,16 @@ function activeModelCapabilities(config: PilotDeckConfig): {
   const userCapabilities = userDef && typeof userDef === 'object'
     ? (userDef as Record<string, unknown>).capabilities
     : null;
-  let maxOutputTokensOverride: number | undefined;
-  if (userCapabilities && typeof userCapabilities === 'object') {
-    const v = (userCapabilities as Record<string, unknown>).maxOutputTokens;
-    if (typeof v === 'number' && Number.isFinite(v) && v > 0) maxOutputTokensOverride = v;
-  }
   const catalogProvider = findCatalogProviderById(providerId);
   const catalogModel = catalogProvider?.models.find((m) => m.id === modelId);
-  return { ref, providerId, modelId, catalogModel, catalogProvider, multimodalInput, maxOutputTokensOverride };
+  const protocolDefaults = defaultCapabilitiesForProtocol(provider.protocol ?? catalogProvider?.protocol);
+  const maxContextTokens = readPositiveCapability(userCapabilities, 'maxContextTokens')
+    ?? catalogModel?.maxContextTokens
+    ?? protocolDefaults.maxContextTokens;
+  const maxOutputTokens = readPositiveCapability(userCapabilities, 'maxOutputTokens')
+    ?? catalogModel?.maxOutputTokens
+    ?? protocolDefaults.maxOutputTokens;
+  return { ref, providerId, modelId, catalogModel, catalogProvider, multimodalInput, maxContextTokens, maxOutputTokens };
 }
 
 function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
@@ -1567,31 +1624,14 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
     onChange(patch(config, ['model', 'providers', providerId, 'models'], models));
   };
 
-  const setMaxOutputTokens = (value: number | undefined) => {
-    if (!caps) return;
-    const { providerId, modelId } = caps;
-    const providers = config.model?.providers ?? {};
-    const provider = providers[providerId] ?? {};
-    const models = { ...(provider.models ?? {}) };
-    const existingDef = models[modelId];
-    const def: Record<string, unknown> = existingDef && typeof existingDef === 'object'
-      ? { ...(existingDef as Record<string, unknown>) }
-      : {};
-    const capabilities: Record<string, unknown> = def.capabilities && typeof def.capabilities === 'object'
-      ? { ...(def.capabilities as Record<string, unknown>) }
-      : {};
+  const setAgentTokenOverride = (key: 'maxContextTokens' | 'maxOutputTokens', value: number | undefined) => {
+    const next = { ...(config.agent ?? {}) };
     if (value === undefined) {
-      delete capabilities.maxOutputTokens;
+      delete next[key];
     } else {
-      capabilities.maxOutputTokens = value;
+      next[key] = value;
     }
-    if (Object.keys(capabilities).length > 0) {
-      def.capabilities = capabilities;
-    } else {
-      delete def.capabilities;
-    }
-    models[modelId] = def as Record<string, unknown>;
-    onChange(patch(config, ['model', 'providers', providerId, 'models'], models));
+    onChange(patch(config, ['agent'], next));
   };
 
   return (
@@ -1654,13 +1694,13 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
                   <input
                     type="number"
                     min={1}
-                    value={caps.maxOutputTokensOverride ?? ''}
-                    placeholder={String(caps.catalogModel?.maxOutputTokens ?? 16384)}
+                    value={config.agent?.maxOutputTokens ?? ''}
+                    placeholder={String(caps.maxOutputTokens)}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '') return setMaxOutputTokens(undefined);
+                      if (v === '') return setAgentTokenOverride('maxOutputTokens', undefined);
                       const n = Number(v);
-                      if (Number.isFinite(n) && n > 0) setMaxOutputTokens(Math.floor(n));
+                      if (Number.isFinite(n) && n > 0) setAgentTokenOverride('maxOutputTokens', Math.floor(n));
                     }}
                     className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
                   />
@@ -1680,18 +1720,13 @@ function AgentsSection({ config, onChange }: { config: PilotDeckConfig; onChange
                     type="number"
                     min={1}
                     value={config.agent?.maxContextTokens ?? ''}
-                    placeholder={String(caps.catalogModel?.maxContextTokens ?? 200000)}
+                    placeholder={String(caps.maxContextTokens)}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '') {
-                        const next = { ...(config.agent ?? {}) };
-                        delete next.maxContextTokens;
-                        onChange(patch(config, ['agent'], next));
-                        return;
-                      }
+                      if (v === '') return setAgentTokenOverride('maxContextTokens', undefined);
                       const n = Number(v);
                       if (Number.isFinite(n) && n > 0) {
-                        onChange(patch(config, ['agent', 'maxContextTokens'], Math.floor(n)));
+                        setAgentTokenOverride('maxContextTokens', Math.floor(n));
                       }
                     }}
                     className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
@@ -2175,9 +2210,94 @@ function CronSection({ config, onChange }: { config: PilotDeckConfig; onChange: 
   );
 }
 
-function MemorySection({ config, onChange }: { config: PilotDeckConfig; onChange: (next: PilotDeckConfig) => void }) {
+const MEMORY_ALL_TARGET = 'all_memory';
+
+type MemoryActionState = {
+  kind: 'idle' | 'busy' | 'success' | 'error';
+  message?: string;
+};
+
+type MemoryProjectTarget = {
+  value: string;
+  label: string;
+  path: string;
+};
+
+function memoryProjectPath(project: SettingsProject): string {
+  return (project.fullPath || project.path || '').trim();
+}
+
+function memoryProjectLabel(project: SettingsProject, fallback: string): string {
+  const direct = (project.displayName || project.name || '').trim();
+  if (direct) return direct;
+
+  const root = memoryProjectPath(project);
+  const tail = root.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop();
+  return tail || fallback;
+}
+
+function memoryProjectTargetValue(projectPath: string): string {
+  return `project:${projectPath}`;
+}
+
+function memoryProjectPathFromTarget(target: string): string {
+  return target.startsWith('project:') ? target.slice('project:'.length) : '';
+}
+
+function withMemoryProjectPath(url: string, projectPath: string): string {
+  if (!projectPath) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}projectPath=${encodeURIComponent(projectPath)}`;
+}
+
+function parseMemoryJson(raw: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function memoryApiErrorMessage(response: Response, raw: string, body: Record<string, unknown> | null): string {
+  const bodyError = typeof body?.error === 'string' ? body.error : '';
+  return bodyError || raw || `Request failed: ${response.status}`;
+}
+
+function downloadMemoryText(raw: string, fileName: string) {
+  const blob = new Blob([raw], { type: 'application/json' });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
+function safeDownloadToken(value: string): string {
+  return value
+    .trim()
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'memory';
+}
+
+function MemorySection({
+  config,
+  projects,
+  onChange,
+}: {
+  config: PilotDeckConfig;
+  projects: SettingsProject[];
+  onChange: (next: PilotDeckConfig) => void;
+}) {
   const { t } = useTranslation('settings');
   const m = config.memory ?? {};
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [memoryAction, setMemoryAction] = useState<MemoryActionState>({ kind: 'idle' });
   // Memory uses a "provider/model" reference, or "inherit" to fall back
   // to agent.model. The backend treats `undefined` and `"inherit"` the
   // same way, so we map both to the inherit option in the UI.
@@ -2187,38 +2307,326 @@ function MemorySection({ config, onChange }: { config: PilotDeckConfig; onChange
     ...refOptions,
   ];
   const selected = m.model && m.model.trim() ? m.model : 'inherit';
+
+  const projectTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const fallback = t('pilotDeckConfig.panels.memory.data.target.projectFallback');
+    return projects.reduce<MemoryProjectTarget[]>((items, project) => {
+      const path = memoryProjectPath(project);
+      if (!path || seen.has(path)) return items;
+      seen.add(path);
+      items.push({
+        value: memoryProjectTargetValue(path),
+        label: memoryProjectLabel(project, fallback),
+        path,
+      });
+      return items;
+    }, []);
+  }, [projects, t]);
+
+  const [selectedMemoryTarget, setSelectedMemoryTarget] = useState(() =>
+    projectTargets[0]?.value ?? MEMORY_ALL_TARGET,
+  );
+
+  const memoryTargetOptions = useMemo(
+    () => [
+      ...projectTargets.map((target) => ({ value: target.value, label: target.label })),
+      { value: MEMORY_ALL_TARGET, label: t('pilotDeckConfig.panels.memory.data.target.all') },
+    ],
+    [projectTargets, t],
+  );
+
+  useEffect(() => {
+    if (!memoryTargetOptions.some((option) => option.value === selectedMemoryTarget)) {
+      setSelectedMemoryTarget(projectTargets[0]?.value ?? MEMORY_ALL_TARGET);
+    }
+  }, [memoryTargetOptions, projectTargets, selectedMemoryTarget]);
+
+  const targetIsAllMemory = selectedMemoryTarget === MEMORY_ALL_TARGET;
+  const selectedProjectPath = targetIsAllMemory ? '' : memoryProjectPathFromTarget(selectedMemoryTarget);
+  const selectedProjectTarget = projectTargets.find((target) => target.path === selectedProjectPath) ?? null;
+  const dashboardProjectPath = selectedProjectPath || projectTargets[0]?.path || '';
+  const selectedTargetLabel = targetIsAllMemory
+    ? t('pilotDeckConfig.panels.memory.data.target.all')
+    : selectedProjectTarget?.label ?? t('pilotDeckConfig.panels.memory.data.target.projectFallback');
+  const actionBusy = memoryAction.kind === 'busy';
+  const canManageTarget = targetIsAllMemory || Boolean(selectedProjectPath);
+
+  const setMemoryField = (field: keyof NonNullable<PilotDeckConfig['memory']>, value: unknown) => {
+    onChange(patch(config, ['memory', field], value));
+  };
+
+  const readMemoryResponse = async (response: Response) => {
+    const raw = await response.text();
+    const body = parseMemoryJson(raw);
+    if (!response.ok) {
+      throw new Error(memoryApiErrorMessage(response, raw, body));
+    }
+    return { raw, body };
+  };
+
+  const setActionBusy = (messageKey: string) => {
+    setMemoryAction({
+      kind: 'busy',
+      message: t(messageKey, { target: selectedTargetLabel }),
+    });
+  };
+
+  const setActionSuccess = (messageKey: string, warnings?: unknown) => {
+    const warningList = Array.isArray(warnings)
+      ? warnings.filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+      : [];
+    setMemoryAction({
+      kind: 'success',
+      message: `${t(messageKey, { target: selectedTargetLabel })}${warningList.length > 0 ? ` ${warningList.join(' ')}` : ''}`,
+    });
+  };
+
+  const setActionError = (error: unknown) => {
+    setMemoryAction({
+      kind: 'error',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  };
+
+  const handleExportMemory = async () => {
+    if (!canManageTarget) {
+      setMemoryAction({ kind: 'error', message: t('pilotDeckConfig.panels.memory.data.errors.missingProject') });
+      return;
+    }
+
+    setActionBusy('pilotDeckConfig.panels.memory.data.status.exporting');
+    try {
+      const url = targetIsAllMemory
+        ? '/api/memory/export/all-projects'
+        : withMemoryProjectPath('/api/memory/export/current-project', selectedProjectPath);
+      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
+      const { raw, body } = await readMemoryResponse(response);
+      if (!body) {
+        throw new Error(t('pilotDeckConfig.panels.memory.data.errors.invalidExport'));
+      }
+      const prefix = targetIsAllMemory ? 'pilotdeck-memory-all' : `pilotdeck-memory-${safeDownloadToken(selectedTargetLabel)}`;
+      downloadMemoryText(raw, `${prefix}-${Date.now()}.json`);
+      setActionSuccess('pilotDeckConfig.panels.memory.data.status.exported');
+    } catch (error) {
+      setActionError(error);
+    }
+  };
+
+  const handleImportMemoryFile = async (file: File | null) => {
+    if (!file) return;
+    if (!canManageTarget) {
+      setMemoryAction({ kind: 'error', message: t('pilotDeckConfig.panels.memory.data.errors.missingProject') });
+      return;
+    }
+
+    let payload: Record<string, unknown> | null = null;
+    try {
+      payload = parseMemoryJson(await file.text());
+    } catch {
+      payload = null;
+    }
+    if (!payload) {
+      setMemoryAction({ kind: 'error', message: t('pilotDeckConfig.panels.memory.data.errors.invalidImport') });
+      return;
+    }
+
+    const confirmKey = targetIsAllMemory
+      ? 'pilotDeckConfig.panels.memory.data.confirm.importAll'
+      : 'pilotDeckConfig.panels.memory.data.confirm.importProject';
+    if (!window.confirm(t(confirmKey, { target: selectedTargetLabel }))) {
+      return;
+    }
+
+    setActionBusy('pilotDeckConfig.panels.memory.data.status.importing');
+    try {
+      const url = targetIsAllMemory
+        ? '/api/memory/import/all-projects'
+        : withMemoryProjectPath('/api/memory/import/current-project', selectedProjectPath);
+      const response = await authenticatedFetch(url, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        suppressServerErrorToast: true,
+      });
+      const { body } = await readMemoryResponse(response);
+      setActionSuccess('pilotDeckConfig.panels.memory.data.status.imported', body?.warnings);
+    } catch (error) {
+      setActionError(error);
+    }
+  };
+
+  const handleClearMemory = async () => {
+    if (!canManageTarget) {
+      setMemoryAction({ kind: 'error', message: t('pilotDeckConfig.panels.memory.data.errors.missingProject') });
+      return;
+    }
+
+    const confirmKey = targetIsAllMemory
+      ? 'pilotDeckConfig.panels.memory.data.confirm.clearAll'
+      : 'pilotDeckConfig.panels.memory.data.confirm.clearProject';
+    if (!window.confirm(t(confirmKey, { target: selectedTargetLabel }))) {
+      return;
+    }
+
+    setActionBusy('pilotDeckConfig.panels.memory.data.status.clearing');
+    try {
+      const response = await authenticatedFetch('/api/memory/clear', {
+        method: 'POST',
+        body: JSON.stringify(
+          targetIsAllMemory
+            ? { scope: 'all_memory', ...(dashboardProjectPath ? { projectPath: dashboardProjectPath } : {}) }
+            : { scope: 'current_project', projectPath: selectedProjectPath },
+        ),
+        suppressServerErrorToast: true,
+      });
+      await readMemoryResponse(response);
+      setActionSuccess('pilotDeckConfig.panels.memory.data.status.cleared');
+    } catch (error) {
+      setActionError(error);
+    }
+  };
+
+  const memoryActionTone =
+    memoryAction.kind === 'error'
+      ? 'border-destructive/30 bg-destructive/10 text-destructive'
+      : memoryAction.kind === 'success'
+        ? 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300'
+        : 'border-border bg-muted/40 text-muted-foreground';
+
   return (
     <SettingsSection
       title={t('pilotDeckConfig.panels.memory.title')}
       description={t('pilotDeckConfig.panels.memory.description')}
     >
-      <SettingsCard>
-        <SettingsRow
-          label={t('pilotDeckConfig.panels.memory.enabled.label')}
-          description={t('pilotDeckConfig.panels.memory.enabled.description')}
-        >
-          <SettingsToggle
-            checked={Boolean(m.enabled)}
-            ariaLabel={t('pilotDeckConfig.panels.memory.enabled.label')}
-            onChange={(v) => onChange(patch(config, ['memory', 'enabled'], v))}
-          />
-        </SettingsRow>
-        {m.enabled && (
-          <FormRow
-            label={t('pilotDeckConfig.panels.memory.model.label')}
-            description={t('pilotDeckConfig.panels.memory.model.description')}
+      <div className="space-y-4">
+        <SettingsCard divided>
+          <SettingsRow
+            label={t('pilotDeckConfig.panels.memory.enabled.label')}
+            description={t('pilotDeckConfig.panels.memory.enabled.description')}
           >
-            <Select
-              value={selected}
-              options={options}
-              onChange={(v) => {
-                const nextValue = v === 'inherit' ? '' : v;
-                onChange(patch(ensureModelRefConfigured(config, nextValue), ['memory', 'model'], nextValue));
-              }}
+            <SettingsToggle
+              checked={Boolean(m.enabled)}
+              ariaLabel={t('pilotDeckConfig.panels.memory.enabled.label')}
+              onChange={(v) => onChange(patch(config, ['memory', 'enabled'], v))}
             />
-          </FormRow>
-        )}
-      </SettingsCard>
+          </SettingsRow>
+          {m.enabled && (
+            <>
+              <FormRow
+                label={t('pilotDeckConfig.panels.memory.model.label')}
+                description={t('pilotDeckConfig.panels.memory.model.description')}
+              >
+                <Select
+                  value={selected}
+                  options={options}
+                  onChange={(v) => {
+                    const nextValue = v === 'inherit' ? '' : v;
+                    onChange(patch(ensureModelRefConfigured(config, nextValue), ['memory', 'model'], nextValue));
+                  }}
+                />
+              </FormRow>
+              <FormRow
+                label={t('pilotDeckConfig.panels.memory.automation.autoIndex.label')}
+                description={t('pilotDeckConfig.panels.memory.automation.autoIndex.description')}
+              >
+                <NumberInput
+                  value={m.autoIndexIntervalMinutes}
+                  placeholder="30"
+                  onChange={(value) => setMemoryField('autoIndexIntervalMinutes', value === undefined ? undefined : Math.max(0, value))}
+                />
+              </FormRow>
+              <FormRow
+                label={t('pilotDeckConfig.panels.memory.automation.autoDream.label')}
+                description={t('pilotDeckConfig.panels.memory.automation.autoDream.description')}
+              >
+                <NumberInput
+                  value={m.autoDreamIntervalMinutes}
+                  placeholder="60"
+                  onChange={(value) => setMemoryField('autoDreamIntervalMinutes', value === undefined ? undefined : Math.max(0, value))}
+                />
+              </FormRow>
+            </>
+          )}
+        </SettingsCard>
+
+        <SettingsSection
+          title={t('pilotDeckConfig.panels.memory.data.title')}
+          description={t('pilotDeckConfig.panels.memory.data.description')}
+        >
+          <SettingsCard divided>
+            <FormRow
+              label={t('pilotDeckConfig.panels.memory.data.target.label')}
+              description={t('pilotDeckConfig.panels.memory.data.target.description')}
+            >
+              <Select
+                value={selectedMemoryTarget}
+                options={memoryTargetOptions}
+                onChange={(value) => {
+                  setSelectedMemoryTarget(value);
+                  setMemoryAction({ kind: 'idle' });
+                }}
+              />
+            </FormRow>
+            <div className="px-4 py-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  disabled={actionBusy || !canManageTarget}
+                  onClick={() => void handleExportMemory()}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {t('pilotDeckConfig.panels.memory.data.actions.export')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  disabled={actionBusy || !canManageTarget}
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  {t('pilotDeckConfig.panels.memory.data.actions.import')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  disabled={actionBusy || !canManageTarget}
+                  onClick={() => void handleClearMemory()}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  {t('pilotDeckConfig.panels.memory.data.actions.clear')}
+                </Button>
+              </div>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  void handleImportMemoryFile(input.files?.[0] ?? null).finally(() => {
+                    input.value = '';
+                  });
+                }}
+              />
+              {memoryAction.kind !== 'idle' && memoryAction.message && (
+                <div className={cn('mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs leading-5', memoryActionTone)}>
+                  {memoryAction.kind === 'busy' && <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin" />}
+                  {memoryAction.kind === 'success' && <CheckCircle2 className="mt-0.5 h-3.5 w-3.5" />}
+                  {memoryAction.kind === 'error' && <AlertCircle className="mt-0.5 h-3.5 w-3.5" />}
+                  <span>{memoryAction.message}</span>
+                </div>
+              )}
+            </div>
+          </SettingsCard>
+        </SettingsSection>
+      </div>
     </SettingsSection>
   );
 }
@@ -3616,7 +4024,7 @@ export default function PilotDeckConfigTab({
             <div className="min-w-0 space-y-6">
               {activeSection === 'models' && <ModelsSection config={parsedConfig} onChange={onFormChange} />}
               {activeSection === 'agents' && <AgentsSection config={parsedConfig} onChange={onFormChange} />}
-              {activeSection === 'memory' && <MemorySection config={parsedConfig} onChange={onFormChange} />}
+              {activeSection === 'memory' && <MemorySection config={parsedConfig} projects={projects} onChange={onFormChange} />}
               {activeSection === 'tools' && <ToolsSection config={parsedConfig} onChange={onFormChange} />}
               {activeSection === 'router' && <RouterSection config={parsedConfig} onChange={onFormChange} />}
               {activeSection === 'gateway' && <GatewaySection config={parsedConfig} onChange={onFormChange} />}

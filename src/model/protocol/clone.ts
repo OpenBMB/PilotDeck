@@ -5,6 +5,10 @@ import type {
   CanonicalToolResultBlock,
 } from "./canonical.js";
 
+export function messageContent(message: Pick<CanonicalMessage, "content">): CanonicalContentBlock[] {
+  return Array.isArray(message.content) ? message.content : [];
+}
+
 /**
  * Deep-clone a single content block. Handles nested structures that a plain
  * spread would share by reference:
@@ -38,7 +42,7 @@ export function cloneContentBlock(block: CanonicalContentBlock): CanonicalConten
 export function cloneMessage(message: CanonicalMessage): CanonicalMessage {
   return {
     ...message,
-    content: message.content.map(cloneContentBlock),
+    content: messageContent(message).map(cloneContentBlock),
   };
 }
 

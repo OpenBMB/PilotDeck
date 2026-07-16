@@ -3,6 +3,11 @@ import { authenticatedFetch } from '../../../utils/api.js';
 
 export const PILOTDECK_SETTINGS_KEY = 'pilotdeck-settings';
 
+export const getDraftInputStorageKey = (
+  projectName: string,
+  sessionId?: string | null,
+): string => `draft_input_${projectName}:${sessionId || 'new'}`;
+
 export const safeLocalStorage = {
   setItem: (key: string, value: string) => {
     try {

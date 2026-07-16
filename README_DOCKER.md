@@ -1,5 +1,7 @@
 # PilotDeck Docker
 
+简体中文版本：[README_DOCKER.zh.md](./README_DOCKER.zh.md)
+
 PilotDeck runs as two cooperating Node.js processes in the container:
 
 - **Gateway**: agent runtime on `PILOTDECK_GATEWAY_PORT` (default `18789`)
@@ -13,6 +15,27 @@ The Docker Compose setup persists the full `PILOT_HOME` directory, including gen
 
 - [Docker](https://docs.docker.com/get-docker/) v20+
 - [Docker Compose](https://docs.docker.com/compose/) v2+
+
+Make sure the Docker daemon is running before starting PilotDeck. On macOS/Windows, start Docker Desktop first and wait until the engine is ready:
+
+```bash
+docker info
+```
+
+The first build pulls base images such as `node:22-bookworm` and `node:22-bookworm-slim` from Docker Hub. If pulling images is slow or fails with `context deadline exceeded`, configure a Docker registry mirror or Docker Desktop proxy, then retry `docker compose up -d --build`. On Docker Desktop, registry mirrors can be configured in **Settings → Docker Engine**. On Linux, add mirrors to `/etc/docker/daemon.json`, then restart Docker.
+
+The container installs dependencies with Node.js 22 and the committed `pnpm-lock.yaml` inside the image, so it does not use the host Node.js runtime or host CPU architecture for native Node modules. The legacy `sqlite`/`sqlite3` packages are not required by PilotDeck and are not part of the source install path.
+
+As a one-off workaround, you can pre-pull the required Node images from a reachable mirror and tag them with the names used by the Dockerfile:
+
+```bash
+docker pull mirror.gcr.io/library/node:22-bookworm
+docker pull mirror.gcr.io/library/node:22-bookworm-slim
+docker tag mirror.gcr.io/library/node:22-bookworm node:22-bookworm
+docker tag mirror.gcr.io/library/node:22-bookworm-slim node:22-bookworm-slim
+```
+
+The Docker build also downloads Debian and npm packages inside the image, so slow package registries may still require a stable network proxy.
 
 ### Option A: Configure via environment variables
 

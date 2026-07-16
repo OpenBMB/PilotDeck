@@ -22,6 +22,7 @@ type RunDetailProps = {
   backLabel?: string;
   onBack: () => void;
   onOpenExecutionSession?: (projectKey: string, runId: string, projectName?: string) => void;
+  compact?: boolean;
 };
 
 type PlanData = {
@@ -62,6 +63,7 @@ export default function RunDetail(props: RunDetailProps) {
     backLabel,
     onBack,
     onOpenExecutionSession,
+    compact = false,
   } = props;
   const { t } = useTranslation('alwaysOn');
 
@@ -159,7 +161,7 @@ export default function RunDetail(props: RunDetailProps) {
     'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400';
 
   return (
-    <div className="w-full space-y-5 px-8 py-5">
+    <div className={cn('w-full space-y-5 py-5', compact ? 'px-4' : 'px-8')}>
       {/* Back button */}
       <button
         type="button"
@@ -205,7 +207,12 @@ export default function RunDetail(props: RunDetailProps) {
         </div>
 
         {/* Metadata grid */}
-        <div className="grid grid-cols-3 divide-x divide-neutral-100 border-b border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+        <div className={cn(
+          'grid border-b border-neutral-200 dark:border-neutral-800',
+          compact
+            ? 'grid-cols-1 divide-y divide-neutral-100 dark:divide-neutral-800'
+            : 'grid-cols-3 divide-x divide-neutral-100 dark:divide-neutral-800',
+        )}>
           {/* Workspace strategy */}
           <div className="px-5 py-3">
             <div className="text-xxs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">

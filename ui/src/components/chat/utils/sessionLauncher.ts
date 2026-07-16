@@ -21,6 +21,7 @@ type StartSessionOptions = {
   alwaysOnPlanId?: string;
   alwaysOnExecutionToken?: string;
   workspaceCwd?: string;
+  forceStart?: boolean;
 };
 
 const VALID_PERMISSION_MODES = new Set<PermissionMode>([
@@ -97,6 +98,7 @@ export function startSessionCommand({
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
+  forceStart,
 }: StartSessionOptions): string {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
@@ -124,6 +126,7 @@ export function startSessionCommand({
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
       ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(forceStart ? { forceStart: true } : {}),
     },
   });
 

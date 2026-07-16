@@ -18,6 +18,12 @@
   "header": {
     "showingChanges": "显示更改"
   },
+  "tabs": {
+    "tabList": "已打开的文件",
+    "closeTab": "关闭 {{fileName}}",
+    "modified": "已修改",
+    "unsavedConfirm": "关闭 {{fileName}} 并放弃未保存的更改吗？"
+  },
   "actions": {
     "download": "下载文件",
     "save": "保存",

@@ -45,6 +45,35 @@ const buildWebSocketUrl = (token: string | null) => {
 const INITIAL_RECONNECT_MS = 1000;
 const MAX_RECONNECT_MS = 30000;
 const BACKOFF_FACTOR = 2;
+const MAX_QUEUED_MESSAGES = 100;
+
+export function getQueuedMessageKey(message: any): string | null {
+  if (message?.type === 'check-session-status' && typeof message.sessionId === 'string' && message.sessionId.trim()) {
+    return `check-session-status:${message.sessionId.trim()}`;
+  }
+  return null;
+}
+
+export function isQueueableDisconnectedMessage(message: any): boolean {
+  return getQueuedMessageKey(message) !== null;
+}
+
+export function enqueueDisconnectedMessage(queue: any[], message: any, maxQueuedMessages = MAX_QUEUED_MESSAGES): void {
+  const key = getQueuedMessageKey(message);
+  if (!key) return;
+  const existingIndex = queue.findIndex((queuedMessage) => getQueuedMessageKey(queuedMessage) === key);
+  if (existingIndex >= 0) {
+    queue.splice(existingIndex, 1);
+  }
+  queue.push(message);
+  if (queue.length > maxQueuedMessages) {
+    queue.splice(0, queue.length - maxQueuedMessages);
+  }
+}
+
+export function clearDisconnectedQueue(queue: any[]): void {
+  queue.splice(0, queue.length);
+}
 
 const useWebSocketProviderState = (): WebSocketContextType => {
   const wsRef = useRef<WebSocket | null>(null);
@@ -60,6 +89,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   });
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const queuedMessagesRef = useRef<any[]>([]);
   const subscribersRef = useRef<Set<WSSubscriber>>(new Set());
   const { token } = useAuth();
 
@@ -86,6 +116,11 @@ const useWebSocketProviderState = (): WebSocketContextType => {
           reconnectAttemptRef.current = 0;
           setReconnectInfo({ attempt: 0, nextRetryMs: 0, status: 'connected' });
           wsRef.current = websocket;
+
+          while (queuedMessagesRef.current.length > 0 && websocket.readyState === WebSocket.OPEN) {
+            const message = queuedMessagesRef.current.shift();
+            websocket.send(JSON.stringify(message));
+          }
 
           const pingInterval = setInterval(() => {
             if (websocket.readyState === WebSocket.OPEN) {
@@ -155,6 +190,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
 
     return () => {
       connectIdRef.current++;
+      clearDisconnectedQueue(queuedMessagesRef.current);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
@@ -176,6 +212,9 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));
+    } else if (isQueueableDisconnectedMessage(message)) {
+      enqueueDisconnectedMessage(queuedMessagesRef.current, message);
+      console.warn('WebSocket not connected');
     } else {
       console.warn('WebSocket not connected');
     }
