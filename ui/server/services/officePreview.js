@@ -166,6 +166,21 @@ async function findCachedPdf(cacheDir) {
     .find((name) => name.toLowerCase().endsWith('.pdf')) || null;
 }
 
+export async function createLibreOfficeConversionWorkspace(cacheDir) {
+  const tempDir = await fsPromises.mkdtemp(path.join(cacheDir, 'convert-'));
+  try {
+    // Keep the LibreOffice profile close to the system temp root. On Windows,
+    // nesting it under the hashed cache/output directory makes LibreOffice's
+    // internal profile paths exceed the legacy MAX_PATH limit. In that case
+    // soffice exits successfully but silently produces no PDF.
+    const profileDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-lo-profile-'));
+    return { tempDir, profileDir };
+  } catch (error) {
+    await fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 async function acquireDirectoryLock(lockDir) {
   while (true) {
     try {
@@ -373,8 +388,7 @@ async function convertOfficeDocumentToPdfWithCache({
       return resolvePathInsideRoot(cacheDir, lockedCachedPdf);
     }
 
-    const tempDir = await fsPromises.mkdtemp(path.join(cacheDir, 'convert-'));
-    const profileDir = path.join(tempDir, 'profile');
+    const { tempDir, profileDir } = await createLibreOfficeConversionWorkspace(cacheDir);
 
     const args = [
       `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
@@ -391,21 +405,31 @@ async function convertOfficeDocumentToPdfWithCache({
     ];
 
     try {
-      await execFileAsync(binary, args, {
-        timeout: LIBREOFFICE_TIMEOUT_MS,
-        maxBuffer: 8 * 1024 * 1024,
-        windowsHide: true,
-      });
-    } catch (error) {
-      error.statusCode = 500;
-      error.code = error.code || 'LIBREOFFICE_CONVERT_FAILED';
-      throw error;
-    }
+      let conversionOutput;
+      try {
+        conversionOutput = await execFileAsync(binary, args, {
+          timeout: LIBREOFFICE_TIMEOUT_MS,
+          maxBuffer: 8 * 1024 * 1024,
+          windowsHide: true,
+        });
+      } catch (error) {
+        error.statusCode = 500;
+        error.code = error.code || 'LIBREOFFICE_CONVERT_FAILED';
+        throw error;
+      }
 
-    try {
-      return await publishConvertedPdf(tempDir, cacheDir);
+      try {
+        return await publishConvertedPdf(tempDir, cacheDir);
+      } catch (error) {
+        error.stdout = String(conversionOutput.stdout || '').trim();
+        error.stderr = String(conversionOutput.stderr || '').trim();
+        throw error;
+      }
     } finally {
-      await fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      await Promise.all([
+        fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => {}),
+        fsPromises.rm(profileDir, { recursive: true, force: true }).catch(() => {}),
+      ]);
     }
   } finally {
     if (releaseLock) {
