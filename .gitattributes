@@ -10,6 +10,10 @@
 # Small UI bundled images — keep as regular git blobs so Vite can inline them
 ui/src/assets/** !filter !diff !merge text=auto
 
+# Design QA snapshots are already stored as regular Git blobs. Exempt them from
+# the catch-all image rule so a fresh checkout does not report false changes.
+design-qa/** !filter !diff !merge -text
+
 # Desktop app icon sources are tiny; avoid LFS (OpenBMB budget) and release-time smudge failures
 apps/desktop/assets/** !filter !diff !merge text=auto
 
