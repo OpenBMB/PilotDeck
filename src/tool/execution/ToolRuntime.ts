@@ -456,6 +456,11 @@ function formatRawToolErrorDetails(details?: Record<string, unknown>): string | 
     if (durationMs !== undefined) lines.push(`- duration_ms: ${String(durationMs)}`);
   }
 
+  const diagnostic = readStringDetail(details, "diagnostic");
+  if (diagnostic) {
+    lines.push("", "Diagnostic:", diagnostic.trimEnd());
+  }
+
   appendRawStream(lines, "stdout", readStringDetail(details, "stdout"));
   appendRawStream(lines, "stderr", readStringDetail(details, "stderr"));
 

@@ -210,7 +210,9 @@ async function validateExecuteCodeInput(input: ExecuteCodeInput) {
 }
 
 function isExecuteCodeReadOnly(input: ExecuteCodeInput): boolean {
-  return !containsWriteCapableHelper(input.code) && readOnlyBashCallsOnly(input.code);
+  const code = input && typeof input.code === "string" ? input.code : "";
+  if (!code) return false;
+  return !containsWriteCapableHelper(code) && readOnlyBashCallsOnly(code);
 }
 
 function containsWriteCapableHelper(code: string): boolean {

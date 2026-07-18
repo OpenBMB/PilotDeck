@@ -163,7 +163,7 @@ export function createTaskCreateTool(
     name: "task_create",
     aliases: ["TaskCreate"],
     description:
-      "Spawn a shell command as a detached background task. Returns immediately with a taskId; it does not automatically push completion output back into the model context. For long-running tasks that should finish, call task_wait next. Use task_output for progress checks and task_stop for long-lived processes.",
+      "Spawn a shell command as a detached background task. Returns immediately with a taskId; it does not automatically push completion output back into the model context. For long-running tasks that should finish, call task_wait immediately after task_create so the final output returns to the current context. Use task_output only for progress checks, not manual sleep polling. Use task_stop for long-lived services/watchers.",
     kind: "shell",
     inputSchema: {
       type: "object",
@@ -352,7 +352,7 @@ export function createTaskWaitTool(
     name: "task_wait",
     aliases: ["TaskWait"],
     description:
-      "Block until a background task finishes or timeoutMs elapses, then return the task status and output. Use this immediately after task_create for long-running commands that should eventually complete. It does not stop the task when timeoutMs elapses.",
+      "Block until a background task finishes or timeoutMs elapses, then return the task status and output. Use this immediately after task_create for finite long-running commands such as builds, tests, conversions, downloads, or batch scripts. It does not stop the task when timeoutMs elapses; call task_wait again or task_output for progress.",
     kind: "shell",
     inputSchema: {
       type: "object",

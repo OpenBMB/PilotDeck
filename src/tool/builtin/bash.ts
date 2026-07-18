@@ -57,6 +57,8 @@ Usage:
 const LONG_TASK_HINT =
   "Use timeout=600000 or less for foreground bash. If the command must run in the background, use task_create and then task_wait to block for completion; use task_output only for progress checks and task_stop to clean up long-lived processes.";
 
+const STREAM_DIAGNOSTIC_MAX_CHARS = 600;
+
 const SHELL_BACKGROUND_WRAPPER_RE = /(?:^|[;&|]\s*|&&\s*|\|\|\s*|\$\(\s*)(?:nohup|disown|setsid)\b/iu;
 const TRAILING_BACKGROUND_RE = /(?:^|[^&])&\s*(?:[)#}\]]\s*)?$/u;
 const INLINE_BACKGROUND_RE = /(?:^|[;|]\s*)[^\n;&|]+&\s*(?:[;|]|&&|\|\|)/u;
@@ -150,9 +152,11 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
 
       if (result.exitCode !== 0) {
         const summary = formatShellFailure(command, result);
+        const diagnostic = formatShellFailureDiagnostic(result);
         throw new PilotDeckToolRuntimeError("tool_execution_failed", summary, {
           command,
           exitCode: result.exitCode,
+          diagnostic,
           stdout: result.stdout,
           stderr: result.stderr,
           timedOut: result.timedOut,
@@ -265,6 +269,82 @@ function formatShellFailure(
     lines.push("", "stdout:", result.stdout.trimEnd());
   }
   return lines.join("\n");
+}
+
+function formatShellFailureDiagnostic(
+  result: { exitCode: number | null; stdout: string; stderr: string },
+): string {
+  const stream = result.stderr.trim().length > 0 ? result.stderr : result.stdout;
+  const traceback = parsePythonTraceback(stream);
+  const moduleMissing = parseMissingModule(stream);
+  const commandNotFound = parseCommandNotFound(stream);
+  const syntaxError = parseSyntaxError(stream);
+
+  const lines = [
+    "BASH_FAILURE_DIAGNOSTIC",
+    `- exit_code: ${result.exitCode ?? "null"}`,
+  ];
+
+  if (traceback) {
+    lines.push(`- likely_cause: ${traceback.exception}`);
+    if (traceback.location) lines.push(`- failing_location: ${traceback.location}`);
+    lines.push("- next_step: inspect the failing file/line, fix that specific cause, then rerun the smallest command that exercises it.");
+  } else if (moduleMissing) {
+    lines.push(`- likely_cause: missing Python module ${moduleMissing}`);
+    lines.push("- next_step: install the missing module if allowed, or rewrite the script to use available dependencies.");
+  } else if (commandNotFound) {
+    lines.push(`- likely_cause: command not found: ${commandNotFound}`);
+    lines.push("- next_step: check whether the command is installed or use an available equivalent.");
+  } else if (syntaxError) {
+    lines.push(`- likely_cause: ${syntaxError}`);
+    lines.push("- next_step: fix the syntax in the saved script or command, then rerun a minimal check.");
+  } else {
+    lines.push("- likely_cause: command exited non-zero; inspect stderr/stdout below for the root cause.");
+    lines.push("- next_step: change the command or script before retrying; do not rerun unchanged.");
+  }
+
+  const stderrTail = tailSnippet(result.stderr, STREAM_DIAGNOSTIC_MAX_CHARS);
+  if (stderrTail) lines.push("- stderr_tail:", indentBlock(stderrTail));
+  const stdoutTail = tailSnippet(result.stdout, STREAM_DIAGNOSTIC_MAX_CHARS);
+  if (stdoutTail && !stderrTail.includes(stdoutTail)) lines.push("- stdout_tail:", indentBlock(stdoutTail));
+  return lines.join("\n");
+}
+
+function parsePythonTraceback(text: string): { exception: string; location?: string } | undefined {
+  if (!/Traceback \(most recent call last\):/u.test(text)) return undefined;
+  const lines = text.split(/\r?\n/);
+  let location: string | undefined;
+  for (const line of lines) {
+    const match = /^\s*File "([^"]+)", line (\d+)(?:, in (.*))?/u.exec(line);
+    if (match) {
+      location = `${match[1]}:${match[2]}${match[3] ? ` in ${match[3].trim()}` : ""}`;
+    }
+  }
+  const exception = [...lines].reverse().map((line) => line.trim()).find((line) => /^[A-Za-z_][\w.]*(?:Error|Exception|Warning)\b/u.test(line));
+  return { exception: exception ?? "Python traceback", location };
+}
+
+function parseMissingModule(text: string): string | undefined {
+  return /(?:ModuleNotFoundError|ImportError): No module named ['"]([^'"]+)['"]/u.exec(text)?.[1];
+}
+
+function parseCommandNotFound(text: string): string | undefined {
+  return /(?:^|\n)(?:.*?:\s*)?([^\s:]+): command not found\b/u.exec(text)?.[1];
+}
+
+function parseSyntaxError(text: string): string | undefined {
+  return /(?:^|\n)\s*(SyntaxError:[^\n]+)/u.exec(text)?.[1]?.trim();
+}
+
+function tailSnippet(value: string, maxChars: number): string {
+  const trimmed = value.trimEnd();
+  if (!trimmed) return "";
+  if (trimmed.length <= maxChars) return trimmed;
+  return `... [${trimmed.length - maxChars} chars omitted] ...\n${trimmed.slice(-maxChars)}`;
+}
+
+function indentBlock(value: string): string {
+  return value.split(/\r?\n/).map((line) => `  ${line}`).join("\n");
 }
 
 function foregroundBackgroundGuidance(command: string): string | undefined {

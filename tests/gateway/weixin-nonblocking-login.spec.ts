@@ -13,6 +13,9 @@ import {
 import type { Gateway, GatewayChannelKey } from "../../src/gateway/index.js";
 
 test("WeixinChannel.start returns while QR login is waiting", async (t) => {
+  t.mock.method(console, "log", () => undefined);
+  t.mock.method(console, "error", () => undefined);
+
   const tempDir = await mkdtemp(join(tmpdir(), "pilotdeck-weixin-start-"));
   t.after(async () => {
     await rm(tempDir, { recursive: true, force: true });

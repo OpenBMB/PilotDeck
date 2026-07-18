@@ -58,10 +58,27 @@ Repeated installs are safe only when the installer can confirm the cache first. 
 
 If the download is slow or blocked, configure your network proxy first and rerun the install command. Browser automation is optional; PilotDeck core chat, files, skills, and settings work without it.
 
+## Runtime Configuration
+
+PilotDeck starts browser-use through `playwright-mcp` and uses practical defaults for slower pages:
+
+- `PILOTDECK_BROWSER_TIMEOUT_ACTION_MS`: browser action timeout, default `30000`.
+- `PILOTDECK_BROWSER_TIMEOUT_NAVIGATION_MS`: navigation timeout, default `90000`.
+- `PILOTDECK_BROWSER_PROXY_SERVER`: proxy passed directly to Chromium, for example `http://127.0.0.1:7890`.
+- `PILOTDECK_BROWSER_PROXY_BYPASS`: comma-separated proxy bypass list. Defaults include `localhost`, `127.0.0.1`, and `host.docker.internal`.
+- `PILOTDECK_BROWSER_PROXY_FROM_ENV=1`: infer a browser proxy from `PILOTDECK_PROXY`, `HTTPS_PROXY`, or `HTTP_PROXY`. This is disabled by default; use `PILOTDECK_BROWSER_PROXY_SERVER` when the proxy should be passed explicitly to Chromium.
+- If `pilotdeck.yaml` sets `proxy.url`, browser-use passes it to Chromium when no explicit browser proxy is set. `proxy.noProxy` is included in the browser proxy bypass list.
+
+Use a direct browser proxy when command-line HTTP tools can reach the network but browser navigation hangs or times out. Chromium does not always behave like curl or Python requests with inherited proxy environment variables.
+
 ## Usage Notes
 
 - Prefer browser-use for interactive browser tasks. Prefer HTTP, curl, requests, or structured parsing for non-interactive retrieval and batch scraping.
 - Try the existing browser setup before any installation step. If it works, continue; do not reinstall or upgrade browser binaries.
+- If browser-use times out or the page does not require interaction, switch to HTTP/file parsing or a narrower browser action instead of repeatedly retrying the same navigation.
+- If a full-page screenshot times out while waiting for fonts or page stability, avoid retrying the identical screenshot. Try a viewport screenshot, a narrower element/clip, a short targeted wait, or a direct Playwright script with an explicit timeout.
+- If navigation to a public site times out but curl or Python succeeds, check whether `PILOTDECK_BROWSER_PROXY_SERVER` is set for Chromium.
+- Keep browser-use calls targeted: navigate to one URL, wait for a specific visible signal, extract the needed text/state, then stop. Avoid using browser automation as a general crawler.
 - For local PilotDeck checks, open the URL shown by `pilotdeck status`, usually `http://localhost:3001`.
 - If no model provider is configured, a clean PilotDeck instance should land on onboarding rather than settings or chat.
 - Keep browser tasks small and observable: navigate, wait for a visible heading, inspect relevant text, then report evidence.

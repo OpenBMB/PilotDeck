@@ -88,6 +88,8 @@ test("bash failure tool result includes raw stdout and stderr tail for UI and mo
     const text = result.content[0]?.type === "text" ? result.content[0].text : "";
     assert.match(text, /TOOL_ERROR\[tool_execution_failed\]\[bash\]/);
     assert.match(text, /Raw tool details:/);
+    assert.match(text, /Diagnostic:/);
+    assert.match(text, /BASH_FAILURE_DIAGNOSTIC/);
     assert.match(text, /- command: npm test/);
     assert.match(text, /- exit_code: 1/);
     assert.match(text, /stdout:/);
@@ -114,6 +116,31 @@ test("bash failure tool result includes raw stdout and stderr tail for UI and mo
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("bash failure diagnostic extracts Python traceback location and exception", async () => {
+  const runtime = createRuntime({
+    async run() {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `Traceback (most recent call last):\n  File "/tmp_workspace/script.py", line 7, in <module>\n    main()\n  File "/tmp_workspace/script.py", line 3, in main\n    raise TypeError("bad frame")\nTypeError: bad frame\n`,
+        timedOut: false,
+        durationMs: 9,
+      };
+    },
+  });
+
+  const result = await runtime.execute(
+    { id: "call-bash", name: "bash", input: { command: "python3 script.py" } },
+    context(),
+  );
+
+  assert.equal(result.type, "error");
+  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  assert.match(text, /BASH_FAILURE_DIAGNOSTIC/);
+  assert.match(text, /likely_cause: TypeError: bad frame/);
+  assert.match(text, /failing_location: \/tmp_workspace\/script\.py:3 in main/);
 });
 
 test("bash success keeps full output for ToolResultBudget persistence", async () => {
