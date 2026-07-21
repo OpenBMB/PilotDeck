@@ -26,6 +26,12 @@ export {
   type PromptAssemblerSections,
 } from "./prompt/PromptAssembler.js";
 export {
+  DynamicContextStore,
+  type DynamicContextEntry,
+  type DynamicContextPriority,
+  type PendingDynamicContext,
+} from "./dynamic/DynamicContextStore.js";
+export {
   MessageProjector,
   type MessageProjectorInput,
   type MessageProjectorResult,

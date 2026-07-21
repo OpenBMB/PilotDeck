@@ -85,6 +85,7 @@ import type {
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
+import { PromptDispatchGate } from "../internal/PromptDispatchGate.js";
 
 const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个新功能";
 const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
@@ -164,6 +165,12 @@ export type InProcessGatewayOptions = {
   telemetry?: TelemetryClient;
 };
 
+export type InProcessGatewaySubmitTurnInput = GatewaySubmitTurnInput & {
+  /** Trusted in-process callers use this to mark synthetic wake-up prompts. */
+  origin?: { kind: "user" } | { kind: "internal"; source: string };
+  signal?: AbortSignal;
+};
+
 const ACTIVE_TURN_EVENT_LIMIT = 500;
 const ACTIVE_TURN_BYTE_LIMIT = 256 * 1024;
 
@@ -204,12 +211,45 @@ export class InProcessGateway implements Gateway {
    * while `inFlightTurns` was still populated, racing the next submit.
    */
   private readonly turnCompletions = new Map<string, Promise<void>>();
+  private readonly internalPromptDispatcher: PromptDispatchGate;
   constructor(
     private readonly router: SessionRouter,
     private readonly options: InProcessGatewayOptions = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.uuid = options.uuid ?? randomUUID;
+    this.internalPromptDispatcher = new PromptDispatchGate({
+      isSessionBusy: (sessionKey) => this.router.isTurnInFlight(sessionKey),
+      waitForSessionIdle: (sessionKey, waitOptions) => this.router.waitForIdle(sessionKey, waitOptions),
+      runInternalTurn: async (turn) => {
+        let finishReason = "unknown";
+        for await (const event of this.submitTurn({
+          sessionKey: turn.sessionKey,
+          channelKey: turn.channelKey,
+          projectKey: turn.projectKey,
+          message: turn.prompt,
+          runId: turn.runId,
+          timeoutMs: turn.timeoutMs,
+          signal: turn.signal,
+          origin: { kind: "internal", source: turn.source },
+          canPrompt: false,
+        })) {
+          if (event.type === "error" && event.code === "session_busy") return { status: "busy" };
+          if (event.type === "error" && event.code === "turn_timeout") return { status: "timed_out" };
+          if (event.type === "error") return { status: "failed", error: new Error(event.message) };
+          if (event.type === "turn_completed") finishReason = event.finishReason;
+        }
+        return { status: "completed", runId: turn.runId, finishReason };
+      },
+    }, { now: () => this.now().getTime(), uuid: this.uuid });
+  }
+
+  getInternalPromptDispatcher(): PromptDispatchGate {
+    return this.internalPromptDispatcher;
+  }
+
+  dispose(): void {
+    this.internalPromptDispatcher.dispose();
   }
 
   /**
@@ -273,7 +313,7 @@ export class InProcessGateway implements Gateway {
     this.emitForSession(detail.sessionId, event);
   }
 
-  async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+  async *submitTurn(input: InProcessGatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
     const plannedInput = normalizePlanCommandInput(input);
     if (!plannedInput) {
       yield {
@@ -374,6 +414,11 @@ export class InProcessGateway implements Gateway {
           projectKey: input.projectKey,
           channelKey: input.channelKey,
         });
+        if (input.signal?.aborted) {
+          throw input.signal.reason instanceof Error ? input.signal.reason : new Error("Turn aborted before session start.");
+        }
+        const onExternalAbort = () => session.abort(`external:${runId}`);
+        input.signal?.addEventListener("abort", onExternalAbort, { once: true });
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
@@ -443,8 +488,9 @@ export class InProcessGateway implements Gateway {
           content: [{ type: "text" as const, text: s.text }],
           metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
         }));
-        for await (const event of session.submit(
-          agentInput,
+        try {
+          for await (const event of session.submit(
+          { ...agentInput, isMeta: input.origin?.kind === "internal" },
           {
             turnId: runId,
             maxTurns: input.maxTurns,
@@ -490,6 +536,9 @@ export class InProcessGateway implements Gateway {
             this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
             queue.enqueue(gatewayEvent);
           }
+          }
+        } finally {
+          input.signal?.removeEventListener("abort", onExternalAbort);
         }
       } catch (error) {
         this.options.telemetry?.trackError(error, {

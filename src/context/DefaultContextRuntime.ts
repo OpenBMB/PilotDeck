@@ -17,6 +17,7 @@ import type { InstructionDiscovery, InstructionScope } from "./instructions/Inst
 import { MemoryAttachmentBuilder } from "./memory/MemoryAttachmentBuilder.js";
 import type { MemoryResolver } from "./memory/MemoryResolver.js";
 import { PromptAssembler } from "./prompt/PromptAssembler.js";
+import type { DynamicContextStore } from "./dynamic/DynamicContextStore.js";
 import { MessageProjector } from "./projection/MessageProjector.js";
 import type {
   ContextCaptureTurnInput,
@@ -85,6 +86,8 @@ export type DefaultContextRuntimeOptions = {
   /** Timeout budget for MemoryResolver.retrieve during prepareForModel. */
   memoryRetrievalTimeoutMs?: number;
   now?: () => Date;
+  /** Session-scoped hook context consumed immediately before a model request. */
+  dynamicContext?: DynamicContextStore;
 };
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 8192;
@@ -113,6 +116,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly truncateSecondKeepRatio: number;
   private readonly memoryRetrievalTimeoutMs: number;
   private readonly now: () => Date;
+  private readonly dynamicContext?: DynamicContextStore;
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
     this.extension = options.extension ?? new NullExtensionResolver();
@@ -137,6 +141,7 @@ export class DefaultContextRuntime implements ContextRuntime {
     this.truncateSecondKeepRatio = options.truncateSecondKeepRatio ?? DEFAULT_TRUNCATE_SECOND_RATIO;
     this.memoryRetrievalTimeoutMs = options.memoryRetrievalTimeoutMs ?? DEFAULT_MEMORY_RETRIEVAL_TIMEOUT_MS;
     this.now = options.now ?? (() => new Date());
+    this.dynamicContext = options.dynamicContext;
   }
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
@@ -146,6 +151,27 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: input.messages,
       maxMessages: input.maxMessages,
     });
+    const dynamicContext = this.dynamicContext?.getPending(input.sessionId);
+    if (dynamicContext && dynamicContext.entries.length > 0) {
+      projection.messages.push({
+        role: "user",
+        content: [{
+          type: "text",
+          text: `<dynamic-context>\n${dynamicContext.merged}\n</dynamic-context>`,
+        }],
+        metadata: {
+          synthetic: true,
+          transient: true,
+          transientId: `dynamic-context:${input.sessionId}:${input.turnId}`,
+          purpose: "dynamic_context",
+        },
+      });
+      diagnostics.push({
+        code: "dynamic_context_injected",
+        severity: "info",
+        message: `Injected ${dynamicContext.entries.length} dynamic context entr${dynamicContext.entries.length === 1 ? "y" : "ies"}.`,
+      });
+    }
 
     for (const warning of projection.warnings) {
       diagnostics.push({
@@ -250,6 +276,10 @@ export class DefaultContextRuntime implements ContextRuntime {
       },
       cacheBreakpoints: microcompactResult?.cacheBreakpoints,
     };
+  }
+
+  commitPreparedContext(input: { sessionId: string }): void {
+    this.dynamicContext?.consume(input.sessionId);
   }
 
   async applyToolResults(input: ContextToolResultInput): Promise<ContextToolResultResult> {

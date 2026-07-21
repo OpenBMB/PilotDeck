@@ -1,0 +1,32 @@
+COMMAND
+pnpm run build && node --test --test-force-exit --test-timeout 60000 \
+  dist/tests/agent/agent-loop-runtime-controls.spec.js \
+  dist/tests/agent/agent-session-cleanup.spec.js \
+  dist/tests/agent/local-gateway-runtime-controls.spec.js \
+  dist/tests/artifact/artifact-validation.spec.js \
+  dist/tests/context/dynamic-context-runtime.spec.js \
+  dist/tests/context/dynamic-context-store.spec.js \
+  dist/tests/extension/hooks/artifact-contract-output.spec.js \
+  dist/tests/extension/hooks/domain-plugin-runtime.spec.js \
+  dist/tests/extension/hooks/model-request-patch.spec.js \
+  dist/tests/gateway/internal-prompt-dispatch-integration.spec.js \
+  dist/tests/gateway/prompt-dispatch-gate.spec.js \
+  dist/tests/gateway/public-submit-turn-boundary.spec.js \
+  dist/tests/gateway/session-router-idle.spec.js \
+  dist/tests/lifecycle/pre-model-request-effects.spec.js
+
+RESULT
+exit_code=0
+tests=41
+pass=41
+fail=0
+cancelled=0
+duration_ms=770.365917
+
+KEY OBSERVATIONS
+- Project hook context was one-shot and survived a post-routing request rebuild.
+- PreModelRequest token patches were preserved and clamped to model capability.
+- Missing required artifacts triggered a bounded correction turn.
+- Internal prompts waited for the authoritative session idle state and fully drained.
+- Public WebSocket input could not spoof trusted in-process origin/signal fields.
+- SessionEnd cleared context/contracts even when hooks threw.

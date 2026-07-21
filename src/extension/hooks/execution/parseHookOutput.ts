@@ -62,7 +62,59 @@ function parseSpecificOutput(value: unknown): PilotDeckHookSpecificOutput | unde
     decision: parsePermissionRequestDecision(record.decision),
     retry: booleanOrUndefined(record.retry),
     worktreePath: stringOrUndefined(record.worktreePath),
+    modelRequestPatch: parseModelRequestPatch(record.modelRequestPatch),
+    artifactContracts: parseArtifactContracts(record.artifactContracts),
+    dynamicContext: parseDynamicContext(record.dynamicContext),
   };
+}
+
+function parseDynamicContext(value: unknown): PilotDeckHookSpecificOutput["dynamicContext"] {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.slice(0, 64).flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.content !== "string") return [];
+    const id = item.id.trim().slice(0, 128);
+    const content = item.content.trim();
+    if (!id || !content) return [];
+    const priority: "critical" | "high" | "normal" | "low" | undefined = item.priority === "critical" || item.priority === "high"
+      || item.priority === "normal" || item.priority === "low"
+      ? item.priority
+      : undefined;
+    const ttlMs = typeof item.ttlMs === "number" && Number.isFinite(item.ttlMs) && item.ttlMs > 0
+      ? Math.min(Math.floor(item.ttlMs), 24 * 60 * 60 * 1_000)
+      : undefined;
+    return [{ id, content, priority, ttlMs }];
+  });
+  return entries.length > 0 ? entries : undefined;
+}
+
+function parseArtifactContracts(value: unknown): PilotDeckHookSpecificOutput["artifactContracts"] {
+  if (!Array.isArray(value)) return undefined;
+  const contracts = value.slice(0, 32).flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.path !== "string") return [];
+    return [{
+      id: item.id,
+      path: item.path,
+      required: typeof item.required === "boolean" ? item.required : undefined,
+      validatorIds: Array.isArray(item.validatorIds) ? item.validatorIds.filter((entry): entry is string => typeof entry === "string") : undefined,
+      expectedExtensions: Array.isArray(item.expectedExtensions) ? item.expectedExtensions.filter((entry): entry is string => typeof entry === "string") : undefined,
+      options: isRecord(item.options) ? item.options : undefined,
+      domainId: typeof item.domainId === "string" ? item.domainId : undefined,
+    }];
+  });
+  return contracts.length > 0 ? contracts : undefined;
+}
+
+function parseModelRequestPatch(value: unknown): PilotDeckHookSpecificOutput["modelRequestPatch"] {
+  if (!isRecord(value)) return undefined;
+  const patch: NonNullable<PilotDeckHookSpecificOutput["modelRequestPatch"]> = {};
+  if (typeof value.provider === "string" && value.provider.trim().length > 0) patch.provider = value.provider;
+  if (typeof value.model === "string" && value.model.trim().length > 0) patch.model = value.model;
+  if (typeof value.maxOutputTokens === "number" && Number.isInteger(value.maxOutputTokens) && value.maxOutputTokens > 0) {
+    patch.maxOutputTokens = value.maxOutputTokens;
+  }
+  if (typeof value.temperature === "number" && Number.isFinite(value.temperature)) patch.temperature = value.temperature;
+  if (isRecord(value.metadata)) patch.metadata = value.metadata;
+  return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
 function parsePermissionDecision(value: unknown): PilotDeckHookSpecificOutput["permissionDecision"] {

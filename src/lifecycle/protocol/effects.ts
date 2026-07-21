@@ -1,5 +1,15 @@
 export type PilotDeckHookPermissionBehavior = "allow" | "deny" | "ask" | "passthrough";
 
+export type PilotDeckModelRequestPatch = {
+  provider?: string;
+  model?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  metadata?: Record<string, unknown>;
+};
+
+import type { ArtifactContract } from "../../artifact/index.js";
+
 export type PilotDeckPermissionRequestResult =
   | {
       behavior: "allow";
@@ -13,8 +23,17 @@ export type PilotDeckPermissionRequestResult =
     };
 
 export type PilotDeckHookEffect =
-  | { type: "additional_context"; content: string; source: string }
+  | {
+      type: "additional_context";
+      content: string;
+      source: string;
+      id?: string;
+      priority?: "critical" | "high" | "normal" | "low";
+      ttlMs?: number;
+    }
   | { type: "system_message"; content: string }
+  | { type: "model_request_patch"; patch: PilotDeckModelRequestPatch }
+  | { type: "artifact_contracts"; sourcePluginId: string; contracts: readonly ArtifactContract[] }
   | { type: "block"; reason: string; stopReason?: string }
   | { type: "permission_decision"; behavior: PilotDeckHookPermissionBehavior; reason?: string }
   | { type: "updated_tool_input"; input: Record<string, unknown> }
