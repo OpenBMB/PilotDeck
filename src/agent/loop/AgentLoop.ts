@@ -41,6 +41,8 @@ import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
+import { applyPreModelRequestEffects } from "../../lifecycle/index.js";
+import { formatArtifactCorrectionPrompt } from "../../artifact/index.js";
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type { ContextRecoveryDecision, ContextSupplementalToolResultMessage, TokenBudgetSnapshot } from "../../context/index.js";
@@ -167,6 +169,8 @@ export class AgentLoop {
     const startedAt = this.now().toISOString();
     let messages = [...input.messages];
     let turnCount = 1;
+    let artifactCorrectionAttempts = 0;
+    const maxArtifactCorrectionAttempts = 2;
     let usage: CanonicalUsage = {};
     let lastModelUsage: CanonicalUsage | undefined;
     let permissionDenials: AgentPermissionDenial[] = [];
@@ -400,10 +404,32 @@ export class AgentLoop {
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
       }
-      this.dispatchLifecycle(input, "PreModelRequest", {
+      const preModelHooks = await this.dispatchLifecycle(input, "PreModelRequest", {
         provider: request.provider,
         model: request.model,
-      }).catch(() => {});
+        turnId: input.turnId,
+        contextBudget: pendingContextBudget,
+      });
+      const transformedRequest = applyPreModelRequestEffects(request, preModelHooks);
+      if (transformedRequest.type === "blocked") {
+        const error = agentError("agent_unsupported_feature", transformedRequest.reason);
+        const result = this.createTurnResult(input, {
+          type: "error",
+          stopReason: "tool_error",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+          errors: [error],
+        });
+        yield await emitStatus(createLifecycleBlockedStatus({ error, stage: "pre_model_request" }));
+        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+        await captureTurn(true);
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
+      }
+      request = transformedRequest.request;
       yield {
         type: "model_request_started",
         sessionId: input.sessionId,
@@ -453,6 +479,11 @@ export class AgentLoop {
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               request = await this.createModelRequest(messages, input);
+              const retransformedRequest = applyPreModelRequestEffects(request, preModelHooks);
+              if (retransformedRequest.type === "blocked") {
+                throw new Error("PreModelRequest effects changed from ready to blocked while rebuilding the request.");
+              }
+              request = retransformedRequest.request;
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               yield {
                 type: "turn_continued",
@@ -486,6 +517,10 @@ export class AgentLoop {
 
       const assembler = createModelMessageAssemblerState();
       try {
+        this.dependencies.context?.commitPreparedContext?.({
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+        });
         for await (const event of this.dependencies.router.execute(decision, request, {
           sessionId: input.sessionId,
           turnId: input.turnId,
@@ -1308,6 +1343,39 @@ export class AgentLoop {
           };
         }
 
+        const artifactValidation = this.dependencies.artifactValidation
+          ? await this.dependencies.artifactValidation.validate({
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              workspaceRoot: this.config.cwd,
+              signal: input.abortSignal,
+            })
+          : undefined;
+        if (artifactValidation && !artifactValidation.passed) {
+          if (artifactCorrectionAttempts < maxArtifactCorrectionAttempts && (!input.maxTurns || turnCount < input.maxTurns)) {
+            artifactCorrectionAttempts += 1;
+            turnCount += 1;
+            pushTransientSyntheticPrompt(formatArtifactCorrectionPrompt(artifactValidation), "artifact_validation_failed");
+            yield { type: "turn_continued", sessionId: input.sessionId, turnId: input.turnId, reason: "model_error" };
+            continue;
+          }
+          const error = agentError("agent_unsupported_feature", formatArtifactCorrectionPrompt(artifactValidation));
+          const result = this.createTurnResult(input, {
+            type: "error",
+            stopReason: "tool_error",
+            usage,
+            permissionDenials,
+            turns: turnCount,
+            startedAt,
+            finalMessage,
+            errors: [error],
+          });
+          yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+          await captureTurn(true);
+          yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+          return { result, messages };
+        }
+
         const stopHooks = await this.dispatchLifecycle(input, "Stop", {
           stopHookActive: false,
           lastAssistantMessage: textFromMessage(assistantMessage),
@@ -1875,11 +1943,22 @@ export class AgentLoop {
   }
 
   private applyTokenCapsToRequest(request: CanonicalModelRequest, provider: string, model: string): CanonicalModelRequest {
+    const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model));
+    const modelMaxOutputTokens = this.getModelTokenLimits(provider, model)?.maxOutputTokens;
+    const requested = transient?.attemptMaxOutputTokens
+      ?? request.maxOutputTokens
+      ?? transient?.requestedMaxOutputTokens
+      ?? this.config.maxOutputTokens
+      ?? modelMaxOutputTokens;
+    const candidates = [requested, modelMaxOutputTokens, transient?.hardMaxOutputTokens]
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
     return {
       ...request,
       provider,
       model,
-      maxOutputTokens: this.currentMaxOutputTokens(provider, model),
+      maxOutputTokens: candidates.length > 0
+        ? Math.min(...candidates.map((value) => Math.floor(value)))
+        : undefined,
     };
   }
 
