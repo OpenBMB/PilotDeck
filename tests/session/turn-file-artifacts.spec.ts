@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -26,7 +26,14 @@ test("TurnRunner emits and persists file artifacts before completing the turn", 
     };
     const fakeLoop = {
       async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
-        await writeFile(join(projectRoot, "result.xlsx"), "workbook");
+        await mkdir(join(projectRoot, "app"), { recursive: true });
+        await writeFile(join(projectRoot, "app", "page.tsx"), "export default function Page() {}\n");
+        await writeFile(join(projectRoot, "app", "globals.css"), "body { margin: 0; }\n");
+        await mkdir(join(projectRoot, ".pilotdeck", "work", input.sessionId, input.turnId), { recursive: true });
+        await writeFile(
+          join(projectRoot, ".pilotdeck", "work", input.sessionId, input.turnId, "builder.mjs"),
+          "// internal\n",
+        );
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages: input.messages };
       },
@@ -59,7 +66,12 @@ test("TurnRunner emits and persists file artifacts before completing the turn", 
     assert.ok(artifactEntryIndex > -1);
     assert.ok(artifactEntryIndex < resultEntryIndex);
     const artifactEntry = transcript.entries[artifactEntryIndex];
-    assert.equal(artifactEntry.type === "file_artifacts" ? artifactEntry.artifacts[0]?.path : undefined, "result.xlsx");
+    assert.deepEqual(
+      artifactEntry.type === "file_artifacts"
+        ? artifactEntry.artifacts.map((artifact) => artifact.path)
+        : undefined,
+      ["app/globals.css", "app/page.tsx"],
+    );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }

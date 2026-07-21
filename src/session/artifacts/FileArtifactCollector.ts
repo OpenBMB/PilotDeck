@@ -13,12 +13,13 @@ import type {
 type FileFingerprint = {
   size: number;
   mtimeMs: number;
+  sha256: string;
 };
 
 type ArtifactCandidate = {
   absolutePath: string;
   source: FileArtifactSource;
-  allowUnsupported?: boolean;
+  fingerprint?: FileFingerprint;
 };
 
 export type FileArtifactCollectorOptions = {
@@ -27,40 +28,48 @@ export type FileArtifactCollectorOptions = {
   now?: () => Date;
 };
 
-const FALLBACK_EXTENSIONS = new Set([
-  ".csv", ".doc", ".docx", ".dps", ".et", ".gif", ".htm", ".html",
-  ".jpeg", ".jpg", ".json", ".md", ".odt", ".ods", ".odp", ".pdf",
-  ".png", ".ppt", ".pptx", ".rtf", ".svg", ".tex", ".tsv", ".txt",
-  ".webp", ".wps", ".xls", ".xlsx", ".xml", ".zip",
-]);
-
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   ".git",
   ".pilotdeck",
   ".cache",
   ".idea",
+  ".next",
+  ".nuxt",
+  ".output",
+  ".svelte-kit",
+  ".temp",
+  ".tmp",
   ".vscode",
   "build",
   "cache",
   "coverage",
   "dist",
   "node_modules",
+  "out",
   "qa",
   "screenshots",
+  "target",
   "temp",
   "tmp",
 ]);
 
 const INTERNAL_FILE_PATTERNS = [
   /^\.pilotdeck_build\.(?:c|m)?js$/i,
-  /^audit(?:[-_.].*)?\.json$/i,
-  /^slides?_test(?:[-_.].*)?\.(?:json|png)$/i,
-  /^(?:render|preview)[-_]?slides?[-_.]\d+\.png$/i,
-  /^(?:qa|debug|trace|tool[-_]?result|coverage)(?:[-_.].*)?$/i,
+  /^\.DS_Store$/i,
+  /\.(?:log|pid|sock)$/i,
+  /\.(?:db|sqlite)(?:-(?:shm|wal))$/i,
+];
+
+const SENSITIVE_FILE_PATTERNS = [
+  /^\.env(?:\..+)?$/i,
+  /^(?:credentials?|secrets?|tokens?)(?:[-_.].*)?$/i,
+  /^id_(?:dsa|ecdsa|ed25519|rsa)(?:\.pub)?$/i,
+  /\.(?:key|p12|pfx|pem)$/i,
 ];
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".csv": "text/csv",
+  ".css": "text/css",
   ".doc": "application/msword",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".dps": "application/vnd.ms-powerpoint",
@@ -68,10 +77,12 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".gif": "image/gif",
   ".htm": "text/html",
   ".html": "text/html",
+  ".js": "text/javascript",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
   ".json": "application/json",
   ".md": "text/markdown",
+  ".mjs": "text/javascript",
   ".odt": "application/vnd.oasis.opendocument.text",
   ".ods": "application/vnd.oasis.opendocument.spreadsheet",
   ".odp": "application/vnd.oasis.opendocument.presentation",
@@ -82,12 +93,16 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".rtf": "application/rtf",
   ".svg": "image/svg+xml",
   ".tsv": "text/tab-separated-values",
+  ".ts": "text/plain",
+  ".tsx": "text/plain",
   ".txt": "text/plain",
   ".webp": "image/webp",
   ".wps": "application/vnd.ms-works",
   ".xls": "application/vnd.ms-excel",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".xml": "application/xml",
+  ".yaml": "application/yaml",
+  ".yml": "application/yaml",
   ".zip": "application/zip",
 };
 
@@ -123,12 +138,12 @@ export class FileArtifactCollector {
 
     for (const item of result.content) {
       if (item.type === "file") {
-        this.addExplicitPath(item.path, true);
+        this.addExplicitPath(item.path);
       }
     }
 
     if (["write_file", "edit_file", "edit_notebook"].includes(result.toolName)) {
-      collectKnownFilePaths(result.data, (candidate) => this.addExplicitPath(candidate, false));
+      collectKnownFilePaths(result.data, (candidate) => this.addExplicitPath(candidate));
     }
   }
 
@@ -136,10 +151,11 @@ export class FileArtifactCollector {
     const candidates = new Map<string, ArtifactCandidate>(this.explicitCandidates);
     for (const file of await this.scanWorkspace()) {
       const before = this.baseline.get(file.absolutePath);
-      if (!before || before.size !== file.fingerprint.size || before.mtimeMs !== file.fingerprint.mtimeMs) {
+      if (!before || before.sha256 !== file.fingerprint.sha256) {
         candidates.set(file.absolutePath, {
           absolutePath: file.absolutePath,
           source: candidates.get(file.absolutePath)?.source ?? "workspace_diff",
+          fingerprint: file.fingerprint,
         });
       }
     }
@@ -147,11 +163,11 @@ export class FileArtifactCollector {
     await this.captureAllowedInputFingerprints(allowedInputFinal);
     for (const [absolutePath, fingerprint] of allowedInputFinal) {
       const before = this.baseline.get(absolutePath);
-      if (!before || before.size !== fingerprint.size || before.mtimeMs !== fingerprint.mtimeMs) {
+      if (!before || before.sha256 !== fingerprint.sha256) {
         candidates.set(absolutePath, {
           absolutePath,
           source: candidates.get(absolutePath)?.source ?? "workspace_diff",
-          allowUnsupported: true,
+          fingerprint,
         });
       }
     }
@@ -165,32 +181,38 @@ export class FileArtifactCollector {
     return artifacts.sort((left, right) => left.path.localeCompare(right.path));
   }
 
-  private addExplicitPath(candidate: string, allowUnsupported: boolean): void {
+  private addExplicitPath(candidate: string): void {
     const absolutePath = path.resolve(this.cwd, candidate);
     if (!isWithin(this.cwd, absolutePath) || !this.isAllowedArtifactPath(absolutePath)) return;
-    if (!allowUnsupported && !isFallbackArtifactPath(this.cwd, absolutePath)) return;
-    this.explicitCandidates.set(absolutePath, { absolutePath, source: "tool", allowUnsupported });
+    this.explicitCandidates.set(absolutePath, { absolutePath, source: "tool" });
   }
 
   private async scanWorkspace(): Promise<Array<{ absolutePath: string; fingerprint: FileFingerprint }>> {
-    const files: Array<{ absolutePath: string; fingerprint: FileFingerprint }> = [];
+    const paths: string[] = [];
     await walk(this.cwd, async (absolutePath) => {
-      if (!isFallbackArtifactPath(this.cwd, absolutePath)) return;
-      const fileStat = await stat(absolutePath).catch(() => undefined);
-      if (!fileStat?.isFile()) return;
-      files.push({
-        absolutePath,
-        fingerprint: { size: fileStat.size, mtimeMs: fileStat.mtimeMs },
-      });
+      if (!this.isAllowedArtifactPath(absolutePath)) return;
+      paths.push(absolutePath);
     });
+    const files: Array<{ absolutePath: string; fingerprint: FileFingerprint }> = [];
+    for (let index = 0; index < paths.length; index += 8) {
+      const batch = await Promise.all(
+        paths.slice(index, index + 8).map(async (absolutePath) => {
+          const fingerprint = await fingerprintFile(absolutePath).catch(() => undefined);
+          return fingerprint ? { absolutePath, fingerprint } : undefined;
+        }),
+      );
+      for (const file of batch) {
+        if (file) files.push(file);
+      }
+    }
     return files;
   }
 
   private async captureAllowedInputFingerprints(target: Map<string, FileFingerprint>): Promise<void> {
     for (const absolutePath of this.allowedInputPaths) {
-      const fileStat = await stat(absolutePath).catch(() => undefined);
-      if (!fileStat?.isFile()) continue;
-      target.set(absolutePath, { size: fileStat.size, mtimeMs: fileStat.mtimeMs });
+      const fingerprint = await fingerprintFile(absolutePath).catch(() => undefined);
+      if (!fingerprint) continue;
+      target.set(absolutePath, fingerprint);
     }
   }
 
@@ -201,35 +223,27 @@ export class FileArtifactCollector {
     if (!isWithin(this.cwd, candidate.absolutePath) || !this.isAllowedArtifactPath(candidate.absolutePath)) {
       return undefined;
     }
-    const fileStat = await stat(candidate.absolutePath).catch(() => undefined);
-    if (!fileStat?.isFile()) return undefined;
+    const fingerprint = candidate.fingerprint
+      ?? await fingerprintFile(candidate.absolutePath).catch(() => undefined);
+    if (!fingerprint) return undefined;
 
     const relativePath = normalizeRelativePath(path.relative(this.cwd, candidate.absolutePath));
     if (!relativePath) return undefined;
     const before = this.baseline.get(candidate.absolutePath);
-    if (
-      before &&
-      before.size === fileStat.size &&
-      before.mtimeMs === fileStat.mtimeMs
-    ) {
-      return undefined;
-    }
-    if (!candidate.allowUnsupported && !FALLBACK_EXTENSIONS.has(path.extname(candidate.absolutePath).toLowerCase())) {
+    if (before?.sha256 === fingerprint.sha256) {
       return undefined;
     }
     const operation: FileArtifactOperation = before ? "updated" : "created";
-    const sha256 = await sha256File(candidate.absolutePath).catch(() => undefined);
-    if (!sha256) return undefined;
 
     return {
-      id: createHash("sha256").update(`${relativePath}\0${sha256}`).digest("hex").slice(0, 24),
+      id: createHash("sha256").update(`${relativePath}\0${fingerprint.sha256}`).digest("hex").slice(0, 24),
       name: path.basename(candidate.absolutePath),
       path: relativePath,
       operation,
       source: candidate.source,
       status: statusValue,
-      size: fileStat.size,
-      sha256,
+      size: fingerprint.size,
+      sha256: fingerprint.sha256,
       ...(mimeTypeForPath(candidate.absolutePath) ? { mimeType: mimeTypeForPath(candidate.absolutePath) } : {}),
       createdAt: this.now().toISOString(),
     };
@@ -237,9 +251,20 @@ export class FileArtifactCollector {
 
   private isAllowedArtifactPath(absolutePath: string): boolean {
     if (isHardInternalPath(this.cwd, absolutePath)) return false;
+    if (isSensitivePath(absolutePath)) return false;
     if (!isInternalPath(this.cwd, absolutePath)) return true;
     return this.allowedInputPaths.has(absolutePath);
   }
+}
+
+async function fingerprintFile(filePath: string): Promise<FileFingerprint | undefined> {
+  const fileStat = await stat(filePath);
+  if (!fileStat.isFile()) return undefined;
+  return {
+    size: fileStat.size,
+    mtimeMs: fileStat.mtimeMs,
+    sha256: await sha256File(filePath),
+  };
 }
 
 async function sha256File(filePath: string): Promise<string> {
@@ -260,7 +285,7 @@ async function walk(root: string, visit: (absolutePath: string) => Promise<void>
     if (entry.isSymbolicLink()) continue;
     const absolutePath = path.join(root, entry.name);
     if (entry.isDirectory()) {
-      if (EXCLUDED_DIRECTORY_NAMES.has(entry.name.toLowerCase()) || entry.name.startsWith(".")) continue;
+      if (EXCLUDED_DIRECTORY_NAMES.has(entry.name.toLowerCase())) continue;
       await walk(absolutePath, visit);
       continue;
     }
@@ -268,19 +293,20 @@ async function walk(root: string, visit: (absolutePath: string) => Promise<void>
   }
 }
 
-function isFallbackArtifactPath(root: string, absolutePath: string): boolean {
-  if (isInternalPath(root, absolutePath)) return false;
-  return FALLBACK_EXTENSIONS.has(path.extname(absolutePath).toLowerCase());
-}
-
 function isInternalPath(root: string, absolutePath: string): boolean {
   const relativePath = normalizeRelativePath(path.relative(root, absolutePath));
   if (!relativePath) return true;
   const segments = relativePath.split("/");
-  if (segments.some((segment) => segment.startsWith(".") || EXCLUDED_DIRECTORY_NAMES.has(segment.toLowerCase()))) {
+  if (segments.some((segment) => EXCLUDED_DIRECTORY_NAMES.has(segment.toLowerCase()))) {
     return true;
   }
   return INTERNAL_FILE_PATTERNS.some((pattern) => pattern.test(path.basename(relativePath)));
+}
+
+function isSensitivePath(absolutePath: string): boolean {
+  const basename = path.basename(absolutePath);
+  if (/^\.env\.example$/i.test(basename)) return false;
+  return SENSITIVE_FILE_PATTERNS.some((pattern) => pattern.test(basename));
 }
 
 function isHardInternalPath(root: string, absolutePath: string): boolean {
