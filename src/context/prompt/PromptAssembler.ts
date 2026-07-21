@@ -98,9 +98,6 @@ export class PromptAssembler {
       "",
       "Reusable script workflow:",
       "When code is more than a tiny one-off command, or you expect to rerun it with changed parameters, write it to a workspace file first with write_file, then run it with bash. Prefer scripts with CLI arguments, environment variables, or a small config section so parameters can be adjusted with edit_file or command args. Do not pack large Python/JS/shell programs into bash heredocs or long `python -c` / `node -e` strings. After each run, inspect output and edit the saved script instead of regenerating a new inline command.",
-      "",
-      "File delivery links:",
-      "When you create, modify, export, render, or otherwise produce a user-facing file, include a Markdown link to that file in the final response. Use relative links for files under the current cwd, e.g. `[open report.pdf](report.pdf)`. Use `file://` absolute links only for files outside the cwd, e.g. `[open file](file:///absolute/path/file.pdf)`. Do not claim that a file was opened automatically; provide a clickable link instead.",
     ];
 
     const permissionLine = formatPermissionMode(input.permissionMode);
@@ -137,7 +134,6 @@ export class PromptAssembler {
     lines.push("<user-context>");
     lines.push(`cwd: ${input.cwd}`);
     lines.push("IMPORTANT: When the user does not specify an explicit file path, all file paths in tool calls MUST be relative to the cwd above — use \"foo.html\", not an absolute path like \"/home/user/foo.html\". If the user explicitly provides a path, respect their choice.");
-    lines.push("IMPORTANT: In final responses, make generated or modified files clickable using Markdown links. Prefer cwd-relative links for cwd files, and file:// absolute links for files outside cwd.");
     lines.push(`model: ${input.provider}/${input.model}`);
     lines.push(`permission_mode: ${input.permissionMode}`);
     if (input.runMode) {
