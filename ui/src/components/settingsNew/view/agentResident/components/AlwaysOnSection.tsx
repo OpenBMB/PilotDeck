@@ -12,7 +12,13 @@ import {
   isAlwaysOnProjectEnabled,
   setAlwaysOnProjectEnabled,
 } from "../../../shared/utils/alwaysOnConfigPatch";
-import { FormRow, NumberInput, Select, TextInput } from "../../modelPool/components/Inputs";
+import {
+  FormRow,
+  NumberInput,
+  Select,
+  TextAreaInput,
+  TextInput,
+} from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 
@@ -190,17 +196,15 @@ export default function AlwaysOnSection({
                   label={t("pilotDeckConfig.panels.alwaysOn.dormancy.ignoreGlobs.label")}
                   description={t("pilotDeckConfig.panels.alwaysOn.dormancy.ignoreGlobs.description")}
                 >
-                  <textarea
+                  <TextAreaInput
                     value={(dormancy.ignoreGlobs ?? []).join("\n")}
                     placeholder={"**/.git/**\n**/node_modules/**\n**/.pilotdeck/**\n**/dist/**\n**/.DS_Store"}
-                    onChange={(e) => {
-                      const globs = e.target.value
+                    onChange={(next) => {
+                      const globs = next
                         .split("\n")
                         .filter((s) => s.trim().length > 0);
                       onChange(patch(config, ["alwaysOn", "dormancy", "ignoreGlobs"], globs));
                     }}
-                    spellCheck={false}
-                    className="min-h-[100px] w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs leading-5 text-foreground outline-none focus:ring-1 focus:ring-ring"
                   />
                 </FormRow>
               </SettingsCard>

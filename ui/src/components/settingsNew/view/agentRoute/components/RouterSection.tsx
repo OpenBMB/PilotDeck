@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../../../../lib/utils";
-import { FormRow, NumberInput, Select } from "../../modelPool/components/Inputs";
+import { FormRow, NumberInput, Select } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import {

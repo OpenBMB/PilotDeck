@@ -1,4 +1,4 @@
-import { Select } from "../../modelPool/components/Inputs";
+import { Select } from "../../../shared/components/Inputs";
 
 type ModelRefInputProps = {
   value: string | undefined;

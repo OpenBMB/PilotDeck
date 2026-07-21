@@ -1,8 +1,43 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { authenticatedFetch } from "../../utils/api";
 import type { SettingsProps } from "./shared/types";
 import type { SettingsNewMenuKey } from "./types";
 import SettingsNewSidebar from "./view/SettingsNewSidebar";
 import SettingsNewContent from "./view/SettingsNewContent";
+
+export type DesktopVersionCheckResult = {
+  mode: "desktop" | "web";
+  hasUpdate: boolean;
+  checkUnavailable: boolean;
+  currentVersion: string;
+  latestVersion: string | null;
+  latestPublishedAt: string | null;
+  buildTime: string | null;
+};
+
+function normalizeDesktopVersionResult(payload: any): DesktopVersionCheckResult {
+  return {
+    mode: "desktop",
+    hasUpdate: Boolean(payload?.hasUpdate),
+    checkUnavailable: Boolean(payload?.checkUnavailable),
+    currentVersion: payload?.current?.version ?? "unknown",
+    latestVersion: payload?.latest?.version ?? null,
+    latestPublishedAt: payload?.latest?.publishedAt ?? null,
+    buildTime: payload?.current?.buildTime ?? null,
+  };
+}
+
+function normalizeWebVersionResult(payload: any): DesktopVersionCheckResult {
+  return {
+    mode: "web",
+    hasUpdate: Boolean(payload?.hasUpdate),
+    checkUnavailable: Boolean(payload?.checkUnavailable),
+    currentVersion: payload?.localHead ?? "unknown",
+    latestVersion: payload?.remoteHead ?? null,
+    latestPublishedAt: null,
+    buildTime: null,
+  };
+}
 
 const mapInitialTabToMenuKey = (
   tab: string | undefined,
@@ -28,17 +63,60 @@ export default function SettingsNew({
   projects = [],
   initialTab,
 }: SettingsProps) {
+  const isDesktopApp =
+    typeof window !== "undefined" && !!(window as any).pilotdeckDesktop;
   const initialKey = useMemo(
     () => mapInitialTabToMenuKey(initialTab),
     [initialTab],
   );
   const [selectedKey, setSelectedKey] =
     useState<SettingsNewMenuKey>(initialKey);
+  const [versionInfo, setVersionInfo] = useState<DesktopVersionCheckResult>({
+    mode: isDesktopApp ? "desktop" : "web",
+    hasUpdate: false,
+    checkUnavailable: false,
+    currentVersion: "unknown",
+    latestVersion: null,
+    latestPublishedAt: null,
+    buildTime: null,
+  });
+  const [checkingVersion, setCheckingVersion] = useState(false);
+
+  const checkVersion = useCallback(async () => {
+    setCheckingVersion(true);
+    try {
+      const res = isDesktopApp
+        ? await authenticatedFetch("/api/update/desktop/check", {
+            method: "POST",
+          })
+        : await authenticatedFetch("/api/update/check", {
+            method: "POST",
+          });
+      if (!res.ok) {
+        throw new Error("Failed to check version");
+      }
+      const data = await res.json();
+      setVersionInfo(
+        isDesktopApp
+          ? normalizeDesktopVersionResult(data)
+          : normalizeWebVersionResult(data),
+      );
+    } catch {
+      setVersionInfo((prev) => ({
+        ...prev,
+        hasUpdate: false,
+        checkUnavailable: true,
+      }));
+    } finally {
+      setCheckingVersion(false);
+    }
+  }, [isDesktopApp]);
 
   useEffect(() => {
     if (!isOpen) return;
     setSelectedKey(mapInitialTabToMenuKey(initialTab));
-  }, [isOpen, initialTab]);
+    void checkVersion();
+  }, [isOpen, initialTab, checkVersion]);
 
   if (!isOpen) {
     return null;
@@ -52,8 +130,14 @@ export default function SettingsNew({
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             onClose={onClose}
+            showAboutDot={versionInfo.hasUpdate}
           />
-          <SettingsNewContent selectedKey={selectedKey} projects={projects} />
+          <SettingsNewContent
+            selectedKey={selectedKey}
+            projects={projects}
+            versionInfo={versionInfo}
+            checkingVersion={checkingVersion}
+          />
         </div>
       </div>
     </div>

@@ -227,9 +227,7 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-      <PageSectionHeader
-        title={t("permissions.controlTitle", { defaultValue: "权限控制" })}
-      />
+      <PageSectionHeader title={t("permissions.controlTitle")} />
 
       <PermissionControlSection
         fileInputRef={fileInputRef}

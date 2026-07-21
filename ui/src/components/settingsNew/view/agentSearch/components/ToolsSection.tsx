@@ -10,7 +10,7 @@ import {
 import { Button } from "../../../../../shared/view/ui";
 import { authenticatedFetch } from "../../../../../utils/api";
 import { SettingsCard, SettingsSection } from "../../../shared/view";
-import { FormRow, SecretTextInput, Select, TextInput } from "../../modelPool/components/Inputs";
+import { FormRow, SecretTextInput, Select, TextInput } from "../../../shared/components/Inputs";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import { patch } from "../../modelPool/utils/patch";
 import {

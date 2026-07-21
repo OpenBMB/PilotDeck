@@ -272,8 +272,12 @@ export default function FeishuChannelSection({
                       }
                       className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                     >
-                      <option value="feishu">feishu.cn (飞书)</option>
-                      <option value="lark">larksuite.com (Lark)</option>
+                      <option value="feishu">
+                        {t("gateway.feishu.domainOptions.feishu")}
+                      </option>
+                      <option value="lark">
+                        {t("gateway.feishu.domainOptions.lark")}
+                      </option>
                     </select>
                   </label>
                   <div className="flex items-center gap-2">
@@ -370,8 +374,10 @@ export default function FeishuChannelSection({
                     onChange={(e) => setDomain(e.target.value as "feishu" | "lark")}
                     className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                   >
-                    <option value="feishu">feishu.cn (飞书)</option>
-                    <option value="lark">larksuite.com (Lark)</option>
+                    <option value="feishu">
+                      {t("gateway.feishu.domainOptions.feishu")}
+                    </option>
+                    <option value="lark">{t("gateway.feishu.domainOptions.lark")}</option>
                   </select>
                 </label>
                 <label className="space-y-1">

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
+import { FieldSaveModeProvider } from "../../shared/components/Inputs";
 import type { PilotDeckConfig } from "./types";
 import { configToYamlString, safeParseYaml } from "./utils/configYaml";
 import ModelsSection from "./components/ModelsSection";
@@ -14,10 +15,10 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
   const { raw, setRaw, save, loading } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
 
-  const onFormChange = (next: PilotDeckConfig) => {
+  const onFormChange = async (next: PilotDeckConfig) => {
     try {
       setRaw(configToYamlString(next));
-      void save();
+      await save();
     } catch (caught) {
       console.error("Failed to serialise model pool config patch", caught);
     }
@@ -39,7 +40,7 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
       <div className="space-y-6">
         <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          配置文件当前不是有效 YAML，暂时无法加载模型池表单。
+          {t("settingsNew.invalidYaml.modelPool")}
         </div>
       </div>
     );
@@ -48,7 +49,11 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-      <ModelsSection config={parsedConfig} onChange={onFormChange} />
+      {parsedConfig ? (
+        <FieldSaveModeProvider mode="immediate">
+          <ModelsSection config={parsedConfig} onChange={onFormChange} />
+        </FieldSaveModeProvider>
+      ) : null}
     </div>
   );
 }

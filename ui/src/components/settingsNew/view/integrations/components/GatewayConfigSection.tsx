@@ -5,7 +5,7 @@ import {
   SettingsRow,
   SettingsToggle,
 } from "../../../shared/view";
-import { FormRow, TextInput } from "../../modelPool/components/Inputs";
+import { FormRow, TextInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 

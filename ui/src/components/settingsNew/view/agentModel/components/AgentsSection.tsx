@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, Gauge, Image as ImageIcon, Info } from "lucide-react";
 import { cn } from "../../../../../lib/utils";
 import { PageSectionHeader, SettingsCard } from "../../../shared/view";
-import { FormRow, Select } from "../../modelPool/components/Inputs";
+import { FormRow, NumberInput, Select } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import {
@@ -155,21 +155,19 @@ export default function AgentsSection({ config, onChange }: AgentsSectionProps) 
                     <Gauge className="h-3.5 w-3.5" />
                     {t("pilotDeckConfig.panels.agents.capabilities.maxOutputTokens")}
                   </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={caps.maxOutputTokensOverride ?? ""}
-                    placeholder={String(caps.catalogModel?.maxOutputTokens ?? 16384)}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") return setMaxOutputTokens(undefined);
-                      const n = Number(v);
-                      if (Number.isFinite(n) && n > 0) {
-                        setMaxOutputTokens(Math.floor(n));
+                  <div className="w-full max-w-[360px]">
+                    <NumberInput
+                      value={caps.maxOutputTokensOverride}
+                      placeholder={String(caps.catalogModel?.maxOutputTokens ?? 16384)}
+                      onChange={(value) =>
+                        setMaxOutputTokens(
+                          typeof value === "number" && value > 0
+                            ? Math.floor(value)
+                            : undefined,
+                        )
                       }
-                    }}
-                    className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-                  />
+                    />
+                  </div>
                 </div>
                 <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
                   {t("pilotDeckConfig.panels.agents.capabilities.maxOutputDescription")}
@@ -182,26 +180,25 @@ export default function AgentsSection({ config, onChange }: AgentsSectionProps) 
                     <Gauge className="h-3.5 w-3.5" />
                     {t("pilotDeckConfig.panels.agents.capabilities.maxContextTokens")}
                   </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={config.agent?.maxContextTokens ?? ""}
-                    placeholder={String(caps.catalogModel?.maxContextTokens ?? 200000)}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") {
-                        const next = { ...(config.agent ?? {}) };
-                        delete next.maxContextTokens;
-                        onChange(patch(config, ["agent"], next));
-                        return;
-                      }
-                      const n = Number(v);
-                      if (Number.isFinite(n) && n > 0) {
-                        onChange(patch(config, ["agent", "maxContextTokens"], Math.floor(n)));
-                      }
-                    }}
-                    className="w-28 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-                  />
+                  <div className="w-full max-w-[360px]">
+                    <NumberInput
+                      value={config.agent?.maxContextTokens}
+                      placeholder={String(caps.catalogModel?.maxContextTokens ?? 200000)}
+                      onChange={(value) => {
+                        if (value === undefined) {
+                          const next = { ...(config.agent ?? {}) };
+                          delete next.maxContextTokens;
+                          onChange(patch(config, ["agent"], next));
+                          return;
+                        }
+                        if (value > 0) {
+                          onChange(
+                            patch(config, ["agent", "maxContextTokens"], Math.floor(value)),
+                          );
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
                   {t("pilotDeckConfig.panels.agents.capabilities.maxContextDescription")}

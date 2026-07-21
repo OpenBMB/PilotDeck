@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
+import { TextAreaInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 
@@ -52,12 +53,9 @@ export default function TokenSaverRulesEditor({
       )}
       {rules.map((rule, idx) => (
         <div key={idx} className="flex items-start gap-2">
-          <textarea
-            value={rule}
-            onChange={(e) => setRule(idx, e.target.value)}
-            rows={2}
-            className="min-w-0 flex-1 resize-y rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-          />
+          <div className="min-w-0 flex-1">
+            <TextAreaInput value={rule} onChange={(next) => setRule(idx, next)} />
+          </div>
           <button
             type="button"
             onClick={() => removeRule(idx)}

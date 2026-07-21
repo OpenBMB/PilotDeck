@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -23,30 +23,40 @@ import {
 } from "../../../../../shared/modelListApi";
 import type { V2Provider } from "../types";
 import { isMaskedSecret, providerDisplayName } from "../utils/providerRefs";
-import { FormRow, NumberInput, SecretTextInput, Select, TextInput } from "./Inputs";
+import {
+  FormRow,
+  NumberInput,
+  SecretTextInput,
+  Select,
+  TextInput,
+} from "../../../shared/components/Inputs";
 
 type ProviderCardProps = {
   providerId: string;
   provider: V2Provider;
-  onChange: (next: V2Provider) => void;
+  onSave: (
+    nextId: string,
+    nextProvider: V2Provider,
+  ) => Promise<{ ok: boolean; error?: string }>;
   onRemove: () => void;
-  onRename: (newId: string) => boolean;
   catalogEntry?: CatalogProvider;
 };
 
 export default function ProviderCard({
   providerId,
   provider,
-  onChange,
+  onSave,
   onRemove,
-  onRename,
   catalogEntry,
 }: ProviderCardProps) {
   const { t } = useTranslation("settings");
-  const isMaskedKey = isMaskedSecret(provider.apiKey);
-  const protocol = provider.protocol ?? catalogEntry?.protocol ?? "openai";
-  const effectiveUrl = provider.url || catalogEntry?.defaultUrl || "";
-  const enabledModels = Object.keys(provider.models ?? {});
+  const [draftProvider, setDraftProvider] = useState<V2Provider>(provider);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
+  const protocol = draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
+  const effectiveUrl = draftProvider.url || catalogEntry?.defaultUrl || "";
+  const enabledModels = Object.keys(draftProvider.models ?? {});
   const [newModelId, setNewModelId] = useState("");
   const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
@@ -62,40 +72,59 @@ export default function ProviderCard({
     t("pilotDeckConfig.panels.models.customProvider"),
   );
 
-  const update = (patchValue: Partial<V2Provider>) =>
-    onChange({ ...provider, ...patchValue });
+  useEffect(() => {
+    if (editing) return;
+    setDraftProvider(provider);
+    setProviderIdDraft(providerId);
+    setProviderIdError("");
+  }, [editing, provider, providerId]);
 
-  const commitProviderId = () => {
-    const nextId = providerIdDraft.trim();
-    if (!nextId || nextId === providerId) {
-      setProviderIdDraft(providerId);
-      setProviderIdError("");
-      return;
-    }
-    if (onRename(nextId)) {
-      setProviderIdError("");
-    } else {
-      setProviderIdDraft(providerId);
-      setProviderIdError(t("pilotDeckConfig.panels.models.providerIdDuplicate"));
+  const update = (patchValue: Partial<V2Provider>) =>
+    setDraftProvider((prev) => ({ ...prev, ...patchValue }));
+
+  const cancelEditing = () => {
+    setDraftProvider(provider);
+    setProviderIdDraft(providerId);
+    setProviderIdError("");
+    setNewModelId("");
+    setEditing(false);
+  };
+
+  const saveEditing = async () => {
+    const nextId = providerIdDraft.trim() || providerId;
+    setSaving(true);
+    setProviderIdError("");
+    try {
+      const result = await onSave(nextId, draftProvider);
+      if (!result.ok) {
+        setProviderIdError(
+          result.error || t("pilotDeckConfig.panels.models.providerIdDuplicate"),
+        );
+        return;
+      }
+      setEditing(false);
+      setNewModelId("");
+    } finally {
+      setSaving(false);
     }
   };
 
   const addModel = (mid: string) => {
     const id = mid.trim();
     if (!id) return;
-    if (provider.models && id in provider.models) return;
-    update({ models: { ...(provider.models ?? {}), [id]: {} } });
+    if (draftProvider.models && id in draftProvider.models) return;
+    update({ models: { ...(draftProvider.models ?? {}), [id]: {} } });
     setNewModelId("");
   };
 
   const removeModel = (mid: string) => {
-    const next = { ...(provider.models ?? {}) };
+    const next = { ...(draftProvider.models ?? {}) };
     delete next[mid];
     update({ models: next });
   };
 
   const toggleCatalogModel = (mid: string) => {
-    if (provider.models && mid in provider.models) {
+    if (draftProvider.models && mid in draftProvider.models) {
       removeModel(mid);
     } else {
       addModel(mid);
@@ -104,7 +133,7 @@ export default function ProviderCard({
 
   const visibleModels: Array<ApiModelListItem | CatalogModel> =
     apiModels ?? catalogEntry?.models ?? [];
-  const canFetchModels = Boolean(effectiveUrl && provider.apiKey);
+  const canFetchModels = Boolean(effectiveUrl && draftProvider.apiKey);
 
   const refreshModels = async () => {
     if (!canFetchModels) return;
@@ -114,7 +143,7 @@ export default function ProviderCard({
       const models = await fetchProviderModels({
         protocol,
         baseUrl: effectiveUrl,
-        apiKey: provider.apiKey ?? "",
+        apiKey: draftProvider.apiKey ?? "",
         providerId,
       });
       setApiModels(models);
@@ -144,17 +173,13 @@ export default function ProviderCard({
                 setProviderIdDraft(e.target.value);
                 setProviderIdError("");
               }}
-              onBlur={commitProviderId}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.currentTarget.blur();
-                } else if (e.key === "Escape") {
-                  setProviderIdDraft(providerId);
-                  setProviderIdError("");
-                  e.currentTarget.blur();
-                }
-              }}
-              className="rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+              readOnly={!editing}
+              className={cn(
+                "rounded-md border border-border px-2 py-0.5 font-mono text-[11px] outline-none",
+                editing
+                  ? "border-primary/40 bg-background text-foreground ring-1 ring-ring/40"
+                  : "bg-muted/40 text-muted-foreground",
+              )}
             />
           </div>
           {providerIdError && (
@@ -163,16 +188,36 @@ export default function ProviderCard({
             </div>
           )}
         </div>
+        {editing ? (
+          <>
+            <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
+              {t("settingsNew.actions.cancel")}
+            </Button>
+            <Button size="sm" onClick={() => void saveEditing()} disabled={saving}>
+              {t("settingsNew.actions.save")}
+            </Button>
+          </>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+            {t("settingsNew.actions.edit")}
+          </Button>
+        )}
+        <span className="text-muted-foreground">|</span>
         <Button
           variant="ghost"
           size="sm"
           onClick={onRemove}
+          disabled={saving}
           className="text-destructive hover:text-destructive"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
 
+      <fieldset
+        disabled={!editing || saving}
+        className={cn(!editing && "opacity-95")}
+      >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
         <label className="text-xs text-muted-foreground">
           <span className="mb-1 block">
@@ -210,7 +255,7 @@ export default function ProviderCard({
             {t("pilotDeckConfig.panels.models.baseUrl")}
           </span>
           <TextInput
-            value={provider.url}
+            value={draftProvider.url}
             placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
             monospace
             onChange={(v) => update({ url: v })}
@@ -218,14 +263,14 @@ export default function ProviderCard({
           <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
             {t("pilotDeckConfig.panels.models.baseUrlHint")}
           </span>
-          {!provider.url && catalogEntry && (
+          {!draftProvider.url && catalogEntry && (
             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
               {t("pilotDeckConfig.panels.models.defaultsTo")}{" "}
               <code className="font-mono">{catalogEntry.defaultUrl}</code>{" "}
               {t("pilotDeckConfig.panels.models.fromCatalog")}
             </span>
           )}
-          {effectiveUrl && provider.url && (
+          {effectiveUrl && draftProvider.url && (
             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
               {t("pilotDeckConfig.panels.models.effective")}{" "}
               <code className="font-mono">{effectiveUrl}</code>
@@ -239,7 +284,7 @@ export default function ProviderCard({
           {t("pilotDeckConfig.panels.models.apiKey")}
         </span>
         <SecretTextInput
-          value={provider.apiKey}
+          value={draftProvider.apiKey}
           emptyPlaceholder="sk-..."
           maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
           onChange={(v) => update({ apiKey: v })}
@@ -284,7 +329,7 @@ export default function ProviderCard({
         {visibleModels.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {visibleModels.map((m) => {
-              const on = provider.models && m.id in provider.models;
+              const on = draftProvider.models && m.id in draftProvider.models;
               return (
                 <div
                   key={m.id}
@@ -364,6 +409,8 @@ export default function ProviderCard({
         </div>
       </div>
 
+      </fieldset>
+
       <div className="px-4 pb-4">
         <button
           type="button"
@@ -380,103 +427,103 @@ export default function ProviderCard({
           {t("pilotDeckConfig.panels.models.providerAdvancedToggle")}
         </button>
         {showProviderAdvanced && (
-          <div className="mt-3 space-y-3 divide-y divide-border rounded-md border border-border p-3">
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.models.providerRetry.requestMaxRetries.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.models.providerRetry.requestMaxRetries.description",
-              )}
-            >
-              <NumberInput
-                value={provider.retry?.requestMaxRetries}
-                placeholder="2"
-                onChange={(v) =>
-                  onChange({
-                    ...provider,
-                    retry: { ...provider.retry, requestMaxRetries: v },
-                  })
-                }
-              />
-            </FormRow>
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.models.providerRetry.streamMaxRetries.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.models.providerRetry.streamMaxRetries.description",
-              )}
-            >
-              <NumberInput
-                value={provider.retry?.streamMaxRetries}
-                placeholder="3"
-                onChange={(v) =>
-                  onChange({
-                    ...provider,
-                    retry: { ...provider.retry, streamMaxRetries: v },
-                  })
-                }
-              />
-            </FormRow>
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.models.providerRetry.streamIdleTimeoutMs.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.models.providerRetry.streamIdleTimeoutMs.description",
-              )}
-            >
-              <NumberInput
-                value={provider.retry?.streamIdleTimeoutMs}
-                placeholder="30000"
-                onChange={(v) =>
-                  onChange({
-                    ...provider,
-                    retry: { ...provider.retry, streamIdleTimeoutMs: v },
-                  })
-                }
-              />
-            </FormRow>
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.models.providerRetry.baseDelayMs.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.models.providerRetry.baseDelayMs.description",
-              )}
-            >
-              <NumberInput
-                value={provider.retry?.baseDelayMs}
-                placeholder="1000"
-                onChange={(v) =>
-                  onChange({
-                    ...provider,
-                    retry: { ...provider.retry, baseDelayMs: v },
-                  })
-                }
-              />
-            </FormRow>
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.models.providerRetry.maxDelayMs.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.models.providerRetry.maxDelayMs.description",
-              )}
-            >
-              <NumberInput
-                value={provider.retry?.maxDelayMs}
-                placeholder="60000"
-                onChange={(v) =>
-                  onChange({
-                    ...provider,
-                    retry: { ...provider.retry, maxDelayMs: v },
-                  })
-                }
-              />
-            </FormRow>
-          </div>
+          <fieldset
+            disabled={!editing || saving}
+            className={cn(!editing && "opacity-95")}
+          >
+            <div className="mt-3 space-y-3 divide-y divide-border rounded-md border border-border p-3">
+              <FormRow
+                label={t(
+                  "pilotDeckConfig.panels.models.providerRetry.requestMaxRetries.label",
+                )}
+                description={t(
+                  "pilotDeckConfig.panels.models.providerRetry.requestMaxRetries.description",
+                )}
+              >
+                <NumberInput
+                  value={draftProvider.retry?.requestMaxRetries}
+                  placeholder="2"
+                  onChange={(v) =>
+                    update({
+                      retry: { ...draftProvider.retry, requestMaxRetries: v },
+                    })
+                  }
+                />
+              </FormRow>
+              <FormRow
+                label={t(
+                  "pilotDeckConfig.panels.models.providerRetry.streamMaxRetries.label",
+                )}
+                description={t(
+                  "pilotDeckConfig.panels.models.providerRetry.streamMaxRetries.description",
+                )}
+              >
+                <NumberInput
+                  value={draftProvider.retry?.streamMaxRetries}
+                  placeholder="3"
+                  onChange={(v) =>
+                    update({
+                      retry: { ...draftProvider.retry, streamMaxRetries: v },
+                    })
+                  }
+                />
+              </FormRow>
+              <FormRow
+                label={t(
+                  "pilotDeckConfig.panels.models.providerRetry.streamIdleTimeoutMs.label",
+                )}
+                description={t(
+                  "pilotDeckConfig.panels.models.providerRetry.streamIdleTimeoutMs.description",
+                )}
+              >
+                <NumberInput
+                  value={draftProvider.retry?.streamIdleTimeoutMs}
+                  placeholder="30000"
+                  onChange={(v) =>
+                    update({
+                      retry: { ...draftProvider.retry, streamIdleTimeoutMs: v },
+                    })
+                  }
+                />
+              </FormRow>
+              <FormRow
+                label={t(
+                  "pilotDeckConfig.panels.models.providerRetry.baseDelayMs.label",
+                )}
+                description={t(
+                  "pilotDeckConfig.panels.models.providerRetry.baseDelayMs.description",
+                )}
+              >
+                <NumberInput
+                  value={draftProvider.retry?.baseDelayMs}
+                  placeholder="1000"
+                  onChange={(v) =>
+                    update({
+                      retry: { ...draftProvider.retry, baseDelayMs: v },
+                    })
+                  }
+                />
+              </FormRow>
+              <FormRow
+                label={t(
+                  "pilotDeckConfig.panels.models.providerRetry.maxDelayMs.label",
+                )}
+                description={t(
+                  "pilotDeckConfig.panels.models.providerRetry.maxDelayMs.description",
+                )}
+              >
+                <NumberInput
+                  value={draftProvider.retry?.maxDelayMs}
+                  placeholder="60000"
+                  onChange={(v) =>
+                    update({
+                      retry: { ...draftProvider.retry, maxDelayMs: v },
+                    })
+                  }
+                />
+              </FormRow>
+            </div>
+          </fieldset>
         )}
       </div>
     </div>

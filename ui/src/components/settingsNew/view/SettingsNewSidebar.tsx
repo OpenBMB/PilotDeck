@@ -1,37 +1,46 @@
 import { ArrowLeft } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils.js";
-import type { SettingsNewMenuItem, SettingsNewMenuKey } from "../types";
+import type { SettingsNewMenuKey } from "../types";
 
-const MENU_ITEMS: SettingsNewMenuItem[] = [
-  { key: "general", label: "通用" },
-  { key: "modelPool", label: "模型池" },
+type SettingsNewMenuItemI18n = {
+  key: SettingsNewMenuKey;
+  labelKey: string;
+  children?: SettingsNewMenuItemI18n[];
+  showDot?: boolean;
+};
+
+const MENU_ITEMS: SettingsNewMenuItemI18n[] = [
+  { key: "general", labelKey: "settingsNew.menu.general" },
+  { key: "modelPool", labelKey: "settingsNew.menu.modelPool" },
   {
     key: "agent",
-    label: "智能体",
+    labelKey: "settingsNew.menu.agent",
     children: [
-      { key: "agentModel", label: "模型" },
-      { key: "agentRoute", label: "路由" },
-      { key: "agentMemory", label: "记忆" },
-      { key: "agentResident", label: "常驻" },
-      { key: "agentSearch", label: "搜索" },
-      { key: "agentSchedule", label: "定时任务" },
+      { key: "agentModel", labelKey: "settingsNew.menu.agentModel" },
+      { key: "agentRoute", labelKey: "settingsNew.menu.agentRoute" },
+      { key: "agentMemory", labelKey: "settingsNew.menu.agentMemory" },
+      { key: "agentResident", labelKey: "settingsNew.menu.agentResident" },
+      { key: "agentSearch", labelKey: "settingsNew.menu.agentSearch" },
+      { key: "agentSchedule", labelKey: "settingsNew.menu.agentSchedule" },
     ],
   },
-  { key: "integrations", label: "外部集成" },
-  { key: "extensions", label: "拓展" },
-  { key: "privacy", label: "安全隐私" },
-  { key: "advanced", label: "高级" },
-  { key: "about", label: "关于", showDot: true },
+  { key: "integrations", labelKey: "settingsNew.menu.integrations" },
+  { key: "extensions", labelKey: "settingsNew.menu.extensions" },
+  { key: "privacy", labelKey: "settingsNew.menu.privacy" },
+  { key: "advanced", labelKey: "settingsNew.menu.advanced" },
+  { key: "about", labelKey: "settingsNew.menu.about", showDot: true },
 ];
 
 type SettingsNewSidebarProps = {
   selectedKey: SettingsNewMenuKey;
   onSelect: (key: SettingsNewMenuKey) => void;
   onClose: () => void;
+  showAboutDot?: boolean;
 };
 
 const isItemActive = (
-  item: SettingsNewMenuItem,
+  item: SettingsNewMenuItemI18n,
   selectedKey: SettingsNewMenuKey,
 ): boolean => {
   if (item.key === selectedKey) return true;
@@ -43,7 +52,10 @@ export default function SettingsNewSidebar({
   selectedKey,
   onSelect,
   onClose,
+  showAboutDot = false,
 }: SettingsNewSidebarProps) {
+  const { t } = useTranslation("settings");
+
   return (
     <aside className="w-full shrink-0 border-r border-border bg-muted/20 md:w-[260px]">
       <div className="flex h-full flex-col">
@@ -54,7 +66,7 @@ export default function SettingsNewSidebar({
             className="inline-flex h-8 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
-            返回应用
+            {t("settingsNew.backToApp")}
           </button>
         </div>
 
@@ -79,8 +91,8 @@ export default function SettingsNewSidebar({
                         : "font-medium text-foreground/90",
                     )}
                   >
-                    <span>{item.label}</span>
-                    {item.showDot ? (
+                    <span>{t(item.labelKey)}</span>
+                    {item.showDot && showAboutDot ? (
                       <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" />
                     ) : null}
                   </button>
@@ -99,7 +111,7 @@ export default function SettingsNewSidebar({
                                 : "font-medium text-foreground/90",
                             )}
                           >
-                            {child.label}
+                            {t(child.labelKey)}
                           </button>
                         </li>
                       ))}

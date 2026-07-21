@@ -12,7 +12,7 @@ import ProviderCard from "./ProviderCard";
 
 type ModelsSectionProps = {
   config: PilotDeckConfig;
-  onChange: (next: PilotDeckConfig) => void;
+  onChange: (next: PilotDeckConfig) => void | Promise<void>;
 };
 
 export default function ModelsSection({ config, onChange }: ModelsSectionProps) {
@@ -20,32 +20,48 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
   const providers = config.model?.providers ?? {};
   const ids = Object.keys(providers);
 
-  const setProvider = (id: string, prov: V2Provider) =>
-    onChange(patch(config, ["model", "providers", id], prov));
+  const setProvider = async (id: string, prov: V2Provider) =>
+    Promise.resolve(onChange(patch(config, ["model", "providers", id], prov)));
 
-  const removeProvider = (id: string) => {
+  const removeProvider = async (id: string) => {
     const next = { ...providers };
     delete next[id];
-    onChange(patch(config, ["model", "providers"], next));
+    await Promise.resolve(onChange(patch(config, ["model", "providers"], next)));
   };
 
-  const renameProvider = (oldId: string, newId: string) => {
+  const buildRenamedConfig = (oldId: string, newId: string) => {
     const id = newId.trim();
-    if (!id || id === oldId) return true;
-    if (providers[id]) return false;
+    if (!id || id === oldId) return { ok: true as const, config };
+    if (providers[id]) return { ok: false as const };
     const next: Record<string, V2Provider> = {};
     for (const [k, v] of Object.entries(providers)) {
       next[k === oldId ? id : k] = v;
     }
-    onChange(
-      rewriteProviderRefs(patch(config, ["model", "providers"], next), oldId, id),
-    );
-    return true;
+    return {
+      ok: true as const,
+      config: rewriteProviderRefs(patch(config, ["model", "providers"], next), oldId, id),
+    };
   };
 
-  const handleCatalogPick = (cp: CatalogProvider) => {
+  const saveProvider = async (
+    oldId: string,
+    newId: string,
+    provider: V2Provider,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const trimmed = newId.trim();
+    const renamed = buildRenamedConfig(oldId, trimmed);
+    if (!renamed.ok) {
+      return { ok: false, error: t("pilotDeckConfig.panels.models.providerIdDuplicate") };
+    }
+    const targetId = trimmed || oldId;
+    const nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
+    await Promise.resolve(onChange(nextConfig));
+    return { ok: true };
+  };
+
+  const handleCatalogPick = async (cp: CatalogProvider) => {
     if (providers[cp.id]) return;
-    setProvider(cp.id, {
+    await setProvider(cp.id, {
       apiKey: "",
       protocol: cp.protocol,
       url: cp.defaultUrl,
@@ -53,10 +69,10 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
     });
   };
 
-  const handleCustom = () => {
+  const handleCustom = async () => {
     let i = 1;
     while (providers[`provider${i}`]) i++;
-    setProvider(`provider${i}`, {
+    await setProvider(`provider${i}`, {
       protocol: "openai",
       url: "",
       apiKey: "",
@@ -85,9 +101,8 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
           providerId={id}
           provider={providers[id] ?? {}}
           catalogEntry={findCatalogProviderById(id)}
-          onChange={(next) => setProvider(id, next)}
-          onRemove={() => removeProvider(id)}
-          onRename={(newId) => renameProvider(id, newId)}
+          onSave={(nextId, nextProvider) => saveProvider(id, nextId, nextProvider)}
+          onRemove={() => void removeProvider(id)}
         />
       ))}
     </div>

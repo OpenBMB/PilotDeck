@@ -1,4 +1,5 @@
 import express from 'express';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, exec, execFile } from 'child_process';
@@ -30,6 +31,53 @@ function execInProject(cmd) {
 
 function execGit(args) {
   return execFileAsync('git', args, { cwd: PROJECT_ROOT, maxBuffer: 10 * 1024 * 1024 });
+}
+
+function appendIfExists(list, value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return;
+  if (!existsSync(candidate)) return;
+  if (!list.includes(candidate)) list.push(candidate);
+}
+
+async function resolveBashExecutable() {
+  const fromEnv = String(process.env.PILOTDECK_BASH_PATH || '').trim();
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  if (process.platform !== 'win32') return 'bash';
+
+  const candidates = [];
+
+  for (const entry of String(process.env.PATH || '').split(path.delimiter)) {
+    const dir = String(entry || '').trim();
+    if (!dir) continue;
+    appendIfExists(candidates, path.join(dir, 'bash.exe'));
+  }
+
+  try {
+    const { stdout } = await execFileAsync('where', ['bash']);
+    for (const line of stdout.split(/\r?\n/)) appendIfExists(candidates, line.trim());
+  } catch {
+    // ignore
+  }
+
+  try {
+    const { stdout } = await execFileAsync('where', ['git']);
+    const gitPath = stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    if (gitPath) {
+      const gitRoot = path.resolve(path.dirname(gitPath), '..');
+      appendIfExists(candidates, path.join(gitRoot, 'bin', 'bash.exe'));
+      appendIfExists(candidates, path.join(gitRoot, 'usr', 'bin', 'bash.exe'));
+    }
+  } catch {
+    // ignore
+  }
+
+  appendIfExists(candidates, 'C:\\Program Files\\Git\\bin\\bash.exe');
+  appendIfExists(candidates, 'C:\\Program Files\\Git\\usr\\bin\\bash.exe');
+  appendIfExists(candidates, 'C:\\Program Files (x86)\\Git\\bin\\bash.exe');
+  appendIfExists(candidates, 'C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe');
+
+  return candidates[0] || 'bash';
 }
 
 function parseUpstreamRef(value) {
@@ -303,10 +351,11 @@ router.post('/apply', async (req, res) => {
 
   try {
     const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'update.sh');
+    const bashExecutable = await resolveBashExecutable();
 
     sendProgress('start', 'Starting update process...');
 
-    const child = spawn('bash', [scriptPath], {
+    const child = spawn(bashExecutable, [scriptPath], {
       cwd: PROJECT_ROOT,
       env: { ...process.env, FORCE_COLOR: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -342,8 +391,11 @@ router.post('/apply', async (req, res) => {
       throw new Error(`Update script exited with code ${exitCode}`);
     }
   } catch (error) {
-    sendProgress('error', `Update failed: ${error.message}`, 'error');
-    lastUpdateResult = { success: false, error: error.message };
+    const normalizedMessage = error?.code === 'ENOENT'
+      ? 'Unable to locate a bash executable. Install Git Bash and set PILOTDECK_BASH_PATH if needed.'
+      : error.message;
+    sendProgress('error', `Update failed: ${normalizedMessage}`, 'error');
+    lastUpdateResult = { success: false, error: normalizedMessage };
   } finally {
     updateInProgress = false;
     res.end();
@@ -361,7 +413,7 @@ router.post('/restart', async (req, res) => {
     status: 'restarting',
   });
 
-  setTimeout(() => {
+  setTimeout(async () => {
     console.log('[update] Spawning replacement process and exiting...');
 
     // Spawn `npm run dev` (or the same entry point) as a detached process
@@ -374,7 +426,16 @@ router.post('/restart', async (req, res) => {
 
     // Local: spawn a new server process detached from this one
     const projectRoot = path.resolve(PROJECT_ROOT, '..');
-    const child = spawn('bash', ['-c', `sleep 2 && cd "${projectRoot}" && npm run dev`], {
+    const restartCommand = process.platform === 'win32'
+      ? {
+          command: 'cmd.exe',
+          args: ['/d', '/s', '/c', `timeout /t 2 /nobreak >nul && cd /d "${projectRoot}" && npm run dev`],
+        }
+      : {
+          command: await resolveBashExecutable(),
+          args: ['-c', `sleep 2 && cd "${projectRoot}" && npm run dev`],
+        };
+    const child = spawn(restartCommand.command, restartCommand.args, {
       cwd: projectRoot,
       detached: true,
       stdio: 'ignore',

@@ -35,20 +35,20 @@ export default function AdvancedSections({ title }: AdvancedSectionsProps) {
       ) : parsedConfig ? (
         <>
           <PageSectionHeader
-            title={t("pilotDeckConfig.panels.runtime.title", { defaultValue: "服务" })}
-            description="配置服务端口、数据路径和网络代理。修改端口或路径后通常需要重启服务。"
+            title={t("pilotDeckConfig.panels.runtime.title")}
+            description={t("pilotDeckConfig.panels.runtime.description")}
           />
           <ServiceSection config={parsedConfig} onChange={onFormChange} />
 
           <PageSectionHeader
-            title={t("pilotDeckConfig.panels.customEnv.title", { defaultValue: "环境变量" })}
-            description="注入到每个智能体会话里的自定义环境变量。持久化到配置文件，切换会话不必重新配置。"
+            title={t("pilotDeckConfig.panels.customEnv.title")}
+            description={t("pilotDeckConfig.panels.customEnv.description")}
           />
           <CustomEnvSection config={parsedConfig} onChange={onFormChange} />
         </>
       ) : (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          配置文件当前不是有效 YAML，暂时无法加载高级配置表单。
+          {t("settingsNew.invalidYaml.advanced")}
         </div>
       )}
     </div>

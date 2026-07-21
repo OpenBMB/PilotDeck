@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { SettingsCard, SettingsRow, SettingsSection, SettingsToggle } from "../../../shared/view";
-import { FormRow, NumberInput, TextInput } from "../../modelPool/components/Inputs";
+import { FormRow, NumberInput, TextInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import { isCronConfigEnabled } from "../utils/cron";

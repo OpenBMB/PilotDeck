@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../../../../lib/utils";
 import { SettingsCard } from "../../../shared/view";
 import type { PilotDeckConfig } from "../../modelPool/types";
-import { FormRow, NumberInput, TextInput } from "../../modelPool/components/Inputs";
+import { FormRow, NumberInput, TextInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 
 type ServiceSectionProps = {

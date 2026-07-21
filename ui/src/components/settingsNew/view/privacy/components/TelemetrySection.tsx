@@ -18,24 +18,22 @@ export default function TelemetrySection({
   return (
     <>
       <h3 className="text-xl font-semibold text-foreground">
-        {t("settingsHome.telemetry.title", { defaultValue: "遥测" })}
+        {t("settingsHome.telemetry.title")}
       </h3>
       <SettingsCard divided>
         <SettingsRow
           label={
             <span className="inline-flex items-center gap-2">
               <Activity className="h-4 w-4 text-muted-foreground" />
-              {t("settingsHome.telemetry.title", { defaultValue: "遥测" })}
+              {t("settingsHome.telemetry.title")}
             </span>
           }
-          description={t("settingsHome.telemetry.detail", {
-            defaultValue: "发送匿名使用数据以帮助改进产品",
-          })}
+          description={t("settingsHome.telemetry.detail")}
         >
           <SettingsToggle
             checked={enabled}
             onChange={onToggle}
-            ariaLabel={t("settingsHome.telemetry.title", { defaultValue: "遥测" })}
+            ariaLabel={t("settingsHome.telemetry.title")}
             disabled={loading}
           />
         </SettingsRow>

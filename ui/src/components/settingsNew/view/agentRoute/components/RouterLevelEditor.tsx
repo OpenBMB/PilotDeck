@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { FormRow } from "../../modelPool/components/Inputs";
+import { FormRow } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import {

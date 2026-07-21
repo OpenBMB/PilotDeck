@@ -5,7 +5,7 @@ import { Button } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
 import { SettingsCard } from "../../../shared/view";
 import type { PilotDeckConfig } from "../../modelPool/types";
-import { FormRow, SecretTextInput } from "../../modelPool/components/Inputs";
+import { FormRow, SecretTextInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import { isMaskedSecret } from "../../modelPool/utils/providerRefs";
 import { WELL_KNOWN_ENV_KEYS } from "../utils/constants";

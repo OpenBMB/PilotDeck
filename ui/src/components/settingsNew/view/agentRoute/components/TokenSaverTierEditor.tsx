@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
 import { buildModelRefOptions, ensureModelRefConfigured } from "../../agentModel/utils/modelRefs";
+import { TextAreaInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import { DEFAULT_TIERS } from "../utils/router";
@@ -89,12 +90,10 @@ export default function TokenSaverTierEditor({
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
-          <textarea
+          <TextAreaInput
             value={tier.description ?? ""}
-            onChange={(e) => setTier(key, "description", e.target.value)}
+            onChange={(next) => setTier(key, "description", next)}
             placeholder={t("pilotDeckConfig.panels.router.tiers.placeholder")}
-            rows={2}
-            className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
       ))}

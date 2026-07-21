@@ -1,8 +1,11 @@
 import type { CatalogProvider } from "../../../../../shared/catalogProviders";
 import type { PilotDeckConfig } from "../types";
 import { patch } from "./patch";
-
-const MASK = "********";
+import {
+  hasUsableSecret,
+  isMaskedSecret,
+  secretDisplayValue,
+} from "../../../shared/utils/secret";
 
 function rewriteProviderRef(
   value: unknown,
@@ -120,22 +123,7 @@ export function rewriteProviderRefs(
   return next;
 }
 
-export function isMaskedSecret(value: string | undefined): boolean {
-  return value === MASK;
-}
-
-export function hasUsableSecret(value: string | undefined): boolean {
-  const shown = secretDisplayValue(value).trim();
-  return shown.length > 0;
-}
-
-export function secretDisplayValue(value: string | undefined): string {
-  if (!value) return "";
-  if (isMaskedSecret(value)) return "";
-  if (value === "PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE") return "";
-  if (value.startsWith("PLACEHOLDER_")) return "";
-  return value;
-}
+export { hasUsableSecret, isMaskedSecret, secretDisplayValue };
 
 export function providerDisplayName(
   providerId: string,

@@ -39,7 +39,7 @@ export default function AgentSearchSections({ title }: AgentSearchSectionsProps)
       <div className="space-y-6">
         <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          配置文件当前不是有效 YAML，暂时无法加载智能体搜索表单。
+          {t("settingsNew.invalidYaml.agentSearch")}
         </div>
       </div>
     );

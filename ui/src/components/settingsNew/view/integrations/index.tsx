@@ -35,7 +35,7 @@ export default function IntegrationsSections({ title }: IntegrationsSectionsProp
         <GatewayConfigSection config={parsedConfig} onChange={onFormChange} />
       ) : (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          配置文件当前不是有效 YAML，暂时无法加载网关配置表单。
+          {t("settingsNew.invalidYaml.integrations")}
         </div>
       )}
       <ImChannelsSection />
