@@ -1,0 +1,52 @@
+{
+  "baseCommit": "7404ba5cc67ae5689ce5ace07ac8a35ef55b3522",
+  "source": {
+    "kind": "archived accepted-input replay",
+    "attachmentCount": 15,
+    "attachmentFormat": "OCR/text reconstruction",
+    "originalBinariesAvailable": false
+  },
+  "boundedRun": {
+    "maxTurns": 12,
+    "modelRequests": 15,
+    "toolCalls": 32,
+    "finishReason": "max_turns",
+    "requiredArtifactCreated": false,
+    "observedFreshnessSequence": [
+      "spreadsheet scaffold",
+      "read_file(builder)",
+      "write_file(builder)"
+    ],
+    "diagnosis": "max-turn termination after tool results bypassed required artifact validation"
+  },
+  "finalRun": {
+    "maxTurns": 20,
+    "domainMaxOutputTokens": 16384,
+    "modelRequests": 17,
+    "toolCallsStarted": 37,
+    "toolCallsFinished": 37,
+    "finishReason": "completed",
+    "requiredArtifactCreated": true,
+    "workbook": {
+      "worksheetCount": 3,
+      "tableCount": 3,
+      "ranges": [
+        "A1:I26",
+        "A1:G18",
+        "A1:H26"
+      ],
+      "formulaErrors": 0,
+      "pilotdeckRenderPages": 8,
+      "independentWorksheetRenders": 3,
+      "visualReview": "passed"
+    }
+  },
+  "isolation": {
+    "pilotHome": "temporary isolated directory",
+    "workspace": "temporary isolated directory",
+    "memoryEnabled": false,
+    "telemetryEnabled": false,
+    "routerEnabled": false,
+    "mainWorktreeChanged": false
+  }
+}

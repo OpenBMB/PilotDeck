@@ -1,0 +1,26 @@
+{
+  "focused": {
+    "agentLoopArtifactAndNetwork": {
+      "passed": 17,
+      "failed": 0,
+      "cancelled": 0
+    }
+  },
+  "networkFailingFirst": {
+    "passed": 0,
+    "failed": 0,
+    "cancelled": 7,
+    "reason": "Promise resolution remained pending after unref timers allowed the Node event loop to exit"
+  },
+  "networkAfterFix": {
+    "passed": 7,
+    "failed": 0,
+    "cancelled": 0
+  },
+  "fullSuiteAfterFix": {
+    "passed": 162,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0
+  }
+}
