@@ -8,6 +8,7 @@
     "@xmldom/xmldom": "0.9.10",
     "csv-parse": "7.0.1",
     "exceljs": "4.4.0",
+    "iconv-lite": "0.7.0",
     "jszip": "3.10.1",
     "sharp": "0.35.3"
   },

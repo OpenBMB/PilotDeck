@@ -44,6 +44,76 @@ async function notifyGatewayConfigReload() {
 
 const router = express.Router();
 
+const MASKED_SECRET = '********';
+const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
+const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
+
+function normalizeWebSearchProvider(provider) {
+  return provider === 'tavily' || provider === 'custom' ? provider : 'glm';
+}
+
+function normalizeWebSearchCustomAuth(auth) {
+  return auth === 'bodyApiKey' || auth === 'queryApiKey' || auth === 'none' ? auth : 'bearer';
+}
+
+function normalizeWebSearchEndpoint(provider, endpoint) {
+  const trimmed = typeof endpoint === 'string' ? endpoint.trim() : '';
+  const effective = trimmed || (
+    provider === 'tavily'
+      ? DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT
+      : provider === 'glm'
+        ? DEFAULT_GLM_WEB_SEARCH_ENDPOINT
+        : ''
+  );
+  if (!effective) return '';
+  try {
+    return new URL(effective).toString();
+  } catch {
+    return effective;
+  }
+}
+
+function webSearchCredentialScope(config) {
+  const value = config && typeof config === 'object' && !Array.isArray(config) ? config : {};
+  const provider = normalizeWebSearchProvider(value.provider);
+  const scope = {
+    provider,
+    endpoint: normalizeWebSearchEndpoint(provider, value.endpoint),
+  };
+  if (provider !== 'custom') return scope;
+
+  const custom = value.customProvider && typeof value.customProvider === 'object' && !Array.isArray(value.customProvider)
+    ? value.customProvider
+    : {};
+  return {
+    ...scope,
+    auth: normalizeWebSearchCustomAuth(custom.auth),
+    method: custom.method === 'GET' ? 'GET' : 'POST',
+    apiKeyParam: typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim()
+      ? custom.apiKeyParam.trim()
+      : 'api_key',
+  };
+}
+
+function webSearchCredentialScopeMatches(nextConfig, previousConfig) {
+  return JSON.stringify(webSearchCredentialScope(nextConfig)) === JSON.stringify(webSearchCredentialScope(previousConfig));
+}
+
+function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
+  const nextWebSearch = nextConfig?.tools?.webSearch;
+  if (nextWebSearch?.apiKey !== MASKED_SECRET) return null;
+
+  const previousWebSearch = previousConfig?.tools?.webSearch;
+  const previousKey = typeof previousWebSearch?.apiKey === 'string' ? previousWebSearch.apiKey.trim() : '';
+  if (!previousKey || previousKey === MASKED_SECRET) {
+    return 'Saved Web Search API key is unavailable. Enter the API key again.';
+  }
+  if (!webSearchCredentialScopeMatches(nextWebSearch, previousWebSearch)) {
+    return 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.';
+  }
+  return null;
+}
+
 function serializeConfigResponse(record, reloadResult = null) {
   if (record.parseError) {
     return {
@@ -307,6 +377,10 @@ router.put('/', async (req, res) => {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return res.status(400).json({ error: 'raw YAML must parse to an object' });
       }
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(parsed, diskRecord.rawYaml ?? {});
+      if (maskedKeyError) {
+        return res.status(400).json({ error: maskedKeyError });
+      }
       // Re-hydrate any field the UI received as "********" with the
       // original disk value so saving the masked view back is a no-op
       // for secrets the user didn't actually touch.
@@ -327,6 +401,10 @@ router.put('/', async (req, res) => {
             warnings: [],
           },
         });
+      }
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(req.body.config, diskRecord.config);
+      if (maskedKeyError) {
+        return res.status(400).json({ error: maskedKeyError });
       }
       const restored = preserveMaskedSecrets(req.body.config, diskRecord.config);
       suppressNextWatchEvent();
@@ -662,26 +740,47 @@ router.post('/test-connection', async (req, res) => {
  */
 router.post('/test-web-search', async (req, res) => {
   const { provider, apiKey, endpoint, customProvider } = req.body || {};
-  const selectedProvider = provider === 'tavily' || provider === 'custom' ? provider : 'glm';
+  const selectedProvider = normalizeWebSearchProvider(provider);
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
-  const customAuth = typeof custom.auth === 'string' ? custom.auth : 'bearer';
+  const customAuth = normalizeWebSearchCustomAuth(custom.auth);
   const customMethod = custom.method === 'GET' ? 'GET' : 'POST';
   const queryParam = typeof custom.queryParam === 'string' && custom.queryParam.trim() ? custom.queryParam.trim() : 'query';
   const apiKeyParam = typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim() ? custom.apiKeyParam.trim() : 'api_key';
   const resultsPath = typeof custom.resultsPath === 'string' ? custom.resultsPath.trim() : '';
-  const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  const requestedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
+  let trimmedKey = requestedKey === MASKED_SECRET ? '' : requestedKey;
+  if (requestedKey === MASKED_SECRET) {
+    try {
+      const record = readPilotDeckConfigFile();
+      const savedWebSearch = record.config?.tools?.webSearch;
+      const savedKey = savedWebSearch?.apiKey;
+      const requestedWebSearch = {
+        provider: selectedProvider,
+        endpoint: trimmedEndpoint,
+        customProvider: custom,
+      };
+      if (
+        typeof savedKey === 'string' &&
+        savedKey.trim() !== MASKED_SECRET &&
+        webSearchCredentialScopeMatches(requestedWebSearch, savedWebSearch)
+      ) {
+        trimmedKey = savedKey.trim();
+      } else if (typeof savedKey === 'string' && savedKey.trim() !== MASKED_SECRET) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.',
+        });
+      }
+    } catch { /* fall through to validation below */ }
+  }
   if (!trimmedKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
     return res.status(400).json({ ok: false, error: 'API key is required.' });
   }
-  const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
   if (selectedProvider === 'custom' && !trimmedEndpoint) {
     return res.status(400).json({ ok: false, error: 'Custom provider endpoint is required.' });
   }
-  const effectiveEndpoint = trimmedEndpoint || (
-    selectedProvider === 'tavily'
-      ? 'https://api.tavily.com/search'
-      : 'https://api.z.ai/api/paas/v4/web_search'
-  );
+  const effectiveEndpoint = normalizeWebSearchEndpoint(selectedProvider, trimmedEndpoint);
 
   let requestUrl;
   let requestInit;

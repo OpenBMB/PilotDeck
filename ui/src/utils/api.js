@@ -282,6 +282,13 @@ export const api = {
   },
   readFileBlob: (projectName, filePath) =>
     authenticatedFetch(api.fileContentUrl(projectName, filePath)),
+  fileContentSha256: (projectName, filePath) => {
+    const params = new URLSearchParams({ path: filePath, sha256: '1' });
+    return authenticatedFetch(
+      `/api/projects/${encodeURIComponent(projectName)}/files/content?${params.toString()}`,
+      { method: 'HEAD', cache: 'no-store' },
+    );
+  },
   officePdfPreviewUrl: (projectName, filePath, options = {}) => {
     const params = new URLSearchParams({ path: filePath });
     if (options.force) {
@@ -302,6 +309,41 @@ export const api = {
   },
   preflightOfficePdfPreview: (projectName, filePath, options = {}) =>
     authenticatedFetch(api.officePdfPreviewUrl(projectName, filePath, {
+      force: options.force,
+      cacheKey: options.cacheKey,
+    }), {
+      cache: 'no-store',
+      headers: {
+        Range: 'bytes=0-0',
+      },
+      signal: options.signal,
+    }),
+  spreadsheetPreviewManifest: (projectName, filePath, options = {}) => {
+    const params = new URLSearchParams({ path: filePath });
+    if (options.force) params.set('force', '1');
+    if (options.cacheKey !== undefined && options.cacheKey !== null) {
+      params.set('_', String(options.cacheKey));
+    }
+    return authenticatedFetch(
+      `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/manifest?${params.toString()}`,
+      { cache: 'no-store', signal: options.signal },
+    );
+  },
+  spreadsheetSheetPreviewUrl: (projectName, filePath, sheetIndex, options = {}) => {
+    const params = new URLSearchParams({
+      path: filePath,
+      sheet: String(sheetIndex),
+    });
+    if (options.force) params.set('force', '1');
+    if (options.cacheKey !== undefined && options.cacheKey !== null) {
+      params.set('_', String(options.cacheKey));
+    }
+    return appendAuthToken(
+      `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/sheet?${params.toString()}`,
+    );
+  },
+  preflightSpreadsheetSheetPreview: (projectName, filePath, sheetIndex, options = {}) =>
+    authenticatedFetch(api.spreadsheetSheetPreviewUrl(projectName, filePath, sheetIndex, {
       force: options.force,
       cacheKey: options.cacheKey,
     }), {

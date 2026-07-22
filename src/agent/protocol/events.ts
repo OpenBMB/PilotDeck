@@ -5,6 +5,7 @@ import type { AgentTurnResult } from "./result.js";
 import type { AgentLoopTransition } from "./state.js";
 import type { TokenBudgetSnapshot } from "../../context/budget/TokenBudgetManager.js";
 import type { RouterRetryProgressEvent } from "../../router/protocol/events.js";
+import type { FileArtifact } from "../../session/artifacts/FileArtifact.js";
 
 export type AgentEvent =
   | { type: "session_started"; sessionId: string }
@@ -24,6 +25,7 @@ export type AgentEvent =
   | { type: "permission_denied"; sessionId: string; turnId: string; toolName: string; reason: string }
   | { type: "tool_result"; sessionId: string; turnId: string; result: PilotDeckToolResult }
   | { type: "tool_results_projected"; sessionId: string; turnId: string; message: CanonicalMessage }
+  | { type: "file_artifacts"; sessionId: string; turnId: string; artifacts: FileArtifact[] }
   | { type: "mode_change_requested"; sessionId: string; turnId: string; mode: string }
   | { type: "stop_requested"; sessionId: string; turnId: string }
   | { type: "stop_failure"; sessionId: string; turnId: string; error: string }

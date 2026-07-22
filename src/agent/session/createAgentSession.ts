@@ -32,6 +32,8 @@ export type CreateAgentSessionOptions = {
   replayEvents?: AgentEvent[];
   sessionTitleGenerator?: SessionTitleGenerator;
   initialMetadata?: SessionMetadataValue;
+  /** Whether Agent-created or modified workspace files should become message artifacts. */
+  collectFileArtifacts?: boolean;
 };
 
 export function createAgentSession(options: CreateAgentSessionOptions): AgentSession {
@@ -78,6 +80,7 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
   const runtimeContext = {
     cwd: options.config.cwd,
     transcriptPath: storage?.transcriptPath ?? "",
+    collectFileArtifacts: options.collectFileArtifacts ?? true,
   };
   const turnRunner = new TurnRunner(
     loop,

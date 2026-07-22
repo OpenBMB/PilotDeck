@@ -18,7 +18,6 @@ const MAX_POST_DRAFT_REPAIR_ATTEMPTS = 5;
 const MAX_TRUNCATION_RECOVERIES = 10;
 const LARGE_FILE_OUTPUT_RETRY_TOKENS = 16_384;
 const FILE_WRITE_TOOLS = new Set(["write_file", "edit_file"]);
-const FILE_READ_TOOLS = new Set(["read_file", "grep", "glob"]);
 const INTERNAL_RECOVERY_HINT = "INTERNAL RECOVERY HINT - not a user request. Continue the original task.";
 
 export class LargeFileRepair {
@@ -61,13 +60,17 @@ export class LargeFileRepair {
     this.recordWrites(results);
 
     if (this.wroteFile) {
-      const risk = hasPostDraftRisk(results);
+      const risk = hasPostDraftRisk(results, context, this.pendingLargeFileRepair);
       if (!risk) {
-        if (results.every((r) => r.type === "success")) {
+        if (
+          results.every((result) => result.type === "success") ||
+          results.some(isSuccessfulFileWrite)
+        ) {
           this.pendingLargeFileRepair = false;
         }
         return undefined;
       }
+      this.pendingLargeFileRepair = true;
       return this.tryPostDraft("large_file_post_draft_repair");
     }
 
@@ -237,19 +240,41 @@ function hasPreDraftLargeFileRisk(
   });
 }
 
-function hasPostDraftRisk(results: PilotDeckToolResult[]): boolean {
+function hasPostDraftRisk(
+  results: PilotDeckToolResult[],
+  context: LargeFileRepairToolContext,
+  pendingLargeFileRepair: boolean,
+): boolean {
+  const hasExplicitTruncationEvidence =
+    context.outputTruncated ||
+    context.repairedToolCalls ||
+    context.finishReason === "length";
+
   return results.some((result) => {
     if (result.type !== "error") {
       return false;
     }
-    if (FILE_READ_TOOLS.has(result.toolName)) {
+    if (!FILE_WRITE_TOOLS.has(result.toolName)) {
       return false;
     }
-    if (result.error.code === "permission_denied" || result.error.code === "permission_required") {
+    if (
+      result.error.code === "permission_denied" ||
+      result.error.code === "permission_required" ||
+      result.error.code === "permission_cancelled"
+    ) {
       return false;
     }
-    return FILE_WRITE_TOOLS.has(result.toolName) || looksLikeLargeFileError(result.error.message);
+    return (
+      pendingLargeFileRepair ||
+      hasExplicitTruncationEvidence ||
+      result.error.code === "result_too_large" ||
+      looksLikeLargeFileError(result.error.message)
+    );
   });
+}
+
+function isSuccessfulFileWrite(result: PilotDeckToolResult): boolean {
+  return result.type === "success" && FILE_WRITE_TOOLS.has(result.toolName);
 }
 
 function readIssues(result: PilotDeckToolResult): { path: string; code: string }[] {

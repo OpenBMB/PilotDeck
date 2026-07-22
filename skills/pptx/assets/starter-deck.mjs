@@ -1,7 +1,10 @@
-export default async function build({ createDeck, layouts, tokens }) {
+export default async function build({ createDeck, layouts, resolveDesignTokens }) {
+  const tokens = await resolveDesignTokens({ lang: 'en-US', profile: 'cross-platform-en' });
   const pptx = await createDeck({
     title: 'PilotDeck PPTX Skill',
     subject: 'A self-test presentation generated from an executable ES module',
+    lang: 'en-US',
+    tokens,
   });
 
   layouts.titleSlide(pptx, tokens, {

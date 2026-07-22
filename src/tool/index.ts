@@ -78,6 +78,7 @@ export { createGlobTool, extractGlobBaseDirectory, type GlobInput } from "./buil
 export { createGrepTool, type GrepInput } from "./builtin/grep.js";
 export {
   createExecuteCodeTool,
+  type CreateExecuteCodeToolOptions,
   type ExecuteCodeOutput,
   type ExecuteCodeStatus,
   type ExecuteCodeToolCallLogEntry,

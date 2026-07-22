@@ -5,6 +5,7 @@ import {
   clearSearchHighlights,
   findChatHistoryMatches,
   highlightActiveMatch,
+  scrollSearchTargetIntoView,
   scrollToMessageIndex,
   type ChatHistorySearchMatch,
   type SearchableChatMessageInput,
@@ -76,6 +77,30 @@ export function useChatHistorySearch({
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    const entry = searchableMessages.find((item) => item.messageKey === match.messageKey);
+    if (!entry) return;
+
+    const revealRenderedMatch = (behavior: ScrollBehavior): boolean => {
+      const target = highlightActiveMatch(
+        container,
+        match.messageKey,
+        entry.text,
+        query.trim(),
+        match.offset,
+      );
+      if (!target) return false;
+      scrollSearchTargetIntoView(container, target, behavior);
+      return true;
+    };
+
+    // Nearby results are normally still mounted by the virtualized list. In
+    // that case, move directly from the current viewport instead of first
+    // resetting scrollTop from the beginning of the conversation.
+    if (revealRenderedMatch('smooth')) return;
+
+    // A distant result may not exist in the DOM yet. Perform one instant
+    // coarse jump so virtualization can mount it, then center it without a
+    // second long animation.
     scrollToMessageIndex(container, measuredItemHeights, match.messageIndex);
 
     await new Promise<void>((resolve) => {
@@ -84,16 +109,7 @@ export function useChatHistorySearch({
       });
     });
 
-    const entry = searchableMessages.find((item) => item.messageKey === match.messageKey);
-    if (!entry) return;
-
-    highlightActiveMatch(
-      container,
-      match.messageKey,
-      entry.text,
-      query.trim(),
-      match.offset,
-    );
+    revealRenderedMatch('auto');
   }, [
     ensureAllMessagesLoaded,
     measuredItemHeights,

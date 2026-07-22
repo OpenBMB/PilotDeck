@@ -191,10 +191,10 @@ export class SubAgentSession {
     const scoped = new ToolRegistry();
     const allowedSet = new Set(this.options.definition.allowedTools);
     const wildcard = allowedSet.has("*");
-    const forceReadOnly = this.options.definition.isReadOnly
-      || this.options.parentConfig.permissionMode === "plan"
-      || this.options.parentConfig.runMode === "ask";
     for (const tool of this.options.parentDependencies.tools.registry.list()) {
+      if (!wildcard && !allowedSet.has(tool.name)) {
+        continue;
+      }
       if (tool.name === "enter_plan_mode" || tool.name === "exit_plan_mode") {
         continue; // Subagents must not participate in the plan-mode workflow.
       }
@@ -206,12 +206,6 @@ export class SubAgentSession {
       }
       if (tool.name === "ask_user_question") {
         continue; // Subagents have no elicitation channel.
-      }
-      if (!wildcard && !allowedSet.has(tool.name)) {
-        continue;
-      }
-      if (forceReadOnly && !tool.isReadOnly({} as never)) {
-        continue; // S9 — read-only subagents reject side-effecting tools outright.
       }
       scoped.register(tool as PilotDeckToolDefinition);
     }
@@ -289,6 +283,10 @@ export class SubAgentSession {
       : subagentSystem;
     return {
       ...parent,
+      // Ask mode performs read-only checks against each tool call's real
+      // input. Do not probe dynamic isReadOnly implementations with a dummy
+      // object while constructing the registry.
+      runMode: this.isReadOnlySession() ? "ask" : parent.runMode,
       permissionContext: {
         ...parent.permissionContext,
         rules: {
@@ -305,6 +303,12 @@ export class SubAgentSession {
         subagentType: this.options.definition.id,
       },
     };
+  }
+
+  private isReadOnlySession(): boolean {
+    return this.options.definition.isReadOnly
+      || this.options.parentConfig.permissionMode === "plan"
+      || this.options.parentConfig.runMode === "ask";
   }
 }
 

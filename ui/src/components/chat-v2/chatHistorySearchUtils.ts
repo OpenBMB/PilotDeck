@@ -354,26 +354,24 @@ function escapeMessageKeyForSelector(messageKey: string): string {
   });
 }
 
-/** Highlight the active match inside a message element and scroll it into view. */
+/** Highlight the active match and return the element that should be revealed. */
 export function highlightActiveMatch(
   container: HTMLElement,
   messageKey: string,
   messageText: string,
   query: string,
   offset: number,
-): boolean {
+): HTMLElement | null {
   clearSearchHighlights(container);
 
   const messageEl = container.querySelector<HTMLElement>(
     `.chat-message[data-message-key="${escapeMessageKeyForSelector(messageKey)}"]`,
   );
-  if (!messageEl) return false;
+  if (!messageEl) return null;
 
   const occurrence = countOccurrencesBeforeOffset(messageText, query, offset);
   const walker = document.createTreeWalker(messageEl, NodeFilter.SHOW_TEXT);
   let currentOccurrence = 0;
-  let highlighted = false;
-
   while (walker.nextNode()) {
     const textNode = walker.currentNode as Text;
     if (!textNode.textContent?.trim()) continue;
@@ -383,18 +381,30 @@ export function highlightActiveMatch(
     if (nodeOccurrenceCount === 0) continue;
 
     if (occurrence < currentOccurrence + nodeOccurrenceCount) {
-      const result = highlightTextNode(textNode, query, occurrence - currentOccurrence);
-      highlighted = result.highlighted;
+      highlightTextNode(textNode, query, occurrence - currentOccurrence);
       break;
     }
     currentOccurrence += nodeOccurrenceCount;
   }
 
-  const activeMark = messageEl.querySelector(`mark.${ACTIVE_HIGHLIGHT_CLASS}`);
-  activeMark?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  if (!activeMark) {
-    messageEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
+  return messageEl.querySelector<HTMLElement>(`mark.${ACTIVE_HIGHLIGHT_CLASS}`) ?? messageEl;
+}
 
-  return highlighted;
+/** Center a result by scrolling only the conversation container from its current position. */
+export function scrollSearchTargetIntoView(
+  container: HTMLElement,
+  target: HTMLElement,
+  behavior: ScrollBehavior = 'smooth',
+): void {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetCenterInScrollContent =
+    container.scrollTop + (targetRect.top - containerRect.top) + targetRect.height / 2;
+  const targetTop = Math.max(0, targetCenterInScrollContent - container.clientHeight / 2);
+
+  if (typeof container.scrollTo === 'function') {
+    container.scrollTo({ top: targetTop, behavior });
+  } else {
+    container.scrollTop = targetTop;
+  }
 }

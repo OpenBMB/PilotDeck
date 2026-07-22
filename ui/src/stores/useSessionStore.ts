@@ -31,7 +31,8 @@ export type MessageKind =
   | 'interrupted'
   | 'compact_boundary'
   | 'agent_activity'
-  | 'agent_activity_summary';
+  | 'agent_activity_summary'
+  | 'file_artifacts';
 
 export interface CompactProgress {
   level: number;
@@ -70,6 +71,18 @@ export interface NormalizedMessage {
     occurrenceIndex?: number | null;
     createdAt?: string;
     truncated?: boolean;
+  }>;
+  artifacts?: Array<{
+    id: string;
+    name: string;
+    path: string;
+    operation: 'created' | 'updated';
+    source: 'tool' | 'workspace_diff';
+    status: 'complete' | 'incomplete';
+    size: number;
+    sha256: string;
+    mimeType?: string;
+    createdAt: string;
   }>;
   toolName?: string;
   toolInput?: unknown;

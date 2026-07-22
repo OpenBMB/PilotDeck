@@ -20,11 +20,13 @@
 
 ## Typography and alignment
 
-- Use one neutral, widely available body font.
+- For Chinese, bilingual, or unspecified-language workbooks, follow [chinese-and-cross-platform.md](chinese-and-cross-platform.md).
+- Use one neutral body-font profile. Do not promise a universal CJK font; XLSX does not reliably embed fonts.
 - Use bold sparingly to establish reading order.
 - Left-align descriptions, right-align numbers, and apply explicit date/number formats.
 - Widen columns before creating deeply wrapped rows.
 - Keep row heights consistent within a section.
+- Use CJK-aware `helpers.autoFitColumns`; use `helpers.autoFitRows` after widths are final for wrapped text.
 
 ## Number formats
 
@@ -34,6 +36,7 @@ Use invariant Excel format codes:
 - Decimal: `#,##0.0`
 - Percentage: `0.0%`
 - Currency: `"$"#,##0` or a currency requested by the user
+- Chinese yuan: `¥#,##0` or `¥#,##0.00`
 - Date: `yyyy-mm-dd`
 - Month: `mmm yyyy`
 

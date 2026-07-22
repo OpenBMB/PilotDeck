@@ -313,6 +313,53 @@ export function useFileMentions({
 
   const handleFileMentionsKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if ((event.key === 'Backspace' || event.key === 'Delete') && sortedFileMentions.length > 0) {
+        const textarea = textareaRef.current;
+        const selectionStart = textarea?.selectionStart ?? cursorPosition;
+        const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+        if (selectionStart === selectionEnd) {
+          const mentionRanges = sortedFileMentions.flatMap((mention) => {
+            const ranges: Array<{ mention: string; start: number; end: number }> = [];
+            let searchFrom = 0;
+            while (searchFrom <= input.length - mention.length) {
+              const start = input.indexOf(mention, searchFrom);
+              if (start === -1) break;
+              const end = start + mention.length;
+              const hasLeadingBoundary = start === 0 || /\s/.test(input[start - 1]);
+              const hasTrailingBoundary = end === input.length || /\s/.test(input[end]);
+              if (hasLeadingBoundary && hasTrailingBoundary) ranges.push({ mention, start, end });
+              searchFrom = Math.max(end, start + 1);
+            }
+            return ranges;
+          });
+          const range = mentionRanges.find(({ start, end }) => (
+            event.key === 'Backspace'
+              ? selectionStart === end || (selectionStart === end + 1 && /\s/.test(input[end] || ''))
+              : selectionStart === start || (selectionStart + 1 === start && /\s/.test(input[selectionStart] || ''))
+          ));
+
+          if (range) {
+            event.preventDefault();
+            let removeStart = range.start;
+            let removeEnd = range.end;
+            if (/\s/.test(input[removeEnd] || '')) {
+              removeEnd += 1;
+            } else if (removeStart > 0 && /\s/.test(input[removeStart - 1] || '')) {
+              removeStart -= 1;
+            }
+            const nextInput = `${input.slice(0, removeStart)}${input.slice(removeEnd)}`;
+            setInput(nextInput);
+            setCursorPosition(removeStart);
+            setFileMentions((mentions) => mentions.filter((mention) => (
+              mention !== range.mention || hasWorkspaceFileMention(nextInput, mention)
+            )));
+            focusMention(removeStart);
+            setShowFileDropdown(false);
+            return true;
+          }
+        }
+      }
+
       if (!showFileDropdown || filteredFiles.length === 0) {
         return false;
       }
@@ -354,7 +401,19 @@ export function useFileMentions({
 
       return false;
     },
-    [showFileDropdown, filteredFiles, selectedFileIndex, selectFile],
+    [
+      cursorPosition,
+      filteredFiles,
+      focusMention,
+      input,
+      selectFile,
+      selectedFileIndex,
+      setCursorPosition,
+      setInput,
+      showFileDropdown,
+      sortedFileMentions,
+      textareaRef,
+    ],
   );
 
   return {

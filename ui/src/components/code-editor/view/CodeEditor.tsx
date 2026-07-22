@@ -3,6 +3,7 @@ import { unifiedMergeView } from '@codemirror/merge';
 import type { Extension } from '@codemirror/state';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { api } from '../../../utils/api';
 import { useCodeEditorDocument } from '../hooks/useCodeEditorDocument';
 import { useCodeEditorSettings } from '../hooks/useCodeEditorSettings';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
@@ -56,6 +57,7 @@ export default function CodeEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDiff, setShowDiff] = useState(Boolean(file.diffInfo));
   const [markdownPreview, setMarkdownPreview] = useState(false);
+  const [htmlPreview, setHtmlPreview] = useState(false);
 
   const {
     isDarkMode,
@@ -96,6 +98,21 @@ export default function CodeEditor({
     const extension = file.name.split('.').pop()?.toLowerCase();
     return extension === 'md' || extension === 'markdown';
   }, [file.name]);
+
+  const isHtmlFile = useMemo(() => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    return extension === 'html' || extension === 'htm';
+  }, [file.name]);
+
+  useEffect(() => {
+    setMarkdownPreview(false);
+    setHtmlPreview(false);
+  }, [file.path]);
+
+  const htmlPreviewUrl = useMemo(() => {
+    if (!isHtmlFile || !projectName) return null;
+    return api.projectPreviewUrl(projectName, file.path, projectPath);
+  }, [file.path, isHtmlFile, projectName, projectPath]);
 
   const minimapExtension = useMemo(
     () => (
@@ -254,7 +271,9 @@ export default function CodeEditor({
               isSidebar={isSidebar}
               isFullscreen={isFullscreen}
               isMarkdownFile={isMarkdownFile}
+              isHtmlFile={isHtmlFile}
               markdownPreview={markdownPreview}
+              htmlPreview={htmlPreview}
               saving={saving}
               saveSuccess={saveSuccess}
               isExpanded={isExpanded}
@@ -262,7 +281,13 @@ export default function CodeEditor({
               canGoBack={canGoBack}
               parentFileName={parentFileName}
               onGoBack={onGoBack}
-              onToggleMarkdownPreview={() => setMarkdownPreview((previous) => !previous)}
+              onToggleMarkdownPreview={() => {
+                if (isHtmlFile) {
+                  setHtmlPreview((previous) => !previous);
+                } else {
+                  setMarkdownPreview((previous) => !previous);
+                }
+              }}
               onDownload={handleDownload}
               onSave={handleSave}
               onToggleFullscreen={() => setIsFullscreen((previous) => !previous)}
@@ -273,6 +298,8 @@ export default function CodeEditor({
                 showingChanges: t('header.showingChanges'),
                 editMarkdown: t('actions.editMarkdown'),
                 previewMarkdown: t('actions.previewMarkdown'),
+                editHtml: t('actions.editHtml'),
+                previewHtml: t('actions.previewHtml'),
                 download: t('actions.download'),
                 save: t('actions.save'),
                 saving: t('actions.saving'),
@@ -299,6 +326,10 @@ export default function CodeEditor({
               onChange={setContent}
               markdownPreview={markdownPreview}
               isMarkdownFile={isMarkdownFile}
+              htmlPreview={htmlPreview}
+              isHtmlFile={isHtmlFile}
+              htmlPreviewUrl={htmlPreviewUrl}
+              fileName={file.name}
               isDarkMode={isDarkMode}
               fontSize={fontSize}
               showLineNumbers={showLineNumbers}

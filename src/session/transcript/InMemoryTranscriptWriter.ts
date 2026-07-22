@@ -3,6 +3,7 @@ import type { AgentTurnResult } from "../../agent/protocol/result.js";
 import type { AgentControlBoundaryTranscriptEntry, SessionMetadataValue } from "./TranscriptEntry.js";
 import type { AgentStatusMessageInput } from "./TranscriptWriter.js";
 import type { AgentTranscriptWriter, AgentTranscriptWriterState } from "./TranscriptWriter.js";
+import type { FileArtifact } from "../artifacts/FileArtifact.js";
 
 export type InMemoryTranscriptEntry =
   | {
@@ -14,6 +15,7 @@ export type InMemoryTranscriptEntry =
     }
   | { type: "durable_message"; sessionId: string; turnId: string; message: CanonicalMessage }
   | { type: "agent_status_message"; sessionId: string; turnId: string } & AgentStatusMessageInput
+  | { type: "file_artifacts"; sessionId: string; turnId: string; artifacts: FileArtifact[] }
   | { type: "turn_result"; sessionId: string; turnId: string; result: AgentTurnResult }
   | { type: "session_metadata"; sessionId: string; turnId: string; metadata: SessionMetadataValue }
   | {
@@ -47,6 +49,10 @@ export class InMemoryTranscriptWriter implements AgentTranscriptWriter {
 
   recordAgentStatusMessage(sessionId: string, turnId: string, status: AgentStatusMessageInput): void {
     this.entries.push({ type: "agent_status_message", sessionId, turnId, ...status });
+  }
+
+  recordFileArtifacts(sessionId: string, turnId: string, artifacts: FileArtifact[]): void {
+    this.entries.push({ type: "file_artifacts", sessionId, turnId, artifacts });
   }
 
   recordTurnResult(sessionId: string, turnId: string, result: AgentTurnResult): void {

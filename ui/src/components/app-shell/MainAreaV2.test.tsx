@@ -14,12 +14,26 @@ vi.mock('../main-content/view/MainContent', async () => {
 
   function RegisteredSearchMock({ activeTab }: { activeTab: AppTab }) {
     const [isOpen, setIsOpen] = React.useState(false);
+    const [query, setQuery] = React.useState('');
+    const [activeMatchIndex, setActiveMatchIndex] = React.useState(0);
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
     const openSearch = React.useCallback(() => setIsOpen(true), []);
-    const closeSearch = React.useCallback(() => setIsOpen(false), []);
+    const closeSearch = React.useCallback(() => {
+      setIsOpen(false);
+      setQuery('');
+    }, []);
+    const matches = query ? [{}, {}] : [];
     useRegisterChatHistorySearchControls({
       isOpen,
       openSearch,
       closeSearch,
+      query,
+      setQuery,
+      matches,
+      activeMatchIndex,
+      goToPrevious: () => setActiveMatchIndex((index) => Math.max(0, index - 1)),
+      goToNext: () => setActiveMatchIndex((index) => Math.min(matches.length - 1, index + 1)),
+      inputRef,
     });
 
     return (
@@ -28,11 +42,6 @@ vi.mock('../main-content/view/MainContent', async () => {
         data-active-tab={activeTab}
         data-search-open={isOpen ? 'true' : 'false'}
       >
-        {isOpen ? (
-          <button type="button" onClick={() => setIsOpen(false)}>
-            Mock close search
-          </button>
-        ) : null}
       </div>
     );
   }
@@ -87,6 +96,35 @@ afterEach(() => {
 });
 
 describe('MainAreaV2 dashboard switcher', () => {
+  it('renames the selected session inline after double-clicking the header title', () => {
+    render(<Harness withSession />);
+
+    fireEvent.doubleClick(screen.getByTitle('Searchable chat'));
+    const input = screen.getByRole('textbox', { name: 'Rename Session' });
+    expect((input as HTMLInputElement).value).toBe('Searchable chat');
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: 'Renamed conversation' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(screen.getByTitle('Renamed conversation').textContent).toBe('Renamed conversation');
+    expect(JSON.parse(localStorage.getItem('pilotdeck:customSessionTitles') || '{}')).toEqual({
+      'session-1': 'Renamed conversation',
+    });
+  });
+
+  it('cancels an inline session rename when Escape is pressed', () => {
+    render(<Harness withSession />);
+
+    fireEvent.doubleClick(screen.getByTitle('Searchable chat'));
+    const input = screen.getByRole('textbox', { name: 'Rename Session' });
+    fireEvent.change(input, { target: { value: 'Discarded title' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(screen.getByTitle('Searchable chat').textContent).toBe('Searchable chat');
+    expect(localStorage.getItem('pilotdeck:customSessionTitles')).toBeNull();
+  });
+
   it('places an available chat search button before Files and keeps its state in sync', async () => {
     render(<Harness initialTab="files" withSession />);
 
@@ -107,7 +145,12 @@ describe('MainAreaV2 dashboard switcher', () => {
     expect(searchButton.className).toContain('text-blue-700');
     expect(searchButton.className).not.toContain('shadow');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mock close search' }));
+    const headerSearch = within(screen.getByRole('banner')).getByRole('search');
+    expect(headerSearch.className).not.toContain('absolute');
+    expect(headerSearch.className).not.toContain('shadow');
+    expect(within(headerSearch).getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByTitle('Searchable chat').textContent).toBe('Searchable chat');
+    fireEvent.click(searchButton);
     await waitFor(() => expect(searchButton.getAttribute('aria-pressed')).toBe('false'));
 
     fireEvent.click(searchButton);

@@ -1,6 +1,6 @@
-import type { RefObject } from 'react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../../lib/utils.js';
 
 type ChatHistorySearchBarProps = {
   query: string;
@@ -10,7 +10,8 @@ type ChatHistorySearchBarProps = {
   onPrevious: () => void;
   onNext: () => void;
   onClose: () => void;
-  inputRef: RefObject<HTMLInputElement | null>;
+  inputRef: { current: HTMLInputElement | null };
+  placement?: 'floating' | 'header';
 };
 
 export default function ChatHistorySearchBar({
@@ -22,6 +23,7 @@ export default function ChatHistorySearchBar({
   onNext,
   onClose,
   inputRef,
+  placement = 'floating',
 }: ChatHistorySearchBarProps) {
   const { t } = useTranslation();
   const hasQuery = query.trim().length > 0;
@@ -37,14 +39,21 @@ export default function ChatHistorySearchBar({
 
   return (
     <div
-      className="pointer-events-auto absolute right-4 top-4 z-20 flex w-[min(100%,320px)] items-center gap-1 rounded-lg border border-neutral-200 bg-white/95 px-2 py-1.5 shadow-lg backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95"
+      className={cn(
+        'pointer-events-auto flex items-center gap-1 border border-neutral-200 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900',
+        placement === 'header'
+          ? 'h-9 w-full max-w-[360px] rounded-md'
+          : 'absolute right-4 top-4 z-20 w-[min(100%,320px)] rounded-lg bg-white/95 py-1.5 shadow-lg backdrop-blur-sm dark:bg-neutral-900/95',
+      )}
       data-chat-history-search
       role="search"
       aria-label={t('chatSearch.ariaLabel', { defaultValue: 'Search in conversation' }) as string}
     >
       <Search className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
       <input
-        ref={inputRef}
+        ref={(element) => {
+          inputRef.current = element;
+        }}
         type="search"
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
@@ -77,14 +86,16 @@ export default function ChatHistorySearchBar({
       >
         <ChevronDown className="h-4 w-4" strokeWidth={1.75} />
       </button>
-      <button
-        type="button"
-        onClick={onClose}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        aria-label={t('chatSearch.close', { defaultValue: 'Close search' }) as string}
-      >
-        <X className="h-4 w-4" strokeWidth={1.75} />
-      </button>
+      {placement === 'floating' ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          aria-label={t('chatSearch.close', { defaultValue: 'Close search' }) as string}
+        >
+          <X className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      ) : null}
     </div>
   );
 }

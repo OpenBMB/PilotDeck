@@ -13,6 +13,7 @@ import type {
  *
  *   tools:
  *     webSearch:
+ *       enabled: true
  *       provider: glm                    # glm | tavily | custom
  *       apiKey: "..."
  *       endpoint: https://api.z.ai/api/paas/v4/web_search
@@ -78,6 +79,20 @@ function parseWebSearch(
   }
 
   const result: PilotWebSearchConfig = {};
+
+  if (raw.enabled !== undefined) {
+    if (typeof raw.enabled !== "boolean") {
+      diagnostics.push({
+        code: "TOOLS_WEB_SEARCH_ENABLED_INVALID",
+        severity: "fatal",
+        message: "tools.webSearch.enabled must be a boolean.",
+        path: "tools.webSearch.enabled",
+        recoverable: false,
+      });
+    } else {
+      result.enabled = raw.enabled;
+    }
+  }
 
   if (raw.provider !== undefined) {
     if (raw.provider !== "glm" && raw.provider !== "tavily" && raw.provider !== "custom") {
@@ -150,7 +165,7 @@ function parseWebSearch(
   }
 
   for (const key of Object.keys(raw)) {
-    if (key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "region" && key !== "tavilyApiKey") {
+    if (key !== "enabled" && key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "region" && key !== "tavilyApiKey") {
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_UNKNOWN_FIELD",
         severity: "warning",

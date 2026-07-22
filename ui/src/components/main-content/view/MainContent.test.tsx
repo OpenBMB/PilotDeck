@@ -153,7 +153,7 @@ afterEach(() => {
 });
 
 describe('MainContent file workspace routing', () => {
-  it('renders the editor only in Files and routes chat file opens into Files', async () => {
+  it('routes every chat file open into the Files workbench', async () => {
     const setActiveTab = vi.fn();
     const { rerender } = render(<MainContent {...propsFor('files', setActiveTab)} />);
 
@@ -168,6 +168,7 @@ describe('MainContent file workspace routing', () => {
       null,
     );
     expect(setActiveTab).toHaveBeenCalledWith('files');
+    expect(screen.queryByTestId('editor-sidebar')).toBeNull();
   });
 
   it('routes a file-shaped session URL into Files instead of chat', async () => {

@@ -42,7 +42,7 @@ runtime_ready() {
     const { createRequire } = require("node:module");
     const path = require("node:path");
     const req = createRequire(path.resolve(process.argv[1], "package.json"));
-    for (const name of ["exceljs", "csv-parse/sync", "jszip", "@xmldom/xmldom", "sharp"]) req.resolve(name);
+    for (const name of ["exceljs", "csv-parse/sync", "iconv-lite", "jszip", "@xmldom/xmldom", "sharp"]) req.resolve(name);
   ' "$RUNTIME_CACHE" >/dev/null 2>&1
 }
 
@@ -132,7 +132,7 @@ case "${1:-}" in
     cmd_fix "$@"
     ;;
   ""|-h|--help|help)
-    printf 'Usage: spreadsheet.sh <check|fix|scaffold|build|inspect|recalculate|audit|render|self-test> [options]\n'
+    printf 'Usage: spreadsheet.sh <check|fix|scaffold|build|inspect|convert-legacy|recalculate|audit|render|deliver|self-test> [options]\n'
     ;;
   *)
     if ! runtime_ready; then

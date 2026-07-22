@@ -6,7 +6,9 @@ type CodeEditorHeaderProps = {
   isSidebar: boolean;
   isFullscreen: boolean;
   isMarkdownFile: boolean;
+  isHtmlFile?: boolean;
   markdownPreview: boolean;
+  htmlPreview?: boolean;
   saving: boolean;
   saveSuccess: boolean;
   canGoBack?: boolean;
@@ -29,6 +31,8 @@ type CodeEditorHeaderProps = {
     showingChanges: string;
     editMarkdown: string;
     previewMarkdown: string;
+    editHtml: string;
+    previewHtml: string;
     download: string;
     save: string;
     saving: string;
@@ -47,7 +51,9 @@ export default function CodeEditorHeader({
   isSidebar,
   isFullscreen,
   isMarkdownFile,
+  isHtmlFile = false,
   markdownPreview,
+  htmlPreview = false,
   saving,
   saveSuccess,
   isExpanded = false,
@@ -65,6 +71,9 @@ export default function CodeEditorHeader({
   labels,
 }: CodeEditorHeaderProps) {
   const saveTitle = saveSuccess ? labels.saved : saving ? labels.saving : labels.save;
+  const previewActive = isMarkdownFile ? markdownPreview : htmlPreview;
+  const editPreviewLabel = isMarkdownFile ? labels.editMarkdown : labels.editHtml;
+  const showPreviewLabel = isMarkdownFile ? labels.previewMarkdown : labels.previewHtml;
 
   const iconBtn =
     'flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
@@ -110,19 +119,19 @@ export default function CodeEditorHeader({
       ) : null}
 
       <div className="flex shrink-0 items-center gap-0.5">
-        {isMarkdownFile && (
+        {(isMarkdownFile || isHtmlFile) && (
           <button
             type="button"
             onClick={onToggleMarkdownPreview}
             className={
-              markdownPreview
+              previewActive
                 ? 'flex h-7 w-7 items-center justify-center rounded-md bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                 : iconBtn
             }
-            title={markdownPreview ? labels.editMarkdown : labels.previewMarkdown}
-            aria-label={markdownPreview ? labels.editMarkdown : labels.previewMarkdown}
+            title={previewActive ? editPreviewLabel : showPreviewLabel}
+            aria-label={previewActive ? editPreviewLabel : showPreviewLabel}
           >
-            {markdownPreview ? (
+            {previewActive ? (
               <Code2 className="h-3.5 w-3.5" strokeWidth={1.75} />
             ) : (
               <Eye className="h-3.5 w-3.5" strokeWidth={1.75} />

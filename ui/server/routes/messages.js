@@ -180,6 +180,12 @@ function mapWebMessageToNormalized(message, sessionId) {
     }
     case 'thinking':
       return createNormalizedMessage({ ...base, kind: 'thinking', content: message.text || '' });
+    case 'file_artifacts':
+      return createNormalizedMessage({
+        ...base,
+        kind: 'file_artifacts',
+        artifacts: Array.isArray(message.artifacts) ? message.artifacts : [],
+      });
     case 'tool_use':
       return createNormalizedMessage({
         ...base,

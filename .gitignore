@@ -146,6 +146,8 @@ vite.config.ts.timestamp-*
 
 # Local recording / artifacts
 artifacts/
+!src/session/artifacts/
+!src/session/artifacts/**
 
 # Raw .mov source files at the assets/ root (only the derived .gif
 # README assets are tracked; the .mov originals stay local).

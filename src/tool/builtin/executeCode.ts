@@ -35,6 +35,11 @@ export type ExecuteCodeOutput = {
   tool_call_log: ExecuteCodeToolCallLogEntry[];
 };
 
+export type CreateExecuteCodeToolOptions = {
+  /** Defaults to true. False removes the web_search Python helper and RPC capability. */
+  webSearch?: boolean;
+};
+
 type RpcRequest = {
   token?: unknown;
   tool?: unknown;
@@ -66,6 +71,7 @@ export async function handleExecuteCodeRpcLineForTests(
   options: {
     expectedToken?: string;
     executeTool?: NonNullable<PilotDeckToolRuntimeContext["executeTool"]>;
+    webSearch?: boolean;
   } = {},
 ): Promise<RpcResponse> {
   return handleRpcLine(line, {
@@ -91,6 +97,7 @@ export async function handleExecuteCodeRpcLineForTests(
     nextToolCall: () => 1,
     canCallTool: () => true,
     expectedToken: options.expectedToken,
+    allowedTools: resolveExecuteCodeAllowedTools({ webSearch: options.webSearch }),
   });
 }
 
@@ -98,8 +105,7 @@ const DEFAULT_TIMEOUT_SECONDS = 300;
 const DEFAULT_MAX_TOOL_CALLS = 50;
 const MAX_STDOUT_BYTES = 50_000;
 const MAX_STDERR_BYTES = 10_000;
-const EXECUTE_CODE_ALLOWED_TOOLS = new Set([
-  "web_search",
+const EXECUTE_CODE_BASE_ALLOWED_TOOLS = [
   "web_fetch",
   "read_file",
   "write_file",
@@ -107,16 +113,34 @@ const EXECUTE_CODE_ALLOWED_TOOLS = new Set([
   "grep",
   "glob",
   "bash",
-]);
+] as const;
 
-export function createExecuteCodeTool(): PilotDeckToolDefinition<ExecuteCodeInput, ExecuteCodeOutput> {
+function resolveExecuteCodeAllowedTools(
+  options: CreateExecuteCodeToolOptions,
+): ReadonlySet<string> {
+  const allowed = new Set<string>(EXECUTE_CODE_BASE_ALLOWED_TOOLS);
+  if (options.webSearch !== false) {
+    allowed.add("web_search");
+  }
+  return allowed;
+}
+
+export function createExecuteCodeTool(
+  options: CreateExecuteCodeToolOptions = {},
+): PilotDeckToolDefinition<ExecuteCodeInput, ExecuteCodeOutput> {
+  const webSearchEnabled = options.webSearch !== false;
+  const allowedTools = resolveExecuteCodeAllowedTools(options);
+  const availableHelpers = [
+    ...(webSearchEnabled ? ["web_search"] : []),
+    ...EXECUTE_CODE_BASE_ALLOWED_TOOLS,
+  ];
   return {
     name: "execute_code",
     description:
       "Run a local Python 3 script that can call a small allow-list of PilotDeck tools via `import pilotdeck_tools`. " +
       "The script runs from the workspace cwd and inherits the same runtime environment as normal tools such as bash, including configured API, proxy, PATH, virtualenv, and conda variables; do not print secrets or dump the full environment. " +
       "Only the script's final stdout/stderr summary is returned to the model; intermediate tool results stay inside the script. " +
-      "Available helper functions: web_search, web_fetch, read_file, write_file, edit_file, grep, glob, bash. " +
+      `Available helper functions: ${availableHelpers.join(", ")}. ` +
       "Use normal Python control flow to orchestrate tools: loops for batch work, conditionals for branching, data structures for aggregation, and try/except around individual helper calls when one failure should not abort the whole script. Helper failures raise RuntimeError. You can chain helper results, e.g. grep -> read_file -> edit_file. Print only the concise final result needed by the agent. " +
       "Before modifying an existing file, call read_file first so PilotDeck can verify freshness. Prefer edit_file for targeted changes and write_file for new files or complete rewrites. " +
       "Notebook edits, agent, task tools, MCP tools, and execute_code itself are not available.",
@@ -160,7 +184,10 @@ export function createExecuteCodeTool(): PilotDeckToolDefinition<ExecuteCodeInpu
     validateInput: async (input) => validateExecuteCodeInput(input as ExecuteCodeInput),
     execute: async (input, context) => {
       const startedAt = Date.now();
-      const result = await runExecuteCode(input, context, startedAt);
+      const result = await runExecuteCode(input, context, startedAt, {
+        allowedTools,
+        webSearchEnabled,
+      });
       return {
         content: [{ type: "text", text: formatExecuteCodeResult(result) }],
         data: result,
@@ -210,8 +237,10 @@ async function validateExecuteCodeInput(input: ExecuteCodeInput) {
 }
 
 function isExecuteCodeReadOnly(input: ExecuteCodeInput): boolean {
-  const code = input && typeof input.code === "string" ? input.code : "";
-  if (!code) return false;
+  const code = typeof input?.code === "string" ? input.code : undefined;
+  if (!code) {
+    return false;
+  }
   return !containsWriteCapableHelper(code) && readOnlyBashCallsOnly(code);
 }
 
@@ -321,6 +350,10 @@ async function runExecuteCode(
   input: ExecuteCodeInput,
   context: PilotDeckToolRuntimeContext,
   startedAt: number,
+  options: {
+    allowedTools: ReadonlySet<string>;
+    webSearchEnabled: boolean;
+  },
 ): Promise<ExecuteCodeOutput> {
   const timeoutSeconds = input.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS;
   const maxToolCalls = input.max_tool_calls ?? DEFAULT_MAX_TOOL_CALLS;
@@ -361,7 +394,11 @@ async function runExecuteCode(
   };
 
   try {
-    await writeFile(path.join(tempRoot, "pilotdeck_tools.py"), generatePilotDeckToolsModule(transport.kind), "utf8");
+    await writeFile(
+      path.join(tempRoot, "pilotdeck_tools.py"),
+      generatePilotDeckToolsModule(transport.kind, options.webSearchEnabled),
+      "utf8",
+    );
     await writeFile(path.join(tempRoot, "script.py"), input.code, "utf8");
 
     server = createRpcServer({
@@ -375,6 +412,7 @@ async function runExecuteCode(
       },
       canCallTool: () => toolCallsMade < maxToolCalls,
       expectedToken: transport.kind === "tcp" ? transport.token : undefined,
+      allowedTools: options.allowedTools,
     });
     transport = await listen(server, transport);
 
@@ -435,6 +473,7 @@ function createRpcServer(options: {
   nextToolCall: () => number;
   canCallTool: () => boolean;
   expectedToken?: string;
+  allowedTools: ReadonlySet<string>;
 }): Server {
   return createServer((socket) => {
     let buffer = "";
@@ -467,6 +506,7 @@ async function processBufferedRequests(
     nextToolCall: () => number;
     canCallTool: () => boolean;
     expectedToken?: string;
+    allowedTools: ReadonlySet<string>;
   },
 ): Promise<void> {
   for (const rawLine of takeLines()) {
@@ -487,6 +527,7 @@ async function handleRpcLine(
     nextToolCall: () => number;
     canCallTool: () => boolean;
     expectedToken?: string;
+    allowedTools: ReadonlySet<string>;
   },
 ): Promise<RpcResponse> {
   let request: RpcRequest;
@@ -501,7 +542,7 @@ async function handleRpcLine(
   if (options.expectedToken && request.token !== options.expectedToken) {
     return { error: "Invalid execute_code RPC token.", code: "invalid_rpc_token" };
   }
-  if (!EXECUTE_CODE_ALLOWED_TOOLS.has(toolName)) {
+  if (!options.allowedTools.has(toolName)) {
     return { error: `Tool '${toolName}' is not available in execute_code.`, code: "tool_not_allowed" };
   }
   if (!options.canCallTool()) {
@@ -550,16 +591,21 @@ function formatToolErrorDetails(result: Extract<PilotDeckToolResult, { type: "er
   return messages.length > 0 ? messages.join("\n") : undefined;
 }
 
-function generatePilotDeckToolsModule(kind: RpcTransport["kind"]): string {
+function generatePilotDeckToolsModule(
+  kind: RpcTransport["kind"],
+  webSearchEnabled: boolean,
+): string {
   const transportHeader = kind === "tcp" ? TCP_PYTHON_TRANSPORT_HEADER : UDS_PYTHON_TRANSPORT_HEADER;
-  return `${transportHeader}
-
+  const webSearchHelper = webSearchEnabled ? `
 def web_search(query, country=None):
     args = {"query": query}
     if country is not None:
         args["gl"] = country
     return _call("web_search", args)
 
+` : "";
+  return `${transportHeader}
+${webSearchHelper}
 
 def web_fetch(url, mode=None, prompt=None):
     args = {"url": url}

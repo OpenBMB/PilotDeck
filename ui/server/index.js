@@ -93,6 +93,11 @@ import {
     getLibreOfficeCandidateStatuses,
     getLibreOfficeStatus,
 } from './services/officePreview.js';
+import {
+    SPREADSHEET_PREVIEW_EXTENSIONS,
+    getSpreadsheetPreviewManifest,
+    getSpreadsheetSheetPreviewPdf,
+} from './services/spreadsheetPreview.js';
 import { startPilotDeckConfigWatcher, stopPilotDeckConfigWatcher } from './services/pilotdeckConfigWatcher.js';
 import { getAlwaysOnDashboardEvents } from './services/always-on-events.js';
 import agentRoutes from './routes/agent.js';
@@ -1072,6 +1077,16 @@ function parseRangeHeader(rangeHeader, fileSize) {
     };
 }
 
+async function sha256File(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+}
+
 async function streamFileWithRange(req, res, filePath, options = {}) {
     const stats = await fsPromises.stat(filePath);
     const fileSize = stats.size;
@@ -1129,7 +1144,12 @@ async function streamFileWithRange(req, res, filePath, options = {}) {
     });
 }
 
-const OFFICE_PDF_PREVIEW_EXTENSIONS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp']);
+const OFFICE_PDF_PREVIEW_EXTENSIONS = new Set([
+    'doc', 'docx', 'wps',
+    'xls', 'xlsx', 'et',
+    'ppt', 'pptx', 'dps',
+    'odt', 'ods', 'odp',
+]);
 
 const getFileExtension = (filePath) => path.extname(filePath).slice(1).toLowerCase();
 
@@ -1380,6 +1400,9 @@ app.get('/api/projects/:projectName/files/content', authenticateToken, async (re
         }
 
         const mimeType = mime.lookup(resolved) || 'application/octet-stream';
+        if (req.method === 'HEAD' && (req.query.sha256 === '1' || req.query.sha256 === 'true')) {
+            res.setHeader('X-PilotDeck-Content-SHA256', await sha256File(resolved));
+        }
         await streamFileWithRange(req, res, resolved, {
             mimeType,
             downloadFilename: req.query.download ? path.basename(resolved) : null,
@@ -1479,6 +1502,102 @@ app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, offic
                         ? 'Office preview service is disabled'
                         : 'Failed to generate Office PDF preview',
                 code: error.code || 'OFFICE_PREVIEW_FAILED',
+            });
+        }
+    }
+});
+
+// Preserve workbook semantics for spreadsheet previews. The manifest exposes
+// visible worksheet tabs, while each worksheet is rendered as its own PDF so
+// multi-page sheets remain grouped under one tab in the UI.
+app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+    try {
+        const { projectName } = req.params;
+        const { path: filePath } = req.query;
+        const force = req.query.force === '1' || req.query.force === 'true';
+
+        if (!filePath) {
+            return res.status(400).json({ error: 'Invalid file path' });
+        }
+
+        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        if (!projectRoot) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        const resolvedResult = resolvePathInProject(projectRoot, filePath);
+        if (!resolvedResult.valid) {
+            return res.status(403).json({ error: resolvedResult.error });
+        }
+        const extension = getFileExtension(resolvedResult.resolved);
+        if (!SPREADSHEET_PREVIEW_EXTENSIONS.has(extension)) {
+            return res.status(400).json({ error: 'Unsupported spreadsheet preview format' });
+        }
+        const officePreviewService = getConfiguredOfficePreviewService();
+        if (officePreviewService === OFFICE_PREVIEW_SERVICE_NONE) {
+            return res.status(409).json({
+                error: 'Office preview service is disabled',
+                code: 'OFFICE_PREVIEW_DISABLED',
+            });
+        }
+
+        const manifest = await getSpreadsheetPreviewManifest(resolvedResult.resolved, { force });
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.json(manifest);
+    } catch (error) {
+        console.error('Error reading spreadsheet preview manifest:', error);
+        return res.status(error.statusCode || 500).json({
+            error: error.message || 'Failed to read spreadsheet preview manifest',
+            code: error.code || 'SPREADSHEET_PREVIEW_MANIFEST_FAILED',
+        });
+    }
+});
+
+app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+    try {
+        const { projectName } = req.params;
+        const { path: filePath, sheet: sheetIndex } = req.query;
+        const force = req.query.force === '1' || req.query.force === 'true';
+
+        if (!filePath || sheetIndex === undefined) {
+            return res.status(400).json({ error: 'File path and worksheet index are required' });
+        }
+
+        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        if (!projectRoot) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        const resolvedResult = resolvePathInProject(projectRoot, filePath);
+        if (!resolvedResult.valid) {
+            return res.status(403).json({ error: resolvedResult.error });
+        }
+        const extension = getFileExtension(resolvedResult.resolved);
+        if (!SPREADSHEET_PREVIEW_EXTENSIONS.has(extension)) {
+            return res.status(400).json({ error: 'Unsupported spreadsheet preview format' });
+        }
+        const officePreviewService = getConfiguredOfficePreviewService();
+        if (officePreviewService === OFFICE_PREVIEW_SERVICE_NONE) {
+            return res.status(409).json({
+                error: 'Office preview service is disabled',
+                code: 'OFFICE_PREVIEW_DISABLED',
+            });
+        }
+
+        const pdfPath = await getSpreadsheetSheetPreviewPdf(
+            resolvedResult.resolved,
+            Number(sheetIndex),
+            { force },
+        );
+        await streamFileWithRange(req, res, pdfPath, {
+            mimeType: 'application/pdf',
+            cacheControl: 'no-store, no-cache, must-revalidate',
+            pragma: 'no-cache',
+        });
+    } catch (error) {
+        console.error('Error generating worksheet PDF preview:', error);
+        if (!res.headersSent) {
+            res.status(error.statusCode || 500).json({
+                error: error.message || 'Failed to generate worksheet preview',
+                code: error.code || 'SPREADSHEET_SHEET_PREVIEW_FAILED',
             });
         }
     }
@@ -3234,6 +3353,9 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
             if (entry.name === 'node_modules' ||
                 entry.name === 'dist' ||
                 entry.name === 'build' ||
+                entry.name.startsWith('.pilotdeck') ||
+                entry.name === '.tmp' ||
+                /^\.pilotdeck_build\.(?:c|m)?js$/i.test(entry.name) ||
                 entry.name === '.git' ||
                 entry.name === '.svn' ||
                 entry.name === '.hg') continue;

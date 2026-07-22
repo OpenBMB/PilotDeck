@@ -27,6 +27,7 @@ import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import type { SessionNavigationOptions } from '../main-content/types/types';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
+import { chooseDefaultProject } from './appShellSelection';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 
 type TypedSettingsProps = {
@@ -104,7 +105,6 @@ export default function AppShellV2() {
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
-  const filesAutoCollapsedSidebarRef = useRef(false);
   const { ws, sendMessage, latestMessage, isConnected, subscribe } = useWebSocket();
   const wasConnectedRef = useRef(false);
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => new Set());
@@ -195,10 +195,9 @@ export default function AppShellV2() {
     navigate,
   ]);
 
-  // Default selection: prefer a project named "general" so the project-centric
-  // sidebar always has something useful surfaced. Falls back to the first
-  // project when "general" is missing. Runs only when there's no URL hint and
-  // no current selection — never overrides user navigation.
+  // Default selection: prefer a regular project. General is only the fallback
+  // when no regular project exists. Explicit project/session URLs still own
+  // selection and are never overridden here.
   const didDefaultProjectRef = useRef(false);
   useEffect(() => {
     if (didDefaultProjectRef.current) return;
@@ -211,11 +210,8 @@ export default function AppShellV2() {
       didDefaultProjectRef.current = true;
       return;
     }
-    if (sidebarSharedProps.projects.length === 0) return;
-    const general = sidebarSharedProps.projects.find(
-      (p) => p.name === 'general' || p.displayName === 'general',
-    );
-    const target = general ?? sidebarSharedProps.projects[0];
+    const target = chooseDefaultProject(sidebarSharedProps.projects);
+    if (!target) return;
     handleProjectSelect(target);
     navigate(`/p/${encodeURIComponent(target.name)}`, { replace: true });
     didDefaultProjectRef.current = true;
@@ -372,32 +368,15 @@ export default function AppShellV2() {
     if (isMobile) {
       setSidebarOpen(false);
     } else {
-      filesAutoCollapsedSidebarRef.current = false;
       setDesktopSidebarOpen(false);
     }
   }, [isMobile, setSidebarOpen]);
   const onOpenDesktopSidebar = useCallback(() => {
-    filesAutoCollapsedSidebarRef.current = false;
     setDesktopSidebarOpen(true);
   }, []);
 
   useEffect(() => {
-    if (isMobile) {
-      filesAutoCollapsedSidebarRef.current = false;
-      return;
-    }
-
-    if (activeTab === 'files') {
-      setDesktopSidebarOpen((open) => {
-        if (!open) return open;
-        filesAutoCollapsedSidebarRef.current = true;
-        return false;
-      });
-      return;
-    }
-
-    if (filesAutoCollapsedSidebarRef.current) {
-      filesAutoCollapsedSidebarRef.current = false;
+    if (!isMobile && activeTab === 'files') {
       setDesktopSidebarOpen(true);
     }
   }, [activeTab, isMobile]);

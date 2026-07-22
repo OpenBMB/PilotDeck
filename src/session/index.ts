@@ -51,9 +51,18 @@ export {
 export { readTranscript, type AgentTranscriptReadResult } from "./transcript/TranscriptReader.js";
 export { replayTranscriptEntries, findLastCompactBoundaryIndex, type AgentTranscriptReplayResult } from "./transcript/TranscriptReplay.js";
 export { replaySubagentTranscript } from "./transcript/replaySubagentTranscript.js";
+export {
+  FileArtifactCollector,
+  type FileArtifact,
+  type FileArtifactCollectorOptions,
+  type FileArtifactOperation,
+  type FileArtifactSource,
+  type FileArtifactStatus,
+} from "./artifacts/index.js";
 export type {
   AgentAcceptedInputTranscriptEntry,
   AgentControlBoundaryTranscriptEntry,
+  AgentFileArtifactsTranscriptEntry,
   AgentMessageTranscriptEntry,
   AgentSubagentCompletedTranscriptEntry,
   AgentSubagentStartedTranscriptEntry,

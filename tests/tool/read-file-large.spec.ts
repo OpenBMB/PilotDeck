@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 
 import { createEditFileTool } from "../../src/tool/builtin/editFile.js";
 import { createReadFileTool } from "../../src/tool/builtin/readFile.js";
+import { hasBinaryExtension } from "../../src/tool/builtin/filesystem/fileTypeSafety.js";
+import { readFileInRange } from "../../src/tool/builtin/filesystem/readFileInRange.js";
 
 function context(cwd: string) {
   return {
@@ -179,6 +181,46 @@ test("read_file returns a head-tail preview for a single oversized line", async 
     assert.match(text, /head\/tail preview/);
     assert.match(text, /read_file\({ file_path: "one-line\.txt", offset: 1, limit: 1 }\)/);
     assert.equal((result.data as { autoPaged?: boolean }).autoPaged, true);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("read_file classifies common Office formats as binary", () => {
+  for (const extension of ["xlsx", "xls", "docx", "doc", "pptx", "ppt", "ods", "odt", "odp"]) {
+    assert.equal(hasBinaryExtension(`sample.${extension}`), true, `expected .${extension} to be binary`);
+  }
+});
+
+test("read_file rejects ranged binary input instead of hanging", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-read-binary-range-"));
+  try {
+    const filePath = join(projectRoot, "unknown.payload");
+    await writeFile(filePath, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x61, 0x62, 0x63]));
+
+    await assert.rejects(
+      () => readFileInRange(filePath, 1, 20),
+      /appears to be a binary file/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("read_file range honors an aborted signal", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-read-aborted-range-"));
+  try {
+    const filePath = join(projectRoot, "large.txt");
+    await writeFile(filePath, Array.from({ length: 100 }, (_, index) => `line-${index + 1}`).join("\n"));
+    const controller = new AbortController();
+    controller.abort();
+
+    await assert.rejects(
+      () => readFileInRange(filePath, 1, 20, controller.signal),
+      (error: unknown) => error instanceof Error
+        && error.name === "PilotDeckToolRuntimeError"
+        && (error as { code?: string }).code === "tool_aborted",
+    );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }

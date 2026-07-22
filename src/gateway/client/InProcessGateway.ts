@@ -1438,6 +1438,8 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         ...attachments,
       ];
     }
+    case "file_artifacts":
+      return [{ type: "file_artifacts", artifacts: event.artifacts }];
     case "mode_change_requested":
       return [{ type: "plan_mode_changed", mode: event.mode }];
     case "turn_completed":

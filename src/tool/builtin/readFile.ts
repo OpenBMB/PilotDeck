@@ -147,7 +147,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           issues: [{
             path: "file_path",
             code: "invalid_schema",
-            message: "binary files are not supported by read_file. Convert Office/archive/binary files to a supported text, PDF, or image format before inspection; use send_attachment/send_file only when the user wants this file sent back through the current channel.",
+            message: "binary files are not supported by read_file. Use the relevant document, spreadsheet, or presentation skill for Office files; convert archives or other binary files to a supported text, PDF, or image format before inspection. Use send_attachment/send_file only when the user wants this file sent back through the current channel.",
           }],
         };
       }
@@ -195,7 +195,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             data: { filePath: resolved.relativePath, kind, modelSupportsImage: false },
           };
         }
-        const imageBuffer = await readFile(resolved.absolutePath);
+        const imageBuffer = await readFile(resolved.absolutePath, { signal: context.abortSignal });
         const maxImageBytes = Math.min(MAX_IMAGE_BYTES, context.modelMultimodal?.maxImageBytes ?? MAX_IMAGE_BYTES);
         const preparedImage = await prepareImageForModel(imageBuffer, mimeType, maxImageBytes);
         if (!preparedImage.ok) {
@@ -248,7 +248,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           throw new PilotDeckToolRuntimeError("invalid_tool_input", `Invalid PDF page range: ${input.pages}.`);
         }
 
-        const pdfBuffer = await readFile(resolved.absolutePath);
+        const pdfBuffer = await readFile(resolved.absolutePath, { signal: context.abortSignal });
         const pageCount = await countPdfPages(pdfBuffer);
 
         if (
@@ -442,7 +442,10 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           pages: input.pages,
         });
         recordWriteSnapshot(
-          context, resolved.absolutePath, await readFile(resolved.absolutePath, "utf8"), fileStat.mtimeMs,
+          context,
+          resolved.absolutePath,
+          await readFile(resolved.absolutePath, { encoding: "utf8", signal: context.abortSignal }),
+          fileStat.mtimeMs,
           { offset: input.offset, limit: input.limit },
         );
         return {
@@ -461,21 +464,21 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       }
 
       const effectiveLimit = input.limit ?? (fileStat.size > LARGE_TEXT_AUTO_PAGE_BYTES ? DEFAULT_LARGE_TEXT_PREVIEW_LINES : undefined);
-      let ranged = await readFileInRange(resolved.absolutePath, offset, effectiveLimit);
+      let ranged = await readFileInRange(resolved.absolutePath, offset, effectiveLimit, context.abortSignal);
       let text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
       let autoPaged = input.limit === undefined && effectiveLimit !== undefined;
       let toolResultRefAutoPaged = false;
       if (autoPaged) {
         while (isOverTextBudget(text) && ranged.lineCount > 1) {
           const nextLimit = Math.max(1, Math.floor(ranged.lineCount / 2));
-          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit);
+          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit, context.abortSignal);
           text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
         }
       }
       if (!autoPaged && isManagedToolResultRefPath(resolved.relativePath)) {
         while (isOverTextBudget(text) && ranged.lineCount > 1) {
           const nextLimit = Math.max(1, Math.floor(ranged.lineCount / 2));
-          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit);
+          ranged = await readFileInRange(resolved.absolutePath, offset, nextLimit, context.abortSignal);
           text = renderReadableRange(ranged.content, ranged.startLine, ranged.totalLines);
           toolResultRefAutoPaged = true;
         }

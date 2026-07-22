@@ -266,6 +266,146 @@ describe('config test-connection route', () => {
   });
 });
 
+describe('config test-web-search route', () => {
+  it('resolves a masked API key from the saved web-search config', async () => {
+    const authorizationHeaders = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      authorizationHeaders.push(init?.headers?.Authorization);
+      return jsonResponse({ search_result: [{ title: 'result' }] });
+    }));
+
+    const { request } = await createConfigApp({
+      config: {
+        tools: {
+          webSearch: {
+            provider: 'glm',
+            apiKey: 'saved-search-key',
+          },
+        },
+      },
+    });
+    const data = await request('/api/config/test-web-search', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'glm',
+        apiKey: '********',
+        endpoint: 'https://api.z.ai/api/paas/v4/web_search',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+    expect(data.organicCount).toBe(1);
+    expect(authorizationHeaders).toEqual(['Bearer saved-search-key']);
+  });
+
+  it('prefers a newly entered API key over the saved key', async () => {
+    const authorizationHeaders = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      authorizationHeaders.push(init?.headers?.Authorization);
+      return jsonResponse({ search_result: [] });
+    }));
+
+    const { request } = await createConfigApp({
+      config: {
+        tools: {
+          webSearch: {
+            provider: 'glm',
+            apiKey: 'saved-search-key',
+          },
+        },
+      },
+    });
+    const data = await request('/api/config/test-web-search', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'glm',
+        apiKey: 'new-search-key',
+        endpoint: 'https://api.z.ai/api/paas/v4/web_search',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+    expect(authorizationHeaders).toEqual(['Bearer new-search-key']);
+  });
+
+  it('rejects a masked API key when no saved key exists', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/test-web-search', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'glm',
+        apiKey: '********',
+        endpoint: 'https://api.z.ai/api/paas/v4/web_search',
+      }),
+    });
+
+    expect(data.ok).toBe(false);
+    expect(data.error).toBe('API key is required.');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not send a saved masked API key to a caller-controlled provider endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+
+    const { request } = await createConfigApp({
+      config: {
+        tools: {
+          webSearch: {
+            provider: 'glm',
+            apiKey: 'saved-search-key',
+          },
+        },
+      },
+    });
+    const data = await request('/api/config/test-web-search', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'custom',
+        apiKey: '********',
+        endpoint: 'https://attacker.example/search',
+        customProvider: { auth: 'bearer', method: 'POST' },
+      }),
+    });
+
+    expect(data.ok).toBe(false);
+    expect(data.error).toContain('Enter the Web Search API key again');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not preserve a masked Web Search key when its credential scope changes on save', async () => {
+    const { request, writePilotDeckConfig } = await createConfigApp({
+      config: {
+        tools: {
+          webSearch: {
+            provider: 'glm',
+            apiKey: 'saved-search-key',
+          },
+        },
+      },
+    });
+    const data = await request('/api/config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        config: {
+          tools: {
+            webSearch: {
+              provider: 'custom',
+              apiKey: '********',
+              endpoint: 'https://attacker.example/search',
+              customProvider: { auth: 'bearer', method: 'POST' },
+            },
+          },
+        },
+      }),
+    });
+
+    expect(data.error).toContain('Enter the Web Search API key again');
+    expect(writePilotDeckConfig).not.toHaveBeenCalled();
+  });
+});
+
 
 describe('config routes invalid YAML fallback', () => {
   it('returns raw invalid YAML instead of failing GET /api/config', async () => {
@@ -339,7 +479,9 @@ describe('config routes invalid YAML fallback', () => {
   });
 });
 
-async function createConfigApp() {
+async function createConfigApp({ config = {} } = {}) {
+  const writePilotDeckConfig = vi.fn();
+  const writeRawPilotDeckYaml = vi.fn();
   vi.doMock('../services/pilotdeckConfigWatcher.js', () => ({
     suppressNextWatchEvent: vi.fn(),
   }));
@@ -350,9 +492,9 @@ async function createConfigApp() {
     const actual = await vi.importActual('../services/pilotdeckConfig.js');
     return {
       ...actual,
-      readPilotDeckConfigFile: vi.fn(() => ({ exists: false, configPath: '', config: {}, rawYaml: {} })),
-      writePilotDeckConfig: vi.fn(),
-      writeRawPilotDeckYaml: vi.fn(),
+      readPilotDeckConfigFile: vi.fn(() => ({ exists: false, configPath: '', config, rawYaml: {} })),
+      writePilotDeckConfig,
+      writeRawPilotDeckYaml,
     };
   });
   vi.doMock('../pilotdeck-bridge.js', () => ({
@@ -366,6 +508,8 @@ async function createConfigApp() {
 
   return {
     request: (path, init) => requestBodyJson(app, path, init),
+    writePilotDeckConfig,
+    writeRawPilotDeckYaml,
   };
 }
 
@@ -436,5 +580,6 @@ function jsonResponse(payload, overrides = {}) {
     statusText: 'OK',
     ...overrides,
     text: async () => JSON.stringify(payload),
+    json: async () => payload,
   };
 }
