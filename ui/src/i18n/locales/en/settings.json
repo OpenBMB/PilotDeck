@@ -930,6 +930,10 @@
       "tools": {
         "title": "Search",
         "description": "Configure the search service used by the agent's web_search tool.",
+        "enabled": {
+          "label": "Enable web search",
+          "description": "When disabled, the agent will not receive the web_search tool."
+        },
         "provider": {
           "label": "Search provider",
           "description": "The active search service.",

@@ -200,6 +200,7 @@ type PilotDeckConfig = {
   gateway?: { enabled?: boolean; home?: string } & Record<string, unknown>;
   tools?: {
     webSearch?: {
+      enabled?: boolean;
       provider?: 'glm' | 'tavily' | 'custom';
       apiKey?: string;
       endpoint?: string;
@@ -2638,6 +2639,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
   const { t } = useTranslation('settings');
   const glmDefaultEndpoint = 'https://api.z.ai/api/paas/v4/web_search';
   const ws = config.tools?.webSearch ?? {};
+  const enabled = ws.enabled !== false;
   const provider = ws.provider === 'tavily' || ws.provider === 'custom' ? ws.provider : 'glm';
   const apiKey = typeof ws.apiKey === 'string' ? ws.apiKey : '';
   const endpoint = typeof ws.endpoint === 'string' ? ws.endpoint : '';
@@ -2755,6 +2757,19 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
       description={t('pilotDeckConfig.panels.tools.description')}
     >
       <SettingsCard divided>
+        <SettingsRow
+          label={t('pilotDeckConfig.panels.tools.enabled.label')}
+          description={t('pilotDeckConfig.panels.tools.enabled.description')}
+        >
+          <SettingsToggle
+            checked={enabled}
+            ariaLabel={t('pilotDeckConfig.panels.tools.enabled.label')}
+            onChange={(value) => {
+              onChange(patch(config, ['tools', 'webSearch', 'enabled'], value));
+              resetTest();
+            }}
+          />
+        </SettingsRow>
         <FormRow
           label={t('pilotDeckConfig.panels.tools.provider.label')}
           description={t('pilotDeckConfig.panels.tools.provider.description')}
@@ -2878,7 +2893,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testStatus === 'testing' || !hasUsableSecret(apiKey)}
+              disabled={!enabled || testStatus === 'testing' || !hasUsableSecret(apiKey)}
             >
               {testStatus === 'testing' ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
