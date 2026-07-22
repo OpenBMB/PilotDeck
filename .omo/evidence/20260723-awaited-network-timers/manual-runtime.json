@@ -1,0 +1,11 @@
+{
+  "retry": {
+    "calls": 2,
+    "status": 200,
+    "elapsedMs": 44
+  },
+  "timeout": {
+    "code": "network_timeout",
+    "elapsedMs": 22
+  }
+}
