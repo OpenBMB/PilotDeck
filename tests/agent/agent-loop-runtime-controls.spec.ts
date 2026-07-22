@@ -138,6 +138,78 @@ test("artifact failure injects one bounded correction turn and succeeds after va
   }
 });
 
+test("required artifact failure wins over max-turn completion after a final tool call", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-agent-loop-artifact-max-turns-"));
+  try {
+    const contracts = new ArtifactContractStore();
+    contracts.register("session-1", "domain-plugin", [{
+      id: "final-workbook",
+      path: "deliverable.xlsx",
+      required: true,
+      expectedExtensions: [".xlsx"],
+      validatorIds: ["core:file-exists"],
+    }]);
+    const requests: CanonicalModelRequest[] = [];
+    const dependencies = createDependencies(requests, {
+      artifactValidation: new ArtifactValidationRuntime(contracts, [new FileExistsValidator()]),
+      router: {
+        async decide(input: { request: CanonicalModelRequest }): Promise<RouterDecision> {
+          return {
+            provider: input.request.provider,
+            model: input.request.model,
+            scenarioType: "default",
+            isSubagent: false,
+            orchestrating: false,
+            resolvedFrom: "scenario",
+            mutations: {},
+          };
+        },
+        async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+          requests.push(request);
+          const toolCall = { id: "tool-1", name: "noop", input: {} };
+          yield { type: "message_start", role: "assistant" };
+          yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+          yield { type: "tool_call_end", toolCall };
+          yield { type: "message_end", finishReason: "tool_call" };
+        },
+        async *stream(): AsyncIterable<CanonicalModelEvent> {
+          throw new Error("stream fallback should not be used");
+        },
+      },
+      tools: {
+        registry: new ToolRegistry(),
+        scheduler: {
+          async executeAll(calls) {
+            return calls.map((call) => ({
+              type: "success" as const,
+              toolCallId: call.id,
+              toolName: call.name,
+              content: [{ type: "text" as const, text: "ok" }],
+              startedAt: "2026-07-22T00:00:00.000Z",
+              completedAt: "2026-07-22T00:00:00.000Z",
+            }));
+          },
+        },
+      },
+    });
+    const loop = new AgentLoop(createConfig(workspace), dependencies);
+
+    const completed = await drainLoop(loop.run({
+      sessionId: "session-1",
+      turnId: "turn-1",
+      messages: [userMessage("create the required deliverable")],
+      maxTurns: 1,
+    }));
+
+    assert.equal(completed.result.type, "error");
+    assert.equal(completed.result.stopReason, "tool_error");
+    assert.match(completed.result.errors?.[0]?.message ?? "", /Artifact validation failed/u);
+    assert.match(completed.result.errors?.[0]?.message ?? "", /deliverable\.xlsx/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 function createDependencies(
   requests: CanonicalModelRequest[],
   options: Partial<AgentRuntimeDependencies> & { beforeResponse?: (requestIndex: number) => Promise<void> } = {},

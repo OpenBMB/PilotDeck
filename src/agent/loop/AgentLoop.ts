@@ -1691,6 +1691,33 @@ export class AgentLoop {
 
       const nextTurnCount = turnCount + 1;
       if (input.maxTurns && nextTurnCount > input.maxTurns) {
+        const artifactValidation = this.dependencies.artifactValidation
+          ? await this.dependencies.artifactValidation.validate({
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              workspaceRoot: this.config.cwd,
+              signal: input.abortSignal,
+            })
+          : undefined;
+        if (artifactValidation && !artifactValidation.passed) {
+          const error = agentError("agent_unsupported_feature", formatArtifactCorrectionPrompt(artifactValidation));
+          const result = this.createTurnResult(input, {
+            type: "error",
+            stopReason: "tool_error",
+            usage,
+            permissionDenials,
+            turns: turnCount,
+            startedAt,
+            finalMessage,
+            structuredOutput,
+            errors: [error],
+          });
+          yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+          await captureTurn(true);
+          yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+          return { result, messages };
+        }
+
         const maxTurnsError = agentError(
           "agent_max_turns_reached",
           `Reached maximum number of turns (${input.maxTurns}).`,
