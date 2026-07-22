@@ -42,6 +42,16 @@ type ReloadInfo = {
   at: number;
 };
 
+function reloadErrorMessage(reload: ConfigReload | undefined, action: 'save' | 'reload'): string | null {
+  const gatewayError = reload?.gateway?.error;
+  if (gatewayError) {
+    return action === 'save'
+      ? `Saved config, but gateway reload failed: ${gatewayError}`
+      : `Gateway reload failed: ${gatewayError}`;
+  }
+  return null;
+}
+
 export function usePilotDeckConfig() {
   const [path, setPath] = useState('');
   const [raw, setRaw] = useState('');
@@ -220,7 +230,12 @@ export function usePilotDeckConfig() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || data.validation?.errors?.join(', ') || 'Failed to save config');
       applyResponse(data, 'ui-save');
-      setMessage('Saved and reloaded');
+      const reloadError = reloadErrorMessage(data.reload, 'save');
+      if (reloadError) {
+        setError(reloadError);
+      } else {
+        setMessage('Saved and reloaded');
+      }
       setExternalChangeNotice(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to save config');
@@ -238,7 +253,12 @@ export function usePilotDeckConfig() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to reload config');
       applyResponse(data, 'ui-reload');
-      setMessage('Reloaded current config');
+      const reloadError = reloadErrorMessage(data.reload, 'reload');
+      if (reloadError) {
+        setError(reloadError);
+      } else {
+        setMessage('Reloaded current config');
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to reload config');
     } finally {
