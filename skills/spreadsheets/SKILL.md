@@ -95,6 +95,12 @@ Create one executable builder:
 bash "$SHEET" scaffold --out "$WORKSPACE/tmp/workbook.mjs"
 ```
 
+The scaffold command creates an existing file. Immediately call PilotDeck's
+`read_file` tool with that exact builder path before changing it with
+`write_file` or `edit_file`. Shell output such as `cat` does not establish the
+file snapshot required by PilotDeck's write-safety guard and is not a
+substitute for `read_file`.
+
 Patch and rerun that builder instead of creating duplicate scripts. Build a net-new workbook:
 
 ```bash
