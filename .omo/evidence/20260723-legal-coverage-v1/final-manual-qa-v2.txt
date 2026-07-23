@@ -1,0 +1,95 @@
+PILOTDECK LEGAL-COVERAGE V1.2.0 - FINAL MANUAL QA V2
+Date: 2026-07-24
+Mode: read-only evidence audit plus local reruns; no product, test, or case edits
+
+VERDICT
+
+LOCAL PRODUCT QA: PASS.
+EXTERNAL JUDGE GATE: BLOCKED BY PRIVATE-NETWORK CONNECTIVITY; NO CURRENT SCORE EXISTS.
+
+The local verdict covers installation fidelity, the focused and repository-wide automated gates,
+the strengthened product validator, the independent difficult-case verifier, fail-closed negative
+behavior, dynamic request injection, and artifact provenance. It does not substitute for the
+unreachable external Judge.
+
+OBSERVED RESULTS
+
+1. Final plugin installation fidelity
+   - Repository bundle files: 9.
+   - Installed difficult-case bundle files: 9.
+   - Recursive byte comparison: identical; diff exit 0.
+   - The installed real-run plugin therefore matches the final v1.2.0 working-tree implementation.
+
+2. Automated gates
+   - Focused legal-product and real-gateway suites: 21/21 passed; zero failures, skips,
+     cancellations, or todos.
+   - Full repository build and test suite: 213/213 passed; zero failures, skips, cancellations,
+     or todos.
+   - The full suite was independently rerun during this audit and completed successfully.
+
+3. Shipped v1.2.0 validator on the difficult case
+   - Passed: true.
+   - Errors/warnings: 0/0.
+   - Counts: sources=62, facts=76, issues=14, authorities=25, deliverables=1.
+   - A read-only status rerun reproduced the recorded state hash and counts.
+   - The current proof binds reviewed source bytes, canonical state, and the deliverable.
+
+4. Independent difficult-case verifier
+   - Passed: true; verifier errors: 0.
+   - Source ledger: 62/62, with no missing, duplicate, or uninspected machine-readable source.
+   - Presentation manifest: valid, 9 slides.
+   - Topic evidence: 8/8 present.
+   - Reverse coverage: present.
+   - Final integrity: valid.
+   - A fresh read-only verifier rerun reproduced these aggregate results.
+
+5. Known shortcut / false-positive fixture
+   - Passed: false.
+   - Errors/warnings: 1359/0.
+   - Completion proof after fail-closed validation: absent.
+   - Rejection spans independent source-digest, materiality/matrix, quote-reuse, semantic-support,
+     unresolved-verification, authority, and reciprocal-link guards.
+   - A read-only status rerun reproduced the 1359-error total and selected per-code counts.
+
+6. Two real Agent recovery runs with dynamic injection
+   - Contract-migration run: 49 model stream requests, patched 49/49; 48 Stop continuations;
+     59 tool calls; validator reduced from 101 errors to 0 errors and 0 warnings.
+   - Integrity-finalization run: 15 model stream requests, patched 15/15; 14 Stop continuations;
+     16 tool calls; completed with the opinion bytes unchanged and the independent verifier passed.
+   - The final integrity run's 15/15 result is directly corroborated by its retained aggregate and
+     request audit. The earlier 49/49 aggregate was captured at completion and retained in the
+     sanitized recovery summary; its per-request file was subsequently overwritten by the second
+     recovery run, so the report does not claim a second independent reconstruction of those 49 rows.
+
+PROVENANCE
+
+PilotDeck Agent sessions produced the substantive opinion, the v1.2.0 canonical-state migration,
+the required opinion corrections, and the refreshed final-integrity manifest. One topic-evidence
+compatibility artifact and the reverse-coverage compatibility artifact were originally derived by
+QA from already validated canonical ledgers. Those two artifacts support legacy-verifier
+compatibility and must not be represented as autonomous output from the primary Agent run.
+
+BOUNDARY AND RESIDUAL RISK
+
+- The post-review implementation remains in the legal Domain Plugin, its legal Skill/references,
+  and two focused test files. PilotDeck Core source was not changed.
+- The previously observed empty shell redirection under bypass-permissions is a separate Core
+  tool-safety issue. It remains intentionally outside this legal-only change and requires its own
+  regression-tested Core PR.
+- Current Judge connectivity evidence shows timeout before HTTP submission because this machine
+  has no route to the private scoring service. Therefore overall score, critical score, and Judge
+  error count cannot be claimed. This is an external availability blocker, not a semantic pass or
+  rejection.
+
+WHY THIS IS ENOUGH FOR THE LOCAL VERDICT
+
+The installed bytes were exercised through the real gateway, the focused adversarial tests cover
+the repaired fail-closed paths, the full repository suite passed, the positive difficult case
+passes both product and independent validators, and the known shortcut fails without leaving a
+proof. The remaining unverified gate is exclusively the external Judge.
+
+WHAT WAS OMITTED
+
+Legal facts and conclusions, source names and paths, case entities, raw prompts and model output,
+tool payloads, credentials, private model configuration, exact endpoint/address details, raw Judge
+responses, and Judge payloads were not copied into this report.

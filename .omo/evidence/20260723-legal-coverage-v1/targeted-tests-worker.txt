@@ -1,0 +1,84 @@
+TARGETED LEGAL-COVERAGE QA WORKER REPORT
+Date: 2026-07-23
+Worktree: /Users/da/Documents/PilotDeck-worktrees/20260723-feat-legal-coverage-v1
+
+WHAT WAS TESTED
+
+1. Command: npx tsc -p tsconfig.json --noEmit
+   Surface: repository TypeScript project, no output emission.
+   Intended proof: the legal-coverage branch typechecks without generating build artifacts.
+
+2. Command: npm run build
+   Surface: repository production build, including the runtime check, configuration bootstrap,
+   edgeclaw-memory-core build, main TypeScript compilation, and built-in plugin asset copy.
+   Intended proof: the branch compiles into the runnable dist tree used by the targeted tests.
+
+3. Command: node --test --test-force-exit --test-timeout 60000 dist/tests/products/legal-coverage.spec.js dist/tests/agent/legal-coverage-plugin-runtime.spec.js
+   Surface: compiled legal-coverage validator and plugin-runtime suites.
+   Intended proof: validator semantics and the real createLocalGateway hook, milestone, and
+   bounded artifact-correction wiring behave as specified.
+
+WHAT WAS OBSERVED
+
+1. TypeScript no-emit gate
+   Exit code: 0
+   Command duration: 2.927 seconds
+   Tests/pass/fail: not applicable (compiler gate)
+   Output: no diagnostics.
+
+2. Production build
+   Exit code: 0
+   Command duration: 4.522 seconds
+   Tests/pass/fail: not applicable (build gate)
+   Output: runtime check, configuration bootstrap, dependency build, main compilation, and
+   plugin asset copy all completed successfully.
+
+3. Targeted compiled tests
+   Exit code: 0
+   Command duration: 1.164 seconds (test runner reported 1223.222 ms internally)
+   Tests: 12
+   Pass: 12
+   Fail: 0
+   Cancelled: 0
+   Skipped: 0
+   Todo: 0
+   Suites: 0 (Node TAP summary; tests were discovered and executed directly)
+   Observed coverage included proof lifecycle and invalidation, conflict and disclosure
+   rejection, source inventory and timeline collision checks, quote and fact support checks,
+   authority-link requirements, optional threshold handling, binary deliverable locators,
+   empty-fact and matrix completeness rejection, legal-only hook activation, bounded grouping
+   of repeated validator errors, plugin loading constraints, and a real gateway run through
+   bounded artifact correction.
+
+Repository cleanliness after all commands:
+   git status --short matched the baseline untracked set:
+     ?? .omo/evidence/20260723-legal-coverage-v1/
+     ?? .omo/ulw-loop/
+     ?? products/legal/
+     ?? tests/agent/legal-coverage-plugin-runtime.spec.ts
+     ?? tests/products/
+   git diff --name-only returned no paths.
+   git diff --cached --name-only returned no paths.
+   Therefore no tracked source or test files changed during this QA run.
+
+WHY IT IS ENOUGH
+
+The no-emit compiler gate checks the full TypeScript graph, and the production build proves the
+same branch can produce the compiled runtime and test artifacts. The focused test invocation then
+executes the validator semantics and the actual local-gateway integration path requested for this
+change, including hook activation, observable milestones, and bounded artifact correction. All
+three gates exited successfully, all 12 targeted tests passed, and tracked-file cleanliness was
+verified after execution.
+
+WHAT WAS OMITTED
+
+No real legal case workspace or legal source content was opened or included. No environment dump,
+credentials, tokens, auth headers, private paths beyond the named worktree, raw generated legal
+artifacts, or secret-bearing logs were captured. The routine Node experimental SQLite warning was
+not reproduced because it is unrelated to the asserted behavior.
+
+CLEANUP
+
+No temporary QA workspace was created and no product or test source was edited. Build outputs were
+left in the repository's normal ignored/generated locations. The only file created by this worker
+is this sanitized evidence report.

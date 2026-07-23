@@ -1,0 +1,21 @@
+WHAT WAS TESTED
+1. node /tmp/pilotdeck-legal-coverage-runner.mjs judge-hard <redacted-hard-case-root>
+2. curl HTTPS connectivity probe to the configured Judge endpoint with a 15-second connect timeout.
+3. Local DNS and route inspection for the resolved address.
+
+WHAT WAS OBSERVED
+Judge attempt: no score returned; TCP connection timed out before HTTP or scoring.
+curl: HTTP code 000, no TCP or TLS connection, connect timeout after 15.011 seconds.
+DNS: the Judge hostname resolves to a private 10.32.x.x address.
+Route: the machine has only the normal en0 default route and no private-network/VPN route to the Judge address.
+Judge payload result: not submitted.
+Judge errors: not applicable because the scoring service was never reached.
+
+WHY IT MATTERS
+This is an external private-network availability blocker, not a semantic Judge failure. No current overall or critical score can be claimed until the endpoint is reachable. Product validator, independent hard verifier, targeted tests, and the full suite remain independently passed.
+
+WHAT WAS OMITTED
+The exact private endpoint, resolved IP, payload, source text, opinion content, credentials, and any prior Judge response were omitted.
+
+CLEANUP
+The failed Judge process and connectivity probe exited. No bound port, temporary process, or new raw Judge response remains.

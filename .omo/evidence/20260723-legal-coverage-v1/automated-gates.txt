@@ -1,0 +1,28 @@
+WHAT WAS TESTED
+Frozen commit: 81201cd3f00459ee5dafeb52b3a7612cb0442cc9
+Frozen tree: 411d051e
+1. npx tsc -p tsconfig.json --noEmit
+2. npm test
+Surface: final committed branch, full TypeScript graph, production build, and repository regression suite.
+
+WHAT WAS OBSERVED
+TypeScript: exit 0, 3.001 seconds, no diagnostics.
+npm test: exit 0.
+Tests: 204
+Pass: 204
+Fail: 0
+Cancelled: 0
+Skipped: 0
+Todo: 0
+TAP duration: 28077.761 ms
+
+The full-suite QA worker independently ran npm test before the freeze with the same file content: exit 0, 204 of 204 passed, 33.07 seconds wall time. Its sanitized report is full-suite-worker.txt.
+
+WHY IT IS ENOUGH
+The frozen-tree gate rebuilds the executable dist tree and executes every repository test, including the legal validator and real local-gateway plugin flow. The independent worker run provides a second execution of the same full suite.
+
+WHAT WAS OMITTED
+Raw full-suite output, environment dumps, credentials, legal source material, and generated legal content were omitted.
+
+CLEANUP
+No tracked file changed during the gate. Normal ignored build output remains. No test process remains running.

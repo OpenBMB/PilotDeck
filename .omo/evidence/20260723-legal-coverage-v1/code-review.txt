@@ -1,0 +1,133 @@
+FINAL CODE REVIEW - LEGAL COVERAGE V1
+
+Verdict: REJECT / CHANGES REQUIRED
+Frozen commit: 81201cd3f00459ee5dafeb52b3a7612cb0442cc9
+Frozen tree: 411d051ede610638f94fa1fe6cc361ac7bc01a71 (requested short tree: 411d051e)
+Base: 2b1b120c
+Review date: 2026-07-23
+
+FINDINGS
+
+[P0] Valid JSON with a non-object top level bypasses the entire validator and generates a completion proof.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:128-137
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:228-230
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:274-276
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:337-340
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:391-394
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:454-457
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:524-527
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:577-580
+
+Each phase silently returns when its parsed document is not a record. JSON parse therefore succeeds for null, arrays, strings, and numbers, but no schema error is added. `passed` is based only on the empty error array. An isolated probe wrote `null` to all seven canonical files; validation returned `passed:true`, `errors:0`, and wrote a 64-character completion-proof state hash. A single critical ledger can likewise be replaced by a non-object to skip that ledger's checks when the remaining references permit it. This is a complete fail-closed bypass. Require every canonical document to be a record before phase validation and add a blocking schema/type error otherwise.
+
+[P1] Stop-hook exceptions are classified as non-blocking, so filesystem or validator failures can permit completion.
+
+References:
+- products/legal/plugins/legal-coverage/hook.mjs:48-69
+- src/extension/hooks/execution/CommandHookExecutor.ts:84-89
+- src/extension/hooks/execution/HookRuntime.ts:95-105
+
+The hook has no top-level failure boundary. Any exception in `validateWorkspace`, proof removal, proof writing, or state access exits Node with code 1 and emits no blocking output. Core treats only exit code 2 as blocking; exit code 1 is a non-blocking hook error. An isolated probe first created a proof, corrupted config JSON, made the state directory non-writable, and dispatched Stop. Proof deletion threw a permission error; hook exit was 1 with zero stdout bytes, which Core classifies as non-blocking. Since artifact existence is checked before Stop and only with `core:file-exists`, a previously present proof can pass artifact validation before this failure. Catch unexpected failures and emit an explicit blocking result or exit 2, with a test proving Stop cannot complete on validator I/O failure.
+
+[P1] Source content is absent from validation and the state hash, so evidence can change without making the proof stale.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:305-308
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:756-763
+
+Source validation checks only that each inventoried path is a file. `computeStateHash` hashes parsed ledgers and deliverable hashes, but not source bytes, source metadata, or source digests. An isolated valid-workspace probe changed the sole reviewed source after proof creation; both validations passed and produced the identical stateHash. Facts, authorities, and the final opinion can therefore remain certified after their underlying evidence changes. Bind each inventoried source to a current digest in validation/proof state and reject stale ledger digests.
+
+[P1] Lexical path checks allow ancestor-symlink escape for sources, deliverables, state, and proof files.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:57-60
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:216-225
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:254-264
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:305-308
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:739-752
+
+`resolveWithinWorkspace` checks only the lexical resolved path. `listSourceFiles` rejects a symlink only when the final input root or a directly enumerated child is itself a symlink; it does not resolve and constrain ancestor components. Deliverables use `stat`/`readFile`, which follow symlinks, and the state directory is also created and written without a realpath boundary check. An isolated probe placed `workspace/escape` as a symlink to an external directory, configured `escape/source-room/record.txt` and `escape/deliverables/opinion.md`, and validation passed with zero errors. This contradicts the workspace-relative/project-local contract and can read or write outside the workspace. Constrain existing paths by realpath and reject symlinks for every state, source, deliverable, and proof path, including ancestors.
+
+[P1] Material facts marked unverified can be presented as covered rather than unresolved.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:48-50
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:362-364
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:605-615
+
+`unverified` and `partially-verified` are accepted fact verification states, but final coverage requires `unresolved` only for `conflictStatus === "unresolved"`. A material or critical fact with `verificationStatus:"unverified"`, `conflictStatus:"none"`, and a matching quote can therefore pass with coverage status `covered`. The completion contract says uncertainty must be preserved and incomplete facts must fail closed. Require non-verified material/critical facts to be disclosed as unresolved (or define and validate a documented exception).
+
+[P1] Issue and authority coverage quotes are checked for presence, not semantic support.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:605-612
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:617-633
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:637-674
+- tests/products/legal-coverage.spec.ts:96-130
+
+Only material-fact rows call `factCoverageQuoteSupports`. Issue and authority rows need merely a non-empty exact substring in the deliverable, and quote reuse is prevented only within each coverage group. Distinct unrelated filler sentences can therefore certify every issue and authority while their `claim`, legal conclusion, and supported conclusion are fabricated. The generic-quote test exercises reuse and fact semantics only; it does not adversarially test issue or authority semantics. Add domain-specific semantic linkage for issue and authority rows and tests with unique but irrelevant exact quotes.
+
+[P2] Cross-ledger references validate existence but not reciprocal or same-fact relationships.
+
+References:
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:368-388
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:432-450
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:509-518
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs:549-573
+
+The source/fact graph permits `source.factIds` and `fact.sourceRefs` to disagree as long as both IDs exist. A matrix risk signal only needs a linked issue with the matching rule; the issue need not cover the matrix entry's facts. Issue-to-authority references require an authority backlink, but authority-to-issue references do not require the issue backlink, and a legal-authority matrix entry only checks that its authority IDs exist, not that they support the entry's issue IDs. Unrelated facts and authorities can therefore satisfy structural checks. Enforce bidirectional source/fact and issue/authority links, and require matrix issue/authority relationships to cover the same entry facts/issues.
+
+TEST QUALITY AND RESIDUAL RISKS
+
+The focused suites are valuable and passed 12/12, including the real gateway path, but they do not cover top-level non-object JSON, source-content staleness, ancestor symlinks, Stop-time exceptions, unverified material facts, unique irrelevant issue/authority quotes, or reciprocal cross-ledger links. Those missing adversarial cases correspond directly to the findings above.
+
+Residual risks after those fixes include semantic abuse of `allowNoMaterialFacts` and free-text `notApplicableReason`, automatic detection covering only timeline collisions, threshold breaches, and unresolved source contradictions (not the other three documented cross-fact rules), binary deliverables relying on unverified free-text locators/claims, and race conditions when concurrent sessions validate and rewrite shared workspace proof state.
+
+No benchmark-specific token or case-specific control was found in the ten product files. The changed-file boundary is clean: no Core source file is changed by this commit. The product-only regression scans the plugin directory rather than the enclosing product README, but manual review of all added product files found no leakage.
+
+FILES REVIEWED
+
+- products/legal/README.md
+- products/legal/plugins/legal-coverage/hook.mjs
+- products/legal/plugins/legal-coverage/hooks/hooks.json
+- products/legal/plugins/legal-coverage/plugin.json
+- products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs
+- products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs
+- products/legal/plugins/legal-coverage/skills/conduct-legal-due-diligence/SKILL.md
+- products/legal/plugins/legal-coverage/skills/conduct-legal-due-diligence/agents/openai.yaml
+- products/legal/plugins/legal-coverage/skills/conduct-legal-due-diligence/references/data-contracts.txt
+- products/legal/plugins/legal-coverage/skills/conduct-legal-due-diligence/references/issue-rules.txt
+- tests/agent/legal-coverage-plugin-runtime.spec.ts
+- tests/products/legal-coverage.spec.ts
+
+COMMANDS USED
+
+- git rev-parse HEAD
+- git rev-parse HEAD^{tree}
+- git status --short / git diff --name-only / git diff --cached --name-only
+- git diff --name-status 2b1b120c..HEAD
+- git diff --stat 2b1b120c..HEAD
+- git diff --check 2b1b120c..HEAD
+- git diff --find-renames --find-copies 2b1b120c..HEAD
+- line-numbered reads of every added product and test file plus the relevant existing HookRuntime, CommandHookExecutor, lifecycle, artifact-validation, and artifact-store code
+- node --check on hook.mjs, scripts/legal-coverage.mjs, and scripts/lib/legal-coverage.mjs
+- dynamic ESM import of scripts/lib/legal-coverage.mjs (observed VALIDATOR_VERSION 1.1.0)
+- node --import tsx --test --test-force-exit --test-timeout 60000 tests/products/legal-coverage.spec.ts tests/agent/legal-coverage-plugin-runtime.spec.ts
+- isolated temporary-workspace probes for top-level-null schema handling, source-content staleness, ancestor-symlink escape, and Stop-hook exception classification
+
+VERIFICATION OBSERVED
+
+- Syntax checks: exit 0 for all three production MJS files.
+- Import check: exit 0; module imported and reported validator version 1.1.0.
+- Focused source tests: 12 tests, 12 passed, 0 failed/cancelled/skipped/todo; runner duration 1409.263 ms.
+- No build or rebuild was run by this reviewer, and no concurrent build/test worker was present before the focused command.
+- Probe: top-level-null => passed=true, errors=0, proof hash length=64.
+- Probe: source mutation => beforePassed=true, afterPassed=true, sameStateHash=true.
+- Probe: ancestor symlink => passed=true, errors=0.
+- Probe: Stop proof-removal permission failure => hook exit=1, stdoutBytes=0, Core classification=non-blocking.
+
+NO-EDIT CLEANUP
+
+All probe workspaces were created under the system temporary directory and removed in `finally` blocks. No probe process remains. Product files, test files, index, branch, commit, and git state were not edited. Normal pre-existing untracked `.omo/evidence/20260723-legal-coverage-v1/` and `.omo/ulw-loop/` content was preserved. This reviewer created only this requested code-review.txt evidence file.

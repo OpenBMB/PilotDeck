@@ -1,0 +1,27 @@
+WHAT WAS TESTED
+1. npx tsc -p tsconfig.json --noEmit
+2. npm run build
+3. node --test --test-force-exit --test-timeout 60000 dist/tests/products/legal-coverage.spec.js dist/tests/agent/legal-coverage-plugin-runtime.spec.js
+Surface: the full TypeScript graph, production build, legal validator semantics, and real createLocalGateway plugin wiring.
+
+WHAT WAS OBSERVED
+TypeScript: exit 0, 2.886 seconds, no diagnostics.
+Build: exit 0, 4.098 seconds.
+Targeted tests: exit 0, 1.144 seconds wall time.
+Tests: 12
+Pass: 12
+Fail: 0
+Cancelled: 0
+Skipped: 0
+Todo: 0
+
+The independent QA worker also ran the same gates successfully: TypeScript 2.927 seconds, build 4.522 seconds, targeted tests 12 of 12 passed. Its full sanitized report is targeted-tests-worker.txt.
+
+WHY IT IS ENOUGH
+The tests cover proof creation and invalidation, source inventory, conflicts, timelines, materiality, threshold assessment, quote reuse and semantic support, critical authority links, binary deliverables, zero-fact shortcuts, matrix orphans, activation, grouped milestones, benchmark exclusion, and a real local-gateway bounded artifact-correction flow.
+
+WHAT WAS OMITTED
+No real legal workspace, source content, opinion content, private configuration, tokens, or credentials were accessed by these automated gates.
+
+CLEANUP
+No tracked source or test file changed during either QA run. Normal ignored dist output remains for subsequent full-suite execution.

@@ -1,0 +1,87 @@
+PILOTDECK LEGAL-COVERAGE V1.2.0 - FINAL MANUAL QA V3
+Date: 2026-07-24
+Mode: incremental read-only audit plus local test reruns; no product, test, or case edits
+
+VERDICT
+
+LOCAL PRODUCT QA: PASS.
+EXTERNAL JUDGE GATE: BLOCKED BY PRIVATE-NETWORK CONNECTIVITY; NO CURRENT SCORE EXISTS.
+
+This v3 audit supersedes the local gate counts in v2. It specifically verifies the final installed
+plugin after the Hook session-path fix and the new symlinked-sessions regression.
+
+INCREMENTAL RESULTS
+
+1. Final installed plugin
+   - Repository bundle files: 9.
+   - Installed difficult-case bundle files: 9.
+   - Recursive byte comparison after the final installation sync: identical; diff exit 0.
+   - Hook syntax and validator-library syntax: passed.
+   - Validator version: 1.2.0.
+
+2. Hook session-state symlink regression
+   - The focused test creates the legal state root, replaces its sessions child with a symlink to
+     an external temporary directory, and dispatches an activating UserPromptSubmit event.
+   - Observed hook exit code: 2.
+   - Observed output: explicit fail-closed blocking result with continue=false.
+   - Observed external effect: no session-state file was created through the symlink.
+   - The Hook now resolves config, proof, and session-state candidates through the validator's
+     real-path constraint. Session creation checks the path before and after directory creation;
+     session reads and SessionEnd removal use the same constrained resolver.
+   - The targeted suite independently reran this regression and passed it.
+
+3. Final automated gates
+   - Focused legal-product and real-gateway suites: 22/22 passed.
+   - Full repository build and test suite: 214/214 passed.
+   - Both runs had zero failures, skips, cancellations, or todos.
+   - The full suite was independently rebuilt and rerun during this audit.
+
+4. Difficult-case positive state
+   - Shipped validator: passed=true; errors/warnings=0/0.
+   - Counts: sources=62, facts=76, issues=14, authorities=25, deliverables=1.
+   - Independent verifier: passed=true; errors=0.
+   - Source ledger: 62/62, with no missing, duplicate, or uninspected machine-readable source.
+   - Presentation manifest valid; 9 slides; topic evidence 8/8; reverse coverage present; final
+     integrity valid.
+   - Fresh read-only validator and verifier reruns reproduced these aggregates after the final
+     plugin installation.
+
+5. Known shortcut / false-positive fixture
+   - Validator result: passed=false; errors/warnings=1359/0.
+   - Completion proof: absent.
+   - Fresh read-only validation reproduced the total and the independent integrity, materiality,
+     matrix, semantic-support, uncertainty, authority, and reciprocal-link rejection classes.
+
+UNCHANGED PROVENANCE QUALIFICATION
+
+PilotDeck Agent sessions produced the substantive opinion, the v1.2.0 canonical-state migration,
+the required opinion corrections, and the refreshed final-integrity manifest. One topic-evidence
+compatibility artifact and the reverse-coverage compatibility artifact were originally derived by
+QA from already validated canonical ledgers. Those two compatibility artifacts must not be
+represented as autonomous output from the primary Agent run.
+
+BOUNDARY AND LIMITATIONS
+
+- The final fix remains inside the legal Domain Plugin and focused legal tests. PilotDeck Core
+  source was not changed.
+- The new adversarial regression directly exercises the session write path. SessionEnd uses the
+  same constrained path helper and was inspected in this audit; there is not a separate symlinked
+  SessionEnd process assertion in the focused test.
+- The generic empty-shell-redirection risk under bypass-permissions remains a separate Core issue
+  and is intentionally outside this legal-only change.
+- The external Judge remains unreachable before HTTP submission. No overall score, critical score,
+  or Judge error count can be claimed. This is an external availability blocker, not a semantic
+  pass or rejection.
+
+WHY THIS IS ENOUGH FOR THE LOCAL VERDICT
+
+The exact final installed bytes pass the new adversarial Hook test, all focused real-gateway and
+legal tests, and the full repository suite. The positive difficult case passes both independent
+validation surfaces, while the known shortcut remains fail-closed without a proof. The only
+uncompleted release gate is the external Judge.
+
+WHAT WAS OMITTED
+
+Legal facts and conclusions, source names and paths, case entities, raw prompts and model output,
+tool payloads, credentials, private model configuration, endpoint/address details, raw Judge
+responses, and Judge payloads were not copied into this report.

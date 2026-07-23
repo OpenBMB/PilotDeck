@@ -1,0 +1,20 @@
+CURRENT FINAL EVIDENCE
+- post-review-fix-gates.txt: v1.2.0 targeted 22/22 and full 214/214 gates.
+- hard-case-validator-summary.txt: final source-bound validator pass.
+- hard-verifier-summary.txt: final independent verifier pass and provenance qualification.
+- false-positive-rejection-summary.txt: strengthened negative rejection and stale-proof removal.
+- recovery-v12-summary.txt: two real Agent recovery runs with dynamic prompt counts.
+- implementation-boundary.txt: final legal-only boundary audit.
+- generic-fix-decision.txt: findings fixed here versus the separate Core shell-safety residual.
+- final-code-review-v3.txt: final independent closure review when complete.
+- final-manual-qa-v3.txt: final independent evidence audit when complete.
+- judge-connectivity.txt: current external Judge connectivity blocker.
+
+HISTORICAL / SUPERSEDED EVIDENCE
+- automated-gates.txt, targeted-tests.txt, targeted-tests-worker.txt, and full-suite-worker.txt record the pre-v1.2.0 frozen tree (12/12 and 204/204). They are retained as audit history, not as the final gate.
+- manual-qa-review.txt records the pre-v1.2.0 audit. final-manual-qa-v2.txt records the pre-hook-path-fix 21/213 audit. Both are superseded by final-manual-qa-v3.txt.
+- code-review.txt is the findings report that triggered v1.2.0. final-code-review-v2.txt identified the remaining hook session-path gap. Both are superseded as a release verdict by final-code-review-v3.txt.
+- harness-recovery-incidents.txt records earlier pre-v1.2.0 recovery history and the separate Core shell-safety incident.
+
+GLOBAL LIMITATION
+No current Judge score exists while the private scoring endpoint is unreachable. Local product QA and the independent hard verifier passing do not substitute for that external gate.
