@@ -25,7 +25,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 
 ## Build Evidence Before Conclusions
 
-1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file.
+1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file and record the lowercase SHA-256 of the exact bytes inspected. If a source changes, re-inspect it and update every dependent ledger before recording the new hash.
 2. Inspect every machine-readable source completely, including all spreadsheet sheets and presentation slides. Mark a source `unreadable` only after deterministic extraction or inspection fails; record the unresolved items.
 3. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
 4. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
-export const VALIDATOR_VERSION = "1.1.0";
+export const VALIDATOR_VERSION = "1.2.0";
 export const STATE_DIRECTORY = ".pilotdeck/work/legal-coverage";
 export const PROOF_PATH = `${STATE_DIRECTORY}/completion-proof.json`;
 
@@ -56,8 +56,9 @@ const TEXT_EXTENSIONS = new Set([".md", ".txt", ".html", ".htm", ".csv"]);
 
 export async function ensureWorkspace(workspaceRoot) {
   const workspace = resolve(workspaceRoot);
-  const stateRoot = resolveWithinWorkspace(workspace, STATE_DIRECTORY);
+  const stateRoot = await resolveSafeWorkspacePath(workspace, STATE_DIRECTORY, { allowMissing: true });
   await mkdir(stateRoot, { recursive: true });
+  await resolveSafeWorkspacePath(workspace, STATE_DIRECTORY);
   const templates = {
     config: {
       schemaVersion: 1,
@@ -80,6 +81,7 @@ export async function ensureWorkspace(workspaceRoot) {
   };
   for (const [key, template] of Object.entries(templates)) {
     const filePath = resolve(stateRoot, STATE_FILES[key]);
+    await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, filePath), { allowMissing: true });
     if (!await pathExists(filePath)) await writeJsonAtomic(filePath, template);
   }
   return { workspace, stateRoot, paths: statePaths(workspace) };
@@ -93,13 +95,23 @@ export async function readWorkspaceState(workspaceRoot) {
   for (const [key, filePath] of Object.entries(paths)) {
     if (key === "proof") continue;
     try {
+      await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, filePath));
       state[key] = JSON.parse(await readFile(filePath, "utf8"));
+      if (!isRecord(state[key])) {
+        state[key] = undefined;
+        readErrors.push(issue(
+          phaseForStateKey(key),
+          "state_document_not_object",
+          `${relative(workspace, filePath)} must contain a JSON object at the top level.`,
+          relative(workspace, filePath),
+        ));
+      }
     } catch (error) {
       state[key] = undefined;
       readErrors.push(issue(
         phaseForStateKey(key),
         "state_file_invalid",
-        `${relative(workspace, filePath)} is missing or is not valid JSON: ${errorMessage(error)}`,
+          `${relative(workspace, filePath)} is missing, unsafe, or is not valid JSON: ${errorMessage(error)}`,
         relative(workspace, filePath),
       ));
     }
@@ -121,9 +133,18 @@ export async function validateWorkspace(options) {
     factIds: new Set(),
     issueIds: new Set(),
     authorityIds: new Set(),
+    sources: new Map(),
     deliverables: new Map(),
     deliverableContents: new Map(),
+    proofPathSafe: true,
   };
+
+  try {
+    await resolveSafeWorkspacePath(workspace, PROOF_PATH, { allowMissing: true });
+  } catch (error) {
+    context.proofPathSafe = false;
+    add(context, "configuration", "proof_path_invalid", errorMessage(error), PROOF_PATH);
+  }
 
   await validateConfig(context);
   await validateSources(context);
@@ -131,6 +152,7 @@ export async function validateWorkspace(options) {
   validateMatrices(context);
   validateIssues(context);
   validateAuthorities(context);
+  validateRelationships(context);
   await validateCoverage(context);
 
   const stateHash = await computeStateHash(context);
@@ -142,12 +164,15 @@ export async function validateWorkspace(options) {
         validatorVersion: VALIDATOR_VERSION,
         validatedAt: new Date().toISOString(),
         stateHash,
+        sources: [...context.sources.entries()]
+          .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
+          .sort((a, b) => a.path.localeCompare(b.path)),
         deliverables: [...context.deliverables.entries()]
           .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
           .sort((a, b) => a.path.localeCompare(b.path)),
       };
       await writeJsonAtomic(loaded.paths.proof, proof);
-    } else {
+    } else if (context.proofPathSafe) {
       await rm(loaded.paths.proof, { force: true });
     }
   }
@@ -171,9 +196,9 @@ export async function validateWorkspace(options) {
 export function milestoneFor(result, cliPath) {
   if (result.passed) {
     return [
-      "Legal coverage validation is complete and the completion proof matches the current deliverables.",
+      "Legal coverage validation is complete and the completion proof matches the reviewed sources, canonical ledgers, and current deliverables.",
       "Satisfy any other active domain skill, artifact contract, and deliverable QA before stopping.",
-      "If any bound ledger or deliverable changes, rerun the validator because the current proof will become stale.",
+      "If any bound source, ledger, or deliverable changes, re-inspect affected evidence and rerun the validator because the current proof will become stale.",
     ].join("\n");
   }
   const first = result.errors[0];
@@ -225,6 +250,42 @@ export function resolveWithinWorkspace(workspaceRoot, candidate) {
   return resolved;
 }
 
+export async function resolveSafeWorkspacePath(workspaceRoot, candidate, options = {}) {
+  const workspace = resolve(workspaceRoot);
+  const resolved = resolveWithinWorkspace(workspace, candidate);
+  const workspaceInfo = await lstat(workspace);
+  if (workspaceInfo.isSymbolicLink() || !workspaceInfo.isDirectory()) {
+    throw new Error(`Workspace root must be a real directory: ${workspace}`);
+  }
+  const canonicalWorkspace = await realpath(workspace);
+  const segments = relative(workspace, resolved).split(sep).filter(Boolean);
+  let current = workspace;
+  let exists = true;
+  for (const segment of segments) {
+    current = resolve(current, segment);
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      if (options.allowMissing === true && error?.code === "ENOENT") {
+        exists = false;
+        break;
+      }
+      throw error;
+    }
+    if (info.isSymbolicLink()) {
+      throw new Error(`Symbolic links are not allowed in workspace paths: ${toWorkspacePath(workspace, current)}`);
+    }
+  }
+  if (exists) {
+    const canonical = await realpath(resolved);
+    if (canonical !== canonicalWorkspace && !canonical.startsWith(`${canonicalWorkspace}${sep}`)) {
+      throw new Error(`Path resolves outside the workspace: ${candidate}`);
+    }
+  }
+  return resolved;
+}
+
 async function validateConfig(context) {
   const config = context.state.config;
   if (!isRecord(config)) return;
@@ -252,7 +313,7 @@ async function validateConfig(context) {
     ids.add(deliverable.id);
     paths.add(deliverable.path);
     try {
-      const filePath = resolveWithinWorkspace(context.workspace, deliverable.path);
+      const filePath = await resolveSafeWorkspacePath(context.workspace, deliverable.path);
       if (deliverable.required !== false) {
         const info = await stat(filePath).catch(() => undefined);
         if (!info?.isFile() || info.size === 0) {
@@ -303,9 +364,20 @@ async function validateSources(context) {
       add(context, "sources", "unreadable_source_unresolved", `Unreadable source ${source.id} must record unresolvedItems.`, at);
     }
     try {
-      const sourcePath = resolveWithinWorkspace(context.workspace, source.path);
+      const sourcePath = await resolveSafeWorkspacePath(context.workspace, source.path);
       const info = await lstat(sourcePath).catch(() => undefined);
-      if (!info?.isFile()) add(context, "sources", "source_file_missing", `Inventoried source is missing or not a file: ${source.path}.`, source.path);
+      if (!info?.isFile()) {
+        add(context, "sources", "source_file_missing", `Inventoried source is missing or not a file: ${source.path}.`, source.path);
+      } else {
+        const data = await readFile(sourcePath);
+        const actual = { sha256: sha256(data), bytes: data.byteLength };
+        context.sources.set(source.path, actual);
+        if (!/^[a-f0-9]{64}$/u.test(source.sha256 ?? "")) {
+          add(context, "sources", "source_hash_missing", `Source ${source.id} must bind the SHA-256 recorded when it was reviewed.`, at);
+        } else if (source.sha256 !== actual.sha256) {
+          add(context, "sources", "source_hash_stale", `Source ${source.id} changed after its ledger row was reviewed. Re-inspect it and update the dependent ledgers before recording a new hash.`, source.path);
+        }
+      }
     } catch (error) {
       add(context, "sources", "source_path_invalid", errorMessage(error), at);
     }
@@ -320,7 +392,7 @@ async function validateSources(context) {
       continue;
     }
     try {
-      const root = resolveWithinWorkspace(context.workspace, inputRoot);
+      const root = await resolveSafeWorkspacePath(context.workspace, inputRoot);
       for (const path of await listSourceFiles(context.workspace, root)) discovered.add(path);
     } catch (error) {
       add(context, "sources", "input_root_unreadable", `Cannot inventory input root ${inputRoot}: ${errorMessage(error)}`, inputRoot);
@@ -557,10 +629,6 @@ function validateAuthorities(context) {
     if (!isRecord(legalIssue)) continue;
     for (const authorityId of stringArray(legalIssue.authorityIds)) {
       if (!context.authorityIds.has(authorityId)) add(context, "authorities", "issue_authority_unknown", `Issue ${legalIssue.id} references unknown authority ${authorityId}.`, STATE_FILES.issues);
-      const authority = ledger.authorities.find((item) => item?.id === authorityId);
-      if (authority && !stringArray(authority.supportedIssueIds).includes(legalIssue.id)) {
-        add(context, "authorities", "authority_issue_backlink_missing", `Authority ${authorityId} must backlink issue ${legalIssue.id}.`, STATE_FILES.authorities);
-      }
     }
   }
   const matrices = Array.isArray(context.state.matrices?.matrices) ? context.state.matrices.matrices : [];
@@ -569,6 +637,92 @@ function validateAuthorities(context) {
     for (const authorityId of stringArray(entry?.authorityIds)) {
       if (!context.authorityIds.has(authorityId)) {
         add(context, "authorities", "matrix_authority_unknown", `Legal-authority matrix entry ${entry.id} references unknown authority ${authorityId}.`, STATE_FILES.matrices);
+      }
+    }
+  }
+}
+
+function validateRelationships(context) {
+  const sources = recordMap(context.state.sources?.sources);
+  const facts = recordMap(context.state.facts?.facts);
+  const issues = recordMap(context.state.issues?.issues);
+  const authorities = recordMap(context.state.authorities?.authorities);
+
+  for (const source of sources.values()) {
+    for (const factId of stringArray(source.factIds)) {
+      const fact = facts.get(factId);
+      if (fact && !factSourceIds(fact).includes(source.id)) {
+        add(context, "facts", "source_fact_backlink_missing", `Source ${source.id} lists fact ${factId}, but that fact does not reference the source.`, STATE_FILES.facts);
+      }
+    }
+  }
+  for (const fact of facts.values()) {
+    for (const sourceId of factSourceIds(fact)) {
+      const source = sources.get(sourceId);
+      if (source && !stringArray(source.factIds).includes(fact.id)) {
+        add(context, "sources", "fact_source_backlink_missing", `Fact ${fact.id} references source ${sourceId}, but that source does not list the fact.`, STATE_FILES.sources);
+      }
+    }
+  }
+
+  for (const legalIssue of issues.values()) {
+    for (const authorityId of stringArray(legalIssue.authorityIds)) {
+      const authority = authorities.get(authorityId);
+      if (authority && !stringArray(authority.supportedIssueIds).includes(legalIssue.id)) {
+        add(context, "authorities", "authority_issue_backlink_missing", `Authority ${authorityId} must backlink issue ${legalIssue.id}.`, STATE_FILES.authorities);
+      }
+    }
+  }
+  for (const authority of authorities.values()) {
+    for (const issueId of stringArray(authority.supportedIssueIds)) {
+      const legalIssue = issues.get(issueId);
+      if (legalIssue && !stringArray(legalIssue.authorityIds).includes(authority.id)) {
+        add(context, "authorities", "issue_authority_backlink_missing", `Authority ${authority.id} lists issue ${issueId}, but that issue does not reference the authority.`, STATE_FILES.issues);
+      }
+    }
+  }
+
+  const matrices = Array.isArray(context.state.matrices?.matrices) ? context.state.matrices.matrices : [];
+  for (const matrix of matrices) {
+    if (!isRecord(matrix)) continue;
+    for (const entry of Array.isArray(matrix.entries) ? matrix.entries : []) {
+      if (!isRecord(entry)) continue;
+      const entryFactIds = stringArray(entry.factIds);
+      const entryIssueIds = stringArray(entry.issueIds);
+      const entryAuthorityIds = stringArray(entry.authorityIds);
+      for (const issueId of entryIssueIds) {
+        const legalIssue = issues.get(issueId);
+        if (legalIssue && !stringArray(legalIssue.factIds).some((factId) => entryFactIds.includes(factId))) {
+          add(context, "issues", "matrix_issue_fact_mismatch", `Matrix entry ${entry.id} and linked issue ${issueId} must reference at least one common fact.`, STATE_FILES.matrices);
+        }
+      }
+      for (const signal of stringArray(entry.riskSignals)) {
+        const ruleId = Object.keys(ISSUE_RULES).find((key) => ISSUE_RULES[key] === signal);
+        const matchingIssue = entryIssueIds
+          .map((issueId) => issues.get(issueId))
+          .find((legalIssue) => legalIssue?.ruleId === ruleId && entryFactIds.every((factId) => stringArray(legalIssue.factIds).includes(factId)));
+        if (!matchingIssue) {
+          add(context, "issues", "risk_signal_fact_mismatch", `Risk signal ${signal} on ${entry.id} requires a linked ${ruleId} issue covering all entry facts.`, STATE_FILES.matrices);
+        }
+      }
+      if (matrix.id !== "legal-authority") continue;
+      for (const authorityId of entryAuthorityIds) {
+        const authority = authorities.get(authorityId);
+        if (authority && !entryIssueIds.some((issueId) => stringArray(authority.supportedIssueIds).includes(issueId))) {
+          add(context, "authorities", "matrix_authority_issue_mismatch", `Legal-authority matrix entry ${entry.id} links authority ${authorityId} without a supported issue from the same entry.`, STATE_FILES.matrices);
+        }
+      }
+      for (const issueId of entryIssueIds) {
+        const supported = entryAuthorityIds.some((authorityId) => {
+          const authority = authorities.get(authorityId);
+          const legalIssue = issues.get(issueId);
+          return authority && legalIssue
+            && stringArray(authority.supportedIssueIds).includes(issueId)
+            && stringArray(legalIssue.authorityIds).includes(authorityId);
+        });
+        if (!supported) {
+          add(context, "authorities", "matrix_issue_authority_mismatch", `Legal-authority matrix entry ${entry.id} issue ${issueId} requires a mutually linked authority from the same entry.`, STATE_FILES.matrices);
+        }
       }
     }
   }
@@ -613,12 +767,18 @@ async function validateCoverage(context) {
     if (fact.conflictStatus === "unresolved" && coverage?.status !== "unresolved") {
       add(context, "coverage", "conflict_not_disclosed", `Unresolved fact ${fact.id} must be marked unresolved in final coverage.`, STATE_FILES.coverage);
     }
+    if (fact.verificationStatus !== "verified" && coverage?.status !== "unresolved") {
+      add(context, "coverage", "unverified_fact_not_disclosed", `Material or critical fact ${fact.id} is not fully verified and must be marked unresolved in final coverage.`, STATE_FILES.coverage);
+    }
   }
   const issues = Array.isArray(context.state.issues?.issues) ? context.state.issues.issues : [];
   for (const legalIssue of issues) {
     if (!isRecord(legalIssue)) continue;
     const coverage = issueCoverage.get(legalIssue.id);
     if (!coverage) add(context, "coverage", "issue_orphaned", `Legal issue ${legalIssue.id} is not mapped to a final deliverable.`, STATE_FILES.coverage);
+    if (coverage && context.deliverableContents.has(coverage.deliverablePath) && !issueCoverageQuoteSupports(legalIssue, coverage.quote)) {
+      add(context, "coverage", "issue_coverage_quote_unsupported", `Coverage quote for issue ${legalIssue.id} must share specific reasoning or control language with its analysis, conclusion, or recommendations.`, STATE_FILES.coverage);
+    }
     if (legalIssue.status === "unresolved" && coverage?.status !== "unresolved") {
       add(context, "coverage", "unresolved_issue_not_disclosed", `Unresolved issue ${legalIssue.id} must be marked unresolved in final coverage.`, STATE_FILES.coverage);
     }
@@ -628,6 +788,9 @@ async function validateCoverage(context) {
     if (!isRecord(authority) || authority.verificationStatus === "not-applicable") continue;
     const coverage = authorityCoverage.get(authority.id);
     if (!coverage) add(context, "coverage", "authority_orphaned", `Authority ${authority.id} is not mapped to a final deliverable.`, STATE_FILES.coverage);
+    if (coverage && context.deliverableContents.has(coverage.deliverablePath) && !authorityCoverageQuoteSupports(authority, coverage.quote)) {
+      add(context, "coverage", "authority_coverage_quote_unsupported", `Coverage quote for authority ${authority.id} must identify the authority and article and support its stated conclusion.`, STATE_FILES.coverage);
+    }
     if (authority.verificationStatus === "pending-verification" && coverage?.status !== "unresolved") {
       add(context, "coverage", "pending_authority_not_disclosed", `Pending authority ${authority.id} must be marked unresolved in final coverage.`, STATE_FILES.coverage);
     }
@@ -699,6 +862,58 @@ function factCoverageQuoteSupports(fact, quote) {
   return details.some((value) => normalizedQuote.includes(value));
 }
 
+function issueCoverageQuoteSupports(legalIssue, quote) {
+  return semanticOverlapCount(
+    quote,
+    [legalIssue.analysis, legalIssue.conclusion, ...stringArray(legalIssue.recommendations)],
+  ) >= 2;
+}
+
+function authorityCoverageQuoteSupports(authority, quote) {
+  if (!nonEmpty(quote) || !nonEmpty(authority.name) || !nonEmpty(authority.supportedConclusion)) return false;
+  if (authority.verificationStatus === "verified" && !citationIdentitySupports(quote, authority.name, authority.article)) return false;
+  return semanticOverlapCount(quote, [authority.supportedConclusion]) >= 2;
+}
+
+function citationIdentitySupports(quote, name, article) {
+  if (!nonEmpty(name) || !nonEmpty(article)) return false;
+  const normalizedName = normalizeEvidenceText(name);
+  const normalizedArticle = normalizeEvidenceText(article);
+  return String(quote)
+    .split(/[;；。\n]+/u)
+    .map(normalizeEvidenceText)
+    .some((segment) => segment.includes(normalizedName) && segment.includes(normalizedArticle));
+}
+
+function semanticOverlapCount(quote, values) {
+  if (!nonEmpty(quote)) return 0;
+  const quoteAnchors = semanticAnchors(quote);
+  const valueAnchors = new Set(values.filter(nonEmpty).flatMap(semanticAnchors));
+  let count = 0;
+  for (const anchor of quoteAnchors) if (valueAnchors.has(anchor)) count += 1;
+  return count;
+}
+
+function semanticAnchors(value) {
+  const text = normalize(value);
+  const anchors = new Set();
+  for (const token of text.match(/[\p{Script=Latin}\p{N}]{3,}/gu) ?? []) {
+    if (!SEMANTIC_STOP_WORDS.has(token)) anchors.add(token);
+  }
+  for (const sequence of text.match(/[\p{Script=Han}]{2,}/gu) ?? []) {
+    for (let index = 0; index < sequence.length - 1; index += 1) {
+      const pair = sequence.slice(index, index + 2);
+      if (!SEMANTIC_STOP_WORDS.has(pair)) anchors.add(pair);
+    }
+  }
+  return [...anchors];
+}
+
+const SEMANTIC_STOP_WORDS = new Set([
+  "and", "are", "for", "from", "that", "the", "this", "with",
+  "公司", "法律", "问题", "交易", "风险", "要求", "存在", "相关",
+]);
+
 function scalarValues(value) {
   if (Array.isArray(value)) return value.flatMap(scalarValues);
   if (isRecord(value)) return Object.values(value).flatMap(scalarValues);
@@ -737,6 +952,7 @@ function detectTimelineCollisions(facts) {
 }
 
 async function listSourceFiles(workspace, root) {
+  await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, root));
   const rootInfo = await lstat(root);
   if (rootInfo.isSymbolicLink()) throw new Error("Input roots may not be symbolic links.");
   if (rootInfo.isFile()) return [toWorkspacePath(workspace, root)];
@@ -759,7 +975,10 @@ async function computeStateHash(context) {
   const deliverables = [...context.deliverables.entries()]
     .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
     .sort((a, b) => a.path.localeCompare(b.path));
-  return sha256(stableStringify({ validatorVersion: VALIDATOR_VERSION, state, deliverables }));
+  const sources = [...context.sources.entries()]
+    .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return sha256(stableStringify({ validatorVersion: VALIDATOR_VERSION, state, sources, deliverables }));
 }
 
 async function writeJsonAtomic(filePath, value) {
@@ -792,6 +1011,21 @@ function phaseForStateKey(key) {
 
 function issueCoversFact(issues, factId) {
   return (issues ?? []).some((item) => stringArray(item.factIds).includes(factId));
+}
+
+function recordMap(rows) {
+  const output = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (isRecord(row) && nonEmpty(row.id)) output.set(row.id, row);
+  }
+  return output;
+}
+
+function factSourceIds(fact) {
+  return (Array.isArray(fact.sourceRefs) ? fact.sourceRefs : [])
+    .filter(isRecord)
+    .map((reference) => reference.sourceId)
+    .filter(nonEmpty);
 }
 
 function toWorkspacePath(workspace, filePath) {

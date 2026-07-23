@@ -23,6 +23,8 @@ Rule IDs and matrix riskSignals
 - source-contradiction -> source_contradiction
   Use for every unresolved contradiction between source records. The validator requires this issue for facts whose conflictStatus is unresolved.
 
-For every riskSignal on a matrix entry, link an issue with the matching ruleId. Link all facts needed to explain the relationship, not only the fact that contains a number. State the legal significance and a concrete conclusion; a restatement of source text is not legal reasoning.
+For every riskSignal on a matrix entry, link an issue with the matching ruleId. That issue must cover every fact on the matrix entry. Every other linked issue must share at least one fact with the entry. Link all facts needed to explain the relationship, not only the fact that contains a number. State the legal significance and a concrete conclusion; a restatement of source text is not legal reasoning.
+
+In the legal-authority matrix, every linked authority must support an issue on the same entry, and every linked issue must have a mutually linked authority on that entry. An authority cannot be borrowed from an unrelated issue merely to fill authorityIds.
 
 Use the hyphenated value on the left only in issues.json ruleId. Use the underscored value on the right only in matrices.json riskSignals. Every critical issue must link at least one authority; a free-text waiver is not accepted.
