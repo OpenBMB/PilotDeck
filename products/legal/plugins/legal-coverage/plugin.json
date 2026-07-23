@@ -1,0 +1,7 @@
+{
+  "name": "legal-coverage",
+  "version": "1.0.0",
+  "description": "Legal due-diligence coverage ledgers, dynamic milestones, and fail-closed completion proof.",
+  "skills": ["skills"],
+  "hooks": "hooks/hooks.json"
+}
