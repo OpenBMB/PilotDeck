@@ -1,0 +1,4 @@
+interface:
+  display_name: "Legal Due Diligence"
+  short_description: "Build auditable legal diligence opinions"
+  default_prompt: "Use $conduct-legal-due-diligence to produce a source-grounded legal due diligence opinion."
