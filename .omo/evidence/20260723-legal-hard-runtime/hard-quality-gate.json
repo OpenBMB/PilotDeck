@@ -1,0 +1,42 @@
+{
+  "command": "node /tmp/pilotdeck-legal-benchmark-runner.mjs verify-hard <isolated-project>",
+  "observedAt": "2026-07-23",
+  "passed": true,
+  "checks": {
+    "sourceFileCount": 62,
+    "ledgerExists": true,
+    "ledgerFileCount": 62,
+    "missingSourcePathCount": 0,
+    "duplicateLedgerPathCount": 0,
+    "uninspectedMachineReadableCount": 0,
+    "pptxRecordInspected": true,
+    "pptxManifestExists": true,
+    "pptxManifestValid": true,
+    "pptxSlideCount": 9,
+    "stalePptxNotInspectedLanguage": false,
+    "topicEvidence": {
+      "required": 8,
+      "present": 8,
+      "nonEmpty": 8,
+      "sizesBytes": [4760, 9306, 5187, 5377, 7577, 6396, 7155, 7245]
+    },
+    "reverseCoverageReportExists": true,
+    "reverseCoverageReportBytes": 12893,
+    "finalIntegritySentinelExists": true,
+    "finalIntegritySentinelBoundToCurrentOpinionSha": true,
+    "errorCount": 0
+  },
+  "manualSemanticChecks": {
+    "topicEvidenceUniqueSourceIdsPerFile": "8-24",
+    "topicEvidenceIncludesConflictOrVerificationLanguage": true,
+    "topicEvidenceIncludesLegalOrRiskAnalysis": true,
+    "reverseReportCoversAllEightSourceFolders": true,
+    "reverseReportCoversAllEightTopics": true,
+    "opinionDistinctSourceIdExpressions": 65,
+    "opinionContainsPlaceholders": false,
+    "opinionContainsStalePptxLanguage": false,
+    "materialConflictsPreserved": true,
+    "uncertainLegalCitationsMarkedForPartnerVerification": true
+  },
+  "privacy": "Only counts, booleans, sizes, and hashes are recorded; private legal content is omitted."
+}

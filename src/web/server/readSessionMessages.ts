@@ -107,6 +107,9 @@ export async function readWebSessionMessages(
   }
 
   attachSubagentIds(entries, allMessages);
+  if (resolve(effectiveProjectRoot) !== resolve(options.pilotHome)) {
+    injectFileArtifactMessages(entries, allMessages, input.sessionKey, input.projectKey);
+  }
   injectAgentStatusMessages(entries, allMessages, input.sessionKey, input.projectKey);
   injectErrorTurnMessages(entries, allMessages, input.sessionKey, input.projectKey);
   if (incompleteTurnIds.length > 0) {
@@ -879,6 +882,46 @@ function attachSubagentIds(
     if (name !== "agent" && name !== "task") continue;
     msg.subagentId = subagentQueue[qi];
     qi += 1;
+  }
+}
+
+function injectFileArtifactMessages(
+  entries: AgentTranscriptEntry[],
+  allMessages: WebMessage[],
+  sessionKey: string,
+  projectKey?: string,
+): void {
+  const lastBoundaryIndex = findLastCompactBoundaryIndex(entries);
+  const artifactMessages: WebMessage[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    if (lastBoundaryIndex !== -1 && index < lastBoundaryIndex) continue;
+    const entry = entries[index];
+    if (entry.type !== "file_artifacts" || entry.artifacts.length === 0) continue;
+    artifactMessages.push({
+      id: entry.entryId ?? `${sessionKey}-file-artifacts-${entry.turnId}-${entry.sequence}`,
+      sessionKey,
+      projectKey,
+      createdAt: entry.createdAt,
+      provider: "pilotdeck",
+      role: "assistant",
+      kind: "file_artifacts",
+      artifacts: entry.artifacts,
+      payload: { turnId: entry.turnId },
+      source: "history",
+      ...(entry.entryId ? { entryId: entry.entryId } : {}),
+    });
+  }
+
+  for (const artifactMessage of artifactMessages) {
+    let insertAt = allMessages.length;
+    for (let index = allMessages.length - 1; index >= 0; index -= 1) {
+      if (allMessages[index].createdAt <= artifactMessage.createdAt) {
+        insertAt = index + 1;
+        break;
+      }
+      if (index === 0) insertAt = 0;
+    }
+    allMessages.splice(insertAt, 0, artifactMessage);
   }
 }
 

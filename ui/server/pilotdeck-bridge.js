@@ -452,6 +452,14 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     content: event.text,
                 }),
             ];
+        case 'file_artifacts':
+            return [
+                createNormalizedMessage({
+                    ...base,
+                    kind: 'file_artifacts',
+                    artifacts: Array.isArray(event.artifacts) ? event.artifacts : [],
+                }),
+            ];
         case 'tool_call_started': {
             const displayName = normalizeToolDisplayName(event.name);
             const rawName = String(event.name || '').toLowerCase();

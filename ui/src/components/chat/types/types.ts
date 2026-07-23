@@ -34,6 +34,19 @@ export interface ChatAttachment {
   truncated?: boolean;
 }
 
+export interface ChatFileArtifact {
+  id: string;
+  name: string;
+  path: string;
+  operation: 'created' | 'updated';
+  source: 'tool' | 'workspace_diff';
+  status: 'complete' | 'incomplete';
+  size: number;
+  sha256: string;
+  mimeType?: string;
+  createdAt: string;
+}
+
 export interface ToolResult {
   content?: unknown;
   isError?: boolean;
@@ -72,6 +85,7 @@ export interface ChatMessage {
   timestamp: string | number | Date;
   images?: ChatImage[];
   attachments?: ChatAttachment[];
+  artifacts?: ChatFileArtifact[];
   reasoning?: string;
   isThinking?: boolean;
   isStreaming?: boolean;

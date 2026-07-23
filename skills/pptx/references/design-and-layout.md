@@ -33,7 +33,7 @@ Use at most one primary visual on a standard content slide. Avoid decorative cha
 
 ## Typography and fit
 
-Keep titles on one line. Shorten text before shrinking it. Use a body size of at least 16 pt unless the supplied template clearly establishes another standard. Check Chinese and mixed-language wrapping in the rendered PNG, not only in source geometry.
+Keep titles on one line. Shorten text before shrinking it. Resolve the appropriate typography profile from `typography-and-fonts.md`; use presentation density for projection and report density only for desktop-reading deliverables. Check Chinese and mixed-language wrapping in the rendered PNG and treat LibreOffice font substitution separately from target-PowerPoint compatibility.
 
 ## Images
 

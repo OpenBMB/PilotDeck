@@ -18,6 +18,7 @@
 - Use English Excel function names and comma separators.
 - In an ExcelJS `{ formula }` object, omit the leading `=`.
 - Guard expected edge cases with functions such as `IFERROR` only when the fallback is semantically valid.
+- Do not use `NA()` or an intentional `#N/A` to represent an expected business state such as “not applicable” or “missing source”. Return a blank or text such as `"不适用"`, and explain it in a note or status column. Formula error values are hard audit failures.
 
 Example:
 
@@ -57,7 +58,12 @@ Delimited files do not preserve formulas, formats, comments, multiple sheets, va
 - Preserve the source delimiter when the requested output stays delimited.
 - Preserve quoted delimiters and newlines correctly.
 - Preserve leading zeroes unless the user clearly requests numeric conversion.
+- Preserve integers longer than 15 digits as text; JavaScript and Excel cannot safely represent them as ordinary numbers.
+- Detect UTF-8, UTF-8 BOM, GBK, and GB18030 input. Use an explicit encoding when automatic detection is ambiguous.
+- New delimited exports default to UTF-8 with BOM so Chinese opens correctly in desktop Excel.
 - Do not infer locale-specific dates automatically.
+- Treat phone numbers, identity numbers, account numbers, order IDs, and postal codes as identifiers, not measures.
+- Review untrusted text beginning with `=`, `+`, `-`, or `@` before CSV export when spreadsheet-formula injection is a security concern.
 - Report inconsistent row widths instead of silently dropping cells.
 - Convert to XLSX when the requested result needs formulas or formatting.
 
@@ -70,4 +76,4 @@ After build or recalculation:
 3. Run `audit` and fix every formula error.
 4. Render the final workbook and check visible values and units.
 
-The audit scans `#REF!`, `#DIV/0!`, `#VALUE!`, `#NAME?`, `#N/A`, `#NUM!`, `#NULL!`, `#SPILL!`, and related error values. An intentional `#N/A` still needs explicit review.
+The audit scans `#REF!`, `#DIV/0!`, `#VALUE!`, `#NAME?`, `#N/A`, `#NUM!`, `#NULL!`, `#SPILL!`, and related error values. These are hard failures, including an intentional `#N/A`.

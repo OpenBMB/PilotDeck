@@ -129,9 +129,12 @@ test("artifact failure injects one bounded correction turn and succeeds after va
 
     assert.equal(completed.result.type, "success");
     assert.equal(requests.length, 2);
-    assert.doesNotMatch(messageText(requests[0]?.messages ?? []), /Artifact validation failed/);
+    assert.match(messageText(requests[0]?.messages ?? []), /Required deliverables are still missing/);
+    assert.match(messageText(requests[0]?.messages ?? []), /deliverable\.xlsx/);
+    assert.doesNotMatch(messageText(completed.messages), /Required deliverables are still missing/);
     assert.match(messageText(requests[1]?.messages ?? []), /Artifact validation failed/);
     assert.match(messageText(requests[1]?.messages ?? []), /deliverable\.xlsx/);
+    assert.match(messageText(requests[1]?.messages ?? []), /Required deliverables are still missing/);
     assert.equal(completed.result.turns, 2);
   } finally {
     await rm(workspace, { recursive: true, force: true });

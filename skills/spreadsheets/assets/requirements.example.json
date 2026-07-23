@@ -1,0 +1,73 @@
+{
+  "requiredSheets": [
+    "Summary"
+  ],
+  "minFormulaCount": 3,
+  "requiredFormulaRanges": [
+    {
+      "sheet": "Summary",
+      "range": "D4:D6"
+    }
+  ],
+  "expectedRanges": [
+    {
+      "sheet": "Summary",
+      "range": "A4:C6",
+      "values": [
+        ["1月", 100000, 70000],
+        ["2月", 120000, 78000],
+        ["3月", 135000, 85000]
+      ]
+    }
+  ],
+  "requiredCellTypes": [
+    {
+      "sheet": "Summary",
+      "range": "A4:A6",
+      "type": "string"
+    },
+    {
+      "sheet": "Summary",
+      "range": "B4:D6",
+      "type": "number"
+    }
+  ],
+  "requiredNativeCharts": [
+    {
+      "sheet": "Summary",
+      "type": "line",
+      "minCount": 1,
+      "minPoints": 3,
+      "sourceRanges": [
+        "A4:A6",
+        "B4:B6",
+        "C4:C6"
+      ]
+    }
+  ],
+  "requiredTables": [
+    {
+      "sheet": "Summary",
+      "minCount": 1
+    }
+  ],
+  "requiredConditionalFormatting": [
+    {
+      "sheet": "Summary",
+      "range": "D4:D6"
+    }
+  ],
+  "requiredDataValidations": [
+    {
+      "sheet": "Summary",
+      "cell": "E4"
+    }
+  ],
+  "maxPagesPerSheet": [
+    {
+      "sheet": "Summary",
+      "max": 1
+    }
+  ],
+  "warningDispositions": []
+}

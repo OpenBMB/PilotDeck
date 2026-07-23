@@ -41,6 +41,24 @@ test("missing or wrong-format artifacts fail with reviewer-readable issues", asy
   assert.equal(result.results[0]?.issues[0]?.code, "artifact_missing");
 });
 
+test("empty required artifacts fail validation", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-empty-"));
+  try {
+    await writeFile(join(workspace, "report.md"), "");
+    const store = new ArtifactContractStore();
+    store.register("session-1", "legal:test", [{ id: "report", path: "report.md" }]);
+    const result = await new ArtifactValidationRuntime(store, [new FileExistsValidator()]).validate({
+      sessionId: "session-1",
+      turnId: "turn-1",
+      workspaceRoot: workspace,
+    });
+    assert.equal(result.passed, false);
+    assert.equal(result.results[0]?.issues[0]?.code, "artifact_empty");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("rejects traversal and symlink escapes before a domain validator runs", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-"));
   const outside = await mkdtemp(join(tmpdir(), "pilotdeck-outside-"));

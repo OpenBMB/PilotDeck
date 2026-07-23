@@ -1,5 +1,6 @@
 import type { CanonicalMessage } from "../../model/index.js";
 import type { AgentTurnResult } from "../../agent/protocol/result.js";
+import type { FileArtifact } from "../artifacts/FileArtifact.js";
 
 export type AgentTranscriptEntryType =
   | "accepted_input"
@@ -7,6 +8,7 @@ export type AgentTranscriptEntryType =
   | "tool_result_message"
   | "durable_message"
   | "agent_status_message"
+  | "file_artifacts"
   | "turn_result"
   | "control_boundary"
   | "session_metadata"
@@ -45,6 +47,11 @@ export type AgentStatusMessageTranscriptEntry = AgentTranscriptEntryBase & {
 export type AgentTurnResultTranscriptEntry = AgentTranscriptEntryBase & {
   type: "turn_result";
   result: AgentTurnResult;
+};
+
+export type AgentFileArtifactsTranscriptEntry = AgentTranscriptEntryBase & {
+  type: "file_artifacts";
+  artifacts: FileArtifact[];
 };
 
 export type CompactBoundaryMetadata = {
@@ -174,6 +181,7 @@ export type AgentTranscriptEntry =
   | AgentAcceptedInputTranscriptEntry
   | AgentMessageTranscriptEntry
   | AgentStatusMessageTranscriptEntry
+  | AgentFileArtifactsTranscriptEntry
   | AgentTurnResultTranscriptEntry
   | AgentControlBoundaryTranscriptEntry
   | AgentSessionMetadataTranscriptEntry

@@ -1,6 +1,7 @@
 import CodeMirror from '@uiw/react-codemirror';
 import type { Extension } from '@codemirror/state';
 import { zincDarkTheme, zincLightTheme } from '../../utils/zincThemes';
+import HtmlDocumentPreview from './HtmlDocumentPreview';
 import MarkdownPreview from './markdown/MarkdownPreview';
 
 type CodeEditorSurfaceProps = {
@@ -8,6 +9,10 @@ type CodeEditorSurfaceProps = {
   onChange: (value: string) => void;
   markdownPreview: boolean;
   isMarkdownFile: boolean;
+  htmlPreview?: boolean;
+  isHtmlFile?: boolean;
+  htmlPreviewUrl?: string | null;
+  fileName?: string;
   isDarkMode: boolean;
   fontSize: number;
   showLineNumbers: boolean;
@@ -21,6 +26,10 @@ export default function CodeEditorSurface({
   onChange,
   markdownPreview,
   isMarkdownFile,
+  htmlPreview = false,
+  isHtmlFile = false,
+  htmlPreviewUrl = null,
+  fileName = '',
   isDarkMode,
   fontSize,
   showLineNumbers,
@@ -28,6 +37,10 @@ export default function CodeEditorSurface({
   baseFilePath,
   onFileOpen,
 }: CodeEditorSurfaceProps) {
+  if (htmlPreview && isHtmlFile && htmlPreviewUrl) {
+    return <HtmlDocumentPreview url={htmlPreviewUrl} title={`Preview: ${fileName}`} />;
+  }
+
   if (markdownPreview && isMarkdownFile) {
     return (
       <div className="h-full overflow-y-auto bg-white dark:bg-neutral-950">

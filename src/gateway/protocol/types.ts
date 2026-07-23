@@ -140,6 +140,7 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
   | { type: "model_request_started"; model?: string; provider?: string }
   | { type: "assistant_text_delta"; text: string }
   | { type: "assistant_attachment"; attachment: GatewayOutboundAttachment }
+  | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "tool_call_started"; toolCallId: string; name: string; argsPreview?: string }
   | {

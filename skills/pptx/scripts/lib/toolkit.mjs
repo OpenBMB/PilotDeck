@@ -13,6 +13,35 @@ async function tokens() {
   return cachedTokens;
 }
 
+function merge(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override ?? {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && base?.[key] && typeof base[key] === 'object') {
+      result[key] = merge(base[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+export async function resolveDesignTokens(options = {}) {
+  const base = await tokens();
+  const language = options.lang ?? 'zh-CN';
+  const inferredProfile = /^zh(?:-|$)/i.test(language) ? 'cross-platform-zh' : 'cross-platform-en';
+  const profileName = options.profile ?? inferredProfile;
+  const profile = base.typography.profiles?.[profileName];
+  if (!profile) throw new Error(`Unknown typography profile: ${profileName}`);
+  const densityName = options.density ?? 'presentation';
+  const density = base.typography.densityProfiles?.[densityName];
+  if (!density) throw new Error(`Unknown typography density: ${densityName}`);
+  const typography = merge(merge(base.typography, profile), density);
+  typography.profile = profileName;
+  typography.density = densityName;
+  typography.lang = options.lang ?? profile.lang ?? language;
+  return { ...base, typography };
+}
+
 async function layouts() {
   if (!cachedLayouts) {
     cachedLayouts = await import(pathToFileURL(path.join(skillRoot(), 'assets/layout-library/layouts/core.mjs')).href);
@@ -53,18 +82,22 @@ export async function imageSizingContain(imagePath, x, y, w, h) {
 
 export async function createDeck(options = {}) {
   const { PptxGenJS } = loadDependencies();
-  const deckTokens = await tokens();
+  const deckTokens = options.tokens ?? await resolveDesignTokens({
+    lang: options.lang,
+    profile: options.typographyProfile,
+    density: options.density,
+  });
   const pptx = new PptxGenJS();
   pptx.layout = options.layout ?? deckTokens.canvas.layout;
   pptx.author = options.author ?? 'PilotDeck';
   pptx.company = options.company ?? 'PilotDeck';
   pptx.subject = options.subject ?? '';
   pptx.title = options.title ?? '';
-  pptx.lang = options.lang ?? 'zh-CN';
+  pptx.lang = options.lang ?? deckTokens.typography.lang ?? 'zh-CN';
   pptx.theme = {
     headFontFace: options.headFontFace ?? deckTokens.typography.headFontFace,
     bodyFontFace: options.bodyFontFace ?? deckTokens.typography.bodyFontFace,
-    lang: options.lang ?? 'zh-CN',
+    lang: options.lang ?? deckTokens.typography.lang ?? 'zh-CN',
   };
   return pptx;
 }
@@ -73,6 +106,7 @@ export async function buildToolkit() {
   const deps = loadDependencies();
   return {
     createDeck,
+    resolveDesignTokens,
     layouts: await layouts(),
     tokens: await tokens(),
     pptxgenjs: deps.PptxGenJS,

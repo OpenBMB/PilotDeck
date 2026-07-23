@@ -732,16 +732,18 @@ class ProjectRuntimeRegistry {
       // Pass the YAML-configured web-search provider through to the built-in
       // `web_search` tool. When absent, the tool may infer GLM/Tavily from
       // provider-specific environment variables.
-      ...(webSearchConfig
-        ? {
-            webSearch: {
-              ...(webSearchConfig.provider ? { provider: webSearchConfig.provider } : {}),
-              ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
-              ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
-              ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),
-            },
-          }
-        : {}),
+      ...(webSearchConfig?.enabled === false
+        ? { webSearch: false as const }
+        : webSearchConfig
+          ? {
+              webSearch: {
+                ...(webSearchConfig.provider ? { provider: webSearchConfig.provider } : {}),
+                ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
+                ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
+                ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),
+              },
+            }
+          : {}),
     });
     for (const tool of this._extraTools) {
       tools.register(tool);
@@ -878,6 +880,7 @@ class ProjectRuntimeRegistry {
       projectStorage: prepared.runtime.projectStorage,
       extendDependencies: prepared.extendDependencies,
       sessionTitleGenerator: prepared.sessionTitleGenerator,
+      collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
     });
     return resumed.session;
   }
@@ -906,8 +909,13 @@ class ProjectRuntimeRegistry {
       initialState: previous.state,
       seedState: previous.fileState,
       sessionTitleGenerator: prepared.sessionTitleGenerator,
+      collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
     });
     return session;
+  }
+
+  private shouldCollectFileArtifacts(runtime: ProjectRuntime): boolean {
+    return resolve(runtime.projectRoot) !== resolve(this.options.pilotHome);
   }
 
   private async prepareSessionRuntime(context: GatewaySessionContext) {

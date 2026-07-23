@@ -13,6 +13,7 @@ import type { AgentStatusMessageInput, AgentTranscriptWriterState } from "../../
 import type { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
+import { FileArtifactCollector, type FileArtifact } from "../../session/artifacts/index.js";
 
 export type TurnRunnerOptions = {
   sessionId: string;
@@ -42,6 +43,8 @@ export type TurnRunnerResult = {
 export type TurnRunnerRuntimeContext = {
   cwd: string;
   transcriptPath: string;
+  /** Disable Agent-generated file artifact collection for non-project chats. */
+  collectFileArtifacts?: boolean;
 };
 
 export type TurnRunnerRuntimeReloadSnapshot = {
@@ -82,6 +85,31 @@ export class TurnRunner {
 
   async *run(options: TurnRunnerOptions): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
     yield { type: "turn_started", sessionId: options.sessionId, turnId: options.turnId };
+    const artifactCollector = this.runtimeContext.collectFileArtifacts === false
+      ? undefined
+      : await FileArtifactCollector.start({
+          cwd: this.runtimeContext.cwd,
+          allowedInputPaths: options.allowedReadFiles,
+          now: this.now,
+        }).catch(() => undefined);
+    let artifactsFinished = false;
+    const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
+      if (!artifactCollector || artifactsFinished) return [];
+      artifactsFinished = true;
+      const artifacts = await artifactCollector.finish(
+        result.type === "success" ? "complete" : "incomplete",
+      ).catch(() => []);
+      if (artifacts.length > 0) {
+        await Promise.resolve(
+          this.transcript.recordFileArtifacts?.(
+            options.sessionId,
+            options.turnId,
+            artifacts,
+          ),
+        ).catch(() => {});
+      }
+      return artifacts;
+    };
     const accepted = this.inputProcessor.accept(options.input);
     const allAcceptedMessages = [...accepted.messages, ...(options.syntheticMessages ?? [])];
     const messages = [...options.messages, ...allAcceptedMessages];
@@ -125,6 +153,10 @@ export class TurnRunner {
         error,
       );
       await this.recordErrorResult(options, result);
+      const artifacts = await finishArtifacts(result);
+      if (artifacts.length > 0) {
+        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      }
       const status = await this.recordTurnFailureStatus(options, error);
       yield this.toAgentStatusEvent(options, status);
       yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
@@ -142,6 +174,10 @@ export class TurnRunner {
         error,
       );
       await this.recordErrorResult(options, result);
+      const artifacts = await finishArtifacts(result);
+      if (artifacts.length > 0) {
+        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      }
       const status = await this.recordTurnFailureStatus(options, error);
       yield this.toAgentStatusEvent(options, status);
       await this.flushReadySessionTitle(options, sessionTitle);
@@ -174,6 +210,7 @@ export class TurnRunner {
         },
       });
       let runResult: TurnRunnerResult | undefined;
+      let turnCompletedEvent: Extract<AgentEvent, { type: "turn_completed" }> | undefined;
       while (true) {
         const next = await generator.next();
         if (next.done) {
@@ -181,6 +218,16 @@ export class TurnRunner {
           break;
         }
         const event = next.value;
+        if (event.type === "tool_result") {
+          artifactCollector?.observeToolResult(event.result);
+        }
+        if (event.type === "file_artifacts") {
+          continue;
+        }
+        if (event.type === "turn_completed") {
+          turnCompletedEvent = event;
+          continue;
+        }
         if (event.type === "turn_failed" && !hasRecordedVisibleFailureStatus) {
           const status = await this.recordTurnFailureStatus(options, event.error);
           hasRecordedVisibleFailureStatus = true;
@@ -189,12 +236,23 @@ export class TurnRunner {
         yield event;
       }
 
+      const artifacts = await finishArtifacts(runResult.result);
+      if (artifacts.length > 0) {
+        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      }
+      if (turnCompletedEvent) {
+        yield turnCompletedEvent;
+      }
       await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
       await this.flushReadySessionTitle(options, sessionTitle);
       return runResult;
     } catch (error) {
       const normalized = normalizeAgentError(error);
       const result = this.createErrorResult(options, normalized);
+      const artifacts = await finishArtifacts(result);
+      if (artifacts.length > 0) {
+        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      }
       await Promise.resolve(this.transcript.recordTurnResult(options.sessionId, options.turnId, result)).catch(() => {});
       const status = await this.recordTurnFailureStatus(options, normalized);
       yield this.toAgentStatusEvent(options, status);

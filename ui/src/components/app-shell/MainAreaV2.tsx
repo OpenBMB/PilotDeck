@@ -26,9 +26,16 @@ import {
   ChatHistorySearchControllerProvider,
   useChatHistorySearchController,
 } from '../chat-v2/ChatHistorySearchController';
+import ChatHistorySearchBar from '../chat-v2/ChatHistorySearchBar';
 import type { MainContentProps } from '../main-content/types/types';
 import { cn } from '../../lib/utils.js';
-import { projectDisplayName, sessionDisplayTitle, useCustomNamesVersion } from '../../lib/customNames';
+import {
+  projectDisplayName,
+  sessionDisplayTitle,
+  setSessionCustomTitle,
+  useCustomNamesVersion,
+} from '../../lib/customNames';
+import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
@@ -91,8 +98,11 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     () => localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY),
   );
   const [dashboardMenuOpen, setDashboardMenuOpen] = useState(false);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const dashboardMenuRef = useRef<HTMLDivElement | null>(null);
   const dashboardMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sessionTitleInputRef = useRef<HTMLInputElement | null>(null);
   const chatHistorySearch = useChatHistorySearchController();
 
   useEffect(() => {
@@ -191,6 +201,9 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     : t('navigation.home', { defaultValue: 'Home' });
   const headerTitle =
     sessionSummary || (displayActiveTab === FILES_TAB.id ? tabLabel || projectName : projectName);
+  const isRenamingSessionTitle = Boolean(
+    selectedSession && renamingSessionId === selectedSession.id,
+  );
   const ActiveDashboardIcon = activeDashboardTab?.icon;
   const alwaysOnUnread = Boolean(
     latestAlwaysOnEventMarker &&
@@ -204,6 +217,35 @@ function MainAreaV2Content(props: MainAreaV2Props) {
       setActiveTab('chat');
     }
   }, [chatHistorySearch.isOpen, displayActiveTab, setActiveTab]);
+
+  useEffect(() => {
+    setRenamingSessionId(null);
+    setSessionTitleDraft('');
+  }, [selectedSession?.id]);
+
+  useEffect(() => {
+    if (!isRenamingSessionTitle) return;
+    sessionTitleInputRef.current?.focus();
+    sessionTitleInputRef.current?.select();
+  }, [isRenamingSessionTitle]);
+
+  const beginSessionTitleRename = () => {
+    if (!selectedSession) return;
+    setRenamingSessionId(selectedSession.id);
+    setSessionTitleDraft(sessionDisplayTitle(selectedSession));
+  };
+
+  const commitSessionTitleRename = () => {
+    if (!renamingSessionId) return;
+    setSessionCustomTitle(renamingSessionId, sessionTitleDraft);
+    setRenamingSessionId(null);
+    setSessionTitleDraft('');
+  };
+
+  const cancelSessionTitleRename = () => {
+    setRenamingSessionId(null);
+    setSessionTitleDraft('');
+  };
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
@@ -224,12 +266,37 @@ function MainAreaV2Content(props: MainAreaV2Props) {
           </button>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div
-            className="min-w-0 max-w-[34rem] truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50"
-            title={headerTitle}
-          >
-            {headerTitle}
-          </div>
+          {isRenamingSessionTitle ? (
+            <input
+              ref={sessionTitleInputRef}
+              value={sessionTitleDraft}
+              onChange={(event) => setSessionTitleDraft(event.target.value)}
+              onBlur={commitSessionTitleRename}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  if (isImeEnterEvent(event)) return;
+                  event.preventDefault();
+                  commitSessionTitleRename();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  cancelSessionTitleRename();
+                }
+              }}
+              aria-label={t('sidebar:sessions.renameSession', { defaultValue: 'Rename Session' }) as string}
+              className="h-6 min-w-0 max-w-[34rem] rounded border border-neutral-300 bg-white px-1.5 text-[15px] font-semibold leading-5 text-neutral-950 outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+            />
+          ) : (
+            <div
+              className={cn(
+                'min-w-0 max-w-[34rem] truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50',
+                selectedSession && 'cursor-text',
+              )}
+              title={headerTitle}
+              onDoubleClick={selectedSession ? beginSessionTitleRename : undefined}
+            >
+              {headerTitle}
+            </div>
+          )}
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-neutral-400 dark:text-neutral-500">
             <Box className="h-3 w-3 shrink-0" strokeWidth={1.75} />
             <span className="min-w-0 max-w-[24rem] truncate" title={projectName}>
@@ -237,6 +304,16 @@ function MainAreaV2Content(props: MainAreaV2Props) {
             </span>
           </div>
         </div>
+
+        {chatHistorySearch.isOpen && chatHistorySearch.presentation ? (
+          <div className="ml-4 w-[min(360px,36vw)] min-w-[240px] shrink">
+            <ChatHistorySearchBar
+              {...chatHistorySearch.presentation}
+              onClose={chatHistorySearch.closeSearch}
+              placement="header"
+            />
+          </div>
+        ) : null}
 
         <div className="ml-4 flex h-9 shrink-0 items-center gap-1" aria-label="Tools">
           <button

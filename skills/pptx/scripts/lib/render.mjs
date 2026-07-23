@@ -129,8 +129,26 @@ export async function renderPptx(inputPath, outputDir, options = {}) {
       montage = path.resolve(options.montage || path.join(output, 'montage.png'));
       await createMontage(slides, montage, { columns: options.columns });
     }
-    if (options.pdf) await fs.copyFile(pdf, path.resolve(options.pdf));
-    return { input, output, dpi, slides, montage, slideCount: slides.length };
+    let exportedPdf = null;
+    if (options.pdf) {
+      exportedPdf = path.resolve(options.pdf);
+      await fs.mkdir(path.dirname(exportedPdf), { recursive: true });
+      await fs.copyFile(pdf, exportedPdf);
+    }
+    return {
+      status: 'passed',
+      baseline: 'libreoffice',
+      engine: availability.soffice,
+      rasterizer: availability.renderer,
+      input,
+      output,
+      dpi,
+      slides,
+      montage,
+      pdf: exportedPdf,
+      slideCount: slides.length,
+      compatibilityNote: 'LibreOffice rendering is a baseline and may substitute fonts differently from Microsoft PowerPoint.',
+    };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }

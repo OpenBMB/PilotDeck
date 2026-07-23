@@ -99,7 +99,9 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   registry.register(createEditNotebookTool());
   registry.register(createWriteFileTool());
   registry.register(createBashTool(options?.bash));
-  registry.register(createExecuteCodeTool());
+  registry.register(createExecuteCodeTool({
+    webSearch: options?.webSearch !== false,
+  }));
   if (options?.webSearch !== false) {
     registry.register(createWebSearchTool(options?.webSearch));
   }

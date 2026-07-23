@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../../../utils/api';
 import { readOfficePreviewStatus, type OfficePreviewStatus } from '../../../../utils/officePreviewStatus';
 import type { CodeEditorFile } from '../../types/types';
-import { isImageFile, isOfficeFile, isPdfFile } from '../../utils/binaryFile';
+import { isImageFile, isOfficeFile, isPdfFile, isSpreadsheetFile } from '../../utils/binaryFile';
 import PdfDocumentPreview from './PdfDocumentPreview';
+import SpreadsheetTabs, { type SpreadsheetSheetTab } from './SpreadsheetTabs';
 
 type CodeEditorBinaryFileProps = {
   file: CodeEditorFile;
@@ -22,27 +23,34 @@ type CodeEditorBinaryFileProps = {
 type BlobSource = 'raw' | 'office-pdf';
 type ReloadOptions = { force?: boolean };
 
+type SpreadsheetPreviewManifest = {
+  version: number;
+  revision: string;
+  activeSheetIndex: number;
+  sheets: SpreadsheetSheetTab[];
+};
+
 function getExtension(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() ?? '';
 }
 
 function getFileTypeBadge(filename: string) {
   const extension = getExtension(filename);
-  if (['doc', 'docx', 'odt'].includes(extension)) {
+  if (['doc', 'docx', 'wps', 'odt'].includes(extension)) {
     return {
       label: 'W',
       className: 'bg-blue-600 text-white',
       titleKey: 'fileTypes.word',
     };
   }
-  if (['xls', 'xlsx', 'ods'].includes(extension)) {
+  if (['xls', 'xlsx', 'et', 'ods'].includes(extension)) {
     return {
       label: 'X',
       className: 'bg-emerald-600 text-white',
       titleKey: 'fileTypes.excel',
     };
   }
-  if (['ppt', 'pptx', 'odp'].includes(extension)) {
+  if (['ppt', 'pptx', 'dps', 'odp'].includes(extension)) {
     return {
       label: 'P',
       className: 'bg-orange-600 text-white',
@@ -258,6 +266,151 @@ function useOfficePdfPreviewUrl(
   }, [enabled, projectName, filePath, reloadRequest.force, reloadRequest.key]);
 
   return { previewUrl, errorMessage, errorCode, loading, reload };
+}
+
+function useSpreadsheetPreviewManifest(
+  projectName: string | undefined,
+  filePath: string,
+  enabled: boolean,
+) {
+  const [manifest, setManifest] = useState<SpreadsheetPreviewManifest | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(enabled);
+  const [reloadRequest, setReloadRequest] = useState({ key: 0, force: false });
+  const lastRequestKeyRef = useRef('');
+
+  const reload = useCallback((options: ReloadOptions = {}) => {
+    setReloadRequest((value) => ({
+      key: value.key + 1,
+      force: Boolean(options.force),
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !projectName) {
+      setManifest(null);
+      setLoading(false);
+      setErrorMessage(enabled ? 'Project is not available.' : null);
+      setErrorCode(null);
+      return undefined;
+    }
+
+    const requestKey = `spreadsheet:${projectName}:${filePath}`;
+    const isNewFile = lastRequestKeyRef.current !== requestKey;
+    lastRequestKeyRef.current = requestKey;
+    const controller = new AbortController();
+
+    if (isNewFile) setManifest(null);
+    setLoading(true);
+    setErrorMessage(null);
+    setErrorCode(null);
+
+    api.spreadsheetPreviewManifest(projectName, filePath, {
+      force: reloadRequest.force,
+      cacheKey: reloadRequest.key,
+      signal: controller.signal,
+    })
+      .then(async (res: Response) => {
+        if (!res.ok) throw await readPreviewErrorResponse(res);
+        return res.json();
+      })
+      .then((nextManifest: SpreadsheetPreviewManifest) => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(nextManifest?.sheets) || nextManifest.sheets.length === 0) {
+          throw new Error('The workbook does not contain a visible worksheet.');
+        }
+        setManifest(nextManifest);
+      })
+      .catch((error: Error & { code?: string; name?: string }) => {
+        if (controller.signal.aborted || error.name === 'AbortError') return;
+        if (isNewFile) setManifest(null);
+        setErrorMessage(error.message || 'Failed to read workbook worksheets.');
+        setErrorCode(error.code || null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [enabled, filePath, projectName, reloadRequest.force, reloadRequest.key]);
+
+  return {
+    manifest,
+    errorMessage,
+    errorCode,
+    loading,
+    reload,
+    refreshKey: reloadRequest.key,
+  };
+}
+
+function useSpreadsheetSheetPreviewUrl({
+  projectName,
+  filePath,
+  sheetIndex,
+  revision,
+  refreshKey,
+  enabled,
+}: {
+  projectName: string | undefined;
+  filePath: string;
+  sheetIndex: number | null;
+  revision: string;
+  refreshKey: number;
+  enabled: boolean;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(enabled);
+
+  useEffect(() => {
+    if (!enabled || !projectName || sheetIndex === null) {
+      setPreviewUrl(null);
+      setLoading(false);
+      setErrorMessage(null);
+      setErrorCode(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const cacheKey = `${revision}:${refreshKey}`;
+    const nextPreviewUrl = api.spreadsheetSheetPreviewUrl(
+      projectName,
+      filePath,
+      sheetIndex,
+      { cacheKey },
+    );
+
+    setPreviewUrl(null);
+    setLoading(true);
+    setErrorMessage(null);
+    setErrorCode(null);
+
+    api.preflightSpreadsheetSheetPreview(projectName, filePath, sheetIndex, {
+      cacheKey,
+      signal: controller.signal,
+    })
+      .then(async (res: Response) => {
+        if (!res.ok) throw await readPreviewErrorResponse(res);
+        await res.arrayBuffer().catch(() => null);
+        if (!controller.signal.aborted) setPreviewUrl(nextPreviewUrl);
+      })
+      .catch((error: Error & { code?: string; name?: string }) => {
+        if (controller.signal.aborted || error.name === 'AbortError') return;
+        setPreviewUrl(null);
+        setErrorMessage(error.message || 'Failed to load worksheet preview.');
+        setErrorCode(error.code || null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [enabled, filePath, projectName, refreshKey, revision, sheetIndex]);
+
+  return { previewUrl, errorMessage, errorCode, loading };
 }
 
 function useObjectUrl(blob: Blob | null) {
@@ -505,6 +658,149 @@ function PdfPreview({ projectName, file, title, message, onClose }: {
   );
 }
 
+function SpreadsheetPreview({
+  projectName,
+  file,
+  title,
+  onClose,
+}: {
+  projectName?: string;
+  file: CodeEditorFile;
+  title: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation('codeEditor');
+  const {
+    status: previewServiceStatus,
+    loading: previewServiceLoading,
+  } = useOfficePreviewService();
+  const previewDisabledByConfig = previewServiceStatus?.service === 'none';
+  const previewEnabled = !previewServiceLoading && !previewDisabledByConfig;
+  const {
+    manifest,
+    errorMessage: manifestError,
+    errorCode: manifestErrorCode,
+    loading: manifestLoading,
+    reload,
+    refreshKey,
+  } = useSpreadsheetPreviewManifest(projectName, file.path, previewEnabled);
+  const [selectedSheetIndex, setSelectedSheetIndex] = useState<number | null>(null);
+
+  useOfficeAutoRefresh(projectName, file.path, reload);
+
+  useEffect(() => {
+    if (!manifest) {
+      setSelectedSheetIndex(null);
+      return;
+    }
+    setSelectedSheetIndex((current) => (
+      current !== null && manifest.sheets.some((sheet) => sheet.index === current)
+        ? current
+        : manifest.activeSheetIndex
+    ));
+  }, [manifest]);
+
+  const {
+    previewUrl,
+    errorMessage: sheetError,
+    errorCode: sheetErrorCode,
+    loading: sheetLoading,
+  } = useSpreadsheetSheetPreviewUrl({
+    projectName,
+    filePath: file.path,
+    sheetIndex: selectedSheetIndex,
+    revision: manifest?.revision || '',
+    refreshKey,
+    enabled: previewEnabled && Boolean(manifest) && selectedSheetIndex !== null,
+  });
+
+  if (previewServiceLoading) {
+    return <PreviewSpinner label={t('officePreview.checkingService')} />;
+  }
+  if (previewDisabledByConfig) {
+    return (
+      <FallbackContent
+        title={t('officePreview.disabledTitle')}
+        message={t('officePreview.disabledMessage')}
+        onClose={onClose}
+        actions={(
+          <>
+            <DownloadButton projectName={projectName} file={file} />
+            <OfficePreviewSettingsButton />
+          </>
+        )}
+      />
+    );
+  }
+  if (manifestLoading && !manifest) {
+    return <PreviewSpinner label={t('spreadsheetPreview.readingWorkbook')} />;
+  }
+  if (manifestError || !manifest) {
+    const needsLibreOffice = manifestErrorCode === 'LIBREOFFICE_NOT_FOUND';
+    return (
+      <FallbackContent
+        title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : title}
+        message={needsLibreOffice
+          ? t('officePreview.libreOfficeUnavailableMessage')
+          : manifestError || t('spreadsheetPreview.failedMessage')}
+        onClose={onClose}
+        actions={(
+          <>
+            <DownloadButton projectName={projectName} file={file} />
+            {needsLibreOffice && <OfficePreviewSettingsButton />}
+          </>
+        )}
+      />
+    );
+  }
+
+  const needsLibreOffice = sheetErrorCode === 'LIBREOFFICE_NOT_FOUND';
+  let sheetContent: ReactNode;
+  if (sheetLoading || selectedSheetIndex === null) {
+    sheetContent = <PreviewSpinner label={t('spreadsheetPreview.renderingSheet')} />;
+  } else if (sheetError || !previewUrl) {
+    sheetContent = (
+      <FallbackContent
+        title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : title}
+        message={needsLibreOffice
+          ? t('officePreview.libreOfficeUnavailableMessage')
+          : sheetError || t('spreadsheetPreview.failedMessage')}
+        onClose={onClose}
+        actions={(
+          <>
+            <DownloadButton projectName={projectName} file={file} />
+            {needsLibreOffice && <OfficePreviewSettingsButton />}
+          </>
+        )}
+      />
+    );
+  } else {
+    sheetContent = (
+      <PdfDocumentPreview
+        url={previewUrl}
+        projectName={projectName}
+        fileName={file.name}
+        filePath={file.path}
+        source="office-pdf"
+        viewKey={`worksheet:${selectedSheetIndex}`}
+        loadingOverlay={manifestLoading ? t('officePreview.refreshing') : null}
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-neutral-100 dark:bg-neutral-900">
+      <div className="min-h-0 flex-1">{sheetContent}</div>
+      <SpreadsheetTabs
+        sheets={manifest.sheets}
+        activeSheetIndex={selectedSheetIndex ?? manifest.activeSheetIndex}
+        disabled={manifestLoading}
+        onSelect={setSelectedSheetIndex}
+      />
+    </div>
+  );
+}
+
 function OfficePreview({
   projectName,
   file,
@@ -608,6 +904,7 @@ export default function CodeEditorBinaryFile({
 
   const isImage = isImageFile(file.name);
   const isPdf = isPdfFile(file.name);
+  const isSpreadsheet = isSpreadsheetFile(file.name);
   const isOffice = isOfficeFile(file.name);
   const canPreview = isImage || isPdf || isOffice;
 
@@ -615,6 +912,8 @@ export default function CodeEditorBinaryFile({
     ? <ImagePreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
     : isPdf
       ? <PdfPreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
+      : isSpreadsheet
+        ? <SpreadsheetPreview projectName={projectName} file={file} title={title} onClose={onClose} />
       : isOffice
         ? <OfficePreview projectName={projectName} file={file} title={title} onClose={onClose} />
         : <FallbackContent title={title} message={message} onClose={onClose} />;

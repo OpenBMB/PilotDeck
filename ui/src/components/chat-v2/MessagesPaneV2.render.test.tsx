@@ -466,6 +466,61 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(document.querySelector('mark.chat-history-search-highlight-active')).toBeNull();
   });
 
+  it('moves between mounted search results without resetting the conversation scroll position', async () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u-search-1',
+        type: 'user',
+        content: 'First visible needle',
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: 'a-search-2',
+        type: 'assistant',
+        content: 'Second visible needle',
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    renderPane({ messages });
+
+    const messageList = screen.getByText('First visible needle').closest('[data-total-message-count]');
+    const scrollContainer = messageList?.parentElement as HTMLElement | null;
+    if (!scrollContainer) throw new Error('Expected conversation scroll container');
+
+    let currentScrollTop = 240;
+    const setScrollTop = vi.fn((value: number) => {
+      currentScrollTop = value;
+    });
+    const scrollTo = vi.fn();
+    Object.defineProperty(scrollContainer, 'scrollTop', {
+      configurable: true,
+      get: () => currentScrollTop,
+      set: setScrollTop,
+    });
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      configurable: true,
+      value: 400,
+    });
+    scrollContainer.scrollTo = scrollTo;
+
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+    const searchInput = screen.getByRole('search').querySelector('input[type="search"]');
+    if (!(searchInput instanceof HTMLInputElement)) throw new Error('Expected chat search input');
+    fireEvent.change(searchInput, { target: { value: 'needle' } });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    scrollTo.mockClear();
+    setScrollTop.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next match' }));
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({
+      behavior: 'smooth',
+    })));
+    expect(setScrollTop).not.toHaveBeenCalled();
+  });
+
   it('keeps separated live process rows at the positions where they happened', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [

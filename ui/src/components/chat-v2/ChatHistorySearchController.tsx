@@ -15,13 +15,36 @@ type RegisteredSearchControls = {
   closeSearch: () => void;
 };
 
+export type ChatHistorySearchPresentation = {
+  query: string;
+  onQueryChange: (value: string) => void;
+  matchCount: number;
+  activeMatchIndex: number;
+  onPrevious: () => void;
+  onNext: () => void;
+  inputRef: { current: HTMLInputElement | null };
+};
+
+type RegisterChatHistorySearchControlsOptions = RegisteredSearchControls & {
+  isOpen: boolean;
+  query: string;
+  setQuery: (value: string) => void;
+  matches: unknown[];
+  activeMatchIndex: number;
+  goToPrevious: () => void;
+  goToNext: () => void;
+  inputRef: { current: HTMLInputElement | null };
+};
+
 type ChatHistorySearchControllerValue = {
   available: boolean;
   isOpen: boolean;
+  presentation: ChatHistorySearchPresentation | null;
   openSearch: () => void;
   closeSearch: () => void;
   registerControls: (controls: RegisteredSearchControls) => () => void;
   reportOpenState: (isOpen: boolean) => void;
+  reportPresentation: (presentation: ChatHistorySearchPresentation) => void;
 };
 
 const ChatHistorySearchControllerContext = createContext<ChatHistorySearchControllerValue | null>(null);
@@ -30,6 +53,7 @@ export function ChatHistorySearchControllerProvider({ children }: { children: Re
   const controlsRef = useRef<RegisteredSearchControls | null>(null);
   const [available, setAvailable] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [presentation, setPresentation] = useState<ChatHistorySearchPresentation | null>(null);
 
   const registerControls = useCallback((controls: RegisteredSearchControls) => {
     controlsRef.current = controls;
@@ -40,11 +64,16 @@ export function ChatHistorySearchControllerProvider({ children }: { children: Re
       controlsRef.current = null;
       setAvailable(false);
       setIsOpen(false);
+      setPresentation(null);
     };
   }, []);
 
   const reportOpenState = useCallback((nextIsOpen: boolean) => {
     setIsOpen(nextIsOpen);
+  }, []);
+
+  const reportPresentation = useCallback((nextPresentation: ChatHistorySearchPresentation) => {
+    setPresentation(nextPresentation);
   }, []);
 
   const openSearch = useCallback(() => {
@@ -61,11 +90,22 @@ export function ChatHistorySearchControllerProvider({ children }: { children: Re
   const value = useMemo<ChatHistorySearchControllerValue>(() => ({
     available,
     isOpen,
+    presentation,
     openSearch,
     closeSearch,
     registerControls,
     reportOpenState,
-  }), [available, closeSearch, isOpen, openSearch, registerControls, reportOpenState]);
+    reportPresentation,
+  }), [
+    available,
+    closeSearch,
+    isOpen,
+    openSearch,
+    presentation,
+    registerControls,
+    reportOpenState,
+    reportPresentation,
+  ]);
 
   return (
     <ChatHistorySearchControllerContext.Provider value={value}>
@@ -86,10 +126,20 @@ export function useRegisterChatHistorySearchControls({
   isOpen,
   openSearch,
   closeSearch,
-}: RegisteredSearchControls & { isOpen: boolean }) {
+  query,
+  setQuery,
+  matches,
+  activeMatchIndex,
+  goToPrevious,
+  goToNext,
+  inputRef,
+}: RegisterChatHistorySearchControlsOptions): boolean {
   const controller = useContext(ChatHistorySearchControllerContext);
   const registerControls = controller?.registerControls;
   const reportOpenState = controller?.reportOpenState;
+  const reportPresentation = controller?.reportPresentation;
+  const presentationActionsRef = useRef({ setQuery, goToPrevious, goToNext });
+  presentationActionsRef.current = { setQuery, goToPrevious, goToNext };
 
   useEffect(() => {
     if (!registerControls) return undefined;
@@ -99,4 +149,24 @@ export function useRegisterChatHistorySearchControls({
   useEffect(() => {
     reportOpenState?.(isOpen);
   }, [isOpen, reportOpenState]);
+
+  useEffect(() => {
+    reportPresentation?.({
+      query,
+      onQueryChange: (value) => presentationActionsRef.current.setQuery(value),
+      matchCount: matches.length,
+      activeMatchIndex,
+      onPrevious: () => presentationActionsRef.current.goToPrevious(),
+      onNext: () => presentationActionsRef.current.goToNext(),
+      inputRef,
+    });
+  }, [
+    activeMatchIndex,
+    inputRef,
+    matches.length,
+    query,
+    reportPresentation,
+  ]);
+
+  return Boolean(controller);
 }

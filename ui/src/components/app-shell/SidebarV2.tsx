@@ -322,23 +322,10 @@ export default function SidebarV2({
   const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Segmented toggle between the Projects list and the General workspace.
-  // Persisted across reloads so the user's preferred view sticks. Switching
-  // is purely a visibility change — we don't reroute or alter selection so
-  // the user can peek without losing their place in the active chat.
-  const SIDEBAR_SECTION_STORAGE_KEY = 'sidebar-v2-active-section';
+  // A fresh shell always starts on Projects; explicit project/session routing
+  // is synchronized below and still moves the toggle to General when needed.
   type SidebarSection = 'projects' | 'general';
-  const [activeSection, setActiveSection] = useState<SidebarSection>(() => {
-    if (typeof window === 'undefined') return 'projects';
-    const stored = window.localStorage.getItem(SIDEBAR_SECTION_STORAGE_KEY);
-    return stored === 'general' ? 'general' : 'projects';
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(SIDEBAR_SECTION_STORAGE_KEY, activeSection);
-    } catch {
-      // localStorage unavailable — fall back to in-memory state silently.
-    }
-  }, [activeSection]);
+  const [activeSection, setActiveSection] = useState<SidebarSection>('projects');
 
   // Resizable sidebar width — clamped to a sensible range and persisted across
   // reloads. Drag-handle on the right edge mutates this on the fly.

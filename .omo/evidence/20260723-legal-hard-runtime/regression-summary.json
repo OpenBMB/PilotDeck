@@ -1,0 +1,47 @@
+{
+  "date": "2026-07-23",
+  "backend": {
+    "command": "npm test",
+    "passed": 192,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "uiFiltered": {
+    "command": "npx vitest run --exclude src/components/chat/hooks/streamSmoother.test.ts --exclude server/routes/memory.test.js --exclude e2e/**",
+    "passed": 293,
+    "failed": 0
+  },
+  "uiProductionBuild": {
+    "command": "npm run build",
+    "passed": true
+  },
+  "officeSelfTests": {
+    "docx": {
+      "passed": true,
+      "coverage": ["create", "inspect", "audit", "edit", "review", "finalize", "sanitize", "compare", "render"]
+    },
+    "spreadsheet": {
+      "passed": true,
+      "coverage": ["native charts", "compatibility", "rendering", "atomic failure", "sealing"]
+    },
+    "pdf": {
+      "passed": true,
+      "coverage": ["build", "inspect", "audit", "render", "split", "rotate", "merge", "forms"]
+    },
+    "pptx": {
+      "passed": true,
+      "initialFailure": "intermittent empty LibreOffice conversion output",
+      "fix": "retry once with a fresh isolated LibreOffice profile",
+      "coverage": ["CJK", "delivery gates", "rendering", "legacy PPT conversion", "renamed OOXML detection", "corrupt-input fail-closed"]
+    }
+  },
+  "focusedNewCoverage": [
+    "extension watcher runtime-noise filtering",
+    "terminated stream retry classification",
+    "Anthropic SSE shared normalization",
+    "per-request missing-artifact reminder",
+    "zero-byte artifact rejection",
+    "LibreOffice fresh-profile retry"
+  ]
+}

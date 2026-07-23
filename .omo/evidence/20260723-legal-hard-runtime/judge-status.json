@@ -1,0 +1,20 @@
+{
+  "judge": "external 321-checkpoint semantic evaluator",
+  "status": "pending",
+  "attempts": [
+    {
+      "result": "failed",
+      "errorClass": "UND_ERR_HEADERS_TIMEOUT"
+    },
+    {
+      "result": "in_progress",
+      "configuration": "custom dispatcher with bounded 45-minute headers/body timeout"
+    }
+  ],
+  "claims": {
+    "harnessGatePassed": true,
+    "manualArtifactQualityPassed": true,
+    "judgeCheckpointPassCountClaimed": 0
+  },
+  "privacy": "Raw request, response, and legal checkpoint text are not stored in git."
+}

@@ -18,8 +18,10 @@ memory:
 # 内置工具配置（可选）
 # tools:
 #   webSearch:
-#     apiKey: "..."                                 # SerpAPI key（serpapi.com）
-#     # endpoint: https://serpapi.com/search        # 高级：覆盖到 SerpAPI 兼容代理
+#     enabled: true                                 # 设为 false 时不向模型暴露 web_search
+#     provider: glm                                 # glm | tavily | custom
+#     apiKey: "..."
+#     # endpoint: https://api.z.ai/api/paas/v4/web_search
 
 # 品牌配置（待贡献点就绪后生效）
 # brand:

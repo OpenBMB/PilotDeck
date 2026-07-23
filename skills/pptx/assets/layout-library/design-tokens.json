@@ -21,15 +21,108 @@
     "negative": "B42318"
   },
   "typography": {
-    "headFontFace": "Aptos Display",
-    "bodyFontFace": "Aptos",
+    "profile": "cross-platform-en",
+    "headFontFace": "Arial",
+    "bodyFontFace": "Arial",
     "deckTitle": 50,
     "slideTitle": 36,
     "statement": 34,
     "subheading": 24,
     "body": 18,
     "caption": 11,
-    "metric": 42
+    "table": 15,
+    "metric": 42,
+    "lineHeight": 1.22,
+    "textHeightReserve": 0.08,
+    "profiles": {
+      "cross-platform-en": {
+        "headFontFace": "Arial",
+        "bodyFontFace": "Arial",
+        "lang": "en-US"
+      },
+      "office-en": {
+        "headFontFace": "Aptos Display",
+        "bodyFontFace": "Aptos",
+        "lang": "en-US"
+      },
+      "cross-platform-zh": {
+        "headFontFace": "Arial",
+        "bodyFontFace": "Arial",
+        "lang": "zh-CN",
+        "deckTitle": 44,
+        "slideTitle": 30,
+        "statement": 30,
+        "subheading": 22,
+        "body": 17,
+        "caption": 10,
+        "table": 12,
+        "metric": 40,
+        "lineHeight": 1.3,
+        "textHeightReserve": 0.12
+      },
+      "windows-zh": {
+        "headFontFace": "Microsoft YaHei",
+        "bodyFontFace": "Microsoft YaHei",
+        "lang": "zh-CN",
+        "deckTitle": 44,
+        "slideTitle": 30,
+        "statement": 30,
+        "subheading": 22,
+        "body": 17,
+        "caption": 10,
+        "table": 12,
+        "metric": 40,
+        "lineHeight": 1.3,
+        "textHeightReserve": 0.12
+      },
+      "macos-zh": {
+        "headFontFace": "PingFang SC",
+        "bodyFontFace": "PingFang SC",
+        "lang": "zh-CN",
+        "deckTitle": 44,
+        "slideTitle": 30,
+        "statement": 30,
+        "subheading": 22,
+        "body": 17,
+        "caption": 10,
+        "table": 12,
+        "metric": 40,
+        "lineHeight": 1.3,
+        "textHeightReserve": 0.12
+      },
+      "libreoffice-zh": {
+        "headFontFace": "Noto Sans CJK SC",
+        "bodyFontFace": "Noto Sans CJK SC",
+        "lang": "zh-CN",
+        "deckTitle": 44,
+        "slideTitle": 30,
+        "statement": 30,
+        "subheading": 22,
+        "body": 17,
+        "caption": 10,
+        "table": 12,
+        "metric": 40,
+        "lineHeight": 1.3,
+        "textHeightReserve": 0.12
+      }
+    },
+    "densityProfiles": {
+      "presentation": {
+        "body": 17,
+        "caption": 10,
+        "table": 12
+      },
+      "report": {
+        "deckTitle": 34,
+        "slideTitle": 24,
+        "statement": 26,
+        "subheading": 20,
+        "body": 14,
+        "caption": 9,
+        "table": 10,
+        "metric": 34
+      }
+    }
   },
   "spacing": {
     "xs": 0.12,

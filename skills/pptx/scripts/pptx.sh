@@ -89,10 +89,10 @@ cmd_check() {
   if [[ -n "$soffice_path" && -n "$renderer_path" ]]; then
     render_available=true
   fi
-  printf '{"status":"%s","node":%s,"node_path":"%s","npm_path":"%s","dependencies":%s,"runtime":"%s","libreoffice_path":"%s","pdf_renderer_path":"%s","render_available":%s}\n' \
+  printf '{"status":"%s","node":%s,"node_path":"%s","npm_path":"%s","dependencies":%s,"runtime":"%s","libreoffice_path":"%s","pdf_renderer_path":"%s","render_available":%s,"legacy_ppt_conversion_available":%s}\n' \
     "$([[ "$node_ok" == true && "$deps_ok" == true ]] && printf ok || printf missing_dependencies)" \
     "$node_ok" "$node_path" "$npm_path" "$deps_ok" "$RUNTIME_CACHE" \
-    "$soffice_path" "$renderer_path" "$render_available"
+    "$soffice_path" "$renderer_path" "$render_available" "$render_available"
   [[ "$node_ok" == true && "$deps_ok" == true ]]
 }
 
@@ -129,7 +129,7 @@ case "${1:-}" in
     cmd_fix "$@"
     ;;
   ""|-h|--help|help)
-    printf 'Usage: pptx.sh <check|fix|scaffold|build|inspect|render|audit|validate-map|prepare-starter|apply-template|fidelity|self-test> [options]\n'
+    printf 'Usage: pptx.sh <check|fix|convert|scaffold|build|deliver|inspect|render|audit|validate-map|prepare-starter|apply-template|fidelity|self-test> [options]\n'
     ;;
   *)
     if ! runtime_ready; then

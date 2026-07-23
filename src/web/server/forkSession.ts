@@ -159,7 +159,10 @@ function shouldPreserveSourceEntry(entry: AgentTranscriptEntry, forkPoint: ForkP
   // Assistant-message forks preserve the selected response as conversation
   // context. Keep the completion marker so replay does not drop that turn as
   // incomplete, without pulling in later durable messages from the same turn.
-  return entry.type === "turn_result" && entry.turnId === forkPoint.target.turnId;
+  return (
+    entry.turnId === forkPoint.target.turnId &&
+    (entry.type === "turn_result" || entry.type === "file_artifacts")
+  );
 }
 
 function retargetAuxiliaryPath(

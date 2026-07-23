@@ -930,6 +930,10 @@
       "tools": {
         "title": "搜索",
         "description": "配置智能体 web_search 工具使用的搜索服务。",
+        "enabled": {
+          "label": "启用 Web 搜索",
+          "description": "关闭后，智能体将不会获得 web_search 工具。"
+        },
         "provider": {
           "label": "搜索提供商",
           "description": "当前启用的搜索服务。",

@@ -1,15 +1,12 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../chat/types/types';
 import {
   buildSearchableMessages,
   findChatHistoryMatches,
   highlightActiveMatch,
+  scrollSearchTargetIntoView,
 } from './chatHistorySearchUtils';
-
-beforeAll(() => {
-  Element.prototype.scrollIntoView = vi.fn();
-});
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -152,7 +149,7 @@ describe('chatHistorySearchUtils', () => {
     container.append(message);
     document.body.append(container);
 
-    const highlighted = highlightActiveMatch(
+    const target = highlightActiveMatch(
       container,
       'message:1',
       'needle in the first node needle in the second node',
@@ -162,11 +159,47 @@ describe('chatHistorySearchUtils', () => {
 
     const marks = Array.from(message.querySelectorAll('mark.chat-history-search-highlight-active'));
 
-    expect(highlighted).toBe(true);
+    expect(target).toBe(marks[0]);
     expect(marks).toHaveLength(1);
     expect(marks[0].textContent).toBe('needle');
     expect(marks[0].parentElement).toBe(secondSpan);
     expect(firstSpan.querySelector('mark')).toBeNull();
+  });
+
+  it('centers a mounted result relative to the current conversation scroll position', () => {
+    const container = document.createElement('div');
+    const target = document.createElement('mark');
+    const scrollTo = vi.fn();
+
+    container.scrollTop = 400;
+    Object.defineProperty(container, 'clientHeight', { configurable: true, value: 300 });
+    container.scrollTo = scrollTo;
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 400,
+      left: 0,
+      right: 500,
+      width: 500,
+      height: 300,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      top: 250,
+      bottom: 270,
+      left: 0,
+      right: 80,
+      width: 80,
+      height: 20,
+      x: 0,
+      y: 250,
+      toJSON: () => ({}),
+    });
+
+    scrollSearchTargetIntoView(container, target);
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 410, behavior: 'smooth' });
   });
 
 });

@@ -126,6 +126,19 @@ function convertSingleMessage(
       }
     }
 
+    case 'file_artifacts':
+      if (Array.isArray(msg.artifacts) && msg.artifacts.length > 0) {
+        return {
+          id: msg.id,
+          entryId: msg.entryId,
+          type: 'assistant',
+          content: '',
+          artifacts: msg.artifacts,
+          timestamp: msg.timestamp,
+        };
+      }
+      return null;
+
     case 'tool_use': {
       const tr = msg.toolResult || (msg.toolId ? toolResultMap.get(msg.toolId) : null);
       const normalizedToolName = String(msg.toolName || '').toLowerCase();
@@ -388,7 +401,45 @@ function convertNormalizedMessages(
     if (result) converted.push(result);
   }
 
-  return converted;
+  const grouped: ChatMessage[] = [];
+  for (const message of converted) {
+    if (!Array.isArray(message.artifacts) || message.artifacts.length === 0) {
+      grouped.push(message);
+      continue;
+    }
+
+    let anchorIndex = -1;
+    for (let index = grouped.length - 1; index >= 0; index -= 1) {
+      const candidate = grouped[index];
+      if (candidate.type === 'user') break;
+      if (
+        candidate.type === 'assistant'
+        && !candidate.isToolUse
+        && !candidate.isThinking
+        && !candidate.isAgentActivity
+        && !candidate.isAgentActivitySummary
+        && !candidate.isSubagentContainer
+        && !candidate.isTaskNotification
+        && typeof candidate.content === 'string'
+        && candidate.content.trim().length > 0
+      ) {
+        anchorIndex = index;
+        break;
+      }
+    }
+
+    if (anchorIndex === -1) {
+      grouped.push(message);
+      continue;
+    }
+    const anchor = grouped[anchorIndex];
+    grouped[anchorIndex] = {
+      ...anchor,
+      artifacts: [...(anchor.artifacts ?? []), ...message.artifacts],
+    };
+  }
+
+  return grouped;
 }
 
 /**

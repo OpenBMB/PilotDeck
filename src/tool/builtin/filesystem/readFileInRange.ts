@@ -24,7 +24,9 @@ export async function readFileInRange(
   filePath: string,
   startLine: number,
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<ReadFileRangeResult> {
+  throwIfAborted(signal);
   const fileStat = await stat(filePath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       throw new PilotDeckToolRuntimeError("file_not_found", `File ${filePath} does not exist.`);
@@ -36,10 +38,15 @@ export async function readFileInRange(
   }
 
   if (limit !== undefined) {
-    return readFileLineRange(filePath, fileStat, startLine, limit);
+    return readFileLineRange(filePath, fileStat, startLine, limit, signal);
   }
 
-  const buffer = await readFile(filePath);
+  const buffer = await readFile(filePath, { signal }).catch((error: unknown) => {
+    if (signal?.aborted) {
+      throw abortedReadError();
+    }
+    throw error;
+  });
   if (buffer.includes(0)) {
     throw new PilotDeckToolRuntimeError("invalid_tool_input", `${filePath} appears to be a binary file.`);
   }
@@ -75,7 +82,9 @@ async function readFileLineRange(
   fileStat: Stats,
   startLine: number,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<ReadFileRangeResult> {
+  throwIfAborted(signal);
   const normalizedStart = Math.max(1, startLine);
   const normalizedLimit = Math.max(0, limit);
   const startIndex = normalizedStart - 1;
@@ -83,16 +92,28 @@ async function readFileLineRange(
   const selected: string[] = [];
   let totalLines = 0;
   let sawNul = false;
+  let aborted = false;
 
   const stream = createReadStream(filePath, { encoding: "utf8" });
-  stream.on("data", (chunk: string | Buffer) => {
+  let rl: ReturnType<typeof createInterface> | undefined;
+  const stopReading = () => {
+    rl?.close();
+    stream.destroy();
+  };
+  const onData = (chunk: string | Buffer) => {
     if (String(chunk).includes("\0")) {
       sawNul = true;
-      stream.destroy();
+      stopReading();
     }
-  });
+  };
+  const onAbort = () => {
+    aborted = true;
+    stopReading();
+  };
+  stream.on("data", onData);
+  signal?.addEventListener("abort", onAbort, { once: true });
 
-  const rl = createInterface({ input: stream, crlfDelay: Infinity });
+  rl = createInterface({ input: stream, crlfDelay: Infinity });
   try {
     for await (const rawLine of rl) {
       const line = totalLines === 0 ? stripBom(rawLine) : rawLine;
@@ -102,7 +123,15 @@ async function readFileLineRange(
       totalLines += 1;
     }
   } catch (error) {
-    if (!sawNul) throw error;
+    if (!sawNul && !aborted) throw error;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    stream.off("data", onData);
+    stopReading();
+  }
+
+  if (aborted || signal?.aborted) {
+    throw abortedReadError();
   }
 
   if (sawNul) {
@@ -132,4 +161,14 @@ function stripBom(value: string): string {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw abortedReadError();
+  }
+}
+
+function abortedReadError(): PilotDeckToolRuntimeError {
+  return new PilotDeckToolRuntimeError("tool_aborted", "File reading was aborted.");
 }

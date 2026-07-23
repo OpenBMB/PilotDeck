@@ -9,6 +9,7 @@ export class FileExistsValidator implements ArtifactValidator {
     try {
       const info = await lstat(input.artifactPath);
       if (!info.isFile()) return failed(this.id, input.contract.id, "artifact_not_file", "Expected artifact is not a regular file.", input.artifactPath);
+      if (info.size === 0) return failed(this.id, input.contract.id, "artifact_empty", "Required artifact is empty.", input.artifactPath);
       const expected = input.contract.expectedExtensions?.map((value) => value.toLowerCase());
       if (expected?.length && !expected.includes(extname(input.artifactPath).toLowerCase())) {
         return failed(this.id, input.contract.id, "artifact_extension_mismatch", `Expected one of: ${expected.join(", ")}.`, input.artifactPath);

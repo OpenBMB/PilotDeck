@@ -17,6 +17,8 @@ type PdfDocumentPreviewProps = {
   fileName: string;
   filePath: string;
   source: DocumentSelectionSource;
+  /** Distinguishes multiple PDF views backed by the same source file. */
+  viewKey?: string;
   loadingOverlay?: string | null;
 };
 
@@ -398,6 +400,7 @@ export default function PdfDocumentPreview({
   fileName,
   filePath,
   source,
+  viewKey = '',
   loadingOverlay = null,
 }: PdfDocumentPreviewProps) {
   const { t } = useTranslation('codeEditor');
@@ -426,7 +429,7 @@ export default function PdfDocumentPreview({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
   const [pageInputFocused, setPageInputFocused] = useState(false);
-  const fileKey = `${source}:${projectName || ''}:${filePath}`;
+  const fileKey = `${source}:${projectName || ''}:${filePath}:${viewKey}`;
 
   useEffect(() => {
     viewStateRef.current.currentPage = currentPage;

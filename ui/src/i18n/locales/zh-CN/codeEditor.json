@@ -36,7 +36,9 @@
     "close": "关闭",
     "goBack": "返回",
     "previewMarkdown": "预览 Markdown",
-    "editMarkdown": "编辑 Markdown"
+    "editMarkdown": "编辑 Markdown",
+    "previewHtml": "预览 HTML",
+    "editHtml": "查看 HTML 源码"
   },
   "footer": {
     "lines": "行数：",
@@ -58,6 +60,14 @@
     "libreOfficeUnavailableTitle": "LibreOffice 不可用",
     "libreOfficeUnavailableMessage": "该格式需要 LibreOffice 才能预览。请安装 LibreOffice，或在设置中将 Office 文件预览服务切换为“无”。",
     "failedMessage": "未能生成 Office 文件预览。"
+  },
+  "spreadsheetPreview": {
+    "readingWorkbook": "正在读取工作簿...",
+    "renderingSheet": "正在生成工作表预览...",
+    "failedMessage": "未能生成工作表预览。",
+    "worksheets": "工作表",
+    "previousWorksheets": "向前浏览工作表",
+    "nextWorksheets": "向后浏览工作表"
   },
   "pdfToolbar": {
     "zoomOut": "缩小",

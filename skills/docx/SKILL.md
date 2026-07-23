@@ -22,7 +22,14 @@ Invoke all deterministic operations through:
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" <command> [options]
 ```
 
-Keep source documents, JSON specifications, rendered pages, and deliverables in the user's workspace or a task-specific temporary directory. Do not write task artifacts into the skill directory.
+Use the turn-scoped PilotDeck work directory for every intermediate. The host sets `PILOTDECK_WORK_DIR`; the fallback keeps manual runs internal to the project:
+
+```bash
+WORKSPACE="${PILOTDECK_WORK_DIR:-$PWD/.pilotdeck/work/manual/<task-slug>}/docx"
+mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/qa"
+```
+
+Keep JSON specifications, inspections, comparisons, rendered pages, optional QA PDFs, and temporary candidates in `WORKSPACE`. Keep source documents in place and put only requested final DOCX deliverables in the project or user-selected output directory. Never create inspection JSON, render directories, or other intermediates beside the user's files. Do not write task artifacts into the skill directory.
 
 ## Route the request
 
@@ -65,7 +72,7 @@ If LibreOffice is unavailable, complete structural validation and auditing, disc
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" inspect \
-  --input input.docx --out inspection.json
+  --input "$INPUT_DOCX" --out "$WORKSPACE/tmp/inspection.json"
 ```
 
 Review at least:
@@ -93,7 +100,7 @@ Before writing the JSON specification:
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" create \
-  --spec document.json --out document.docx
+  --spec "$WORKSPACE/tmp/document.json" --out "$FINAL_DOCX"
 ```
 
 Do not rely on Word defaults for page geometry, heading hierarchy, list semantics, table widths, or cell padding. Prefer reusable Word styles and real list definitions over manually formatted lookalikes.
@@ -104,7 +111,7 @@ Use `edit` for supported local changes:
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" edit \
-  --input original.docx --patch edits.json --out revised.docx
+  --input "$INPUT_DOCX" --patch "$WORKSPACE/tmp/edits.json" --out "$FINAL_DOCX"
 ```
 
 Preserve structure and formatting unless the user requests redesign. Prefer inline replacement over paragraph replacement, and paragraph replacement over full-document reconstruction. Confirm that every requested operation reports a nonzero `affected` count; treat an unexpected zero as a failed edit.
@@ -117,14 +124,14 @@ Add comments and tracked replacements:
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" review \
-  --input draft.docx --spec review.json --out reviewed.docx
+  --input "$INPUT_DOCX" --spec "$WORKSPACE/tmp/review.json" --out "$FINAL_DOCX"
 ```
 
 Finalize a reviewed document:
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" finalize \
-  --input reviewed.docx --accept-changes --remove-comments --out final.docx
+  --input "$INPUT_DOCX" --accept-changes --remove-comments --out "$FINAL_DOCX"
 ```
 
 Use `--reject-changes` instead of `--accept-changes` when requested. Never pass both. Inspect after review and after finalization because page rendering does not reliably expose comment anchors.
@@ -134,20 +141,20 @@ Use `--reject-changes` instead of `--accept-changes` when requested. Never pass 
 Validate the ZIP package, required OOXML parts, XML well-formedness, archive safety, and macro absence:
 
 ```bash
-bash "$DOCX_SKILL_ROOT/scripts/docx.sh" validate --input output.docx
+bash "$DOCX_SKILL_ROOT/scripts/docx.sh" validate --input "$FINAL_DOCX"
 ```
 
 Audit semantic and layout risks:
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" audit \
-  --input output.docx --profile draft --out audit.json
+  --input "$FINAL_DOCX" --profile draft --out "$WORKSPACE/qa/draft-audit.json"
 
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" audit \
-  --input final.docx --profile final --out final-audit.json
+  --input "$FINAL_DOCX" --profile final --out "$WORKSPACE/qa/final-audit.json"
 
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" audit \
-  --input accessible.docx --profile accessible --out a11y-audit.json
+  --input "$FINAL_DOCX" --profile accessible --out "$WORKSPACE/qa/a11y-audit.json"
 ```
 
 Interpret profiles as follows:
@@ -162,7 +169,7 @@ An audit can contain warnings even when `passed` is true. Evaluate each warning 
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" render \
-  --input final.docx --out-dir rendered --emit-pdf
+  --input "$FINAL_DOCX" --out-dir "$WORKSPACE/qa/rendered" --emit-pdf
 ```
 
 Inspect every PNG for:
@@ -183,10 +190,10 @@ Rendering verifies visible layout but not all document semantics. Verify comment
 
 ```bash
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" compare \
-  --before old.docx --after new.docx --out comparison.json
+  --before "$INPUT_DOCX" --after "$FINAL_DOCX" --out "$WORKSPACE/qa/comparison.json"
 
 bash "$DOCX_SKILL_ROOT/scripts/docx.sh" sanitize \
-  --input reviewed.docx --out clean.docx --remove-comments
+  --input "$INPUT_DOCX" --out "$FINAL_DOCX" --remove-comments
 ```
 
 `compare` reports paragraph-level textual differences and document counts; it is not a pixel diff and does not prove formatting equivalence. `sanitize` removes core personal metadata, custom properties, revision identifiers, and optionally comments; it does not redact sensitive words from visible document content.

@@ -1,7 +1,7 @@
 import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, GitBranch, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Copy, GitBranch, Loader2 } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { cn } from '../../lib/utils.js';
 import type { Project, SessionProvider } from '../../types/app';
@@ -25,46 +25,9 @@ import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
 import { linkifyFilePathsOutsideCode } from './linkifyFilePathsOutsideCode';
+import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
 
 type DiffLine = { type: string; content: string; lineNum: number };
-
-const MIME_FRIENDLY_LABELS: Record<string, string> = {
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
-  'application/msword': 'DOC',
-  'application/vnd.ms-excel': 'XLS',
-  'application/vnd.ms-powerpoint': 'PPT',
-  'application/pdf': 'PDF',
-  'application/zip': 'ZIP',
-  'text/plain': 'TXT',
-  'text/csv': 'CSV',
-  'text/markdown': 'MD',
-  'application/json': 'JSON',
-};
-
-const getAttachmentTypeLabel = (name?: string, mimeType?: string): string => {
-  const ext = String(name || '').split('.').pop()?.toUpperCase();
-  if (ext && ext !== String(name || '').toUpperCase()) return ext;
-  if (mimeType) {
-    const friendly = MIME_FRIENDLY_LABELS[mimeType.toLowerCase()];
-    if (friendly) return friendly;
-    if (mimeType.includes('/')) {
-      const sub = mimeType.split('/').pop() || '';
-      if (sub.length <= 10 && !sub.includes('.')) return sub.toUpperCase();
-    }
-  }
-  return 'FILE';
-};
-
-const getAttachmentAccent = (name?: string, mimeType?: string): string => {
-  const label = getAttachmentTypeLabel(name, mimeType).toLowerCase();
-  if (label === 'pdf') return 'bg-red-500 text-white';
-  if (label === 'doc' || label === 'docx') return 'bg-blue-500 text-white';
-  if (label === 'xls' || label === 'xlsx' || label === 'csv') return 'bg-emerald-500 text-white';
-  if (label === 'ppt' || label === 'pptx') return 'bg-orange-500 text-white';
-  return 'bg-neutral-500 text-white';
-};
 
 function attachmentToDocumentReference(attachment: ChatAttachment): DocumentSelectionReference | null {
   if (attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND || !attachment.selectedText) return null;
@@ -329,30 +292,12 @@ function MessageRowV2({
                 </div>
               ) : null}
               {fileAttachments.length > 0 ? (
-                <div className={formattedContent ? 'mb-2 grid grid-cols-1 gap-2' : 'grid grid-cols-1 gap-2'}>
-                  {fileAttachments.map((attachment, index) => (
-                    <div
-                      key={`${attachment.name || 'attachment'}-${index}`}
-                      className="flex min-w-0 items-center gap-3 rounded-2xl bg-white/85 p-2.5 pr-3 dark:bg-neutral-900/45"
-                    >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${getAttachmentAccent(
-                          attachment.name,
-                          attachment.mimeType,
-                        )}`}
-                      >
-                        <FileText className="h-5 w-5" strokeWidth={2} />
-                      </div>
-                      <div className="min-w-0 text-left">
-                        <div className="truncate text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
-                          {attachment.name}
-                        </div>
-                        <div className="mt-0.5 text-[11px] font-medium uppercase text-neutral-500 dark:text-neutral-400">
-                          {getAttachmentTypeLabel(attachment.name, attachment.mimeType)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className={formattedContent ? 'mb-2' : undefined}>
+                  <UserAttachmentCards
+                    attachments={fileAttachments}
+                    project={selectedProject}
+                    onBrowse={onFileOpen}
+                  />
                 </div>
               ) : null}
               {messageImages.length > 0 ? (
@@ -461,6 +406,7 @@ function MessageRowV2({
 
   // Assistant: plain prose, no avatar and no bubble.
   const hasAssistantProse = linkedContentDisplayText.trim().length > 0;
+  const assistantArtifacts = Array.isArray(message.artifacts) ? message.artifacts : [];
   const showStreamingCursor = Boolean(message.isStreaming && !contentDisplayText);
   const resolvedShowAssistantActions = showAssistantActions ?? true;
   const showAssistantCopyButton = resolvedShowAssistantActions && hasAssistantProse;
@@ -469,7 +415,7 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor) ? (
+  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0) ? (
     <div className="min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
@@ -477,6 +423,13 @@ function MessageRowV2({
         <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
         onFileOpen={onFileOpen} isStreaming={message.isStreaming}>{linkedContentDisplayText}</Markdown>
       )}
+      {assistantArtifacts.length > 0 ? (
+        <AgentFileArtifactGroup
+          artifacts={assistantArtifacts}
+          project={selectedProject}
+          onBrowse={onFileOpen}
+        />
+      ) : null}
       {shouldRenderAssistantActions ? (
         <div className="mt-1.5 flex justify-end gap-1">
           {canRenderAssistantForkButton ? (

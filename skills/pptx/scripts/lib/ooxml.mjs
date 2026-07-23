@@ -81,6 +81,28 @@ function fontPoints(node) {
   return sizes.length ? Math.max(...sizes) : null;
 }
 
+function fontFaces(node) {
+  const values = [];
+  for (const tag of ['latin', 'ea', 'cs', 'sym']) {
+    for (const item of descendants(node, tag)) {
+      const typeface = item.getAttribute('typeface');
+      if (typeface && !values.includes(typeface)) values.push(typeface);
+    }
+  }
+  return values;
+}
+
+function textFitMode(node) {
+  if (firstDescendant(node, 'spAutoFit')) return 'resize_shape';
+  if (firstDescendant(node, 'normAutofit')) return 'shrink_text';
+  if (firstDescendant(node, 'noAutofit')) return 'none';
+  return 'unspecified';
+}
+
+function containsCjk(text) {
+  return /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/u.test(String(text ?? ''));
+}
+
 function classifyGraphicFrame(node) {
   const graphicData = firstDescendant(node, 'graphicData');
   const uri = graphicData?.getAttribute('uri') ?? '';
@@ -110,6 +132,7 @@ function parseSlideObject(node) {
   const objectType = node.localName === 'graphicFrame'
     ? classifyGraphicFrame(node)
     : ({ sp: 'shape', pic: 'image', cxnSp: 'connector', grpSp: 'group' }[node.localName] ?? node.localName);
+  const text = readText(node);
   return {
     id: cNvPr?.getAttribute('id') || null,
     creationId: creationId?.getAttribute('id') || creationId?.getAttribute('val') || null,
@@ -124,7 +147,10 @@ function parseSlideObject(node) {
       : null,
     bounds: parseBounds(node),
     fontPoints: fontPoints(node),
-    text: readText(node),
+    fonts: fontFaces(node),
+    textFit: textFitMode(node),
+    containsCjk: containsCjk(text),
+    text,
   };
 }
 
@@ -149,11 +175,26 @@ function parseSlide(xml, number, part) {
 }
 
 function parseTheme(xml) {
-  if (!xml) return { majorFont: null, minorFont: null, colors: {} };
+  if (!xml) return {
+    majorFont: null,
+    minorFont: null,
+    majorEastAsianFont: null,
+    minorEastAsianFont: null,
+    supplementalFonts: [],
+    colors: {},
+  };
   const document = parseXml(xml);
   const major = firstDescendant(document, 'majorFont');
   const minor = firstDescendant(document, 'minorFont');
   const latin = (node) => firstDescendant(node, 'latin')?.getAttribute('typeface') || null;
+  const eastAsian = (node) => firstDescendant(node, 'ea')?.getAttribute('typeface') || null;
+  const supplementalFonts = [...new Map(
+    [major, minor]
+      .flatMap((node) => descendants(node, 'font'))
+      .map((node) => ({ script: node.getAttribute('script') || null, typeface: node.getAttribute('typeface') || null }))
+      .filter((item) => item.typeface && ['Hans', 'Hant', 'Jpan', 'Hang'].includes(item.script))
+      .map((item) => [`${item.script}:${item.typeface}`, item]),
+  ).values()];
   const colors = {};
   const scheme = firstDescendant(document, 'clrScheme');
   for (const child of elementChildren(scheme)) {
@@ -161,7 +202,14 @@ function parseTheme(xml) {
     if (!colorNode) continue;
     colors[child.localName] = colorNode.getAttribute('val') || colorNode.getAttribute('lastClr') || null;
   }
-  return { majorFont: latin(major), minorFont: latin(minor), colors };
+  return {
+    majorFont: latin(major),
+    minorFont: latin(minor),
+    majorEastAsianFont: eastAsian(major),
+    minorEastAsianFont: eastAsian(minor),
+    supplementalFonts,
+    colors,
+  };
 }
 
 function slidePartFallback(files) {
@@ -174,7 +222,16 @@ export async function inspectPptx(inputPath) {
   const absolute = path.resolve(inputPath);
   const buffer = await fs.readFile(absolute);
   const { JSZip } = loadDependencies();
-  const zip = await JSZip.loadAsync(buffer);
+  const legacyMagic = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+  if (buffer.length >= legacyMagic.length && buffer.subarray(0, legacyMagic.length).equals(legacyMagic)) {
+    throw new Error('Legacy binary .ppt is not OOXML. Run `pptx.sh convert --input source.ppt --out source-converted.pptx --qa-dir conversion-qa` first.');
+  }
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch (error) {
+    throw new Error(`Not a valid PPTX OOXML package: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const files = Object.keys(zip.files);
   const presentationPart = 'ppt/presentation.xml';
   const presentationFile = zip.file(presentationPart);
@@ -199,6 +256,26 @@ export async function inspectPptx(inputPath) {
     const xml = await zip.file(slideParts[i]).async('string');
     slides.push(parseSlide(xml, i + 1, slideParts[i]));
   }
+  const fontUsageMap = new Map();
+  for (const slide of slides) {
+    for (const object of slide.objects) {
+      for (const fontFace of object.fonts) {
+        const current = fontUsageMap.get(fontFace) ?? {
+          fontFace,
+          slides: new Set(),
+          objectCount: 0,
+          cjkObjectCount: 0,
+        };
+        current.slides.add(slide.number);
+        current.objectCount += 1;
+        if (object.containsCjk) current.cjkObjectCount += 1;
+        fontUsageMap.set(fontFace, current);
+      }
+    }
+  }
+  const fontUsage = [...fontUsageMap.values()]
+    .map((item) => ({ ...item, slides: [...item.slides].sort((a, b) => a - b) }))
+    .sort((a, b) => a.fontFace.localeCompare(b.fontFace));
   const themePart = files.find((name) => /^ppt\/theme\/theme\d+\.xml$/.test(name));
   const themeXml = themePart ? await zip.file(themePart).async('string') : null;
   return {
@@ -211,6 +288,7 @@ export async function inspectPptx(inputPath) {
     masterCount: files.filter((name) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(name)).length,
     layoutCount: files.filter((name) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(name)).length,
     theme: parseTheme(themeXml),
+    fontUsage,
     slides,
   };
 }

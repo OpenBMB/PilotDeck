@@ -7,6 +7,8 @@ const labels = {
   showingChanges: 'Showing changes',
   editMarkdown: 'Edit Markdown',
   previewMarkdown: 'Preview Markdown',
+  editHtml: 'View HTML source',
+  previewHtml: 'Preview HTML',
   download: 'Download',
   save: 'Save',
   saving: 'Saving',
@@ -60,5 +62,11 @@ describe('CodeEditorHeader', () => {
     expect(screen.getByRole('button', { name: 'Save' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Expand' })).not.toBeNull();
     expect(container.firstElementChild?.className).toContain('absolute');
+  });
+
+  it('offers a source toggle for HTML previews', () => {
+    render(<CodeEditorHeader {...baseProps} isHtmlFile htmlPreview />);
+
+    expect(screen.getByRole('button', { name: 'View HTML source' })).not.toBeNull();
   });
 });

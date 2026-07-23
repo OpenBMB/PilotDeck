@@ -62,7 +62,7 @@ import {
 } from '../../../../shared/catalogProviders';
 import { fetchProviderModels, fetchRemoteDefaultModels, type ApiModelListItem } from '../../../../shared/modelListApi';
 import type { SettingsProject } from '../../types/types';
-import { isCronConfigEnabled, patch } from './pilotDeckConfigForm';
+import { isCronConfigEnabled, patch, webSearchConfigForProvider } from './pilotDeckConfigForm';
 
 // ── V2 schema types ────────────────────────────────────────────────────
 // Schema mirrors ~/.pilotdeck/pilotdeck.yaml exactly. No more
@@ -200,6 +200,7 @@ type PilotDeckConfig = {
   gateway?: { enabled?: boolean; home?: string } & Record<string, unknown>;
   tools?: {
     webSearch?: {
+      enabled?: boolean;
       provider?: 'glm' | 'tavily' | 'custom';
       apiKey?: string;
       endpoint?: string;
@@ -2638,10 +2639,13 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
   const { t } = useTranslation('settings');
   const glmDefaultEndpoint = 'https://api.z.ai/api/paas/v4/web_search';
   const ws = config.tools?.webSearch ?? {};
+  const enabled = ws.enabled !== false;
   const provider = ws.provider === 'tavily' || ws.provider === 'custom' ? ws.provider : 'glm';
   const apiKey = typeof ws.apiKey === 'string' ? ws.apiKey : '';
   const endpoint = typeof ws.endpoint === 'string' ? ws.endpoint : '';
   const custom = ws.customProvider ?? {};
+  const apiKeyRequired = provider !== 'custom' || (custom.auth ?? 'bearer') !== 'none';
+  const hasConfiguredApiKey = hasUsableSecret(apiKey) || isMaskedSecret(apiKey);
   const endpointValue = endpoint || (provider === 'glm' ? glmDefaultEndpoint : '');
   const endpointPlaceholder = provider === 'custom'
     ? 'https://example.com/search'
@@ -2662,10 +2666,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
 
   const setProvider = (nextProvider: 'glm' | 'tavily' | 'custom') => {
     const nextTools = {
-      webSearch: {
-        provider: nextProvider,
-        ...(nextProvider === 'glm' ? { endpoint: glmDefaultEndpoint } : {}),
-      },
+      webSearch: webSearchConfigForProvider(ws, nextProvider, glmDefaultEndpoint),
     };
     onChange(patch(config, ['tools'], nextTools));
     resetTest();
@@ -2711,8 +2712,11 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
   };
 
   const handleTest = async () => {
-    const trimmedKey = hasUsableSecret(apiKey) ? apiKey.trim() : '';
-    if (!trimmedKey) {
+    // A saved secret is returned to the browser as MASK. Pass that sentinel
+    // back so the server can resolve the real key without exposing it to the
+    // client. A newly entered key still takes precedence.
+    const trimmedKey = hasUsableSecret(apiKey) ? apiKey.trim() : isMaskedSecret(apiKey) ? MASK : '';
+    if (apiKeyRequired && !trimmedKey) {
       setTestStatus('error');
       setTestMessage(t('pilotDeckConfig.panels.tools.test.needsKey'));
       return;
@@ -2755,6 +2759,19 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
       description={t('pilotDeckConfig.panels.tools.description')}
     >
       <SettingsCard divided>
+        <SettingsRow
+          label={t('pilotDeckConfig.panels.tools.enabled.label')}
+          description={t('pilotDeckConfig.panels.tools.enabled.description')}
+        >
+          <SettingsToggle
+            checked={enabled}
+            ariaLabel={t('pilotDeckConfig.panels.tools.enabled.label')}
+            onChange={(value) => {
+              onChange(patch(config, ['tools', 'webSearch', 'enabled'], value));
+              resetTest();
+            }}
+          />
+        </SettingsRow>
         <FormRow
           label={t('pilotDeckConfig.panels.tools.provider.label')}
           description={t('pilotDeckConfig.panels.tools.provider.description')}
@@ -2878,7 +2895,7 @@ function ToolsSection({ config, onChange }: { config: PilotDeckConfig; onChange:
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testStatus === 'testing' || !hasUsableSecret(apiKey)}
+              disabled={!enabled || testStatus === 'testing' || (apiKeyRequired && !hasConfiguredApiKey)}
             >
               {testStatus === 'testing' ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

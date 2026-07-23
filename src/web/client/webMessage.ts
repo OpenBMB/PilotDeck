@@ -92,7 +92,8 @@ export type WebMessageKind =
   | "interrupted"
   | "error"
   | "structured_output"
-  | "compact_boundary";
+  | "compact_boundary"
+  | "file_artifacts";
 
 export type WebMessage = {
   id: string;
@@ -114,6 +115,7 @@ export type WebMessage = {
     name?: string;
     mimeType?: string;
   }>;
+  artifacts?: import("../../session/artifacts/FileArtifact.js").FileArtifact[];
   /**
    * `PilotDeckToolErrorCode` of the underlying failure when
    * `kind === 'tool_result'` and `ok === false`. Empty for non-error or
@@ -254,6 +256,22 @@ export function applyWebGatewayEvent(
         messages: [...state.messages, message],
         currentThinkingId: id,
       };
+    }
+
+    case "file_artifacts": {
+      const id = newId();
+      const message: WebMessage = {
+        id,
+        sessionKey: options.sessionKey,
+        projectKey: options.projectKey,
+        createdAt: stamp,
+        provider: "pilotdeck",
+        role: "assistant",
+        kind: "file_artifacts",
+        artifacts: event.artifacts,
+        source: "live",
+      };
+      return { ...state, messages: [...state.messages, message] };
     }
 
     case "tool_call_started": {

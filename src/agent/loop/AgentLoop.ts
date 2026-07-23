@@ -1,4 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import path from "node:path";
+import { formatMissingArtifactReminder } from "../../artifact/index.js";
 import {
   applyModelEventToAssembler,
   assembleAssistantMessage,
@@ -1794,6 +1796,19 @@ export class AgentLoop {
       );
     }
     const requestMessages = normalizeMessagesForModelRequest(messages);
+    const missingArtifactPaths = await this.dependencies.artifactValidation
+      ?.listMissingRequiredPaths({
+        sessionId: input.sessionId,
+        workspaceRoot: this.config.cwd,
+      })
+      .catch(() => []);
+    if (missingArtifactPaths && missingArtifactPaths.length > 0) {
+      requestMessages.push({
+        role: "user",
+        content: [{ type: "text", text: formatMissingArtifactReminder(missingArtifactPaths) }],
+        metadata: { synthetic: true, transient: true },
+      });
+    }
     let tools = toolDefinitions.map(toolToCanonicalSchema);
     if (this.config.runMode === "ask") {
       tools = filterAskModeTools(toolDefinitions);
@@ -2047,7 +2062,12 @@ export class AgentLoop {
       permissionContext,
       auditRecorder: this.dependencies.auditRecorder,
       now: this.now,
-      env: this.config.env,
+      env: buildTurnEnvironment(
+        this.config.env,
+        this.config.cwd,
+        input.sessionId,
+        input.turnId,
+      ),
       maxResultBytes: this.config.maxResultBytes,
       // Tools that need a secondary model call (e.g. `agent` subagents in
       // fallback mode, `web_fetch` extraction) get a thin adapter that
@@ -2255,7 +2275,12 @@ export class AgentLoop {
       payload,
       matchQuery: event,
       signal: input.abortSignal,
-      env: this.config.env,
+      env: buildTurnEnvironment(
+        this.config.env,
+        this.config.cwd,
+        input.sessionId,
+        input.turnId,
+      ),
     }) ?? {
       effects: [],
       messages: [],
@@ -2442,6 +2467,31 @@ export class AgentLoop {
   }
 
   private readonly now = (): Date => this.dependencies.now?.() ?? new Date();
+}
+
+export function buildTurnEnvironment(
+  baseEnv: NodeJS.ProcessEnv | undefined,
+  cwd: string,
+  sessionId: string,
+  turnId: string,
+): NodeJS.ProcessEnv {
+  return {
+    ...(baseEnv ?? process.env),
+    PILOTDECK_SESSION_ID: sessionId,
+    PILOTDECK_TURN_ID: turnId,
+    PILOTDECK_WORK_DIR: path.join(
+      path.resolve(cwd),
+      ".pilotdeck",
+      "work",
+      safeWorkPathSegment(sessionId),
+      safeWorkPathSegment(turnId),
+    ),
+  };
+}
+
+function safeWorkPathSegment(value: string): string {
+  const normalized = value.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return normalized.replace(/^[-.]+|[-.]+$/g, "").slice(0, 96) || "unknown";
 }
 
 function mergeUserRules(target: PermissionRule[], userRules: PermissionRule[] | undefined): void {

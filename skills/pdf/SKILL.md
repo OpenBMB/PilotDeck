@@ -35,14 +35,14 @@ bash "$PDF_TOOL" check || bash "$PDF_TOOL" fix
 
 `fix` creates an isolated Python environment under `${PDF_SKILL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/pilotdeck-pdf}`. Poppler is a system dependency; if `pdfinfo` or `pdftoppm` is missing, follow the platform-specific hint printed by `fix`.
 
-Use a task-specific scratch directory outside the skill:
+Use the turn-scoped PilotDeck work directory for every intermediate. The host sets `PILOTDECK_WORK_DIR`; the fallback keeps manual runs internal to the project:
 
 ```bash
-WORKSPACE="${TMPDIR:-/tmp}/pilotdeck-pdf/${CODEX_THREAD_ID:-manual}/<task-slug>"
+WORKSPACE="${PILOTDECK_WORK_DIR:-$PWD/.pilotdeck/work/manual/<task-slug>}/pdf"
 mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/qa"
 ```
 
-Keep builders, extracted content, inspections, renders, and QA reports in `WORKSPACE`. Put only requested deliverables in the project or user-selected output directory.
+Keep builders, extracted content, split pages, converted files, inspections, renders, and QA reports in `WORKSPACE`. Put only requested deliverables in the project or user-selected output directory. Never create QA directories or other intermediates beside the user's files.
 
 ## Route the request
 

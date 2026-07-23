@@ -6,6 +6,12 @@ type CronConfigShape = {
   };
 };
 
+type WebSearchProvider = 'glm' | 'tavily' | 'custom';
+
+type WebSearchConfigShape = {
+  enabled?: boolean;
+};
+
 export function patch<T>(config: T, path: Path, value: unknown): T {
   // Immutable deep set. Each key cloned along the way so React picks up the
   // change. Numeric segments materialise arrays; everything else materialises
@@ -27,4 +33,16 @@ export function patch<T>(config: T, path: Path, value: unknown): T {
 
 export function isCronConfigEnabled(config: CronConfigShape): boolean {
   return config.cron !== undefined && config.cron.enabled !== false;
+}
+
+export function webSearchConfigForProvider(
+  current: WebSearchConfigShape,
+  provider: WebSearchProvider,
+  glmDefaultEndpoint: string,
+): WebSearchConfigShape & { provider: WebSearchProvider; endpoint?: string } {
+  return {
+    ...(current.enabled === undefined ? {} : { enabled: current.enabled }),
+    provider,
+    ...(provider === 'glm' ? { endpoint: glmDefaultEndpoint } : {}),
+  };
 }

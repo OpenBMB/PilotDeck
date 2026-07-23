@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import type { ArtifactValidationResult, ArtifactValidationSummary, ArtifactValidator } from "../protocol/types.js";
 import type { ArtifactContractStore } from "./ArtifactContractStore.js";
 import { resolveArtifactPath } from "./resolveArtifactPath.js";
@@ -78,6 +79,32 @@ export class ArtifactValidationRuntime {
     }
     return { passed: !failedRequired, results };
   }
+
+  async listMissingRequiredPaths(input: {
+    sessionId: string;
+    workspaceRoot: string;
+  }): Promise<string[]> {
+    const missing: string[] = [];
+    for (const contract of this.contracts.list(input.sessionId)) {
+      if (contract.required === false) continue;
+      try {
+        const artifactPath = await resolveArtifactPath(input.workspaceRoot, contract.path);
+        const info = await stat(artifactPath);
+        if (!info.isFile() || info.size === 0) missing.push(contract.path);
+      } catch {
+        missing.push(contract.path);
+      }
+    }
+    return [...new Set(missing)].sort();
+  }
+}
+
+export function formatMissingArtifactReminder(paths: readonly string[]): string {
+  return [
+    "Required deliverables are still missing:",
+    ...paths.map((path) => `- ${path}`),
+    "Preserve completed research, create the deliverables incrementally, and do not claim completion until they exist and pass validation.",
+  ].join("\n");
 }
 
 export function formatArtifactCorrectionPrompt(summary: ArtifactValidationSummary): string {
