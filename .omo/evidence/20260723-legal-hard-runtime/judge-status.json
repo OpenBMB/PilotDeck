@@ -1,20 +1,38 @@
 {
   "judge": "external 321-checkpoint semantic evaluator",
-  "status": "pending",
+  "status": "completed",
   "attempts": [
     {
       "result": "failed",
       "errorClass": "UND_ERR_HEADERS_TIMEOUT"
     },
     {
-      "result": "in_progress",
+      "result": "completed",
       "configuration": "custom dispatcher with bounded 45-minute headers/body timeout"
     }
   ],
+  "result": {
+    "ok": true,
+    "total": 321,
+    "passed": 224,
+    "failed": 97,
+    "passRate": 0.6978193146417445,
+    "criticalTotal": 141,
+    "criticalPassed": 117,
+    "criticalFailed": 24,
+    "criticalPassRate": 0.8297872340425532,
+    "nonCriticalTotal": 180,
+    "nonCriticalPassed": 107,
+    "nonCriticalFailed": 73,
+    "allPass": false,
+    "judgeErrors": 0
+  },
   "claims": {
     "harnessGatePassed": true,
     "manualArtifactQualityPassed": true,
-    "judgeCheckpointPassCountClaimed": 0
+    "judgeCheckpointPassCountClaimed": 224,
+    "judgeCriticalCheckpointPassCountClaimed": 117,
+    "judgeAllPassClaimed": false
   },
   "privacy": "Raw request, response, and legal checkpoint text are not stored in git."
 }

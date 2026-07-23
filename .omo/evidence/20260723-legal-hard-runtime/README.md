@@ -45,4 +45,4 @@ Base under test: `7404ba5cc67ae5689ce5ace07ac8a35ef55b3522`, subsequently merged
 - `hard-quality-gate.json`: content-free independent artifact and coverage checks.
 - `regression-summary.json`: backend, UI, office-skill, and build results.
 - `known-ui-baselines.md`: failures reproduced from byte-identical `origin/main` files/configuration.
-- `judge-status.json`: external Judge availability and claim boundary.
+- `judge-status.json`: aggregate external Judge result and claim boundary.
