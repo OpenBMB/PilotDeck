@@ -1,0 +1,42 @@
+{
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ],
+  "PreModelRequest": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ]
+}
