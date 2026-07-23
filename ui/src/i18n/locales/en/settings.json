@@ -102,11 +102,13 @@
       "buildTime": "Build Time:",
       "downloadAndInstall": "Download & Install",
       "downloadingAndInstalling": "Downloading...",
-      "restartAndInstall": "Restart & Install",
+      "installUpdate": "Install Update",
+      "launchingInstaller": "Launching installer...",
       "restartingAndInstalling": "Restarting...",
       "status": {
         "checking": "Checking",
         "updateAvailable": "Update Available",
+        "installerLaunched": "Installer Launched",
         "upToDate": "Up to Date",
         "unavailable": "Unavailable"
       }

@@ -5,6 +5,10 @@ import { authenticatedFetch } from "../../../../utils/api";
 import { cn } from "../../../../lib/utils";
 import type { DesktopVersionCheckResult } from "../../SettingsNew";
 import { SettingsCard } from "../../shared/view";
+import {
+  launchDesktopInstaller,
+  readWebUpdateTerminalStatus,
+} from "./updateActions";
 
 type AboutSectionsProps = {
   title: string;
@@ -12,8 +16,19 @@ type AboutSectionsProps = {
   checkingVersion: boolean;
 };
 
-type LocalUpdateResult = "downloaded" | "installSuccess" | "failed" | "webUpdated" | null;
-type VersionStatus = "checking" | "updateAvailable" | "upToDate" | "unavailable";
+type LocalUpdateResult =
+  | "downloaded"
+  | "installerLaunched"
+  | "failed"
+  | "webUpdated"
+  | "webUpToDate"
+  | null;
+type VersionStatus =
+  | "checking"
+  | "updateAvailable"
+  | "installerLaunched"
+  | "upToDate"
+  | "unavailable";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -40,7 +55,8 @@ export default function AboutSections({
 
   const status: VersionStatus = useMemo(() => {
     if (checkingVersion) return "checking";
-    if (localUpdateResult === "installSuccess") return "upToDate";
+    if (localUpdateResult === "installerLaunched") return "installerLaunched";
+    if (localUpdateResult === "webUpToDate") return "upToDate";
     if (localUpdateResult === "failed") return "unavailable";
     if (versionInfo.checkUnavailable) return "unavailable";
     if (versionInfo.hasUpdate) return "updateAvailable";
@@ -101,33 +117,14 @@ export default function AboutSections({
       if (!res.ok) {
         throw new Error("Failed to apply web update");
       }
-      const reader = res.body?.getReader();
-      if (!reader) {
-        setLocalUpdateResult("webUpdated");
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let done = false;
-      let failed = false;
-      while (!done) {
-        const chunk = await reader.read();
-        done = chunk.done;
-        if (!chunk.value) continue;
-        const text = decoder.decode(chunk.value, { stream: !done });
-        for (const line of text.split("\n").filter(Boolean)) {
-          try {
-            const parsed = JSON.parse(line);
-            if (parsed?.status === "error") {
-              failed = true;
-            }
-          } catch {
-            // ignore malformed stream chunks
-          }
-        }
-      }
-
-      setLocalUpdateResult(failed ? "failed" : "webUpdated");
+      const terminalStatus = await readWebUpdateTerminalStatus(res.body);
+      setLocalUpdateResult(
+        terminalStatus === "error"
+          ? "failed"
+          : terminalStatus === "up-to-date"
+            ? "webUpToDate"
+            : "webUpdated",
+      );
     } catch {
       setLocalUpdateResult("failed");
     } finally {
@@ -135,25 +132,11 @@ export default function AboutSections({
     }
   };
 
-  const handleRestartInstall = async () => {
+  const handleInstall = async () => {
     setInstalling(true);
     try {
-      const installRes = await authenticatedFetch("/api/update/desktop/install", {
-        method: "POST",
-        body: JSON.stringify({ filePath: downloadedFilePath }),
-      });
-      if (!installRes.ok) {
-        throw new Error("Failed to launch desktop installer");
-      }
-      setLocalUpdateResult("installSuccess");
-
-      try {
-        await authenticatedFetch("/api/update/restart", {
-          method: "POST",
-        });
-      } catch {
-        // best effort: server may close connection while restarting
-      }
+      await launchDesktopInstaller(downloadedFilePath);
+      setLocalUpdateResult("installerLaunched");
     } catch {
       setLocalUpdateResult("failed");
     } finally {
@@ -180,13 +163,14 @@ export default function AboutSections({
   const showWebUpdateButton =
     !isDesktop
     && versionInfo.hasUpdate
-    && localUpdateResult !== "webUpdated";
+    && localUpdateResult !== "webUpdated"
+    && localUpdateResult !== "webUpToDate";
   const showWebRestartButton = !isDesktop && localUpdateResult === "webUpdated";
   const statusBadgeClass = cn(
     "inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-medium leading-5",
     status === "updateAvailable"
       ? "border-blue-300 bg-blue-50 text-blue-700"
-      : status === "upToDate"
+      : status === "upToDate" || status === "installerLaunched"
         ? "border-emerald-300 bg-emerald-50 text-emerald-700"
         : status === "checking"
           ? "border-slate-300 bg-slate-50 text-slate-700"
@@ -255,13 +239,13 @@ export default function AboutSections({
           ) : showRestartInstallButton ? (
             <button
               type="button"
-              onClick={handleRestartInstall}
+              onClick={handleInstall}
               disabled={installing || downloading}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {installing
-                ? t("settingsNew.about.restartingAndInstalling")
-                : t("settingsNew.about.restartAndInstall")}
+                ? t("settingsNew.about.launchingInstaller")
+                : t("settingsNew.about.installUpdate")}
             </button>
           ) : (
             <div />

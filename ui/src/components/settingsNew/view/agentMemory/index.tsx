@@ -17,32 +17,19 @@ import {
 } from "../agentModel/utils/modelRefs";
 import type { SettingsProject } from "../../shared/types";
 import MemoryDataSection from "./MemoryDataSection";
+import {
+  DEFAULT_DREAM_MINUTES,
+  DEFAULT_INDEX_MINUTES,
+  resolveEnabledMemoryIntervals,
+  toDisplayUnit,
+  toMinutes,
+  type IntervalUnit,
+} from "./memoryIntervals";
 
 type AgentMemorySectionsProps = {
   title: string;
   projects: SettingsProject[];
 };
-
-type IntervalUnit = "minutes" | "hours";
-
-const DEFAULT_INDEX_MINUTES = 30;
-const DEFAULT_DREAM_MINUTES = 60;
-
-function toDisplayUnit(
-  minutesValue: number | undefined,
-  fallbackMinutes: number,
-): { value: number; unit: IntervalUnit } {
-  const resolved = minutesValue && minutesValue > 0 ? minutesValue : fallbackMinutes;
-  if (resolved % 60 === 0) {
-    return { value: Math.max(1, resolved / 60), unit: "hours" };
-  }
-  return { value: Math.max(1, resolved), unit: "minutes" };
-}
-
-function toMinutes(value: number | undefined, unit: IntervalUnit): number {
-  const safe = value && value > 0 ? Math.floor(value) : 1;
-  return unit === "hours" ? safe * 60 : safe;
-}
 
 function MemorySection({
   config,
@@ -91,29 +78,34 @@ function MemorySection({
   const handleMemoryEnabled = (enabled: boolean) => {
     let next = patch(config, ["memory", "enabled"], enabled);
     if (enabled) {
-      if (!config.memory?.autoIndexIntervalMinutes) {
-        next = patch(next, ["memory", "autoIndexIntervalMinutes"], DEFAULT_INDEX_MINUTES);
-      }
-      if (!config.memory?.autoDreamIntervalMinutes) {
-        next = patch(next, ["memory", "autoDreamIntervalMinutes"], DEFAULT_DREAM_MINUTES);
-      }
+      const intervals = resolveEnabledMemoryIntervals(config.memory);
+      next = patch(
+        next,
+        ["memory", "autoIndexIntervalMinutes"],
+        intervals.autoIndexIntervalMinutes,
+      );
+      next = patch(
+        next,
+        ["memory", "autoDreamIntervalMinutes"],
+        intervals.autoDreamIntervalMinutes,
+      );
     }
     onChange(next);
   };
 
   const indexValueDisplay =
     indexUnit === "hours"
-      ? Math.max(1, Math.floor((m.autoIndexIntervalMinutes ?? DEFAULT_INDEX_MINUTES) / 60))
+      ? Math.max(0, Math.floor((m.autoIndexIntervalMinutes ?? DEFAULT_INDEX_MINUTES) / 60))
       : m.autoIndexIntervalMinutes ?? DEFAULT_INDEX_MINUTES;
 
   const dreamValueDisplay =
     dreamUnit === "hours"
-      ? Math.max(1, Math.floor((m.autoDreamIntervalMinutes ?? DEFAULT_DREAM_MINUTES) / 60))
+      ? Math.max(0, Math.floor((m.autoDreamIntervalMinutes ?? DEFAULT_DREAM_MINUTES) / 60))
       : m.autoDreamIntervalMinutes ?? DEFAULT_DREAM_MINUTES;
 
   const commitIndex = () => {
     const parsed = Number(indexDraftValue);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    if (!Number.isFinite(parsed) || parsed < 0) return;
     setIndexUnit(indexDraftUnit);
     applyIndex(parsed, indexDraftUnit);
     setIndexEditing(false);
@@ -127,7 +119,7 @@ function MemorySection({
 
   const commitDream = () => {
     const parsed = Number(dreamDraftValue);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    if (!Number.isFinite(parsed) || parsed < 0) return;
     setDreamUnit(dreamDraftUnit);
     applyDream(parsed, dreamDraftUnit);
     setDreamEditing(false);
@@ -188,7 +180,7 @@ function MemorySection({
                 <div className="w-32">
                   <input
                     type="number"
-                    min={1}
+                    min={0}
                     value={indexEditing ? indexDraftValue : String(indexValueDisplay)}
                     readOnly={!indexEditing}
                     onChange={(event) => setIndexDraftValue(event.target.value)}
@@ -240,7 +232,7 @@ function MemorySection({
                     <button
                       type="button"
                       onClick={commitIndex}
-                      disabled={!Number.isFinite(Number(indexDraftValue)) || Number(indexDraftValue) <= 0}
+                      disabled={!Number.isFinite(Number(indexDraftValue)) || Number(indexDraftValue) < 0}
                       className="whitespace-nowrap rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t("settingsNew.actions.save")}
@@ -275,7 +267,7 @@ function MemorySection({
                 <div className="w-32">
                   <input
                     type="number"
-                    min={1}
+                    min={0}
                     value={dreamEditing ? dreamDraftValue : String(dreamValueDisplay)}
                     readOnly={!dreamEditing}
                     onChange={(event) => setDreamDraftValue(event.target.value)}
@@ -327,7 +319,7 @@ function MemorySection({
                     <button
                       type="button"
                       onClick={commitDream}
-                      disabled={!Number.isFinite(Number(dreamDraftValue)) || Number(dreamDraftValue) <= 0}
+                      disabled={!Number.isFinite(Number(dreamDraftValue)) || Number(dreamDraftValue) < 0}
                       className="whitespace-nowrap rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t("settingsNew.actions.save")}

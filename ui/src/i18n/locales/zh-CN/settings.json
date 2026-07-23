@@ -102,11 +102,13 @@
       "buildTime": "构建时间：",
       "downloadAndInstall": "下载安装",
       "downloadingAndInstalling": "下载中...",
-      "restartAndInstall": "重启安装",
+      "installUpdate": "安装更新",
+      "launchingInstaller": "正在启动安装程序...",
       "restartingAndInstalling": "重启中...",
       "status": {
         "checking": "正在检查",
         "updateAvailable": "有新版本",
+        "installerLaunched": "安装程序已启动",
         "upToDate": "已是最新",
         "unavailable": "无法获取"
       }
