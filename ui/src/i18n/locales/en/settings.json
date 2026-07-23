@@ -49,7 +49,7 @@
     "resetToDefaults": "Reset to Defaults",
     "cancelChanges": "Cancel Changes"
   },
-  "settingsNew": {
+  "settingsPage": {
     "actions": {
       "edit": "Edit",
       "save": "Save",

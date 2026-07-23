@@ -1019,7 +1019,7 @@
 }
 
 @layer components {
-  .settings-new-content h2 {
+  .settings-content h2 {
     font-size: 1.375rem;
     line-height: 1.75rem;
     letter-spacing: -0.015em;

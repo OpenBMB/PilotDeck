@@ -49,7 +49,7 @@
     "resetToDefaults": "重置为默认值",
     "cancelChanges": "取消更改"
   },
-  "settingsNew": {
+  "settingsPage": {
     "actions": {
       "edit": "编辑",
       "save": "保存",
