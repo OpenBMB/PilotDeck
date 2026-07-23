@@ -2,15 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile as execFileCallback, spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { loadPluginFromPath } from "../../src/extension/plugins/loading/PluginLoader.js";
 
 const execFile = promisify(execFileCallback);
 const PLUGIN_ROOT = resolve("products/legal/plugins/legal-coverage");
 const CLI = join(PLUGIN_ROOT, "scripts", "legal-coverage.mjs");
+const VALIDATOR_LIB = join(PLUGIN_ROOT, "scripts", "lib", "legal-coverage.mjs");
 const HOOK = join(PLUGIN_ROOT, "hook.mjs");
 const STATE_ROOT = join(".pilotdeck", "work", "legal-coverage");
 
@@ -25,8 +27,17 @@ test("legal coverage validator creates a current proof and removes it when the d
     assert.deepEqual(result.counts, { sources: 1, facts: 1, issues: 1, authorities: 1, deliverables: 1 });
 
     const proofPath = join(workspace, STATE_ROOT, "completion-proof.json");
-    const proof = JSON.parse(await readFile(proofPath, "utf8")) as { stateHash: string; deliverables: Array<{ sha256: string }> };
+    const proof = JSON.parse(await readFile(proofPath, "utf8")) as {
+      stateHash: string;
+      sources: Array<{ path: string; sha256: string; bytes: number }>;
+      deliverables: Array<{ sha256: string }>;
+    };
     assert.match(proof.stateHash, /^[a-f0-9]{64}$/u);
+    assert.deepEqual(proof.sources, [{
+      path: "source-room/record.txt",
+      sha256: sha256("Synthetic company record.\n"),
+      bytes: Buffer.byteLength("Synthetic company record.\n"),
+    }]);
     assert.match(proof.deliverables[0]?.sha256 ?? "", /^[a-f0-9]{64}$/u);
 
     await writeFile(join(workspace, "deliverables", "opinion.md"), "# Changed after coverage\n");
@@ -164,6 +175,244 @@ test("legal coverage validator requires authority links for critical issues and 
     const codes = new Set(result.errors.map((error) => error.code));
     assert.equal(codes.has("critical_issue_authority_missing"), true);
     assert.equal(codes.has("legal_authority_links_missing"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator rejects non-object canonical JSON documents", async () => {
+  const stateFiles = ["config", "sources", "facts", "matrices", "issues", "authorities", "coverage"];
+  const nonObjects = [null, [], "not an object", 42];
+  for (const [index, stateFile] of stateFiles.entries()) {
+    const workspace = await mkdtemp(join(tmpdir(), `pilotdeck-legal-coverage-non-object-${stateFile}-`));
+    try {
+      await writeCompleteFixture(workspace);
+      await writeFile(join(workspace, STATE_ROOT, `${stateFile}.json`), `${JSON.stringify(nonObjects[index % nonObjects.length])}\n`);
+      const validation = await runCli(workspace, "validate", "--write-proof");
+      assert.equal(validation.exitCode, 2, `${stateFile}: ${validation.stderr}`);
+      const result = JSON.parse(validation.stdout) as { passed: boolean; errors: Array<{ code: string; path?: string }> };
+      assert.equal(result.passed, false);
+      assert.equal(result.errors.some((error) => error.code === "state_document_not_object" && error.path?.endsWith(`${stateFile}.json`)), true);
+      await assert.rejects(stat(join(workspace, STATE_ROOT, "completion-proof.json")), { code: "ENOENT" });
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }
+});
+
+test("legal coverage validator binds reviewed source bytes to the ledger and state hash", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-source-hash-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const current = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(current.exitCode, 0, current.stderr);
+    const currentResult = JSON.parse(current.stdout) as { stateHash: string };
+
+    await writeFile(join(workspace, "source-room", "record.txt"), "Changed source bytes after legal review.\n");
+    const stale = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(stale.exitCode, 2);
+    const staleResult = JSON.parse(stale.stdout) as { stateHash: string; errors: Array<{ code: string }> };
+    assert.notEqual(staleResult.stateHash, currentResult.stateHash);
+    assert.equal(staleResult.errors.some((error) => error.code === "source_hash_stale"), true);
+    await assert.rejects(stat(join(workspace, STATE_ROOT, "completion-proof.json")), { code: "ENOENT" });
+
+    await writeFile(join(workspace, "source-room", "record.txt"), "Synthetic company record.\n");
+    const sourcesPath = join(workspace, STATE_ROOT, "sources.json");
+    const sources = JSON.parse(await readFile(sourcesPath, "utf8")) as { sources: Array<Record<string, unknown>> };
+    delete sources.sources[0]!.sha256;
+    await writeJson(sourcesPath, sources);
+    const unbound = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(unbound.exitCode, 2);
+    const unboundResult = JSON.parse(unbound.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(unboundResult.errors.some((error) => error.code === "source_hash_missing"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator rejects ancestor symlinks and a symlinked proof", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-outside-"));
+  try {
+    await writeCompleteFixture(workspace);
+    await mkdir(join(outside, "source-room"), { recursive: true });
+    await mkdir(join(outside, "deliverables"), { recursive: true });
+    await writeFile(join(outside, "source-room", "record.txt"), "Synthetic company record.\n");
+    await writeFile(join(outside, "deliverables", "opinion.md"), "External legal opinion.\n");
+    await symlink(outside, join(workspace, "escape"));
+
+    const root = join(workspace, STATE_ROOT);
+    const config = JSON.parse(await readFile(join(root, "config.json"), "utf8")) as { inputRoots: string[]; deliverables: Array<Record<string, unknown>> };
+    config.inputRoots = ["escape/source-room"];
+    config.deliverables[0]!.path = "escape/deliverables/opinion.md";
+    await writeJson(join(root, "config.json"), config);
+    const sources = JSON.parse(await readFile(join(root, "sources.json"), "utf8")) as { sources: Array<Record<string, unknown>> };
+    sources.sources[0]!.path = "escape/source-room/record.txt";
+    await writeJson(join(root, "sources.json"), sources);
+
+    const escaped = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(escaped.exitCode, 2);
+    const escapedResult = JSON.parse(escaped.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(escapedResult.errors.some((error) => error.code === "source_path_invalid"), true);
+    assert.equal(escapedResult.errors.some((error) => error.code === "input_root_unreadable"), true);
+    assert.equal(escapedResult.errors.some((error) => error.code === "deliverable_path_invalid"), true);
+
+    config.inputRoots = ["source-room"];
+    config.deliverables[0]!.path = "deliverables/opinion.md";
+    sources.sources[0]!.path = "source-room/record.txt";
+    await writeJson(join(root, "config.json"), config);
+    await writeJson(join(root, "sources.json"), sources);
+    const externalProof = join(outside, "completion-proof.json");
+    await writeFile(externalProof, "external sentinel\n");
+    await symlink(externalProof, join(root, "completion-proof.json"));
+    const proofSymlink = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(proofSymlink.exitCode, 2);
+    const proofResult = JSON.parse(proofSymlink.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(proofResult.errors.some((error) => error.code === "proof_path_invalid"), true);
+    assert.equal(await readFile(externalProof, "utf8"), "external sentinel\n");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator does not read or write through a symlinked state ancestor", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-state-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-state-outside-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const stateRoot = join(workspace, STATE_ROOT);
+    const outsideState = join(outside, "state");
+    await rename(stateRoot, outsideState);
+    await symlink(outsideState, stateRoot);
+    const externalProof = join(outsideState, "completion-proof.json");
+    await writeFile(externalProof, "external state sentinel\n");
+
+    const result = await runValidatorDirect(workspace);
+    assert.equal(result.passed, false);
+    assert.equal(result.errors.some((error: { code: string }) => error.code === "state_file_invalid"), true);
+    assert.equal(result.errors.some((error: { code: string }) => error.code === "proof_path_invalid"), true);
+    assert.equal(await readFile(externalProof, "utf8"), "external state sentinel\n");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator requires unresolved disclosure for unverified material facts", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-unverified-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const factsPath = join(workspace, STATE_ROOT, "facts.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    facts.facts[0]!.verificationStatus = "partially-verified";
+    await writeJson(factsPath, facts);
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 2);
+    const result = JSON.parse(validation.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(result.errors.some((error) => error.code === "unverified_fact_not_disclosed"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator rejects unique but irrelevant issue and authority quotes", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-semantic-quotes-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const opinionPath = join(workspace, "deliverables", "opinion.md");
+    const opinion = [
+      "# Legal Opinion",
+      "Synthetic entity registered capital of 120 currency units is material to the transaction.",
+      "The office will archive a uniquely numbered blue folder tomorrow.",
+      "A separate cafeteria notice confirms the weekly menu schedule.",
+      "",
+    ].join("\n");
+    await writeFile(opinionPath, opinion);
+    const coveragePath = join(workspace, STATE_ROOT, "coverage.json");
+    const coverage = JSON.parse(await readFile(coveragePath, "utf8")) as {
+      deliverables: Array<Record<string, unknown>>;
+      issues: Array<Record<string, unknown>>;
+      authorities: Array<Record<string, unknown>>;
+    };
+    coverage.deliverables[0]!.sha256 = sha256(opinion);
+    coverage.issues[0]!.quote = "The office will archive a uniquely numbered blue folder tomorrow.";
+    coverage.authorities[0]!.quote = "A separate cafeteria notice confirms the weekly menu schedule.";
+    await writeJson(coveragePath, coverage);
+
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 2);
+    const result = JSON.parse(validation.stdout) as { errors: Array<{ code: string }> };
+    const codes = new Set(result.errors.map((error) => error.code));
+    assert.equal(codes.has("issue_coverage_quote_unsupported"), true);
+    assert.equal(codes.has("authority_coverage_quote_unsupported"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator enforces reciprocal and same-entry ledger relationships", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-relationships-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const sources = JSON.parse(await readFile(join(root, "sources.json"), "utf8")) as { sources: Array<Record<string, unknown>> };
+    sources.sources[0]!.factIds = ["F-002"];
+    await writeJson(join(root, "sources.json"), sources);
+
+    const facts = JSON.parse(await readFile(join(root, "facts.json"), "utf8")) as { facts: Array<Record<string, unknown>> };
+    facts.facts.push({
+      ...facts.facts[0],
+      id: "F-002",
+      predicate: "employee count",
+      value: 42,
+      material: false,
+      critical: false,
+      sourceRefs: [],
+      thresholdAssessment: null,
+    });
+    await writeJson(join(root, "facts.json"), facts);
+
+    const authorities = JSON.parse(await readFile(join(root, "authorities.json"), "utf8")) as { authorities: Array<Record<string, unknown>> };
+    authorities.authorities.push({
+      id: "A-002",
+      name: "Unrelated synthetic act",
+      article: "Article 9",
+      effectiveVersion: "Current synthetic version",
+      effectiveDate: "Synthetic effective date",
+      verificationStatus: "verified",
+      sourceLocator: "Synthetic official source",
+      supportedIssueIds: ["I-001"],
+      supportedConclusion: "An unrelated filing rule applies.",
+    });
+    await writeJson(join(root, "authorities.json"), authorities);
+
+    const matrices = JSON.parse(await readFile(join(root, "matrices.json"), "utf8")) as { matrices: Array<Record<string, unknown>> };
+    const riskMatrix = matrices.matrices.find((matrix) => matrix.id === "equity-capital-timeline")!;
+    (riskMatrix.entries as Array<Record<string, unknown>>)[0]!.factIds = ["F-001", "F-002"];
+    const authorityMatrix = matrices.matrices.find((matrix) => matrix.id === "legal-authority")!;
+    authorityMatrix.status = "complete";
+    authorityMatrix.entries = [{
+      id: "M-AUTH-001",
+      summary: "An intentionally mismatched authority relationship.",
+      factIds: ["F-002"],
+      riskSignals: [],
+      issueIds: ["I-001"],
+      authorityIds: ["A-002"],
+    }];
+    delete authorityMatrix.notApplicableReason;
+    await writeJson(join(root, "matrices.json"), matrices);
+
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 2);
+    const result = JSON.parse(validation.stdout) as { errors: Array<{ code: string }> };
+    const codes = new Set(result.errors.map((error) => error.code));
+    assert.equal(codes.has("fact_source_backlink_missing"), true);
+    assert.equal(codes.has("source_fact_backlink_missing"), true);
+    assert.equal(codes.has("issue_authority_backlink_missing"), true);
+    assert.equal(codes.has("matrix_issue_fact_mismatch"), true);
+    assert.equal(codes.has("risk_signal_fact_mismatch"), true);
+    assert.equal(codes.has("matrix_issue_authority_mismatch"), true);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -339,6 +588,62 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
   }
 });
 
+test("legal coverage hook activates a malformed configured workspace so the agent can repair it", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-malformed-config-"));
+  try {
+    const stateRoot = join(workspace, STATE_ROOT);
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(join(stateRoot, "config.json"), "{ malformed\n");
+
+    const submit = await runHook({
+      hookEventName: "UserPromptSubmit",
+      sessionId: "malformed-config-session",
+      transcriptPath: "",
+      cwd: workspace,
+      prompt: "Continue the configured workspace.",
+      internal: false,
+    });
+    assert.equal(submit.hookSpecificOutput.dynamicContext?.length, 1);
+
+    const preModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "malformed-config-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /state_file_invalid/u);
+    assert.equal(preModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageState, "configuration");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage hook rejects a symlinked session-state ancestor without writing outside the workspace", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-session-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-session-outside-"));
+  try {
+    const stateRoot = join(workspace, STATE_ROOT);
+    await mkdir(stateRoot, { recursive: true });
+    await symlink(outside, join(stateRoot, "sessions"));
+
+    const result = await runHookProcess({
+      hookEventName: "UserPromptSubmit",
+      sessionId: "symlink-session",
+      transcriptPath: "",
+      cwd: workspace,
+      prompt: "Please conduct legal due diligence and issue a legal opinion.",
+      internal: false,
+    });
+    assert.equal(result.exitCode, 2);
+    assert.match(result.stderr, /failed closed/u);
+    assert.equal(JSON.parse(result.stdout).continue, false);
+    await assert.rejects(stat(join(outside, "symlink-session.json")), { code: "ENOENT" });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test("legal product plugin loads one skill and contains no benchmark-specific controls", async () => {
   const plugin = await loadPluginFromPath(PLUGIN_ROOT, "project");
   assert.equal(plugin.name, "legal-coverage");
@@ -361,7 +666,7 @@ export async function writeCompleteFixture(workspace: string): Promise<void> {
     "# Legal Opinion",
     "Synthetic entity registered capital of 120 currency units is material to the transaction.",
     "The threshold breach requires a closing condition.",
-    "Applicable law supports the stated closing condition.",
+    "Synthetic transactions act Article 1 states that a closing condition may address the identified risk.",
     "",
   ].join("\n");
   await writeFile(join(workspace, "deliverables", "opinion.md"), opinion);
@@ -381,6 +686,7 @@ export async function writeCompleteFixture(workspace: string): Promise<void> {
     sources: [{
       id: "S-001",
       path: "source-room/record.txt",
+      sha256: sha256("Synthetic company record.\n"),
       status: "reviewed",
       extractionMethod: "plain-text inspection",
       evidenceClass: "official-record",
@@ -488,7 +794,7 @@ export async function writeCompleteFixture(workspace: string): Promise<void> {
       section: "Legal Opinion",
       locator: "paragraph 3",
       claim: "The authority supports the control.",
-      quote: "Applicable law supports the stated closing condition.",
+      quote: "Synthetic transactions act Article 1 states that a closing condition may address the identified risk.",
     }],
   });
 }
@@ -507,6 +813,17 @@ async function runCli(workspace: string, ...args: string[]): Promise<{ stdout: s
   }
 }
 
+async function runValidatorDirect(workspace: string): Promise<{ passed: boolean; errors: Array<{ code: string }> }> {
+  const moduleUrl = pathToFileURL(VALIDATOR_LIB).href;
+  const script = [
+    `import { validateWorkspace } from ${JSON.stringify(moduleUrl)};`,
+    "const result = await validateWorkspace({ workspaceRoot: process.argv[1], writeProof: true });",
+    "process.stdout.write(JSON.stringify(result));",
+  ].join("\n");
+  const result = await execFile(process.execPath, ["--input-type=module", "--eval", script, workspace], { encoding: "utf8" });
+  return JSON.parse(result.stdout) as { passed: boolean; errors: Array<{ code: string }> };
+}
+
 async function runHook(input: Record<string, unknown>): Promise<{
   continue?: boolean;
   hookSpecificOutput: {
@@ -516,7 +833,17 @@ async function runHook(input: Record<string, unknown>): Promise<{
     modelRequestPatch?: { metadata?: Record<string, unknown> };
   };
 }> {
-  const stdout = await new Promise<string>((resolvePromise, reject) => {
+  const result = await runHookProcess(input);
+  if (result.exitCode !== 0) throw new Error(result.stderr || `Hook exited with code ${result.exitCode}.`);
+  return JSON.parse(result.stdout) as never;
+}
+
+async function runHookProcess(input: Record<string, unknown>): Promise<{
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}> {
+  return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [HOOK], { stdio: ["pipe", "pipe", "pipe"] });
     let output = "";
     let stderr = "";
@@ -526,12 +853,10 @@ async function runHook(input: Record<string, unknown>): Promise<{
     child.stderr.on("data", (chunk: string) => { stderr += chunk; });
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0) resolvePromise(output);
-      else reject(new Error(stderr || `Hook exited with code ${code}.`));
+      resolvePromise({ stdout: output, stderr, exitCode: code ?? 1 });
     });
     child.stdin.end(JSON.stringify(input));
   });
-  return JSON.parse(stdout) as never;
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {

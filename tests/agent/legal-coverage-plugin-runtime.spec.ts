@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createLocalGateway } from "../../src/cli/createLocalGateway.js";
@@ -43,7 +43,7 @@ test("real gateway drives legal plugin milestones through bounded artifact corre
     }
 
     const agentRequests = requests.filter((request) => !messageText(request.messages).includes("Summarize the conversation so far"));
-    assert.equal(agentRequests.length, 2);
+    assert.equal(agentRequests.length, 2, JSON.stringify(events));
     assert.match(messageText(agentRequests[0]?.messages ?? []), /Legal coverage controls are active/u);
     assert.match(messageText(agentRequests[0]?.messages ?? []), /completion-proof\.json/u);
     assert.match(messageText(agentRequests[0]?.messages ?? []), /Legal coverage milestone/u);
@@ -61,13 +61,76 @@ test("real gateway drives legal plugin milestones through bounded artifact corre
   }
 });
 
-function fakeModelRuntime(requests: CanonicalModelRequest[], projectRoot: string): ModelRuntime {
+test("real gateway blocks completion when the legal Stop hook cannot read session state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-legal-stop-failure-"));
+  const projectRoot = join(root, "project");
+  const pilotHome = join(root, "home");
+  const installedPlugin = join(projectRoot, ".pilotdeck", "plugins", "legal-coverage");
+  const requests: CanonicalModelRequest[] = [];
+  await mkdir(projectRoot, { recursive: true });
+  await mkdir(pilotHome, { recursive: true });
+  await cp(PLUGIN_ROOT, installedPlugin, { recursive: true });
+  await writeFile(join(pilotHome, "pilotdeck.yaml"), TEST_CONFIG);
+
+  const runtime = createLocalGateway({
+    projectRoot,
+    fallbackProjectRoot: projectRoot,
+    pilotHome,
+    env: { ...process.env, PILOT_HOME: pilotHome },
+    __testModelFactory: () => fakeModelRuntime(requests, projectRoot, { corruptSessionStateAfterProof: true }),
+  });
+  try {
+    const events = [];
+    for await (const event of runtime.gateway.submitTurn({
+      sessionKey: "legal-stop-failure-session",
+      channelKey: "test",
+      projectKey: projectRoot,
+      message: "Conduct legal due diligence and produce a legal opinion.",
+      canPrompt: false,
+    })) {
+      events.push(event);
+    }
+
+    const agentRequests = requests.filter((request) => !isCompactionRequest(request));
+    assert.equal(agentRequests.length, 2, JSON.stringify(events));
+    assert.equal(events.some((event) => event.type === "error"
+      && /Legal coverage Stop hook failed closed/u.test(event.message)), true);
+    assert.equal(events.some((event) => event.type === "turn_completed" && event.finishReason === "tool_error"), true);
+    assert.equal(events.some((event) => event.type === "turn_completed" && event.finishReason === "completed"), false);
+  } finally {
+    await runtime.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+function fakeModelRuntime(
+  requests: CanonicalModelRequest[],
+  projectRoot: string,
+  options: { corruptSessionStateAfterProof?: boolean } = {},
+): ModelRuntime {
   return {
     async *stream(request) {
       requests.push(request);
-      if (requests.length === 1) await writeMinimalValidState(projectRoot);
+      const isCompaction = isCompactionRequest(request);
+      const agentRequestCount = requests.filter((candidate) => !isCompactionRequest(candidate)).length;
+      if (!isCompaction && agentRequestCount === 1) await writeMinimalValidState(projectRoot);
+      if (!isCompaction && agentRequestCount === 2 && options.corruptSessionStateAfterProof) {
+        const proofPath = join(projectRoot, STATE_ROOT, "completion-proof.json");
+        assert.match((await readFile(proofPath, "utf8")), /"stateHash"/u);
+        const sessionsRoot = join(projectRoot, STATE_ROOT, "sessions");
+        const sessionFiles = await readdir(sessionsRoot);
+        assert.equal(sessionFiles.length, 1);
+        const sessionPath = join(sessionsRoot, sessionFiles[0]!);
+        await rm(sessionPath);
+        await mkdir(sessionPath);
+      }
       yield { type: "message_start", role: "assistant" };
-      yield { type: "text_delta", text: requests.length === 1 ? "Initial legal completion." : "Validated legal completion." };
+      yield {
+        type: "text_delta",
+        text: isCompaction
+          ? "Synthetic compact summary."
+          : agentRequestCount === 1 ? "Initial legal completion." : "Validated legal completion.",
+      };
       yield { type: "usage", usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 } };
       yield { type: "message_end", finishReason: "stop" };
     },
@@ -104,6 +167,7 @@ async function writeMinimalValidState(workspace: string): Promise<void> {
     sources: [{
       id: "S-001",
       path: "source-room/record.txt",
+      sha256: sha256("Synthetic source with no material legal facts.\n"),
       status: "reviewed",
       extractionMethod: "plain-text inspection",
       evidenceClass: "official-record",
@@ -142,6 +206,10 @@ function messageText(messages: readonly CanonicalMessage[]): string {
     .map((block) => block.type === "text" ? block.text : "")
     .filter(Boolean)
     .join("\n");
+}
+
+function isCompactionRequest(request: CanonicalModelRequest): boolean {
+  return messageText(request.messages).includes("Summarize the conversation so far");
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
