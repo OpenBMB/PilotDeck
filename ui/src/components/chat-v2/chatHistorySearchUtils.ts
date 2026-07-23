@@ -261,71 +261,67 @@ export function clearSearchHighlights(container: HTMLElement): void {
   });
 }
 
-function findNthMatchOffset(text: string, query: string, occurrence: number): number {
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-  let fromIndex = 0;
-  let seen = 0;
-
-  while (fromIndex < lowerText.length) {
-    const found = lowerText.indexOf(lowerQuery, fromIndex);
-    if (found < 0) return -1;
-    if (seen === occurrence) return found;
-    seen += 1;
-    fromIndex = found + Math.max(1, lowerQuery.length);
-  }
-
-  return -1;
-}
-
-function highlightTextNode(
+function highlightTextNodeMatches(
   node: Text,
   query: string,
-  occurrence: number,
-): { highlighted: boolean; nextOccurrence: number } {
+  firstOccurrence: number,
+  highlightedOccurrences: Set<number>,
+  activeOccurrence: number | null,
+): { activeElement: HTMLElement | null; nextOccurrence: number } {
   const text = node.textContent || '';
-  const offset = findNthMatchOffset(text, query, occurrence);
-  if (offset < 0) {
-    return { highlighted: false, nextOccurrence: occurrence };
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  if (!lowerQuery) {
+    return { activeElement: null, nextOccurrence: firstOccurrence };
   }
 
-  const before = text.slice(0, offset);
-  const match = text.slice(offset, offset + query.length);
-  const after = text.slice(offset + query.length);
-
   const fragment = document.createDocumentFragment();
-  if (before) fragment.appendChild(document.createTextNode(before));
+  let activeElement: HTMLElement | null = null;
+  let occurrence = firstOccurrence;
+  let searchOffset = 0;
+  let contentOffset = 0;
+  let highlighted = false;
 
-  const mark = document.createElement('mark');
-  mark.className = `${HIGHLIGHT_CLASS} ${ACTIVE_HIGHLIGHT_CLASS}`;
-  mark.textContent = match;
-  fragment.appendChild(mark);
+  while (searchOffset < lowerText.length) {
+    const found = lowerText.indexOf(lowerQuery, searchOffset);
+    if (found < 0) break;
 
-  if (after) fragment.appendChild(document.createTextNode(after));
+    const occurrenceIndex = occurrence;
+    occurrence += 1;
+    if (highlightedOccurrences.has(occurrenceIndex)) {
+      if (found > contentOffset) {
+        fragment.appendChild(document.createTextNode(text.slice(contentOffset, found)));
+      }
 
+      const mark = document.createElement('mark');
+      mark.className = HIGHLIGHT_CLASS;
+      if (occurrenceIndex === activeOccurrence) {
+        mark.classList.add(ACTIVE_HIGHLIGHT_CLASS);
+        mark.setAttribute('aria-current', 'true');
+        activeElement = mark;
+      }
+      mark.textContent = text.slice(found, found + query.length);
+      fragment.appendChild(mark);
+      contentOffset = found + query.length;
+      highlighted = true;
+    }
+
+    searchOffset = found + Math.max(1, lowerQuery.length);
+  }
+
+  if (!highlighted) {
+    return { activeElement: null, nextOccurrence: occurrence };
+  }
+  if (contentOffset < text.length) {
+    fragment.appendChild(document.createTextNode(text.slice(contentOffset)));
+  }
   const parent = node.parentNode;
   if (!parent) {
-    return { highlighted: false, nextOccurrence: occurrence };
+    return { activeElement: null, nextOccurrence: occurrence };
   }
   parent.replaceChild(fragment, node);
 
-  return { highlighted: true, nextOccurrence: occurrence + 1 };
-}
-
-function countOccurrences(text: string, query: string): number {
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-  if (!lowerQuery) return 0;
-
-  let count = 0;
-  let fromIndex = 0;
-  while (fromIndex < lowerText.length) {
-    const found = lowerText.indexOf(lowerQuery, fromIndex);
-    if (found < 0) break;
-    count += 1;
-    fromIndex = found + Math.max(1, lowerQuery.length);
-  }
-  return count;
+  return { activeElement, nextOccurrence: occurrence };
 }
 
 function countOccurrencesBeforeOffset(text: string, query: string, offset: number): number {
@@ -354,40 +350,75 @@ function escapeMessageKeyForSelector(messageKey: string): string {
   });
 }
 
-/** Highlight the active match and return the element that should be revealed. */
-export function highlightActiveMatch(
+/** Highlight every mounted match and return the active element that should be revealed. */
+export function highlightSearchMatches(
   container: HTMLElement,
-  messageKey: string,
-  messageText: string,
+  searchableMessages: SearchableChatMessage[],
+  matches: ChatHistorySearchMatch[],
   query: string,
-  offset: number,
+  activeMatch: ChatHistorySearchMatch | null,
 ): HTMLElement | null {
   clearSearchHighlights(container);
+  if (!query || matches.length === 0) return null;
 
-  const messageEl = container.querySelector<HTMLElement>(
-    `.chat-message[data-message-key="${escapeMessageKeyForSelector(messageKey)}"]`,
-  );
-  if (!messageEl) return null;
+  const searchableByKey = new Map(searchableMessages.map((entry) => [entry.messageKey, entry]));
+  const matchesByKey = new Map<string, ChatHistorySearchMatch[]>();
+  matches.forEach((match) => {
+    const messageMatches = matchesByKey.get(match.messageKey) || [];
+    messageMatches.push(match);
+    matchesByKey.set(match.messageKey, messageMatches);
+  });
 
-  const occurrence = countOccurrencesBeforeOffset(messageText, query, offset);
-  const walker = document.createTreeWalker(messageEl, NodeFilter.SHOW_TEXT);
-  let currentOccurrence = 0;
-  while (walker.nextNode()) {
-    const textNode = walker.currentNode as Text;
-    if (!textNode.textContent?.trim()) continue;
-    if (textNode.parentElement?.closest('mark')) continue;
+  let activeElement: HTMLElement | null = null;
+  let activeMessageElement: HTMLElement | null = null;
 
-    const nodeOccurrenceCount = countOccurrences(textNode.textContent, query);
-    if (nodeOccurrenceCount === 0) continue;
+  matchesByKey.forEach((messageMatches, messageKey) => {
+    const searchableMessage = searchableByKey.get(messageKey);
+    if (!searchableMessage) return;
 
-    if (occurrence < currentOccurrence + nodeOccurrenceCount) {
-      highlightTextNode(textNode, query, occurrence - currentOccurrence);
-      break;
+    const messageEl = container.querySelector<HTMLElement>(
+      `.chat-message[data-message-key="${escapeMessageKeyForSelector(messageKey)}"]`,
+    );
+    if (!messageEl) return;
+
+    const highlightedOccurrences = new Set(
+      messageMatches.map((match) => (
+        countOccurrencesBeforeOffset(searchableMessage.text, query, match.offset)
+      )),
+    );
+    const activeOccurrence = activeMatch?.messageKey === messageKey
+      ? countOccurrencesBeforeOffset(searchableMessage.text, query, activeMatch.offset)
+      : null;
+    if (activeOccurrence !== null) {
+      activeMessageElement = messageEl;
     }
-    currentOccurrence += nodeOccurrenceCount;
-  }
 
-  return messageEl.querySelector<HTMLElement>(`mark.${ACTIVE_HIGHLIGHT_CLASS}`) ?? messageEl;
+    const walker = document.createTreeWalker(messageEl, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode as Text;
+      if (!textNode.textContent?.trim()) continue;
+      if (textNode.parentElement?.closest('mark')) continue;
+      textNodes.push(textNode);
+    }
+
+    let currentOccurrence = 0;
+    textNodes.forEach((textNode) => {
+      const result = highlightTextNodeMatches(
+        textNode,
+        query,
+        currentOccurrence,
+        highlightedOccurrences,
+        activeOccurrence,
+      );
+      currentOccurrence = result.nextOccurrence;
+      if (result.activeElement) {
+        activeElement = result.activeElement;
+      }
+    });
+  });
+
+  return activeElement ?? activeMessageElement;
 }
 
 /** Center a result by scrolling only the conversation container from its current position. */

@@ -42,6 +42,22 @@ describe('renderPdfSearchHighlights', () => {
     expect(textDivs[0].querySelector('.highlight.selected')?.textContent).toBe('刘');
     expect(textDivs[1].querySelector('.highlight.selected')?.textContent).toBe('靖瑶');
     expect(selected?.dataset.pdfSearchMatchId).toBe(matches[0].id);
+    expect(selected?.classList.contains('pilotdeck-document-search-highlight-active')).toBe(true);
+    expect(selected?.getAttribute('aria-current')).toBe('true');
+  });
+
+  it('keeps every result highlighted while selecting only the active match', () => {
+    const textDiv = document.createElement('span');
+    const textItems = ['刘靖瑶与刘靖瑶'];
+    const matches = findPdfSearchMatches(textItems, '刘靖瑶', 1);
+
+    renderPdfSearchHighlights([textDiv], textItems, matches, matches[1].id);
+
+    expect(textDiv.querySelectorAll('.pilotdeck-document-search-highlight')).toHaveLength(2);
+    expect(textDiv.querySelectorAll('.pilotdeck-document-search-highlight-active')).toHaveLength(1);
+    expect(
+      textDiv.querySelector('.pilotdeck-document-search-highlight-active')?.textContent,
+    ).toBe('刘靖瑶');
   });
 
   it('restores the original text when search is cleared', () => {

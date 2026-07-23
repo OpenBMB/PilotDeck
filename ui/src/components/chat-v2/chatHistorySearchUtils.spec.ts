@@ -4,7 +4,7 @@ import type { ChatMessage } from '../chat/types/types';
 import {
   buildSearchableMessages,
   findChatHistoryMatches,
-  highlightActiveMatch,
+  highlightSearchMatches,
   scrollSearchTargetIntoView,
 } from './chatHistorySearchUtils';
 
@@ -135,7 +135,7 @@ describe('chatHistorySearchUtils', () => {
     expect(findChatHistoryMatches(searchableMessages, 'Audit checkout flow')).toHaveLength(1);
   });
 
-  it('highlights the active occurrence when earlier matches are in previous text nodes', () => {
+  it('highlights every mounted occurrence and distinguishes the active result', () => {
     const container = document.createElement('div');
     const message = document.createElement('div');
     const firstSpan = document.createElement('span');
@@ -149,21 +149,39 @@ describe('chatHistorySearchUtils', () => {
     container.append(message);
     document.body.append(container);
 
-    const target = highlightActiveMatch(
+    const searchMessage: ChatMessage = {
+      id: 'message-1',
+      type: 'assistant',
+      content: 'needle in the first node needle in the second node',
+      timestamp: '2026-05-18T08:00:00.000Z',
+    };
+    const searchableMessages = buildSearchableMessages([
+      {
+        message: searchMessage,
+        messageKey: 'message:1',
+      },
+    ]);
+    const matches = findChatHistoryMatches(searchableMessages, 'needle');
+    const target = highlightSearchMatches(
       container,
-      'message:1',
-      'needle in the first node needle in the second node',
+      searchableMessages,
+      matches,
       'needle',
-      'needle in the first node '.length,
+      matches[1],
     );
 
-    const marks = Array.from(message.querySelectorAll('mark.chat-history-search-highlight-active'));
+    const marks = Array.from(message.querySelectorAll('mark.chat-history-search-highlight'));
+    const activeMarks = Array.from(
+      message.querySelectorAll('mark.chat-history-search-highlight-active'),
+    );
 
-    expect(target).toBe(marks[0]);
-    expect(marks).toHaveLength(1);
-    expect(marks[0].textContent).toBe('needle');
-    expect(marks[0].parentElement).toBe(secondSpan);
-    expect(firstSpan.querySelector('mark')).toBeNull();
+    expect(target).toBe(activeMarks[0]);
+    expect(marks).toHaveLength(2);
+    expect(activeMarks).toHaveLength(1);
+    expect(activeMarks[0].textContent).toBe('needle');
+    expect(activeMarks[0].getAttribute('aria-current')).toBe('true');
+    expect(marks[0].parentElement).toBe(firstSpan);
+    expect(activeMarks[0].parentElement).toBe(secondSpan);
   });
 
   it('centers a mounted result relative to the current conversation scroll position', () => {

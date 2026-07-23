@@ -136,10 +136,16 @@ export function renderPdfSearchHighlights(
 
       const highlight = document.createElement('span');
       const selected = match.id === selectedMatchId;
-      highlight.className = `highlight appended${selected ? ' selected' : ''}`;
+      highlight.className = [
+        'highlight',
+        'appended',
+        'pilotdeck-document-search-highlight',
+        selected ? 'selected pilotdeck-document-search-highlight-active' : '',
+      ].filter(Boolean).join(' ');
       highlight.dataset.pdfSearchMatchId = match.id;
-      highlight.style.setProperty('--highlight-bg-color', 'rgb(250 204 21 / 0.55)');
-      highlight.style.setProperty('--highlight-selected-bg-color', 'rgb(245 158 11 / 0.8)');
+      if (selected) {
+        highlight.setAttribute('aria-current', 'true');
+      }
       highlight.append(document.createTextNode(text.slice(start, end)));
       content.append(highlight);
       if (selected && !selectedElement) {
