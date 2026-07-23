@@ -1,0 +1,17 @@
+WHAT WAS TESTED
+Surface: repeated real createLocalGateway recovery turns over the existing difficult-case workspace, with dynamic legal milestones active on every model request.
+
+WHAT WAS OBSERVED
+Primary run: 72/72 model requests received the dynamic legal-coverage metadata patch; the run produced the substantive opinion and canonical ledgers but reached the turn cap.
+First recovery: 72/72 requests were patched; validator errors fell from 99 to 10 but the reused session repeatedly compacted its multi-million-token history.
+Fresh repair session: no compaction loop; 36/36 requests were patched; product validator reached zero errors and seven of eight legacy topic reports were produced.
+Finalization attempt: the model issued an empty shell redirection that truncated the temporary verifier and modified temporary case config despite explicit instructions. The process was stopped immediately; the verifier was restored from a complete sibling copy; product validator state remained passed with zero errors.
+
+WHY IT MATTERS
+Fresh-session recovery is materially more efficient than reusing a saturated session. The empty-redirection incident is a generic bash-tool safety issue under bypassPermissions, not a legal-plugin defect. Fixing it in this legal-only PR would violate the implementation boundary; it must be handled in a separate PilotDeck Core change with its own regression test.
+
+WHAT WAS OMITTED
+Raw chat logs, tool payloads, legal facts, model responses, source text, tokens, credentials, and private endpoints were omitted.
+
+CLEANUP
+All failed or interrupted recovery processes exited. The temporary verifier was restored and syntax-checked before the independent hard verification was rerun.

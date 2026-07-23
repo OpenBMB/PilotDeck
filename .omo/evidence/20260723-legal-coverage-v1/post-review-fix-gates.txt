@@ -1,0 +1,27 @@
+WHAT WAS TESTED
+Surface: the final legal-coverage v1.2.0 commit b21dc972b126152393c4dbecc46ddd26ccfcb20d (tree 02544a6470d29682d42a55832f65ffbcb423e9d9), after all actionable findings in code-review.txt and final-code-review-v2.txt were fixed.
+1. Syntax checks for the hook, CLI, and validator library.
+2. npx tsc -p tsconfig.json --noEmit.
+3. npm run build.
+4. Compiled legal product and real-gateway runtime suites.
+5. npm test for the full repository.
+6. git diff --check and changed-path boundary inspection.
+
+WHAT WAS OBSERVED
+Syntax checks: exit 0.
+TypeScript: exit 0, no diagnostics.
+Build: exit 0.
+Targeted tests: 22/22 passed; zero failures, cancellations, skips, or todos.
+Full suite: 214/214 passed; zero failures, cancellations, skips, or todos; TAP duration 27386.833625 ms.
+Diff check: exit 0.
+Core source changes: 0.
+The only tracked working-tree edits after the review are five legal product files and two focused test files.
+
+WHY IT IS ENOUGH
+The focused suites exercise every new adversarial guard and the real createLocalGateway Stop path. The full suite rebuilds PilotDeck and covers all discovered repository tests. The path inventory proves the fixes remain inside the legal Domain Plugin and its tests.
+
+WHAT WAS OMITTED
+Raw TAP output, environment data, credentials, legal source material, model responses, private endpoint details, and generated opinion content were omitted.
+
+CLEANUP
+No tracked file was changed by the commands beyond the intentional seven-file fix set. Normal ignored build output remains.

@@ -1,0 +1,37 @@
+WHAT WAS TESTED
+Surface: two fresh real PilotDeck Agent recovery sessions over the existing difficult-case workspace with the installed legal-coverage v1.2.0 plugin and dynamic milestone injection.
+
+MIGRATION RUN
+Purpose: migrate the old canonical state to source-bound and semantically linked v1.2.0 contracts without weakening the validator or rewriting the opinion from scratch.
+Duration: 341962 ms.
+Model stream requests: 49.
+Requests with model patch: 49/49.
+Stop-driven continuations: 48.
+Tool calls: 59; three tool failures across both runs were surfaced and recovered.
+Initial validator errors: 101.
+Final validator errors/warnings: 0/0.
+Legal state hash: 35983599b74372c31c3b7bc2079029d281b1246de3b4210aab5601fb05a169b7.
+The legacy verifier then reported only a stale final-integrity hash because the opinion had changed.
+
+INTEGRITY RUN
+Purpose: refresh the established legacy final-integrity manifest for the current opinion and run the independent verifier without changing canonical legal coverage state.
+Duration: 66146 ms.
+Model stream requests: 15.
+Requests with model patch: 15/15.
+Stop-driven continuations: 14.
+Tool calls: 16.
+Finish reason: completed.
+Independent hard verifier: passed=true.
+Opinion bytes: unchanged during this run.
+
+WHY IT IS ENOUGH
+The first run demonstrates that state-driven dynamic prompts can guide a real Agent through a large contract migration in bounded error classes until the legal Stop gate permits completion. The second run independently restores legacy integrity and proves the resulting workspace passes both the shipped validator and the external hard verifier.
+
+PROVENANCE
+The Agent produced the v1.2.0 canonical migration, opinion corrections, and refreshed final-integrity manifest. One remaining topic-evidence compatibility artifact and the reverse-coverage compatibility artifact were originally QA-derived from validated canonical ledgers and remain explicitly qualified.
+
+WHAT WAS OMITTED
+Raw prompts, model output, tool payloads, legal content, source paths, credentials, private model configuration, and endpoint details were omitted.
+
+CLEANUP
+Both Agent sessions exited. The temporary runner remains syntax-valid. No product or test source was changed by the runs.

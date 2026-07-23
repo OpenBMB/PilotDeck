@@ -1,0 +1,62 @@
+FINAL CODE REVIEW V2 - LEGAL COVERAGE V1
+
+Verdict: REJECT / CHANGES REQUIRED
+Base: origin/codex/legal-runtime-e2e (2b1b120c)
+Reviewed state: current working-tree diff on codex/legal-coverage-v1
+Review date: 2026-07-24
+
+FINDINGS
+
+[P1] The Hook still follows a symlinked sessions directory and can write legal session state outside the workspace.
+
+References:
+- products/legal/plugins/legal-coverage/hook.mjs:24-28
+- products/legal/plugins/legal-coverage/hook.mjs:52-54
+- products/legal/plugins/legal-coverage/hook.mjs:75
+- products/legal/plugins/legal-coverage/hook.mjs:94-139
+
+The validator now constrains canonical state files, sources, deliverables, and the proof with resolveSafeWorkspacePath, but the Hook's activation and session-state paths do not use that boundary. sessionStatePath constructs a string, and readSessionState, writeSessionState, and SessionEnd call readFile, mkdir/writeFile, and rm directly. hasConfiguredWorkspace and the config/proof pathExists checks likewise operate before the validator's safe-path checks.
+
+An isolated synthetic probe created `.pilotdeck/work/legal-coverage/sessions` as a symlink to an external temporary directory, then dispatched UserPromptSubmit. The hook exited 0 and wrote `review-probe.json` with `active:true` into the external directory. Therefore the previous ancestor-symlink finding is only partially closed: validator state is constrained, while Hook-owned state still escapes the workspace.
+
+Make every Hook read/write/remove for config, proof, and session state reuse the same real-path constraint. For a missing sessions directory, validate the existing ancestors, create the directory, validate it again, then resolve the target before writing. Add a Hook-level regression test that symlinks `sessions` outside the workspace and proves the external sentinel/directory is unchanged and the hook fails closed. Cover SessionEnd removal as well as UserPromptSubmit creation.
+
+This is the only blocker found in this review.
+
+SEVEN-FINDING CLOSURE AUDIT
+
+1. Top-level non-object canonical JSON: CLOSED. readWorkspaceState records state_document_not_object, clears that state value, and validation cannot pass. The focused suite covers all seven canonical files across null/array/string/number representatives.
+
+2. Stop-hook exceptions classified as non-blocking: CLOSED for the reviewed failure path. The top-level boundary emits an explicit blocking object and exits 2. The real gateway test proves a Stop-time session-state read failure finishes as tool_error and never completed.
+
+3. Source content absent from proof/state hash: CLOSED. Each inventoried file is hashed, its recorded digest is checked, current source bytes are included in stateHash, and proof metadata includes sorted source digests. Source mutation changes the hash, raises source_hash_stale, and removes the proof.
+
+4. Ancestor symlink escape: PARTIALLY CLOSED; see the P1 finding. Canonical validator paths, sources, deliverables, input roots, and proof are constrained. Hook-owned activation/session paths remain unconstrained.
+
+5. Unverified material facts presented as covered: CLOSED. Material or critical facts whose verificationStatus is not verified must have unresolved coverage.
+
+6. Issue/authority quotes checked only for presence: CLOSED to the intended deterministic-validator boundary. Issue quotes require semantic anchor overlap with reasoning/control text; verified-authority quotes require authority and article in one citation segment plus overlap with supportedConclusion. Unique unrelated quote tests fail. This remains a lexical support guard, not a substitute for legal semantic review.
+
+7. Non-reciprocal or unrelated cross-ledger references: CLOSED. Source/fact and issue/authority links are bidirectional; matrix issues must share facts, risk-signal issues must cover all entry facts, and legal-authority entries require mutually linked authorities and issues from the same entry.
+
+VERIFICATION
+
+- `git diff --check origin/codex/legal-runtime-e2e`: passed.
+- Syntax checks for hook.mjs, scripts/legal-coverage.mjs, and scripts/lib/legal-coverage.mjs: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- Focused legal/runtime tests: 21 passed, 0 failed.
+- `npm test`: passed with exit code 0, including build and the complete repository test suite.
+- Isolated sessions-ancestor symlink probe: hook status 0, externalSessionWritten=true, stdoutBytes=895.
+
+Probe workspaces were synthetic, created under the system temporary directory, and removed. An accidentally waiting probe process from the first invocation was terminated and its temporary directories were removed. No real legal content was opened or reproduced.
+
+RESIDUAL RISKS AFTER THE BLOCKER IS FIXED
+
+- Semantic support uses bounded lexical anchors and cannot prove substantive legal correctness; this is acceptable only as a fail-closed structural/coverage guard backed by the legal Skill and human/domain review.
+- Binary deliverables still rely on user-authored locator and claim fields because exact quote validation is unavailable.
+- Concurrent filesystem replacement between path validation, read, hash, and atomic rename remains a local TOCTOU risk. Avoiding it fully would require descriptor-relative filesystem operations outside this legal-only change's current scope.
+- allowNoMaterialFacts and free-text notApplicableReason remain judgment-bearing escape hatches; their use should remain auditable in difficult-case review.
+
+BOUNDARY AND NO-EDIT CONFIRMATION
+
+The reviewed diff remains limited to products/legal and the two focused legal test files. No benchmark-specific names, fixed case counts, Judge controls, or temporary-run paths were found in the reviewed implementation. This reviewer did not edit product code or tests and created only this requested report.

@@ -1,0 +1,31 @@
+WHAT WAS TESTED
+Command: node <temporary-runner> verify-hard <redacted-hard-case-project>.
+Surface: the independent legacy hard-case verifier after the PilotDeck Agent refreshed the final integrity manifest for the current opinion.
+Expected: exit 0 and hardCaseQuality.passed=true.
+
+WHAT WAS OBSERVED
+Exit: 0
+Passed: true
+Source files: 62
+Ledger files: 62
+Missing sources: 0
+Duplicate ledger paths: 0
+Uninspected machine-readable sources: 0
+PPTX manifest valid: true
+PPTX slides: 9
+Missing topic evidence: 0 of 8
+Reverse coverage review present: true
+Final integrity valid: true
+Verifier errors: 0
+
+WHY IT IS ENOUGH
+The verifier independently checks inventory completeness, machine-readable inspection, presentation coverage, eight-topic synthesis, reverse coverage, and SHA-256 integrity. The final integrity manifest was refreshed and verified by a real PilotDeck Agent recovery turn rather than by the QA worker.
+
+PROVENANCE QUALIFICATION
+One remaining topic-evidence compatibility artifact and the reverse-coverage compatibility artifact were originally derived by QA from already validated canonical ledgers. They must not be represented as autonomous output from the primary PilotDeck run. The substantive opinion, v1.2.0 canonical state migration, and refreshed final integrity manifest were produced by PilotDeck Agent sessions.
+
+WHAT WAS OMITTED
+All legal facts, source names, source paths, opinion content, compatibility artifact content, and raw model responses were omitted.
+
+CLEANUP
+The verifier and Agent recovery process exited. No product or test source was modified.
