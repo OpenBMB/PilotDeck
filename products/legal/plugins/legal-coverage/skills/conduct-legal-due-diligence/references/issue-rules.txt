@@ -1,0 +1,28 @@
+LEGAL MATRICES AND CROSS-FACT ISSUE RULES
+
+Required matrix IDs
+1. equity-capital-timeline
+2. holding-platform-special-rights
+3. governance-personnel-timeline
+4. contract-key-terms
+5. debt-collateral-liquidity
+6. employment-ip-timeline
+7. legal-authority
+
+Rule IDs and matrix riskSignals
+- timeline-collision -> timeline_collision
+  Use when facts for the same subject, predicate, and date or period contain different values. The validator also detects this collision automatically.
+- threshold-breach -> threshold_breach
+  Use when a normalized numeric threshold assessment is breached. The validator recomputes the comparison.
+- rights-governance-conflict -> rights_governance_conflict
+  Use when ownership, special rights, voting, appointment, reserved matters, or actual control do not align.
+- liquidity-relationship -> liquidity_relationship
+  Use when debt maturity, collateral, guarantees, cash, receivables, or operating obligations interact to create liquidity risk.
+- employment-ip-ownership -> employment_ip_ownership
+  Use when personnel history, confidentiality, invention assignment, licensing, registration, or chain of title creates an ownership or continuity risk.
+- source-contradiction -> source_contradiction
+  Use for every unresolved contradiction between source records. The validator requires this issue for facts whose conflictStatus is unresolved.
+
+For every riskSignal on a matrix entry, link an issue with the matching ruleId. Link all facts needed to explain the relationship, not only the fact that contains a number. State the legal significance and a concrete conclusion; a restatement of source text is not legal reasoning.
+
+Use the hyphenated value on the left only in issues.json ruleId. Use the underscored value on the right only in matrices.json riskSignals. Every critical issue must link at least one authority; a free-text waiver is not accepted.
