@@ -11,6 +11,11 @@ import {
   listDesktopReleases,
   startDesktopUpdateDownload,
 } from '../services/desktopUpdateService.js';
+import {
+  normalizeUpdateRuntimeError,
+  resolveBashExecutable,
+  resolveRestartCommand,
+} from '../services/updateRuntime.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -303,10 +308,11 @@ router.post('/apply', async (req, res) => {
 
   try {
     const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'update.sh');
+    const bashExecutable = await resolveBashExecutable();
 
     sendProgress('start', 'Starting update process...');
 
-    const child = spawn('bash', [scriptPath], {
+    const child = spawn(bashExecutable, [scriptPath], {
       cwd: PROJECT_ROOT,
       env: { ...process.env, FORCE_COLOR: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -342,8 +348,9 @@ router.post('/apply', async (req, res) => {
       throw new Error(`Update script exited with code ${exitCode}`);
     }
   } catch (error) {
-    sendProgress('error', `Update failed: ${error.message}`, 'error');
-    lastUpdateResult = { success: false, error: error.message };
+    const message = normalizeUpdateRuntimeError(error);
+    sendProgress('error', `Update failed: ${message}`, 'error');
+    lastUpdateResult = { success: false, error: message };
   } finally {
     updateInProgress = false;
     res.end();
@@ -361,30 +368,35 @@ router.post('/restart', async (req, res) => {
     status: 'restarting',
   });
 
-  setTimeout(() => {
-    console.log('[update] Spawning replacement process and exiting...');
+  setTimeout(async () => {
+    try {
+      console.log('[update] Spawning replacement process and exiting...');
 
-    // Spawn `npm run dev` (or the same entry point) as a detached process
-    const isDocker = process.env.DOCKER === '1' || process.env.container === 'docker';
+      // Spawn `npm run dev` (or the same entry point) as a detached process
+      const isDocker = process.env.DOCKER === '1' || process.env.container === 'docker';
 
-    if (isDocker) {
-      // In Docker, just exit — the container restart policy handles respawn
-      process.exit(0);
+      if (isDocker) {
+        // In Docker, just exit — the container restart policy handles respawn
+        process.exit(0);
+      }
+
+      // Local: spawn a new server process detached from this one
+      const projectRoot = path.resolve(PROJECT_ROOT, '..');
+      const restartCommand = await resolveRestartCommand({ projectRoot });
+      const child = spawn(restartCommand.command, restartCommand.args, {
+        cwd: projectRoot,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env },
+        windowsHide: process.platform === 'win32',
+      });
+      child.unref();
+
+      // Exit after giving the response time to flush
+      setTimeout(() => process.exit(0), 500);
+    } catch (error) {
+      console.error(`[update] Restart failed: ${normalizeUpdateRuntimeError(error)}`);
     }
-
-    // Local: spawn a new server process detached from this one
-    const projectRoot = path.resolve(PROJECT_ROOT, '..');
-    const child = spawn('bash', ['-c', `sleep 2 && cd "${projectRoot}" && npm run dev`], {
-      cwd: projectRoot,
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-      windowsHide: process.platform === 'win32',
-    });
-    child.unref();
-
-    // Exit after giving the response time to flush
-    setTimeout(() => process.exit(0), 500);
   }, 1000);
 });
 
