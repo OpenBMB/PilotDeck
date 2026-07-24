@@ -1,4 +1,8 @@
 CURRENT FINAL EVIDENCE
+- e2-elite-final-gates.txt: final 24/24 focused and 216/216 full-suite gates.
+- adaptive-runtime-pilot.md: three bounded real-case runs plus the final automatic work-slice probe.
+- corpus-applicability-summary.md: 85 source entries, 82 unique cases, and adaptive applicability census.
+- projection-experiment-summary.md/json: frozen E0/E1/E2 semantic projection experiment.
 - post-review-fix-gates.txt: v1.2.0 targeted 22/22 and full 214/214 gates.
 - hard-case-validator-summary.txt: final source-bound validator pass.
 - hard-verifier-summary.txt: final independent verifier pass and provenance qualification.
@@ -17,4 +21,4 @@ HISTORICAL / SUPERSEDED EVIDENCE
 - harness-recovery-incidents.txt records earlier pre-v1.2.0 recovery history and the separate Core shell-safety incident.
 
 GLOBAL LIMITATION
-No current Judge score exists while the private scoring endpoint is unreachable. Local product QA and the independent hard verifier passing do not substitute for that external gate.
+No current Judge score exists while the private scoring endpoint is unreachable. The real E2-Elite run also remains deterministically incomplete with 164 coverage errors. Local product QA, runtime progress, and the independent hard verifier do not substitute for those external and semantic gates.

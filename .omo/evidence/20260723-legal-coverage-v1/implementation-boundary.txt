@@ -9,13 +9,13 @@ Focused test files: 2
 Post-review modified product files: 5
 Post-review modified test files: 2
 Product-only matches for hard-case title, entity names, output stem, benchmark marker, temporary run name, fixed source-count literal, and fixed slide-count literal: 0
-Plugin hooks: UserPromptSubmit, PreModelRequest, Stop, SessionEnd
+Plugin hooks: UserPromptSubmit, PreModelRequest, PostCompact, Stop, SessionEnd
 Skill count: 1 (conduct-legal-due-diligence)
 Validator version: 1.2.0
 Core source changes: none
 
 WHY IT IS ENOUGH
-The generic Harness remains untouched. Activation, dynamic milestones, fail-closed stopping, legal workflow guidance, source/ledger/deliverable integrity, semantic coverage, and deterministic validation are owned by the legal product bundle. Focused negative-token tests prevent benchmark details from entering shipped product code.
+The generic Harness remains untouched. Activation, dynamic milestones, compact coverage work slices, fail-closed stopping, legal workflow guidance, source/ledger/deliverable integrity, semantic coverage, and deterministic validation are owned by the legal product bundle. Focused negative-token tests prevent benchmark details from entering shipped product code.
 
 WHAT WAS OMITTED
 Forbidden case tokens are summarized rather than reproduced. No source-room or opinion content was scanned into this evidence file.
