@@ -1,0 +1,5 @@
+{"racetrack_id":"clm","name":"合同生命周期管理 (CLM)","layer":"B","geo":"global","tier":"core","note":"法律科技最大子赛道，企业法务买单"}
+{"racetrack_id":"legal-ai-drafting","name":"法律 AI 起草/审阅","layer":"B","geo":"global","tier":"hot","note":"GPT 时代爆发，2024-2026 资本最热"}
+{"racetrack_id":"law-firm-mgmt","name":"律所/案件管理","layer":"B","geo":"global","tier":"mature","note":"Clio/MyCase 主导，中小所刚需"}
+{"racetrack_id":"ediscovery","name":"电子取证 eDiscovery","layer":"B","geo":"NA","tier":"mature","note":"诉讼驱动，强项目制"}
+{"racetrack_id":"legal-research","name":"法律检索","layer":"A","geo":"global","tier":"core","note":"Westlaw/LexisNexis 双寡头，中国本土化"}
