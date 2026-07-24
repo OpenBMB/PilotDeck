@@ -6,6 +6,11 @@ selection, deterministic validation, and completion proof. PilotDeck Core
 continues to own only generic hooks, context delivery, tools, and artifact
 correction.
 
+The proposed delivery architecture is documented in
+[E2-Elite: Adaptive Legal Projection](docs/e2-elite-adaptive-legal-projection.md).
+It selects narrative, hybrid, schedule-heavy, or operational delivery before
+deciding whether structured legal projections are useful.
+
 ## Install
 
 Link the plugin into a project or PilotDeck home:
@@ -39,6 +44,17 @@ this product bundle.
 node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs validate \
   --workspace /path/to/project \
   --write-proof
+```
+
+When validation reaches final coverage, inspect one deterministic repair slice
+instead of loading every ledger into model context:
+
+```bash
+node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs next-batch \
+  --workspace /path/to/project \
+  --phase coverage \
+  --limit 12 \
+  --max-bytes 24576
 ```
 
 Validation fails closed on incomplete source inventory, partial facts, orphaned
