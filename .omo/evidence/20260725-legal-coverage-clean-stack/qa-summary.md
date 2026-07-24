@@ -17,8 +17,9 @@
 
 - Clean stacked branch: `codex/legal-coverage-v1-clean`.
 - Base: updated `codex/legal-runtime-e2e` at `54b110b2`.
-- Head after QA: `f9c8812ab1bcfea4685fe76dc3e4b75667dc3ebf`.
-- Full compiled test suite: 191 passed, 0 failed.
+- Head after QA: `a24b96b5520ffbd65884dcba57b92d23bf3b273a`.
+- Full compiled test suite (`npm test`): 216 passed, 0 failed, 0 skipped,
+  0 cancelled; exit code 0 (29.2 seconds).
 - Build: passed.
 - Whitespace check: passed.
 - No untracked or modified files remain in the clean worktree.
