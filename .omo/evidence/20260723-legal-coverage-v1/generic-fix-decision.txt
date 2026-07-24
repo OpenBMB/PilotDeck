@@ -1,0 +1,17 @@
+DECISION
+The final frozen-diff review found seven actionable defects inside the legal Domain Plugin. They were fixed in the legal plugin and focused tests; no PilotDeck Core source was changed.
+
+FIXED IN THIS PR
+- Non-object canonical JSON can no longer bypass validation.
+- Stop-hook validator/state I/O failures block completion with exit code 2.
+- Reviewed sources bind review-time SHA-256 and current source bytes enter the state proof.
+- State, source, deliverable, and proof paths reject workspace-internal symlink ancestors.
+- Partially verified or unverified material facts require unresolved final disclosure.
+- Issue and authority quotes require deterministic semantic support.
+- Source/fact, issue/authority, and same-entry matrix relationships are reciprocal and relevant.
+
+BOUNDARY ANALYSIS
+All fixes belong to the legal completion contract. The earlier empty shell redirection under bypassPermissions remains a generic Core tool-safety issue and is intentionally excluded from this legal-only PR. It requires a separate Core PR with its own failing regression test and permission-mode analysis.
+
+WHAT WAS OMITTED
+No legal source text, model response, tool payload, case entity, private endpoint, token, or credential is included.

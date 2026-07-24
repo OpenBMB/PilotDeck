@@ -1,0 +1,23 @@
+WHAT WAS TESTED
+Command: legal-coverage v1.2.0 validate --workspace <redacted-hard-case-project> --write-proof.
+Surface: the shipped validator and the plugin bytes installed into the real 62-file difficult-case workspace after a fresh PilotDeck Agent migrated the canonical state to the strengthened contract.
+Expected: exit 0, passed=true, zero errors and warnings, and a current source-bound completion proof.
+
+WHAT WAS OBSERVED
+Exit: 0
+Passed: true
+Errors: 0
+Warnings: 0
+Counts: sources=62, facts=76, issues=14, authorities=25, deliverables=1
+State SHA-256: 35983599b74372c31c3b7bc2079029d281b1246de3b4210aab5601fb05a169b7
+Proof path: .pilotdeck/work/legal-coverage/completion-proof.json
+Installed plugin recursive comparison: byte-identical to the final working-tree plugin.
+
+WHY IT IS ENOUGH
+Validator v1.2.0 binds current source bytes, review-time source digests, canonical ledgers, and deliverable hashes. It also enforces fail-closed document types and paths, unresolved verification states, reciprocal ledger links, same-entry matrix relationships, and semantic issue/authority coverage.
+
+WHAT WAS OMITTED
+The source-room path, source text, entity names, opinion content, coverage quotes, proof body, credentials, and raw model output were omitted.
+
+CLEANUP
+The final write-proof run changed only the generated proof timestamp/bytes. No product or test source was modified.

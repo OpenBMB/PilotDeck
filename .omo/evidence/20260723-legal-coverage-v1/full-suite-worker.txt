@@ -1,0 +1,60 @@
+PILOTDECK FULL-SUITE QA WORKER REPORT
+Date: 2026-07-23
+Worktree: /Users/da/Documents/PilotDeck-worktrees/20260723-feat-legal-coverage-v1
+
+WHAT WAS TESTED
+
+Command: npm test
+Invocation count: exactly one
+Surface: the repository production build followed by every compiled Node test and spec matched
+by dist/tests/**/*.test.js and dist/tests/**/*.spec.js.
+Intended proof: the complete discovered PilotDeck regression suite, including the legal-coverage
+change, builds and passes as one gate.
+
+WHAT WAS OBSERVED
+
+Command exit code: 0
+Wall duration: 33.07 seconds
+TAP runner duration: 28213.584458 ms
+Tests: 204
+Suites: 0
+Pass: 204
+Fail: 0
+Cancelled: 0
+Skipped: 0
+Todo: 0
+Failed test names: none
+
+Post-run repository checks:
+  git status --short:
+    ?? .omo/evidence/20260723-legal-coverage-v1/
+    ?? .omo/ulw-loop/
+    ?? products/legal/
+    ?? tests/agent/legal-coverage-plugin-runtime.spec.ts
+    ?? tests/products/
+  git diff --name-only: no paths
+  git diff --cached --name-only: no paths
+
+The status output matched the pre-run untracked feature/evidence set. Both tracked and staged
+name-only diffs were empty, proving this QA worker did not mutate tracked product or test source.
+
+WHY IT IS ENOUGH
+
+The package's npm test script performs the production build and then asks Node's test runner to
+discover both compiled test and spec patterns. The runner discovered 204 tests and every one
+passed. The zero exit code and zero fail, cancelled, skipped, and todo counts satisfy the full
+regression gate, while the three Git checks establish that the run caused no tracked-source or
+staged mutation.
+
+WHAT WAS OMITTED
+
+No real legal case workspace or legal source content was accessed. The raw command transcript,
+environment data, credentials, tokens, auth headers, private endpoints, and generated legal
+artifacts are not included. Only aggregate TAP results and repository cleanliness metadata are
+recorded.
+
+CLEANUP
+
+The temporary raw test log under /tmp was removed after extracting the sanitized aggregate.
+Normal ignored build output was left in the worktree. This evidence report is the only file added
+by this worker.

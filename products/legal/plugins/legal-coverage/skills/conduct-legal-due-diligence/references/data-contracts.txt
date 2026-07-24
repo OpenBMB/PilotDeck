@@ -1,0 +1,73 @@
+LEGAL COVERAGE DATA CONTRACTS
+
+All documents use schemaVersion 1 and live under .pilotdeck/work/legal-coverage.
+
+Canonical writer rule
+- Only the main agent writes the seven canonical JSON ledgers and final deliverables.
+- For input rooms over 20 files, use two to four disjoint read-only worker batches. Workers write evidence fragments, never canonical ledgers.
+- A fragment records source path/ID, inspection method, locator-grounded facts, evidence class, verification state, conflicts, unresolved items, and proposed materiality.
+
+config.json
+- enabled: true
+- jurisdiction: non-empty governing jurisdiction
+- basisDate: non-empty review basis date or period
+- allowNoMaterialFacts: false by default; true only after the entire reviewed source set is genuinely non-responsive
+- inputRoots: non-empty array of workspace-relative file or directory paths
+- deliverables: non-empty array of { id, path, required }
+
+sources.json
+- sources: one row per physical file under inputRoots
+- row: { id, path, sha256, status, extractionMethod, evidenceClass, factIds, noMaterialFactsReason, unresolvedItems }
+- status: reviewed | unreadable | pending
+- evidenceClass: official-record | executed-contract | company-disclosure | financial-record | third-party-record | interview | image-or-scan | other
+- sha256 is the lowercase SHA-256 of the exact source bytes at review time. If the source changes, re-inspect it and update every dependent ledger before recording the new hash.
+- A reviewed row needs sha256, extractionMethod, evidenceClass, and either factIds or noMaterialFactsReason.
+- An unreadable row needs unresolvedItems. Pending rows block completion.
+- sources.factIds and facts.sourceRefs are reciprocal: each link must appear on both rows.
+
+facts.json
+- facts: atomic fact rows
+- row: { id, subject, predicate, value, unit, dateOrPeriod, missingTimeReason, sourceRefs, evidenceClass, verificationStatus, conflictStatus, material, critical, thresholdAssessment }
+- sourceRefs: non-empty array of { sourceId, locator }
+- verificationStatus: verified | partially-verified | unverified
+- conflictStatus: none | resolved | unresolved
+- dateOrPeriod is required unless missingTimeReason explains why the source has no usable time.
+- thresholdAssessment is optional: { operator, actual, threshold, unit, breached }, where operator is gt | gte | lt | lte | eq.
+- Omit thresholdAssessment or use null when the fact has no analytical threshold.
+- material is true only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. critical is reserved for facts that may block or materially restructure the transaction.
+
+matrices.json
+- matrices: exactly one row for each required matrix ID listed in issue-rules.txt
+- row: { id, status, entries, notApplicableReason }
+- status: pending | complete | not-applicable
+- entry: { id, summary, factIds, riskSignals, issueIds, authorityIds }
+- A complete matrix needs entries. A not-applicable matrix needs a specific reason.
+- Every entry in a complete legal-authority matrix needs authorityIds.
+- Every material or critical fact must appear in at least one matrix entry.
+
+issues.json
+- issues: { id, ruleId, status, severity, critical, factIds, authorityIds, authorityNotRequiredReason, analysis, conclusion, recommendations }
+- status: open | mitigated | unresolved
+- recommendations is a non-empty array of legal or transaction controls.
+- Every critical issue requires authorityIds. authorityNotRequiredReason cannot waive authority support for a critical issue.
+- issues.authorityIds and authorities.supportedIssueIds are reciprocal: each link must appear on both rows.
+
+authorities.json
+- authorities: { id, name, article, effectiveVersion, effectiveDate, verificationStatus, sourceLocator, pendingReason, supportedIssueIds, supportedConclusion }
+- verificationStatus: verified | pending-verification | not-applicable
+- Verified authorities require article, effectiveVersion, effectiveDate, and sourceLocator.
+
+coverage.json
+- deliverables: { path, sha256 }
+- sources: { sourceId, status, deliverablePath, section, locator, claim, quote }
+- facts: { factId, status, deliverablePath, section, locator, claim, quote }
+- issues: { issueId, status, deliverablePath, section, locator, claim, quote }
+- authorities: { authorityId, status, deliverablePath, section, locator, claim, quote }
+- status: covered | unresolved
+- Every unreadable source or source with unresolvedItems must have an unresolved source coverage row.
+- quote is required and must occur exactly in text deliverables. Quotes must be distinct within each coverage group; one generic sentence cannot cover multiple records.
+- A material-fact quote must contain the fact subject and either its predicate, value, or date/period.
+- A material or critical fact whose verificationStatus is partially-verified or unverified must use coverage status unresolved.
+- An issue quote must share specific reasoning or control language with the issue analysis, conclusion, or recommendations. A unique but unrelated sentence does not establish coverage.
+- A verified-authority quote must identify the authority and article in the same citation segment and share specific language with supportedConclusion.
+- Binary deliverables still require a precise locator and claim.

@@ -1,0 +1,34 @@
+WHAT WAS TESTED
+1. npx tsc -p tsconfig.json --noEmit
+2. npm run build
+3. node --test --test-force-exit --test-timeout 60000 dist/tests/products/legal-coverage.spec.js dist/tests/agent/legal-coverage-plugin-runtime.spec.js
+4. npm test
+5. node --check products/legal/plugins/legal-coverage/hook.mjs
+6. node --check products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs
+7. node --check products/legal/plugins/legal-coverage/scripts/lib/legal-coverage.mjs
+8. git diff --check
+
+WHAT WAS OBSERVED
+TypeScript: exit 0, no diagnostics.
+Build: exit 0.
+Targeted legal and real-gateway tests: 24 passed, 0 failed.
+Full repository tests: 216 passed, 0 failed, 0 skipped, 0 cancelled.
+Syntax checks: exit 0.
+Whitespace check: exit 0.
+
+The focused suite covers proof validity, provenance, relationship rules,
+symlink fail-closed behavior, activation boundaries, milestone deduplication,
+PostCompact recovery, deterministic next-batch output, the 24-KiB batch cap,
+automatic 2-KiB work-item injection, benchmark-token exclusion, and real local
+gateway behavior.
+
+WHY IT IS ENOUGH
+The full suite exercises every repository test after the final production-code
+change. Focused tests directly cover the new legal behavior and its interaction
+with the real gateway. The separate real-case pilot records runtime, cost,
+mutation, and incomplete-validation behavior that hermetic tests cannot prove.
+
+WHAT WAS OMITTED
+Raw test output, environment dumps, credentials, private configuration, legal
+source content, generated legal content, and model transcripts are omitted.
+

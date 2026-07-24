@@ -1,0 +1,67 @@
+FINAL CODE REVIEW V3 - LEGAL COVERAGE V1
+
+Verdict: PASS
+Base: origin/codex/legal-runtime-e2e (2b1b120c)
+Reviewed state: current working-tree diff on codex/legal-coverage-v1
+Review date: 2026-07-24
+
+FINDINGS
+
+No correctness, compatibility, recoverability, or data-consistency findings were found in the reviewed legal-only boundary.
+
+V2 BLOCKER CLOSURE
+
+The v2 Hook path-escape blocker is CLOSED.
+
+- Config reads call resolveSafeWorkspacePath before readFile. Missing config remains the only non-error absence case; unsafe paths propagate to the top-level fail-closed boundary.
+- Config/proof activation checks call resolveSafeWorkspacePath before stat.
+- Session paths are workspace-relative and retain bounded session-id sanitization.
+- Session reads call resolveSafeWorkspacePath before readFile.
+- Session writes validate existing ancestors, create the missing directory, validate the full path again, and only then call writeFile.
+- SessionEnd removal calls resolveSafeWorkspacePath before rm. The normal SessionEnd flow also performs the safe session read before removal.
+- Any unsafe path reaches the top-level hook boundary, emits continue:false with legal_coverage_validation_error, and exits 2.
+
+The committed symlinked-sessions test genuinely proves the write-side property: it dispatches the real Hook process with `sessions` linked outside, requires exit 2 and continue:false, and asserts the exact sanitized external target was not created.
+
+An independent synthetic sentinel probe extended that coverage without modifying tests:
+
+- UserPromptSubmit with a symlinked sessions ancestor: exit 2; existing external session sentinel unchanged.
+- SessionEnd with a symlinked sessions ancestor: exit 2; external session sentinel not removed or modified.
+- UserPromptSubmit with a symlinked config: exit 2; external config unchanged.
+- PreModelRequest with a symlinked proof: exit 2; external proof unchanged.
+
+The resolveSafeWorkspacePath export introduces no new behavior. The function body remains the validator's reviewed implementation; exporting it allows the Hook to reuse the same constraint. The direct relative import has no circular dependency, syntax/import checks pass, and both focused and full suites pass.
+
+ORIGINAL SEVEN-FINDING CLOSURE AUDIT
+
+1. Top-level non-object canonical JSON: CLOSED.
+2. Stop-hook exceptions classified as non-blocking: CLOSED.
+3. Source content absent from proof/state hash: CLOSED.
+4. Ancestor symlink escape for sources, deliverables, canonical state, proof, and Hook session state: CLOSED.
+5. Unverified material facts presented as covered: CLOSED.
+6. Issue/authority quotes checked only for presence: CLOSED to the documented deterministic lexical-support boundary.
+7. Non-reciprocal or unrelated cross-ledger references: CLOSED.
+
+VERIFICATION
+
+- `git diff --check origin/codex/legal-runtime-e2e`: passed.
+- Syntax checks for hook.mjs, scripts/legal-coverage.mjs, and scripts/lib/legal-coverage.mjs: passed.
+- `npx tsc -p tsconfig.json --noEmit`: passed.
+- Focused legal/runtime tests: 22 passed, 0 failed.
+- `npm test`: 214 passed, 0 failed/cancelled/skipped/todo; exit 0.
+- Independent config/proof/session sentinel probe: all four unsafe-path operations exited 2 and preserved external content.
+
+All probe workspaces were synthetic, created under the system temporary directory, and removed. No probe process remains. No real legal content was opened or reproduced.
+
+RESIDUAL RISKS
+
+- Semantic support remains a bounded lexical guard, not proof of substantive legal correctness; the legal Skill and domain review remain necessary.
+- Binary deliverables rely on explicit locator and claim fields because exact text-quote validation is unavailable.
+- Filesystem replacement between path validation and the subsequent operation remains a local TOCTOU risk. Eliminating it fully would require descriptor-relative filesystem operations beyond this legal-only implementation boundary.
+- allowNoMaterialFacts and free-text notApplicableReason remain judgment-bearing fields that should stay visible in difficult-case review.
+
+These are previously identified design limitations, not regressions or blockers for this change.
+
+BOUNDARY AND NO-EDIT CONFIRMATION
+
+The implementation diff remains limited to products/legal and the two focused legal test files. No benchmark-specific names, fixed case counts, Judge controls, or temporary-run paths were found in the reviewed product implementation. This reviewer did not edit product code or tests and created only this requested v3 report.

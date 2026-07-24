@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "experiment": "frozen-evidence-projection-e1-e2",
+  "contaminationControls": {
+    "e1AgentRerun": false,
+    "e2FrozenEvidenceAgentTurn": true,
+    "sourceFilesReread": false,
+    "rubricUsedForGeneration": false,
+    "judgeFeedbackUsedForGeneration": false,
+    "rawPrivateArtifactsCommitted": false
+  },
+  "e0": {
+    "passed": 185,
+    "total": 321,
+    "score": 0.5763239875389408,
+    "criticalPassed": 100,
+    "criticalTotal": 141
+  },
+  "e1": {
+    "passed": 174,
+    "total": 321,
+    "score": 0.5420560747663551,
+    "criticalPassed": 94,
+    "criticalTotal": 141
+  },
+  "singleRunTransitions": {
+    "stablePass": 169,
+    "stableFail": 131,
+    "improvement": 5,
+    "regression": 16
+  },
+  "pairedRecheck": {
+    "rounds": 3,
+    "checkpointCount": 21,
+    "e0AggregatePasses": 16,
+    "e1AggregatePasses": 15,
+    "e1BetterCheckpointCount": 1,
+    "tiedCheckpointCount": 18,
+    "e0BetterCheckpointCount": 2
+  },
+  "e2": {
+    "semanticCandidateAccepted": true,
+    "processAccepted": false,
+    "sourceFileCount": 0,
+    "preservesE0AsExactPrefix": true,
+    "appendedChars": 14453,
+    "passed": 225,
+    "total": 321,
+    "score": 0.7009345794392523,
+    "criticalPassed": 113,
+    "criticalTotal": 141,
+    "factExtractionPassed": 198,
+    "factExtractionTotal": 267,
+    "legalReasoningPassed": 15,
+    "legalReasoningTotal": 33,
+    "legalCitationPassed": 5,
+    "legalCitationTotal": 13,
+    "processViolations": [
+      "created-one-extra-legal-work-scratch-file",
+      "self-reported-only-target-file-changed"
+    ],
+    "requestCount": 47,
+    "totalTokens": 1252901,
+    "pairedRecheck": {
+      "rounds": 3,
+      "checkpointCount": 60,
+      "e0AggregatePasses": 16,
+      "e2AggregatePasses": 145,
+      "e2BetterCheckpointCount": 47,
+      "tiedCheckpointCount": 9,
+      "e0BetterCheckpointCount": 4,
+      "stableE2OnlyWins": 43,
+      "stableE2OnlyCriticalWins": 15,
+      "stableE0OnlyWins": 0
+    }
+  },
+  "decision": {
+    "rawLedgerAppendicesSupported": false,
+    "recordOrientedProjectionSupported": true,
+    "generatedE2ProcessProductionReady": false,
+    "legalProjectionOwner": "legal-plugin-or-skill",
+    "genericMutationContractOwner": "pilotdeck-core",
+    "verifierLoopJustified": false,
+    "nextStep": "implement-typed-legal-records-deterministic-rendering-and-generic-mutation-enforcement"
+  }
+}

@@ -1,0 +1,31 @@
+WHAT WAS TESTED
+Surface: legal-coverage v1.2.0 with writeProof=true against the known difficult-case shortcut fixture.
+Expected: fail closed, remove any stale completion proof, and report the strengthened semantic/integrity failures.
+
+WHAT WAS OBSERVED
+Passed: false
+Errors: 1359
+Warnings: 0
+Completion proof exists after validation: false
+Selected rejection counts:
+source_hash_missing: 62
+material_fact_matrix_orphaned: 278
+coverage_quote_reused: 393
+fact_coverage_quote_unsupported: 323
+unverified_fact_not_disclosed: 270
+critical_issue_authority_missing: 4
+legal_authority_links_missing: 2
+source_fact_backlink_missing: 8
+risk_signal_fact_mismatch: 5
+matrix_issue_fact_mismatch: 2
+matrix_issue_authority_mismatch: 1
+issue_coverage_quote_unsupported: 11
+
+WHY IT IS ENOUGH
+The shortcut is rejected by independent source-integrity, matrix-completeness, quote-reuse, semantic fact/issue coverage, uncertainty disclosure, authority, and reciprocal-link guards. Running with writeProof=true also proves that a stale proof is removed rather than left for an existence-only consumer.
+
+WHAT WAS OMITTED
+The shortcut content, repeated quote, source text, case entities, legal conclusions, and proof bytes were omitted.
+
+CLEANUP
+The negative fixture remains isolated. Its stale completion proof was intentionally removed by the validator.

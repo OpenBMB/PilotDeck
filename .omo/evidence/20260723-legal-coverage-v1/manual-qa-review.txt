@@ -1,0 +1,144 @@
+PILOTDECK LEGAL-COVERAGE V1 - FINAL MANUAL QA REVIEW
+Date: 2026-07-23
+Mode: read-only evidence audit plus approved validator reruns
+
+FINDINGS
+
+1. BLOCKER - No end-to-end Judge result exists.
+   The existing connectivity evidence shows that the configured Judge resolved to a private
+   address for which this machine had no route. The request did not reach HTTP and no payload was
+   submitted, so there is no current overall score, critical score, or semantic Judge verdict.
+   This is an external private-network availability blocker, not a product pass and not a Judge
+   rejection.
+
+2. PROVENANCE QUALIFICATION - The independent hard verifier is not wholly autonomous output.
+   PilotDeck autonomously produced the substantive deliverable and canonical legal-coverage state
+   that the shipped product validator accepted. The final independent verify-hard pass also
+   depends on three legacy compatibility artifacts derived by QA from that already validated
+   canonical state: the remaining topic-evidence artifact, the reverse-coverage artifact, and the
+   final integrity attestation. Those three artifacts prove compatibility with the legacy hard
+   verifier; they must not be represented as autonomous PilotDeck-agent output.
+
+3. RESIDUAL INTEGRATION RISK - The rejected negative fixture still contains a pre-existing
+   completion-proof file, while the current validator status is passed=false. The validator and
+   runtime paths that revalidate current state fail closed, but a hypothetical external consumer
+   that trusts proof-file existence without revalidation could accept stale evidence. No such
+   bypass was observed in the tested PilotDeck completion path.
+
+4. OUT-OF-SCOPE CORE RISK - A prior finalization attempt under bypassPermissions issued an empty
+   shell redirection outside the project and truncated a temporary verifier. The process was
+   stopped and the verifier restored before verification. This is a generic Core tool-safety
+   issue, not a legal-plugin defect, and remains appropriate for a separate Core change and
+   regression test.
+
+VERDICT
+
+LOCAL PRODUCT QA: PASS.
+OVERALL BENCHMARK / RELEASE VERDICT: NOT ESTABLISHED - BLOCKED ON JUDGE CONNECTIVITY.
+
+No new legal-product defect was found in the frozen tree. Dynamic activation, fail-closed
+revalidation, semantic coverage guards, product boundary isolation, the full test suite, plugin
+installation fidelity, and cleanup are supported by the evidence and the sanitized reruns below.
+The result must not be described as a complete benchmark pass until the Judge returns a valid
+score.
+
+FROZEN IDENTITY AND INSTALLATION FIDELITY
+
+- Requested commit: 81201cd3f00459ee5dafeb52b3a7612cb0442cc9 - matched.
+- Requested tree: 411d051ede610638f94fa1fe6cc361ac7bc01a71 - matched.
+- Repository plugin bundle files: 9.
+- Installed hard-case plugin bundle files: 9.
+- Recursive byte comparison: identical; diff exit 0.
+
+APPROVED RERUNS
+
+1. Shipped product validator, hard case, with --write-proof
+   Exit: 0
+   Passed: true
+   Errors: 0
+   Warnings: 0
+   Counts: sources=62, facts=76, issues=14, authorities=25, deliverables=1
+   The generated completion proof was refreshed and its bytes changed, as expected for a new
+   write-proof capture. It was the only legal-coverage file modified by the rerun; canonical
+   ledgers, deliverable, verifier, product code, tests, and frozen git state were not modified.
+
+2. Independent verify-hard command
+   Exit: 0
+   Passed: true
+   Source files: 62
+   Ledger files: 62
+   Missing sources: 0
+   Duplicate ledger paths: 0
+   Uninspected machine-readable sources: 0
+   Presentation manifest valid: true
+   Presentation slides: 9
+   Missing topic evidence: 0
+   Reverse-coverage artifact present: true
+   Final integrity valid: true
+   Verifier errors: 0
+   Provenance remains qualified by Finding 2.
+
+3. Current validator status, known false-positive fixture
+   Exit: 0
+   Passed: false
+   Errors: 1000
+   Warnings: 0
+   Selected rejection counts:
+     coverage_quote_reused=393
+     fact_coverage_quote_unsupported=323
+     critical_issue_authority_missing=4
+     legal_authority_links_missing=2
+   The expected negative fixture remains rejected. The status command made no workspace mutation.
+
+EVIDENCE COVERAGE ASSESSMENT
+
+- Dynamic prompt activation: PROVED for the tested PilotDeck runtime path. The focused suite drove
+  the real local gateway and verified legal-only activation and milestone injection. Sanitized
+  recovery telemetry records model-request patches on 72/72 primary requests, 72/72 reused-session
+  requests, and 36/36 fresh-repair requests.
+
+- Fail-closed completion: PROVED for validator and runtime completion paths that revalidate state.
+  The hard case writes a proof only after a zero-error validation, while the known false-positive
+  fixture remains passed=false under current status with four directly relevant semantic rejection
+  classes. Focused tests also cover proof creation, invalidation, and Stop-hook behavior. See
+  Finding 3 for the stale-file integration caveat.
+
+- Semantic coverage: PROVED at product-validator level. The accepted difficult case has zero
+  errors and warnings, while the known shortcut remains rejected for reused coverage, unsupported
+  fact coverage, missing critical authority, and missing authority links. The independent verifier
+  separately confirms inventory, machine-readable inspection, presentation coverage, topic
+  coverage, reverse coverage, and integrity, subject to the compatibility-artifact qualification.
+
+- Boundary isolation: PROVED by the recorded inventory. There are zero Core source edits, no
+  hard-case-specific forbidden tokens in shipped product code, and the behavior is packaged in the
+  legal product plugin and skill. The generic shell-safety incident was correctly excluded from
+  this legal-only change.
+
+- Automated regression coverage: PROVED on the frozen tree. TypeScript exited 0 with no
+  diagnostics. Targeted production-build/runtime gates passed 12/12. The complete npm test gate
+  passed 204/204 with zero failures, cancellations, skips, or todos. An independent worker also
+  recorded a second 204/204 full-suite pass.
+
+- Cleanup: PROVED for this review. No relevant PilotDeck, local-gateway, or Judge process remained.
+  Raw rerun output was held only in temporary files and removed after aggregate extraction. The
+  frozen repository has no tracked or staged diff; only the pre-existing untracked evidence and
+  work-tracking directories remain. No source document, opinion content, coverage quote content,
+  private model log, raw Judge payload, credential, or private endpoint is reproduced here.
+
+EVIDENCE AUDIT
+
+All 11 pre-existing reviewer-readable reports in this evidence directory were inspected. Their
+counts and conclusions are mutually consistent with the reruns. The reports adequately cover the
+tested local product surfaces, but judge-connectivity.txt correctly records an unavailable external
+gate rather than converting it into a pass.
+
+RESIDUAL RISKS
+
+- Judge scoring remains blocked until private-network access is restored and a valid response is
+  captured.
+- Three compatibility artifacts have QA-derived provenance and reduce the evidentiary strength of
+  the independent verifier for autonomous-agent performance; they do not weaken the shipped
+  product validator's pass over canonical state.
+- Proof consumers must revalidate current state rather than trust proof-file existence alone.
+- The bypassPermissions shell-truncation behavior needs a separate Core safety fix and regression
+  test.
