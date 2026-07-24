@@ -335,6 +335,16 @@ export function preserveMaskedSecrets(nextValue, previousValue) {
   return nextValue;
 }
 
+export function hasUnresolvedMaskedSecrets(value) {
+  if (Array.isArray(value)) return value.some(hasUnresolvedMaskedSecrets);
+  if (!isRecord(value)) return false;
+  for (const [key, child] of Object.entries(value)) {
+    if (isSecretKey(key) && child === MASK) return true;
+    if (hasUnresolvedMaskedSecrets(child)) return true;
+  }
+  return false;
+}
+
 // ─── Runtime env derivation ──────────────────────────────────────────────────
 
 function providerProtocolToMemoryApi(protocol) {

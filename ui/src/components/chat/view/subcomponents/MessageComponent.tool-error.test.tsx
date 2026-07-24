@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../../types/types';
 import MessageComponent from './MessageComponent';
 
@@ -8,6 +8,7 @@ const PLAN_MODE_VIOLATION_MESSAGE = '[PLAN_MODE_VIOLATION] Tool "edit_notebook" 
 
 afterEach(() => {
   cleanup();
+  delete window.openSettings;
 });
 
 function renderToolMessage(
@@ -43,6 +44,34 @@ const permissionRequiredMessage: ChatMessage = {
 };
 
 describe('MessageComponent tool errors', () => {
+  it('opens the dedicated search settings for web-search setup errors', () => {
+    const openSettings = vi.fn();
+    window.openSettings = openSettings;
+    renderToolMessage({
+      id: 'tool-web-search',
+      type: 'assistant',
+      content: '',
+      timestamp: '2026-05-18T08:00:00.000Z',
+      isToolUse: true,
+      toolName: 'web_search',
+      toolId: 'tool-web-search',
+      toolInput: '{"query":"PilotDeck"}',
+      toolResult: {
+        isError: true,
+        content: 'Web search requires an API key.',
+        errorCode: 'setup_required',
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /toolUseError\.webSearchNotConfigured\.openSettings|Go to Settings/,
+      }),
+    );
+
+    expect(openSettings).toHaveBeenCalledWith('config:tools');
+  });
+
   it('renders recoverable write_file errors as neutral collapsed tool details', () => {
     const { container } = renderToolMessage({
       id: 'tool-1',

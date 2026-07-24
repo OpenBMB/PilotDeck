@@ -158,6 +158,34 @@ export const useEditorSidebar = ({
     });
   }, []);
 
+  const handleTabsClose = useCallback((tabIds: string[]) => {
+    const closingTabIds = new Set(tabIds);
+    if (closingTabIds.size === 0) return;
+
+    setTabsState((previous) => {
+      const activeIndex = previous.tabs.findIndex((tab) => tab.id === previous.activeTabId);
+      const tabs = previous.tabs.filter((tab) => !closingTabIds.has(tab.id));
+      if (tabs.length === previous.tabs.length) return previous;
+      if (!previous.activeTabId || !closingTabIds.has(previous.activeTabId)) {
+        return { ...previous, tabs };
+      }
+
+      const nextActiveTab = previous.tabs
+        .slice(activeIndex + 1)
+        .find((tab) => !closingTabIds.has(tab.id))
+        ?? previous.tabs
+          .slice(0, activeIndex)
+          .reverse()
+          .find((tab) => !closingTabIds.has(tab.id))
+        ?? null;
+
+      return {
+        tabs,
+        activeTabId: nextActiveTab?.id ?? null,
+      };
+    });
+  }, []);
+
   const handleTabDirtyChange = useCallback((tabId: string, dirty: boolean) => {
     setTabsState((previous) => {
       const tab = previous.tabs.find((candidate) => candidate.id === tabId);
@@ -295,6 +323,7 @@ export const useEditorSidebar = ({
     handleFileGoBack,
     handleTabSelect,
     handleTabClose,
+    handleTabsClose,
     handleTabDirtyChange,
     handleFileRename,
     handleFileDelete,

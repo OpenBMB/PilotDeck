@@ -509,7 +509,15 @@ describe('MessagesPaneV2 render behavior', () => {
     if (!(searchInput instanceof HTMLInputElement)) throw new Error('Expected chat search input');
     fireEvent.change(searchInput, { target: { value: 'needle' } });
 
-    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalled();
+      expect(document.querySelectorAll('mark.chat-history-search-highlight')).toHaveLength(2);
+      expect(document.querySelectorAll('mark.chat-history-search-highlight-active')).toHaveLength(1);
+    });
+    expect(
+      document.querySelector('mark.chat-history-search-highlight-active')?.closest('[data-message-key]')
+        ?.getAttribute('data-message-key'),
+    ).toContain('u-search-1');
     scrollTo.mockClear();
     setScrollTop.mockClear();
 
@@ -518,6 +526,11 @@ describe('MessagesPaneV2 render behavior', () => {
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({
       behavior: 'smooth',
     })));
+    expect(document.querySelectorAll('mark.chat-history-search-highlight')).toHaveLength(2);
+    expect(
+      document.querySelector('mark.chat-history-search-highlight-active')?.closest('[data-message-key]')
+        ?.getAttribute('data-message-key'),
+    ).toContain('a-search-2');
     expect(setScrollTop).not.toHaveBeenCalled();
   });
 

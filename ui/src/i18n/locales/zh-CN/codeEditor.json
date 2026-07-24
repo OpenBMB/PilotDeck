@@ -21,8 +21,14 @@
   "tabs": {
     "tabList": "已打开的文件",
     "closeTab": "关闭 {{fileName}}",
+    "moreActions": "更多标签操作",
+    "closeCurrent": "关闭",
+    "closeOthers": "关闭其他标签",
+    "closeToRight": "关闭右侧标签",
+    "closeAll": "关闭所有标签",
     "modified": "已修改",
-    "unsavedConfirm": "关闭 {{fileName}} 并放弃未保存的更改吗？"
+    "unsavedConfirm": "关闭 {{fileName}} 并放弃未保存的更改吗？",
+    "unsavedBatchConfirm": "关闭这些标签并放弃 {{count}} 个文件中未保存的更改吗？"
   },
   "actions": {
     "download": "下载文件",
@@ -77,9 +83,30 @@
     "fitPage": "适合页面",
     "rotateCounterClockwise": "逆时针旋转",
     "rotateClockwise": "顺时针旋转",
+    "showNavigation": "显示导航",
+    "hideNavigation": "隐藏导航",
+    "pages": "页面",
+    "outline": "大纲",
+    "expandOutline": "展开章节",
+    "collapseOutline": "收起章节",
+    "slides": "幻灯片",
+    "pageLabel": "第 {{number}} 页",
+    "slideLabel": "第 {{number}} 张幻灯片",
     "pageNumber": "页码",
+    "slideNumber": "幻灯片编号",
     "goToPage": "跳转页码",
-    "pageOf": "/ {{total}}"
+    "goToSlide": "跳转幻灯片",
+    "pageOf": "/ {{total}}",
+    "slideOf": "/ {{total}}",
+    "search": "在文件中搜索",
+    "searchPlaceholder": "搜索关键词",
+    "searching": "搜索中…",
+    "noResults": "无结果",
+    "resultOf": "{{current}} / {{total}}",
+    "previousResult": "上一个结果",
+    "nextResult": "下一个结果",
+    "closeSearch": "关闭搜索",
+    "refresh": "刷新文件"
   },
   "fileTypes": {
     "word": "Word 文档",

@@ -72,7 +72,7 @@ export const createMinimapExtension = ({
   minimapEnabled: boolean;
   isDarkMode: boolean;
 }) => {
-  if (!file.diffInfo || !showDiff || !minimapEnabled) {
+  if (!minimapEnabled) {
     return [];
   }
 
@@ -80,8 +80,9 @@ export const createMinimapExtension = ({
 
   return [
     showMinimap.compute(['doc'], (state) => {
-      const chunksData = getChunks(state);
-      const chunks = chunksData?.chunks || [];
+      const chunks = file.diffInfo && showDiff
+        ? getChunks(state)?.chunks || []
+        : [];
 
       Object.keys(gutters).forEach((key) => {
         delete gutters[Number(key)];

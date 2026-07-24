@@ -56,6 +56,7 @@ function renderSidebar(workspaceMode: boolean) {
       onResizeStart={vi.fn()}
       onTabSelect={vi.fn()}
       onTabClose={vi.fn()}
+      onTabsClose={vi.fn()}
       onTabDirtyChange={vi.fn()}
       onToggleEditorExpand={vi.fn()}
       workspaceMode={workspaceMode}

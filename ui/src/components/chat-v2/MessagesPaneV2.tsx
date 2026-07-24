@@ -966,6 +966,7 @@ function MessagesPaneV2({
     hasMoreMessages,
     loadAllMessages,
     sessionId,
+    renderWindowKey: `${virtualWindow.startIndex}:${virtualWindow.endIndex}`,
   });
   const searchIsRenderedByShell = useRegisterChatHistorySearchControls(chatHistorySearch);
 

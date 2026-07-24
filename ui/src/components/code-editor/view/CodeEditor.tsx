@@ -171,9 +171,10 @@ export default function CodeEditor({
           gutter: true,
         }),
       );
-      allExtensions.push(...minimapExtension);
       allExtensions.push(...scrollToFirstChunkExtension);
     }
+
+    allExtensions.push(...minimapExtension);
 
     if (wordWrap) {
       allExtensions.push(EditorView.lineWrapping);
@@ -238,8 +239,10 @@ export default function CodeEditor({
         isSidebar={isSidebar}
         compactHeader={compactHeader}
         isFullscreen={isFullscreen}
+        isExpanded={isExpanded}
         onClose={onClose}
         onToggleFullscreen={() => setIsFullscreen((previous) => !previous)}
+        onToggleExpand={onToggleExpand}
         title={t('binaryFile.title', 'Binary File')}
         message={t('binaryFile.message', 'The file "{{fileName}}" cannot be displayed in the text editor because it is a binary file.', { fileName: file.name })}
         headerPrefix={headerPrefix}

@@ -37,26 +37,31 @@ test("UI weixin QR begin route delegates to gateway prepare RPC", () => {
 
 test("Gateway settings keeps existing status rendered during silent refresh", () => {
   const source = readFileSync(
-    join(process.cwd(), "ui/src/components/settings/view/tabs/GatewaySettingsTab.tsx"),
+    join(
+      process.cwd(),
+      "ui/src/components/settings/view/integrations/im/hooks/useGatewayStatus.ts",
+    ),
     "utf8",
   );
 
-  assert.match(source, /if \(loading && !status\)/);
-  assert.doesNotMatch(source, /if \(loading \|\| !status\)/);
-  assert.match(source, /void fetch_\(\{ showLoading: true \}\)/);
-  assert.match(source, /setInterval\(\(\) => \{\s*void fetch_\(\);/s);
+  assert.match(source, /if \(showLoading\) setLoading\(true\)/);
+  assert.match(source, /void fetchStatus\(\{ showLoading: true \}\)/);
+  assert.match(source, /setInterval\(\(\) => \{\s*void fetchStatus\(\);/s);
 });
 
 test("Gateway settings starts weixin QR by begin route and ignores stale runtime errors", () => {
   const source = readFileSync(
-    join(process.cwd(), "ui/src/components/settings/view/tabs/GatewaySettingsTab.tsx"),
+    join(
+      process.cwd(),
+      "ui/src/components/settings/view/integrations/im/components/WeixinChannelSection.tsx",
+    ),
     "utf8",
   );
 
-  assert.match(source, /authenticatedFetch\('\/api\/gateway\/weixin\/qr-begin', \{ method: 'POST' \}\)/);
-  assert.doesNotMatch(source, /authenticatedFetch\('\/api\/gateway\/weixin\/qr'\)/);
+  assert.match(source, /authenticatedFetch\("\/api\/gateway\/weixin\/qr-begin", \{\s*method: "POST",?\s*\}\)/);
+  assert.doesNotMatch(source, /authenticatedFetch\("\/api\/gateway\/weixin\/qr"\)/);
   assert.match(source, /requestedAtRef/);
-  assert.match(source, /isWeixinRuntimeCurrent/);
+  assert.match(source, /isRuntimeCurrent/);
   assert.match(source, /WEIXIN_QR_PREPARE_TIMEOUT_MS/);
 });
 

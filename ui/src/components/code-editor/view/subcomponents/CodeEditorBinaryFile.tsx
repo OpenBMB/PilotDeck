@@ -4,6 +4,7 @@ import { api } from '../../../../utils/api';
 import { readOfficePreviewStatus, type OfficePreviewStatus } from '../../../../utils/officePreviewStatus';
 import type { CodeEditorFile } from '../../types/types';
 import { isImageFile, isOfficeFile, isPdfFile, isSpreadsheetFile } from '../../utils/binaryFile';
+import { getPdfNavigationMode } from '../../utils/documentPreview';
 import PdfDocumentPreview from './PdfDocumentPreview';
 import SpreadsheetTabs, { type SpreadsheetSheetTab } from './SpreadsheetTabs';
 
@@ -13,8 +14,10 @@ type CodeEditorBinaryFileProps = {
   isSidebar: boolean;
   compactHeader?: boolean;
   isFullscreen: boolean;
+  isExpanded?: boolean;
   onClose: () => void;
   onToggleFullscreen: () => void;
+  onToggleExpand?: (() => void) | null;
   title: string;
   message: string;
   headerPrefix?: ReactNode;
@@ -583,29 +586,6 @@ function FallbackContent({
   );
 }
 
-function RefreshButton({ onRefresh, disabled }: { onRefresh: () => void; disabled?: boolean }) {
-  const { t } = useTranslation('codeEditor');
-  return (
-    <button
-      type="button"
-      onClick={onRefresh}
-      disabled={disabled}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-      title={t('officePreview.refresh')}
-      aria-label={t('officePreview.refresh')}
-    >
-      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.75}
-          d="M4 4v5h.582m0 0A7.5 7.5 0 1012 4.5M4.582 9H9"
-        />
-      </svg>
-    </button>
-  );
-}
-
 function ImagePreview({ projectName, file, title, message, onClose }: {
   projectName?: string;
   file: CodeEditorFile;
@@ -634,14 +614,28 @@ function ImagePreview({ projectName, file, title, message, onClose }: {
   );
 }
 
-function PdfPreview({ projectName, file, title, message, onClose }: {
+function PdfPreview({
+  projectName,
+  file,
+  title,
+  message,
+  onClose,
+  isFullscreen,
+  onToggleFullscreen,
+}: {
   projectName?: string;
   file: CodeEditorFile;
   title: string;
   message: string;
   onClose: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen?: (() => void) | null;
 }) {
-  const previewUrl = projectName ? api.fileContentUrl(projectName, file.path) : null;
+  const [refreshKey, setRefreshKey] = useState(0);
+  const basePreviewUrl = projectName ? api.fileContentUrl(projectName, file.path) : null;
+  const previewUrl = basePreviewUrl
+    ? `${basePreviewUrl}${basePreviewUrl.includes('?') ? '&' : '?'}previewRevision=${refreshKey}`
+    : null;
 
   if (!previewUrl) {
     return <FallbackContent title={title} message={message} onClose={onClose} />;
@@ -654,6 +648,12 @@ function PdfPreview({ projectName, file, title, message, onClose }: {
       fileName={file.name}
       filePath={file.path}
       source="pdf"
+      navigationMode="pages"
+      onRefresh={() => setRefreshKey((value) => value + 1)}
+      downloadUrl={projectName ? api.fileDownloadUrl(projectName, file.path) : null}
+      downloadName={file.name}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={onToggleFullscreen}
     />
   );
 }
@@ -663,11 +663,15 @@ function SpreadsheetPreview({
   file,
   title,
   onClose,
+  isFullscreen,
+  onToggleFullscreen,
 }: {
   projectName?: string;
   file: CodeEditorFile;
   title: string;
   onClose: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen?: (() => void) | null;
 }) {
   const { t } = useTranslation('codeEditor');
   const {
@@ -784,6 +788,14 @@ function SpreadsheetPreview({
         source="office-pdf"
         viewKey={`worksheet:${selectedSheetIndex}`}
         loadingOverlay={manifestLoading ? t('officePreview.refreshing') : null}
+        navigationMode="none"
+        showPageControls={false}
+        onRefresh={() => reload({ force: true })}
+        refreshDisabled={manifestLoading || sheetLoading}
+        downloadUrl={projectName ? api.fileDownloadUrl(projectName, file.path) : null}
+        downloadName={file.name}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={onToggleFullscreen}
       />
     );
   }
@@ -806,11 +818,15 @@ function OfficePreview({
   file,
   title,
   onClose,
+  isFullscreen,
+  onToggleFullscreen,
 }: {
   projectName?: string;
   file: CodeEditorFile;
   title: string;
   onClose: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen?: (() => void) | null;
 }) {
   const { t } = useTranslation('codeEditor');
   const {
@@ -882,6 +898,13 @@ function OfficePreview({
       filePath={file.path}
       source="office-pdf"
       loadingOverlay={loading ? t('officePreview.refreshing') : null}
+      navigationMode={getPdfNavigationMode(file.name)}
+      onRefresh={() => reload({ force: true })}
+      refreshDisabled={loading}
+      downloadUrl={projectName ? api.fileDownloadUrl(projectName, file.path) : null}
+      downloadName={file.name}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={onToggleFullscreen}
     />
   );
 }
@@ -892,8 +915,10 @@ export default function CodeEditorBinaryFile({
   isSidebar,
   compactHeader = false,
   isFullscreen,
+  isExpanded = false,
   onClose,
   onToggleFullscreen,
+  onToggleExpand = null,
   title,
   message,
   headerPrefix,
@@ -907,15 +932,46 @@ export default function CodeEditorBinaryFile({
   const isSpreadsheet = isSpreadsheetFile(file.name);
   const isOffice = isOfficeFile(file.name);
   const canPreview = isImage || isPdf || isOffice;
+  const hasEmbeddedDocumentToolbar = isPdf || isOffice;
+  const documentIsFullscreen = isSidebar ? isExpanded : isFullscreen;
+  const onToggleDocumentFullscreen = isSidebar ? onToggleExpand : onToggleFullscreen;
 
   const previewContent = isImage
     ? <ImagePreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
     : isPdf
-      ? <PdfPreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
+      ? (
+        <PdfPreview
+          projectName={projectName}
+          file={file}
+          title={title}
+          message={message}
+          onClose={onClose}
+          isFullscreen={documentIsFullscreen}
+          onToggleFullscreen={onToggleDocumentFullscreen}
+        />
+      )
       : isSpreadsheet
-        ? <SpreadsheetPreview projectName={projectName} file={file} title={title} onClose={onClose} />
+        ? (
+          <SpreadsheetPreview
+            projectName={projectName}
+            file={file}
+            title={title}
+            onClose={onClose}
+            isFullscreen={documentIsFullscreen}
+            onToggleFullscreen={onToggleDocumentFullscreen}
+          />
+        )
       : isOffice
-        ? <OfficePreview projectName={projectName} file={file} title={title} onClose={onClose} />
+        ? (
+          <OfficePreview
+            projectName={projectName}
+            file={file}
+            title={title}
+            onClose={onClose}
+            isFullscreen={documentIsFullscreen}
+            onToggleFullscreen={onToggleDocumentFullscreen}
+          />
+        )
         : <FallbackContent title={title} message={message} onClose={onClose} />;
 
   const headerTopBar = (
@@ -933,16 +989,7 @@ export default function CodeEditorBinaryFile({
         </div>
       )}
       <div className="flex shrink-0 items-center gap-0.5">
-        {isOffice && (
-          <RefreshButton
-            onRefresh={() => {
-              window.dispatchEvent(new CustomEvent('pilotdeck:file-updated', {
-                detail: { projectName, filePath: file.path, force: true },
-              }));
-            }}
-          />
-        )}
-        {!isSidebar && (
+        {!isSidebar && !hasEmbeddedDocumentToolbar && (
           <button
             type="button"
             onClick={onToggleFullscreen}
@@ -990,7 +1037,7 @@ export default function CodeEditorBinaryFile({
     return (
       <div className="relative flex h-full w-full flex-col bg-white dark:bg-neutral-950">
         {headerPrefix}
-        {headerTopBar}
+        {!compactHeader || !headerPrefix ? headerTopBar : null}
         {previewContent}
       </div>
     );

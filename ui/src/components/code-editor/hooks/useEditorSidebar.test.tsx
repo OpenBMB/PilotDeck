@@ -53,6 +53,37 @@ describe('useEditorSidebar file tabs', () => {
     expect(result.current.activeFilePath).toBe('three.txt');
   });
 
+  it('closes multiple tabs atomically and selects the nearest remaining tab', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('one.txt'));
+    act(() => result.current.handleFileOpen('two.txt'));
+    act(() => result.current.handleFileOpen('three.txt'));
+    act(() => result.current.handleFileOpen('four.txt'));
+
+    const closingTabIds = result.current.editorTabs.slice(1, 3).map((tab) => tab.id);
+    act(() => result.current.handleTabSelect(closingTabIds[0]));
+    act(() => result.current.handleTabsClose(closingTabIds));
+
+    expect(result.current.editorTabs.map((tab) => tab.fileStack[0].path)).toEqual([
+      'one.txt',
+      'four.txt',
+    ]);
+    expect(result.current.activeFilePath).toBe('four.txt');
+  });
+
+  it('clears the active file after closing all tabs', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('one.txt'));
+    act(() => result.current.handleFileOpen('two.txt'));
+    act(() => result.current.handleTabsClose(result.current.editorTabs.map((tab) => tab.id)));
+
+    expect(result.current.editorTabs).toEqual([]);
+    expect(result.current.activeEditorTabId).toBeNull();
+    expect(result.current.activeFilePath).toBeNull();
+  });
+
   it('updates open paths after rename and closes tabs deleted with a directory', () => {
     const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
 
