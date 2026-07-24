@@ -30,6 +30,8 @@ export type AgentContextCaptureTurnInput = ContextCaptureTurnInput;
 
 export type AgentContextRuntime = {
   prepareForModel(input: AgentContextPrepareInput): Promise<AgentPreparedContext>;
+  /** Commits one-shot context only after the final request has been built and is about to execute. */
+  commitPreparedContext?(input: { sessionId: string; turnId: string }): void;
   /**
    * Optional. Real implementations (e.g. `DefaultContextRuntime`) provide
    * this; minimal runtimes (`NullContextRuntime`) leave it undefined and the

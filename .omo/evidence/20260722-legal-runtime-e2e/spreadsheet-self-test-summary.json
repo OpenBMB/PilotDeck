@@ -1,0 +1,24 @@
+{
+  "status": "ok",
+  "steps": [
+    "create",
+    "recalculate",
+    "inspect",
+    "inspect-prefixed-ooxml",
+    "audit-clean",
+    "edit-copy",
+    "audit-error",
+    "csv-tsv",
+    "compatibility-preflight",
+    "render"
+  ],
+  "formulaChecks": {
+    "margin": 0.3,
+    "projectedRevenue": 110000,
+    "formulaCount": 4,
+    "intentionalErrorDetected": true
+  },
+  "tableCount": 1,
+  "renderPageCount": 2,
+  "visualReview": "passed"
+}

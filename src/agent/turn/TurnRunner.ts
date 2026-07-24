@@ -141,7 +141,7 @@ export class TurnRunner {
         transcriptPath: this.runtimeContext.transcriptPath,
         cwd: this.runtimeContext.cwd,
       },
-      payload: { prompt },
+      payload: { prompt, internal: options.input.isMeta === true, turnId: options.turnId },
       matchQuery: "UserPromptSubmit",
       signal: options.abortSignal,
     });

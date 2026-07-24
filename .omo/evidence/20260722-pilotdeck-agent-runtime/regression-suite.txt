@@ -1,0 +1,15 @@
+COMMAND
+find dist/tests -type f \( -name '*.test.js' -o -name '*.spec.js' \) \
+  ! -path '*/network/fetch.spec.js' -print0 \
+  | xargs -0 node --test --test-force-exit --test-timeout 60000
+
+RESULT
+exit_code=0
+tests=154
+pass=154
+fail=0
+cancelled=0
+duration_ms=27165.563583
+
+This is the complete compiled repository test inventory except the separately
+reproduced baseline timer file documented in baseline-known-failure.txt.

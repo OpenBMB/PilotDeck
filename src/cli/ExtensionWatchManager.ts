@@ -184,7 +184,19 @@ function shouldHandleWatchSignal(watchTarget: string, watchedPath: string, filen
     return true;
   }
   const absoluteChanged = resolve(watchTarget, filename);
-  return absoluteChanged === watchedPath || absoluteChanged.startsWith(`${watchedPath}${sep}`);
+  const belongsToWatchedPath = absoluteChanged === watchedPath || absoluteChanged.startsWith(`${watchedPath}${sep}`);
+  return belongsToWatchedPath && !isIgnoredExtensionRuntimePath(absoluteChanged);
+}
+
+export function isIgnoredExtensionRuntimePath(path: string): boolean {
+  const segments = path.split(/[\\/]+/u);
+  const name = segments.at(-1)?.toLowerCase() ?? "";
+  return segments.some((segment) => segment.toLowerCase() === "__pycache__")
+    || name.endsWith(".pyc")
+    || name.endsWith(".pyo")
+    || name === ".ds_store"
+    || name.startsWith(".~")
+    || name.startsWith("~$");
 }
 
 function toUtf8(value: string | Buffer | null | undefined): string {

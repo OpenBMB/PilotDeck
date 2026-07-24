@@ -1,0 +1,27 @@
+COMMAND
+pnpm test
+
+RESULT
+exit_code=1
+tests=160
+pass=153
+fail=0
+cancelled=7
+cancelled_file=tests/network/fetch.spec.ts
+
+ERROR
+Promise resolution is still pending but the event loop has already resolved
+
+BASE COMPARISON
+git diff --exit-code origin/main -- src/network/fetch.ts tests/network/fetch.spec.ts
+exit_code=0
+
+ENVIRONMENT
+node=v22.22.0
+pnpm=10.32.1
+
+CAUSE
+The baseline implementation calls unref() on the only retry and timeout timers.
+Node can therefore end the test event loop while those promises are pending.
+The same seven cancellations reproduce when this file is run alone. This branch
+does not modify the implementation or its tests.

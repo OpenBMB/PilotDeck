@@ -279,14 +279,30 @@ async function loadXlsx(filePath) {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.readFile(path.resolve(filePath));
-    return workbook;
+    return normalizeMissingTableStyles(workbook);
   } catch (error) {
     const normalizedPackage = await normalizePrefixedSpreadsheetPackage(filePath);
     if (!normalizedPackage) throw error;
     const normalizedWorkbook = new ExcelJS.Workbook();
     await normalizedWorkbook.xlsx.load(normalizedPackage);
-    return normalizedWorkbook;
+    return normalizeMissingTableStyles(normalizedWorkbook);
   }
+}
+
+function normalizeMissingTableStyles(workbook) {
+  for (const worksheet of workbook.worksheets) {
+    for (const table of worksheet.model?.tables ?? []) {
+      if (table.style !== null && table.style !== undefined) continue;
+      table.style = {
+        theme: null,
+        showFirstColumn: false,
+        showLastColumn: false,
+        showRowStripes: false,
+        showColumnStripes: false,
+      };
+    }
+  }
+  return workbook;
 }
 
 function normalizeEncoding(value) {

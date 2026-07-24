@@ -70,22 +70,29 @@ export async function convertWithLibreOffice(inputPath, options = {}) {
   const format = String(options.format || '').toLocaleLowerCase();
   if (!format) throw new Error('Conversion format is required');
   await fs.mkdir(outputDir, { recursive: true });
-  const profileRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-pptx-convert-profile-'));
-  try {
-    const filter = options.filter ? `${format}:${options.filter}` : format;
-    run(soffice, [
-      `-env:UserInstallation=${pathToFileURL(profileRoot).href}`,
-      '--headless',
-      '--convert-to',
-      filter,
-      '--outdir',
-      outputDir,
-      input,
-    ]);
-    return findConvertedFile(outputDir, format);
-  } finally {
-    await fs.rm(profileRoot, { recursive: true, force: true });
+  const filter = options.filter ? `${format}:${options.filter}` : format;
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const profileRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-pptx-convert-profile-'));
+    try {
+      run(soffice, [
+        `-env:UserInstallation=${pathToFileURL(profileRoot).href}`,
+        '--headless',
+        '--convert-to',
+        filter,
+        '--outdir',
+        outputDir,
+        input,
+      ]);
+      return await findConvertedFile(outputDir, format);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw error;
+    } finally {
+      await fs.rm(profileRoot, { recursive: true, force: true });
+    }
   }
+  throw lastError;
 }
 
 async function atomicCopy(source, output, force) {

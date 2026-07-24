@@ -1,4 +1,5 @@
 import { jsonrepair } from "jsonrepair";
+import { normalizeModelError } from "../../errors/normalizeModelError.js";
 import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
 import { ModelProviderError, parseRetryAfterFromMessage } from "../../protocol/errors.js";
 import { normalizeAnthropicFinishReason } from "../../response/normalizeFinishReason.js";
@@ -59,21 +60,19 @@ export function normalizeAnthropicStreamEvent(
       return flushFailedToolCalls(state, "unknown", raw);
     case "error": {
       const errObj = asRecord(event.error);
-      const errType = readString(errObj.type) ?? "provider_error";
-      const TRANSIENT_ERROR_TYPES = new Set([
+      const normalized = normalizeModelError("anthropic", "anthropic", errObj);
+      const errType = readString(errObj.type);
+      const explicitlyTransient = new Set([
         "overloaded_error", "rate_limit_error", "api_error", "timeout_error",
-      ]);
-      const errMessage = readString(errObj.message) ?? "Anthropic stream error.";
-      const retryAfterMs = parseRetryAfterFromMessage(errMessage);
+      ]).has(errType ?? "");
+      const retryAfterMs = parseRetryAfterFromMessage(normalized.message);
       return [
         {
           type: "error",
           error: {
-            provider: "anthropic",
-            protocol: "anthropic",
-            code: errType,
-            message: errMessage,
-            retryable: TRANSIENT_ERROR_TYPES.has(errType),
+            ...normalized,
+            code: normalized.code === "provider_error" && errType ? errType : normalized.code,
+            retryable: normalized.retryable || explicitlyTransient,
             ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
             raw,
           },

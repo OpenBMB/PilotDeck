@@ -23,4 +23,3 @@ export type FileArtifact = {
   mimeType?: string;
   createdAt: string;
 };
-
