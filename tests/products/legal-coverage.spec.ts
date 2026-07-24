@@ -51,6 +51,67 @@ test("legal coverage validator creates a current proof and removes it when the d
   }
 });
 
+test("legal coverage next-batch exposes one bounded deterministic repair slice", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-batch-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const coveragePath = join(workspace, STATE_ROOT, "coverage.json");
+    const completeCoverage = JSON.parse(await readFile(coveragePath, "utf8")) as Record<string, unknown>;
+    await writeJson(coveragePath, {
+      schemaVersion: 1,
+      deliverables: [],
+      sources: [],
+      facts: [],
+      issues: [],
+      authorities: [],
+    });
+
+    const deliverableBatch = await runCli(workspace, "next-batch", "--phase", "coverage", "--limit", "1");
+    assert.equal(deliverableBatch.exitCode, 0, deliverableBatch.stderr);
+    const deliverable = JSON.parse(deliverableBatch.stdout) as {
+      group: string;
+      returned: number;
+      limits: { maxRecords: number; maxSerializedBytes: number };
+      items: Array<{ path?: string; actualSha256?: string }>;
+    };
+    assert.equal(deliverable.group, "deliverables");
+    assert.equal(deliverable.returned, 1);
+    assert.equal(deliverable.limits.maxRecords, 1);
+    assert.equal(deliverable.limits.maxSerializedBytes, 24576);
+    assert.equal(deliverable.items[0]?.path, "deliverables/opinion.md");
+    assert.match(deliverable.items[0]?.actualSha256 ?? "", /^[a-f0-9]{64}$/u);
+    const coverageMilestone = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "coverage-batch-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(coverageMilestone.hookSpecificOutput.additionalContext ?? "", /next-batch --phase coverage/u);
+    assert.match(coverageMilestone.hookSpecificOutput.additionalContext ?? "", /"group": "deliverables"/u);
+    assert.match(coverageMilestone.hookSpecificOutput.additionalContext ?? "", /"maxSerializedBytes": 2048/u);
+    assert.equal((coverageMilestone.hookSpecificOutput.additionalContext ?? "").length < 4096, true);
+
+    const emptyCoverage = JSON.parse(await readFile(coveragePath, "utf8")) as Record<string, unknown>;
+    emptyCoverage.deliverables = completeCoverage.deliverables;
+    await writeJson(coveragePath, emptyCoverage);
+    const factBatch = await runCli(workspace, "next-batch", "--phase", "coverage", "--limit", "12", "--max-bytes", "24576");
+    assert.equal(factBatch.exitCode, 0, factBatch.stderr);
+    const facts = JSON.parse(factBatch.stdout) as {
+      group: string;
+      returned: number;
+      serializedBytes: number;
+      items: Array<{ factId?: string; requiredStatus?: string }>;
+    };
+    assert.equal(facts.group, "facts");
+    assert.equal(facts.returned, 1);
+    assert.equal(facts.items[0]?.factId, "F-001");
+    assert.equal(facts.items[0]?.requiredStatus, "covered");
+    assert.equal(facts.serializedBytes <= 24576, true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage validator rejects orphaned conflicts and incomplete final disclosure", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-conflict-"));
   try {
@@ -533,9 +594,62 @@ test("legal coverage hook activates only legal work and injects one observable m
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /milestone \(configuration\)/u);
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /fix validator code jurisdiction_missing now/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /<legal_coverage_state>/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"milestone": "INIT"/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"code": "jurisdiction_missing"/u);
     assert.equal(preModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageActive, true);
+
+    const unchangedPreModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "legal-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(unchangedPreModel.hookSpecificOutput.additionalContext, undefined);
+    assert.equal(unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageActive, true);
+
+    const configPath = join(workspace, STATE_ROOT, "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    config.jurisdiction = "Synthetic jurisdiction";
+    await writeJson(configPath, config);
+    const changedPreModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "legal-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(changedPreModel.hookSpecificOutput.additionalContext ?? "", /"code": "basis_date_missing"/u);
+
+    const changedConfig = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    changedConfig.basisDate = "Synthetic review date";
+    changedConfig.inputRoots = ["source-room"];
+    changedConfig.deliverables = [{ id: "opinion", path: "deliverables/opinion.md", required: true }];
+    await mkdir(join(workspace, "source-room"), { recursive: true });
+    await mkdir(join(workspace, "deliverables"), { recursive: true });
+    await writeFile(join(workspace, "deliverables", "opinion.md"), "# Draft\n");
+    await writeJson(configPath, changedConfig);
+    const sourceReview = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "legal-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"milestone": "SOURCES_READY"/u);
+    assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxRecords": 12/u);
+    assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxSerializedBytes": 24576/u);
+
+    const postCompact = await runHook({
+      hookEventName: "PostCompact",
+      sessionId: "legal-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(postCompact.hookSpecificOutput.dynamicContext?.length, 1);
+    const recoveredContext = (postCompact.hookSpecificOutput.dynamicContext?.[0] as { content?: string } | undefined)?.content ?? "";
+    assert.match(recoveredContext, /<legal_coverage_state>/u);
+    for (const forbidden of ["rubric", "judge-response", "checkpoint_id", "ground truth"]) {
+      assert.doesNotMatch(recoveredContext, new RegExp(forbidden, "iu"));
+    }
 
     await rm(join(workspace, STATE_ROOT, "sessions"), { recursive: true, force: true });
     await writeFile(join(workspace, STATE_ROOT, "completion-proof.json"), "{\"forged\":true}\n");
@@ -580,12 +694,34 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /fix validator code matrix_pending now/u);
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /occurs 2 times/u);
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /Fix all occurrences in one bounded edit/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"code": "matrix_pending"/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"occurrences": 2/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"milestone": "EVIDENCE_READY"/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /one matrix/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /up to 12 records/u);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+test("legal coverage milestone digest ignores opaque incomplete-state hash churn", async () => {
+  const { milestoneDigest } = await import(pathToFileURL(VALIDATOR_LIB).href) as {
+    milestoneDigest: (result: Record<string, unknown>) => string;
+  };
+  const incomplete = {
+    passed: false,
+    stateHash: "a".repeat(64),
+    errors: [{ phase: "facts", code: "material_facts_missing", path: "facts.json" }],
+    counts: { sources: 64, facts: 0, issues: 0, authorities: 0, deliverables: 1 },
+  };
+  assert.equal(milestoneDigest(incomplete), milestoneDigest({
+    ...incomplete,
+    stateHash: "b".repeat(64),
+  }));
+  assert.notEqual(milestoneDigest(incomplete), milestoneDigest({
+    ...incomplete,
+    counts: { ...incomplete.counts, facts: 12 },
+  }));
 });
 
 test("legal coverage hook activates a malformed configured workspace so the agent can repair it", async () => {
@@ -650,9 +786,12 @@ test("legal product plugin loads one skill and contains no benchmark-specific co
   assert.equal(plugin.skills?.length, 1);
   assert.equal(plugin.skills?.[0]?.name, "legal-coverage:conduct-legal-due-diligence");
   assert.equal(plugin.hooksConfig?.PreModelRequest?.length, 1);
+  assert.equal(plugin.hooksConfig?.PostCompact?.length, 1);
 
   const files = await collectFiles(PLUGIN_ROOT);
   const productionText = (await Promise.all(files.map((path) => readFile(path, "utf8")))).join("\n");
+  assert.match(productionText, /Do not install system packages, language packages, plugins, or binaries/u);
+  assert.match(productionText, /Treat every configured input root as read-only/u);
   for (const forbidden of ["legalBenchmarkCase", "case-input", "qingci", "rubric", "judge-response", "checkpoint_id"]) {
     assert.doesNotMatch(productionText, new RegExp(forbidden, "iu"));
   }

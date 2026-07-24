@@ -19,6 +19,16 @@
       ]
     }
   ],
+  "PostCompact": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ],
   "Stop": [
     {
       "hooks": [

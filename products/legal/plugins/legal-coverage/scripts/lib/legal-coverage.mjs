@@ -119,6 +119,116 @@ export async function readWorkspaceState(workspaceRoot) {
   return { workspace, paths, state, readErrors };
 }
 
+export async function nextCoverageBatch(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const limit = boundedInteger(options.limit, 1, 12, 12);
+  const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 24576, 24576);
+  const coverage = isRecord(loaded.state.coverage) ? loaded.state.coverage : {};
+  const groups = [];
+
+  const deliverableRows = Array.isArray(coverage.deliverables) ? coverage.deliverables : [];
+  const deliverables = [];
+  for (const deliverable of Array.isArray(loaded.state.config?.deliverables) ? loaded.state.config.deliverables : []) {
+    if (!isRecord(deliverable) || deliverable.required === false || !nonEmpty(deliverable.path)) continue;
+    let actualSha256;
+    try {
+      const path = await resolveSafeWorkspacePath(loaded.workspace, deliverable.path);
+      actualSha256 = sha256(await readFile(path));
+    } catch {}
+    const existingCoverage = deliverableRows.find((row) => row?.path === deliverable.path);
+    if (!actualSha256 || existingCoverage?.sha256 !== actualSha256) {
+      deliverables.push({
+        id: deliverable.id,
+        path: deliverable.path,
+        actualSha256: actualSha256 ?? null,
+        existingCoverage: isRecord(existingCoverage) ? existingCoverage : null,
+      });
+    }
+  }
+  groups.push({ group: "deliverables", items: deliverables });
+
+  const sourceRows = Array.isArray(coverage.sources) ? coverage.sources : [];
+  groups.push({
+    group: "sources",
+    items: (Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [])
+      .filter((source) => isRecord(source) && nonEmpty(source.id)
+        && (source.status === "unreadable" || stringArray(source.unresolvedItems).length > 0))
+      .map((source) => ({
+        sourceId: source.id,
+        path: source.path,
+        status: source.status,
+        unresolvedItems: stringArray(source.unresolvedItems),
+        requiredStatus: "unresolved",
+        existingCoverage: coverageRowFor(sourceRows, "sourceId", source.id),
+      }))
+      .filter((item) => coverageRowNeedsRepair(item.existingCoverage, true)),
+  });
+
+  const factRows = Array.isArray(coverage.facts) ? coverage.facts : [];
+  groups.push({
+    group: "facts",
+    items: (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+      .filter((fact) => isRecord(fact) && nonEmpty(fact.id) && (fact.material === true || fact.critical === true))
+      .map((fact) => {
+        const unresolved = fact.conflictStatus === "unresolved" || fact.verificationStatus !== "verified";
+        return {
+          factId: fact.id,
+          subject: fact.subject,
+          predicate: fact.predicate,
+          value: fact.value,
+          unit: fact.unit,
+          dateOrPeriod: fact.dateOrPeriod,
+          sourceRefs: fact.sourceRefs,
+          requiredStatus: unresolved ? "unresolved" : "covered",
+          existingCoverage: coverageRowFor(factRows, "factId", fact.id),
+        };
+      })
+      .filter((item) => coverageRowNeedsRepair(item.existingCoverage, item.requiredStatus === "unresolved")),
+  });
+
+  const issueRows = Array.isArray(coverage.issues) ? coverage.issues : [];
+  groups.push({
+    group: "issues",
+    items: (Array.isArray(loaded.state.issues?.issues) ? loaded.state.issues.issues : [])
+      .filter((legalIssue) => isRecord(legalIssue) && nonEmpty(legalIssue.id))
+      .map((legalIssue) => ({
+        issueId: legalIssue.id,
+        status: legalIssue.status,
+        severity: legalIssue.severity,
+        analysis: legalIssue.analysis,
+        conclusion: legalIssue.conclusion,
+        recommendations: legalIssue.recommendations,
+        requiredStatus: legalIssue.status === "unresolved" ? "unresolved" : "covered",
+        existingCoverage: coverageRowFor(issueRows, "issueId", legalIssue.id),
+      }))
+      .filter((item) => coverageRowNeedsRepair(item.existingCoverage, item.requiredStatus === "unresolved")),
+  });
+
+  const authorityRows = Array.isArray(coverage.authorities) ? coverage.authorities : [];
+  groups.push({
+    group: "authorities",
+    items: (Array.isArray(loaded.state.authorities?.authorities) ? loaded.state.authorities.authorities : [])
+      .filter((authority) => isRecord(authority) && nonEmpty(authority.id) && authority.verificationStatus !== "not-applicable")
+      .map((authority) => ({
+        authorityId: authority.id,
+        name: authority.name,
+        article: authority.article,
+        verificationStatus: authority.verificationStatus,
+        supportedConclusion: authority.supportedConclusion,
+        requiredStatus: authority.verificationStatus === "pending-verification" ? "unresolved" : "covered",
+        existingCoverage: coverageRowFor(authorityRows, "authorityId", authority.id),
+      }))
+      .filter((item) => coverageRowNeedsRepair(item.existingCoverage, item.requiredStatus === "unresolved")),
+  });
+
+  const selected = groups.find((group) => group.items.length > 0);
+  if (selected) return packCoverageBatch(selected.group, selected.items, limit, maxSerializedBytes);
+
+  const validation = await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
+  const errors = validation.errors.filter((error) => error.phase === "coverage");
+  return packCoverageBatch("validation-errors", errors, limit, maxSerializedBytes);
+}
+
 export async function validateWorkspace(options) {
   const workspace = resolve(options.workspaceRoot);
   const loaded = await readWorkspaceState(workspace);
@@ -218,6 +328,181 @@ export function milestoneFor(result, cliPath) {
     `After the fix, run: ${command}`,
     "Do not claim completion and do not create completion-proof.json manually.",
   ].filter(Boolean).join("\n");
+}
+
+export function milestoneDigest(result, workItems) {
+  const first = result.errors[0];
+  const repeatedErrorCount = result.errors.filter((error) => error.code === first?.code).length;
+  return sha256(JSON.stringify({
+    milestone: milestoneName(result),
+    passed: result.passed,
+    phase: first?.phase ?? null,
+    code: first?.code ?? null,
+    repeatedErrorCount,
+    errorCount: result.errors.length,
+    counts: result.counts,
+    workItemsDigest: workItems ? sha256(JSON.stringify(workItems)) : null,
+    validatedStateHash: result.passed ? result.stateHash : null,
+  }));
+}
+
+export function milestoneEnvelopeFor(result, cliPath, workItems) {
+  const first = result.errors[0];
+  const sameCode = result.errors.filter((error) => error.code === first?.code);
+  const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
+  const initialize = `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" --input <source-root> --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+  const milestone = milestoneName(result);
+  const representativePaths = sameCode
+    .slice(0, 4)
+    .map((error) => error.path)
+    .filter((path) => typeof path === "string" && path.length > 0);
+  const envelope = {
+    milestone,
+    objective: result.passed
+      ? "Preserve the validated legal deliverable state while completing remaining task-specific QA."
+      : objectiveForPhase(first?.phase),
+    invariants: [
+      "Do not invent missing legal facts or silently resolve disputed evidence.",
+      "Preserve source-to-fact-to-issue-to-deliverable links.",
+      "Do not create or edit completion-proof.json manually.",
+    ],
+    artifactPointers: result.passed
+      ? ["state://legal-coverage", `workspace://${PROOF_PATH}`]
+      : ["state://legal-coverage", `workspace://${STATE_DIRECTORY}/${stateFileForPhase(first?.phase)}`],
+    knownGaps: result.passed ? [] : [{
+      phase: first?.phase ?? "configuration",
+      code: first?.code ?? "state_file_invalid",
+      occurrences: sameCode.length,
+      representativePaths,
+    }],
+    progress: result.counts,
+    ...(result.passed ? {} : { workBatch: workBatchFor(first?.phase) }),
+    ...(workItems ? { workItems } : {}),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize),
+    completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
+  };
+  return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
+}
+
+function milestoneName(result) {
+  if (result.passed) return "COMPLETE";
+  switch (result.errors[0]?.phase) {
+    case "configuration": return "INIT";
+    case "sources": return "SOURCE_REVIEW";
+    case "facts": return "SOURCES_READY";
+    case "matrices":
+    case "issues":
+    case "authorities": return "EVIDENCE_READY";
+    case "coverage": return "VALIDATING";
+    default: return "INIT";
+  }
+}
+
+function workBatchFor(phase) {
+  switch (phase) {
+    case "sources": return { scope: "one source batch", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "facts": return { scope: "one evidence fragment", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "matrices": return { scope: "one matrix", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "issues": return { scope: "one issue group", maxRecords: 8, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "authorities": return { scope: "one authority group", maxRecords: 8, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "coverage": return { scope: "one coverage group", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
+    default: return { scope: "one configuration repair", maxRecords: 1, maxSerializedBytes: 24576, validateAfterWrite: true };
+  }
+}
+
+function nextActionFor(result, occurrenceCount, command, initialize) {
+  if (result.passed) {
+    return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
+  }
+  const first = result.errors[0];
+  if (first?.phase === "configuration") {
+    return `Initialize or repair configuration, then validate. Initializer: ${initialize}`;
+  }
+  const batch = workBatchFor(first?.phase);
+  if (first?.phase === "coverage") {
+    const inspect = command.replace(" validate ", " next-batch --phase coverage --limit 12 --max-bytes 24576 ")
+      .replace(" --write-proof", "");
+    return `Use the injected workItems as the next deterministic coverage slice. If it contains only a pointer, inspect it with: ${inspect}. `
+      + `Repair at most ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes, then run: ${command}. `
+      + "Repeat only after validation reports progress.";
+  }
+  return `Repair the next ${batch.scope} for ${first?.code ?? "state_file_invalid"} `
+    + `(up to ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes; `
+    + `${occurrenceCount} occurrence(s) currently visible), then run: ${command}. `
+    + "Repeat with the next bounded batch only after validation reports progress.";
+}
+
+function objectiveForPhase(phase) {
+  switch (phase) {
+    case "sources": return "Complete source inventory and evidence review.";
+    case "facts": return "Complete sourced legal fact records without unsupported conclusions.";
+    case "matrices": return "Complete only the due-diligence projections required by this workflow.";
+    case "issues": return "Resolve or disclose material legal issues and contradictions.";
+    case "authorities": return "Verify and link controlling legal authorities.";
+    case "coverage": return "Reconcile reviewed records with the requested deliverables.";
+    default: return "Configure the legal coverage workspace for this task.";
+  }
+}
+
+function stateFileForPhase(phase) {
+  switch (phase) {
+    case "sources": return "sources.json";
+    case "facts": return "facts.json";
+    case "matrices": return "matrices.json";
+    case "issues": return "issues.json";
+    case "authorities": return "authorities.json";
+    case "coverage": return "coverage.json";
+    default: return "config.json";
+  }
+}
+
+function coverageRowFor(rows, idField, id) {
+  const row = rows.find((candidate) => candidate?.[idField] === id);
+  return isRecord(row) ? row : null;
+}
+
+function coverageRowNeedsRepair(row, requireUnresolved) {
+  if (!isRecord(row)) return true;
+  if (!COVERAGE_STATUSES.has(row.status) || (requireUnresolved && row.status !== "unresolved")) return true;
+  return !nonEmpty(row.deliverablePath) || !nonEmpty(row.section) || !nonEmpty(row.claim) || !nonEmpty(row.locator);
+}
+
+function packCoverageBatch(group, candidates, limit, maxSerializedBytes) {
+  const items = [];
+  let serializedBytes = 0;
+  for (const candidate of candidates.slice(0, limit)) {
+    const candidateBytes = Buffer.byteLength(JSON.stringify(candidate));
+    if (candidateBytes > maxSerializedBytes) {
+      if (items.length === 0) {
+        items.push({
+          id: candidate.factId ?? candidate.issueId ?? candidate.authorityId ?? candidate.sourceId ?? candidate.id ?? null,
+          oversizedRecord: true,
+          serializedBytes: candidateBytes,
+          recordPointer: `state://legal-coverage/${group}`,
+        });
+      }
+      break;
+    }
+    if (serializedBytes + candidateBytes > maxSerializedBytes) break;
+    items.push(candidate);
+    serializedBytes += candidateBytes;
+  }
+  return {
+    phase: "coverage",
+    group,
+    remaining: candidates.length,
+    returned: items.length,
+    hasMore: candidates.length > items.length,
+    limits: { maxRecords: limit, maxSerializedBytes },
+    serializedBytes,
+    items,
+  };
+}
+
+function boundedInteger(value, minimum, maximum, fallback) {
+  const number = Number(value);
+  if (!Number.isInteger(number)) return fallback;
+  return Math.min(maximum, Math.max(minimum, number));
 }
 
 export function activationMatches(prompt) {
