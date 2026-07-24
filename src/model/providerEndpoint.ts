@@ -99,6 +99,9 @@ export function buildProviderChatEndpointCandidates(input: {
     return buildEndpointCandidates(input.baseUrl, "v1", "messages");
   }
   if (normalizedProtocol === "openai-responses") {
+    if (isCodexSubscriptionBaseUrl(input.baseUrl)) {
+      return [joinUrl(input.baseUrl, "responses")];
+    }
     return buildEndpointCandidates(input.baseUrl, "v1", "responses");
   }
   if (normalizedProtocol === "google") {
@@ -124,7 +127,14 @@ export function buildProviderModelsEndpointCandidates(input: {
   if (input.protocol === "google") {
     return buildEndpointCandidates(input.baseUrl, "v1beta", "models");
   }
+  if (input.protocol === "openai-responses" && isCodexSubscriptionBaseUrl(input.baseUrl)) {
+    return [joinUrl(input.baseUrl, "models")];
+  }
   return buildEndpointCandidates(input.baseUrl, "v1", "models");
+}
+
+function isCodexSubscriptionBaseUrl(baseUrl: string): boolean {
+  return pathEndsWith(baseUrl, ["backend-api", "codex"]);
 }
 
 export function isExpectedProviderResponseShape(protocol: ProviderEndpointProtocol, body: unknown): boolean {

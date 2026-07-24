@@ -30,6 +30,10 @@ import {
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import {
+  fetchCodexModels,
+  probeCodexModel,
+} from '../../../src/model/providers/codex/client.js';
+import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
   getConfiguredOfficePreviewSettings,
@@ -640,6 +644,7 @@ router.get('/provider', (_req, res) => {
 
 router.post('/models', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey } = req.body || {};
+  const normalizedProviderId = String(providerId || '').trim().toLowerCase();
   let effectiveApiKey = typeof apiKey === 'string' ? apiKey : '';
   if ((!effectiveApiKey || effectiveApiKey === '********') && typeof providerId === 'string' && providerId.trim()) {
     try {
@@ -650,6 +655,27 @@ router.post('/models', async (req, res) => {
   }
   if (!baseUrl) {
     return res.status(400).json({ ok: false, error: 'baseUrl is required' });
+  }
+
+  if (normalizedProviderId === 'codex') {
+    try {
+      const models = await fetchCodexModels();
+      return res.json({
+        ok: true,
+        models: models.map((model) => ({
+          id: model.id,
+          displayName: model.displayName,
+          contextWindow: model.contextWindow,
+          maxOutputTokens: model.maxOutputTokens,
+        })),
+      });
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 401;
+      return res.status(status).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   const normalizedType = String(providerType || '').toLowerCase();
@@ -705,12 +731,25 @@ router.post('/test-connection', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey, model } = req.body || {};
   const normalizedProviderId = String(providerId || '').trim().toLowerCase();
   const effectiveApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-  const apiKeyRequired = normalizedProviderId !== 'ollama';
+  const apiKeyRequired = normalizedProviderId !== 'ollama' && normalizedProviderId !== 'codex';
   if (!baseUrl || !model || (apiKeyRequired && !effectiveApiKey)) {
     return res.status(400).json({
       ok: false,
       error: apiKeyRequired ? 'baseUrl, apiKey, and model are required' : 'baseUrl and model are required',
     });
+  }
+
+  if (normalizedProviderId === 'codex') {
+    try {
+      await probeCodexModel(String(model).trim());
+      return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 400;
+      return res.status(status).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // Accept V2 protocols ('openai' | 'openai-responses' | 'anthropic' | 'google')

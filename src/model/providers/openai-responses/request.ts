@@ -12,17 +12,19 @@ import { messageContent } from "../../protocol/clone.js";
 import { normalizeOpenAISchema } from "../openai/schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
+import { isCodexSubscriptionProvider } from "../codex/client.js";
 
 export type OpenAIResponsesRequestBody = {
   model: string;
   input: OpenAIResponsesInputItem[];
   instructions?: string;
-  max_output_tokens: number;
+  max_output_tokens?: number;
   stream?: boolean;
   temperature?: number;
   metadata?: Record<string, unknown>;
   tools?: OpenAIResponsesTool[];
   tool_choice?: unknown;
+  parallel_tool_calls?: boolean;
   text?: {
     format: {
       type: "json_schema";
@@ -35,6 +37,7 @@ export type OpenAIResponsesRequestBody = {
   store?: boolean;
   reasoning?: {
     effort?: string;
+    summary?: "auto";
   };
   enable_thinking?: boolean;
   thinking_budget?: number;
@@ -62,7 +65,7 @@ type OpenAIResponsesTool = {
   name: string;
   description?: string;
   parameters: Record<string, unknown>;
-  strict: true;
+  strict: boolean;
 };
 
 export function buildOpenAIResponsesRequest(
@@ -72,16 +75,25 @@ export function buildOpenAIResponsesRequest(
 ): OpenAIResponsesRequestBody {
   const thinkingPlan = resolveThinkingPlan(request.thinking, _provider ?? { id: "openai", protocol: "openai-responses", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
+  const isCodex = Boolean(_provider && isCodexSubscriptionProvider(_provider));
+  const responseTools = request.tools?.map((tool) => toResponsesTool(tool, !isCodex));
   const body: OpenAIResponsesRequestBody = {
     model: request.model,
     input: request.messages.flatMap(toResponsesInputItems),
-    instructions: request.systemPrompt,
-    max_output_tokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
-    tools: request.tools?.map(toResponsesTool),
-    tool_choice: toResponsesToolChoice(request.toolChoice),
-    temperature: request.temperature,
+    instructions: isCodex
+      ? request.systemPrompt?.trim() || "You are a helpful coding agent."
+      : request.systemPrompt,
+    max_output_tokens: isCodex
+      ? undefined
+      : request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
+    tools: isCodex && !responseTools?.length ? undefined : responseTools,
+    tool_choice: isCodex && responseTools?.length
+      ? toResponsesToolChoice(request.toolChoice ?? "auto")
+      : toResponsesToolChoice(request.toolChoice),
+    parallel_tool_calls: isCodex && responseTools?.length ? true : undefined,
+    temperature: isCodex ? undefined : request.temperature,
     stream: request.stream,
-    metadata: request.metadata
+    metadata: !isCodex && request.metadata
       ? Object.fromEntries(
           Object.entries(request.metadata).map(([key, value]) => [key, String(value)]),
         )
@@ -90,9 +102,17 @@ export function buildOpenAIResponsesRequest(
   };
 
   if (thinkingPlan.useOpenAIReasoning && thinkingPlan.effort) {
-    body.reasoning = { effort: thinkingPlan.effort };
+    body.reasoning = {
+      effort: thinkingPlan.effort,
+      ...(isCodex ? { summary: "auto" as const } : {}),
+    };
   } else if (thinkingPlan.bodyPatch) {
     Object.assign(body, thinkingPlan.bodyPatch);
+  } else if (isCodex && request.thinking?.enabled !== false) {
+    body.reasoning = {
+      effort: "medium",
+      summary: "auto",
+    };
   }
 
   if (request.outputSchema) {
@@ -117,7 +137,9 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
 
   const flushContent = () => {
     if (normalContent.length === 0) return;
-    const content = normalContent.flatMap((block) => toResponsesContentPart(block));
+    const content = normalContent.flatMap((block) =>
+      toResponsesContentPart(block, message.role)
+    );
     if (content.length > 0) {
       items.push({ role: message.role, content });
     }
@@ -149,7 +171,7 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
           role: "user",
           content: [
             { type: "input_text", text: "[Visual content from tool result]" },
-            ...visualContent.flatMap((part) => toResponsesContentPart(part)),
+            ...visualContent.flatMap((part) => toResponsesContentPart(part, "user")),
           ],
         });
       }
@@ -173,19 +195,25 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
   return items;
 }
 
-function toResponsesContentPart(block: CanonicalContentBlock): Record<string, unknown>[] {
+function toResponsesContentPart(
+  block: CanonicalContentBlock,
+  role: CanonicalMessage["role"],
+): Record<string, unknown>[] {
+  const textType = role === "assistant" ? "output_text" : "input_text";
   switch (block.type) {
     case "text":
-      return [{ type: "input_text", text: block.text }];
+      return [{ type: textType, text: block.text }];
     case "thinking":
-      return [{ type: "input_text", text: block.text }];
+      return [{ type: textType, text: block.text }];
     case "image":
+      if (role === "assistant") return [];
       return [{
         type: "input_image",
         image_url: block.source === "url" ? block.data : `data:${block.mimeType};base64,${block.data}`,
         detail: block.detail,
       }];
     case "pdf":
+      if (role === "assistant") return [];
       return [{
         type: "input_file",
         filename: "document.pdf",
@@ -193,10 +221,10 @@ function toResponsesContentPart(block: CanonicalContentBlock): Record<string, un
       }];
     case "audio":
       return block.source === "url"
-        ? [{ type: "input_text", text: `[Audio URL: ${block.data}]` }]
-        : [{ type: "input_text", text: "[Audio content omitted]" }];
+        ? [{ type: textType, text: `[Audio URL: ${block.data}]` }]
+        : [{ type: textType, text: "[Audio content omitted]" }];
     case "media_reference":
-      return [{ type: "input_text", text: block.preview }];
+      return [{ type: textType, text: block.preview }];
     case "tool_call":
     case "tool_result":
     case "tool_result_reference":
@@ -204,13 +232,16 @@ function toResponsesContentPart(block: CanonicalContentBlock): Record<string, un
   }
 }
 
-function toResponsesTool(tool: CanonicalToolSchema): OpenAIResponsesTool {
+function toResponsesTool(
+  tool: CanonicalToolSchema,
+  strict: boolean,
+): OpenAIResponsesTool {
   return {
     type: "function",
     name: tool.name,
     description: tool.description,
     parameters: normalizeOpenAISchema(tool.inputSchema),
-    strict: true,
+    strict,
   };
 }
 

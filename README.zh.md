@@ -436,6 +436,27 @@ model:
         gemini-3.1-pro-preview: {}
 ```
 
+Codex 可以直接使用 ChatGPT 订阅，无需 API Key。在 onboarding 或设置中选择
+**Codex (ChatGPT subscription)**，然后点击 **Sign in with ChatGPT**。
+PilotDeck 自行完成设备授权流程，因此无需安装 Codex CLI；如果本机已有
+`~/.codex/auth.json`，界面也会提供导入选项。PilotDeck 会把自己的可刷新凭据
+保存在 `~/.pilotdeck/auth.json`，并从 Codex 订阅端点获取当前账号可用的模型列表。
+
+对应的 Provider 配置不包含 API Key：
+
+```yaml
+schemaVersion: 1
+agent:
+  model: codex/gpt-5.6-sol
+model:
+  providers:
+    codex:
+      protocol: openai-responses
+      url: https://chatgpt.com/backend-api/codex
+      models:
+        gpt-5.6-sol: {}
+```
+
 **3. 启动服务**
 
 ```bash

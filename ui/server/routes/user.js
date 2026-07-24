@@ -3,6 +3,7 @@ import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
 import { readPilotDeckConfigFile } from '../services/pilotdeckConfig.js';
+import { getCodexAuthStatus } from '../../../src/model/providers/codex/auth.js';
 import { spawn } from 'child_process';
 
 const router = express.Router();
@@ -15,7 +16,7 @@ function providerAllowsMissingApiKey(providerId) {
   return providerId === 'ollama';
 }
 
-function hasUsablePilotDeckConfig() {
+async function hasUsablePilotDeckConfig() {
   const record = readPilotDeckConfigFile();
   if (!record.exists) return false;
 
@@ -34,9 +35,15 @@ function hasUsablePilotDeckConfig() {
 
   const hasUrl = typeof provider.url === 'string' && provider.url.trim();
   const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : '';
-  const hasRequiredCredential = providerAllowsMissingApiKey(providerId)
-    ? apiKey !== PLACEHOLDER_API_KEY
-    : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
+  let hasRequiredCredential;
+  if (providerId === 'codex') {
+    const status = await getCodexAuthStatus();
+    hasRequiredCredential = status.authenticated;
+  } else {
+    hasRequiredCredential = providerAllowsMissingApiKey(providerId)
+      ? apiKey !== PLACEHOLDER_API_KEY
+      : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
+  }
   const hasModel = provider.models && typeof provider.models === 'object' && modelId in provider.models;
 
   return Boolean(hasUrl && hasRequiredCredential && hasModel);
@@ -144,7 +151,7 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const hasCompleted = hasUsablePilotDeckConfig();
+    const hasCompleted = await hasUsablePilotDeckConfig();
 
     res.json({
       success: true,

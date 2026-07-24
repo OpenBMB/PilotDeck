@@ -5,8 +5,11 @@ import type { GoogleRequestBody } from "../providers/google/request.js";
 import { buildModelRequest } from "../request/buildModelRequest.js";
 import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
+  CanonicalContentBlock,
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CanonicalModelResponse,
+  CanonicalUsage,
   ModelConfig,
   ModelProtocol,
   ProviderConfig,
@@ -20,6 +23,14 @@ import { buildProviderChatEndpointCandidates, isExpectedProviderResponseShape } 
 import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
+import {
+  buildCodexRequestHeaders,
+  isCodexSubscriptionProvider,
+} from "../providers/codex/client.js";
+import {
+  resolveCodexRuntimeCredentials,
+  type CodexRuntimeCredentials,
+} from "../providers/codex/auth.js";
 
 export type ModelTransport = typeof fetch;
 
@@ -29,6 +40,9 @@ export type ModelRuntimeOptions = {
   signal?: AbortSignal;
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
+  codexCredentialResolver?: (options?: {
+    forceRefresh?: boolean;
+  }) => Promise<CodexRuntimeCredentials>;
 };
 
 export type ModelStreamRetryProgress = {
@@ -69,6 +83,9 @@ export async function complete(
 ) {
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
+  if (isCodexSubscriptionProvider(provider)) {
+    return completeCodexStreaming(nonStreamingRequest, config, options);
+  }
   const maxRetries = provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
@@ -99,7 +116,7 @@ export async function complete(
     const body = buildModelRequest(nonStreamingRequest, config);
     let response: Response;
     try {
-      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
+      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal, options);
     } catch (error) {
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const delayMs = retryBaseDelay * (attempt + 1);
@@ -604,13 +621,21 @@ async function sendProviderRequest(
     : body;
 
   try {
-    const fetchOptions: RequestInit = {
-      method: "POST",
-      headers: buildProviderHeaders(provider),
-      body: JSON.stringify(finalBody),
-      signal: controller.signal,
+    const send = async (forceRefresh = false) => {
+      const fetchOptions: RequestInit = {
+        method: "POST",
+        headers: await buildProviderRequestHeaders(provider, options, forceRefresh),
+        body: JSON.stringify(finalBody),
+        signal: controller.signal,
+      };
+      return sendWithEndpointFallback(provider, stream, transport, fetchOptions);
     };
-    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions);
+    let response = await send();
+    if (response.status === 401 && isCodexSubscriptionProvider(provider)) {
+      await response.body?.cancel().catch(() => undefined);
+      response = await send(true);
+    }
+    return response;
   } catch (error) {
     if (signal?.aborted) {
       throw createAbortError(signal.reason);
@@ -698,6 +723,71 @@ export function buildProviderHeaders(provider: ProviderConfig): HeadersInit {
   }
 
   return headers;
+}
+
+async function buildProviderRequestHeaders(
+  provider: ProviderConfig,
+  options: ModelRuntimeOptions | undefined,
+  forceRefresh: boolean,
+): Promise<HeadersInit> {
+  if (!isCodexSubscriptionProvider(provider)) {
+    return buildProviderHeaders(provider);
+  }
+  const credentials = await (
+    options?.codexCredentialResolver
+      ? options.codexCredentialResolver({ forceRefresh })
+      : resolveCodexRuntimeCredentials({ forceRefresh })
+  );
+  return {
+    "content-type": "application/json",
+    ...buildCodexRequestHeaders(credentials.accessToken, provider.headers),
+  };
+}
+
+async function completeCodexStreaming(
+  request: CanonicalModelRequest,
+  config: ModelConfig,
+  options: ModelRuntimeOptions,
+): Promise<CanonicalModelResponse> {
+  const content: CanonicalContentBlock[] = [];
+  let usage: CanonicalUsage | undefined;
+  let finishReason: CanonicalModelResponse["finishReason"] = "unknown";
+
+  for await (const event of streamModel({ ...request, stream: true }, config, options)) {
+    if (event.type === "text_delta") {
+      appendTextBlock(content, "text", event.text);
+    } else if (event.type === "thinking_delta") {
+      appendTextBlock(content, "thinking", event.text);
+    } else if (event.type === "tool_call_end") {
+      content.push({ type: "tool_call", ...event.toolCall });
+    } else if (event.type === "usage") {
+      usage = event.usage;
+    } else if (event.type === "message_end") {
+      finishReason = event.finishReason;
+    } else if (event.type === "error") {
+      throw new ModelProviderError(event.error);
+    }
+  }
+
+  return {
+    role: "assistant",
+    content,
+    usage,
+    finishReason,
+  };
+}
+
+function appendTextBlock(
+  content: CanonicalContentBlock[],
+  type: "text" | "thinking",
+  text: string,
+): void {
+  const last = content.at(-1);
+  if (last?.type === type) {
+    last.text += text;
+  } else if (text) {
+    content.push({ type, text });
+  }
 }
 
 async function safeReadJson(response: Response): Promise<unknown> {

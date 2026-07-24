@@ -1,4 +1,31 @@
-import type { ProviderCatalog } from "./types.js";
+import type { CatalogModelEntry, ProviderCatalog } from "./types.js";
+
+function codexCatalogModel(
+  displayName: string,
+  maxContextTokens = 272_000,
+): CatalogModelEntry {
+  return {
+    displayName,
+    capabilities: {
+      supportsToolUse: true,
+      supportsStreaming: true,
+      supportsParallelToolCalls: true,
+      supportsThinking: true,
+      supportsJsonSchema: true,
+      supportsSystemPrompt: true,
+      supportsPromptCache: true,
+      maxContextTokens,
+      maxOutputTokens: 128_000,
+    },
+    multimodal: {
+      input: ["text", "image"],
+      maxImagesPerRequest: 20,
+      supportedImageMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+      imageDetail: "auto",
+    },
+    aliases: [],
+  };
+}
 
 export const PROVIDER_CATALOG: ProviderCatalog = {
 
@@ -115,6 +142,27 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
         },
         aliases: ["claude-3-5-haiku", "claude-3.5-haiku", "claude-haiku-3.5"],
       },
+    },
+  },
+
+  // ── Codex (ChatGPT subscription) ─────────────────────────────────────
+
+  codex: {
+    displayName: "Codex (ChatGPT subscription)",
+    protocol: "openai-responses",
+    defaultUrl: "https://chatgpt.com/backend-api/codex",
+    models: {
+      "gpt-5.6-sol": codexCatalogModel("GPT-5.6 Sol"),
+      "gpt-5.6-sol-pro": codexCatalogModel("GPT-5.6 Sol Pro"),
+      "gpt-5.6-terra": codexCatalogModel("GPT-5.6 Terra"),
+      "gpt-5.6-terra-pro": codexCatalogModel("GPT-5.6 Terra Pro"),
+      "gpt-5.6-luna": codexCatalogModel("GPT-5.6 Luna"),
+      "gpt-5.6-luna-pro": codexCatalogModel("GPT-5.6 Luna Pro"),
+      "gpt-5.5": codexCatalogModel("GPT-5.5"),
+      "gpt-5.4-mini": codexCatalogModel("GPT-5.4 Mini"),
+      "gpt-5.4": codexCatalogModel("GPT-5.4"),
+      "gpt-5.3-codex": codexCatalogModel("GPT-5.3 Codex"),
+      "gpt-5.3-codex-spark": codexCatalogModel("GPT-5.3 Codex Spark", 128_000),
     },
   },
 

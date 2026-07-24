@@ -437,6 +437,29 @@ model:
         gemini-3.1-pro-preview: {}
 ```
 
+Codex can use a ChatGPT subscription instead of an API key. Select **Codex
+(ChatGPT subscription)** in onboarding or Settings and choose **Sign in with
+ChatGPT**. PilotDeck runs the device authorization flow itself, so the Codex CLI
+does not need to be installed. If `~/.codex/auth.json` already exists, the UI
+also offers to import it. PilotDeck keeps its own refreshable credentials in
+`~/.pilotdeck/auth.json` and fetches the account's live model catalog from the
+Codex subscription endpoint.
+
+The corresponding provider config contains no API key:
+
+```yaml
+schemaVersion: 1
+agent:
+  model: codex/gpt-5.6-sol
+model:
+  providers:
+    codex:
+      protocol: openai-responses
+      url: https://chatgpt.com/backend-api/codex
+      models:
+        gpt-5.6-sol: {}
+```
+
 Local Ollama models can be configured without an API key. PilotDeck uses
 Ollama's OpenAI-compatible `/v1/chat/completions` endpoint:
 
