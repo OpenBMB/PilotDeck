@@ -142,7 +142,7 @@ export type CreateLocalGatewayResult = {
   gateway: Gateway;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
-  dispose: () => void;
+  dispose: () => Promise<void>;
   bindServer: (server: { broadcastNotification(name: string, payload?: unknown): void }) => void;
   /**
    * Returns true when at least one interactive (non-background) turn is
@@ -387,18 +387,19 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   // build a `GatewayElicitationChannel` against this gateway's bus +
   // emit-sink (B1).
   registry.setGateway(gateway);
+  let disposePromise: Promise<void> | undefined;
   return {
     gateway,
     configStore,
     registry,
     dispose: () => {
+      if (disposePromise) return disposePromise;
       registry.invalidate();
       router?.shutdown();
       stopConfigWatching();
       stopExtensionWatching();
-      if (ownsTelemetry) {
-        void telemetry.shutdown();
-      }
+      disposePromise = ownsTelemetry ? telemetry.shutdown() : Promise.resolve();
+      return disposePromise;
     },
     bindServer: (server) => { boundServer = server; },
     isProjectBusy: (projectKey: string) => router!.hasActiveUserTurn(projectKey),

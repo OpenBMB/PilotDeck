@@ -1,0 +1,53 @@
+
+> pilotdeck@0.1.0 prebuild
+> npm run check:runtime && node scripts/bootstrap-pilotdeck-config.mjs && cd src/context/memory/edgeclaw-memory-core && npm run build
+
+
+> pilotdeck@0.1.0 check:runtime
+> node scripts/check-node-runtime.mjs
+
+
+> edgeclaw-memory-core@0.0.0 build
+> node -e "require('fs').rmSync('lib',{recursive:true,force:true})" && tsc -p tsconfig.json
+
+
+> pilotdeck@0.1.0 build
+> node -e "require('fs').rmSync('dist',{recursive:true,force:true})" && tsc -p tsconfig.json && node -e "require('fs').cpSync('src/extension/plugins/builtin','dist/src/extension/plugins/builtin',{recursive:true})"
+
+TAP version 13
+# (node:91891) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: local gateway disposal is awaitable and leaves disabled telemetry untouched
+ok 1 - local gateway disposal is awaitable and leaves disabled telemetry untouched
+  ---
+  duration_ms: 63.855792
+  type: 'test'
+  ...
+# Subtest: disabled telemetry shutdown does not create a queue file
+ok 2 - disabled telemetry shutdown does not create a queue file
+  ---
+  duration_ms: 23.261459
+  type: 'test'
+  ...
+# Subtest: telemetry enabled during its lifetime still persists pending events
+ok 3 - telemetry enabled during its lifetime still persists pending events
+  ---
+  duration_ms: 1.292333
+  type: 'test'
+  ...
+# Subtest: disabled telemetry leaves an existing queue byte-for-byte unchanged
+ok 4 - disabled telemetry leaves an existing queue byte-for-byte unchanged
+  ---
+  duration_ms: 1.15275
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 359.970292
+focused_exit=0
