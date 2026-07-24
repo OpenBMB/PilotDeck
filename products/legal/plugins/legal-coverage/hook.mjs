@@ -6,7 +6,10 @@ import {
   STATE_DIRECTORY,
   activationMatches,
   ensureWorkspace,
+  milestoneDigest,
+  milestoneEnvelopeFor,
   milestoneFor,
+  nextCoverageBatch,
   resolveSafeWorkspacePath,
   validateWorkspace,
 } from "./scripts/lib/legal-coverage.mjs";
@@ -51,18 +54,37 @@ try {
     }
   }
 
-  const active = await readSessionState(input.cwd, sessionPath)
+  const sessionState = await readSessionState(input.cwd, sessionPath);
+  const active = sessionState?.active === true
     || await pathExists(input.cwd, `${STATE_DIRECTORY}/config.json`)
     || await pathExists(input.cwd, PROOF_PATH);
   if (active && input.hookEventName === "PreModelRequest") {
     const result = await validateWorkspace({ workspaceRoot: input.cwd, writeProof: true });
-    output.hookSpecificOutput.additionalContext = milestoneFor(result, cliPath);
+    const workItems = await dynamicWorkItems(input.cwd, result);
+    const digest = milestoneDigest(result, workItems);
+    if (sessionState?.lastMilestoneDigest !== digest) {
+      output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
+      await writeSessionState(input.cwd, sessionPath, { active: true, lastMilestoneDigest: digest });
+    }
     output.hookSpecificOutput.modelRequestPatch = {
       metadata: {
         legalCoverageActive: true,
         legalCoverageState: result.passed ? "validated" : result.errors[0]?.phase ?? "incomplete",
       },
     };
+  }
+
+  if (active && input.hookEventName === "PostCompact") {
+    const result = await validateWorkspace({ workspaceRoot: input.cwd, writeProof: true });
+    const workItems = await dynamicWorkItems(input.cwd, result);
+    const digest = milestoneDigest(result, workItems);
+    output.hookSpecificOutput.dynamicContext = [{
+      id: `legal-coverage-post-compact-${digest.slice(0, 12)}`,
+      priority: "critical",
+      ttlMs: 60 * 60 * 1000,
+      content: milestoneEnvelopeFor(result, cliPath, workItems),
+    }];
+    await writeSessionState(input.cwd, sessionPath, { active: true, lastMilestoneDigest: digest });
   }
 
   if (active && input.hookEventName === "Stop") {
@@ -112,6 +134,11 @@ async function hasConfiguredWorkspace(workspaceRoot) {
   }
 }
 
+async function dynamicWorkItems(workspaceRoot, result) {
+  if (result.errors[0]?.phase !== "coverage") return undefined;
+  return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048 });
+}
+
 async function writeSessionState(workspaceRoot, candidate, value) {
   const path = await resolveSafeWorkspacePath(workspaceRoot, candidate, { allowMissing: true });
   await mkdir(dirname(path), { recursive: true });
@@ -123,9 +150,9 @@ async function readSessionState(workspaceRoot, candidate) {
   try {
     const path = await resolveSafeWorkspacePath(workspaceRoot, candidate, { allowMissing: true });
     const value = JSON.parse(await readFile(path, "utf8"));
-    return value?.active === true;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
   } catch (error) {
-    if (isMissing(error)) return false;
+    if (isMissing(error)) return undefined;
     throw error;
   }
 }

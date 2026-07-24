@@ -46,9 +46,10 @@ test("real gateway drives legal plugin milestones through bounded artifact corre
     assert.equal(agentRequests.length, 2, JSON.stringify(events));
     assert.match(messageText(agentRequests[0]?.messages ?? []), /Legal coverage controls are active/u);
     assert.match(messageText(agentRequests[0]?.messages ?? []), /completion-proof\.json/u);
-    assert.match(messageText(agentRequests[0]?.messages ?? []), /Legal coverage milestone/u);
+    assert.match(messageText(agentRequests[0]?.messages ?? []), /<legal_coverage_state>/u);
+    assert.match(messageText(agentRequests[0]?.messages ?? []), /"milestone": "INIT"/u);
     assert.match(messageText(agentRequests[1]?.messages ?? []), /Artifact validation failed/u);
-    assert.match(messageText(agentRequests[1]?.messages ?? []), /Legal coverage validation is complete/u);
+    assert.match(messageText(agentRequests[1]?.messages ?? []), /"milestone": "COMPLETE"/u);
     assert.equal(agentRequests[1]?.metadata?.legalCoverageState, "validated");
     assert.equal(events.some((event) => event.type === "turn_completed" && event.finishReason === "completed"), true);
 

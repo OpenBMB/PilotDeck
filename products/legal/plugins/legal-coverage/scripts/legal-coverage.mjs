@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   ensureWorkspace,
+  nextCoverageBatch,
   validateWorkspace,
 } from "./lib/legal-coverage.mjs";
 
@@ -31,13 +32,26 @@ if (command === "init") {
   await writeFile(initialized.paths.config, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   console.log(JSON.stringify({ initialized: true, workspaceRoot, stateDirectory: ".pilotdeck/work/legal-coverage" }, null, 2));
   process.exitCode = 0;
+} else if (command === "next-batch") {
+  if (readOption(args, "--phase") !== "coverage") {
+    console.error("next-batch currently requires --phase coverage");
+    process.exitCode = 1;
+  } else {
+    await ensureWorkspace(workspaceRoot);
+    const result = await nextCoverageBatch(workspaceRoot, {
+      limit: readOption(args, "--limit"),
+      maxSerializedBytes: readOption(args, "--max-bytes"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 0;
+  }
 } else if (command === "validate" || command === "status") {
   await ensureWorkspace(workspaceRoot);
   const result = await validateWorkspace({ workspaceRoot, writeProof: args.includes("--write-proof") });
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|validate|status> [--workspace PATH] [--input PATH] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|validate|status|next-batch> [--workspace PATH] [--phase coverage] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 
