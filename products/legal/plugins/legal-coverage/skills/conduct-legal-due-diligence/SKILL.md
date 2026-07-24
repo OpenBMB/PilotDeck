@@ -21,17 +21,21 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 3. Use no more than four concurrent delegated workers. Give each worker a disjoint source batch or legal topic and an explicit output path under `.pilotdeck/work/legal-coverage/fragments/` (or a task-required evidence path).
 4. Each fragment must list source path/ID, inspection method, locator-grounded atomic facts, evidence class, verification state, conflicts, unresolved items, and proposed materiality. The worker returns only the fragment path and a summary under 1,000 characters.
 5. Delegated workers may inspect sources and write only their assigned evidence fragment. They must not edit canonical ledgers, the completion proof, or a final deliverable.
-6. After workers return, the main agent reads fragments instead of replaying all raw source text and serially merges supported facts into canonical state. A failed worker is retried only for its missing batch; never restart completed batches.
+6. After each worker batch returns, the main agent reads its fragments instead of replaying raw source text and immediately merges supported facts into canonical state. Do not launch a second extraction wave while completed fragments remain unmerged.
+7. Treat every canonical write as a bounded transaction: merge at most 12 records and at most 24 KiB of serialized new content from one fragment or one ledger section, whichever limit comes first. Prefer a focused `edit_file` insertion after reading the current ledger; update reciprocal links and run validation before the next batch. Never emit or replace an entire large ledger in one tool call.
+8. A failed worker is retried only for its missing batch; never restart completed batches.
 
 ## Build Evidence Before Conclusions
 
 1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file and record the lowercase SHA-256 of the exact bytes inspected. If a source changes, re-inspect it and update every dependent ledger before recording the new hash.
 2. Inspect every machine-readable source completely, including all spreadsheet sheets and presentation slides. Mark a source `unreadable` only after deterministic extraction or inspection fails; record the unresolved items.
-3. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
-4. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.
-5. Link each reviewed source to extracted fact IDs or give a specific `noMaterialFactsReason`.
-6. Do not set `config.allowNoMaterialFacts` to true for a responsive diligence room. It exists only for a genuinely non-responsive source set after every file was reviewed.
-7. Create the configured deliverable skeleton early and update it incrementally. Do not wait until research is complete to start the formal output.
+3. Treat every configured input root as read-only. Put OCR text, extraction caches, conversion scripts, and other derived working files under `.pilotdeck/work/legal-coverage/`, never beside source documents.
+4. Use only inspection tools already available in the runtime. Do not install system packages, language packages, plugins, or binaries during a legal task. If available deterministic fallbacks cannot read a file, mark it pending manual verification instead of mutating the host environment.
+5. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
+6. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.
+7. Link each reviewed source to extracted fact IDs or give a specific `noMaterialFactsReason`.
+8. Do not set `config.allowNoMaterialFacts` to true for a responsive diligence room. It exists only for a genuinely non-responsive source set after every file was reviewed.
+9. Create the configured deliverable skeleton early and update it incrementally. Do not wait until research is complete to start the formal output.
 
 ## Complete Legal Analysis
 
@@ -51,7 +55,8 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 4. For text deliverables, copy an exact supporting quote into each coverage row. Each row needs distinct supporting text; do not reuse a generic sentence across facts or issues.
 5. A material-fact quote must contain the fact subject and either its predicate, value, or date/period. Add a concise evidence appendix when the main analysis would otherwise become unreadable.
 6. Mark unresolved facts, issues, and pending authorities as `unresolved` in coverage. Never hide a conflict or verification gap.
-7. Run the injected validator command with `--write-proof`. Fix the first reported blocking condition, rerun, and stop only when it passes.
+7. During the coverage phase, use the injected `next-batch --phase coverage` command to read only the next bounded repair slice. Do not scan or rewrite all canonical ledgers to discover uncovered records.
+8. Run the injected validator command with `--write-proof`. Fix the first reported blocking condition, rerun, and stop only when it passes.
 
 ## Completion Rule
 
