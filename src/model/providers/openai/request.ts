@@ -172,6 +172,8 @@ function toOpenAIMessages(message: CanonicalMessage, messageIndex: number): Open
       block.type !== "tool_call" &&
       block.type !== "thinking",
   );
+  const requiresEmptyAssistantContent =
+    message.role === "assistant" && (thinkingBlocks.length > 0 || assistantToolCalls.length > 0);
 
   const messages: OpenAIMessage[] = [];
   if (normalContent.length > 0 || assistantToolCalls.length > 0 || thinkingBlocks.length > 0) {
@@ -179,7 +181,7 @@ function toOpenAIMessages(message: CanonicalMessage, messageIndex: number): Open
       role: message.role,
       content: normalContent.length > 0
         ? toOpenAIContent(normalContent)
-        : (message.role === "assistant" && thinkingBlocks.length > 0 ? "" : undefined),
+        : (requiresEmptyAssistantContent ? "" : undefined),
       tool_calls: assistantToolCalls.length > 0 ? assistantToolCalls : undefined,
     };
     // DeepSeek V4 requires reasoning_content to be passed back on assistant
