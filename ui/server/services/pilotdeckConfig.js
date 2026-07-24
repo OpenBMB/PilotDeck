@@ -375,6 +375,11 @@ export function buildRuntimeEnv(config) {
     env.HTTPS_PROXY = proxyUrl;
     env.https_proxy = proxyUrl;
   }
+  const noProxy = typeof normalized.proxy?.noProxy === 'string' ? normalized.proxy.noProxy.trim() : '';
+  if (noProxy) {
+    env.NO_PROXY = noProxy;
+    env.no_proxy = noProxy;
+  }
 
   if (main) {
     env.PILOTDECK_API_BASE_URL = main.provider.url || '';
