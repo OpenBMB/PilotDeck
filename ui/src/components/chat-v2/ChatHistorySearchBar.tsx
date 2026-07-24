@@ -1,6 +1,18 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CompositionEvent,
+  type KeyboardEvent,
+} from 'react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils.js';
+import { isImeCompositionEvent } from '../../utils/ime.js';
+
+const IME_ENTER_GRACE_MS = 150;
 
 type ChatHistorySearchBarProps = {
   query: string;
@@ -26,6 +38,9 @@ export default function ChatHistorySearchBar({
   placement = 'floating',
 }: ChatHistorySearchBarProps) {
   const { t } = useTranslation();
+  const [draftQuery, setDraftQuery] = useState(query);
+  const isComposingRef = useRef(false);
+  const compositionEndedAtRef = useRef<number | null>(null);
   const hasQuery = query.trim().length > 0;
   const matchLabel = hasQuery
     ? matchCount > 0
@@ -36,6 +51,65 @@ export default function ChatHistorySearchBar({
         })
       : t('chatSearch.noMatches', { defaultValue: 'No matches' })
     : '';
+
+  useEffect(() => {
+    if (!isComposingRef.current) {
+      setDraftQuery(query);
+    }
+  }, [query]);
+
+  const setInputElement = useCallback((element: HTMLInputElement | null) => {
+    inputRef.current = element;
+  }, [inputRef]);
+
+  const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.currentTarget.value;
+    setDraftQuery(nextValue);
+    if (!isComposingRef.current) {
+      onQueryChange(nextValue);
+    }
+  }, [onQueryChange]);
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+    compositionEndedAtRef.current = null;
+  }, []);
+
+  const handleCompositionEnd = useCallback((event: CompositionEvent<HTMLInputElement>) => {
+    const nextValue = event.currentTarget.value;
+    isComposingRef.current = false;
+    compositionEndedAtRef.current = Date.now();
+    setDraftQuery(nextValue);
+    onQueryChange(nextValue);
+  }, [onQueryChange]);
+
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
+    if (isComposingRef.current || isImeCompositionEvent(event)) {
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const compositionEndedAt = compositionEndedAtRef.current;
+      const justFinishedComposition = compositionEndedAt !== null
+        && Date.now() - compositionEndedAt < IME_ENTER_GRACE_MS;
+      if (justFinishedComposition) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.shiftKey) {
+        onPrevious();
+      } else {
+        onNext();
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+    }
+  }, [onClose, onNext, onPrevious]);
 
   return (
     <div
@@ -51,12 +125,13 @@ export default function ChatHistorySearchBar({
     >
       <Search className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
       <input
-        ref={(element) => {
-          inputRef.current = element;
-        }}
+        ref={setInputElement}
         type="search"
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
+        value={draftQuery}
+        onChange={handleQueryChange}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
+        onKeyDown={handleKeyDown}
         placeholder={t('chatSearch.placeholder', { defaultValue: 'Search in chat…' }) as string}
         className="min-w-0 flex-1 bg-transparent text-[13px] text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
         autoComplete="off"

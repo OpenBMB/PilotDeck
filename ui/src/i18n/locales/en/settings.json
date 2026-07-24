@@ -49,6 +49,84 @@
     "resetToDefaults": "Reset to Defaults",
     "cancelChanges": "Cancel Changes"
   },
+  "settingsPage": {
+    "actions": {
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "backToApp": "Back to app",
+    "backToSettings": "Back to settings",
+    "menu": {
+      "general": "General",
+      "modelPool": "Model Pool",
+      "agent": "Agents",
+      "agentModel": "Model",
+      "agentRoute": "Route",
+      "agentMemory": "Memory",
+      "agentResident": "Always-On",
+      "agentSearch": "Search",
+      "agentSchedule": "Scheduled Tasks",
+      "integrations": "Integrations",
+      "extensions": "Extensions",
+      "mcpServers": "MCP Servers",
+      "officePreview": "Office Preview",
+      "privacy": "Security & Privacy",
+      "advanced": "Advanced",
+      "about": "About"
+    },
+    "titles": {
+      "general": "General",
+      "modelPool": "Model Pool",
+      "agent": "Agents",
+      "agentModel": "Agents / Model",
+      "agentRoute": "Agents / Route",
+      "agentMemory": "Agents / Memory",
+      "agentResident": "Agents / Always-On",
+      "agentSearch": "Agents / Search",
+      "agentSchedule": "Agents / Scheduled Tasks",
+      "integrations": "Integrations",
+      "extensions": "Extensions",
+      "mcpServers": "Extensions / MCP Servers",
+      "officePreview": "Extensions / Office Preview",
+      "privacy": "Security & Privacy",
+      "advanced": "Advanced",
+      "about": "About"
+    },
+    "contentComingSoon": {
+      "title": "Right panel content is not connected yet",
+      "description": "Each menu section will be wired up incrementally"
+    },
+    "about": {
+      "versionStatus": "Version Status:",
+      "latestReleaseTime": "Latest Release Time:",
+      "buildTime": "Build Time:",
+      "downloadAndInstall": "Download & Install",
+      "downloadingAndInstalling": "Downloading...",
+      "installUpdate": "Install Update",
+      "launchingInstaller": "Launching installer...",
+      "restartingAndInstalling": "Restarting...",
+      "status": {
+        "checking": "Checking",
+        "updateAvailable": "Update Available",
+        "installerLaunched": "Installer Launched",
+        "upToDate": "Up to Date",
+        "unavailable": "Unavailable"
+      }
+    },
+    "invalidYaml": {
+      "advanced": "The config file is not valid YAML, so the Advanced settings form is unavailable.",
+      "agentModel": "The config file is not valid YAML, so the Agents / Model form is unavailable.",
+      "agentRoute": "The config file is not valid YAML, so the Agents / Route form is unavailable.",
+      "agentMemory": "The config file is not valid YAML, so the Agents / Memory form is unavailable.",
+      "agentResident": "The config file is not valid YAML, so the Agents / Always-On form is unavailable.",
+      "agentSearch": "The config file is not valid YAML, so the Agents / Search form is unavailable.",
+      "agentSchedule": "The config file is not valid YAML, so the Agents / Scheduled Tasks form is unavailable.",
+      "integrations": "The config file is not valid YAML, so the Integrations form is unavailable.",
+      "officePreview": "The config file is not valid YAML, so the Office Preview form is unavailable.",
+      "modelPool": "The config file is not valid YAML, so the Model Pool form is unavailable."
+    }
+  },
   "quickSettings": {
     "title": "Quick Settings",
     "sections": {
@@ -383,6 +461,7 @@
   },
   "permissions": {
     "title": "Permission Settings",
+    "controlTitle": "Permission Control",
     "description": "Manage which tools the assistant can run without asking. Grants from the chat \"Add permission\" button land here too.",
     "export": "Export",
     "import": "Import",
@@ -754,6 +833,7 @@
         "fromCatalog": "from catalog.",
         "effective": "Effective:",
         "apiKey": "API key",
+        "optional": "optional",
         "maskedKeyPlaceholder": "Existing key kept — type to replace",
         "keyHidden": "Key hidden; leave as-is to keep, retype to replace.",
         "enabledModels": "Enabled models",
@@ -891,6 +971,18 @@
             "label": "Auto Dream interval (minutes)",
             "description": "Automatic Dream only runs after memory files have changed."
           }
+        },
+        "autoIndexInterval": {
+          "label": "Auto index interval",
+          "description": "Interval for automatic file scanning. \"0\" disables the automatic task."
+        },
+        "autoDreamInterval": {
+          "label": "Auto Dream interval",
+          "description": "Interval for automatic memory consolidation. Auto Dream runs only when memory files changed since the last Dream."
+        },
+        "intervalUnits": {
+          "minutes": "Minutes",
+          "hours": "Hours"
         },
         "data": {
           "title": "Data management",
@@ -1179,6 +1271,10 @@
       "title": "Feishu / Lark",
       "label": "Feishu Bot",
       "domain": "Domain",
+      "domainOptions": {
+        "feishu": "feishu.cn (Feishu)",
+        "lark": "larksuite.com (Lark)"
+      },
       "connectionMode": "Connection Mode",
       "chooseMethod": "Choose how to configure the Feishu bot:",
       "qrScan": "QR Code Scan",

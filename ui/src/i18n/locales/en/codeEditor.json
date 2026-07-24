@@ -21,8 +21,14 @@
   "tabs": {
     "tabList": "Open files",
     "closeTab": "Close {{fileName}}",
+    "moreActions": "More tab actions",
+    "closeCurrent": "Close",
+    "closeOthers": "Close other tabs",
+    "closeToRight": "Close tabs to the right",
+    "closeAll": "Close all tabs",
     "modified": "Modified",
-    "unsavedConfirm": "Close {{fileName}} and discard unsaved changes?"
+    "unsavedConfirm": "Close {{fileName}} and discard unsaved changes?",
+    "unsavedBatchConfirm": "Close these tabs and discard unsaved changes in {{count}} files?"
   },
   "actions": {
     "download": "Download file",
@@ -77,9 +83,30 @@
     "fitPage": "Fit page",
     "rotateCounterClockwise": "Rotate counterclockwise",
     "rotateClockwise": "Rotate clockwise",
+    "showNavigation": "Show navigation",
+    "hideNavigation": "Hide navigation",
+    "pages": "Pages",
+    "outline": "Outline",
+    "expandOutline": "Expand section",
+    "collapseOutline": "Collapse section",
+    "slides": "Slides",
+    "pageLabel": "Page {{number}}",
+    "slideLabel": "Slide {{number}}",
     "pageNumber": "Page number",
+    "slideNumber": "Slide number",
     "goToPage": "Go to page",
-    "pageOf": "/ {{total}}"
+    "goToSlide": "Go to slide",
+    "pageOf": "/ {{total}}",
+    "slideOf": "/ {{total}}",
+    "search": "Search this file",
+    "searchPlaceholder": "Search",
+    "searching": "Searching…",
+    "noResults": "No results",
+    "resultOf": "{{current}} / {{total}}",
+    "previousResult": "Previous result",
+    "nextResult": "Next result",
+    "closeSearch": "Close search",
+    "refresh": "Refresh file"
   },
   "fileTypes": {
     "word": "Word document",

@@ -461,7 +461,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                                     type="button"
                                     onClick={() => {
                                       if (typeof window !== 'undefined' && window.openSettings) {
-                                        window.openSettings('config');
+                                        window.openSettings('config:tools');
                                       } else if (onShowSettings) {
                                         onShowSettings();
                                       }

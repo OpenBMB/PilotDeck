@@ -2,12 +2,14 @@ import express from 'express';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
   buildDefaultPilotDeckConfig,
   configToYaml,
   getPilotDeckConfigPath,
+  hasUnresolvedMaskedSecrets,
   maskSecrets,
   parseConfigYaml,
   preserveMaskedSecrets,
@@ -43,6 +45,7 @@ async function notifyGatewayConfigReload() {
 }
 
 const router = express.Router();
+let configWriteQueue = Promise.resolve();
 
 const MASKED_SECRET = '********';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
@@ -114,12 +117,86 @@ function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
   return null;
 }
 
+function isRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function containsMaskedValue(value) {
+  if (value === MASKED_SECRET) return true;
+  if (Array.isArray(value)) return value.some(containsMaskedValue);
+  if (!isRecord(value)) return false;
+  return Object.values(value).some(containsMaskedValue);
+}
+
+function modelProviderCredentialScope(provider) {
+  return {
+    protocol: typeof provider?.protocol === 'string'
+      ? provider.protocol.trim().toLowerCase()
+      : '',
+    url: typeof provider?.url === 'string'
+      ? provider.url.trim().replace(/\/+$/, '')
+      : '',
+  };
+}
+
+function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
+  if (rawRenames === undefined) return { config: nextConfig };
+  if (!Array.isArray(rawRenames) || rawRenames.length > 100) {
+    return { error: 'providerRenames must be an array with at most 100 entries.' };
+  }
+  if (rawRenames.length === 0) return { config: nextConfig };
+
+  const nextProviders = nextConfig?.model?.providers;
+  const previousProviders = previousConfig?.model?.providers;
+  if (!isRecord(nextProviders) || !isRecord(previousProviders)) {
+    return { error: 'Cannot restore provider secrets without valid provider maps.' };
+  }
+
+  for (const rename of rawRenames) {
+    const from = typeof rename?.from === 'string' ? rename.from.trim() : '';
+    const to = typeof rename?.to === 'string' ? rename.to.trim() : '';
+    if (!from || !to || from === to) {
+      return { error: 'Each provider rename must contain distinct non-empty from/to IDs.' };
+    }
+
+    const previousProvider = previousProviders[from];
+    const nextProvider = nextProviders[to];
+    if (
+      !isRecord(previousProvider)
+      || !isRecord(nextProvider)
+      || previousProviders[to] !== undefined
+      || nextProviders[from] !== undefined
+    ) {
+      return { error: `Provider rename ${from} -> ${to} does not match the saved configuration.` };
+    }
+
+    if (!containsMaskedValue(nextProvider)) continue;
+    if (
+      JSON.stringify(modelProviderCredentialScope(previousProvider))
+      !== JSON.stringify(modelProviderCredentialScope(nextProvider))
+    ) {
+      return {
+        error: `Enter provider credentials again when renaming ${from} to ${to} and changing its protocol or URL.`,
+      };
+    }
+
+    nextProviders[to] = preserveMaskedSecrets(nextProvider, previousProvider);
+  }
+
+  return { config: nextConfig };
+}
+
+function configRevision(raw) {
+  return createHash('sha256').update(String(raw ?? '')).digest('hex');
+}
+
 function serializeConfigResponse(record, reloadResult = null) {
   if (record.parseError) {
     return {
       exists: record.exists,
       path: record.configPath,
       raw: record.raw,
+      revision: configRevision(record.raw),
       config: maskSecrets(record.config),
       configDisabled: true,
       parseError: record.parseError,
@@ -145,6 +222,7 @@ function serializeConfigResponse(record, reloadResult = null) {
     exists: record.exists,
     path: record.configPath,
     raw,
+    revision: configRevision(raw),
     config: maskedConfig,
     validation: {
       valid: validation.valid,
@@ -343,6 +421,13 @@ router.get('/office-preview/status', async (req, res) => {
 });
 
 router.put('/', async (req, res) => {
+  const previousWrite = configWriteQueue;
+  let releaseWrite;
+  configWriteQueue = new Promise((resolve) => {
+    releaseWrite = resolve;
+  });
+  await previousWrite;
+
   try {
     // Two submission shapes coexist:
     //
@@ -362,6 +447,19 @@ router.put('/', async (req, res) => {
     // never collapse the two paths into one — they have different
     // semantics and different callers.
     const diskRecord = readPilotDeckConfigFile();
+    const baseRevision = typeof req.body?.baseRevision === 'string'
+      ? req.body.baseRevision.trim()
+      : '';
+    if (baseRevision) {
+      const currentRevision = serializeConfigResponse(diskRecord).revision;
+      if (baseRevision !== currentRevision) {
+        return res.status(409).json({
+          error: 'Config changed since this settings draft was loaded. Refresh and apply the change again.',
+          code: 'CONFIG_CONFLICT',
+          currentRevision,
+        });
+      }
+    }
     const rawString = typeof req.body?.raw === 'string' ? req.body.raw : null;
 
     let saved;
@@ -377,7 +475,16 @@ router.put('/', async (req, res) => {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return res.status(400).json({ error: 'raw YAML must parse to an object' });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(parsed, diskRecord.rawYaml ?? {});
+      const renamedProviders = restoreRenamedProviderSecrets(
+        parsed,
+        diskRecord.rawYaml ?? {},
+        req.body?.providerRenames,
+      );
+      if (renamedProviders.error) {
+        return res.status(400).json({ error: renamedProviders.error });
+      }
+      const renamedConfig = renamedProviders.config;
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }
@@ -385,8 +492,13 @@ router.put('/', async (req, res) => {
       // original disk value so saving the masked view back is a no-op
       // for secrets the user didn't actually touch.
       const restored = diskRecord.parseError
-        ? parsed
-        : preserveMaskedSecrets(parsed, diskRecord.rawYaml ?? {});
+        ? renamedConfig
+        : preserveMaskedSecrets(renamedConfig, diskRecord.rawYaml ?? {});
+      if (hasUnresolvedMaskedSecrets(restored)) {
+        return res.status(400).json({
+          error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
+        });
+      }
       suppressNextWatchEvent();
       saved = await writeRawPilotDeckYaml(restored);
     } else if (req.body?.config && typeof req.body.config === 'object') {
@@ -402,11 +514,25 @@ router.put('/', async (req, res) => {
           },
         });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(req.body.config, diskRecord.config);
+      const renamedProviders = restoreRenamedProviderSecrets(
+        req.body.config,
+        diskRecord.config,
+        req.body?.providerRenames,
+      );
+      if (renamedProviders.error) {
+        return res.status(400).json({ error: renamedProviders.error });
+      }
+      const renamedConfig = renamedProviders.config;
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config);
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }
-      const restored = preserveMaskedSecrets(req.body.config, diskRecord.config);
+      const restored = preserveMaskedSecrets(renamedConfig, diskRecord.config);
+      if (hasUnresolvedMaskedSecrets(restored)) {
+        return res.status(400).json({
+          error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
+        });
+      }
       suppressNextWatchEvent();
       saved = await writePilotDeckConfig(restored);
     } else {
@@ -427,6 +553,8 @@ router.put('/', async (req, res) => {
       return res.status(400).json({ error: error.message, validation: error.validation });
     }
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  } finally {
+    releaseWrite();
   }
 });
 

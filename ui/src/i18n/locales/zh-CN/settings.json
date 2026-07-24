@@ -49,6 +49,84 @@
     "resetToDefaults": "重置为默认值",
     "cancelChanges": "取消更改"
   },
+  "settingsPage": {
+    "actions": {
+      "edit": "编辑",
+      "save": "保存",
+      "cancel": "取消"
+    },
+    "backToApp": "返回应用",
+    "backToSettings": "返回设置",
+    "menu": {
+      "general": "通用",
+      "modelPool": "模型池",
+      "agent": "智能体",
+      "agentModel": "模型",
+      "agentRoute": "路由",
+      "agentMemory": "记忆",
+      "agentResident": "常驻",
+      "agentSearch": "搜索",
+      "agentSchedule": "定时任务",
+      "integrations": "外部集成",
+      "extensions": "扩展",
+      "mcpServers": "MCP 服务器",
+      "officePreview": "Office 预览",
+      "privacy": "安全隐私",
+      "advanced": "高级",
+      "about": "关于"
+    },
+    "titles": {
+      "general": "通用",
+      "modelPool": "模型池",
+      "agent": "智能体",
+      "agentModel": "智能体 / 模型",
+      "agentRoute": "智能体 / 路由",
+      "agentMemory": "智能体 / 记忆",
+      "agentResident": "智能体 / 常驻",
+      "agentSearch": "智能体 / 搜索",
+      "agentSchedule": "智能体 / 定时任务",
+      "integrations": "外部集成",
+      "extensions": "扩展",
+      "mcpServers": "扩展 / MCP 服务器",
+      "officePreview": "扩展 / Office 预览",
+      "privacy": "安全隐私",
+      "advanced": "高级",
+      "about": "关于"
+    },
+    "contentComingSoon": {
+      "title": "右侧内容区待接入",
+      "description": "后续将按菜单项逐个填充设置项组件"
+    },
+    "about": {
+      "versionStatus": "版本状态：",
+      "latestReleaseTime": "新版发布时间：",
+      "buildTime": "构建时间：",
+      "downloadAndInstall": "下载安装",
+      "downloadingAndInstalling": "下载中...",
+      "installUpdate": "安装更新",
+      "launchingInstaller": "正在启动安装程序...",
+      "restartingAndInstalling": "重启中...",
+      "status": {
+        "checking": "正在检查",
+        "updateAvailable": "有新版本",
+        "installerLaunched": "安装程序已启动",
+        "upToDate": "已是最新",
+        "unavailable": "无法获取"
+      }
+    },
+    "invalidYaml": {
+      "advanced": "配置文件当前不是有效 YAML，暂时无法加载高级配置表单。",
+      "agentModel": "配置文件当前不是有效 YAML，暂时无法加载智能体模型表单。",
+      "agentRoute": "配置文件当前不是有效 YAML，暂时无法加载智能体路由表单。",
+      "agentMemory": "配置文件当前不是有效 YAML，暂时无法加载智能体记忆表单。",
+      "agentResident": "配置文件当前不是有效 YAML，暂时无法加载智能体常驻表单。",
+      "agentSearch": "配置文件当前不是有效 YAML，暂时无法加载智能体搜索表单。",
+      "agentSchedule": "配置文件当前不是有效 YAML，暂时无法加载智能体定时任务表单。",
+      "integrations": "配置文件当前不是有效 YAML，暂时无法加载网关配置表单。",
+      "officePreview": "配置文件当前不是有效 YAML，暂时无法加载 Office 预览表单。",
+      "modelPool": "配置文件当前不是有效 YAML，暂时无法加载模型池表单。"
+    }
+  },
   "quickSettings": {
     "title": "快速设置",
     "sections": {
@@ -383,6 +461,7 @@
   },
   "permissions": {
     "title": "权限设置",
+    "controlTitle": "权限控制",
     "description": "管理助手可以无需询问即可运行的工具。从聊天中点击「添加权限」授予的项也会落到这里。",
     "export": "导出",
     "import": "导入",
@@ -754,6 +833,7 @@
         "fromCatalog": "。",
         "effective": "实际地址：",
         "apiKey": "API 密钥",
+        "optional": "可选",
         "maskedKeyPlaceholder": "已保留现有密钥，如需替换请重新输入",
         "keyHidden": "密钥已隐藏；留空会继续保留，重新输入可替换。",
         "enabledModels": "已启用模型",
@@ -891,6 +971,18 @@
             "label": "自动 Dream 间隔（分钟）",
             "description": "只有记忆文件更新后，自动 Dream 才会真正执行。"
           }
+        },
+        "autoIndexInterval": {
+          "label": "自动索引间隔",
+          "description": "自动扫描文件的时间周期，“0”表示关闭自动任务。"
+        },
+        "autoDreamInterval": {
+          "label": "自动 Dream 间隔",
+          "description": "自动整理记忆的时间周期。只有自上次 Dream 以来有记忆文件更新时，自动 Dream 才会真正执行。"
+        },
+        "intervalUnits": {
+          "minutes": "分钟",
+          "hours": "小时"
         },
         "data": {
           "title": "数据管理",
@@ -1173,6 +1265,10 @@
       "title": "飞书 / Lark",
       "label": "飞书机器人",
       "domain": "域名",
+      "domainOptions": {
+        "feishu": "feishu.cn（飞书）",
+        "lark": "larksuite.com（Lark）"
+      },
       "connectionMode": "连接方式",
       "chooseMethod": "选择配置飞书机器人的方式：",
       "qrScan": "扫码创建",

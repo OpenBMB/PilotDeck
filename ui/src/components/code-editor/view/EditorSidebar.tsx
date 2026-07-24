@@ -16,6 +16,7 @@ type EditorSidebarProps = {
   onResizeStart: (event: MouseEvent<HTMLDivElement>) => void;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  onTabsClose: (tabIds: string[]) => void;
   onTabDirtyChange: (tabId: string, dirty: boolean) => void;
   onToggleEditorExpand: () => void;
   onPreviewFileOpen?: (filePath: string) => void;
@@ -43,6 +44,7 @@ export default function EditorSidebar({
   onResizeStart,
   onTabSelect,
   onTabClose,
+  onTabsClose,
   onTabDirtyChange,
   onToggleEditorExpand,
   onPreviewFileOpen,
@@ -119,15 +121,45 @@ export default function EditorSidebar({
     onTabClose(tabId);
   };
 
+  const requestCloseTabs = (tabIds: string[]) => {
+    const requestedTabIds = new Set(tabIds);
+    const tabsToClose = editorTabs.filter((tab) => requestedTabIds.has(tab.id));
+    if (tabsToClose.length === 0) return;
+
+    const dirtyTabs = tabsToClose.filter((tab) => tab.dirty);
+    if (dirtyTabs.length === 1) {
+      const fileName = dirtyTabs[0].fileStack.at(-1)?.name;
+      if (fileName && !window.confirm(t('tabs.unsavedConfirm', { fileName }))) {
+        return;
+      }
+    } else if (
+      dirtyTabs.length > 1
+      && !window.confirm(t('tabs.unsavedBatchConfirm', { count: dirtyTabs.length }))
+    ) {
+      return;
+    }
+
+    if (tabsToClose.length === editorTabs.length) {
+      setPoppedOut(false);
+    }
+    onTabsClose(tabsToClose.map((tab) => tab.id));
+  };
+
   const tabBar = (
     <CodeEditorTabBar
       tabs={editorTabs}
       activeTabId={activeEditorTabId}
       onSelect={onTabSelect}
       onClose={requestCloseTab}
+      onCloseTabs={requestCloseTabs}
       labels={{
         tabList: t('tabs.tabList'),
         closeTab: (fileName) => t('tabs.closeTab', { fileName }),
+        moreActions: t('tabs.moreActions'),
+        closeCurrent: t('tabs.closeCurrent'),
+        closeOthers: t('tabs.closeOthers'),
+        closeToRight: t('tabs.closeToRight'),
+        closeAll: t('tabs.closeAll'),
         modified: t('tabs.modified'),
       }}
       reserveToolbarSpace={workspaceMode}

@@ -998,27 +998,55 @@
 
   mark.chat-history-search-highlight {
     border-radius: 2px;
-    background-color: rgb(254 240 138 / 0.85);
+    background-color: rgb(254 240 138 / 0.78);
     color: inherit;
     padding: 0 1px;
   }
 
   .dark mark.chat-history-search-highlight {
-    background-color: rgb(113 63 18 / 0.75);
+    background-color: rgb(113 63 18 / 0.72);
   }
 
   mark.chat-history-search-highlight-active {
-    background-color: rgb(250 204 21);
-    outline: 1px solid rgb(202 138 4);
+    background-color: rgb(250 204 21 / 0.96);
+    outline: 1px solid rgb(180 83 9);
+    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.32);
   }
 
   .dark mark.chat-history-search-highlight-active {
-    background-color: rgb(202 138 4);
-    outline-color: rgb(250 204 21);
+    background-color: rgb(217 119 6 / 0.94);
+    outline-color: rgb(253 224 71);
+    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.28);
+  }
+
+  .textLayer .pilotdeck-document-search-highlight {
+    --highlight-bg-color: rgb(254 240 138 / 0.78);
+    --highlight-selected-bg-color: rgb(250 204 21 / 0.96);
+  }
+
+  .textLayer .pilotdeck-document-search-highlight-active {
+    outline: 1px solid rgb(180 83 9);
+    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.32);
+  }
+
+  .dark .textLayer .pilotdeck-document-search-highlight {
+    --highlight-bg-color: rgb(113 63 18 / 0.72);
+    --highlight-selected-bg-color: rgb(217 119 6 / 0.94);
+  }
+
+  .dark .textLayer .pilotdeck-document-search-highlight-active {
+    outline-color: rgb(253 224 71);
+    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.28);
   }
 }
 
 @layer components {
+  .settings-content h2 {
+    font-size: 1.375rem;
+    line-height: 1.75rem;
+    letter-spacing: -0.015em;
+  }
+
   .pd-composer-container {
     container-name: pd-composer;
     container-type: inline-size;
