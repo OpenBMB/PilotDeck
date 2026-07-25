@@ -580,8 +580,11 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     };
     await writeJson(proposalPath, {
       ...proposalBase,
-      facts: [{ ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] }],
-      noMaterialFacts: proposal.sourceIds.slice(1).map((sourceId) => ({
+      facts: [
+        { ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] },
+        { ...proposalBase.facts[1], dateOrPeriod: "2026", missingTimeReason: "Conflicting synthetic time fields." },
+      ],
+      noMaterialFacts: proposal.sourceIds.slice(2).map((sourceId) => ({
         sourceId,
         reason: "Synthetic invalid-proposal fixture.",
       })),
@@ -595,6 +598,34 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const invalidProposalContext = invalidProposal.hookSpecificOutput.additionalContext ?? "";
     assert.match(invalidProposalContext, /"group": "source-fragment-propose"/u);
     assert.match(invalidProposalContext, /source_merge_fact_locator_unverified/u);
+    assert.match(invalidProposalContext, /source_merge_fact_time_invalid/u);
+    const invalidProposalEnvelope = JSON.parse(invalidProposalContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      nextAction: string;
+      workItems: {
+        proposal: {
+          validationDiagnostics: {
+            total: number;
+            returned: number;
+            hasMore: boolean;
+            items: Array<{ code: string; message: string }>;
+          };
+        };
+      };
+    };
+    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.total, 2);
+    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.returned, 2);
+    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.hasMore, false);
+    assert.deepEqual(
+      invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items.map((item) => item.code),
+      ["source_merge_fact_locator_unverified", "source_merge_fact_time_invalid"],
+    );
+    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
+    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
+    assert.match(invalidProposalEnvelope.nextAction, /Fix every entry in workItems\.proposal\.validationDiagnostics\.items in one rewrite/u);
+    assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_locator_unverified/u);
+    assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_time_invalid/u);
     assert.match(invalidProposalContext, /Rewrite that proposal from injected workItems\.preparedSlice/u);
     assert.match(invalidProposalContext, /"preparedSlice":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
@@ -624,6 +655,57 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.doesNotMatch(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
     assert.equal(
       (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      repairConvergenceHash,
+    );
+
+    await writeJson(proposalPath, {
+      ...proposalBase,
+      facts: Array.from({ length: 32 }, (_, index) => ({
+        ...proposalBase.facts[0],
+        subject: `Synthetic invalid fact ${index + 1}`,
+        dateOrPeriod: "2026",
+        missingTimeReason: "Conflicting synthetic time fields.",
+      })),
+      noMaterialFacts: proposal.sourceIds.map((sourceId) => ({
+        sourceId,
+        reason: "<specific no-material reason>",
+      })),
+    });
+    const boundedDiagnostics = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const boundedContext = boundedDiagnostics.hookSpecificOutput.additionalContext ?? "";
+    const boundedEnvelope = JSON.parse(boundedContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: {
+        proposal: {
+          validationDiagnostics: {
+            total: number;
+            returned: number;
+            hasMore: boolean;
+            items: Array<{ code: string; message: string }>;
+          };
+        };
+      };
+    };
+    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.total, 36);
+    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.returned, 36);
+    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.hasMore, false);
+    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.items.length, 36);
+    assert.deepEqual(
+      boundedEnvelope.workItems.proposal.validationDiagnostics.items.slice(0, 32).map((item) => item.code),
+      Array.from({ length: 32 }, () => "source_merge_fact_time_invalid"),
+    );
+    assert.deepEqual(
+      boundedEnvelope.workItems.proposal.validationDiagnostics.items.slice(32).map((item) => item.code),
+      Array.from({ length: 4 }, () => "source_merge_no_material_invalid"),
+    );
+    assert.equal(
+      (boundedDiagnostics.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       repairConvergenceHash,
     );
 

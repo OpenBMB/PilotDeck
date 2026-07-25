@@ -62,6 +62,7 @@ const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
 const SOURCE_MERGE_READINESS_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
 const SOURCE_MERGE_MAX_FACTS = 32;
+const SOURCE_MERGE_MAX_VALIDATION_DIAGNOSTICS = SOURCE_MERGE_MAX_FACTS + SOURCE_REVIEW_MERGE_MAX_SOURCES;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 
 export async function ensureWorkspace(workspaceRoot) {
@@ -188,7 +189,13 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
   if (proposalReceipt?.error) {
     return {
       ...proposePlan,
-      proposal: { ...proposePlan.proposal, validationError: proposalReceipt.error },
+      proposal: {
+        ...proposePlan.proposal,
+        validationError: proposalReceipt.error,
+        ...(proposalReceipt.validationDiagnostics
+          ? { validationDiagnostics: proposalReceipt.validationDiagnostics }
+          : {}),
+      },
     };
   }
   return proposePlan;
@@ -712,7 +719,14 @@ async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, st
     const receipt = receipts.find((candidate) => candidate.fragmentPath === plan.proposal.fragmentPath
       && candidate.receiptSha256 === plan.proposal.receiptSha256);
     if (!receipt) return undefined;
-    const normalized = validateSourceMergeProposal(patch, plan, receipt, state, bytes.byteLength);
+    const normalized = validateSourceMergeProposal(
+      patch,
+      plan,
+      receipt,
+      state,
+      bytes.byteLength,
+      { collectFactDiagnostics: true },
+    );
     return {
       valid: true,
       sha256: sha256(bytes),
@@ -722,12 +736,26 @@ async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, st
     };
   } catch (error) {
     if (error?.code === "ENOENT") return undefined;
+    const diagnostics = Array.isArray(error?.diagnostics)
+      ? error.diagnostics.filter((item) => isRecord(item) && nonEmpty(item.code) && nonEmpty(item.message))
+      : [];
+    const diagnosticCount = Number.isSafeInteger(error?.diagnosticCount)
+      ? error.diagnosticCount
+      : diagnostics.length;
     return {
       valid: false,
       error: {
         code: typeof error?.code === "string" ? error.code : "source_merge_proposal_invalid",
         message: errorMessage(error),
       },
+      ...(diagnostics.length > 0 ? {
+        validationDiagnostics: {
+          total: diagnosticCount,
+          returned: diagnostics.length,
+          hasMore: diagnosticCount > diagnostics.length,
+          items: diagnostics,
+        },
+      } : {}),
     };
   }
 }
@@ -843,7 +871,7 @@ export async function applySourceMergeProposal(workspaceRoot, options = {}) {
   };
 }
 
-function validateSourceMergeProposal(patch, plan, receipt, state, serializedBytes) {
+function validateSourceMergeProposal(patch, plan, receipt, state, serializedBytes, options = {}) {
   if (!isRecord(patch)) throw batchError("source_merge_proposal_not_object", "Source merge proposal must be a JSON object.");
   const expectedKeys = [
     "expectedStateHash",
@@ -884,112 +912,139 @@ function validateSourceMergeProposal(patch, plan, receipt, state, serializedByte
   const existingFactIds = new Set((Array.isArray(state.facts?.facts) ? state.facts.facts : [])
     .filter(isRecord).map((fact) => fact.id).filter(nonEmpty));
   const generatedFactIds = new Set();
-  const facts = patch.facts.map((fact, index) => {
-    if (!isRecord(fact) || !hasOnlyKeys(fact, [
-      "subject",
-      "predicate",
-      "value",
-      "unit",
-      "dateOrPeriod",
-      "missingTimeReason",
-      "sourceRefs",
-      "evidenceClass",
-      "verificationStatus",
-      "conflictStatus",
-      "material",
-      "critical",
-      "thresholdAssessment",
-    ])) throw batchError("source_merge_fact_keys_invalid", `Proposal fact ${index + 1} contains unsupported fields.`);
-    if (!nonEmpty(fact.subject) || !nonEmpty(fact.predicate) || !hasValue(fact.value)
-      || containsProposalPlaceholder(fact.subject) || containsProposalPlaceholder(fact.predicate)
-      || containsProposalPlaceholder(fact.value)) {
-      throw batchError("source_merge_fact_content_missing", `Proposal fact ${index + 1} requires subject, predicate, and value.`);
-    }
-    const hasDate = nonEmpty(fact.dateOrPeriod);
-    const hasMissingTimeReason = nonEmpty(fact.missingTimeReason);
-    if (hasDate === hasMissingTimeReason
-      || containsProposalPlaceholder(fact.dateOrPeriod)
-      || containsProposalPlaceholder(fact.missingTimeReason)) {
-      throw batchError("source_merge_fact_time_invalid", `Proposal fact ${index + 1} requires exactly one of dateOrPeriod or missingTimeReason, without template placeholders.`);
-    }
-    if (fact.unit !== undefined && fact.unit !== null
-      && (!nonEmpty(fact.unit) || containsProposalPlaceholder(fact.unit))) {
-      throw batchError("source_merge_fact_unit_invalid", `Proposal fact ${index + 1} unit must be a non-empty string, null, or omitted.`);
-    }
-    if (!EVIDENCE_CLASSES.has(fact.evidenceClass)
-      || !VERIFICATION_STATUSES.has(fact.verificationStatus)
-      || !CONFLICT_STATUSES.has(fact.conflictStatus)) {
-      throw batchError("source_merge_fact_classification_invalid", `Proposal fact ${index + 1} has an invalid evidence, verification, or conflict classification.`);
-    }
-    if (typeof fact.material !== "boolean" || typeof fact.critical !== "boolean" || (fact.critical && !fact.material)) {
-      throw batchError("source_merge_fact_materiality_invalid", `Proposal fact ${index + 1} requires boolean material/critical fields and critical implies material.`);
-    }
-    if (!Array.isArray(fact.sourceRefs) || fact.sourceRefs.length === 0) {
-      throw batchError("source_merge_fact_sources_missing", `Proposal fact ${index + 1} requires sourceRefs.`);
-    }
-    const seenRefs = new Set();
-    const sourceRefs = fact.sourceRefs.map((reference) => {
-      if (!isRecord(reference) || !hasOnlyKeys(reference, ["sourceId", "locator"])
-        || !selectedIds.has(reference.sourceId) || !nonEmpty(reference.locator)) {
-        throw batchError("source_merge_fact_source_out_of_scope", `Proposal fact ${index + 1} has an invalid or out-of-scope source reference.`);
+  const proposalDiagnostics = [];
+  const facts = patch.facts.flatMap((fact, index) => {
+    try {
+      if (!isRecord(fact) || !hasOnlyKeys(fact, [
+        "subject",
+        "predicate",
+        "value",
+        "unit",
+        "dateOrPeriod",
+        "missingTimeReason",
+        "sourceRefs",
+        "evidenceClass",
+        "verificationStatus",
+        "conflictStatus",
+        "material",
+        "critical",
+        "thresholdAssessment",
+      ])) throw batchError("source_merge_fact_keys_invalid", `Proposal fact ${index + 1} contains unsupported fields.`);
+      if (!nonEmpty(fact.subject) || !nonEmpty(fact.predicate) || !hasValue(fact.value)
+        || containsProposalPlaceholder(fact.subject) || containsProposalPlaceholder(fact.predicate)
+        || containsProposalPlaceholder(fact.value)) {
+        throw batchError("source_merge_fact_content_missing", `Proposal fact ${index + 1} requires subject, predicate, and value.`);
       }
-      const key = `${reference.sourceId}\0${reference.locator}`;
-      if (seenRefs.has(key)) throw batchError("source_merge_fact_source_duplicate", `Proposal fact ${index + 1} repeats a source reference.`);
-      seenRefs.add(key);
-      const fragmentRow = fragmentRows.get(reference.sourceId);
-      const allowedLocators = new Set((Array.isArray(fragmentRow?.facts) ? fragmentRow.facts : []).map((item) => item.locator));
-      if (!allowedLocators.has(reference.locator)) {
-        throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
+      const hasDate = nonEmpty(fact.dateOrPeriod);
+      const hasMissingTimeReason = nonEmpty(fact.missingTimeReason);
+      if (hasDate === hasMissingTimeReason
+        || containsProposalPlaceholder(fact.dateOrPeriod)
+        || containsProposalPlaceholder(fact.missingTimeReason)) {
+        throw batchError("source_merge_fact_time_invalid", `Proposal fact ${index + 1} requires exactly one of dateOrPeriod or missingTimeReason, without template placeholders.`);
       }
-      referencedSources.add(reference.sourceId);
-      return { sourceId: reference.sourceId, locator: reference.locator };
-    }).sort((left, right) => left.sourceId.localeCompare(right.sourceId) || left.locator.localeCompare(right.locator));
-    const referencedEvidenceClasses = new Set(sourceRefs.map((reference) => fragmentRows.get(reference.sourceId)?.evidenceClass));
-    if (!referencedEvidenceClasses.has(fact.evidenceClass)) {
-      throw batchError("source_merge_fact_evidence_mismatch", `Proposal fact ${index + 1} evidenceClass must match at least one referenced fragment source.`);
+      if (fact.unit !== undefined && fact.unit !== null
+        && (!nonEmpty(fact.unit) || containsProposalPlaceholder(fact.unit))) {
+        throw batchError("source_merge_fact_unit_invalid", `Proposal fact ${index + 1} unit must be a non-empty string, null, or omitted.`);
+      }
+      if (!EVIDENCE_CLASSES.has(fact.evidenceClass)
+        || !VERIFICATION_STATUSES.has(fact.verificationStatus)
+        || !CONFLICT_STATUSES.has(fact.conflictStatus)) {
+        throw batchError("source_merge_fact_classification_invalid", `Proposal fact ${index + 1} has an invalid evidence, verification, or conflict classification.`);
+      }
+      if (typeof fact.material !== "boolean" || typeof fact.critical !== "boolean" || (fact.critical && !fact.material)) {
+        throw batchError("source_merge_fact_materiality_invalid", `Proposal fact ${index + 1} requires boolean material/critical fields and critical implies material.`);
+      }
+      if (!Array.isArray(fact.sourceRefs) || fact.sourceRefs.length === 0) {
+        throw batchError("source_merge_fact_sources_missing", `Proposal fact ${index + 1} requires sourceRefs.`);
+      }
+      const seenRefs = new Set();
+      const sourceRefs = fact.sourceRefs.map((reference) => {
+        if (!isRecord(reference) || !hasOnlyKeys(reference, ["sourceId", "locator"])
+          || !selectedIds.has(reference.sourceId) || !nonEmpty(reference.locator)) {
+          throw batchError("source_merge_fact_source_out_of_scope", `Proposal fact ${index + 1} has an invalid or out-of-scope source reference.`);
+        }
+        const key = `${reference.sourceId}\0${reference.locator}`;
+        if (seenRefs.has(key)) throw batchError("source_merge_fact_source_duplicate", `Proposal fact ${index + 1} repeats a source reference.`);
+        seenRefs.add(key);
+        const fragmentRow = fragmentRows.get(reference.sourceId);
+        const allowedLocators = new Set((Array.isArray(fragmentRow?.facts) ? fragmentRow.facts : []).map((item) => item.locator));
+        if (!allowedLocators.has(reference.locator)) {
+          throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
+        }
+        referencedSources.add(reference.sourceId);
+        return { sourceId: reference.sourceId, locator: reference.locator };
+      }).sort((left, right) => left.sourceId.localeCompare(right.sourceId) || left.locator.localeCompare(right.locator));
+      const referencedEvidenceClasses = new Set(sourceRefs.map((reference) => fragmentRows.get(reference.sourceId)?.evidenceClass));
+      if (!referencedEvidenceClasses.has(fact.evidenceClass)) {
+        throw batchError("source_merge_fact_evidence_mismatch", `Proposal fact ${index + 1} evidenceClass must match at least one referenced fragment source.`);
+      }
+      validateProposedThresholdAssessment(fact.thresholdAssessment, index + 1);
+      const normalized = {
+        subject: fact.subject,
+        predicate: fact.predicate,
+        value: fact.value,
+        ...(nonEmpty(fact.unit) ? { unit: fact.unit } : {}),
+        ...(hasDate ? { dateOrPeriod: fact.dateOrPeriod } : { missingTimeReason: fact.missingTimeReason }),
+        sourceRefs,
+        evidenceClass: fact.evidenceClass,
+        verificationStatus: fact.verificationStatus,
+        conflictStatus: fact.conflictStatus,
+        material: fact.material,
+        critical: fact.critical,
+        ...(fact.thresholdAssessment === undefined || fact.thresholdAssessment === null
+          ? {}
+          : { thresholdAssessment: fact.thresholdAssessment }),
+      };
+      const id = `F-${sha256(stableStringify(normalized)).slice(0, 12).toUpperCase()}`;
+      if (existingFactIds.has(id) || generatedFactIds.has(id)) {
+        throw batchError("source_merge_fact_id_conflict", `Proposal fact ${index + 1} collides with fact ID ${id}.`);
+      }
+      generatedFactIds.add(id);
+      return [{ id, ...normalized }];
+    } catch (error) {
+      if (options.collectFactDiagnostics !== true) throw error;
+      proposalDiagnostics.push({
+        code: typeof error?.code === "string" ? error.code : "source_merge_fact_invalid",
+        message: errorMessage(error),
+      });
+      return [];
     }
-    validateProposedThresholdAssessment(fact.thresholdAssessment, index + 1);
-    const normalized = {
-      subject: fact.subject,
-      predicate: fact.predicate,
-      value: fact.value,
-      ...(nonEmpty(fact.unit) ? { unit: fact.unit } : {}),
-      ...(hasDate ? { dateOrPeriod: fact.dateOrPeriod } : { missingTimeReason: fact.missingTimeReason }),
-      sourceRefs,
-      evidenceClass: fact.evidenceClass,
-      verificationStatus: fact.verificationStatus,
-      conflictStatus: fact.conflictStatus,
-      material: fact.material,
-      critical: fact.critical,
-      ...(fact.thresholdAssessment === undefined || fact.thresholdAssessment === null
-        ? {}
-        : { thresholdAssessment: fact.thresholdAssessment }),
-    };
-    const id = `F-${sha256(stableStringify(normalized)).slice(0, 12).toUpperCase()}`;
-    if (existingFactIds.has(id) || generatedFactIds.has(id)) {
-      throw batchError("source_merge_fact_id_conflict", `Proposal fact ${index + 1} collides with fact ID ${id}.`);
-    }
-    generatedFactIds.add(id);
-    return { id, ...normalized };
   });
 
   const noMaterialSources = new Set();
-  const noMaterialFacts = patch.noMaterialFacts.map((item) => {
-    if (!isRecord(item) || !hasOnlyKeys(item, ["sourceId", "reason"])
-      || !selectedIds.has(item.sourceId) || !nonEmpty(item.reason) || containsProposalPlaceholder(item.reason)) {
-      throw batchError("source_merge_no_material_invalid", "Each noMaterialFacts row requires one selected sourceId and a specific reason.");
+  const noMaterialFacts = patch.noMaterialFacts.flatMap((item, index) => {
+    try {
+      if (!isRecord(item) || !hasOnlyKeys(item, ["sourceId", "reason"])
+        || !selectedIds.has(item.sourceId) || !nonEmpty(item.reason) || containsProposalPlaceholder(item.reason)) {
+        throw batchError("source_merge_no_material_invalid", `Proposal noMaterialFacts row ${index + 1} requires one selected sourceId and a specific reason.`);
+      }
+      if (noMaterialSources.has(item.sourceId)) {
+        throw batchError("source_merge_no_material_duplicate", `Proposal noMaterialFacts row ${index + 1} duplicates source ${item.sourceId}.`);
+      }
+      noMaterialSources.add(item.sourceId);
+      return [{ sourceId: item.sourceId, reason: item.reason }];
+    } catch (error) {
+      if (options.collectFactDiagnostics !== true) throw error;
+      proposalDiagnostics.push({
+        code: typeof error?.code === "string" ? error.code : "source_merge_no_material_invalid",
+        message: errorMessage(error),
+      });
+      return [];
     }
-    if (noMaterialSources.has(item.sourceId)) throw batchError("source_merge_no_material_duplicate", `Duplicate noMaterialFacts source ${item.sourceId}.`);
-    noMaterialSources.add(item.sourceId);
-    return { sourceId: item.sourceId, reason: item.reason };
   });
+  if (proposalDiagnostics.length > 0) throw sourceMergeProposalDiagnosticsError(proposalDiagnostics);
+
+  const dispositionDiagnostics = [];
   for (const sourceId of selectedIds) {
     const hasFacts = referencedSources.has(sourceId);
     const hasNoMaterialReason = noMaterialSources.has(sourceId);
     if (hasFacts === hasNoMaterialReason) {
-      throw batchError("source_merge_source_disposition_invalid", `Selected source ${sourceId} must have fact references or one noMaterialFacts reason, but not both.`);
+      const error = batchError("source_merge_source_disposition_invalid", `Selected source ${sourceId} must have fact references or one noMaterialFacts reason, but not both.`);
+      if (options.collectFactDiagnostics !== true) throw error;
+      dispositionDiagnostics.push({ code: error.code, message: error.message });
     }
   }
+  if (dispositionDiagnostics.length > 0) throw sourceMergeProposalDiagnosticsError(dispositionDiagnostics);
   const factIdsBySource = new Map(plan.proposal.sourceIds.map((sourceId) => [sourceId, []]));
   for (const fact of facts) {
     for (const reference of fact.sourceRefs) factIdsBySource.get(reference.sourceId)?.push(fact.id);
@@ -1538,6 +1593,7 @@ function convergenceWorkProjection(workItems) {
   if (!workItems?.proposal?.validationError) return workItems;
   const proposal = { ...workItems.proposal };
   delete proposal.validationError;
+  delete proposal.validationDiagnostics;
   // A first rejection must reach the model before the steady-state lease can
   // fail closed. Keep every rejected revision on one stable repair marker so
   // rewriting invalid proposals cannot manufacture unlimited progress.
@@ -1747,8 +1803,15 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-propose") {
     if (workItems.proposal?.validationError) {
-      return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
-        + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
+      const diagnostics = workItems.proposal.validationDiagnostics;
+      const hasDiagnostics = Array.isArray(diagnostics?.items) && diagnostics.items.length > 0;
+      const diagnosticCount = hasDiagnostics && Number.isSafeInteger(diagnostics.total)
+        ? diagnostics.total
+        : 1;
+      const rejection = hasDiagnostics
+        ? `${diagnosticCount} validation diagnostic${diagnosticCount === 1 ? "" : "s"}. Fix every entry in workItems.proposal.validationDiagnostics.items in one rewrite. `
+        : `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `;
+      return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with ${rejection}`
         + `Rewrite that proposal from injected workItems.preparedSlice and proposal.template. `
         + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
         + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
@@ -2002,6 +2065,17 @@ function validateCoverageBatchPatch(patch, limits) {
 function batchError(code, message) {
   const error = new Error(message);
   error.code = code;
+  return error;
+}
+
+function sourceMergeProposalDiagnosticsError(diagnostics) {
+  const primary = diagnostics[0] ?? {
+    code: "source_merge_proposal_invalid",
+    message: "Source merge proposal is invalid.",
+  };
+  const error = batchError(primary.code, primary.message);
+  error.diagnosticCount = diagnostics.length;
+  error.diagnostics = diagnostics.slice(0, SOURCE_MERGE_MAX_VALIDATION_DIAGNOSTICS);
   return error;
 }
 
