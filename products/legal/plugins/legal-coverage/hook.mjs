@@ -24,8 +24,9 @@ try {
   hookEventName = typeof input?.hookEventName === "string" ? input.hookEventName : hookEventName;
   const output = { hookSpecificOutput: { hookEventName } };
   const sessionPath = sessionStatePath(input.sessionId);
+  const isSubagent = input.isSubagent === true;
 
-  if (input.hookEventName === "UserPromptSubmit" && input.internal !== true) {
+  if (!isSubagent && input.hookEventName === "UserPromptSubmit" && input.internal !== true) {
     const configured = await hasConfiguredWorkspace(input.cwd);
     const active = configured || activationMatches(String(input.prompt ?? ""));
     if (active) {
@@ -56,9 +57,9 @@ try {
   }
 
   const sessionState = await readSessionState(input.cwd, sessionPath);
-  const active = sessionState?.active === true
+  const active = !isSubagent && (sessionState?.active === true
     || await pathExists(input.cwd, `${STATE_DIRECTORY}/config.json`)
-    || await pathExists(input.cwd, PROOF_PATH);
+    || await pathExists(input.cwd, PROOF_PATH));
   if (active && input.hookEventName === "PreModelRequest") {
     const result = await validateWorkspace({ workspaceRoot: input.cwd, writeProof: true });
     const workItems = await dynamicWorkItems(input.cwd, result);

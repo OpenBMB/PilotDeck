@@ -140,6 +140,7 @@ export class TurnRunner {
         sessionId: options.sessionId,
         transcriptPath: this.runtimeContext.transcriptPath,
         cwd: this.runtimeContext.cwd,
+        isSubagent: false,
       },
       payload: { prompt, internal: options.input.isMeta === true, turnId: options.turnId },
       matchQuery: "UserPromptSubmit",

@@ -2341,6 +2341,7 @@ export class AgentLoop {
         transcriptPath: "",
         cwd: this.config.cwd,
         permissionMode: this.config.permissionMode,
+        isSubagent: this.config.isSubagent === true,
       },
       payload,
       matchQuery: event,

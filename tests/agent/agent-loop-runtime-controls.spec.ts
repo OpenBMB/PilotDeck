@@ -101,6 +101,30 @@ test("PreModelRequest mutations survive a post-routing request rebuild and remai
   assert.equal(dynamicContext.hasPending("session-1"), false);
 });
 
+test("AgentLoop exposes explicit subagent identity to lifecycle hooks", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const observed = new Map<string, boolean | undefined>();
+  const dependencies = createDependencies(requests, {
+    lifecycle: {
+      async dispatch(input: { event: string; baseInput?: { isSubagent?: boolean } }) {
+        observed.set(input.event, input.baseInput?.isSubagent);
+        return emptyLifecycleResult();
+      },
+    } as never,
+  });
+  const loop = new AgentLoop(createConfig(process.cwd(), { isSubagent: true }), dependencies);
+
+  const completed = await drainLoop(loop.run({
+    sessionId: "subagent-session",
+    turnId: "subagent-turn",
+    messages: [userMessage("complete one bounded worker task")],
+  }));
+
+  assert.equal(completed.result.type, "success");
+  assert.equal(observed.get("PreModelRequest"), true);
+  assert.equal(observed.get("Stop"), true);
+});
+
 test("evaluation progress lease stops before a third unchanged model request when full compaction is rejected", async () => {
   const requests: CanonicalModelRequest[] = [];
   const defaultContext = new DefaultContextRuntime();

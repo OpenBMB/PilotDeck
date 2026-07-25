@@ -1056,6 +1056,26 @@ test("legal coverage hook activates only legal work and injects one observable m
       (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
     );
 
+    const subagentPreModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: `${workspace}::sub::evidence-worker`,
+      transcriptPath: "",
+      cwd: workspace,
+      isSubagent: true,
+    });
+    assert.equal(subagentPreModel.hookSpecificOutput.additionalContext, undefined);
+    assert.equal(subagentPreModel.hookSpecificOutput.modelRequestPatch, undefined);
+
+    const subagentStop = await runHook({
+      hookEventName: "Stop",
+      sessionId: `${workspace}::sub::evidence-worker`,
+      transcriptPath: "",
+      cwd: workspace,
+      isSubagent: true,
+    });
+    assert.equal(subagentStop.continue, undefined);
+    assert.equal(subagentStop.stopReason, undefined);
+
     const configPath = join(workspace, STATE_ROOT, "config.json");
     const config = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
     config.jurisdiction = "Synthetic jurisdiction";
@@ -1483,6 +1503,7 @@ async function runValidatorDirect(workspace: string): Promise<{ passed: boolean;
 
 async function runHook(input: Record<string, unknown>): Promise<{
   continue?: boolean;
+  stopReason?: string;
   hookSpecificOutput: {
     additionalContext?: string;
     dynamicContext?: unknown[];

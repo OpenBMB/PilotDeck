@@ -5,6 +5,7 @@ export type PilotDeckHookBaseInput = {
   transcriptPath: string;
   cwd: string;
   permissionMode?: string;
+  isSubagent?: boolean;
   agentId?: string;
   agentType?: string;
 };
