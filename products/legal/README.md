@@ -57,6 +57,22 @@ node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs next-batch
   --max-bytes 24576
 ```
 
+Inspect the machine-readable patch schema, then apply only the current batch:
+
+```bash
+node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs schema
+node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs apply-batch \
+  --workspace /path/to/project \
+  --phase coverage \
+  --input-file .pilotdeck/work/legal-coverage/patches/coverage-batch.json
+```
+
+The patch must carry the `stateHash` returned by `next-batch`, may update only
+the current group and record identities, and is limited to 12 records / 24 KiB.
+The command atomically preserves unrelated coverage rows and invokes the same
+validator after writing. A stale or out-of-scope patch is rejected before the
+canonical ledger changes.
+
 Validation fails closed on incomplete source inventory, partial facts, orphaned
 risks, unverified citations that are not disclosed, stale deliverable hashes, or
 missing or generic final coverage. Canonical ledgers use a single main-agent

@@ -123,6 +123,8 @@ export async function nextCoverageBatch(workspaceRoot, options = {}) {
   const loaded = await readWorkspaceState(workspaceRoot);
   const limit = boundedInteger(options.limit, 1, 12, 12);
   const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 24576, 24576);
+  const validation = options.validationResult
+    ?? await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
   const coverage = isRecord(loaded.state.coverage) ? loaded.state.coverage : {};
   const groups = [];
 
@@ -222,11 +224,105 @@ export async function nextCoverageBatch(workspaceRoot, options = {}) {
   });
 
   const selected = groups.find((group) => group.items.length > 0);
-  if (selected) return packCoverageBatch(selected.group, selected.items, limit, maxSerializedBytes);
+  if (selected) return packCoverageBatch(
+    selected.group,
+    selected.items,
+    limit,
+    maxSerializedBytes,
+    validation.stateHash,
+  );
 
-  const validation = await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
   const errors = validation.errors.filter((error) => error.phase === "coverage");
-  return packCoverageBatch("validation-errors", errors, limit, maxSerializedBytes);
+  return packCoverageBatch("validation-errors", errors, limit, maxSerializedBytes, validation.stateHash);
+}
+
+export function coverageBatchSchema() {
+  return {
+    schemaVersion: 1,
+    command: "apply-batch",
+    input: {
+      type: "object",
+      required: ["schemaVersion", "phase", "group", "expectedStateHash", "items"],
+      additionalProperties: false,
+      properties: {
+        schemaVersion: { const: 1 },
+        phase: { const: "coverage" },
+        group: { enum: ["deliverables", "sources", "facts", "issues", "authorities"] },
+        expectedStateHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        items: { type: "array", minItems: 1, maxItems: 12, items: { type: "object" } },
+      },
+    },
+    limits: { maxRecords: 12, maxSerializedBytes: 24576 },
+    identityFields: coverageIdentityFields(),
+  };
+}
+
+export async function applyCoverageBatch(workspaceRoot, patch, options = {}) {
+  const maxRecords = boundedInteger(options.limit, 1, 12, 12);
+  const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 24576, 24576);
+  validateCoverageBatchPatch(patch, { maxRecords, maxSerializedBytes });
+
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  if (patch.expectedStateHash !== before.stateHash) {
+    throw batchError(
+      "stale_state_hash",
+      `expectedStateHash ${patch.expectedStateHash} does not match current state ${before.stateHash}. Run next-batch again.`,
+    );
+  }
+
+  const current = await nextCoverageBatch(workspaceRoot, {
+    limit: maxRecords,
+    maxSerializedBytes,
+    validationResult: before,
+  });
+  if (current.group === "validation-errors") {
+    throw batchError("batch_not_applicable", "Current coverage errors require direct ledger or deliverable repair, not apply-batch.");
+  }
+  if (patch.group !== current.group) {
+    throw batchError("batch_group_mismatch", `Current batch group is ${current.group}, not ${patch.group}.`);
+  }
+
+  const identityField = coverageIdentityFields()[patch.group];
+  const allowedIds = new Set(current.items.map((item) => coverageBatchItemIdentity(patch.group, item)).filter(nonEmpty));
+  const seen = new Set();
+  for (const item of patch.items) {
+    const id = item[identityField];
+    if (!nonEmpty(id)) throw batchError("batch_identity_missing", `${patch.group} item requires ${identityField}.`);
+    if (seen.has(id)) throw batchError("batch_identity_duplicate", `Duplicate ${identityField} ${id} in apply-batch input.`);
+    if (!allowedIds.has(id)) throw batchError("batch_item_out_of_scope", `${identityField} ${id} is not in the current next-batch slice.`);
+    seen.add(id);
+  }
+
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const coverage = loaded.state.coverage;
+  if (!isRecord(coverage) || !Array.isArray(coverage[patch.group])) {
+    throw batchError("coverage_state_invalid", `coverage.json must contain a ${patch.group} array before apply-batch.`);
+  }
+  const updates = new Map(patch.items.map((item) => [item[identityField], item]));
+  const untouched = coverage[patch.group].filter((row) => !isRecord(row) || !updates.has(row[identityField]));
+  const nextRows = [...untouched, ...patch.items]
+    .sort((left, right) => String(left?.[identityField] ?? "").localeCompare(String(right?.[identityField] ?? "")));
+  const nextCoverage = { ...coverage, [patch.group]: nextRows };
+  await writeJsonAtomic(loaded.paths.coverage, nextCoverage);
+
+  const after = await validateWorkspace({ workspaceRoot, writeProof: true });
+  const nextBatch = after.passed ? null : await nextCoverageBatch(workspaceRoot, {
+    limit: maxRecords,
+    maxSerializedBytes,
+    validationResult: after,
+  });
+  return {
+    applied: true,
+    phase: "coverage",
+    group: patch.group,
+    updated: patch.items.length,
+    previousStateHash: before.stateHash,
+    stateHash: after.stateHash,
+    passed: after.passed,
+    errorCountBefore: before.errors.length,
+    errorCountAfter: after.errors.length,
+    nextBatch,
+  };
 }
 
 export async function validateWorkspace(options) {
@@ -422,7 +518,10 @@ function nextActionFor(result, occurrenceCount, command, initialize) {
   if (first?.phase === "coverage") {
     const inspect = command.replace(" validate ", " next-batch --phase coverage --limit 12 --max-bytes 24576 ")
       .replace(" --write-proof", "");
+    const apply = command.replace(" validate ", " apply-batch --phase coverage --input-file <workspace-relative-patch.json> ")
+      .replace(" --write-proof", "");
     return `Use the injected workItems as the next deterministic coverage slice. If it contains only a pointer, inspect it with: ${inspect}. `
+      + `Write one patch matching the bundled schema, then apply it atomically with: ${apply}. `
       + `Repair at most ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes, then run: ${command}. `
       + "Repeat only after validation reports progress.";
   }
@@ -467,7 +566,7 @@ function coverageRowNeedsRepair(row, requireUnresolved) {
   return !nonEmpty(row.deliverablePath) || !nonEmpty(row.section) || !nonEmpty(row.claim) || !nonEmpty(row.locator);
 }
 
-function packCoverageBatch(group, candidates, limit, maxSerializedBytes) {
+function packCoverageBatch(group, candidates, limit, maxSerializedBytes, stateHash) {
   const items = [];
   let serializedBytes = 0;
   for (const candidate of candidates.slice(0, limit)) {
@@ -490,6 +589,7 @@ function packCoverageBatch(group, candidates, limit, maxSerializedBytes) {
   return {
     phase: "coverage",
     group,
+    stateHash,
     remaining: candidates.length,
     returned: items.length,
     hasMore: candidates.length > items.length,
@@ -497,6 +597,55 @@ function packCoverageBatch(group, candidates, limit, maxSerializedBytes) {
     serializedBytes,
     items,
   };
+}
+
+function coverageIdentityFields() {
+  return {
+    deliverables: "path",
+    sources: "sourceId",
+    facts: "factId",
+    issues: "issueId",
+    authorities: "authorityId",
+  };
+}
+
+function coverageBatchItemIdentity(group, item) {
+  if (!isRecord(item)) return undefined;
+  if (group === "deliverables") return item.path;
+  return item[coverageIdentityFields()[group]];
+}
+
+function validateCoverageBatchPatch(patch, limits) {
+  if (!isRecord(patch)) throw batchError("batch_not_object", "apply-batch input must be a JSON object.");
+  const keys = Object.keys(patch).sort();
+  const expectedKeys = ["expectedStateHash", "group", "items", "phase", "schemaVersion"];
+  if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+    throw batchError("batch_keys_invalid", `apply-batch input must contain only: ${expectedKeys.join(", ")}.`);
+  }
+  if (patch.schemaVersion !== 1) throw batchError("batch_schema_version_invalid", "apply-batch schemaVersion must be 1.");
+  if (patch.phase !== "coverage") throw batchError("batch_phase_invalid", "apply-batch phase must be coverage.");
+  if (!Object.hasOwn(coverageIdentityFields(), patch.group)) {
+    throw batchError("batch_group_invalid", `Unsupported coverage group: ${String(patch.group)}.`);
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(patch.expectedStateHash ?? ""))) {
+    throw batchError("batch_state_hash_invalid", "expectedStateHash must be a lowercase SHA-256 value.");
+  }
+  if (!Array.isArray(patch.items) || patch.items.length === 0 || patch.items.length > limits.maxRecords) {
+    throw batchError("batch_record_limit", `apply-batch items must contain 1..${limits.maxRecords} records.`);
+  }
+  if (patch.items.some((item) => !isRecord(item))) {
+    throw batchError("batch_item_invalid", "Every apply-batch item must be a JSON object.");
+  }
+  const serializedBytes = Buffer.byteLength(JSON.stringify(patch));
+  if (serializedBytes > limits.maxSerializedBytes) {
+    throw batchError("batch_byte_limit", `apply-batch input is ${serializedBytes} bytes; maximum is ${limits.maxSerializedBytes}.`);
+  }
+}
+
+function batchError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 function boundedInteger(value, minimum, maximum, fallback) {

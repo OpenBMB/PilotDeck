@@ -70,11 +70,13 @@ test("legal coverage next-batch exposes one bounded deterministic repair slice",
     assert.equal(deliverableBatch.exitCode, 0, deliverableBatch.stderr);
     const deliverable = JSON.parse(deliverableBatch.stdout) as {
       group: string;
+      stateHash: string;
       returned: number;
       limits: { maxRecords: number; maxSerializedBytes: number };
       items: Array<{ path?: string; actualSha256?: string }>;
     };
     assert.equal(deliverable.group, "deliverables");
+    assert.match(deliverable.stateHash, /^[a-f0-9]{64}$/u);
     assert.equal(deliverable.returned, 1);
     assert.equal(deliverable.limits.maxRecords, 1);
     assert.equal(deliverable.limits.maxSerializedBytes, 24576);
@@ -107,6 +109,158 @@ test("legal coverage next-batch exposes one bounded deterministic repair slice",
     assert.equal(facts.items[0]?.factId, "F-001");
     assert.equal(facts.items[0]?.requiredStatus, "covered");
     assert.equal(facts.serializedBytes <= 24576, true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage apply-batch atomically updates only the current bounded slice", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-apply-batch-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const coveragePath = join(workspace, STATE_ROOT, "coverage.json");
+    const completeCoverage = JSON.parse(await readFile(coveragePath, "utf8")) as {
+      deliverables: Array<Record<string, unknown>>;
+      facts: Array<Record<string, unknown>>;
+    };
+    await writeJson(coveragePath, {
+      schemaVersion: 1,
+      deliverables: [],
+      sources: [],
+      facts: [],
+      issues: [],
+      authorities: [],
+    });
+
+    const schemaResult = await runCli(workspace, "schema");
+    assert.equal(schemaResult.exitCode, 0, schemaResult.stderr);
+    const schema = JSON.parse(schemaResult.stdout) as { limits: { maxRecords: number; maxSerializedBytes: number } };
+    assert.deepEqual(schema.limits, { maxRecords: 12, maxSerializedBytes: 24576 });
+
+    const batchResult = await runCli(workspace, "next-batch", "--phase", "coverage");
+    assert.equal(batchResult.exitCode, 0, batchResult.stderr);
+    const batch = JSON.parse(batchResult.stdout) as { stateHash: string; group: string };
+    assert.equal(batch.group, "deliverables");
+
+    const patchDirectory = join(workspace, STATE_ROOT, "patches");
+    await mkdir(patchDirectory, { recursive: true });
+    const patchPath = join(patchDirectory, "deliverables.json");
+    const patch = {
+      schemaVersion: 1,
+      phase: "coverage",
+      group: "deliverables",
+      expectedStateHash: batch.stateHash,
+      items: completeCoverage.deliverables,
+    };
+    await writeJson(patchPath, patch);
+
+    const applied = await runCli(
+      workspace,
+      "apply-batch",
+      "--phase",
+      "coverage",
+      "--input-file",
+      `${STATE_ROOT}/patches/deliverables.json`,
+    );
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const appliedResult = JSON.parse(applied.stdout) as {
+      applied: boolean;
+      group: string;
+      updated: number;
+      errorCountBefore: number;
+      errorCountAfter: number;
+      nextBatch: { group: string; stateHash: string };
+    };
+    assert.equal(appliedResult.applied, true);
+    assert.equal(appliedResult.group, "deliverables");
+    assert.equal(appliedResult.updated, 1);
+    assert.equal(appliedResult.errorCountAfter < appliedResult.errorCountBefore, true);
+    assert.equal(appliedResult.nextBatch.group, "facts");
+    assert.match(appliedResult.nextBatch.stateHash, /^[a-f0-9]{64}$/u);
+    const afterApply = JSON.parse(await readFile(coveragePath, "utf8")) as { deliverables: unknown[]; facts: unknown[] };
+    assert.deepEqual(afterApply.deliverables, completeCoverage.deliverables);
+    assert.deepEqual(afterApply.facts, []);
+
+    const staleBytes = await readFile(coveragePath);
+    const stale = await runCli(
+      workspace,
+      "apply-batch",
+      "--phase",
+      "coverage",
+      "--input-file",
+      `${STATE_ROOT}/patches/deliverables.json`,
+    );
+    assert.equal(stale.exitCode, 1);
+    assert.match(stale.stderr, /"code":"stale_state_hash"/u);
+    assert.deepEqual(await readFile(coveragePath), staleBytes);
+
+    const factPatchPath = join(patchDirectory, "facts.json");
+    await writeJson(factPatchPath, {
+      schemaVersion: 1,
+      phase: "coverage",
+      group: "facts",
+      expectedStateHash: appliedResult.nextBatch.stateHash,
+      items: [{ ...completeCoverage.facts[0], factId: "F-out-of-scope" }],
+    });
+    const beforeOutOfScope = await readFile(coveragePath);
+    const outOfScope = await runCli(
+      workspace,
+      "apply-batch",
+      "--phase",
+      "coverage",
+      "--input-file",
+      `${STATE_ROOT}/patches/facts.json`,
+    );
+    assert.equal(outOfScope.exitCode, 1);
+    assert.match(outOfScope.stderr, /"code":"batch_item_out_of_scope"/u);
+    assert.deepEqual(await readFile(coveragePath), beforeOutOfScope);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage apply-batch rejects record and byte limit violations before writing", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-batch-limits-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const coveragePath = join(workspace, STATE_ROOT, "coverage.json");
+    await writeJson(coveragePath, {
+      schemaVersion: 1,
+      deliverables: [],
+      sources: [],
+      facts: [],
+      issues: [],
+      authorities: [],
+    });
+    const batch = JSON.parse((await runCli(workspace, "next-batch", "--phase", "coverage")).stdout) as { stateHash: string };
+    const patchDirectory = join(workspace, STATE_ROOT, "patches");
+    await mkdir(patchDirectory, { recursive: true });
+    const patchPath = join(patchDirectory, "limit.json");
+    const before = await readFile(coveragePath);
+
+    await writeJson(patchPath, {
+      schemaVersion: 1,
+      phase: "coverage",
+      group: "deliverables",
+      expectedStateHash: batch.stateHash,
+      items: Array.from({ length: 13 }, (_, index) => ({ path: `deliverables/${index}.md`, sha256: "a".repeat(64) })),
+    });
+    const tooMany = await runCli(workspace, "apply-batch", "--phase", "coverage", "--input-file", `${STATE_ROOT}/patches/limit.json`);
+    assert.equal(tooMany.exitCode, 1);
+    assert.match(tooMany.stderr, /"code":"batch_record_limit"/u);
+    assert.deepEqual(await readFile(coveragePath), before);
+
+    await writeJson(patchPath, {
+      schemaVersion: 1,
+      phase: "coverage",
+      group: "deliverables",
+      expectedStateHash: batch.stateHash,
+      items: [{ path: "deliverables/opinion.md", sha256: "a".repeat(64), padding: "x".repeat(25_000) }],
+    });
+    const tooLarge = await runCli(workspace, "apply-batch", "--phase", "coverage", "--input-file", `${STATE_ROOT}/patches/limit.json`);
+    assert.equal(tooLarge.exitCode, 1);
+    assert.match(tooLarge.stderr, /"code":"batch_byte_limit"/u);
+    assert.deepEqual(await readFile(coveragePath), before);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

@@ -136,7 +136,7 @@ async function hasConfiguredWorkspace(workspaceRoot) {
 
 async function dynamicWorkItems(workspaceRoot, result) {
   if (result.errors[0]?.phase !== "coverage") return undefined;
-  return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048 });
+  return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
 }
 
 async function writeSessionState(workspaceRoot, candidate, value) {

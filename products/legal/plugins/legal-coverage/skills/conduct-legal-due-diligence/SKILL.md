@@ -29,7 +29,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 
 1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file and record the lowercase SHA-256 of the exact bytes inspected. If a source changes, re-inspect it and update every dependent ledger before recording the new hash.
 2. Inspect every machine-readable source completely, including all spreadsheet sheets and presentation slides. Mark a source `unreadable` only after deterministic extraction or inspection fails; record the unresolved items.
-3. Treat every configured input root as read-only. Put OCR text, extraction caches, conversion scripts, and other derived working files under `.pilotdeck/work/legal-coverage/`, never beside source documents.
+3. Treat every configured input root as read-only. Put OCR text, extraction caches, conversion scripts, bounded coverage patch files, and other derived working files under `.pilotdeck/work/legal-coverage/`, never beside source documents.
 4. Use only inspection tools already available in the runtime. Do not install system packages, language packages, plugins, or binaries during a legal task. If available deterministic fallbacks cannot read a file, mark it pending manual verification instead of mutating the host environment.
 5. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
 6. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.
@@ -61,3 +61,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 ## Completion Rule
 
 Completion is permitted only when the validator generated a current `.pilotdeck/work/legal-coverage/completion-proof.json`, the dynamic milestone reports validated state, and every other active domain skill and artifact contract has passed. A missing, manually created, stale, or prematurely generated proof is not completion.
+
+For coverage repair, use `schema`, `next-batch`, and `apply-batch`; do not rewrite
+the entire `coverage.json`. Apply only the returned group and identities with
+the returned `stateHash`, then validate before requesting another batch.
