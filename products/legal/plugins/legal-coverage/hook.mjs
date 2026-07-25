@@ -63,8 +63,8 @@ try {
     const result = await validateWorkspace({ workspaceRoot: input.cwd, writeProof: true });
     const workItems = await dynamicWorkItems(input.cwd, result);
     const digest = milestoneDigest(result, workItems);
+    output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
     if (sessionState?.lastMilestoneDigest !== digest) {
-      output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
       await writeSessionState(input.cwd, sessionPath, { active: true, lastMilestoneDigest: digest });
     }
     output.hookSpecificOutput.modelRequestPatch = {

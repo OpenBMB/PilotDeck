@@ -857,7 +857,11 @@ test("legal coverage hook activates only legal work and injects one observable m
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.equal(unchangedPreModel.hookSpecificOutput.additionalContext, undefined);
+    assert.equal(
+      unchangedPreModel.hookSpecificOutput.additionalContext,
+      preModel.hookSpecificOutput.additionalContext,
+    );
+    assert.match(unchangedPreModel.hookSpecificOutput.additionalContext ?? "", /next tool call before inspecting/u);
     assert.equal(unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageActive, true);
     assert.equal(
       (unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,

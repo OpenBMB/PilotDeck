@@ -526,7 +526,10 @@ function nextActionFor(result, occurrenceCount, command, initialize) {
   }
   const first = result.errors[0];
   if (first?.phase === "configuration") {
-    return `Initialize or repair configuration, then validate. Initializer: ${initialize}`;
+    return `Use the initializer as the next tool call before inspecting plugin or validator source. `
+      + `Replace placeholders from the user request and ${INPUT_MANIFEST_PATH}; if a required value is absent, `
+      + `record an explicit pending-confirmation value instead of delaying initialization. Initializer: ${initialize}. `
+      + `Then run: ${command}`;
   }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {

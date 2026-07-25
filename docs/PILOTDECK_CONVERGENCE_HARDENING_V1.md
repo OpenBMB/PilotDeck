@@ -161,7 +161,7 @@ agent:
     enabled: true
     mode: evaluation
     maxStagnantObservations: 2
-    maxInitialStagnantObservations: 6
+    maxInitialStagnantObservations: 8
 ```
 
 The initial limit applies only until the first changed state hash or lower
@@ -170,6 +170,12 @@ inventory, and other cold-start work without teaching Core about tool names or
 domain phases. After the first progress renewal, the stricter steady-state
 limit applies. Omitting `maxInitialStagnantObservations` preserves the previous
 behavior by defaulting it to `maxStagnantObservations`.
+
+PreModelRequest milestones are model-only request context, not persisted
+conversation messages. Active domain plugins must therefore reinject the same
+short current milestone on every request until the state changes. Digest-based
+deduplication may avoid redundant session-state writes, but it must not suppress
+the request-local next action.
 
 The report is read from the opaque `pilotdeckConvergence` model-request
 metadata field. Core does not inspect `scope`, `phase`, or `blockingCode`; it
