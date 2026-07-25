@@ -76,6 +76,12 @@ export type PilotAgentConfig = {
   subagents?: {
     timeoutMs?: number;
   };
+  /** Disabled when omitted; evaluation is currently the only fail-closed mode. */
+  progressLease?: {
+    enabled: true;
+    mode: "evaluation";
+    maxStagnantObservations: number;
+  };
 };
 
 /**

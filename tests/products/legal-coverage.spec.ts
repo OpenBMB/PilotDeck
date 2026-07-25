@@ -841,6 +841,15 @@ test("legal coverage hook activates only legal work and injects one observable m
     assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"milestone": "INIT"/u);
     assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"code": "jurisdiction_missing"/u);
     assert.equal(preModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageActive, true);
+    assert.deepEqual(preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence, {
+      schemaVersion: 1,
+      scope: "legal-coverage",
+      phase: "configuration",
+      stateHash: (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      blockingCode: "jurisdiction_missing",
+      remainingCount: 12,
+      writeBudget: { maxRecords: 12, maxSerializedBytes: 24576 },
+    });
 
     const unchangedPreModel = await runHook({
       hookEventName: "PreModelRequest",
@@ -850,6 +859,10 @@ test("legal coverage hook activates only legal work and injects one observable m
     });
     assert.equal(unchangedPreModel.hookSpecificOutput.additionalContext, undefined);
     assert.equal(unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.legalCoverageActive, true);
+    assert.equal(
+      (unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+    );
 
     const configPath = join(workspace, STATE_ROOT, "config.json");
     const config = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
@@ -880,6 +893,11 @@ test("legal coverage hook activates only legal work and injects one observable m
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"milestone": "SOURCES_READY"/u);
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxRecords": 12/u);
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxSerializedBytes": 24576/u);
+    const sourceConvergence = sourceReview.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
+      writeBudget?: { maxRecords?: number; maxSerializedBytes?: number };
+    };
+    assert.deepEqual(sourceConvergence.writeBudget, { maxRecords: 12, maxSerializedBytes: 24576 });
 
     const postCompact = await runHook({
       hookEventName: "PostCompact",

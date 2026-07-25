@@ -71,6 +71,7 @@ try {
       metadata: {
         legalCoverageActive: true,
         legalCoverageState: result.passed ? "validated" : result.errors[0]?.phase ?? "incomplete",
+        pilotdeckConvergence: convergenceReport(result, workItems),
       },
     };
   }
@@ -138,6 +139,29 @@ async function hasConfiguredWorkspace(workspaceRoot) {
 async function dynamicWorkItems(workspaceRoot, result) {
   if (result.errors[0]?.phase !== "coverage") return undefined;
   return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
+}
+
+function convergenceReport(result, workItems) {
+  const first = result.errors[0];
+  return {
+    schemaVersion: 1,
+    scope: "legal-coverage",
+    phase: result.passed ? "complete" : first?.phase ?? "incomplete",
+    stateHash: result.stateHash,
+    ...(first?.code ? { blockingCode: first.code } : {}),
+    remainingCount: result.errors.length,
+    ...(workItems ? {
+      nextBatch: {
+        group: workItems.group,
+        returned: workItems.returned,
+        hasMore: workItems.hasMore,
+      },
+    } : {}),
+    writeBudget: {
+      maxRecords: workItems?.limits?.maxRecords ?? 12,
+      maxSerializedBytes: workItems?.limits?.maxSerializedBytes ?? 24576,
+    },
+  };
 }
 
 async function writeSessionState(workspaceRoot, candidate, value) {

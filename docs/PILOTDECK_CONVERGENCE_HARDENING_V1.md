@@ -153,6 +153,30 @@ The default production behavior remains backward compatible until the new
 policy is explicitly enabled. Evaluation campaigns freeze the selected mode in
 deployment metadata.
 
+The current Core implementation uses the explicit opt-in config below:
+
+```yaml
+agent:
+  progressLease:
+    enabled: true
+    mode: evaluation
+    maxStagnantObservations: 2
+```
+
+The report is read from the opaque `pilotdeckConvergence` model-request
+metadata field. Core does not inspect `scope`, `phase`, or `blockingCode`; it
+only compares `stateHash` and `remainingCount`. Once one unchanged observation
+has been seen, the next request asks the context runtime for a full compaction
+boundary. A rejected or unavailable boundary fails the evaluation before the
+next model call. An accepted boundary gives exactly one model turn to make
+progress; an unchanged report after that boundary fails closed. This ordering
+matches the AgentLoop lifecycle, where compaction runs before `PreModelRequest`
+and the report describes the previous tool turn.
+
+The policy emits a `progress_lease_evaluated` event with the decision and
+boundary outcome. The event contains no legal content and is safe for runner
+metadata and replay fixtures.
+
 ### 5.4 Source lineage
 
 Legal completion proof must bind this chain:
@@ -281,4 +305,3 @@ Stop before a live experiment if:
   or a reviewed descendant;
 - deployment controls differ between baseline and Candidate;
 - the corpus lock changes.
-

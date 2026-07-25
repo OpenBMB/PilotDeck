@@ -1,0 +1,26 @@
+Formal gate command:
+
+    npm test
+
+Result:
+
+    235 tests
+    235 passed
+    0 failed
+    0 cancelled
+    0 skipped
+
+Focused command after build:
+
+    node --test --test-force-exit --test-timeout 60000 \
+      dist/tests/agent/progress-lease.spec.js \
+      dist/tests/agent/agent-loop-runtime-controls.spec.js \
+      dist/tests/context/auto-compaction-observability.spec.js \
+      dist/tests/pilot/config/progress-lease.spec.js \
+      dist/tests/products/legal-coverage.spec.js
+
+Focused result: 42 passed, 0 failed.
+
+The raw full-gate output was captured transiently at
+`/tmp/pilotdeck-convergence-npm-test.log`; it contained no secrets or model
+payloads and is summarized above rather than copied into this evidence bundle.

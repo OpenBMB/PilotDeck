@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
 import type { TokenBudgetSnapshot } from "../../src/context/budget/TokenBudgetManager.js";
 import type { CanonicalMessage } from "../../src/model/index.js";
+import { ProgressLease } from "../../src/agent/convergence/ProgressLease.js";
 
 const messages: CanonicalMessage[] = [{
   role: "user",
@@ -50,6 +51,20 @@ test("auto compaction marks a budget-clearing summary as applied", async () => {
   assert.equal(result.trace?.finalSnapshot.state, "ok");
 });
 
+test("progress policy can force a full boundary while the token budget is still healthy", async () => {
+  const runtime = createRuntime();
+  const result = await runtime.tryAutoCompact({
+    messages,
+    forceFull: true,
+    budgetEvaluator: async () => snapshot("ok", 40_000, 0.4),
+  });
+
+  assert.equal(result.type, "compacted");
+  assert.equal(result.trace?.triggered, true);
+  assert.deepEqual(result.trace?.attemptedTiers, ["full"]);
+  assert.equal(result.trace?.appliedTier, "full");
+});
+
 test("sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions", async () => {
   const fixture = JSON.parse(await readFile(
     resolve("tests/fixtures/convergence/case-09-context-replay.json"),
@@ -72,6 +87,31 @@ test("sanitized Case 09 replay retains enough evidence to detect rejected blocki
   );
   assert.ok(rejectedBlocking.length > fixture.expectedPolicy.evaluation.maxConsecutiveRejectedBlockingCompactions);
   assert.equal(fixture.expectedPolicy.evaluation.decision, "fail_closed");
+
+  const lease = new ProgressLease({
+    enabled: true,
+    mode: "evaluation",
+    maxStagnantObservations: fixture.expectedPolicy.evaluation.maxConsecutiveRejectedBlockingCompactions,
+  });
+  const report = {
+    schemaVersion: 1 as const,
+    scope: "sanitized-case-09",
+    phase: "coverage",
+    stateHash: "opaque-replay-state",
+    blockingCode: "opaque-blocker",
+    remainingCount: 13,
+  };
+  let decision: string | undefined;
+  for (const transition of rejectedBlocking.slice(0, 3)) {
+    const boundaryRequested = lease.shouldForceBoundary();
+    decision = lease.observe(report, {
+      requested: boundaryRequested,
+      attempted: transition.compaction?.attempted === true,
+      applied: transition.compaction?.applied === true,
+      rejectionReason: transition.compaction?.applied === false ? "post_compact_blocking" : undefined,
+    })?.decision;
+  }
+  assert.equal(decision, "fail_closed");
 });
 
 function createRuntime(): DefaultContextRuntime {

@@ -66,6 +66,8 @@ export type AgentContextRuntime = {
     maxContextTokens?: number;
     reservedOutputTokens?: number;
     lastUsage?: CanonicalUsage;
+    /** Force a full accepted compaction boundary for an external progress policy. */
+    forceFull?: boolean;
     budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult>;
 };

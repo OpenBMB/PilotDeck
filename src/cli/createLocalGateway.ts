@@ -1317,6 +1317,7 @@ class ProjectRuntimeRegistry {
       maxContextTokens,
       maxOutputTokens,
       thinking: agent.thinking,
+      progressLease: agent.progressLease,
       permissionContext: createDefaultPermissionContext({
         cwd,
         mode: permissionMode,

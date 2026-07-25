@@ -67,6 +67,12 @@ import {
   createVisibleErrorStatusDetail,
   type AgentStatusI18nDescriptor,
 } from "../../status/agentStatus.js";
+import {
+  CONVERGENCE_METADATA_KEY,
+  ProgressLease,
+  parseConvergenceReport,
+  type ProgressBoundaryOutcome,
+} from "../convergence/ProgressLease.js";
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -256,6 +262,7 @@ export class AgentLoop {
     let lastToolFailureFingerprint: string | undefined;
     let transientPromptCounter = 0;
     const activeTransientPromptIds = new Set<string>();
+    const progressLease = new ProgressLease(this.config.progressLease);
 
     const pushTransientSyntheticPrompt = (prompt: string, purpose: string): void => {
       const transientId = this.dependencies.uuid?.() ?? `transient-${++transientPromptCounter}`;
@@ -356,6 +363,12 @@ export class AgentLoop {
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
+      const forceProgressBoundary = progressLease.shouldForceBoundary();
+      const progressBoundary: ProgressBoundaryOutcome = {
+        requested: forceProgressBoundary,
+        attempted: false,
+        applied: false,
+      };
       const preRoutingMaxContextTokens = this.currentMaxContextTokens(this.config.provider, this.config.model);
       if (ctx?.tryAutoCompact) {
         try {
@@ -365,11 +378,15 @@ export class AgentLoop {
             abortSignal: input.abortSignal,
             reservedOutputTokens,
             lastUsage: lastModelUsage,
+            forceFull: forceProgressBoundary,
             budgetEvaluator: this.createBudgetEvaluator(input, {
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
           });
+          progressBoundary.attempted = compact.trace?.attemptedTiers.includes("full") === true;
+          progressBoundary.applied = compact.type === "compacted" && compact.tier === "full";
+          progressBoundary.rejectionReason = compact.trace?.rejectionReason;
           if (compact.trace?.triggered) {
             yield {
               type: "context_compaction_evaluated",
@@ -451,6 +468,40 @@ export class AgentLoop {
         return { result, messages };
       }
       request = transformedRequest.request;
+      const convergenceReport = parseConvergenceReport(request.metadata?.[CONVERGENCE_METADATA_KEY]);
+      if (convergenceReport) {
+        const progress = progressLease.observe(convergenceReport, progressBoundary);
+        if (progress) {
+          yield {
+            type: "progress_lease_evaluated",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            ...progress,
+          };
+          if (progress.decision === "fail_closed") {
+            const error = agentError(
+              "agent_convergence_stalled",
+              `Progress lease for scope ${JSON.stringify(progress.scope)} stopped this evaluation after ${progress.stagnantObservations} stagnant observations (${progress.reason ?? "stalled"}).`,
+              { ...progress, boundary: progressBoundary },
+              "Inspect the preserved artifacts and convergence events before changing the domain validator or retrying.",
+            );
+            const result = this.createTurnResult(input, {
+              type: "error",
+              stopReason: "unsupported_recovery",
+              usage,
+              permissionDenials,
+              turns: turnCount,
+              startedAt,
+              finalMessage,
+              errors: [error],
+            });
+            yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+            await captureTurn(true);
+            yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+            return { result, messages };
+          }
+        }
+      }
       yield {
         type: "model_request_started",
         sessionId: input.sessionId,

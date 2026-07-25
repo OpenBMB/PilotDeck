@@ -344,6 +344,7 @@ export class DefaultContextRuntime implements ContextRuntime {
     maxContextTokens?: number;
     reservedOutputTokens?: number;
     lastUsage?: CanonicalUsage;
+    forceFull?: boolean;
     budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult> {
     const effectiveMaxContextTokens = input.maxContextTokens ?? this.maxContextTokens;
@@ -372,6 +373,14 @@ export class DefaultContextRuntime implements ContextRuntime {
           }));
     const initialSnapshot = await evaluateBudget(messages, input.lastUsage);
     const decision = this.autoCompactionPolicy.evaluateSnapshot(initialSnapshot);
+    if (input.forceFull) {
+      return this.runFullCompactionBoundary({
+        messages,
+        input,
+        initialSnapshot,
+        evaluateBudget,
+      });
+    }
     if (decision.type !== "trigger") {
       return {
         type: "skipped",
@@ -515,6 +524,77 @@ export class DefaultContextRuntime implements ContextRuntime {
         rejectionReason: "no_effective_compactor",
         initialSnapshot,
         finalSnapshot: decision.snapshot,
+      },
+    };
+  }
+
+  private async runFullCompactionBoundary(input: {
+    messages: CanonicalMessage[];
+    input: { abortSignal?: AbortSignal };
+    initialSnapshot: TokenBudgetSnapshot;
+    evaluateBudget: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
+  }): Promise<AutoCompactResult> {
+    if (!this.compactionEngine) {
+      return {
+        type: "skipped",
+        snapshot: input.initialSnapshot,
+        trace: {
+          triggered: true,
+          attemptedTiers: [],
+          rejectionReason: "no_effective_compactor",
+          initialSnapshot: input.initialSnapshot,
+          finalSnapshot: input.initialSnapshot,
+        },
+      };
+    }
+    const result = await this.compactionEngine.run({
+      trigger: "auto",
+      messages: input.messages,
+      signal: input.input.abortSignal,
+    });
+    if (result.error || !result.summaryMessage) {
+      return {
+        type: "skipped",
+        snapshot: input.initialSnapshot,
+        trace: {
+          triggered: true,
+          attemptedTiers: ["full"],
+          rejectionReason: "summary_failed",
+          summarySucceeded: false,
+          initialSnapshot: input.initialSnapshot,
+          finalSnapshot: input.initialSnapshot,
+        },
+      };
+    }
+    const messages = ensureTrailingUserMessage(buildPostCompactMessages(result));
+    const snapshot = await input.evaluateBudget(messages);
+    if (snapshot.state === "blocking") {
+      return {
+        type: "skipped",
+        snapshot,
+        trace: {
+          triggered: true,
+          attemptedTiers: ["full"],
+          rejectionReason: "post_compact_blocking",
+          summarySucceeded: true,
+          initialSnapshot: input.initialSnapshot,
+          finalSnapshot: snapshot,
+        },
+      };
+    }
+    return {
+      type: "compacted",
+      messages,
+      tier: "full",
+      snapshot,
+      result,
+      trace: {
+        triggered: true,
+        attemptedTiers: ["full"],
+        appliedTier: "full",
+        summarySucceeded: true,
+        initialSnapshot: input.initialSnapshot,
+        finalSnapshot: snapshot,
       },
     };
   }

@@ -1,4 +1,13 @@
 export { AgentLoop, type AgentLoopInput, type AgentLoopRunResult } from "./loop/AgentLoop.js";
+export {
+  CONVERGENCE_METADATA_KEY,
+  ProgressLease,
+  parseConvergenceReport,
+  type ConvergenceReport,
+  type ProgressBoundaryOutcome,
+  type ProgressLeaseConfig,
+  type ProgressLeaseObservation,
+} from "./convergence/ProgressLease.js";
 export { collectToolCalls } from "./loop/collectToolCalls.js";
 export { decideLoopContinuation, type LoopContinuationDecision } from "./loop/decideLoopContinuation.js";
 export { createMissingToolResult, ensureToolResultPairing } from "./loop/ensureToolResultPairing.js";

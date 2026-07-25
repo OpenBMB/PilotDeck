@@ -347,6 +347,7 @@ function parseAgent(
 
   const model = parseAgentModelSelection(rawAgent.model, "agent.model", modelConfig, diagnostics);
   const subagents = parseAgentSubagents(rawAgent.subagents, diagnostics);
+  const progressLease = parseAgentProgressLease(rawAgent.progressLease, diagnostics);
   const maxContextTokens = readOptionalPositiveInteger(rawAgent.maxContextTokens, "agent.maxContextTokens");
   const maxOutputTokens = readOptionalPositiveInteger(rawAgent.maxOutputTokens, "agent.maxOutputTokens");
   const thinking = parseAgentThinking(rawAgent.thinking);
@@ -368,7 +369,46 @@ function parseAgent(
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(thinking ? { thinking } : {}),
     ...(subagents ? { subagents } : {}),
+    ...(progressLease ? { progressLease } : {}),
   };
+}
+
+function parseAgentProgressLease(
+  value: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+): PilotAgentConfig["progressLease"] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) {
+    throw new PilotConfigError("CONFIG_AGENT_PROGRESS_LEASE_INVALID", "agent.progressLease must be an object.");
+  }
+  for (const key of Object.keys(value)) {
+    if (!["enabled", "mode", "maxStagnantObservations"].includes(key)) {
+      diagnostics.push({
+        code: "CONFIG_AGENT_UNKNOWN_FIELD",
+        severity: "warning",
+        message: `Unknown agent.progressLease field ${key}.`,
+        path: `agent.progressLease.${key}`,
+        recoverable: true,
+      });
+    }
+  }
+  if (value.enabled !== true) return undefined;
+  if (value.mode !== "evaluation") {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_PROGRESS_LEASE_MODE_INVALID",
+      "agent.progressLease.mode must be evaluation when the progress lease is enabled.",
+    );
+  }
+  const maxStagnantObservations = value.maxStagnantObservations === undefined
+    ? 2
+    : readOptionalPositiveInteger(value.maxStagnantObservations, "agent.progressLease.maxStagnantObservations");
+  if (maxStagnantObservations === undefined || maxStagnantObservations < 2 || maxStagnantObservations > 10) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_PROGRESS_LEASE_LIMIT_INVALID",
+      "agent.progressLease.maxStagnantObservations must be an integer from 2 through 10.",
+    );
+  }
+  return { enabled: true, mode: "evaluation", maxStagnantObservations };
 }
 
 function parseAgentThinking(value: unknown): PilotAgentConfig["thinking"] | undefined {

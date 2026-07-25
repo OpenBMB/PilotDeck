@@ -49,6 +49,19 @@ export type AgentEvent =
       postRatio: number;
     }
   | { type: "context_budget"; sessionId: string; turnId: string; snapshot: TokenBudgetSnapshot }
+  | {
+      type: "progress_lease_evaluated";
+      sessionId: string;
+      turnId: string;
+      scope: string;
+      phase: string;
+      blockingCode?: string;
+      remainingCount: number;
+      stagnantObservations: number;
+      decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "fail_closed";
+      forceBoundaryNext: boolean;
+      reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
+    }
   | { type: "warning"; sessionId: string; turnId: string; code: string; message: string; metadata?: Record<string, unknown> }
   | { type: "agent_status"; sessionId: string; turnId: string; event: string; detail?: Record<string, unknown> }
   | {

@@ -1,6 +1,7 @@
 import type { CanonicalThinkingConfig, CanonicalToolChoice, MultimodalConstraints } from "../../model/index.js";
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
+import type { ProgressLeaseConfig } from "../convergence/ProgressLease.js";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -52,4 +53,6 @@ export type AgentRuntimeConfig = {
    * post-routing compaction pass when the routed window is smaller.
    */
   maxContextTokens?: number;
+  /** Explicitly enabled generic convergence guard. Disabled when omitted. */
+  progressLease?: ProgressLeaseConfig;
 };

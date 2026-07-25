@@ -101,6 +101,114 @@ test("PreModelRequest mutations survive a post-routing request rebuild and remai
   assert.equal(dynamicContext.hasPending("session-1"), false);
 });
 
+test("evaluation progress lease stops before a third unchanged model request when full compaction is rejected", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const defaultContext = new DefaultContextRuntime();
+  let compactCalls = 0;
+  const context: AgentContextRuntime = {
+    prepareForModel: (input) => defaultContext.prepareForModel(input),
+    commitPreparedContext: (input) => defaultContext.commitPreparedContext(input),
+    async tryAutoCompact(input) {
+      compactCalls += 1;
+      if (!input.forceFull) return { type: "skipped", snapshot: budgetSnapshot(10_000) };
+      return {
+        type: "skipped",
+        snapshot: budgetSnapshot(10_000),
+        trace: {
+          triggered: true,
+          attemptedTiers: ["full"],
+          rejectionReason: "post_compact_blocking",
+          summarySucceeded: true,
+          initialSnapshot: budgetSnapshot(10_000),
+          finalSnapshot: { ...budgetSnapshot(10_000), state: "blocking", ratio: 1.1 },
+        },
+      };
+    },
+  };
+  const router = {
+    async decide(input: { request: CanonicalModelRequest }): Promise<RouterDecision> {
+      return {
+        provider: input.request.provider,
+        model: input.request.model,
+        scenarioType: "default" as const,
+        isSubagent: false,
+        orchestrating: false,
+        resolvedFrom: "scenario" as const,
+        mutations: {},
+      };
+    },
+    async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+      requests.push(request);
+      const toolCall = { id: `noop-${requests.length}`, name: "noop", input: {} };
+      yield { type: "message_start", role: "assistant" };
+      yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+      yield { type: "tool_call_end", toolCall };
+      yield { type: "message_end", finishReason: "tool_call" };
+    },
+    async *stream(): AsyncIterable<CanonicalModelEvent> {
+      throw new Error("stream fallback should not be used");
+    },
+  };
+  const dependencies = createDependencies(requests, {
+    context,
+    router,
+    lifecycle: {
+      async dispatch(input: { event: string }) {
+        if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+        return {
+          ...emptyLifecycleResult(),
+          effects: [{
+            type: "model_request_patch" as const,
+            patch: {
+              metadata: {
+                pilotdeckConvergence: {
+                  schemaVersion: 1,
+                  scope: "synthetic-validation",
+                  phase: "coverage",
+                  stateHash: "unchanged",
+                  blockingCode: "missing_rows",
+                  remainingCount: 4,
+                },
+              },
+            },
+          }],
+        };
+      },
+    } as never,
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: {
+        async executeAll(calls) {
+          return calls.map((call) => ({
+            type: "success" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text" as const, text: "no state change" }],
+            startedAt: "2026-07-22T00:00:00.000Z",
+            completedAt: "2026-07-22T00:00:00.000Z",
+          }));
+        },
+      },
+    },
+  });
+  const loop = new AgentLoop(createConfig(process.cwd(), {
+    maxContextTokens: 10_000,
+    progressLease: { enabled: true, mode: "evaluation", maxStagnantObservations: 2 },
+  }), dependencies);
+
+  const completed = await drainLoop(loop.run({
+    sessionId: "session-lease",
+    turnId: "turn-lease",
+    messages: [userMessage("repair the synthetic state")],
+  }));
+
+  assert.equal(completed.result.type, "error");
+  assert.equal(completed.result.errors?.[0]?.code, "agent_convergence_stalled");
+  assert.equal(completed.result.errors?.[0]?.details && (completed.result.errors[0].details as { reason?: string }).reason, "boundary_rejected");
+  assert.equal(requests.length, 2);
+  assert.equal(compactCalls, 3);
+});
+
 test("artifact failure injects one bounded correction turn and succeeds after validation", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-agent-loop-artifact-"));
   try {

@@ -1636,6 +1636,21 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         ratio: event.snapshot.ratio,
         state: event.snapshot.state,
       }];
+    case "progress_lease_evaluated":
+      return [{
+        type: "agent_status",
+        event: "progress_lease_evaluated",
+        detail: {
+          scope: event.scope,
+          phase: event.phase,
+          blockingCode: event.blockingCode,
+          remainingCount: event.remainingCount,
+          stagnantObservations: event.stagnantObservations,
+          decision: event.decision,
+          forceBoundaryNext: event.forceBoundaryNext,
+          reason: event.reason,
+        },
+      }];
     case "warning":
       return [{
         type: "agent_status",
