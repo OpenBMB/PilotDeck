@@ -117,6 +117,82 @@ test("legal coverage initializer creates a text skeleton before source review an
   }
 });
 
+test("legal coverage initializer binds trusted manifests to original inputs", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-manifest-init-"));
+  const missingManifestWorkspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-manifest-missing-"));
+  const originalRoot = ".pilotdeck/inputs/original";
+  const derivedRoot = ".pilotdeck/inputs/derived";
+  try {
+    await mkdir(join(workspace, originalRoot), { recursive: true });
+    await mkdir(join(workspace, derivedRoot), { recursive: true });
+    await writeJson(join(workspace, ".pilotdeck/input-manifest.json"), {
+      schemaVersion: 1,
+      createdBy: "pilotdeck-eval-runner",
+      originalRoot,
+      derivedRoot,
+      entries: [],
+    });
+
+    await runHook({
+      hookEventName: "UserPromptSubmit",
+      sessionId: "manifest-bound-init",
+      transcriptPath: "",
+      cwd: workspace,
+      prompt: "Please conduct legal due diligence and issue a legal opinion.",
+      internal: false,
+    });
+    const preModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "manifest-bound-init",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"initializerCommand":/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /--input-from-manifest/u);
+    assert.doesNotMatch(preModel.hookSpecificOutput.additionalContext ?? "", /--input \.pilotdeck\/inputs\/derived/u);
+
+    const initialized = await runCli(
+      workspace,
+      "init",
+      "--input-from-manifest",
+      "--deliverable", "opinion=opinion.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(initialized.exitCode, 0, initialized.stderr);
+    const config = JSON.parse(await readFile(join(workspace, STATE_ROOT, "config.json"), "utf8")) as {
+      inputRoots: string[];
+    };
+    assert.deepEqual(config.inputRoots, [originalRoot]);
+
+    const ambiguous = await runCli(
+      workspace,
+      "init",
+      "--input-from-manifest",
+      "--input", derivedRoot,
+      "--deliverable", "opinion=opinion.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(ambiguous.exitCode, 1);
+    assert.match(ambiguous.stderr, /legal_coverage_init_input_ambiguous/u);
+
+    const missingManifest = await runCli(
+      missingManifestWorkspace,
+      "init",
+      "--input-from-manifest",
+      "--deliverable", "opinion=opinion.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(missingManifest.exitCode, 1);
+    assert.match(missingManifest.stderr, /legal_coverage_init_manifest_unavailable/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(missingManifestWorkspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage CLI exposes bundled guidance through stable named references", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-reference-"));
   try {

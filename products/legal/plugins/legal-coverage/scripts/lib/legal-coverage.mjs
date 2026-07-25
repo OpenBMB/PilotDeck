@@ -476,6 +476,14 @@ export async function validateWorkspace(options) {
     stateHash,
     errors,
     warnings,
+    ...(context.inputManifest
+      ? { inputManifest: {
+          path: INPUT_MANIFEST_PATH,
+          sha256: context.inputManifest.sha256,
+          originalRoot: context.inputManifest.originalRoot,
+          derivedRoot: context.inputManifest.derivedRoot,
+        } }
+      : {}),
     counts: {
       sources: context.sourceIds.size,
       facts: context.factIds.size,
@@ -498,7 +506,7 @@ export function milestoneFor(result, cliPath) {
   const first = result.errors[0];
   const sameCode = result.errors.filter((error) => error.code === first?.code);
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
-  const initialize = `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" --input <source-root> --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+  const initialize = initializerCommandFor(result, cliPath);
   const reference = referenceCommandFor(first?.phase, cliPath);
   return [
     `Legal coverage milestone (${first?.phase ?? "configuration"}): fix validator code ${first?.code ?? "state_file_invalid"} now.`,
@@ -536,7 +544,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const first = result.errors[0];
   const sameCode = result.errors.filter((error) => error.code === first?.code);
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
-  const initialize = `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" --input <source-root> --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+  const initialize = initializerCommandFor(result, cliPath);
   const reference = referenceCommandFor(first?.phase, cliPath);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
@@ -564,12 +572,20 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     }],
     progress: result.counts,
     ...(result.passed ? {} : { workBatch: workBatchFor(first?.phase) }),
+    ...(first?.phase === "configuration" ? { initializerCommand: initialize } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
     nextAction: nextActionFor(result, sameCode.length, command, initialize, reference),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
+}
+
+function initializerCommandFor(result, cliPath) {
+  const inputOption = result.inputManifest?.originalRoot
+    ? "--input-from-manifest"
+    : "--input <source-root>";
+  return `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" ${inputOption} --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
 }
 
 function milestoneName(result) {

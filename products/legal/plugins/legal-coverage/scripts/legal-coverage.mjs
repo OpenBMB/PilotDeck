@@ -23,10 +23,28 @@ if (command === "init") {
     const initialized = await ensureWorkspace(workspaceRoot);
     const config = JSON.parse(await readFile(initialized.paths.config, "utf8"));
     const inputs = readOptions(args, "--input");
+    const inputFromManifest = args.includes("--input-from-manifest");
     const deliverables = readOptions(args, "--deliverable");
     const jurisdiction = readOption(args, "--jurisdiction");
     const basisDate = readOption(args, "--basis-date");
-    if (inputs.length > 0) config.inputRoots = [...new Set(inputs)];
+    if (inputFromManifest && inputs.length > 0) {
+      throw initCliError(
+        "legal_coverage_init_input_ambiguous",
+        "init accepts either --input-from-manifest or explicit --input values, not both.",
+      );
+    }
+    if (inputFromManifest) {
+      const manifestValidation = await validateWorkspace({ workspaceRoot, writeProof: false });
+      if (!manifestValidation.inputManifest?.originalRoot) {
+        throw initCliError(
+          "legal_coverage_init_manifest_unavailable",
+          "--input-from-manifest requires a valid .pilotdeck/input-manifest.json with a safe originalRoot.",
+        );
+      }
+      config.inputRoots = [manifestValidation.inputManifest.originalRoot];
+    } else if (inputs.length > 0) {
+      config.inputRoots = [...new Set(inputs)];
+    }
     if (deliverables.length > 0) {
       config.deliverables = deliverables.map((value, index) => {
         const separator = value.indexOf("=");
@@ -120,7 +138,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 
@@ -138,6 +156,12 @@ function readOptions(args, name) {
 }
 
 function batchCliError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function initCliError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;

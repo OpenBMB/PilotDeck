@@ -38,6 +38,12 @@ The command creates state under `.pilotdeck/work/legal-coverage/`. Source legal
 materials and generated work state remain project-local; they are not part of
 this product bundle.
 
+When a trusted evaluation runtime provides `.pilotdeck/input-manifest.json`,
+replace `--input source-room` with `--input-from-manifest`. The initializer
+then resolves the manifest's validated `originalRoot` itself and rejects mixing
+that mode with explicit `--input` values. Dynamic Legal Plugin milestones expose
+the correct choice as `initializerCommand`.
+
 ## Validate
 
 ```bash
