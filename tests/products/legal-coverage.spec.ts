@@ -326,6 +326,9 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(new Set(result.sourceReviewPlan.batches.map((batch) => batch.fragmentPath)).size, 2);
     assert.equal(result.sourceReviewPlan.batches[0]?.agentInput.subagent_type, "general-purpose");
     assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /Assigned source IDs:/u);
+    assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /fragmentType=legal-evidence-source-batch-review/u);
+    assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /facts must be an array of \{locator, statement\}/u);
+    assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /Do not use aliases such as reviews/u);
     assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /Do not edit canonical legal-coverage ledgers/u);
     assert.equal(result.sourceReviewPlan.workerContract.mustNotWrite.includes("canonical legal-coverage ledgers"), true);
 
@@ -349,6 +352,113 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(context, /Pass each batch\.agentInput object to the agent tool verbatim/u);
     assert.match(context, /do not re-list sources that are already partitioned/u);
     assert.match(context, /execute guidanceCommand if it has not already been loaded/u);
+
+    const dispatchHash = (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash?: string;
+    } | undefined)?.stateHash;
+    const ledger = JSON.parse(await readFile(join(workspace, STATE_ROOT, "sources.json"), "utf8")) as {
+      sources: Array<{ id: string; path: string }>;
+    };
+    const pathById = new Map(ledger.sources.map((source) => [source.id, source.path]));
+    const fragmentRoot = join(workspace, STATE_ROOT, "fragments");
+    await mkdir(fragmentRoot, { recursive: true });
+
+    const firstBatch = result.sourceReviewPlan.batches[0]!;
+    await writeJson(join(workspace, firstBatch.fragmentPath), {
+      schemaVersion: 1,
+      fragmentType: "legal-evidence-source-batch-review",
+      fragmentId: firstBatch.id,
+      assignedSourceIds: firstBatch.sourceIds,
+      reviews: [],
+    });
+    const invalidReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(invalidReceipt.hookSpecificOutput.additionalContext ?? "", /"group": "pending-source-review"/u);
+    assert.equal(
+      (invalidReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      dispatchHash,
+    );
+
+    for (const batch of result.sourceReviewPlan.batches) {
+      await writeJson(join(workspace, batch.fragmentPath), {
+        schemaVersion: 1,
+        fragmentType: "legal-evidence-source-batch-review",
+        fragmentId: batch.id,
+        assignedSourceIds: batch.sourceIds,
+        sources: batch.sourceIds.map((sourceId) => ({
+          sourceId,
+          sourcePath: pathById.get(sourceId),
+          inspectionMethod: "verified derived text inspection",
+          facts: [{ locator: "converted.txt:1", statement: `Reviewed ${sourceId}.` }],
+          evidenceClass: "other",
+          verificationState: "verified",
+          conflicts: [],
+          unresolvedItems: [],
+          proposedMateriality: "non-material",
+        })),
+      });
+    }
+    const mergeReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const mergeContext = mergeReceipt.hookSpecificOutput.additionalContext ?? "";
+    assert.match(mergeContext, /"group": "source-fragment-merge"/u);
+    assert.match(mergeContext, /"mode": "main-agent-merge"/u);
+    assert.match(mergeContext, /"returned": 4/u);
+    assert.match(mergeContext, /A validated worker receipt is ready/u);
+    assert.match(mergeContext, /sibling read_file calls for current sources\.json and facts\.json/u);
+    assert.match(mergeContext, /"sourceFragmentCommand":/u);
+    assert.match(mergeContext, /fragment-slice/u);
+    assert.match(mergeContext, /merge only source IDs/u);
+    assert.match(mergeContext, /Do not re-dispatch workers or re-read raw sources/u);
+    const mergeConvergence = mergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash?: string;
+      nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
+      writeBudget?: { maxRecords?: number; maxSerializedBytes?: number };
+    };
+    assert.notEqual(mergeConvergence.stateHash, dispatchHash);
+    assert.deepEqual(mergeConvergence.nextBatch, {
+      group: "source-fragment-merge",
+      returned: 4,
+      hasMore: true,
+    });
+    assert.deepEqual(mergeConvergence.writeBudget, { maxRecords: 4, maxSerializedBytes: 24576 });
+
+    const firstReceiptHash = sha256(await readFile(join(workspace, firstBatch.fragmentPath)));
+    const fragmentSlice = await runCli(
+      workspace,
+      "fragment-slice",
+      "--fragment", firstBatch.fragmentPath,
+      "--receipt-sha256", firstReceiptHash,
+      ...firstBatch.sourceIds.slice(0, 4).flatMap((sourceId) => ["--source-id", sourceId]),
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(fragmentSlice.exitCode, 0, fragmentSlice.stderr);
+    const fragmentSliceResult = JSON.parse(fragmentSlice.stdout) as {
+      receiptSha256: string;
+      sources: Array<{ sourceId: string }>;
+    };
+    assert.equal(fragmentSliceResult.receiptSha256, firstReceiptHash);
+    assert.deepEqual(fragmentSliceResult.sources.map((source) => source.sourceId), firstBatch.sourceIds.slice(0, 4));
+    assert.equal(Buffer.byteLength(JSON.stringify(fragmentSliceResult)) <= 24576, true);
+
+    const staleSlice = await runCli(
+      workspace,
+      "fragment-slice",
+      "--fragment", firstBatch.fragmentPath,
+      "--receipt-sha256", "0".repeat(64),
+      "--source-id", firstBatch.sourceIds[0]!,
+    );
+    assert.equal(staleSlice.exitCode, 1);
+    assert.match(staleSlice.stderr, /source_fragment_receipt_invalid/u);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -1417,7 +1527,8 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
 });
 
 test("legal coverage milestone digest ignores opaque incomplete-state hash churn", async () => {
-  const { milestoneDigest } = await import(pathToFileURL(VALIDATOR_LIB).href) as {
+  const { convergenceStateHash, milestoneDigest } = await import(pathToFileURL(VALIDATOR_LIB).href) as {
+    convergenceStateHash: (result: Record<string, unknown>, workItems?: Record<string, unknown>) => string;
     milestoneDigest: (result: Record<string, unknown>) => string;
   };
   const incomplete = {
@@ -1433,6 +1544,14 @@ test("legal coverage milestone digest ignores opaque incomplete-state hash churn
   assert.notEqual(milestoneDigest(incomplete), milestoneDigest({
     ...incomplete,
     counts: { ...incomplete.counts, facts: 12 },
+  }));
+  assert.notEqual(convergenceStateHash(incomplete), convergenceStateHash({
+    ...incomplete,
+    stateHash: "b".repeat(64),
+  }));
+  assert.notEqual(convergenceStateHash(incomplete), convergenceStateHash(incomplete, {
+    group: "source-fragment-merge",
+    receipts: [{ id: "source-review-example", receiptSha256: "c".repeat(64) }],
   }));
 });
 

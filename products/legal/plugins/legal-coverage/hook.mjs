@@ -5,6 +5,7 @@ import {
   PROOF_PATH,
   STATE_DIRECTORY,
   activationMatches,
+  convergenceStateHash,
   ensureWorkspace,
   milestoneDigest,
   milestoneEnvelopeFor,
@@ -75,7 +76,7 @@ try {
       metadata: {
         legalCoverageActive: true,
         legalCoverageState: result.passed ? "validated" : result.errors[0]?.phase ?? "incomplete",
-        pilotdeckConvergence: convergenceReport(result, workItems),
+        pilotdeckConvergence: convergenceReport(result, workItems, convergenceStateHash(result, workItems)),
       },
     };
   }
@@ -144,7 +145,7 @@ async function dynamicWorkItems(workspaceRoot, result) {
   const first = result.errors[0];
   if (first?.phase === "sources" && first.code === "source_pending") {
     const plan = await pendingSourceReviewPlan(workspaceRoot);
-    return plan.mode === "delegated" ? plan : undefined;
+    return plan.mode === "delegated" || plan.mode === "main-agent-merge" ? plan : undefined;
   }
   if (first?.phase === "coverage") {
     return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
@@ -152,13 +153,15 @@ async function dynamicWorkItems(workspaceRoot, result) {
   return undefined;
 }
 
-function convergenceReport(result, workItems) {
+function convergenceReport(result, workItems, milestoneStateHash) {
   const first = result.errors[0];
   return {
     schemaVersion: 1,
     scope: "legal-coverage",
     phase: result.passed ? "complete" : first?.phase ?? "incomplete",
-    stateHash: result.stateHash,
+    // The domain projection includes validated operational receipts. Core keeps
+    // this value opaque and retains its existing fail-closed lease semantics.
+    stateHash: milestoneStateHash,
     ...(first?.code ? { blockingCode: first.code } : {}),
     remainingCount: result.errors.length,
     ...(workItems ? {

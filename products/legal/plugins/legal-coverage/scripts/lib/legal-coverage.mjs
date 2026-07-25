@@ -54,6 +54,11 @@ const COVERAGE_STATUSES = new Set(["covered", "unresolved"]);
 const AUTHORITY_STATUSES = new Set(["verified", "pending-verification", "not-applicable"]);
 const MATRIX_STATUSES = new Set(["pending", "complete", "not-applicable"]);
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".html", ".htm", ".csv"]);
+const SOURCE_REVIEW_FRAGMENT_PATTERN = /^source-review-[a-f0-9]{12}\.json$/u;
+const SOURCE_REVIEW_FRAGMENT_TYPE = "legal-evidence-source-batch-review";
+const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
+const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
+const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 
 export async function ensureWorkspace(workspaceRoot) {
   const workspace = resolve(workspaceRoot);
@@ -163,21 +168,31 @@ export async function bootstrapSourcesFromManifest(workspaceRoot) {
 
 export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
   const loaded = await readWorkspaceState(workspaceRoot);
-  return sourceReviewPlanFor(loaded.state.sources?.sources, options);
+  const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
+  const receipts = await validSourceReviewReceipts(workspaceRoot, sourceRows, options);
+  const mergePlan = sourceReviewMergePlanFor(sourceRows, receipts, options);
+  return mergePlan ?? sourceReviewPlanFor(sourceRows, options);
 }
 
 function sourceReviewPlanFor(sourceRows, options = {}) {
   const maxSourcesPerBatch = boundedInteger(options.maxSourcesPerBatch, 1, 12, 12);
   const maxBatches = boundedInteger(options.maxBatches, 1, 4, 4);
-  const pending = (Array.isArray(sourceRows) ? sourceRows : [])
-    .filter((source) => isRecord(source) && source.status === "pending"
-      && nonEmpty(source.id) && nonEmpty(source.path))
-    .map((source) => ({ id: source.id, path: source.path }))
+  const eligible = (Array.isArray(sourceRows) ? sourceRows : [])
+    .filter((source) => isRecord(source) && nonEmpty(source.id) && nonEmpty(source.path))
+    .map((source) => ({ id: source.id, path: source.path, status: source.status }))
     .sort((left, right) => left.path.localeCompare(right.path) || left.id.localeCompare(right.id));
-  const selected = pending.slice(0, maxSourcesPerBatch * maxBatches);
+  const pending = eligible.filter((source) => source.status === "pending");
+  const pendingIds = new Set(pending.map((source) => source.id));
+  const stableGroups = [];
+  for (let offset = 0; offset < eligible.length; offset += maxSourcesPerBatch) {
+    const rows = eligible.slice(offset, offset + maxSourcesPerBatch)
+      .filter((source) => pendingIds.has(source.id));
+    if (rows.length > 0) stableGroups.push(rows);
+  }
+  const selectedGroups = stableGroups.slice(0, maxBatches);
+  const selected = selectedGroups.flat();
   const batches = [];
-  for (let offset = 0; offset < selected.length; offset += maxSourcesPerBatch) {
-    const rows = selected.slice(offset, offset + maxSourcesPerBatch);
+  for (const rows of selectedGroups) {
     const digest = sha256(rows.map((source) => source.id).join("\0")).slice(0, 12);
     const sourceIds = rows.map((source) => source.id);
     const fragmentPath = `${STATE_DIRECTORY}/fragments/source-review-${digest}.json`;
@@ -188,14 +203,14 @@ function sourceReviewPlanFor(sourceRows, options = {}) {
       agentInput: {
         description: `Review source batch ${batches.length + 1}`,
         subagent_type: "general-purpose",
-        prompt: sourceReviewWorkerPrompt(sourceIds, fragmentPath),
+        prompt: sourceReviewWorkerPrompt(sourceIds, fragmentPath, `source-review-${digest}`),
       },
     });
   }
   return {
     phase: "sources",
     group: "pending-source-review",
-    mode: pending.length > 20 ? "delegated" : "main-agent",
+    mode: eligible.length > 20 ? "delegated" : "main-agent",
     pending: pending.length,
     returned: selected.length,
     hasMore: selected.length < pending.length,
@@ -220,6 +235,11 @@ function sourceReviewPlanFor(sourceRows, options = {}) {
         "final deliverables",
       ],
       fragmentRequiredFields: [
+        "schemaVersion",
+        "fragmentType",
+        "fragmentId",
+        "assignedSourceIds",
+        "sources",
         "sourceId",
         "sourcePath",
         "inspectionMethod",
@@ -236,16 +256,252 @@ function sourceReviewPlanFor(sourceRows, options = {}) {
   };
 }
 
-function sourceReviewWorkerPrompt(sourceIds, fragmentPath) {
+function sourceReviewWorkerPrompt(sourceIds, fragmentPath, fragmentId) {
   return [
     "Review one disjoint legal-evidence source batch in the current workspace.",
     `Assigned source IDs: ${sourceIds.join(", ")}.`,
     `Resolve only those exact rows from ${STATE_DIRECTORY}/${STATE_FILES.sources}; inspect each original and every listed derivedArtifact.`,
     `Write one JSON evidence fragment only to ${fragmentPath}.`,
-    "For every assigned source include sourceId, sourcePath, inspectionMethod, locator-grounded atomic facts, evidenceClass, verificationState, conflicts, unresolvedItems, and proposedMateriality.",
+    `Use exactly this envelope: schemaVersion=1, fragmentType=${SOURCE_REVIEW_FRAGMENT_TYPE}, fragmentId=${fragmentId}, assignedSourceIds=[the IDs above in the same order], sources=[one row per assigned ID].`,
+    "Each sources row must use exactly sourceId, sourcePath, inspectionMethod, facts, evidenceClass, verificationState, conflicts, unresolvedItems, and proposedMateriality.",
+    "facts must be an array of {locator, statement}; if empty, include a non-empty noMaterialFactsReason. conflicts and unresolvedItems must be arrays of strings.",
+    "evidenceClass must be official-record, executed-contract, company-disclosure, financial-record, third-party-record, interview, image-or-scan, or other; verificationState must be verified, partially-verified, or unverified; proposedMateriality must be non-material, material, critical, or uncertain.",
+    "Do not use aliases such as reviews, reviewBatch, atomicFacts, findings, or batchSummary. Do not add unassigned source IDs.",
     "Do not edit canonical legal-coverage ledgers, completion-proof.json, or any final deliverable.",
     "Return only the fragment path and a summary under 1000 characters.",
   ].join(" ");
+}
+
+async function validSourceReviewReceipts(workspaceRoot, sourceRows, options = {}) {
+  const maxSourcesPerBatch = boundedInteger(options.maxSourcesPerBatch, 1, 12, 12);
+  const sourceById = new Map((Array.isArray(sourceRows) ? sourceRows : [])
+    .filter((source) => isRecord(source) && nonEmpty(source.id) && nonEmpty(source.path))
+    .map((source) => [source.id, source]));
+  const stableGroupBySourceId = new Map();
+  const sortedSourceIds = [...sourceById.values()]
+    .sort((left, right) => left.path.localeCompare(right.path) || left.id.localeCompare(right.id))
+    .map((source) => source.id);
+  for (let offset = 0; offset < sortedSourceIds.length; offset += maxSourcesPerBatch) {
+    const group = Math.floor(offset / maxSourcesPerBatch);
+    for (const sourceId of sortedSourceIds.slice(offset, offset + maxSourcesPerBatch)) {
+      stableGroupBySourceId.set(sourceId, group);
+    }
+  }
+  const fragmentDirectory = `${STATE_DIRECTORY}/fragments`;
+  const directoryPath = await resolveSafeWorkspacePath(workspaceRoot, fragmentDirectory, { allowMissing: true });
+  let entries;
+  try {
+    entries = await readdir(directoryPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+
+  const candidates = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !SOURCE_REVIEW_FRAGMENT_PATTERN.test(entry.name)) continue;
+    const fragmentPath = `${fragmentDirectory}/${entry.name}`;
+    const path = await resolveSafeWorkspacePath(workspaceRoot, fragmentPath);
+    const info = await stat(path);
+    if (!info.isFile() || info.size <= 0 || info.size > SOURCE_REVIEW_FRAGMENT_MAX_BYTES) continue;
+    const bytes = await readFile(path);
+    let fragment;
+    try {
+      fragment = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      continue;
+    }
+    const receipt = sourceReviewReceiptFor(
+      fragment,
+      fragmentPath,
+      sourceById,
+      stableGroupBySourceId,
+      maxSourcesPerBatch,
+      bytes,
+    );
+    if (receipt) candidates.push(receipt);
+  }
+
+  const sourceIdCounts = new Map();
+  for (const receipt of candidates) {
+    for (const sourceId of receipt.assignedSourceIds) {
+      sourceIdCounts.set(sourceId, (sourceIdCounts.get(sourceId) ?? 0) + 1);
+    }
+  }
+  return candidates.filter((receipt) => receipt.assignedSourceIds.every((sourceId) => sourceIdCounts.get(sourceId) === 1));
+}
+
+function sourceReviewReceiptFor(fragment, fragmentPath, sourceById, stableGroupBySourceId, maxSourcesPerBatch, bytes) {
+  if (!isRecord(fragment)
+    || !hasOnlyKeys(fragment, ["schemaVersion", "fragmentType", "fragmentId", "assignedSourceIds", "sources"])
+    || fragment.schemaVersion !== 1
+    || fragment.fragmentType !== SOURCE_REVIEW_FRAGMENT_TYPE
+    || !nonEmpty(fragment.fragmentId)
+    || !Array.isArray(fragment.assignedSourceIds)
+    || fragment.assignedSourceIds.length < 1
+    || fragment.assignedSourceIds.length > maxSourcesPerBatch
+    || fragment.assignedSourceIds.some((sourceId) => !nonEmpty(sourceId))
+    || new Set(fragment.assignedSourceIds).size !== fragment.assignedSourceIds.length
+    || !Array.isArray(fragment.sources)
+    || fragment.sources.length !== fragment.assignedSourceIds.length) return undefined;
+
+  const groupIds = new Set(fragment.assignedSourceIds.map((sourceId) => stableGroupBySourceId.get(sourceId)));
+  if (groupIds.size !== 1 || groupIds.has(undefined)) return undefined;
+
+  const digest = sha256(fragment.assignedSourceIds.join("\0")).slice(0, 12);
+  const expectedId = `source-review-${digest}`;
+  if (fragment.fragmentId !== expectedId
+    || fragmentPath !== `${STATE_DIRECTORY}/fragments/${expectedId}.json`) return undefined;
+
+  const rowsById = new Map();
+  for (const row of fragment.sources) {
+    if (!validSourceReviewFragmentRow(row, sourceById)) return undefined;
+    if (rowsById.has(row.sourceId)) return undefined;
+    rowsById.set(row.sourceId, row);
+  }
+  if (fragment.assignedSourceIds.some((sourceId) => !rowsById.has(sourceId))) return undefined;
+
+  return {
+    id: expectedId,
+    fragmentPath,
+    receiptSha256: sha256(bytes),
+    assignedSourceIds: [...fragment.assignedSourceIds],
+    sourceRows: fragment.sources,
+  };
+}
+
+function validSourceReviewFragmentRow(row, sourceById) {
+  if (!isRecord(row)
+    || !hasOnlyKeys(row, [
+      "sourceId",
+      "sourcePath",
+      "inspectionMethod",
+      "facts",
+      "noMaterialFactsReason",
+      "evidenceClass",
+      "verificationState",
+      "conflicts",
+      "unresolvedItems",
+      "proposedMateriality",
+    ])
+    || !nonEmpty(row.sourceId) || !nonEmpty(row.sourcePath)
+    || !nonEmpty(row.inspectionMethod) || !Array.isArray(row.facts)
+    || !EVIDENCE_CLASSES.has(row.evidenceClass)
+    || !VERIFICATION_STATUSES.has(row.verificationState)
+    || !Array.isArray(row.conflicts) || row.conflicts.some((value) => !nonEmpty(value))
+    || !Array.isArray(row.unresolvedItems) || row.unresolvedItems.some((value) => !nonEmpty(value))
+    || !SOURCE_REVIEW_MATERIALITIES.has(row.proposedMateriality)) return false;
+  const source = sourceById.get(row.sourceId);
+  if (!source || row.sourcePath !== source.path) return false;
+  if (row.facts.some((fact) => !isRecord(fact)
+    || !hasOnlyKeys(fact, ["locator", "statement"])
+    || !nonEmpty(fact.locator)
+    || !nonEmpty(fact.statement))) return false;
+  return (row.facts.length > 0 || nonEmpty(row.noMaterialFactsReason))
+    && Buffer.byteLength(JSON.stringify(row)) <= 20000;
+}
+
+function sourceReviewMergePlanFor(sourceRows, receipts, options = {}) {
+  const pendingIds = new Set((Array.isArray(sourceRows) ? sourceRows : [])
+    .filter((source) => isRecord(source) && source.status === "pending" && nonEmpty(source.id))
+    .map((source) => source.id));
+  const eligible = receipts
+    .map((receipt) => ({
+      ...receipt,
+      pendingSourceIds: receipt.assignedSourceIds.filter((sourceId) => pendingIds.has(sourceId)),
+    }))
+    .filter((receipt) => receipt.pendingSourceIds.length > 0);
+  if (eligible.length === 0) return undefined;
+
+  const maxRecords = boundedInteger(options.maxMergeSources, 1, SOURCE_REVIEW_MERGE_MAX_SOURCES, SOURCE_REVIEW_MERGE_MAX_SOURCES);
+  const selected = eligible[0];
+  const sourceIds = boundedReceiptSourceIds(selected, maxRecords, 24576);
+  const remainingReceiptSources = eligible.reduce((count, receipt) => count + receipt.pendingSourceIds.length, 0);
+  return {
+    phase: "sources",
+    group: "source-fragment-merge",
+    mode: "main-agent-merge",
+    pending: pendingIds.size,
+    returned: sourceIds.length,
+    hasMore: remainingReceiptSources > sourceIds.length,
+    limits: {
+      maxRecords,
+      maxSerializedBytes: 24576,
+    },
+    receipts: eligible.map((receipt) => ({
+      id: receipt.id,
+      fragmentPath: receipt.fragmentPath,
+      receiptSha256: receipt.receiptSha256,
+      pendingSourceCount: receipt.pendingSourceIds.length,
+    })),
+    mergeItems: [{
+      id: selected.id,
+      fragmentPath: selected.fragmentPath,
+      receiptSha256: selected.receiptSha256,
+      sourceIds,
+    }],
+  };
+}
+
+function boundedReceiptSourceIds(receipt, maxRecords, maxSerializedBytes) {
+  const rowsById = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
+  const selected = [];
+  for (const sourceId of receipt.pendingSourceIds) {
+    if (selected.length >= maxRecords) break;
+    const candidate = [...selected, sourceId];
+    const payload = {
+      schemaVersion: 1,
+      fragmentId: receipt.id,
+      fragmentPath: receipt.fragmentPath,
+      receiptSha256: receipt.receiptSha256,
+      sources: candidate.map((id) => rowsById.get(id)),
+    };
+    if (Buffer.byteLength(JSON.stringify(payload)) > maxSerializedBytes) break;
+    selected.push(sourceId);
+  }
+  return selected;
+}
+
+export async function sourceReviewFragmentSlice(workspaceRoot, options = {}) {
+  const sourceIds = Array.isArray(options.sourceIds) ? options.sourceIds : [];
+  const maxRecords = boundedInteger(options.maxRecords, 1, SOURCE_REVIEW_MERGE_MAX_SOURCES, SOURCE_REVIEW_MERGE_MAX_SOURCES);
+  const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 24576, 24576);
+  if (!nonEmpty(options.fragmentPath) || !SOURCE_REVIEW_FRAGMENT_PATTERN.test(options.fragmentPath.split("/").at(-1) ?? "")) {
+    throw batchError("source_fragment_path_invalid", "fragment-slice requires a deterministic source-review fragment path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.receiptSha256 ?? ""))) {
+    throw batchError("source_fragment_receipt_hash_invalid", "fragment-slice requires the injected lowercase receipt SHA-256.");
+  }
+  if (sourceIds.length < 1 || sourceIds.length > maxRecords
+    || sourceIds.some((sourceId) => !nonEmpty(sourceId))
+    || new Set(sourceIds).size !== sourceIds.length) {
+    throw batchError("source_fragment_source_ids_invalid", `fragment-slice requires 1..${maxRecords} unique source IDs.`);
+  }
+
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const rows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
+  const receipts = await validSourceReviewReceipts(workspaceRoot, rows);
+  const receipt = receipts.find((candidate) => candidate.fragmentPath === options.fragmentPath
+    && candidate.receiptSha256 === options.receiptSha256);
+  if (!receipt) {
+    throw batchError("source_fragment_receipt_invalid", "The fragment is missing, changed, overlapping, or does not satisfy the source-review receipt contract.");
+  }
+  if (sourceIds.some((sourceId) => !receipt.assignedSourceIds.includes(sourceId))) {
+    throw batchError("source_fragment_source_ids_out_of_scope", "Every requested source ID must belong to the validated fragment receipt.");
+  }
+  const rowsById = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
+  const result = {
+    schemaVersion: 1,
+    fragmentId: receipt.id,
+    fragmentPath: receipt.fragmentPath,
+    receiptSha256: receipt.receiptSha256,
+    sources: sourceIds.map((sourceId) => rowsById.get(sourceId)),
+  };
+  const serializedBytes = Buffer.byteLength(JSON.stringify(result));
+  if (serializedBytes > maxSerializedBytes) {
+    throw batchError("source_fragment_slice_byte_limit", `fragment-slice output is ${serializedBytes} bytes; maximum is ${maxSerializedBytes}.`);
+  }
+  return result;
 }
 
 export async function initializeDeliverableSkeletons(workspaceRoot, deliverables) {
@@ -702,6 +958,13 @@ export function milestoneDigest(result, workItems) {
   }));
 }
 
+export function convergenceStateHash(result, workItems) {
+  return sha256(JSON.stringify({
+    validatorStateHash: result.stateHash,
+    operationalWorkDigest: workItems ? sha256(JSON.stringify(workItems)) : null,
+  }));
+}
+
 export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const first = result.errors[0];
   const sameCode = result.errors.filter((error) => error.code === first?.code);
@@ -709,6 +972,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const initialize = initializerCommandFor(result, cliPath);
   const reference = referenceCommandFor(first?.phase, cliPath);
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
+  const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -737,9 +1001,10 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(result.passed ? {} : { workBatch: workBatchFor(first?.phase) }),
     ...(first?.phase === "configuration" ? { initializerCommand: initialize } : {}),
     ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
+    ...(sourceFragment ? { sourceFragmentCommand: sourceFragment } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, workItems),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, sourceFragment, workItems),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -757,6 +1022,16 @@ function sourceBootstrapCommandFor(result, cliPath) {
   if (!result.inputManifest?.originalRoot || first?.phase !== "sources") return undefined;
   if (first.code !== "source_not_inventoried" && first.code !== "manifest_original_not_inventoried") return undefined;
   return `node ${JSON.stringify(cliPath)} bootstrap-sources --workspace \"$PWD\" --from-manifest`;
+}
+
+function sourceFragmentSliceCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "source-fragment-merge") return undefined;
+  const item = workItems.mergeItems?.[0];
+  if (!item) return undefined;
+  const sourceOptions = item.sourceIds.map((sourceId) => `--source-id ${JSON.stringify(sourceId)}`).join(" ");
+  return `node ${JSON.stringify(cliPath)} fragment-slice --workspace "$PWD" `
+    + `--fragment ${JSON.stringify(item.fragmentPath)} --receipt-sha256 ${item.receiptSha256} `
+    + `${sourceOptions} --limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
 }
 
 function milestoneName(result) {
@@ -785,7 +1060,7 @@ function workBatchFor(phase) {
   }
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, workItems) {
+function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, sourceFragment, workItems) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -808,6 +1083,14 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
     return `Execute this exact deterministic source bootstrap before manually listing manifest rows: ${sourceBootstrap}. `
       + guidance
       + `Then delegate disjoint pending-source batches, merge returned fragments as the single canonical writer, and run: ${command}`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending"
+    && workItems?.group === "source-fragment-merge") {
+    const item = workItems.mergeItems?.[0];
+    return `A validated worker receipt is ready. In the same assistant response, execute sourceFragmentCommand exactly and issue sibling read_file calls for current sources.json and facts.json: ${sourceFragment}. `
+      + `In the next response, without another inspection call, merge only source IDs ${(item?.sourceIds ?? []).join(", ")} into canonical sources.json and facts.json as the single writer. `
+      + `Do not re-dispatch workers or re-read raw sources. Write at most ${workItems.limits.maxRecords} source records and `
+      + `${workItems.limits.maxSerializedBytes} serialized bytes, preserve reciprocal source/fact links, then run: ${command}`;
   }
   if (first?.phase === "sources" && first.code === "source_pending" && workItems?.mode === "delegated") {
     return "Dispatch every injected workItems.batches entry now with one agent tool call per batch in the same assistant response. "
@@ -2088,6 +2371,11 @@ function hasValue(value) {
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function normalize(value) {

@@ -9,6 +9,7 @@ import {
   initializeDeliverableSkeletons,
   nextCoverageBatch,
   resolveSafeWorkspacePath,
+  sourceReviewFragmentSlice,
   validateWorkspace,
 } from "./lib/legal-coverage.mjs";
 
@@ -113,6 +114,26 @@ if (command === "init") {
 } else if (command === "schema") {
   console.log(JSON.stringify(coverageBatchSchema(), null, 2));
   process.exitCode = 0;
+} else if (command === "fragment-slice") {
+  try {
+    const result = await sourceReviewFragmentSlice(workspaceRoot, {
+      fragmentPath: readOption(args, "--fragment"),
+      receiptSha256: readOption(args, "--receipt-sha256"),
+      sourceIds: readOptions(args, "--source-id"),
+      maxRecords: readOption(args, "--limit"),
+      maxSerializedBytes: readOption(args, "--max-bytes"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: {
+        code: typeof error?.code === "string" ? error.code : "source_fragment_slice_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }));
+    process.exitCode = 1;
+  }
 } else if (command === "next-batch") {
   if (readOption(args, "--phase") !== "coverage") {
     console.error("next-batch currently requires --phase coverage");
@@ -159,7 +180,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|fragment-slice|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--fragment PATH] [--receipt-sha256 HASH] [--source-id ID] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 
