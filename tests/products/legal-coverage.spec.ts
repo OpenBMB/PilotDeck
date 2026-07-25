@@ -263,6 +263,97 @@ test("legal coverage source bootstrap creates only deterministic pending manifes
   }
 });
 
+test("legal coverage injects deterministic disjoint worker batches for large pending source rooms", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-source-plan-"));
+  try {
+    const fixture = await writeManifestBoundFixture(workspace);
+    const manifestPath = join(workspace, ".pilotdeck/input-manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      entries: Array<{
+        original: { path: string; sha256: string; bytes: number };
+        derivations: Array<{ path: string; sha256: string; bytes: number; method: string; version: string }>;
+      }>;
+    };
+    for (let index = 1; index < 24; index += 1) {
+      const originalRelative = `files/record-${String(index).padStart(2, "0")}.docx`;
+      const derivedRelative = `files/record-${String(index).padStart(2, "0")}_converted.txt`;
+      const originalBytes = Buffer.from(`synthetic original ${index}`);
+      const derivedBytes = Buffer.from(`Synthetic extracted record ${index}.\n`);
+      await writeFile(join(workspace, fixture.originalRoot, originalRelative), originalBytes);
+      await writeFile(join(workspace, fixture.derivedRoot, derivedRelative), derivedBytes);
+      manifest.entries.push({
+        original: {
+          path: originalRelative,
+          sha256: sha256(originalBytes),
+          bytes: originalBytes.byteLength,
+        },
+        derivations: [{
+          path: derivedRelative,
+          sha256: sha256(derivedBytes),
+          bytes: derivedBytes.byteLength,
+          method: "docx-text-extraction",
+          version: "pilotdeck-eval-runner-v1",
+        }],
+      });
+    }
+    await writeJson(manifestPath, manifest);
+    await writeJson(join(workspace, STATE_ROOT, "sources.json"), { schemaVersion: 1, sources: [] });
+
+    const bootstrapped = await runCli(workspace, "bootstrap-sources", "--from-manifest");
+    assert.equal(bootstrapped.exitCode, 0, bootstrapped.stderr);
+    const result = JSON.parse(bootstrapped.stdout) as {
+      sourceReviewPlan: {
+        mode: string;
+        pending: number;
+        returned: number;
+        hasMore: boolean;
+        batches: Array<{
+          id: string;
+          sourceIds: string[];
+          fragmentPath: string;
+          agentInput: { description: string; prompt: string; subagent_type: string };
+        }>;
+        workerContract: { mustNotWrite: string[] };
+      };
+    };
+    assert.equal(result.sourceReviewPlan.mode, "delegated");
+    assert.equal(result.sourceReviewPlan.pending, 24);
+    assert.equal(result.sourceReviewPlan.returned, 24);
+    assert.equal(result.sourceReviewPlan.hasMore, false);
+    assert.equal(result.sourceReviewPlan.batches.length, 2);
+    assert.deepEqual(result.sourceReviewPlan.batches.map((batch) => batch.sourceIds.length), [12, 12]);
+    assert.equal(new Set(result.sourceReviewPlan.batches.flatMap((batch) => batch.sourceIds)).size, 24);
+    assert.equal(new Set(result.sourceReviewPlan.batches.map((batch) => batch.fragmentPath)).size, 2);
+    assert.equal(result.sourceReviewPlan.batches[0]?.agentInput.subagent_type, "general-purpose");
+    assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /Assigned source IDs:/u);
+    assert.match(result.sourceReviewPlan.batches[0]?.agentInput.prompt ?? "", /Do not edit canonical legal-coverage ledgers/u);
+    assert.equal(result.sourceReviewPlan.workerContract.mustNotWrite.includes("canonical legal-coverage ledgers"), true);
+
+    const repeated = await runCli(workspace, "bootstrap-sources", "--from-manifest");
+    assert.equal(repeated.exitCode, 0, repeated.stderr);
+    const repeatedResult = JSON.parse(repeated.stdout) as { sourceReviewPlan: unknown };
+    assert.deepEqual(repeatedResult.sourceReviewPlan, result.sourceReviewPlan);
+
+    const preModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const context = preModel.hookSpecificOutput.additionalContext ?? "";
+    assert.match(context, /"group": "pending-source-review"/u);
+    assert.match(context, /"callMode": "parallel-same-response"/u);
+    assert.match(context, /"agentInput":/u);
+    assert.match(context, /source-review-[a-f0-9]{12}\.json/u);
+    assert.match(context, /Dispatch every injected workItems\.batches entry now/u);
+    assert.match(context, /Pass each batch\.agentInput object to the agent tool verbatim/u);
+    assert.match(context, /do not re-list sources that are already partitioned/u);
+    assert.match(context, /execute guidanceCommand if it has not already been loaded/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage CLI exposes bundled guidance through stable named references", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-reference-"));
   try {

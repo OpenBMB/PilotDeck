@@ -25,6 +25,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 6. After each worker batch returns, the main agent reads its fragments instead of replaying raw source text and immediately merges supported facts into canonical state. Do not launch a second extraction wave while completed fragments remain unmerged.
 7. Treat every canonical write as a bounded transaction: merge at most 12 records and at most 24 KiB of serialized new content from one fragment or one ledger section, whichever limit comes first. Prefer a focused `edit_file` insertion after reading the current ledger; update reciprocal links and run validation before the next batch. Never emit or replace an entire large ledger in one tool call.
 8. A failed worker is retried only for its missing batch; never restart completed batches.
+9. When the source milestone injects delegated `workItems.batches`, treat them as the complete pending-source inventory slice. In the next assistant response, launch one `agent` call per injected batch, all as sibling calls, by passing each batch's `agentInput` object verbatim. Do not run another listing, glob, grep, ledger read, or plugin inspection before those calls.
 
 ## Build Evidence Before Conclusions
 

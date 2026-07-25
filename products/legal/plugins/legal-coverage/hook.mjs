@@ -10,6 +10,7 @@ import {
   milestoneEnvelopeFor,
   milestoneFor,
   nextCoverageBatch,
+  pendingSourceReviewPlan,
   resolveSafeWorkspacePath,
   validateWorkspace,
 } from "./scripts/lib/legal-coverage.mjs";
@@ -140,8 +141,15 @@ async function hasConfiguredWorkspace(workspaceRoot) {
 }
 
 async function dynamicWorkItems(workspaceRoot, result) {
-  if (result.errors[0]?.phase !== "coverage") return undefined;
-  return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
+  const first = result.errors[0];
+  if (first?.phase === "sources" && first.code === "source_pending") {
+    const plan = await pendingSourceReviewPlan(workspaceRoot);
+    return plan.mode === "delegated" ? plan : undefined;
+  }
+  if (first?.phase === "coverage") {
+    return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
+  }
+  return undefined;
 }
 
 function convergenceReport(result, workItems) {

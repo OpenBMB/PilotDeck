@@ -149,6 +149,7 @@ export async function bootstrapSourcesFromManifest(workspaceRoot) {
   }
 
   if (created.length > 0) await writeJsonAtomic(initialized.paths.sources, ledger);
+  const sourceReviewPlan = sourceReviewPlanFor(ledger.sources);
   return {
     bootstrapped: created.length,
     preserved: preserved.length,
@@ -156,7 +157,95 @@ export async function bootstrapSourcesFromManifest(workspaceRoot) {
     created,
     preservedSources: preserved,
     sourcesPath: `${STATE_DIRECTORY}/${STATE_FILES.sources}`,
+    sourceReviewPlan,
   };
+}
+
+export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  return sourceReviewPlanFor(loaded.state.sources?.sources, options);
+}
+
+function sourceReviewPlanFor(sourceRows, options = {}) {
+  const maxSourcesPerBatch = boundedInteger(options.maxSourcesPerBatch, 1, 12, 12);
+  const maxBatches = boundedInteger(options.maxBatches, 1, 4, 4);
+  const pending = (Array.isArray(sourceRows) ? sourceRows : [])
+    .filter((source) => isRecord(source) && source.status === "pending"
+      && nonEmpty(source.id) && nonEmpty(source.path))
+    .map((source) => ({ id: source.id, path: source.path }))
+    .sort((left, right) => left.path.localeCompare(right.path) || left.id.localeCompare(right.id));
+  const selected = pending.slice(0, maxSourcesPerBatch * maxBatches);
+  const batches = [];
+  for (let offset = 0; offset < selected.length; offset += maxSourcesPerBatch) {
+    const rows = selected.slice(offset, offset + maxSourcesPerBatch);
+    const digest = sha256(rows.map((source) => source.id).join("\0")).slice(0, 12);
+    const sourceIds = rows.map((source) => source.id);
+    const fragmentPath = `${STATE_DIRECTORY}/fragments/source-review-${digest}.json`;
+    batches.push({
+      id: `source-review-${digest}`,
+      sourceIds,
+      fragmentPath,
+      agentInput: {
+        description: `Review source batch ${batches.length + 1}`,
+        subagent_type: "general-purpose",
+        prompt: sourceReviewWorkerPrompt(sourceIds, fragmentPath),
+      },
+    });
+  }
+  return {
+    phase: "sources",
+    group: "pending-source-review",
+    mode: pending.length > 20 ? "delegated" : "main-agent",
+    pending: pending.length,
+    returned: selected.length,
+    hasMore: selected.length < pending.length,
+    limits: {
+      maxBatches,
+      maxSourcesPerBatch,
+      maxRecords: 12,
+      maxSerializedBytes: 24576,
+    },
+    dispatch: {
+      tool: "agent",
+      subagentType: "general-purpose",
+      callMode: "parallel-same-response",
+    },
+    workerContract: {
+      sourceLedger: `${STATE_DIRECTORY}/${STATE_FILES.sources}`,
+      inspectOnlyAssignedSourceIds: true,
+      mayWrite: ["assigned fragmentPath"],
+      mustNotWrite: [
+        "canonical legal-coverage ledgers",
+        "completion-proof.json",
+        "final deliverables",
+      ],
+      fragmentRequiredFields: [
+        "sourceId",
+        "sourcePath",
+        "inspectionMethod",
+        "facts",
+        "evidenceClass",
+        "verificationState",
+        "conflicts",
+        "unresolvedItems",
+        "proposedMateriality",
+      ],
+      returnFormat: "Return only fragmentPath and a summary under 1000 characters.",
+    },
+    batches,
+  };
+}
+
+function sourceReviewWorkerPrompt(sourceIds, fragmentPath) {
+  return [
+    "Review one disjoint legal-evidence source batch in the current workspace.",
+    `Assigned source IDs: ${sourceIds.join(", ")}.`,
+    `Resolve only those exact rows from ${STATE_DIRECTORY}/${STATE_FILES.sources}; inspect each original and every listed derivedArtifact.`,
+    `Write one JSON evidence fragment only to ${fragmentPath}.`,
+    "For every assigned source include sourceId, sourcePath, inspectionMethod, locator-grounded atomic facts, evidenceClass, verificationState, conflicts, unresolvedItems, and proposedMateriality.",
+    "Do not edit canonical legal-coverage ledgers, completion-proof.json, or any final deliverable.",
+    "Return only the fragment path and a summary under 1000 characters.",
+  ].join(" ");
 }
 
 export async function initializeDeliverableSkeletons(workspaceRoot, deliverables) {
@@ -650,7 +739,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, workItems),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -696,7 +785,7 @@ function workBatchFor(phase) {
   }
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap) {
+function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, workItems) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -719,6 +808,12 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
     return `Execute this exact deterministic source bootstrap before manually listing manifest rows: ${sourceBootstrap}. `
       + guidance
       + `Then delegate disjoint pending-source batches, merge returned fragments as the single canonical writer, and run: ${command}`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending" && workItems?.mode === "delegated") {
+    return "Dispatch every injected workItems.batches entry now with one agent tool call per batch in the same assistant response. "
+      + "Pass each batch.agentInput object to the agent tool verbatim. Do not call bash, read_file, glob, or grep first; "
+      + "do not re-list sources that are already partitioned. After all workers return, execute guidanceCommand if it has not already "
+      + "been loaded, read only their fragments, merge one bounded canonical batch, and run: " + command;
   }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {
