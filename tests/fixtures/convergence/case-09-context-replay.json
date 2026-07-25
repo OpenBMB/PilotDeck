@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "e2-elite-v6-case-09-context-blocking",
+  "source": {
+    "campaignId": "20260725-e2-elite-ab-v6",
+    "variant": "candidate",
+    "candidateCommit": "b885cc008eea3a89641e3731dce187f641dd15ae",
+    "inputFingerprint": "de20f7321ec9d527df36fb360a735fbbf4613024059e7b68b6a6e9704327674e"
+  },
+  "sanitization": {
+    "containsRawLegalContent": false,
+    "containsModelMessages": false,
+    "containsJudgeMaterial": false,
+    "containsCredentials": false
+  },
+  "run": {
+    "elapsedSeconds": 2208.1,
+    "modelRequests": 132,
+    "toolCalls": 150,
+    "contextStateCounts": {
+      "ok": 17,
+      "warning": 8,
+      "blocking": 107
+    },
+    "compaction": {
+      "started": 107,
+      "summaryReportedSuccess": 107,
+      "acceptedBoundaries": 9
+    }
+  },
+  "transitions": [
+    {
+      "request": 1,
+      "state": "ok",
+      "ratio": 0.5711630544354839,
+      "usedTokens": 54393,
+      "effectiveTotalTokens": 95232
+    },
+    {
+      "request": 18,
+      "state": "warning",
+      "ratio": 0.8158917170698925,
+      "usedTokens": 77699,
+      "effectiveTotalTokens": 95232
+    },
+    {
+      "request": 26,
+      "state": "blocking",
+      "ratio": 0.955025621639785,
+      "usedTokens": 90949,
+      "effectiveTotalTokens": 95232,
+      "compaction": {
+        "attempted": true,
+        "summarySucceeded": true,
+        "applied": false
+      }
+    },
+    {
+      "request": 27,
+      "state": "blocking",
+      "ratio": 1.0200982862903225,
+      "usedTokens": 97146,
+      "effectiveTotalTokens": 95232,
+      "compaction": {
+        "attempted": true,
+        "summarySucceeded": true,
+        "applied": false
+      }
+    },
+    {
+      "request": 28,
+      "state": "blocking",
+      "ratio": 1.1878675235215055,
+      "usedTokens": 113123,
+      "effectiveTotalTokens": 95232,
+      "compaction": {
+        "attempted": true,
+        "summarySucceeded": true,
+        "applied": false
+      }
+    },
+    {
+      "request": 132,
+      "state": "blocking",
+      "ratio": 2.6565755208333335,
+      "usedTokens": 252991,
+      "effectiveTotalTokens": 95232
+    }
+  ],
+  "expectedPolicy": {
+    "evaluation": {
+      "maxConsecutiveRejectedBlockingCompactions": 2,
+      "decision": "fail_closed",
+      "preserveArtifacts": true
+    },
+    "production": {
+      "maxConsecutiveRejectedBlockingCompactions": 2,
+      "decision": "checkpoint_then_bounded_continuation",
+      "reuseOversizedMessages": false
+    }
+  }
+}
