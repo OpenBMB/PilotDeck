@@ -51,6 +51,44 @@ test("legal coverage validator creates a current proof and removes it when the d
   }
 });
 
+test("legal coverage treats a safe not-yet-created deliverable as missing and gives an executable next action", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-missing-deliverable-"));
+  try {
+    await mkdir(join(workspace, "source-room"), { recursive: true });
+    const initialized = await runCli(
+      workspace,
+      "init",
+      "--input",
+      "source-room",
+      "--deliverable",
+      "opinion=deliverables/opinion.md",
+      "--jurisdiction",
+      "pending-confirmation",
+      "--basis-date",
+      "pending-confirmation",
+    );
+    assert.equal(initialized.exitCode, 0, initialized.stderr);
+
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 2);
+    const result = JSON.parse(validation.stdout) as { errors: Array<{ code: string; path?: string }> };
+    assert.equal(result.errors.some((error) => error.code === "deliverable_missing"), true);
+    assert.equal(result.errors.some((error) => error.code === "deliverable_path_invalid"), false);
+
+    const milestone = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "missing-deliverable-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /Create a non-empty user deliverable skeleton/u);
+    assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /deliverables\/opinion\.md/u);
+    assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /with write_file/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage validator binds runner originals and derivations into its proof", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-lineage-"));
   try {

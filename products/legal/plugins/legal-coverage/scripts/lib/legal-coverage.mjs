@@ -531,6 +531,11 @@ function nextActionFor(result, occurrenceCount, command, initialize) {
       + `record an explicit pending-confirmation value instead of delaying initialization. Initializer: ${initialize}. `
       + `Then run: ${command}`;
   }
+  if (first?.code === "deliverable_missing" && nonEmpty(first.path)) {
+    return `Create a non-empty user deliverable skeleton at the exact configured workspace-relative path `
+      + `${JSON.stringify(first.path)} with write_file, then run: ${command}. `
+      + `Do not change the configured path or move the user deliverable into ${STATE_DIRECTORY} merely because it does not exist yet.`;
+  }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {
     const inspect = command.replace(" validate ", " next-batch --phase coverage --limit 12 --max-bytes 24576 ")
@@ -946,7 +951,7 @@ async function validateConfig(context) {
     ids.add(deliverable.id);
     paths.add(deliverable.path);
     try {
-      const filePath = await resolveSafeWorkspacePath(context.workspace, deliverable.path);
+      const filePath = await resolveSafeWorkspacePath(context.workspace, deliverable.path, { allowMissing: true });
       if (deliverable.required !== false) {
         const info = await stat(filePath).catch(() => undefined);
         if (!info?.isFile() || info.size === 0) {

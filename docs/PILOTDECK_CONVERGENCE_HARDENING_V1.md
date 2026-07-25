@@ -177,6 +177,12 @@ short current milestone on every request until the state changes. Digest-based
 deduplication may avoid redundant session-state writes, but it must not suppress
 the request-local next action.
 
+Domain validators must distinguish a safe configured output path from an output
+that has not been created yet. A missing required deliverable is a coverage
+milestone with an executable `write_file` next action; it is not a path-safety
+failure and must not send the Agent back into configuration repair. Traversal,
+absolute paths, and symbolic-link ancestors remain configuration failures.
+
 The report is read from the opaque `pilotdeckConvergence` model-request
 metadata field. Core does not inspect `scope`, `phase`, or `blockingCode`; it
 only compares `stateHash` and `remainingCount`. Once one unchanged observation
