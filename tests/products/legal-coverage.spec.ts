@@ -419,6 +419,8 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(mergeContext, /"proposal":/u);
     assert.match(mergeContext, /"template":/u);
     assert.match(mergeContext, /write one source-merge proposal/u);
+    assert.match(mergeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
+    assert.match(mergeContext, /never prose/u);
     assert.match(mergeContext, /Do not edit canonical ledgers/u);
     assert.match(mergeContext, /Do not re-dispatch workers or re-read raw sources/u);
     const mergeConvergence = mergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
@@ -519,10 +521,12 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Rewrite that proposal from the already returned bounded fragment slice/u);
     assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceFragmentCommand":/u);
     assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
-    assert.equal(
-      (invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      mergeConvergence.stateHash,
-    );
+    const repairConvergenceHash = (
+      invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
+    )?.stateHash;
+    assert.notEqual(repairConvergenceHash, mergeConvergence.stateHash);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /never prose/u);
 
     await writeJson(proposalPath, {
       ...proposalBase,
@@ -542,7 +546,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.doesNotMatch(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
     assert.equal(
       (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      mergeConvergence.stateHash,
+      repairConvergenceHash,
     );
 
     await writeJson(proposalPath, proposalBase);

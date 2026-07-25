@@ -1388,6 +1388,10 @@ function convergenceWorkProjection(workItems) {
   if (!workItems?.proposal?.validationError) return workItems;
   const proposal = { ...workItems.proposal };
   delete proposal.validationError;
+  // A first rejection must reach the model before the steady-state lease can
+  // fail closed. Keep every rejected revision on one stable repair marker so
+  // rewriting invalid proposals cannot manufacture unlimited progress.
+  proposal.repairRequired = true;
   return { ...workItems, proposal };
 }
 
@@ -1526,12 +1530,16 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
       return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
         + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
         + `Rewrite that proposal from the already returned bounded fragment slice and injected proposal.template. `
+        + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
+        + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
         + `Do not re-read fragments or raw sources, and do not edit canonical ledgers.`;
     }
     const item = workItems.mergeItems?.[0];
     return `A validated worker receipt is ready. In the same assistant response, execute sourceFragmentCommand exactly and issue sibling read_file calls for current sources.json and facts.json: ${sourceFragment}. `
       + `In the next response, without another inspection call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
       + `Replace every placeholder with your source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators returned by sourceFragmentCommand. `
+      + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
+      + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
       + `Do not re-dispatch workers or re-read raw sources. Do not edit canonical ledgers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending"
