@@ -58,6 +58,7 @@ const SOURCE_REVIEW_FRAGMENT_PATTERN = /^source-review-[a-f0-9]{12}\.json$/u;
 const SOURCE_REVIEW_FRAGMENT_TYPE = "legal-evidence-source-batch-review";
 const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
+const SOURCE_MERGE_MAX_FACTS = 32;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 
 export async function ensureWorkspace(workspaceRoot) {
@@ -171,7 +172,20 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
   const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
   const receipts = await validSourceReviewReceipts(workspaceRoot, sourceRows, options);
   const mergePlan = sourceReviewMergePlanFor(sourceRows, receipts, options);
-  return mergePlan ?? sourceReviewPlanFor(sourceRows, options);
+  if (!mergePlan) return sourceReviewPlanFor(sourceRows, options);
+  const expectedStateHash = /^[a-f0-9]{64}$/u.test(String(options.expectedStateHash ?? ""))
+    ? options.expectedStateHash
+    : (await validateWorkspace({ workspaceRoot, writeProof: false })).stateHash;
+  const proposalPlan = sourceMergeProposalPlanFor(mergePlan, expectedStateHash);
+  const proposalReceipt = await validSourceMergeProposalReceipt(workspaceRoot, proposalPlan, receipts, loaded.state);
+  if (proposalReceipt?.valid) return sourceMergeApplyPlanFor(proposalPlan, proposalReceipt);
+  if (proposalReceipt?.error) {
+    return {
+      ...proposalPlan,
+      proposal: { ...proposalPlan.proposal, validationError: proposalReceipt.error },
+    };
+  }
+  return proposalPlan;
 }
 
 function sourceReviewPlanFor(sourceRows, options = {}) {
@@ -443,6 +457,73 @@ function sourceReviewMergePlanFor(sourceRows, receipts, options = {}) {
   };
 }
 
+function sourceMergeProposalPlanFor(mergePlan, expectedStateHash) {
+  const item = mergePlan.mergeItems[0];
+  const digest = sha256([
+    item.id,
+    item.receiptSha256,
+    expectedStateHash,
+    ...item.sourceIds,
+  ].join("\0")).slice(0, 12);
+  const proposalPath = `${STATE_DIRECTORY}/fragments/source-merge-${digest}.json`;
+  return {
+    ...mergePlan,
+    proposal: {
+      path: proposalPath,
+      expectedStateHash,
+      fragmentPath: item.fragmentPath,
+      receiptSha256: item.receiptSha256,
+      sourceIds: [...item.sourceIds],
+      limits: {
+        maxSources: item.sourceIds.length,
+        maxFacts: SOURCE_MERGE_MAX_FACTS,
+        maxSerializedBytes: mergePlan.limits.maxSerializedBytes,
+      },
+      template: {
+        schemaVersion: 1,
+        phase: "sources",
+        group: "source-fragment-merge",
+        expectedStateHash,
+        fragmentPath: item.fragmentPath,
+        receiptSha256: item.receiptSha256,
+        sourceIds: [...item.sourceIds],
+        facts: [{
+          subject: "<legal subject>",
+          predicate: "<atomic predicate>",
+          value: "<source-grounded value>",
+          unit: null,
+          dateOrPeriod: null,
+          missingTimeReason: "<why no usable time appears in the source>",
+          sourceRefs: [{ sourceId: item.sourceIds[0], locator: "<exact fragment locator>" }],
+          evidenceClass: "<fragment evidence class>",
+          verificationStatus: "<verified|partially-verified|unverified>",
+          conflictStatus: "<none|resolved|unresolved>",
+          material: false,
+          critical: false,
+          thresholdAssessment: null,
+        }],
+        noMaterialFacts: [],
+      },
+    },
+  };
+}
+
+function sourceMergeApplyPlanFor(proposalPlan, proposalReceipt) {
+  return {
+    ...proposalPlan,
+    group: "source-fragment-apply",
+    mode: "main-agent-apply",
+    proposal: {
+      ...proposalPlan.proposal,
+      proposalSha256: proposalReceipt.sha256,
+      validated: true,
+      factCount: proposalReceipt.factCount,
+      noMaterialFactCount: proposalReceipt.noMaterialFactCount,
+      transactionBytes: proposalReceipt.transactionBytes,
+    },
+  };
+}
+
 function boundedReceiptSourceIds(receipt, maxRecords, maxSerializedBytes) {
   const rowsById = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
   const selected = [];
@@ -502,6 +583,344 @@ export async function sourceReviewFragmentSlice(workspaceRoot, options = {}) {
     throw batchError("source_fragment_slice_byte_limit", `fragment-slice output is ${serializedBytes} bytes; maximum is ${maxSerializedBytes}.`);
   }
   return result;
+}
+
+async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, state) {
+  try {
+    const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, plan.proposal.path);
+    const bytes = await readFile(proposalPath);
+    if (bytes.byteLength > plan.proposal.limits.maxSerializedBytes) return undefined;
+    const patch = JSON.parse(bytes.toString("utf8"));
+    const receipt = receipts.find((candidate) => candidate.fragmentPath === plan.proposal.fragmentPath
+      && candidate.receiptSha256 === plan.proposal.receiptSha256);
+    if (!receipt) return undefined;
+    const normalized = validateSourceMergeProposal(patch, plan, receipt, state, bytes.byteLength);
+    return {
+      valid: true,
+      sha256: sha256(bytes),
+      factCount: normalized.facts.length,
+      noMaterialFactCount: normalized.noMaterialFacts.length,
+      transactionBytes: normalized.transactionBytes,
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return {
+      valid: false,
+      error: {
+        code: typeof error?.code === "string" ? error.code : "source_merge_proposal_invalid",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+export async function applySourceMergeProposal(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.proposalPath) || !/^source-merge-[a-f0-9]{12}\.json$/u.test(options.proposalPath.split("/").at(-1) ?? "")) {
+    throw batchError("source_merge_proposal_path_invalid", "source-merge-apply requires the injected deterministic proposal path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.proposalSha256 ?? ""))) {
+    throw batchError("source_merge_proposal_hash_invalid", "source-merge-apply requires the injected lowercase proposal SHA-256.");
+  }
+  const maxRecords = boundedInteger(options.maxRecords, 1, SOURCE_REVIEW_MERGE_MAX_SOURCES, SOURCE_REVIEW_MERGE_MAX_SOURCES);
+  const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 24576, 24576);
+  const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, options.proposalPath);
+  const proposalBytes = await readFile(proposalPath);
+  if (sha256(proposalBytes) !== options.proposalSha256) {
+    throw batchError("source_merge_proposal_changed", "The source merge proposal changed after validation; request a fresh apply command.");
+  }
+  if (proposalBytes.byteLength > maxSerializedBytes) {
+    throw batchError("source_merge_proposal_byte_limit", `Source merge proposal is ${proposalBytes.byteLength} bytes; maximum is ${maxSerializedBytes}.`);
+  }
+  let patch;
+  try {
+    patch = JSON.parse(proposalBytes.toString("utf8"));
+  } catch (error) {
+    throw batchError("source_merge_proposal_json_invalid", errorMessage(error));
+  }
+
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  if (patch.expectedStateHash !== before.stateHash) {
+    throw batchError(
+      "stale_state_hash",
+      `expectedStateHash ${String(patch.expectedStateHash)} does not match current state ${before.stateHash}. Request a fresh source merge proposal.`,
+    );
+  }
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
+  const receipts = await validSourceReviewReceipts(workspaceRoot, sourceRows);
+  const mergePlan = sourceReviewMergePlanFor(sourceRows, receipts, { maxMergeSources: maxRecords });
+  if (!mergePlan) throw batchError("source_merge_not_applicable", "No validated pending source fragment is currently mergeable.");
+  const proposalPlan = sourceMergeProposalPlanFor(mergePlan, before.stateHash);
+  if (proposalPlan.proposal.path !== options.proposalPath) {
+    throw batchError("source_merge_proposal_out_of_scope", "The proposal path is not the current bounded source merge transaction.");
+  }
+  const receipt = receipts.find((candidate) => candidate.fragmentPath === proposalPlan.proposal.fragmentPath
+    && candidate.receiptSha256 === proposalPlan.proposal.receiptSha256);
+  if (!receipt) throw batchError("source_fragment_receipt_invalid", "The source fragment receipt is no longer valid.");
+  const normalized = validateSourceMergeProposal(patch, proposalPlan, receipt, loaded.state, proposalBytes.byteLength);
+
+  const selectedIds = new Set(proposalPlan.proposal.sourceIds);
+  const fragmentRows = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
+  const factIdsBySource = new Map(proposalPlan.proposal.sourceIds.map((sourceId) => [sourceId, []]));
+  for (const fact of normalized.facts) {
+    for (const reference of fact.sourceRefs) factIdsBySource.get(reference.sourceId)?.push(fact.id);
+  }
+  const noMaterialBySource = new Map(normalized.noMaterialFacts.map((item) => [item.sourceId, item.reason]));
+  const nextSources = {
+    ...loaded.state.sources,
+    sources: sourceRows.map((source) => {
+      if (!isRecord(source) || !selectedIds.has(source.id)) return source;
+      const fragmentRow = fragmentRows.get(source.id);
+      const factIds = [...new Set(factIdsBySource.get(source.id) ?? [])].sort();
+      const unresolvedItems = [...new Set([
+        ...stringArray(fragmentRow.unresolvedItems),
+        ...stringArray(fragmentRow.conflicts).map((conflict) => `Conflict: ${conflict}`),
+      ])];
+      const next = {
+        ...source,
+        status: "reviewed",
+        extractionMethod: fragmentRow.inspectionMethod,
+        evidenceClass: fragmentRow.evidenceClass,
+        factIds,
+        unresolvedItems,
+      };
+      if (factIds.length === 0) next.noMaterialFactsReason = noMaterialBySource.get(source.id);
+      else delete next.noMaterialFactsReason;
+      return next;
+    }),
+  };
+  const existingFacts = Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [];
+  const nextFacts = {
+    ...loaded.state.facts,
+    facts: [...existingFacts, ...normalized.facts],
+  };
+
+  await writeJsonAtomic(loaded.paths.facts, nextFacts);
+  try {
+    await writeJsonAtomic(loaded.paths.sources, nextSources);
+  } catch (error) {
+    try {
+      await writeJsonAtomic(loaded.paths.facts, loaded.state.facts);
+    } catch (rollbackError) {
+      throw batchError(
+        "source_merge_rollback_failed",
+        `Source ledger write failed (${errorMessage(error)}) and fact-ledger rollback also failed (${errorMessage(rollbackError)}).`,
+      );
+    }
+    throw error;
+  }
+
+  const after = await validateWorkspace({ workspaceRoot, writeProof: true });
+  return {
+    applied: true,
+    phase: "sources",
+    group: "source-fragment-merge",
+    sourceCount: selectedIds.size,
+    factCount: normalized.facts.length,
+    previousStateHash: before.stateHash,
+    stateHash: after.stateHash,
+    passed: after.passed,
+    errorCountBefore: before.errors.length,
+    errorCountAfter: after.errors.length,
+  };
+}
+
+function validateSourceMergeProposal(patch, plan, receipt, state, serializedBytes) {
+  if (!isRecord(patch)) throw batchError("source_merge_proposal_not_object", "Source merge proposal must be a JSON object.");
+  const expectedKeys = [
+    "expectedStateHash",
+    "facts",
+    "fragmentPath",
+    "group",
+    "noMaterialFacts",
+    "phase",
+    "receiptSha256",
+    "schemaVersion",
+    "sourceIds",
+  ];
+  if (JSON.stringify(Object.keys(patch).sort()) !== JSON.stringify(expectedKeys)) {
+    throw batchError("source_merge_proposal_keys_invalid", `Source merge proposal must contain only: ${expectedKeys.join(", ")}.`);
+  }
+  if (patch.schemaVersion !== 1 || patch.phase !== "sources" || patch.group !== "source-fragment-merge") {
+    throw batchError("source_merge_proposal_identity_invalid", "Source merge proposal requires schemaVersion 1, phase sources, and group source-fragment-merge.");
+  }
+  if (patch.expectedStateHash !== plan.proposal.expectedStateHash
+    || patch.fragmentPath !== plan.proposal.fragmentPath
+    || patch.receiptSha256 !== plan.proposal.receiptSha256
+    || JSON.stringify(patch.sourceIds) !== JSON.stringify(plan.proposal.sourceIds)) {
+    throw batchError("source_merge_proposal_scope_mismatch", "Proposal state, fragment receipt, and ordered source IDs must exactly match the injected bounded merge transaction.");
+  }
+  if (serializedBytes > plan.proposal.limits.maxSerializedBytes) {
+    throw batchError("source_merge_proposal_byte_limit", `Source merge proposal is ${serializedBytes} bytes; maximum is ${plan.proposal.limits.maxSerializedBytes}.`);
+  }
+  if (!Array.isArray(patch.facts) || patch.facts.length > plan.proposal.limits.maxFacts) {
+    throw batchError("source_merge_fact_limit", `Proposal facts must be an array with at most ${plan.proposal.limits.maxFacts} rows.`);
+  }
+  if (!Array.isArray(patch.noMaterialFacts) || patch.noMaterialFacts.length > plan.proposal.sourceIds.length) {
+    throw batchError("source_merge_no_material_invalid", "noMaterialFacts must be a bounded array covering only selected source IDs.");
+  }
+
+  const selectedIds = new Set(plan.proposal.sourceIds);
+  const fragmentRows = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
+  const referencedSources = new Set();
+  const existingFactIds = new Set((Array.isArray(state.facts?.facts) ? state.facts.facts : [])
+    .filter(isRecord).map((fact) => fact.id).filter(nonEmpty));
+  const generatedFactIds = new Set();
+  const facts = patch.facts.map((fact, index) => {
+    if (!isRecord(fact) || !hasOnlyKeys(fact, [
+      "subject",
+      "predicate",
+      "value",
+      "unit",
+      "dateOrPeriod",
+      "missingTimeReason",
+      "sourceRefs",
+      "evidenceClass",
+      "verificationStatus",
+      "conflictStatus",
+      "material",
+      "critical",
+      "thresholdAssessment",
+    ])) throw batchError("source_merge_fact_keys_invalid", `Proposal fact ${index + 1} contains unsupported fields.`);
+    if (!nonEmpty(fact.subject) || !nonEmpty(fact.predicate) || !hasValue(fact.value)
+      || containsProposalPlaceholder(fact.subject) || containsProposalPlaceholder(fact.predicate)
+      || containsProposalPlaceholder(fact.value)) {
+      throw batchError("source_merge_fact_content_missing", `Proposal fact ${index + 1} requires subject, predicate, and value.`);
+    }
+    const hasDate = nonEmpty(fact.dateOrPeriod);
+    const hasMissingTimeReason = nonEmpty(fact.missingTimeReason);
+    if (hasDate === hasMissingTimeReason
+      || containsProposalPlaceholder(fact.dateOrPeriod)
+      || containsProposalPlaceholder(fact.missingTimeReason)) {
+      throw batchError("source_merge_fact_time_invalid", `Proposal fact ${index + 1} requires exactly one of dateOrPeriod or missingTimeReason, without template placeholders.`);
+    }
+    if (fact.unit !== undefined && fact.unit !== null
+      && (!nonEmpty(fact.unit) || containsProposalPlaceholder(fact.unit))) {
+      throw batchError("source_merge_fact_unit_invalid", `Proposal fact ${index + 1} unit must be a non-empty string, null, or omitted.`);
+    }
+    if (!EVIDENCE_CLASSES.has(fact.evidenceClass)
+      || !VERIFICATION_STATUSES.has(fact.verificationStatus)
+      || !CONFLICT_STATUSES.has(fact.conflictStatus)) {
+      throw batchError("source_merge_fact_classification_invalid", `Proposal fact ${index + 1} has an invalid evidence, verification, or conflict classification.`);
+    }
+    if (typeof fact.material !== "boolean" || typeof fact.critical !== "boolean" || (fact.critical && !fact.material)) {
+      throw batchError("source_merge_fact_materiality_invalid", `Proposal fact ${index + 1} requires boolean material/critical fields and critical implies material.`);
+    }
+    if (!Array.isArray(fact.sourceRefs) || fact.sourceRefs.length === 0) {
+      throw batchError("source_merge_fact_sources_missing", `Proposal fact ${index + 1} requires sourceRefs.`);
+    }
+    const seenRefs = new Set();
+    const sourceRefs = fact.sourceRefs.map((reference) => {
+      if (!isRecord(reference) || !hasOnlyKeys(reference, ["sourceId", "locator"])
+        || !selectedIds.has(reference.sourceId) || !nonEmpty(reference.locator)) {
+        throw batchError("source_merge_fact_source_out_of_scope", `Proposal fact ${index + 1} has an invalid or out-of-scope source reference.`);
+      }
+      const key = `${reference.sourceId}\0${reference.locator}`;
+      if (seenRefs.has(key)) throw batchError("source_merge_fact_source_duplicate", `Proposal fact ${index + 1} repeats a source reference.`);
+      seenRefs.add(key);
+      const fragmentRow = fragmentRows.get(reference.sourceId);
+      const allowedLocators = new Set((Array.isArray(fragmentRow?.facts) ? fragmentRow.facts : []).map((item) => item.locator));
+      if (!allowedLocators.has(reference.locator)) {
+        throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
+      }
+      referencedSources.add(reference.sourceId);
+      return { sourceId: reference.sourceId, locator: reference.locator };
+    }).sort((left, right) => left.sourceId.localeCompare(right.sourceId) || left.locator.localeCompare(right.locator));
+    const referencedEvidenceClasses = new Set(sourceRefs.map((reference) => fragmentRows.get(reference.sourceId)?.evidenceClass));
+    if (!referencedEvidenceClasses.has(fact.evidenceClass)) {
+      throw batchError("source_merge_fact_evidence_mismatch", `Proposal fact ${index + 1} evidenceClass must match at least one referenced fragment source.`);
+    }
+    validateProposedThresholdAssessment(fact.thresholdAssessment, index + 1);
+    const normalized = {
+      subject: fact.subject,
+      predicate: fact.predicate,
+      value: fact.value,
+      ...(nonEmpty(fact.unit) ? { unit: fact.unit } : {}),
+      ...(hasDate ? { dateOrPeriod: fact.dateOrPeriod } : { missingTimeReason: fact.missingTimeReason }),
+      sourceRefs,
+      evidenceClass: fact.evidenceClass,
+      verificationStatus: fact.verificationStatus,
+      conflictStatus: fact.conflictStatus,
+      material: fact.material,
+      critical: fact.critical,
+      ...(fact.thresholdAssessment === undefined || fact.thresholdAssessment === null
+        ? {}
+        : { thresholdAssessment: fact.thresholdAssessment }),
+    };
+    const id = `F-${sha256(stableStringify(normalized)).slice(0, 12).toUpperCase()}`;
+    if (existingFactIds.has(id) || generatedFactIds.has(id)) {
+      throw batchError("source_merge_fact_id_conflict", `Proposal fact ${index + 1} collides with fact ID ${id}.`);
+    }
+    generatedFactIds.add(id);
+    return { id, ...normalized };
+  });
+
+  const noMaterialSources = new Set();
+  const noMaterialFacts = patch.noMaterialFacts.map((item) => {
+    if (!isRecord(item) || !hasOnlyKeys(item, ["sourceId", "reason"])
+      || !selectedIds.has(item.sourceId) || !nonEmpty(item.reason) || containsProposalPlaceholder(item.reason)) {
+      throw batchError("source_merge_no_material_invalid", "Each noMaterialFacts row requires one selected sourceId and a specific reason.");
+    }
+    if (noMaterialSources.has(item.sourceId)) throw batchError("source_merge_no_material_duplicate", `Duplicate noMaterialFacts source ${item.sourceId}.`);
+    noMaterialSources.add(item.sourceId);
+    return { sourceId: item.sourceId, reason: item.reason };
+  });
+  for (const sourceId of selectedIds) {
+    const hasFacts = referencedSources.has(sourceId);
+    const hasNoMaterialReason = noMaterialSources.has(sourceId);
+    if (hasFacts === hasNoMaterialReason) {
+      throw batchError("source_merge_source_disposition_invalid", `Selected source ${sourceId} must have fact references or one noMaterialFacts reason, but not both.`);
+    }
+  }
+  const factIdsBySource = new Map(plan.proposal.sourceIds.map((sourceId) => [sourceId, []]));
+  for (const fact of facts) {
+    for (const reference of fact.sourceRefs) factIdsBySource.get(reference.sourceId)?.push(fact.id);
+  }
+  const noMaterialBySource = new Map(noMaterialFacts.map((item) => [item.sourceId, item.reason]));
+  const transactionSources = plan.proposal.sourceIds.map((sourceId) => {
+    const fragmentRow = fragmentRows.get(sourceId);
+    const factIds = [...new Set(factIdsBySource.get(sourceId) ?? [])].sort();
+    return {
+      sourceId,
+      status: "reviewed",
+      extractionMethod: fragmentRow.inspectionMethod,
+      evidenceClass: fragmentRow.evidenceClass,
+      factIds,
+      unresolvedItems: [...new Set([
+        ...stringArray(fragmentRow.unresolvedItems),
+        ...stringArray(fragmentRow.conflicts).map((conflict) => `Conflict: ${conflict}`),
+      ])],
+      ...(factIds.length === 0 ? { noMaterialFactsReason: noMaterialBySource.get(sourceId) } : {}),
+    };
+  });
+  const transactionBytes = Buffer.byteLength(JSON.stringify({ sources: transactionSources, facts }));
+  if (transactionBytes > plan.proposal.limits.maxSerializedBytes) {
+    throw batchError(
+      "source_merge_transaction_byte_limit",
+      `Projected source/fact transaction is ${transactionBytes} bytes; maximum is ${plan.proposal.limits.maxSerializedBytes}. Reduce fact detail without dropping material evidence.`,
+    );
+  }
+  return { facts, noMaterialFacts, transactionBytes };
+}
+
+function validateProposedThresholdAssessment(assessment, factNumber) {
+  if (assessment === undefined || assessment === null) return;
+  if (!isRecord(assessment) || !hasOnlyKeys(assessment, ["operator", "actual", "threshold", "unit", "breached"])
+    || !["gt", "gte", "lt", "lte", "eq"].includes(assessment.operator)
+    || typeof assessment.actual !== "number" || typeof assessment.threshold !== "number"
+    || typeof assessment.breached !== "boolean"
+    || (assessment.unit !== undefined && assessment.unit !== null
+      && (!nonEmpty(assessment.unit) || containsProposalPlaceholder(assessment.unit)))
+    || compareThreshold(assessment.actual, assessment.operator, assessment.threshold) !== assessment.breached) {
+    throw batchError("source_merge_threshold_invalid", `Proposal fact ${factNumber} has an invalid thresholdAssessment.`);
+  }
+}
+
+function containsProposalPlaceholder(value) {
+  if (typeof value === "string") return /^<[^<>]+>$/u.test(value.trim());
+  if (Array.isArray(value)) return value.some(containsProposalPlaceholder);
+  if (isRecord(value)) return Object.values(value).some(containsProposalPlaceholder);
+  return false;
 }
 
 export async function initializeDeliverableSkeletons(workspaceRoot, deliverables) {
@@ -961,8 +1380,15 @@ export function milestoneDigest(result, workItems) {
 export function convergenceStateHash(result, workItems) {
   return sha256(JSON.stringify({
     validatorStateHash: result.stateHash,
-    operationalWorkDigest: workItems ? sha256(JSON.stringify(workItems)) : null,
+    operationalWorkDigest: workItems ? sha256(JSON.stringify(convergenceWorkProjection(workItems))) : null,
   }));
+}
+
+function convergenceWorkProjection(workItems) {
+  if (!workItems?.proposal?.validationError) return workItems;
+  const proposal = { ...workItems.proposal };
+  delete proposal.validationError;
+  return { ...workItems, proposal };
 }
 
 export function milestoneEnvelopeFor(result, cliPath, workItems) {
@@ -973,6 +1399,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const reference = referenceCommandFor(first?.phase, cliPath);
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
+  const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -1002,9 +1429,10 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(first?.phase === "configuration" ? { initializerCommand: initialize } : {}),
     ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
     ...(sourceFragment ? { sourceFragmentCommand: sourceFragment } : {}),
+    ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, sourceFragment, workItems),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -1025,13 +1453,21 @@ function sourceBootstrapCommandFor(result, cliPath) {
 }
 
 function sourceFragmentSliceCommandFor(workItems, cliPath) {
-  if (workItems?.group !== "source-fragment-merge") return undefined;
+  if (workItems?.group !== "source-fragment-merge" || workItems?.proposal?.validationError) return undefined;
   const item = workItems.mergeItems?.[0];
   if (!item) return undefined;
   const sourceOptions = item.sourceIds.map((sourceId) => `--source-id ${JSON.stringify(sourceId)}`).join(" ");
   return `node ${JSON.stringify(cliPath)} fragment-slice --workspace "$PWD" `
     + `--fragment ${JSON.stringify(item.fragmentPath)} --receipt-sha256 ${item.receiptSha256} `
     + `${sourceOptions} --limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
+}
+
+function sourceMergeApplyCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "source-fragment-apply" || workItems?.proposal?.validated !== true) return undefined;
+  return `node ${JSON.stringify(cliPath)} source-merge-apply --workspace "$PWD" `
+    + `--input-file ${JSON.stringify(workItems.proposal.path)} `
+    + `--proposal-sha256 ${workItems.proposal.proposalSha256} `
+    + `--limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
 }
 
 function milestoneName(result) {
@@ -1060,7 +1496,7 @@ function workBatchFor(phase) {
   }
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, sourceFragment, workItems) {
+function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -1086,11 +1522,22 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
   }
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-merge") {
+    if (workItems.proposal?.validationError) {
+      return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
+        + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
+        + `Rewrite that proposal from the already returned bounded fragment slice and injected proposal.template. `
+        + `Do not re-read fragments or raw sources, and do not edit canonical ledgers.`;
+    }
     const item = workItems.mergeItems?.[0];
     return `A validated worker receipt is ready. In the same assistant response, execute sourceFragmentCommand exactly and issue sibling read_file calls for current sources.json and facts.json: ${sourceFragment}. `
-      + `In the next response, without another inspection call, merge only source IDs ${(item?.sourceIds ?? []).join(", ")} into canonical sources.json and facts.json as the single writer. `
-      + `Do not re-dispatch workers or re-read raw sources. Write at most ${workItems.limits.maxRecords} source records and `
-      + `${workItems.limits.maxSerializedBytes} serialized bytes, preserve reciprocal source/fact links, then run: ${command}`;
+      + `In the next response, without another inspection call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
+      + `Replace every placeholder with your source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators returned by sourceFragmentCommand. `
+      + `Do not re-dispatch workers or re-read raw sources. Do not edit canonical ledgers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending"
+    && workItems?.group === "source-fragment-apply") {
+    return `The bounded source-merge proposal is valid and state-bound. Execute sourceMergeApplyCommand exactly as the next tool call: ${sourceMergeApply}. `
+      + `Do not inspect or edit either canonical ledger manually. The command atomically projects the accepted facts into facts.json and their reciprocal links into sources.json, then validates the resulting state.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending" && workItems?.mode === "delegated") {
     return "Dispatch every injected workItems.batches entry now with one agent tool call per batch in the same assistant response. "

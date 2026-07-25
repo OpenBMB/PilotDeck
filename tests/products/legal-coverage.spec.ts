@@ -416,7 +416,10 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(mergeContext, /sibling read_file calls for current sources\.json and facts\.json/u);
     assert.match(mergeContext, /"sourceFragmentCommand":/u);
     assert.match(mergeContext, /fragment-slice/u);
-    assert.match(mergeContext, /merge only source IDs/u);
+    assert.match(mergeContext, /"proposal":/u);
+    assert.match(mergeContext, /"template":/u);
+    assert.match(mergeContext, /write one source-merge proposal/u);
+    assert.match(mergeContext, /Do not edit canonical ledgers/u);
     assert.match(mergeContext, /Do not re-dispatch workers or re-read raw sources/u);
     const mergeConvergence = mergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash?: string;
@@ -459,6 +462,173 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     );
     assert.equal(staleSlice.exitCode, 1);
     assert.match(staleSlice.stderr, /source_fragment_receipt_invalid/u);
+
+    const envelope = JSON.parse(mergeContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: {
+        proposal: {
+          path: string;
+          expectedStateHash: string;
+          fragmentPath: string;
+          receiptSha256: string;
+          sourceIds: string[];
+        };
+      };
+    };
+    const proposal = envelope.workItems.proposal;
+    const proposalPath = join(workspace, proposal.path);
+    const proposalBase = {
+      schemaVersion: 1,
+      phase: "sources",
+      group: "source-fragment-merge",
+      expectedStateHash: proposal.expectedStateHash,
+      fragmentPath: proposal.fragmentPath,
+      receiptSha256: proposal.receiptSha256,
+      sourceIds: proposal.sourceIds,
+      facts: proposal.sourceIds.map((sourceId) => ({
+        subject: sourceId,
+        predicate: "contains reviewed evidence",
+        value: `Reviewed ${sourceId}.`,
+        missingTimeReason: "The synthetic source contains no usable date.",
+        sourceRefs: [{ sourceId, locator: "converted.txt:1" }],
+        evidenceClass: "other",
+        verificationStatus: "verified",
+        conflictStatus: "none",
+        material: false,
+        critical: false,
+      })),
+      noMaterialFacts: [],
+    };
+    await writeJson(proposalPath, {
+      ...proposalBase,
+      facts: [{ ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] }],
+      noMaterialFacts: proposal.sourceIds.slice(1).map((sourceId) => ({
+        sourceId,
+        reason: "Synthetic invalid-proposal fixture.",
+      })),
+    });
+    const invalidProposal = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-merge"/u);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_locator_unverified/u);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Rewrite that proposal from the already returned bounded fragment slice/u);
+    assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceFragmentCommand":/u);
+    assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
+    assert.equal(
+      (invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      mergeConvergence.stateHash,
+    );
+
+    await writeJson(proposalPath, {
+      ...proposalBase,
+      facts: [{ ...proposalBase.facts[0], subject: "<legal subject>" }],
+      noMaterialFacts: proposal.sourceIds.slice(1).map((sourceId) => ({
+        sourceId,
+        reason: "Synthetic placeholder-proposal fixture.",
+      })),
+    });
+    const placeholderProposal = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_content_missing/u);
+    assert.doesNotMatch(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
+    assert.equal(
+      (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      mergeConvergence.stateHash,
+    );
+
+    await writeJson(proposalPath, proposalBase);
+    const applyReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const applyContext = applyReceipt.hookSpecificOutput.additionalContext ?? "";
+    assert.match(applyContext, /"group": "source-fragment-apply"/u);
+    assert.match(applyContext, /"mode": "main-agent-apply"/u);
+    assert.match(applyContext, /"sourceMergeApplyCommand":/u);
+    assert.match(applyContext, /source-merge-apply/u);
+    const applyConvergence = applyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash?: string;
+      nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
+    };
+    assert.notEqual(applyConvergence.stateHash, mergeConvergence.stateHash);
+    assert.deepEqual(applyConvergence.nextBatch, {
+      group: "source-fragment-apply",
+      returned: 4,
+      hasMore: true,
+    });
+
+    const validProposalBytes = await readFile(proposalPath);
+    const proposalHash = sha256(validProposalBytes);
+    const beforeApplySources = await readFile(join(workspace, STATE_ROOT, "sources.json"));
+    const beforeApplyFacts = await readFile(join(workspace, STATE_ROOT, "facts.json"));
+    await writeFile(proposalPath, Buffer.concat([validProposalBytes, Buffer.from("\n")]));
+    const changedProposal = await runCli(
+      workspace,
+      "source-merge-apply",
+      "--input-file", proposal.path,
+      "--proposal-sha256", proposalHash,
+    );
+    assert.equal(changedProposal.exitCode, 1);
+    assert.match(changedProposal.stderr, /source_merge_proposal_changed/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+    await writeFile(proposalPath, validProposalBytes);
+    const applied = await runCli(
+      workspace,
+      "source-merge-apply",
+      "--input-file", proposal.path,
+      "--proposal-sha256", proposalHash,
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const appliedResult = JSON.parse(applied.stdout) as { applied: boolean; sourceCount: number; factCount: number };
+    assert.equal(appliedResult.applied, true);
+    assert.equal(appliedResult.sourceCount, 4);
+    assert.equal(appliedResult.factCount, 4);
+    const sourcesAfterApply = JSON.parse(await readFile(join(workspace, STATE_ROOT, "sources.json"), "utf8")) as {
+      sources: Array<{ id: string; status: string; extractionMethod?: string; factIds?: string[] }>;
+    };
+    const factsAfterApply = JSON.parse(await readFile(join(workspace, STATE_ROOT, "facts.json"), "utf8")) as {
+      facts: Array<{ id: string; sourceRefs: Array<{ sourceId: string }> }>;
+    };
+    const mergedSources = sourcesAfterApply.sources.filter((source) => proposal.sourceIds.includes(source.id));
+    assert.equal(mergedSources.every((source) => source.status === "reviewed"), true);
+    assert.equal(mergedSources.every((source) => source.extractionMethod === "verified derived text inspection"), true);
+    assert.equal(mergedSources.every((source) => source.factIds?.length === 1), true);
+    const factsBeforeApply = JSON.parse(beforeApplyFacts.toString("utf8")) as { facts: unknown[] };
+    assert.equal(factsAfterApply.facts.length, factsBeforeApply.facts.length + 4);
+    for (const source of mergedSources) {
+      const factId = source.factIds?.[0];
+      assert.equal(factsAfterApply.facts.some((fact) => fact.id === factId
+        && fact.sourceRefs.some((reference) => reference.sourceId === source.id)), true);
+    }
+    assert.notDeepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.notDeepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+
+    const sourcesBeforeReplay = await readFile(join(workspace, STATE_ROOT, "sources.json"));
+    const factsBeforeReplay = await readFile(join(workspace, STATE_ROOT, "facts.json"));
+    const replay = await runCli(
+      workspace,
+      "source-merge-apply",
+      "--input-file", proposal.path,
+      "--proposal-sha256", proposalHash,
+    );
+    assert.equal(replay.exitCode, 1);
+    assert.match(replay.stderr, /stale_state_hash/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), sourcesBeforeReplay);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), factsBeforeReplay);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
