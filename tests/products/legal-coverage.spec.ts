@@ -1680,6 +1680,7 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
     await writeCompleteFixture(workspace);
     const matricesPath = join(workspace, STATE_ROOT, "matrices.json");
     const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    const originalMatrices = structuredClone(matrices);
     matrices.matrices[0]!.status = "pending";
     matrices.matrices[1]!.status = "pending";
     await writeJson(matricesPath, matrices);
@@ -1694,7 +1695,84 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
     assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"occurrences": 2/u);
     assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"milestone": "EVIDENCE_READY"/u);
     assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /one matrix/u);
-    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /up to 12 records/u);
+    const context = preModel.hookSpecificOutput.additionalContext ?? "";
+    const envelope = JSON.parse(context
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      mutationContract: {
+        writer: string;
+        strategy: string;
+        canonicalPath: string;
+        target: { recordId: string; collectionIndex: number };
+        limits: { maxChangedRecords: number };
+        interface: { phaseApplyCommandAvailable: boolean };
+        documentSchema: { requiredRecordIds: string[] };
+      };
+      nextAction: string;
+    };
+    assert.equal(envelope.mutationContract.writer, "main-agent-only");
+    assert.equal(envelope.mutationContract.strategy, "bounded-direct-canonical-json-write");
+    assert.equal(envelope.mutationContract.canonicalPath, ".pilotdeck/work/legal-coverage/matrices.json");
+    assert.deepEqual(envelope.mutationContract.target, {
+      recordId: "equity-capital-timeline",
+      collectionIndex: 0,
+      errorCode: "matrix_pending",
+      validatorPath: "matrices.json#matrices[0]",
+    });
+    assert.equal(envelope.mutationContract.limits.maxChangedRecords, 1);
+    assert.equal(envelope.mutationContract.interface.phaseApplyCommandAvailable, false);
+    assert.deepEqual(envelope.mutationContract.documentSchema.requiredRecordIds, [
+      "equity-capital-timeline",
+      "holding-platform-special-rights",
+      "governance-personnel-timeline",
+      "contract-key-terms",
+      "debt-collateral-liquidity",
+      "employment-ip-timeline",
+      "legal-authority",
+    ]);
+    assert.match(envelope.nextAction, /update only matrix "equity-capital-timeline"/u);
+    assert.match(envelope.nextAction, /There is no phase-specific apply command/u);
+    assert.match(envelope.nextAction, /do not inspect CLI help, probe for, or invent one/u);
+    assert.match(envelope.nextAction, /Then run:/u);
+
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 2);
+    const validationResult = JSON.parse(validation.stdout) as {
+      errors: Array<{ code: string; recordId?: string; collectionIndex?: number }>;
+    };
+    const pending = validationResult.errors.filter((error) => error.code === "matrix_pending");
+    assert.deepEqual(pending.map(({ recordId, collectionIndex }) => ({ recordId, collectionIndex })), [
+      { recordId: "equity-capital-timeline", collectionIndex: 0 },
+      { recordId: "holding-platform-special-rights", collectionIndex: 1 },
+    ]);
+
+    const firstConvergenceHash = (
+      preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
+    )?.stateHash;
+    matrices.matrices[0] = originalMatrices.matrices[0]!;
+    await writeJson(matricesPath, matrices);
+    const advanced = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "grouped-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const advancedContext = advanced.hookSpecificOutput.additionalContext ?? "";
+    const advancedEnvelope = JSON.parse(advancedContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      mutationContract: { target: { recordId: string; collectionIndex: number } };
+    };
+    assert.deepEqual(advancedEnvelope.mutationContract.target, {
+      recordId: "holding-platform-special-rights",
+      collectionIndex: 1,
+      errorCode: "matrix_pending",
+      validatorPath: "matrices.json#matrices[1]",
+    });
+    assert.notEqual(
+      (advanced.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      firstConvergenceHash,
+    );
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

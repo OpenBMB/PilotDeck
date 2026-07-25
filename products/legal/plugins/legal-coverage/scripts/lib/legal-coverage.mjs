@@ -1404,6 +1404,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
+  const mutationContract = phaseMutationContractFor(result);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -1435,6 +1436,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceFragment ? { sourceFragmentCommand: sourceFragment } : {}),
     ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
+    ...(mutationContract ? { mutationContract } : {}),
     ...(workItems ? { workItems } : {}),
     nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
@@ -1492,12 +1494,62 @@ function workBatchFor(phase) {
   switch (phase) {
     case "sources": return { scope: "one source batch", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
     case "facts": return { scope: "one evidence fragment", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
-    case "matrices": return { scope: "one matrix", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
+    case "matrices": return { scope: "one matrix", maxRecords: 1, maxSerializedBytes: 24576, validateAfterWrite: true };
     case "issues": return { scope: "one issue group", maxRecords: 8, maxSerializedBytes: 24576, validateAfterWrite: true };
     case "authorities": return { scope: "one authority group", maxRecords: 8, maxSerializedBytes: 24576, validateAfterWrite: true };
     case "coverage": return { scope: "one coverage group", maxRecords: 12, maxSerializedBytes: 24576, validateAfterWrite: true };
     default: return { scope: "one configuration repair", maxRecords: 1, maxSerializedBytes: 24576, validateAfterWrite: true };
   }
+}
+
+function phaseMutationContractFor(result) {
+  const first = result.errors[0];
+  if (first?.phase !== "matrices") return undefined;
+  const batch = workBatchFor(first.phase);
+  return {
+    schemaVersion: 1,
+    phase: "matrices",
+    writer: "main-agent-only",
+    strategy: "bounded-direct-canonical-json-write",
+    canonicalPath: `${STATE_DIRECTORY}/${STATE_FILES.matrices}`,
+    target: {
+      errorCode: first.code,
+      recordId: first.recordId ?? null,
+      collectionIndex: Number.isInteger(first.collectionIndex) ? first.collectionIndex : null,
+      validatorPath: first.path ?? STATE_FILES.matrices,
+    },
+    limits: {
+      maxChangedRecords: batch.maxRecords,
+      maxSerializedBytes: batch.maxSerializedBytes,
+      preserveUnchangedRecords: true,
+      validateAfterWrite: true,
+    },
+    prerequisites: [
+      "Load guidanceCommand exactly if issue-rules has not already been loaded.",
+      `Read ${STATE_DIRECTORY}/${STATE_FILES.matrices} and ${STATE_DIRECTORY}/${STATE_FILES.facts} before writing.`,
+      "Base every entry or not-applicable reason on the canonical facts; preserve uncertainty.",
+    ],
+    interface: {
+      kind: "workspace-file-write",
+      phaseApplyCommandAvailable: false,
+      instruction: "Update the canonical JSON document directly with the workspace file-write tool. Do not probe for or invent a phase-specific apply command.",
+    },
+    documentSchema: {
+      schemaVersion: 1,
+      collectionKey: "matrices",
+      requiredRecordIds: REQUIRED_MATRICES,
+      record: {
+        required: ["id", "status", "entries"],
+        statusValues: [...MATRIX_STATUSES],
+        completeRequires: "at least one fact-grounded entry",
+        notApplicableRequires: "a specific fact-grounded notApplicableReason",
+      },
+      entry: {
+        required: ["id", "summary", "factIds"],
+        optional: ["riskSignals", "issueIds", "authorityIds"],
+      },
+    },
+  };
 }
 
 function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems) {
@@ -1567,6 +1619,13 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
   const guidance = reference
     ? `Before the next canonical write, load the bundled guidance with this exact command instead of guessing a workspace-relative references path: ${reference}. `
     : "";
+  if (first?.phase === "matrices") {
+    const target = first.recordId ? ` ${JSON.stringify(first.recordId)}` : " identified by mutationContract.target";
+    return guidance + `Follow mutationContract as the complete write interface. Read its canonicalPath and facts.json, then as the sole canonical writer update only matrix${target} `
+      + `with the workspace file-write tool while preserving every other record. Change at most one matrix and ${batch.maxSerializedBytes} serialized bytes. `
+      + `There is no phase-specific apply command for this write; do not inspect CLI help, probe for, or invent one. Then run: ${command}. `
+      + "Repeat only after validation reports progress.";
+  }
   return guidance + `Repair the next ${batch.scope} for ${first?.code ?? "state_file_invalid"} `
     + `(up to ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes; `
     + `${occurrenceCount} occurrence(s) currently visible), then run: ${command}. `
@@ -2227,7 +2286,16 @@ function validateMatrices(context) {
     if (byId.has(matrix.id)) add(context, "matrices", "matrix_duplicate", `Duplicate matrix ${matrix.id}.`, at);
     byId.set(matrix.id, matrix);
     if (!MATRIX_STATUSES.has(matrix.status)) add(context, "matrices", "matrix_status_invalid", `Matrix ${matrix.id} has an invalid status.`, at);
-    if (matrix.status === "pending") add(context, "matrices", "matrix_pending", `Matrix ${matrix.id} is still pending.`, at);
+    if (matrix.status === "pending") {
+      add(
+        context,
+        "matrices",
+        "matrix_pending",
+        `Matrix ${matrix.id} is still pending.`,
+        at,
+        { recordId: matrix.id, collectionIndex: index },
+      );
+    }
     const entries = Array.isArray(matrix.entries) ? matrix.entries : [];
     if (matrix.status === "complete" && entries.length === 0) add(context, "matrices", "matrix_empty", `Complete matrix ${matrix.id} requires at least one entry.`, at);
     if (matrix.status === "not-applicable" && !nonEmpty(matrix.notApplicableReason)) {
@@ -2777,12 +2845,12 @@ function uniqueId(context, set, id, phase, code, path) {
   set.add(id);
 }
 
-function add(context, phase, code, message, path) {
-  context.errors.push(issue(phase, code, message, path));
+function add(context, phase, code, message, path, details) {
+  context.errors.push(issue(phase, code, message, path, details));
 }
 
-function issue(phase, code, message, path) {
-  return { phase, code, message, path };
+function issue(phase, code, message, path, details) {
+  return { phase, code, message, path, ...(isRecord(details) ? details : {}) };
 }
 
 function phaseForStateKey(key) {
