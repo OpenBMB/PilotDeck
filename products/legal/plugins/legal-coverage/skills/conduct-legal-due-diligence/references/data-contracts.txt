@@ -12,18 +12,27 @@ config.json
 - jurisdiction: non-empty governing jurisdiction
 - basisDate: non-empty review basis date or period
 - allowNoMaterialFacts: false by default; true only after the entire reviewed source set is genuinely non-responsive
-- inputRoots: non-empty array of workspace-relative file or directory paths
+- inputRoots: non-empty array of workspace-relative file or directory paths; never .pilotdeck/work/legal-coverage
+- when .pilotdeck/input-manifest.json exists, inputRoots select only files under its originalRoot
 - deliverables: non-empty array of { id, path, required }
 
 sources.json
 - sources: one row per physical file under inputRoots
-- row: { id, path, sha256, status, extractionMethod, evidenceClass, factIds, noMaterialFactsReason, unresolvedItems }
+- row: { id, path, sha256, status, extractionMethod, derivedArtifacts, evidenceClass, factIds, noMaterialFactsReason, unresolvedItems }
 - status: reviewed | unreadable | pending
 - evidenceClass: official-record | executed-contract | company-disclosure | financial-record | third-party-record | interview | image-or-scan | other
 - sha256 is the lowercase SHA-256 of the exact source bytes at review time. If the source changes, re-inspect it and update every dependent ledger before recording the new hash.
+- path binds an original source. When the runner input manifest exists, do not use a derived or Agent-created file as source.path.
+- derivedArtifacts: every manifest derivation used to inspect a reviewed non-text original, each `{ path, sha256, extractionMethod, extractorVersion }`. All chunks for that original are required.
 - A reviewed row needs sha256, extractionMethod, evidenceClass, and either factIds or noMaterialFactsReason.
 - An unreadable row needs unresolvedItems. Pending rows block completion.
 - sources.factIds and facts.sourceRefs are reciprocal: each link must appear on both rows.
+
+.pilotdeck/input-manifest.json (runner-owned, read-only)
+- schemaVersion: 1; createdBy: pilotdeck-eval-runner
+- originalRoot and derivedRoot are disjoint workspace-relative roots
+- entries bind each original `{ path, sha256, bytes }` to zero or more derivations `{ path, sha256, bytes, method, version }`
+- the legal validator verifies both byte sets and includes them in completion-proof.json; the Agent never edits this manifest
 
 facts.json
 - facts: atomic fact rows

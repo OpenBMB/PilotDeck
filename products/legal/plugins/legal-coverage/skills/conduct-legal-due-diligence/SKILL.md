@@ -13,6 +13,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 2. If configuration is incomplete, run the injected `legal-coverage.mjs init` command with every source root, required deliverable, jurisdiction, and basis date.
 3. Read `references/data-contracts.txt` before writing ledger data. Read `references/issue-rules.txt` before completing matrices or issues.
 4. Keep all working state under `.pilotdeck/work/legal-coverage/`; keep user deliverables at the configured paths.
+5. If `.pilotdeck/input-manifest.json` exists, initialize `config.inputRoots` from its `originalRoot`. Never initialize from attachments or `derivedRoot`.
 
 ## Keep Canonical State Single-Writer
 
@@ -27,15 +28,16 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 
 ## Build Evidence Before Conclusions
 
-1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file and record the lowercase SHA-256 of the exact bytes inspected. If a source changes, re-inspect it and update every dependent ledger before recording the new hash.
-2. Inspect every machine-readable source completely, including all spreadsheet sheets and presentation slides. Mark a source `unreadable` only after deterministic extraction or inspection fails; record the unresolved items.
-3. Treat every configured input root as read-only. Put OCR text, extraction caches, conversion scripts, bounded coverage patch files, and other derived working files under `.pilotdeck/work/legal-coverage/`, never beside source documents.
-4. Use only inspection tools already available in the runtime. Do not install system packages, language packages, plugins, or binaries during a legal task. If available deterministic fallbacks cannot read a file, mark it pending manual verification instead of mutating the host environment.
-5. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
-6. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.
-7. Link each reviewed source to extracted fact IDs or give a specific `noMaterialFactsReason`.
-8. Do not set `config.allowNoMaterialFacts` to true for a responsive diligence room. It exists only for a genuinely non-responsive source set after every file was reviewed.
-9. Create the configured deliverable skeleton early and update it incrementally. Do not wait until research is complete to start the formal output.
+1. Inventory every file under every configured input root in `sources.json`. Use one stable source ID per file and record the lowercase SHA-256 of the exact original bytes. If a source changes, re-inspect it and update every dependent ledger before recording the new hash.
+2. When `.pilotdeck/input-manifest.json` exists, bind each source row to an original file listed there. For every reviewed non-text original, copy all of its manifest derivations into `derivedArtifacts` as `{ path, sha256, extractionMethod, extractorVersion }`, inspect those verified derivations, and cite the original source ID in facts. Derived text is inspection evidence, not a replacement source.
+3. Inspect every machine-readable source completely, including all spreadsheet sheets and presentation slides. Mark a source `unreadable` only after deterministic extraction or inspection fails; record the unresolved items.
+4. Treat every configured input root as read-only. Put OCR text, extraction caches, conversion scripts, bounded coverage patch files, and other derived working files under `.pilotdeck/work/legal-coverage/`, never beside source documents. Runner-provided `derivedRoot` files are also read-only.
+5. Use only inspection tools already available in the runtime. Do not install system packages, language packages, plugins, or binaries during a legal task. If available deterministic fallbacks cannot read a file, mark it pending manual verification instead of mutating the host environment.
+6. Record atomic facts in `facts.json`. Preserve the subject, predicate, value, unit, date or period, source locator, evidence class, verification state, conflict state, and materiality. Do not merge conflicting statements into one fact.
+7. Set `material: true` only when the fact changes a legal conclusion, risk severity, transaction control, or unresolved disclosure. Set `critical: true` only when it may block or materially restructure the transaction. Do not default every extracted fact to material or critical.
+8. Link each reviewed source to extracted fact IDs or give a specific `noMaterialFactsReason`.
+9. Do not set `config.allowNoMaterialFacts` to true for a responsive diligence room. It exists only for a genuinely non-responsive source set after every file was reviewed.
+10. Create the configured deliverable skeleton early and update it incrementally. Do not wait until research is complete to start the formal output.
 
 ## Complete Legal Analysis
 

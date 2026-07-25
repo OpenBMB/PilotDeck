@@ -51,6 +51,95 @@ test("legal coverage validator creates a current proof and removes it when the d
   }
 });
 
+test("legal coverage validator binds runner originals and derivations into its proof", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-lineage-"));
+  try {
+    const fixture = await writeManifestBoundFixture(workspace);
+    const validation = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(validation.exitCode, 0, validation.stderr);
+
+    const proofPath = join(workspace, STATE_ROOT, "completion-proof.json");
+    const proof = JSON.parse(await readFile(proofPath, "utf8")) as {
+      inputManifest: { path: string; sha256: string; originalRoot: string; derivedRoot: string };
+      sources: Array<{ path: string; sha256: string; derivedArtifacts: Array<Record<string, unknown>> }>;
+    };
+    assert.equal(proof.inputManifest.path, ".pilotdeck/input-manifest.json");
+    assert.match(proof.inputManifest.sha256, /^[a-f0-9]{64}$/u);
+    assert.equal(proof.sources[0]?.path, fixture.originalPath);
+    assert.equal(proof.sources[0]?.sha256, sha256(fixture.originalBytes));
+    assert.deepEqual(proof.sources[0]?.derivedArtifacts, [{
+      path: fixture.derivedPath,
+      sha256: sha256(fixture.derivedBytes),
+      bytes: fixture.derivedBytes.byteLength,
+      extractionMethod: "docx-text-extraction",
+      extractorVersion: "pilotdeck-eval-runner-v1",
+    }]);
+
+    await writeFile(join(workspace, fixture.derivedPath), "changed derivation\n");
+    const staleDerived = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(staleDerived.exitCode, 2);
+    const staleDerivedResult = JSON.parse(staleDerived.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(staleDerivedResult.errors.some((error) => error.code === "input_manifest_derivation_stale"), true);
+    await assert.rejects(stat(proofPath), { code: "ENOENT" });
+
+    await writeFile(join(workspace, fixture.derivedPath), fixture.derivedBytes);
+    await writeFile(join(workspace, fixture.originalPath), "changed original bytes");
+    const staleOriginal = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(staleOriginal.exitCode, 2);
+    const staleOriginalResult = JSON.parse(staleOriginal.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(staleOriginalResult.errors.some((error) => error.code === "input_manifest_original_stale"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage validator rejects missing lineage and mutable or derived input roots", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-lineage-boundary-"));
+  try {
+    const fixture = await writeManifestBoundFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const sourcesPath = join(root, "sources.json");
+    const sources = JSON.parse(await readFile(sourcesPath, "utf8")) as { sources: Array<Record<string, unknown>> };
+    delete sources.sources[0]?.derivedArtifacts;
+    await writeJson(sourcesPath, sources);
+
+    const missing = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(missing.exitCode, 2);
+    const missingResult = JSON.parse(missing.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(missingResult.errors.some((error) => error.code === "source_derivation_missing"), true);
+
+    await writeJson(sourcesPath, { schemaVersion: 1, sources: [] });
+    const omittedOriginal = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(omittedOriginal.exitCode, 2);
+    const omittedResult = JSON.parse(omittedOriginal.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(omittedResult.errors.some((error) => error.code === "manifest_original_not_inventoried"), true);
+
+    sources.sources[0]!.path = fixture.derivedPath;
+    sources.sources[0]!.sha256 = sha256(fixture.derivedBytes);
+    sources.sources[0]!.derivedArtifacts = [];
+    await writeJson(sourcesPath, sources);
+    const configPath = join(root, "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as { inputRoots: string[] };
+    config.inputRoots = [fixture.derivedRoot];
+    await writeJson(configPath, config);
+
+    const derivedAsOriginal = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(derivedAsOriginal.exitCode, 2);
+    const derivedResult = JSON.parse(derivedAsOriginal.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(derivedResult.errors.some((error) => error.code === "input_root_not_original"), true);
+    assert.equal(derivedResult.errors.some((error) => error.code === "source_not_in_input_manifest"), true);
+
+    config.inputRoots = [STATE_ROOT];
+    await writeJson(configPath, config);
+    const mutableState = await runCli(workspace, "validate", "--write-proof");
+    assert.equal(mutableState.exitCode, 2);
+    const mutableResult = JSON.parse(mutableState.stdout) as { errors: Array<{ code: string }> };
+    assert.equal(mutableResult.errors.some((error) => error.code === "input_root_uses_mutable_state"), true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage next-batch exposes one bounded deterministic repair slice", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-batch-"));
   try {
@@ -1090,6 +1179,69 @@ export async function writeCompleteFixture(workspace: string): Promise<void> {
       quote: "Synthetic transactions act Article 1 states that a closing condition may address the identified risk.",
     }],
   });
+}
+
+async function writeManifestBoundFixture(workspace: string): Promise<{
+  originalRoot: string;
+  derivedRoot: string;
+  originalPath: string;
+  derivedPath: string;
+  originalBytes: Buffer;
+  derivedBytes: Buffer;
+}> {
+  await writeCompleteFixture(workspace);
+  const originalRoot = ".pilotdeck/inputs/original";
+  const derivedRoot = ".pilotdeck/inputs/derived";
+  const originalRelative = "files/record.docx";
+  const derivedRelative = "files/record_converted.txt";
+  const originalPath = `${originalRoot}/${originalRelative}`;
+  const derivedPath = `${derivedRoot}/${derivedRelative}`;
+  const originalBytes = Buffer.from("synthetic office original bytes");
+  const derivedBytes = Buffer.from("Synthetic company record.\n");
+  await mkdir(join(workspace, originalRoot, "files"), { recursive: true });
+  await mkdir(join(workspace, derivedRoot, "files"), { recursive: true });
+  await writeFile(join(workspace, originalPath), originalBytes);
+  await writeFile(join(workspace, derivedPath), derivedBytes);
+  await writeJson(join(workspace, ".pilotdeck/input-manifest.json"), {
+    schemaVersion: 1,
+    createdBy: "pilotdeck-eval-runner",
+    originalRoot,
+    derivedRoot,
+    entries: [{
+      original: {
+        path: originalRelative,
+        sha256: sha256(originalBytes),
+        bytes: originalBytes.byteLength,
+      },
+      derivations: [{
+        path: derivedRelative,
+        sha256: sha256(derivedBytes),
+        bytes: derivedBytes.byteLength,
+        method: "docx-text-extraction",
+        version: "pilotdeck-eval-runner-v1",
+      }],
+    }],
+  });
+
+  const stateRoot = join(workspace, STATE_ROOT);
+  const configPath = join(stateRoot, "config.json");
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { inputRoots: string[] };
+  config.inputRoots = [originalRoot];
+  await writeJson(configPath, config);
+  const sourcesPath = join(stateRoot, "sources.json");
+  const sources = JSON.parse(await readFile(sourcesPath, "utf8")) as { sources: Array<Record<string, unknown>> };
+  sources.sources[0]!.path = originalPath;
+  sources.sources[0]!.sha256 = sha256(originalBytes);
+  sources.sources[0]!.extractionMethod = "runner-provided deterministic derivation";
+  sources.sources[0]!.derivedArtifacts = [{
+    path: derivedPath,
+    sha256: sha256(derivedBytes),
+    extractionMethod: "docx-text-extraction",
+    extractorVersion: "pilotdeck-eval-runner-v1",
+  }];
+  await writeJson(sourcesPath, sources);
+  await rm(join(workspace, "source-room"), { recursive: true, force: true });
+  return { originalRoot, derivedRoot, originalPath, derivedPath, originalBytes, derivedBytes };
 }
 
 async function runCli(workspace: string, ...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {

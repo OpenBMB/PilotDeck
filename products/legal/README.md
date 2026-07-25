@@ -79,6 +79,14 @@ missing or generic final coverage. Canonical ledgers use a single main-agent
 writer; delegated workers produce disjoint evidence fragments for serial merge.
 Only the validator writes `completion-proof.json`.
 
+Evaluation runners may provide `.pilotdeck/input-manifest.json`. When present,
+the plugin requires `sources.json` to bind originals under the manifest's
+`originalRoot`; reviewed Office or other non-text sources must also record every
+verified `derivedRoot` artifact used for inspection. Original and derived hashes,
+extraction methods, and extractor versions become part of the validator-owned
+state hash and completion proof. Existing non-runner workspaces remain compatible
+when no input manifest is present.
+
 For document rooms larger than 20 files, the legal Skill requires two to four
 read-only evidence batches. This keeps raw extraction out of the main context
 while preserving a single writer for canonical state.

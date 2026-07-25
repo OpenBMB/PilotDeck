@@ -39,6 +39,7 @@ try {
           "Legal coverage controls are active for this task.",
           "Load and apply the project skill legal-coverage:conduct-legal-due-diligence before substantive analysis.",
           "Keep legal facts, issue rules, authorities, and coverage mappings under .pilotdeck/work/legal-coverage.",
+          "When .pilotdeck/input-manifest.json exists, bind sources to its originalRoot and use derivedRoot files only as recorded inspection artifacts.",
           "Use one main-agent writer for canonical ledgers and deliverables; delegated workers may write only disjoint evidence fragments.",
           "The completion proof is generated only by the bundled validator and is required before completion.",
         ].join("\n"),

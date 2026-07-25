@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
-export const VALIDATOR_VERSION = "1.2.0";
+export const VALIDATOR_VERSION = "1.3.0";
 export const STATE_DIRECTORY = ".pilotdeck/work/legal-coverage";
 export const PROOF_PATH = `${STATE_DIRECTORY}/completion-proof.json`;
+export const INPUT_MANIFEST_PATH = ".pilotdeck/input-manifest.json";
 
 export const REQUIRED_MATRICES = [
   "equity-capital-timeline",
@@ -342,6 +343,8 @@ export async function validateWorkspace(options) {
     sources: new Map(),
     deliverables: new Map(),
     deliverableContents: new Map(),
+    inputManifest: undefined,
+    manifestSources: new Map(),
     proofPathSafe: true,
   };
 
@@ -352,6 +355,7 @@ export async function validateWorkspace(options) {
     add(context, "configuration", "proof_path_invalid", errorMessage(error), PROOF_PATH);
   }
 
+  await loadInputManifest(context);
   await validateConfig(context);
   await validateSources(context);
   validateFacts(context);
@@ -370,8 +374,18 @@ export async function validateWorkspace(options) {
         validatorVersion: VALIDATOR_VERSION,
         validatedAt: new Date().toISOString(),
         stateHash,
+        ...(context.inputManifest
+          ? { inputManifest: {
+              path: INPUT_MANIFEST_PATH,
+              sha256: context.inputManifest.sha256,
+              originalRoot: context.inputManifest.originalRoot,
+              derivedRoot: context.inputManifest.derivedRoot,
+            } }
+          : {}),
         sources: [...context.sources.entries()]
-          .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
+          .map(([path, value]) => context.inputManifest
+            ? { path, sha256: value.sha256, bytes: value.bytes, derivedArtifacts: value.derivedArtifacts ?? [] }
+            : { path, sha256: value.sha256, bytes: value.bytes })
           .sort((a, b) => a.path.localeCompare(b.path)),
         deliverables: [...context.deliverables.entries()]
           .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
@@ -720,6 +734,172 @@ export async function resolveSafeWorkspacePath(workspaceRoot, candidate, options
   return resolved;
 }
 
+async function loadInputManifest(context) {
+  let manifestBytes;
+  try {
+    const manifestPath = await resolveSafeWorkspacePath(context.workspace, INPUT_MANIFEST_PATH, { allowMissing: true });
+    manifestBytes = await readFile(manifestPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    add(context, "sources", "input_manifest_unreadable", `Cannot read ${INPUT_MANIFEST_PATH}: ${errorMessage(error)}`, INPUT_MANIFEST_PATH);
+    return;
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(manifestBytes.toString("utf8"));
+  } catch (error) {
+    add(context, "sources", "input_manifest_invalid", `${INPUT_MANIFEST_PATH} is not valid JSON: ${errorMessage(error)}`, INPUT_MANIFEST_PATH);
+    return;
+  }
+  if (!isRecord(manifest) || manifest.schemaVersion !== 1 || manifest.createdBy !== "pilotdeck-eval-runner") {
+    add(context, "sources", "input_manifest_invalid", `${INPUT_MANIFEST_PATH} must be a pilotdeck-eval-runner schemaVersion 1 object.`, INPUT_MANIFEST_PATH);
+    return;
+  }
+
+  let originalRoot;
+  let derivedRoot;
+  try {
+    originalRoot = normalizeManifestWorkspacePath(manifest.originalRoot, "originalRoot");
+    derivedRoot = normalizeManifestWorkspacePath(manifest.derivedRoot, "derivedRoot");
+    await resolveSafeWorkspacePath(context.workspace, originalRoot);
+    await resolveSafeWorkspacePath(context.workspace, derivedRoot);
+    if (workspacePathWithin(originalRoot, STATE_DIRECTORY)
+      || workspacePathWithin(STATE_DIRECTORY, originalRoot)
+      || workspacePathWithin(derivedRoot, STATE_DIRECTORY)
+      || workspacePathWithin(STATE_DIRECTORY, derivedRoot)) {
+      throw new Error("Input manifest roots must not use legal-coverage mutable work state.");
+    }
+    if (workspacePathWithin(originalRoot, derivedRoot) || workspacePathWithin(derivedRoot, originalRoot)) {
+      throw new Error("Input manifest originalRoot and derivedRoot must be disjoint.");
+    }
+  } catch (error) {
+    add(context, "sources", "input_manifest_roots_invalid", errorMessage(error), INPUT_MANIFEST_PATH);
+    return;
+  }
+
+  if (!Array.isArray(manifest.entries)) {
+    add(context, "sources", "input_manifest_entries_invalid", `${INPUT_MANIFEST_PATH} must contain an entries array.`, INPUT_MANIFEST_PATH);
+    return;
+  }
+
+  const originalPaths = new Set();
+  const derivedPaths = new Set();
+  for (const [index, entry] of manifest.entries.entries()) {
+    const at = `${INPUT_MANIFEST_PATH}#entries[${index}]`;
+    if (!isRecord(entry) || !isRecord(entry.original) || !Array.isArray(entry.derivations)) {
+      add(context, "sources", "input_manifest_entry_invalid", "Each input manifest entry requires original and derivations records.", at);
+      continue;
+    }
+    let originalRelative;
+    try {
+      originalRelative = normalizeManifestRelativePath(entry.original.path, "original.path");
+      validateManifestDigestRecord(entry.original, "original");
+    } catch (error) {
+      add(context, "sources", "input_manifest_entry_invalid", errorMessage(error), at);
+      continue;
+    }
+    const originalPath = `${originalRoot}/${originalRelative}`;
+    if (originalPaths.has(originalPath)) {
+      add(context, "sources", "input_manifest_original_duplicate", `Duplicate original input path: ${originalPath}.`, at);
+      continue;
+    }
+    originalPaths.add(originalPath);
+    const actualOriginal = await verifyManifestFile(context, originalPath, entry.original, "input_manifest_original_stale", at);
+
+    const derivations = [];
+    for (const [derivationIndex, derivation] of entry.derivations.entries()) {
+      const derivationAt = `${at}.derivations[${derivationIndex}]`;
+      if (!isRecord(derivation)) {
+        add(context, "sources", "input_manifest_derivation_invalid", "Each derivation must be an object.", derivationAt);
+        continue;
+      }
+      let derivedRelative;
+      try {
+        derivedRelative = normalizeManifestRelativePath(derivation.path, "derivation.path");
+        validateManifestDigestRecord(derivation, "derivation");
+        if (!nonEmpty(derivation.method) || !nonEmpty(derivation.version)) {
+          throw new Error("Derivations require method and version.");
+        }
+      } catch (error) {
+        add(context, "sources", "input_manifest_derivation_invalid", errorMessage(error), derivationAt);
+        continue;
+      }
+      const derivedPath = `${derivedRoot}/${derivedRelative}`;
+      if (derivedPaths.has(derivedPath)) {
+        add(context, "sources", "input_manifest_derivation_duplicate", `Duplicate derived input path: ${derivedPath}.`, derivationAt);
+        continue;
+      }
+      derivedPaths.add(derivedPath);
+      const actualDerived = await verifyManifestFile(context, derivedPath, derivation, "input_manifest_derivation_stale", derivationAt);
+      derivations.push({
+        path: derivedPath,
+        sha256: derivation.sha256,
+        bytes: derivation.bytes,
+        extractionMethod: derivation.method,
+        extractorVersion: derivation.version,
+        actual: actualDerived,
+      });
+    }
+    context.manifestSources.set(originalPath, {
+      path: originalPath,
+      sha256: entry.original.sha256,
+      bytes: entry.original.bytes,
+      actual: actualOriginal,
+      derivations,
+    });
+  }
+
+  context.inputManifest = {
+    sha256: sha256(manifestBytes),
+    originalRoot,
+    derivedRoot,
+  };
+}
+
+async function verifyManifestFile(context, path, record, code, at) {
+  try {
+    const resolved = await resolveSafeWorkspacePath(context.workspace, path);
+    const info = await lstat(resolved);
+    if (!info.isFile()) throw new Error("Path is not a file.");
+    const data = await readFile(resolved);
+    const actual = { sha256: sha256(data), bytes: data.byteLength };
+    if (actual.sha256 !== record.sha256 || actual.bytes !== record.bytes) {
+      add(context, "sources", code, `Input manifest digest is stale for ${path}.`, path);
+    }
+    return actual;
+  } catch (error) {
+    add(context, "sources", code, `Input manifest file is missing or unsafe for ${path}: ${errorMessage(error)}`, at);
+    return undefined;
+  }
+}
+
+function validateManifestDigestRecord(record, label) {
+  if (!/^[a-f0-9]{64}$/u.test(record.sha256 ?? "")) throw new Error(`${label} requires a lowercase SHA-256.`);
+  if (!Number.isSafeInteger(record.bytes) || record.bytes < 0) throw new Error(`${label} requires a non-negative integer byte count.`);
+}
+
+function normalizeManifestWorkspacePath(value, field) {
+  const path = normalizeManifestRelativePath(value, field);
+  if (path === "." || path === STATE_DIRECTORY) throw new Error(`${field} is not a valid immutable input root.`);
+  return path;
+}
+
+function normalizeManifestRelativePath(value, field) {
+  if (!nonEmpty(value) || isAbsolute(value) || value.includes("\\")) {
+    throw new Error(`${field} must be a non-empty POSIX workspace-relative path.`);
+  }
+  const segments = value.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error(`${field} contains an unsafe path segment.`);
+  }
+  return segments.join("/");
+}
+
+function workspacePathWithin(candidate, root) {
+  return candidate === root || candidate.startsWith(`${root}/`);
+}
+
 async function validateConfig(context) {
   const config = context.state.config;
   if (!isRecord(config)) return;
@@ -729,6 +909,22 @@ async function validateConfig(context) {
   if (!nonEmpty(config.basisDate)) add(context, "configuration", "basis_date_missing", "Record the legal review basis date in config.basisDate.", STATE_FILES.config);
   if (!Array.isArray(config.inputRoots) || config.inputRoots.length === 0) {
     add(context, "configuration", "input_roots_missing", "Add at least one workspace-relative source path to config.inputRoots.", STATE_FILES.config);
+  } else {
+    for (const [index, inputRoot] of config.inputRoots.entries()) {
+      if (!nonEmpty(inputRoot)) continue;
+      const at = `${STATE_FILES.config}#inputRoots[${index}]`;
+      try {
+        const normalizedRoot = toWorkspacePath(context.workspace, resolveWithinWorkspace(context.workspace, inputRoot)) || ".";
+        if (normalizedRoot === "." || workspacePathWithin(normalizedRoot, STATE_DIRECTORY) || workspacePathWithin(STATE_DIRECTORY, normalizedRoot)) {
+          add(context, "configuration", "input_root_uses_mutable_state", `Input root must not contain legal-coverage mutable work state: ${inputRoot}.`, at);
+        }
+        if (context.inputManifest && !workspacePathWithin(normalizedRoot, context.inputManifest.originalRoot)) {
+          add(context, "configuration", "input_root_not_original", `When ${INPUT_MANIFEST_PATH} is present, input roots must select original files under ${context.inputManifest.originalRoot}.`, at);
+        }
+      } catch (error) {
+        add(context, "configuration", "input_root_invalid", errorMessage(error), at);
+      }
+    }
   }
   if (!Array.isArray(config.deliverables) || config.deliverables.length === 0) {
     add(context, "configuration", "deliverables_missing", "Add at least one required legal deliverable to config.deliverables.", STATE_FILES.config);
@@ -805,7 +1001,11 @@ async function validateSources(context) {
       } else {
         const data = await readFile(sourcePath);
         const actual = { sha256: sha256(data), bytes: data.byteLength };
-        context.sources.set(source.path, actual);
+        const manifestSource = context.manifestSources.get(source.path);
+        const derivedArtifacts = context.inputManifest
+          ? validateSourceDerivedArtifacts(context, source, manifestSource, at)
+          : [];
+        context.sources.set(source.path, { ...actual, derivedArtifacts });
         if (!/^[a-f0-9]{64}$/u.test(source.sha256 ?? "")) {
           add(context, "sources", "source_hash_missing", `Source ${source.id} must bind the SHA-256 recorded when it was reviewed.`, at);
         } else if (source.sha256 !== actual.sha256) {
@@ -814,6 +1014,9 @@ async function validateSources(context) {
       }
     } catch (error) {
       add(context, "sources", "source_path_invalid", errorMessage(error), at);
+    }
+    if (context.inputManifest && !context.manifestSources.has(source.path)) {
+      add(context, "sources", "source_not_in_input_manifest", `Source ${source.id} must bind an original file listed by ${INPUT_MANIFEST_PATH}, not a derived or Agent-created file.`, source.path);
     }
   }
 
@@ -838,6 +1041,73 @@ async function validateSources(context) {
   for (const path of paths) {
     if (!discovered.has(path)) add(context, "sources", "source_outside_inputs", `Ledger source is not under a configured input root: ${path}.`, path);
   }
+  if (context.inputManifest) {
+    for (const path of context.manifestSources.keys()) {
+      if (!paths.has(path)) add(context, "sources", "manifest_original_not_inventoried", `Input-manifest original is not represented in sources.json: ${path}.`, path);
+    }
+  }
+}
+
+function validateSourceDerivedArtifacts(context, source, manifestSource, at) {
+  const recorded = Array.isArray(source.derivedArtifacts) ? source.derivedArtifacts : [];
+  if (!manifestSource) {
+    if (recorded.length > 0) add(context, "sources", "source_derivation_unbound", `Source ${source.id} records derivations without a matching input-manifest original.`, at);
+    return [];
+  }
+
+  const expected = new Map(manifestSource.derivations.map((item) => [item.path, item]));
+  const requiresDerivation = source.status === "reviewed" && !TEXT_EXTENSIONS.has(extname(source.path).toLowerCase());
+  if (requiresDerivation && expected.size === 0) {
+    add(context, "sources", "source_derivation_unavailable", `Reviewed non-text source ${source.id} has no verified derivation in ${INPUT_MANIFEST_PATH}.`, at);
+  }
+  if (requiresDerivation && recorded.length === 0) {
+    add(context, "sources", "source_derivation_missing", `Reviewed non-text source ${source.id} must record the derivedArtifacts used for inspection.`, at);
+  }
+
+  const seen = new Set();
+  const verified = [];
+  for (const [index, artifact] of recorded.entries()) {
+    const artifactAt = `${at}.derivedArtifacts[${index}]`;
+    if (!isRecord(artifact) || !nonEmpty(artifact.path)) {
+      add(context, "sources", "source_derivation_invalid", `Source ${source.id} has an invalid derivedArtifacts row.`, artifactAt);
+      continue;
+    }
+    if (seen.has(artifact.path)) {
+      add(context, "sources", "source_derivation_duplicate", `Source ${source.id} repeats derived artifact ${artifact.path}.`, artifactAt);
+      continue;
+    }
+    seen.add(artifact.path);
+    const expectedArtifact = expected.get(artifact.path);
+    if (!expectedArtifact) {
+      add(context, "sources", "source_derivation_not_in_manifest", `Derived artifact ${artifact.path} is not bound to original source ${source.path}.`, artifactAt);
+      continue;
+    }
+    if (artifact.sha256 !== expectedArtifact.sha256
+      || artifact.extractionMethod !== expectedArtifact.extractionMethod
+      || artifact.extractorVersion !== expectedArtifact.extractorVersion) {
+      add(context, "sources", "source_derivation_stale", `Derived artifact metadata for ${artifact.path} does not match ${INPUT_MANIFEST_PATH}.`, artifactAt);
+      continue;
+    }
+    if (!expectedArtifact.actual
+      || expectedArtifact.actual.sha256 !== expectedArtifact.sha256
+      || expectedArtifact.actual.bytes !== expectedArtifact.bytes) {
+      add(context, "sources", "source_derivation_stale", `Derived artifact bytes for ${artifact.path} no longer match ${INPUT_MANIFEST_PATH}.`, artifactAt);
+      continue;
+    }
+    verified.push({
+      path: expectedArtifact.path,
+      sha256: expectedArtifact.sha256,
+      bytes: expectedArtifact.bytes,
+      extractionMethod: expectedArtifact.extractionMethod,
+      extractorVersion: expectedArtifact.extractorVersion,
+    });
+  }
+  if (requiresDerivation) {
+    for (const path of expected.keys()) {
+      if (!seen.has(path)) add(context, "sources", "source_derivation_not_recorded", `Source ${source.id} did not record required derived artifact ${path}.`, at);
+    }
+  }
+  return verified.sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function validateFacts(context) {
@@ -1410,9 +1680,22 @@ async function computeStateHash(context) {
     .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
     .sort((a, b) => a.path.localeCompare(b.path));
   const sources = [...context.sources.entries()]
-    .map(([path, value]) => ({ path, sha256: value.sha256, bytes: value.bytes }))
+    .map(([path, value]) => ({
+      path,
+      sha256: value.sha256,
+      bytes: value.bytes,
+      derivedArtifacts: value.derivedArtifacts ?? [],
+    }))
     .sort((a, b) => a.path.localeCompare(b.path));
-  return sha256(stableStringify({ validatorVersion: VALIDATOR_VERSION, state, sources, deliverables }));
+  const inputManifest = context.inputManifest
+    ? {
+        path: INPUT_MANIFEST_PATH,
+        sha256: context.inputManifest.sha256,
+        originalRoot: context.inputManifest.originalRoot,
+        derivedRoot: context.inputManifest.derivedRoot,
+      }
+    : null;
+  return sha256(stableStringify({ validatorVersion: VALIDATOR_VERSION, state, inputManifest, sources, deliverables }));
 }
 
 async function writeJsonAtomic(filePath, value) {
