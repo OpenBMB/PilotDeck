@@ -1842,8 +1842,8 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
     const matricesPath = join(workspace, STATE_ROOT, "matrices.json");
     const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
     const originalMatrices = structuredClone(matrices);
-    matrices.matrices[0]!.status = "pending";
-    matrices.matrices[1]!.status = "pending";
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    matrices.matrices[1] = { id: "holding-platform-special-rights", status: "pending", entries: [] };
     await writeJson(matricesPath, matrices);
 
     const preModel = await runHook({
@@ -1866,13 +1866,27 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
         canonicalPath: string;
         target: { recordId: string; collectionIndex: number };
         limits: { maxChangedRecords: number };
-        interface: { phaseApplyCommandAvailable: boolean };
+        interface: { kind: string; phaseApplyCommandAvailable: boolean };
         documentSchema: { requiredRecordIds: string[] };
       };
+      workItems: {
+        group: string;
+        limits: { maxRecords: number; maxSerializedBytes: number };
+        batchLimits: { maxRecords: number; maxSerializedBytes: number };
+        evidencePage: {
+          total: number;
+          returned: number;
+          hasMore: boolean;
+          serializedBytes: number;
+          items: Array<{ factId: string }>;
+        };
+        selection: { path: string; template: Record<string, unknown> };
+      };
+      matrixSelectionApplyCommand?: string;
       nextAction: string;
     };
     assert.equal(envelope.mutationContract.writer, "main-agent-only");
-    assert.equal(envelope.mutationContract.strategy, "bounded-direct-canonical-json-write");
+    assert.equal(envelope.mutationContract.strategy, "state-bound-proposal-apply");
     assert.equal(envelope.mutationContract.canonicalPath, ".pilotdeck/work/legal-coverage/matrices.json");
     assert.deepEqual(envelope.mutationContract.target, {
       recordId: "equity-capital-timeline",
@@ -1881,6 +1895,7 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
       validatorPath: "matrices.json#matrices[0]",
     });
     assert.equal(envelope.mutationContract.limits.maxChangedRecords, 1);
+    assert.equal(envelope.mutationContract.interface.kind, "state-bound-proposal");
     assert.equal(envelope.mutationContract.interface.phaseApplyCommandAvailable, false);
     assert.deepEqual(envelope.mutationContract.documentSchema.requiredRecordIds, [
       "equity-capital-timeline",
@@ -1891,10 +1906,129 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
       "employment-ip-timeline",
       "legal-authority",
     ]);
-    assert.match(envelope.nextAction, /update only matrix "equity-capital-timeline"/u);
-    assert.match(envelope.nextAction, /There is no phase-specific apply command/u);
-    assert.match(envelope.nextAction, /do not inspect CLI help, probe for, or invent one/u);
-    assert.match(envelope.nextAction, /Then run:/u);
+    assert.equal(envelope.workItems.group, "matrix-pending-selection");
+    assert.deepEqual(envelope.workItems.limits, { maxRecords: 1, maxSerializedBytes: 24576 });
+    assert.deepEqual(envelope.workItems.batchLimits, { maxRecords: 48, maxSerializedBytes: 8192 });
+    assert.equal(envelope.workItems.evidencePage.total, 1);
+    assert.equal(envelope.workItems.evidencePage.returned, 1);
+    assert.equal(envelope.workItems.evidencePage.hasMore, false);
+    assert.equal(envelope.workItems.evidencePage.serializedBytes <= 8192, true);
+    assert.deepEqual(envelope.workItems.evidencePage.items.map((item) => item.factId), ["F-001"]);
+    assert.equal(envelope.matrixSelectionApplyCommand, undefined);
+    assert.match(envelope.nextAction, /complete current fact-index page/u);
+    assert.match(envelope.nextAction, /Do not read matrices\.json, the full facts\.json/u);
+
+    const convergence = preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string;
+      nextBatch: { group: string; returned?: number; hasMore?: boolean };
+      writeBudget: { maxRecords: number; maxSerializedBytes: number };
+    };
+    assert.deepEqual(convergence.writeBudget, { maxRecords: 1, maxSerializedBytes: 24576 });
+
+    const selection = structuredClone(envelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    selection.selectedFactIds = ["F-001"];
+    selection.decision = "finalize";
+    selection.reason = "The registered-capital fact belongs in the equity and capital timeline.";
+    await mkdir(join(workspace, STATE_ROOT, "matrix-transactions"), { recursive: true });
+    await writeJson(join(workspace, envelope.workItems.selection.path), selection);
+    const selectionApplyHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "grouped-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const selectionApplyEnvelope = legalEnvelope(selectionApplyHook) as {
+      workItems: { group: string; evidencePage: { items?: unknown[] }; selection: { validated: boolean } };
+      matrixSelectionApplyCommand: string;
+      nextAction: string;
+    };
+    assert.equal(selectionApplyEnvelope.workItems.group, "matrix-pending-selection-apply");
+    assert.equal(selectionApplyEnvelope.workItems.selection.validated, true);
+    assert.equal(selectionApplyEnvelope.workItems.evidencePage.items, undefined);
+    assert.match(selectionApplyEnvelope.matrixSelectionApplyCommand, /matrix-selection-apply/u);
+    assert.match(selectionApplyEnvelope.nextAction, /selection is valid and state-bound/u);
+    const selectionApply = await runCli(
+      workspace,
+      "matrix-selection-apply",
+      "--input-file", envelope.workItems.selection.path,
+    );
+    assert.equal(selectionApply.exitCode, 0, selectionApply.stderr);
+    assert.equal(JSON.parse(selectionApply.stdout).nextGroup, "matrix-pending-propose");
+
+    const proposalHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "grouped-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const proposalContext = proposalHook.hookSpecificOutput.additionalContext ?? "";
+    const proposalEnvelope = JSON.parse(proposalContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: {
+        group: string;
+        preparedSlice: { returned: number; serializedBytes: number; items: Array<{ factId: string }> };
+        proposal: { path: string; template: Record<string, unknown> };
+      };
+      nextAction: string;
+    };
+    assert.equal(proposalEnvelope.workItems.group, "matrix-pending-propose");
+    assert.equal(proposalEnvelope.workItems.preparedSlice.returned, 1);
+    assert.equal(proposalEnvelope.workItems.preparedSlice.serializedBytes <= 8192, true);
+    assert.deepEqual(proposalEnvelope.workItems.preparedSlice.items.map((item) => item.factId), ["F-001"]);
+    assert.match(proposalEnvelope.nextAction, /selected matrix evidence is rehydrated/u);
+    assert.match(proposalEnvelope.nextAction, /do not read facts\.json, matrices\.json/u);
+
+    const proposal = structuredClone(proposalEnvelope.workItems.proposal.template) as {
+      matrix: { entries: Array<{ id: string; summary: string; factIds: string[] }> };
+    };
+    proposal.matrix.entries[0]!.id = "M-NEW-001";
+    proposal.matrix.entries[0]!.summary = "The verified registered-capital fact is recorded in the equity and capital timeline.";
+    proposal.matrix.entries[0]!.factIds = ["F-UNSELECTED"];
+    await writeJson(join(workspace, proposalEnvelope.workItems.proposal.path), proposal);
+    const rejectedProposalHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "grouped-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const rejectedProposalEnvelope = legalEnvelope(rejectedProposalHook) as {
+      workItems: { group: string; proposal: { validationError: { code: string } } };
+    };
+    assert.equal(rejectedProposalEnvelope.workItems.group, "matrix-pending-propose");
+    assert.equal(rejectedProposalEnvelope.workItems.proposal.validationError.code, "matrix_proposal_entry_invalid");
+
+    proposal.matrix.entries[0]!.factIds = ["F-001"];
+    await writeJson(join(workspace, proposalEnvelope.workItems.proposal.path), proposal);
+
+    const applyHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "grouped-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const applyContext = applyHook.hookSpecificOutput.additionalContext ?? "";
+    const applyEnvelope = JSON.parse(applyContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      mutationContract: { interface: { phaseApplyCommandAvailable: boolean } };
+      workItems: { group: string; proposal: { path: string; proposalSha256: string } };
+      matrixProposalApplyCommand: string;
+    };
+    assert.equal(applyEnvelope.workItems.group, "matrix-pending-apply");
+    assert.equal(applyEnvelope.mutationContract.interface.phaseApplyCommandAvailable, true);
+    assert.match(applyEnvelope.matrixProposalApplyCommand, /matrix-proposal-apply/u);
+    const matrixApply = await runCli(
+      workspace,
+      "matrix-proposal-apply",
+      "--input-file", applyEnvelope.workItems.proposal.path,
+      "--proposal-sha256", applyEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(matrixApply.exitCode, 0, matrixApply.stderr);
 
     const validation = await runCli(workspace, "validate", "--write-proof");
     assert.equal(validation.exitCode, 2);
@@ -1903,15 +2037,12 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
     };
     const pending = validationResult.errors.filter((error) => error.code === "matrix_pending");
     assert.deepEqual(pending.map(({ recordId, collectionIndex }) => ({ recordId, collectionIndex })), [
-      { recordId: "equity-capital-timeline", collectionIndex: 0 },
       { recordId: "holding-platform-special-rights", collectionIndex: 1 },
     ]);
 
-    const firstConvergenceHash = (
-      preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
-    )?.stateHash;
-    matrices.matrices[0] = originalMatrices.matrices[0]!;
-    await writeJson(matricesPath, matrices);
+    const appliedMatrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    assert.equal(appliedMatrices.matrices[0]?.status, "complete");
+    assert.deepEqual(appliedMatrices.matrices[1], matrices.matrices[1]);
     const advanced = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "grouped-session",
@@ -1932,8 +2063,314 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
     });
     assert.notEqual(
       (advanced.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      firstConvergenceHash,
+      convergence.stateHash,
     );
+    assert.deepEqual(originalMatrices.matrices[0]?.status, "complete");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-pages-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const factsPath = join(root, "facts.json");
+    const sourcesPath = join(root, "sources.json");
+    const matricesPath = join(root, "matrices.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    const sources = JSON.parse(await readFile(sourcesPath, "utf8")) as { sources: Array<{ factIds: string[] }> };
+    for (let index = 2; index <= 70; index += 1) {
+      const factId = `F-${String(index).padStart(3, "0")}`;
+      facts.facts.push({
+        id: factId,
+        subject: `Synthetic subject ${index}`,
+        predicate: `bounded matrix selection predicate ${index}`,
+        value: `Synthetic value ${index}`,
+        missingTimeReason: "The synthetic source does not state a date.",
+        sourceRefs: [{ sourceId: "S-001", locator: `line ${index}` }],
+        evidenceClass: "official-record",
+        verificationStatus: "verified",
+        conflictStatus: "none",
+        material: false,
+        critical: false,
+      });
+      sources.sources[0]!.factIds.push(factId);
+    }
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    await writeJson(factsPath, facts);
+    await writeJson(sourcesPath, sources);
+    await writeJson(matricesPath, matrices);
+    await mkdir(join(root, "matrix-transactions"), { recursive: true });
+
+    const firstHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
+    const firstEnvelope = legalEnvelope(firstHook) as {
+      workItems: {
+        group: string;
+        evidencePage: { offset: number; total: number; returned: number; hasMore: boolean; serializedBytes: number; items: Array<{ factId: string }> };
+        selection: { path: string; template: Record<string, unknown>; validationError?: { code: string } };
+      };
+    };
+    assert.equal(firstEnvelope.workItems.group, "matrix-pending-selection");
+    assert.equal(firstEnvelope.workItems.evidencePage.offset, 0);
+    assert.equal(firstEnvelope.workItems.evidencePage.total, 70);
+    assert.equal(firstEnvelope.workItems.evidencePage.returned <= 48, true);
+    assert.equal(firstEnvelope.workItems.evidencePage.serializedBytes <= 8192, true);
+    assert.equal(firstEnvelope.workItems.evidencePage.hasMore, true);
+
+    const invalid = structuredClone(firstEnvelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    invalid.selectedFactIds = ["F-OUTSIDE-PAGE"];
+    invalid.decision = "continue";
+    invalid.reason = "Attempted selection outside the injected page.";
+    await writeJson(join(workspace, firstEnvelope.workItems.selection.path), invalid);
+    const invalidApply = await runCli(workspace, "matrix-selection-apply", "--input-file", firstEnvelope.workItems.selection.path);
+    assert.equal(invalidApply.exitCode, 1);
+    assert.equal(JSON.parse(invalidApply.stderr).error.code, "matrix_selection_fact_out_of_scope");
+
+    const invalidHookOne = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
+    const invalidEnvelopeOne = legalEnvelope(invalidHookOne) as {
+      workItems: { selection: { validationError: { code: string } } };
+    };
+    assert.equal(invalidEnvelopeOne.workItems.selection.validationError.code, "matrix_selection_fact_out_of_scope");
+    const invalidHashOne = (invalidHookOne.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash;
+
+    invalid.selectedFactIds = ["F-ANOTHER-OUTSIDE-PAGE"];
+    await writeJson(join(workspace, firstEnvelope.workItems.selection.path), invalid);
+    const invalidHookTwo = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
+    const invalidHashTwo = (invalidHookTwo.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash;
+    assert.equal(invalidHashTwo, invalidHashOne);
+
+    const valid = structuredClone(firstEnvelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    valid.selectedFactIds = [];
+    valid.decision = "continue";
+    valid.reason = "No fact on this page is needed for the target matrix; inspect the next bounded page.";
+    await writeJson(join(workspace, firstEnvelope.workItems.selection.path), valid);
+    const validApply = await runCli(workspace, "matrix-selection-apply", "--input-file", firstEnvelope.workItems.selection.path);
+    assert.equal(validApply.exitCode, 0, validApply.stderr);
+
+    const secondHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
+    const secondEnvelope = legalEnvelope(secondHook) as {
+      workItems: {
+        group: string;
+        accumulatedSelectedFactIds: string[];
+        evidencePage: { offset: number; serializedBytes: number; items: Array<{ factId: string }> };
+        selection: { path: string; template: Record<string, unknown> };
+      };
+    };
+    assert.equal(secondEnvelope.workItems.group, "matrix-pending-selection");
+    assert.equal(secondEnvelope.workItems.evidencePage.offset, firstEnvelope.workItems.evidencePage.returned);
+    assert.equal(secondEnvelope.workItems.evidencePage.serializedBytes <= 8192, true);
+    assert.deepEqual(secondEnvelope.workItems.accumulatedSelectedFactIds, []);
+    assert.notEqual(
+      (secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash,
+      invalidHashOne,
+    );
+
+    const selectedId = secondEnvelope.workItems.evidencePage.items[0]!.factId;
+    const secondSelection = structuredClone(secondEnvelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    secondSelection.selectedFactIds = [selectedId];
+    secondSelection.decision = "finalize";
+    secondSelection.reason = "This fact is sufficient to ground the current synthetic matrix.";
+    await writeJson(join(workspace, secondEnvelope.workItems.selection.path), secondSelection);
+    const secondApply = await runCli(workspace, "matrix-selection-apply", "--input-file", secondEnvelope.workItems.selection.path);
+    assert.equal(secondApply.exitCode, 0, secondApply.stderr);
+
+    const proposalHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
+    const proposalEnvelope = legalEnvelope(proposalHook) as {
+      workItems: { group: string; selectedFactIds: string[]; preparedSlice: { returned: number; serializedBytes: number; items: Array<{ factId: string }> } };
+    };
+    assert.equal(proposalEnvelope.workItems.group, "matrix-pending-propose");
+    assert.deepEqual(proposalEnvelope.workItems.selectedFactIds, [selectedId]);
+    assert.deepEqual(proposalEnvelope.workItems.preparedSlice.items.map((item) => item.factId), [selectedId]);
+    assert.equal(proposalEnvelope.workItems.preparedSlice.returned, 1);
+    assert.equal(proposalEnvelope.workItems.preparedSlice.serializedBytes <= 8192, true);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage permits not-applicable only after exhaustive selection and rejects stale or changed matrix proposals", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-na-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const matricesPath = join(root, "matrices.json");
+    const configPath = join(root, "config.json");
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    await writeJson(matricesPath, matrices);
+    await mkdir(join(root, "matrix-transactions"), { recursive: true });
+
+    const selectionHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-na", transcriptPath: "", cwd: workspace });
+    const selectionEnvelope = legalEnvelope(selectionHook) as {
+      workItems: {
+        evidencePage: { hasMore: boolean };
+        selection: { path: string; template: Record<string, unknown> };
+      };
+    };
+    assert.equal(selectionEnvelope.workItems.evidencePage.hasMore, false);
+    const selection = structuredClone(selectionEnvelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    selection.selectedFactIds = [];
+    selection.decision = "finalize";
+    selection.reason = "The only reviewed synthetic fact does not concern the target equity timeline.";
+    await writeJson(join(workspace, selectionEnvelope.workItems.selection.path), selection);
+    const selectionApply = await runCli(workspace, "matrix-selection-apply", "--input-file", selectionEnvelope.workItems.selection.path);
+    assert.equal(selectionApply.exitCode, 0, selectionApply.stderr);
+
+    const proposalHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-na", transcriptPath: "", cwd: workspace });
+    const proposalEnvelope = legalEnvelope(proposalHook) as {
+      workItems: { group: string; selectedFactIds: string[]; proposal: { path: string; template: Record<string, unknown> } };
+    };
+    assert.equal(proposalEnvelope.workItems.group, "matrix-pending-propose");
+    assert.deepEqual(proposalEnvelope.workItems.selectedFactIds, []);
+    const proposal = structuredClone(proposalEnvelope.workItems.proposal.template) as {
+      matrix: { status: string; entries: unknown[]; notApplicableReason: string };
+    };
+    assert.equal(proposal.matrix.status, "not-applicable");
+    assert.deepEqual(proposal.matrix.entries, []);
+    assert.equal(proposal.matrix.notApplicableReason, selection.reason);
+    await writeJson(join(workspace, proposalEnvelope.workItems.proposal.path), proposal);
+
+    const applyHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-na", transcriptPath: "", cwd: workspace });
+    const applyEnvelope = legalEnvelope(applyHook) as {
+      workItems: { group: string; proposal: { path: string; proposalSha256: string } };
+    };
+    assert.equal(applyEnvelope.workItems.group, "matrix-pending-apply");
+
+    const originalConfig = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    await writeJson(configPath, { ...originalConfig, basisDate: "Changed state for stale proposal test" });
+    const staleApply = await runCli(
+      workspace,
+      "matrix-proposal-apply",
+      "--input-file", applyEnvelope.workItems.proposal.path,
+      "--proposal-sha256", applyEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(staleApply.exitCode, 1);
+    assert.equal(JSON.parse(staleApply.stderr).error.code, "matrix_proposal_out_of_scope");
+    assert.equal((JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<{ status: string }> }).matrices[0]?.status, "pending");
+    await writeJson(configPath, originalConfig);
+
+    proposal.matrix.notApplicableReason = "A changed but still specific not-applicable reason.";
+    await writeJson(join(workspace, proposalEnvelope.workItems.proposal.path), proposal);
+    const changedApply = await runCli(
+      workspace,
+      "matrix-proposal-apply",
+      "--input-file", applyEnvelope.workItems.proposal.path,
+      "--proposal-sha256", applyEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(changedApply.exitCode, 1);
+    assert.equal(JSON.parse(changedApply.stderr).error.code, "matrix_proposal_changed");
+
+    const refreshedHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-na", transcriptPath: "", cwd: workspace });
+    const refreshedEnvelope = legalEnvelope(refreshedHook) as {
+      workItems: { group: string; proposal: { path: string; proposalSha256: string } };
+    };
+    assert.equal(refreshedEnvelope.workItems.group, "matrix-pending-apply");
+    assert.notEqual(refreshedEnvelope.workItems.proposal.proposalSha256, applyEnvelope.workItems.proposal.proposalSha256);
+    const applied = await runCli(
+      workspace,
+      "matrix-proposal-apply",
+      "--input-file", refreshedEnvelope.workItems.proposal.path,
+      "--proposal-sha256", refreshedEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const finalMatrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<{ status: string; notApplicableReason?: string }> };
+    assert.equal(finalMatrices.matrices[0]?.status, "not-applicable");
+    assert.equal(finalMatrices.matrices[0]?.notApplicableReason, proposal.matrix.notApplicableReason);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage rejects oversized matrix evidence before making a selection receipt immutable", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-oversized-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const factsPath = join(root, "facts.json");
+    const matricesPath = join(root, "matrices.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    facts.facts[0]!.value = "x".repeat(9000);
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    await writeJson(factsPath, facts);
+    await writeJson(matricesPath, matrices);
+    await mkdir(join(root, "matrix-transactions"), { recursive: true });
+
+    const hook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-oversized", transcriptPath: "", cwd: workspace });
+    const envelope = legalEnvelope(hook) as {
+      workItems: {
+        selection: { path: string; receiptPath: string; template: Record<string, unknown> };
+      };
+    };
+    const selection = structuredClone(envelope.workItems.selection.template) as {
+      selectedFactIds: string[];
+      decision: string;
+      reason: string;
+    };
+    selection.selectedFactIds = ["F-001"];
+    selection.decision = "finalize";
+    selection.reason = "Select the only canonical fact for bounded-slice validation.";
+    await writeJson(join(workspace, envelope.workItems.selection.path), selection);
+    const apply = await runCli(workspace, "matrix-selection-apply", "--input-file", envelope.workItems.selection.path);
+    assert.equal(apply.exitCode, 1);
+    assert.equal(JSON.parse(apply.stderr).error.code, "matrix_selection_prepared_slice_byte_limit");
+    await assert.rejects(stat(join(workspace, envelope.workItems.selection.receiptPath)), { code: "ENOENT" });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage fails closed when one matrix index item exceeds the bounded page", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-index-oversized-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const factsPath = join(root, "facts.json");
+    const matricesPath = join(root, "matrices.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    facts.facts[0]!.subject = "x".repeat(9000);
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    await writeJson(factsPath, facts);
+    await writeJson(matricesPath, matrices);
+    await mkdir(join(root, "matrix-transactions"), { recursive: true });
+
+    const hook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-index-oversized", transcriptPath: "", cwd: workspace });
+    const envelope = legalEnvelope(hook) as {
+      workItems: {
+        evidencePage: { serializedBytes: number; items: Array<{ factId: string; oversizedRecord?: boolean; recordPointer?: string }> };
+        selection: { path: string; template: Record<string, unknown> };
+      };
+    };
+    assert.equal(envelope.workItems.evidencePage.serializedBytes <= 8192, true);
+    assert.equal(envelope.workItems.evidencePage.items[0]?.oversizedRecord, true);
+    assert.equal(envelope.workItems.evidencePage.items[0]?.recordPointer, "state://legal-coverage/facts/F-001");
+    const selection = structuredClone(envelope.workItems.selection.template) as { decision: string; reason: string };
+    selection.decision = "finalize";
+    selection.reason = "Attempting to finalize must fail rather than skip oversized evidence.";
+    await writeJson(join(workspace, envelope.workItems.selection.path), selection);
+    const apply = await runCli(workspace, "matrix-selection-apply", "--input-file", envelope.workItems.selection.path);
+    assert.equal(apply.exitCode, 1);
+    assert.equal(JSON.parse(apply.stderr).error.code, "matrix_selection_oversized_index_item");
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -2466,6 +2903,15 @@ async function runHook(input: Record<string, unknown>): Promise<{
   const result = await runHookProcess(input);
   if (result.exitCode !== 0) throw new Error(result.stderr || `Hook exited with code ${result.exitCode}.`);
   return JSON.parse(result.stdout) as never;
+}
+
+function legalEnvelope(hookOutput: {
+  hookSpecificOutput: { additionalContext?: string };
+}): Record<string, unknown> {
+  const context = hookOutput.hookSpecificOutput.additionalContext ?? "";
+  return JSON.parse(context
+    .replace(/^<legal_coverage_state>\n/u, "")
+    .replace(/\n<\/legal_coverage_state>$/u, "")) as Record<string, unknown>;
 }
 
 async function runHookProcess(input: Record<string, unknown>): Promise<{

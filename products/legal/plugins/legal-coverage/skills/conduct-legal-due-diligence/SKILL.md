@@ -43,7 +43,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 
 ## Complete Legal Analysis
 
-1. Complete every required matrix in `matrices.json`, or record a fact-grounded not-applicable reason. Link every entry to facts.
+1. Complete every required matrix in `matrices.json`, or record a fact-grounded not-applicable reason. Link every entry to facts. While a matrix is `pending`, use the injected bounded evidence-index selection, proposal, and apply protocol; never read the full `facts.json` or edit `matrices.json` directly. The selection checkpoint records your legal judgment, and the plugin only validates and applies the one-matrix transaction.
 2. Link every material or critical fact into at least one matrix. Never mark all matrices not-applicable merely to obtain a structural pass.
 3. Apply the cross-fact rules. Create an issue for every timeline collision, threshold breach, rights or governance conflict, liquidity relationship, employment or IP ownership risk, and unresolved source contradiction.
 4. Separate facts, assumptions, analysis, unresolved matters, conclusions, and recommendations. Preserve uncertainty instead of choosing an unsupported version.

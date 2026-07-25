@@ -64,6 +64,15 @@ const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
 const SOURCE_MERGE_MAX_FACTS = 32;
 const SOURCE_MERGE_MAX_VALIDATION_DIAGNOSTICS = SOURCE_MERGE_MAX_FACTS + SOURCE_REVIEW_MERGE_MAX_SOURCES;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
+const MATRIX_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/matrix-transactions`;
+const MATRIX_SELECTION_PATTERN = /^matrix-selection-[a-f0-9]{12}\.json$/u;
+const MATRIX_PROPOSAL_PATTERN = /^matrix-proposal-[a-f0-9]{12}\.json$/u;
+const MATRIX_SELECTION_RECEIPT_TYPE = "legal-matrix-selection-readiness";
+const MATRIX_INDEX_MAX_RECORDS = 48;
+const MATRIX_INDEX_MAX_BYTES = 8192;
+const MATRIX_SELECTED_FACT_MAX_RECORDS = 12;
+const MATRIX_SELECTED_FACT_MAX_BYTES = 8192;
+const MATRIX_MUTATION_MAX_BYTES = 24576;
 
 export async function ensureWorkspace(workspaceRoot) {
   const workspace = resolve(workspaceRoot);
@@ -1351,6 +1360,651 @@ export async function nextMatrixRelationBatch(workspaceRoot, options = {}) {
   );
 }
 
+export async function pendingMatrixPlan(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const validation = options.validationResult
+    ?? await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
+  const first = validation.errors[0];
+  if (first?.phase !== "matrices" || first.code !== "matrix_pending"
+    || !nonEmpty(first.recordId) || !Number.isInteger(first.collectionIndex)) return undefined;
+
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const target = matrices[first.collectionIndex];
+  if (!isRecord(target) || target.id !== first.recordId || target.status !== "pending") return undefined;
+
+  const facts = (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+    .filter((fact) => isRecord(fact) && nonEmpty(fact.id));
+  const indexItems = facts.map(matrixPendingFactIndexItem);
+  const selectedFactIds = [];
+  const selectedSet = new Set();
+  const selectionReceipts = [];
+  let offset = 0;
+
+  while (true) {
+    const page = packMatrixPendingIndexPage(indexItems, offset, validation.stateHash, target.id, first.collectionIndex);
+    const digest = matrixSelectionDigest(validation.stateHash, target.id, first.collectionIndex, page.offset, page.evidenceBatchSha256, selectionReceipts);
+    const selectionPath = `${MATRIX_TRANSACTION_DIRECTORY}/matrix-selection-${digest}.json`;
+    const receiptPath = `${MATRIX_TRANSACTION_DIRECTORY}/matrix-selection-ready-${digest}.json`;
+    const selection = {
+      path: selectionPath,
+      receiptPath,
+      expectedStateHash: validation.stateHash,
+      targetMatrixId: target.id,
+      evidenceBatchSha256: page.evidenceBatchSha256,
+      template: {
+        schemaVersion: 1,
+        phase: "matrices",
+        group: "matrix-pending-selection",
+        expectedStateHash: validation.stateHash,
+        targetMatrixId: target.id,
+        evidenceBatchSha256: page.evidenceBatchSha256,
+        selectedFactIds: [],
+        decision: page.hasMore ? "continue" : "finalize",
+        reason: "<brief legal selection rationale>",
+      },
+    };
+    const receipt = await readMatrixSelectionReceipt(workspaceRoot, receiptPath, selection, page, {
+      selectedFactIds,
+      maxSelectedFacts: MATRIX_SELECTED_FACT_MAX_RECORDS,
+    });
+    if (!receipt?.valid) {
+      const inputReceipt = await readMatrixSelectionInputReceipt(workspaceRoot, selectionPath, selection, page, {
+        selectedFactIds,
+        maxSelectedFacts: MATRIX_SELECTED_FACT_MAX_RECORDS,
+      });
+      const selectionPlan = {
+        phase: "matrices",
+        group: "matrix-pending-selection",
+        mode: "main-agent-select",
+        stateHash: validation.stateHash,
+        target: {
+          recordId: target.id,
+          collectionIndex: first.collectionIndex,
+          status: target.status,
+        },
+        returned: page.returned,
+        hasMore: page.hasMore,
+        limits: { maxRecords: 1, maxSerializedBytes: MATRIX_MUTATION_MAX_BYTES },
+        batchLimits: { maxRecords: MATRIX_INDEX_MAX_RECORDS, maxSerializedBytes: MATRIX_INDEX_MAX_BYTES },
+        selectionLimits: { maxSelectedFacts: MATRIX_SELECTED_FACT_MAX_RECORDS },
+        accumulatedSelectedFactIds: [...selectedFactIds],
+        evidencePage: page,
+        selection: {
+          ...selection,
+          ...(inputReceipt?.error ? {
+            validationError: inputReceipt.error,
+            repairRequired: true,
+          } : {}),
+        },
+      };
+      if (inputReceipt?.valid) {
+        const { items: _items, ...pageReceipt } = page;
+        return {
+          ...selectionPlan,
+          group: "matrix-pending-selection-apply",
+          mode: "main-agent-selection-apply",
+          returned: inputReceipt.selection.selectedFactIds.length,
+          hasMore: false,
+          evidencePage: pageReceipt,
+          selection: {
+            path: selection.path,
+            receiptPath: selection.receiptPath,
+            expectedStateHash: selection.expectedStateHash,
+            targetMatrixId: selection.targetMatrixId,
+            evidenceBatchSha256: selection.evidenceBatchSha256,
+            validated: true,
+            selectionSha256: inputReceipt.sha256,
+            acceptedSelection: inputReceipt.selection,
+          },
+        };
+      }
+      return selectionPlan;
+    }
+
+    selectionReceipts.push(receipt.receipt);
+    for (const factId of receipt.receipt.selectedFactIds) {
+      if (!selectedSet.has(factId)) {
+        selectedSet.add(factId);
+        selectedFactIds.push(factId);
+      }
+    }
+    if (receipt.receipt.decision === "finalize") {
+      return matrixProposalPlanFor({
+        validation,
+        target,
+        collectionIndex: first.collectionIndex,
+        facts,
+        selectedFactIds,
+        selectionReceipts,
+        exhaustive: page.hasMore === false,
+        notApplicableReason: selectedFactIds.length === 0 ? receipt.receipt.reason : undefined,
+      }, workspaceRoot, loaded.state);
+    }
+    offset += page.returned;
+  }
+}
+
+export async function applyMatrixSelection(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.inputPath)
+    || !MATRIX_SELECTION_PATTERN.test(options.inputPath.split("/").at(-1) ?? "")) {
+    throw batchError("matrix_selection_path_invalid", "matrix-selection-apply requires the injected deterministic selection path.");
+  }
+  const validation = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const plan = await pendingMatrixPlan(workspaceRoot, { validationResult: validation });
+  if (plan?.group === "matrix-pending-selection" && plan.selection?.path === options.inputPath
+    && plan.selection?.validationError) {
+    throw batchError(plan.selection.validationError.code, plan.selection.validationError.message);
+  }
+  if (plan?.group !== "matrix-pending-selection-apply" || plan.selection?.path !== options.inputPath
+    || plan.selection?.validated !== true) {
+    throw batchError("matrix_selection_out_of_scope", "The selection path is not the current pending-matrix evidence page.");
+  }
+  const selectionPath = await resolveSafeWorkspacePath(workspaceRoot, plan.selection.path);
+  const selectionBytes = await readFile(selectionPath);
+  if (sha256(selectionBytes) !== plan.selection.selectionSha256) {
+    throw batchError("matrix_selection_changed", "The matrix selection changed after validation; request a fresh selection apply step.");
+  }
+  const acceptedSelection = plan.selection.acceptedSelection;
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const factsById = new Map((Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+    .filter((fact) => isRecord(fact) && nonEmpty(fact.id))
+    .map((fact) => [fact.id, fact]));
+  const accumulatedIds = [...plan.accumulatedSelectedFactIds, ...acceptedSelection.selectedFactIds];
+  const preparedItems = accumulatedIds.map((factId) => factsById.get(factId)).filter(Boolean).map(matrixRelationFactItem);
+  if (preparedItems.length !== accumulatedIds.length) {
+    throw batchError("matrix_selection_fact_missing", "A selected canonical fact is missing; request a fresh evidence page.");
+  }
+  const preparedBytes = Buffer.byteLength(JSON.stringify(preparedItems));
+  if (preparedBytes > MATRIX_SELECTED_FACT_MAX_BYTES) {
+    throw batchError(
+      "matrix_selection_prepared_slice_byte_limit",
+      `The accumulated selected fact slice is ${preparedBytes} bytes; maximum is ${MATRIX_SELECTED_FACT_MAX_BYTES}. Reduce the current page selection before applying it.`,
+    );
+  }
+  const receiptDocument = {
+    schemaVersion: 1,
+    receiptType: MATRIX_SELECTION_RECEIPT_TYPE,
+    expectedStateHash: plan.stateHash,
+    targetMatrixId: plan.target.recordId,
+    collectionIndex: plan.target.collectionIndex,
+    offset: plan.evidencePage.offset,
+    evidenceBatchSha256: plan.evidencePage.evidenceBatchSha256,
+    selectionPath: plan.selection.path,
+    selectionSha256: plan.selection.selectionSha256,
+    selectedFactIds: acceptedSelection.selectedFactIds,
+    decision: acceptedSelection.decision,
+    reason: acceptedSelection.reason,
+  };
+  const receiptPath = await resolveSafeWorkspacePath(workspaceRoot, plan.selection.receiptPath, { allowMissing: true });
+  if (await pathExists(receiptPath)) {
+    const existing = JSON.parse(await readFile(receiptPath, "utf8"));
+    if (stableStringify(existing) !== stableStringify(receiptDocument)) {
+      throw batchError("matrix_selection_receipt_conflict", "The immutable matrix selection receipt already exists with different content.");
+    }
+  } else {
+    await writeJsonAtomic(receiptPath, receiptDocument);
+  }
+  const advanced = await pendingMatrixPlan(workspaceRoot, { validationResult: validation });
+  return {
+    applied: true,
+    phase: "matrices",
+    group: "matrix-pending-selection",
+    receiptPath: plan.selection.receiptPath,
+    selectionSha256: plan.selection.selectionSha256,
+    selectedFactCount: acceptedSelection.selectedFactIds.length,
+    decision: acceptedSelection.decision,
+    nextGroup: advanced?.group ?? null,
+    stateHash: validation.stateHash,
+  };
+}
+
+export async function applyMatrixProposal(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.proposalPath)
+    || !MATRIX_PROPOSAL_PATTERN.test(options.proposalPath.split("/").at(-1) ?? "")) {
+    throw batchError("matrix_proposal_path_invalid", "matrix-proposal-apply requires the injected deterministic proposal path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.proposalSha256 ?? ""))) {
+    throw batchError("matrix_proposal_hash_invalid", "matrix-proposal-apply requires the injected lowercase proposal SHA-256.");
+  }
+  const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, options.proposalPath);
+  const proposalBytes = await readFile(proposalPath);
+  if (sha256(proposalBytes) !== options.proposalSha256) {
+    throw batchError("matrix_proposal_changed", "The matrix proposal changed after validation; request a fresh apply command.");
+  }
+  if (proposalBytes.byteLength > MATRIX_MUTATION_MAX_BYTES) {
+    throw batchError("matrix_proposal_byte_limit", `Matrix proposal is ${proposalBytes.byteLength} bytes; maximum is ${MATRIX_MUTATION_MAX_BYTES}.`);
+  }
+
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const plan = await pendingMatrixPlan(workspaceRoot, { validationResult: before });
+  if (plan?.group !== "matrix-pending-apply" || plan.proposal?.path !== options.proposalPath
+    || plan.proposal?.proposalSha256 !== options.proposalSha256) {
+    throw batchError("matrix_proposal_out_of_scope", "The proposal is not the current validated one-matrix transaction.");
+  }
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const currentTarget = matrices[plan.target.collectionIndex];
+  if (!isRecord(currentTarget) || currentTarget.id !== plan.target.recordId || currentTarget.status !== "pending") {
+    throw batchError("matrix_target_changed", "The target matrix is no longer the current pending record.");
+  }
+  const nextMatrices = {
+    ...loaded.state.matrices,
+    matrices: matrices.map((matrix, index) => index === plan.target.collectionIndex
+      ? plan.proposal.matrix
+      : matrix),
+  };
+  await writeJsonAtomic(loaded.paths.matrices, nextMatrices);
+  const after = await validateWorkspace({ workspaceRoot, writeProof: true });
+  return {
+    applied: true,
+    phase: "matrices",
+    group: "matrix-pending-proposal",
+    recordId: plan.target.recordId,
+    collectionIndex: plan.target.collectionIndex,
+    previousStateHash: before.stateHash,
+    stateHash: after.stateHash,
+    passed: after.passed,
+    errorCountBefore: before.errors.length,
+    errorCountAfter: after.errors.length,
+  };
+}
+
+function matrixPendingFactIndexItem(fact) {
+  return {
+    factId: fact.id,
+    subject: fact.subject,
+    predicate: fact.predicate,
+    ...(nonEmpty(fact.dateOrPeriod) ? { dateOrPeriod: fact.dateOrPeriod } : {}),
+    ...(nonEmpty(fact.missingTimeReason) ? { missingTimeReason: fact.missingTimeReason } : {}),
+    material: fact.material === true,
+    critical: fact.critical === true,
+    verificationStatus: fact.verificationStatus,
+    conflictStatus: fact.conflictStatus,
+  };
+}
+
+function packMatrixPendingIndexPage(items, offset, stateHash, targetMatrixId, collectionIndex) {
+  const selected = [];
+  let cursor = offset;
+  while (cursor < items.length && selected.length < MATRIX_INDEX_MAX_RECORDS) {
+    const item = items[cursor];
+    const candidate = [...selected, item];
+    if (Buffer.byteLength(JSON.stringify(candidate)) > MATRIX_INDEX_MAX_BYTES) {
+      if (selected.length === 0) {
+        selected.push({
+          factId: item.factId,
+          oversizedRecord: true,
+          serializedBytes: Buffer.byteLength(JSON.stringify(item)),
+          recordPointer: `state://legal-coverage/facts/${item.factId}`,
+        });
+        cursor += 1;
+      }
+      break;
+    }
+    selected.push(item);
+    cursor += 1;
+  }
+  const serializedBytes = Buffer.byteLength(JSON.stringify(selected));
+  return {
+    phase: "matrices",
+    group: "matrix-pending-evidence-index",
+    stateHash,
+    targetMatrixId,
+    collectionIndex,
+    offset,
+    total: items.length,
+    returned: selected.length,
+    remaining: Math.max(0, items.length - cursor),
+    hasMore: cursor < items.length,
+    serializedBytes,
+    evidenceBatchSha256: sha256(JSON.stringify(selected)),
+    items: selected,
+  };
+}
+
+function matrixSelectionDigest(stateHash, targetMatrixId, collectionIndex, offset, evidenceBatchSha256, priorReceipts) {
+  return sha256([
+    stateHash,
+    targetMatrixId,
+    String(collectionIndex),
+    String(offset),
+    evidenceBatchSha256,
+    ...priorReceipts.map((receipt) => receipt.selectionSha256),
+  ].join("\0")).slice(0, 12);
+}
+
+async function readMatrixSelectionInputReceipt(workspaceRoot, selectionPath, expected, page, options) {
+  try {
+    const path = await resolveSafeWorkspacePath(workspaceRoot, selectionPath);
+    const bytes = await readFile(path);
+    if (bytes.byteLength > 4096) throw batchError("matrix_selection_byte_limit", "Matrix selection must not exceed 4096 bytes.");
+    let selection;
+    try {
+      selection = JSON.parse(bytes.toString("utf8"));
+    } catch (error) {
+      throw batchError("matrix_selection_json_invalid", errorMessage(error));
+    }
+    validateMatrixSelection(selection, expected, page, options);
+    return { valid: true, sha256: sha256(bytes), selection };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return {
+      valid: false,
+      error: {
+        code: typeof error?.code === "string" ? error.code : "matrix_selection_invalid",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+function validateMatrixSelection(selection, expected, page, options) {
+  const expectedKeys = [
+    "decision",
+    "evidenceBatchSha256",
+    "expectedStateHash",
+    "group",
+    "phase",
+    "reason",
+    "schemaVersion",
+    "selectedFactIds",
+    "targetMatrixId",
+  ];
+  if (!isRecord(selection) || JSON.stringify(Object.keys(selection).sort()) !== JSON.stringify(expectedKeys)) {
+    throw batchError("matrix_selection_keys_invalid", `Matrix selection must contain only: ${expectedKeys.join(", ")}.`);
+  }
+  if (selection.schemaVersion !== 1 || selection.phase !== "matrices" || selection.group !== "matrix-pending-selection") {
+    throw batchError("matrix_selection_envelope_invalid", "Matrix selection requires schemaVersion 1 and the injected phase/group.");
+  }
+  if (selection.expectedStateHash !== expected.expectedStateHash
+    || selection.targetMatrixId !== expected.targetMatrixId
+    || selection.evidenceBatchSha256 !== expected.evidenceBatchSha256) {
+    throw batchError("matrix_selection_binding_invalid", "Matrix selection does not match the injected state, target, or evidence batch.");
+  }
+  if (!Array.isArray(selection.selectedFactIds)
+    || selection.selectedFactIds.some((factId) => !nonEmpty(factId))
+    || new Set(selection.selectedFactIds).size !== selection.selectedFactIds.length) {
+    throw batchError("matrix_selection_fact_ids_invalid", "selectedFactIds must be an array of unique non-empty fact IDs.");
+  }
+  if (page.items.some((item) => item.oversizedRecord === true)) {
+    throw batchError(
+      "matrix_selection_oversized_index_item",
+      "The current fact-index item exceeds the bounded evidence interface. Selection fails closed; do not skip it or claim the matrix is not applicable.",
+    );
+  }
+  const pageIds = new Set(page.items.filter((item) => !item.oversizedRecord).map((item) => item.factId));
+  if (selection.selectedFactIds.some((factId) => !pageIds.has(factId))) {
+    throw batchError("matrix_selection_fact_out_of_scope", "Every selected fact must be a selectable ID from the current evidence page.");
+  }
+  const accumulated = new Set(options.selectedFactIds);
+  if (selection.selectedFactIds.some((factId) => accumulated.has(factId))
+    || accumulated.size + selection.selectedFactIds.length > options.maxSelectedFacts) {
+    throw batchError("matrix_selection_fact_limit", `Selections must be unique across pages and total no more than ${options.maxSelectedFacts} facts.`);
+  }
+  if (!nonEmpty(selection.reason) || containsProposalPlaceholder(selection.reason)) {
+    throw batchError("matrix_selection_reason_invalid", "Matrix selection requires a specific non-placeholder legal rationale.");
+  }
+  if (!new Set(["continue", "finalize"]).has(selection.decision)) {
+    throw batchError("matrix_selection_decision_invalid", "Matrix selection decision must be continue or finalize.");
+  }
+  const totalSelected = accumulated.size + selection.selectedFactIds.length;
+  if (selection.decision === "continue" && !page.hasMore) {
+    throw batchError("matrix_selection_continue_exhausted", "Cannot continue after the final evidence page; finalize the selection.");
+  }
+  if (selection.decision === "finalize" && totalSelected === 0 && page.hasMore) {
+    throw batchError("matrix_selection_na_not_exhaustive", "A zero-selection finalization requires review of every evidence page.");
+  }
+}
+
+async function readMatrixSelectionReceipt(workspaceRoot, receiptPath, expected, page, options) {
+  try {
+    const path = await resolveSafeWorkspacePath(workspaceRoot, receiptPath);
+    const bytes = await readFile(path);
+    if (bytes.byteLength > 4096) return undefined;
+    const receipt = JSON.parse(bytes.toString("utf8"));
+    if (!isRecord(receipt)
+      || !hasOnlyKeys(receipt, [
+        "schemaVersion", "receiptType", "expectedStateHash", "targetMatrixId", "collectionIndex",
+        "offset", "evidenceBatchSha256", "selectionPath", "selectionSha256", "selectedFactIds", "decision", "reason",
+      ])
+      || receipt.schemaVersion !== 1
+      || receipt.receiptType !== MATRIX_SELECTION_RECEIPT_TYPE
+      || receipt.expectedStateHash !== expected.expectedStateHash
+      || receipt.targetMatrixId !== expected.targetMatrixId
+      || receipt.collectionIndex !== page.collectionIndex
+      || receipt.offset !== page.offset
+      || receipt.evidenceBatchSha256 !== page.evidenceBatchSha256
+      || receipt.selectionPath !== expected.path
+      || !/^[a-f0-9]{64}$/u.test(String(receipt.selectionSha256 ?? ""))) return undefined;
+    const selectionPath = await resolveSafeWorkspacePath(workspaceRoot, receipt.selectionPath);
+    const selectionBytes = await readFile(selectionPath);
+    if (sha256(selectionBytes) !== receipt.selectionSha256) return undefined;
+    const selection = JSON.parse(selectionBytes.toString("utf8"));
+    validateMatrixSelection(selection, expected, page, options);
+    if (stableStringify(selection.selectedFactIds) !== stableStringify(receipt.selectedFactIds)
+      || selection.decision !== receipt.decision || selection.reason !== receipt.reason) return undefined;
+    return { valid: true, receipt };
+  } catch (error) {
+    if (error?.code === "ENOENT" || error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+
+async function matrixProposalPlanFor(input, workspaceRoot, state) {
+  const selectionChainSha256 = sha256(stableStringify(input.selectionReceipts));
+  const factsById = new Map(input.facts.map((fact) => [fact.id, fact]));
+  const preparedItems = input.selectedFactIds.map((factId) => matrixRelationFactItem(factsById.get(factId)));
+  const preparedBytes = Buffer.byteLength(JSON.stringify(preparedItems));
+  const preparedSlice = {
+    stateHash: input.validation.stateHash,
+    targetMatrixId: input.target.id,
+    selectionChainSha256,
+    returned: preparedItems.length,
+    serializedBytes: preparedBytes,
+    oversized: preparedBytes > MATRIX_SELECTED_FACT_MAX_BYTES,
+    items: preparedBytes <= MATRIX_SELECTED_FACT_MAX_BYTES ? preparedItems : [],
+  };
+  preparedSlice.preparedSliceSha256 = sha256(JSON.stringify(preparedSlice.items));
+  const digest = sha256([
+    input.validation.stateHash,
+    input.target.id,
+    String(input.collectionIndex),
+    selectionChainSha256,
+    preparedSlice.preparedSliceSha256,
+  ].join("\0")).slice(0, 12);
+  const proposalPath = `${MATRIX_TRANSACTION_DIRECTORY}/matrix-proposal-${digest}.json`;
+  const proposal = {
+    path: proposalPath,
+    expectedStateHash: input.validation.stateHash,
+    targetMatrixId: input.target.id,
+    selectionChainSha256,
+    preparedSliceSha256: preparedSlice.preparedSliceSha256,
+    exhaustive: input.exhaustive,
+    template: {
+      schemaVersion: 1,
+      phase: "matrices",
+      group: "matrix-pending-proposal",
+      expectedStateHash: input.validation.stateHash,
+      targetMatrixId: input.target.id,
+      selectionChainSha256,
+      preparedSliceSha256: preparedSlice.preparedSliceSha256,
+      matrix: input.selectedFactIds.length > 0
+        ? {
+            id: input.target.id,
+            status: "complete",
+            entries: [{
+              id: `<${input.target.id} entry id>`,
+              summary: "<fact-grounded legal summary>",
+              factIds: [...input.selectedFactIds],
+              riskSignals: [],
+              issueIds: [],
+              authorityIds: [],
+            }],
+          }
+        : {
+            id: input.target.id,
+            status: "not-applicable",
+            entries: [],
+            notApplicableReason: input.notApplicableReason ?? "<specific fact-grounded not-applicable reason>",
+          },
+    },
+  };
+  const base = {
+    phase: "matrices",
+    group: "matrix-pending-propose",
+    mode: "main-agent-propose",
+    stateHash: input.validation.stateHash,
+    target: { recordId: input.target.id, collectionIndex: input.collectionIndex, status: input.target.status },
+    returned: input.selectedFactIds.length,
+    hasMore: false,
+    limits: { maxRecords: 1, maxSerializedBytes: MATRIX_MUTATION_MAX_BYTES },
+    selectedFactIds: [...input.selectedFactIds],
+    selectionReceipts: input.selectionReceipts.map((receipt) => ({
+      path: receipt.selectionPath,
+      receiptPath: receipt.selectionPath.replace("matrix-selection-", "matrix-selection-ready-"),
+      selectionSha256: receipt.selectionSha256,
+      offset: receipt.offset,
+      selectedFactIds: receipt.selectedFactIds,
+      decision: receipt.decision,
+    })),
+    preparedSlice,
+    proposal,
+  };
+  if (preparedSlice.oversized) {
+    return {
+      ...base,
+      proposal: {
+        ...proposal,
+        validationError: {
+          code: "matrix_prepared_slice_byte_limit",
+          message: `Selected fact slice is ${preparedBytes} bytes; maximum is ${MATRIX_SELECTED_FACT_MAX_BYTES}. The accepted selection is inconsistent and cannot be applied.`,
+        },
+        repairRequired: true,
+      },
+    };
+  }
+  const receipt = await validMatrixProposalReceipt(workspaceRoot, proposal, base, state);
+  if (receipt?.valid) {
+    const { preparedSlice: _preparedSlice, ...applyBase } = base;
+    return {
+      ...applyBase,
+      group: "matrix-pending-apply",
+      mode: "main-agent-apply",
+      proposal: {
+        ...proposal,
+        validated: true,
+        proposalSha256: receipt.sha256,
+        transactionBytes: receipt.transactionBytes,
+        matrix: receipt.matrix,
+      },
+    };
+  }
+  if (receipt?.error) {
+    return {
+      ...base,
+      proposal: { ...proposal, validationError: receipt.error, repairRequired: true },
+    };
+  }
+  return base;
+}
+
+async function validMatrixProposalReceipt(workspaceRoot, expected, plan, state) {
+  try {
+    const path = await resolveSafeWorkspacePath(workspaceRoot, expected.path);
+    const bytes = await readFile(path);
+    if (bytes.byteLength > MATRIX_MUTATION_MAX_BYTES) {
+      throw batchError("matrix_proposal_byte_limit", `Matrix proposal is ${bytes.byteLength} bytes; maximum is ${MATRIX_MUTATION_MAX_BYTES}.`);
+    }
+    let patch;
+    try {
+      patch = JSON.parse(bytes.toString("utf8"));
+    } catch (error) {
+      throw batchError("matrix_proposal_json_invalid", errorMessage(error));
+    }
+    const matrix = validateMatrixProposal(patch, expected, plan, state);
+    return { valid: true, sha256: sha256(bytes), transactionBytes: Buffer.byteLength(JSON.stringify(matrix)), matrix };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return {
+      valid: false,
+      error: {
+        code: typeof error?.code === "string" ? error.code : "matrix_proposal_invalid",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+function validateMatrixProposal(patch, expected, plan, state) {
+  if (!isRecord(patch) || !hasOnlyKeys(patch, [
+    "schemaVersion", "phase", "group", "expectedStateHash", "targetMatrixId",
+    "selectionChainSha256", "preparedSliceSha256", "matrix",
+  ])) throw batchError("matrix_proposal_keys_invalid", "Matrix proposal contains missing or unsupported envelope fields.");
+  if (patch.schemaVersion !== 1 || patch.phase !== "matrices" || patch.group !== "matrix-pending-proposal") {
+    throw batchError("matrix_proposal_envelope_invalid", "Matrix proposal requires schemaVersion 1 and the injected phase/group.");
+  }
+  if (patch.expectedStateHash !== expected.expectedStateHash
+    || patch.targetMatrixId !== expected.targetMatrixId
+    || patch.selectionChainSha256 !== expected.selectionChainSha256
+    || patch.preparedSliceSha256 !== expected.preparedSliceSha256) {
+    throw batchError("matrix_proposal_binding_invalid", "Matrix proposal does not match the injected state, target, selection chain, or prepared slice.");
+  }
+  const matrix = patch.matrix;
+  if (!isRecord(matrix) || !hasOnlyKeys(matrix, ["id", "status", "entries", "notApplicableReason"])
+    || matrix.id !== expected.targetMatrixId || !new Set(["complete", "not-applicable"]).has(matrix.status)
+    || !Array.isArray(matrix.entries)) {
+    throw batchError("matrix_proposal_record_invalid", "Proposal matrix requires the target ID, complete/not-applicable status, and entries array.");
+  }
+  const selected = new Set(plan.selectedFactIds);
+  if (matrix.status === "not-applicable") {
+    if (selected.size > 0 || !expected.exhaustive || matrix.entries.length > 0
+      || !nonEmpty(matrix.notApplicableReason) || containsProposalPlaceholder(matrix.notApplicableReason)) {
+      throw batchError("matrix_proposal_na_invalid", "Not-applicable requires exhaustive zero-selection review, no entries, and a specific reason.");
+    }
+    return { id: matrix.id, status: matrix.status, entries: [], notApplicableReason: matrix.notApplicableReason };
+  }
+  if (matrix.notApplicableReason !== undefined || matrix.entries.length === 0) {
+    throw batchError("matrix_proposal_complete_invalid", "A complete matrix requires entries and must not include notApplicableReason.");
+  }
+  const knownFactIds = new Set((Array.isArray(state.facts?.facts) ? state.facts.facts : [])
+    .filter((fact) => isRecord(fact) && nonEmpty(fact.id)).map((fact) => fact.id));
+  const linked = new Set();
+  const entryIds = new Set();
+  const entries = matrix.entries.map((entry) => {
+    if (!isRecord(entry) || !hasOnlyKeys(entry, ["id", "summary", "factIds", "riskSignals", "issueIds", "authorityIds"])
+      || !nonEmpty(entry.id) || containsProposalPlaceholder(entry.id)
+      || entryIds.has(entry.id) || !nonEmpty(entry.summary) || containsProposalPlaceholder(entry.summary)
+      || !Array.isArray(entry.factIds) || entry.factIds.length === 0
+      || entry.factIds.some((factId) => !selected.has(factId) || !knownFactIds.has(factId))
+      || new Set(entry.factIds).size !== entry.factIds.length) {
+      throw batchError("matrix_proposal_entry_invalid", "Every entry needs a unique ID, fact-grounded summary, and unique selected fact IDs.");
+    }
+    entryIds.add(entry.id);
+    for (const factId of entry.factIds) linked.add(factId);
+    const riskSignals = entry.riskSignals ?? [];
+    const issueIds = entry.issueIds ?? [];
+    const authorityIds = entry.authorityIds ?? [];
+    if (!Array.isArray(riskSignals) || riskSignals.some((signal) => !Object.values(ISSUE_RULES).includes(signal))
+      || new Set(riskSignals).size !== riskSignals.length
+      || !Array.isArray(issueIds) || issueIds.some((id) => !nonEmpty(id)) || new Set(issueIds).size !== issueIds.length
+      || !Array.isArray(authorityIds) || authorityIds.some((id) => !nonEmpty(id)) || new Set(authorityIds).size !== authorityIds.length) {
+      throw batchError("matrix_proposal_entry_links_invalid", "Entry riskSignals, issueIds, and authorityIds must be unique valid arrays.");
+    }
+    return {
+      id: entry.id,
+      summary: entry.summary,
+      factIds: [...entry.factIds],
+      ...(riskSignals.length > 0 ? { riskSignals: [...riskSignals] } : {}),
+      ...(issueIds.length > 0 ? { issueIds: [...issueIds] } : {}),
+      ...(authorityIds.length > 0 ? { authorityIds: [...authorityIds] } : {}),
+    };
+  });
+  if (linked.size !== selected.size || [...selected].some((factId) => !linked.has(factId))) {
+    throw batchError("matrix_proposal_selected_facts_missing", "Every selected fact must appear in the proposed target matrix.");
+  }
+  return { id: matrix.id, status: matrix.status, entries };
+}
+
 export function coverageBatchSchema() {
   return {
     schemaVersion: 1,
@@ -1590,6 +2244,41 @@ export function convergenceStateHash(result, workItems) {
 }
 
 function convergenceWorkProjection(workItems) {
+  if (workItems?.group === "matrix-pending-selection-apply" && workItems.selection?.validated === true) {
+    return {
+      ...workItems,
+      selection: {
+        path: workItems.selection.path,
+        expectedStateHash: workItems.selection.expectedStateHash,
+        targetMatrixId: workItems.selection.targetMatrixId,
+        evidenceBatchSha256: workItems.selection.evidenceBatchSha256,
+        validated: true,
+      },
+    };
+  }
+  if (workItems?.group === "matrix-pending-selection" && workItems.selection?.validationError) {
+    const selection = { ...workItems.selection };
+    delete selection.validationError;
+    selection.repairRequired = true;
+    return { ...workItems, selection };
+  }
+  if (workItems?.group === "matrix-pending-propose" && workItems.proposal?.validationError) {
+    const proposal = { ...workItems.proposal };
+    delete proposal.validationError;
+    proposal.repairRequired = true;
+    return { ...workItems, proposal };
+  }
+  if (workItems?.group === "matrix-pending-apply" && workItems.proposal?.validated === true) {
+    return {
+      ...workItems,
+      proposal: {
+        path: workItems.proposal.path,
+        expectedStateHash: workItems.proposal.expectedStateHash,
+        targetMatrixId: workItems.proposal.targetMatrixId,
+        validated: true,
+      },
+    };
+  }
   if (!workItems?.proposal?.validationError) return workItems;
   const proposal = { ...workItems.proposal };
   delete proposal.validationError;
@@ -1610,6 +2299,8 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
+  const matrixSelectionApply = matrixSelectionApplyCommandFor(workItems, cliPath);
+  const matrixProposalApply = matrixProposalApplyCommandFor(workItems, cliPath);
   const mutationContract = phaseMutationContractFor(result, workItems);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
@@ -1641,10 +2332,24 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
     ...(sourceFragment ? { sourceFragmentCommand: sourceFragment } : {}),
     ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
+    ...(matrixSelectionApply ? { matrixSelectionApplyCommand: matrixSelectionApply } : {}),
+    ...(matrixProposalApply ? { matrixProposalApplyCommand: matrixProposalApply } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(mutationContract ? { mutationContract } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems),
+    nextAction: nextActionFor(
+      result,
+      sameCode.length,
+      command,
+      initialize,
+      reference,
+      sourceBootstrap,
+      sourceFragment,
+      sourceMergeApply,
+      matrixSelectionApply,
+      matrixProposalApply,
+      workItems,
+    ),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -1684,6 +2389,20 @@ function sourceMergeApplyCommandFor(workItems, cliPath) {
     + `--limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
 }
 
+function matrixSelectionApplyCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "matrix-pending-selection-apply" || workItems.selection?.validated !== true
+    || !nonEmpty(workItems.selection?.path)) return undefined;
+  return `node ${JSON.stringify(cliPath)} matrix-selection-apply --workspace "$PWD" `
+    + `--input-file ${JSON.stringify(workItems.selection.path)}`;
+}
+
+function matrixProposalApplyCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "matrix-pending-apply" || workItems.proposal?.validated !== true) return undefined;
+  return `node ${JSON.stringify(cliPath)} matrix-proposal-apply --workspace "$PWD" `
+    + `--input-file ${JSON.stringify(workItems.proposal.path)} `
+    + `--proposal-sha256 ${workItems.proposal.proposalSha256}`;
+}
+
 function milestoneName(result) {
   if (result.passed) return "COMPLETE";
   switch (result.errors[0]?.phase) {
@@ -1714,11 +2433,12 @@ function phaseMutationContractFor(result, workItems) {
   const first = result.errors[0];
   if (first?.phase !== "matrices") return undefined;
   const batch = workBatchFor(first.phase);
+  const pendingProtocol = typeof workItems?.group === "string" && workItems.group.startsWith("matrix-pending-");
   return {
     schemaVersion: 1,
     phase: "matrices",
     writer: "main-agent-only",
-    strategy: "bounded-direct-canonical-json-write",
+    strategy: pendingProtocol ? "state-bound-proposal-apply" : "bounded-direct-canonical-json-write",
     canonicalPath: `${STATE_DIRECTORY}/${STATE_FILES.matrices}`,
     target: {
       errorCode: first.code,
@@ -1736,7 +2456,13 @@ function phaseMutationContractFor(result, workItems) {
       preserveUnchangedRecords: true,
       validateAfterWrite: true,
     },
-    prerequisites: workItems?.group === "material-fact-matrix-closure"
+    prerequisites: pendingProtocol
+      ? [
+          "Load guidanceCommand exactly if issue-rules has not already been loaded.",
+          "Use only the injected bounded evidence page or prepared slice; do not read matrices.json or the full facts.json.",
+          "Select fact IDs and write legal summaries through Agent judgment; the plugin supplies evidence and transaction enforcement only.",
+        ]
+      : workItems?.group === "material-fact-matrix-closure"
       ? [
           "Load guidanceCommand exactly if issue-rules has not already been loaded.",
           `Read ${STATE_DIRECTORY}/${STATE_FILES.matrices} before writing; use the injected canonical fact batch instead of rereading the full facts ledger.`,
@@ -1748,9 +2474,11 @@ function phaseMutationContractFor(result, workItems) {
           "Base every entry or not-applicable reason on the canonical facts; preserve uncertainty.",
         ],
     interface: {
-      kind: "workspace-file-write",
-      phaseApplyCommandAvailable: false,
-      instruction: "Update the canonical JSON document directly with the workspace file-write tool. Do not probe for or invent a phase-specific apply command.",
+      kind: pendingProtocol ? "state-bound-proposal" : "workspace-file-write",
+      phaseApplyCommandAvailable: pendingProtocol && workItems?.group === "matrix-pending-apply",
+      instruction: pendingProtocol
+        ? "Write only the injected selection or proposal path and use the injected apply command. Never edit the canonical matrix ledger directly during initial construction."
+        : "Update the canonical JSON document directly with the workspace file-write tool. Do not probe for or invent a phase-specific apply command.",
     },
     documentSchema: {
       schemaVersion: 1,
@@ -1770,7 +2498,19 @@ function phaseMutationContractFor(result, workItems) {
   };
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap, sourceFragment, sourceMergeApply, workItems) {
+function nextActionFor(
+  result,
+  occurrenceCount,
+  command,
+  initialize,
+  reference,
+  sourceBootstrap,
+  sourceFragment,
+  sourceMergeApply,
+  matrixSelectionApply,
+  matrixProposalApply,
+  workItems,
+) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -1833,6 +2573,41 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
       + "Pass each batch.agentInput object to the agent tool verbatim. Do not call bash, read_file, glob, or grep first; "
       + "do not re-list sources that are already partitioned. After all workers return, execute guidanceCommand if it has not already "
       + "been loaded, read only their fragments, merge one bounded canonical batch, and run: " + command;
+  }
+  if (first?.phase === "matrices" && first.code === "matrix_pending"
+    && workItems?.group === "matrix-pending-selection-apply") {
+    return `The pending-matrix selection is valid and state-bound. Execute matrixSelectionApplyCommand exactly as the next tool call: ${matrixSelectionApply}. `
+      + `Do not rewrite or read the selection, matrices.json, facts.json, plugin source, or source documents. The command records one immutable operational checkpoint and exposes the next bounded page or proposal.`;
+  }
+  if (first?.phase === "matrices" && first.code === "matrix_pending"
+    && workItems?.group === "matrix-pending-selection") {
+    if (workItems.selection?.validationError) {
+      return `The current matrix selection at ${JSON.stringify(workItems.selection.path)} was rejected with `
+        + `${workItems.selection.validationError.code}: ${workItems.selection.validationError.message}. `
+        + `Rewrite only that selection from workItems.selection.template and workItems.evidencePage. The Legal Plugin will validate it before exposing the selection apply command. `
+        + `Do not read matrices.json, facts.json, plugin source, or another page.`;
+    }
+    return `For pending matrix ${JSON.stringify(workItems.target.recordId)}, treat workItems.evidencePage as the complete current fact-index page. `
+      + `Through legal judgment, choose only compatible fact IDs from that page and write the exact selection envelope to ${JSON.stringify(workItems.selection.path)} from workItems.selection.template as the next tool call. The Legal Plugin will validate it before exposing the selection apply command. `
+      + `Use decision continue when another page is needed; finalize only when the accumulated selection is sufficient, or after exhaustive zero-selection review for not-applicable. `
+      + `Do not read matrices.json, the full facts.json, plugin source, source files, or another page; do not edit a canonical ledger.`;
+  }
+  if (first?.phase === "matrices" && first.code === "matrix_pending"
+    && workItems?.group === "matrix-pending-propose") {
+    if (workItems.proposal?.validationError) {
+      return `The one-matrix proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
+        + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
+        + `Rewrite only that proposal from workItems.proposal.template and workItems.preparedSlice. `
+        + `Do not reread facts.json, matrices.json, selection files, plugin source, or source documents.`;
+    }
+    return `The selected matrix evidence is rehydrated and state-bound. Write exactly one proposal to ${JSON.stringify(workItems.proposal.path)} using workItems.proposal.template and workItems.preparedSlice. `
+      + `Replace every placeholder with fact-grounded legal judgment, preserve the target ID, and use only selected fact IDs. `
+      + `Do not edit matrices.json directly and do not read facts.json, matrices.json, selection files, plugin source, or source documents. The Legal Plugin will validate the receipt before exposing the apply command.`;
+  }
+  if (first?.phase === "matrices" && first.code === "matrix_pending"
+    && workItems?.group === "matrix-pending-apply") {
+    return `The one-matrix proposal is valid and state-bound. Execute matrixProposalApplyCommand exactly as the next tool call: ${matrixProposalApply}. `
+      + `Do not inspect or edit any canonical ledger manually. The command replaces only the pending target matrix atomically and immediately runs the unchanged validator.`;
   }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {

@@ -12,6 +12,7 @@ import {
   milestoneFor,
   nextCoverageBatch,
   nextMatrixRelationBatch,
+  pendingMatrixPlan,
   pendingSourceReviewPlan,
   resolveSafeWorkspacePath,
   validateWorkspace,
@@ -157,6 +158,9 @@ async function dynamicWorkItems(workspaceRoot, result) {
       maxSerializedBytes: 8192,
       validationResult: result,
     });
+  }
+  if (first?.phase === "matrices" && first.code === "matrix_pending") {
+    return pendingMatrixPlan(workspaceRoot, { validationResult: result });
   }
   return undefined;
 }
