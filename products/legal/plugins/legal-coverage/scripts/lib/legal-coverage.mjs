@@ -88,6 +88,77 @@ export async function ensureWorkspace(workspaceRoot) {
   return { workspace, stateRoot, paths: statePaths(workspace) };
 }
 
+export async function bootstrapSourcesFromManifest(workspaceRoot) {
+  const initialized = await ensureWorkspace(workspaceRoot);
+  const manifestContext = {
+    workspace: initialized.workspace,
+    errors: [],
+    warnings: [],
+    inputManifest: undefined,
+    manifestSources: new Map(),
+  };
+  await loadInputManifest(manifestContext);
+  if (!manifestContext.inputManifest || manifestContext.errors.length > 0) {
+    const first = manifestContext.errors[0];
+    throw legalCoverageError(
+      first?.code ?? "input_manifest_unavailable",
+      first?.message ?? `Cannot bootstrap sources without a valid ${INPUT_MANIFEST_PATH}.`,
+    );
+  }
+
+  const ledger = JSON.parse(await readFile(initialized.paths.sources, "utf8"));
+  if (!isRecord(ledger) || ledger.schemaVersion !== 1 || !Array.isArray(ledger.sources)) {
+    throw legalCoverageError("sources_ledger_invalid", "sources.json must be a schemaVersion 1 object with a sources array.");
+  }
+  if (ledger.sources.some((source) => !isRecord(source) || !nonEmpty(source.id) || !nonEmpty(source.path))) {
+    throw legalCoverageError("sources_ledger_invalid", "Every existing source row must have non-empty id and path fields.");
+  }
+
+  const existingPaths = new Set(ledger.sources.map((source) => source.path));
+  const existingIds = new Set(ledger.sources.map((source) => source.id));
+  const created = [];
+  const preserved = [];
+  const manifestSources = [...manifestContext.manifestSources.values()]
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  for (const source of manifestSources) {
+    if (existingPaths.has(source.path)) {
+      preserved.push({ path: source.path, reason: "already_inventoried" });
+      continue;
+    }
+    const id = `SRC-${sha256(source.path).slice(0, 12).toUpperCase()}`;
+    if (existingIds.has(id)) {
+      throw legalCoverageError("source_id_collision", `Stable source ID collision for ${source.path}.`);
+    }
+    const row = {
+      id,
+      path: source.path,
+      sha256: source.sha256,
+      status: "pending",
+      derivedArtifacts: source.derivations.map((artifact) => ({
+        path: artifact.path,
+        sha256: artifact.sha256,
+        extractionMethod: artifact.extractionMethod,
+        extractorVersion: artifact.extractorVersion,
+      })),
+    };
+    ledger.sources.push(row);
+    existingPaths.add(row.path);
+    existingIds.add(row.id);
+    created.push({ id: row.id, path: row.path });
+  }
+
+  if (created.length > 0) await writeJsonAtomic(initialized.paths.sources, ledger);
+  return {
+    bootstrapped: created.length,
+    preserved: preserved.length,
+    totalManifestSources: manifestSources.length,
+    created,
+    preservedSources: preserved,
+    sourcesPath: `${STATE_DIRECTORY}/${STATE_FILES.sources}`,
+  };
+}
+
 export async function initializeDeliverableSkeletons(workspaceRoot, deliverables) {
   const workspace = resolve(workspaceRoot);
   const result = { created: [], preserved: [], unsupported: [] };
@@ -508,6 +579,7 @@ export function milestoneFor(result, cliPath) {
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
   const initialize = initializerCommandFor(result, cliPath);
   const reference = referenceCommandFor(first?.phase, cliPath);
+  const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   return [
     `Legal coverage milestone (${first?.phase ?? "configuration"}): fix validator code ${first?.code ?? "state_file_invalid"} now.`,
     sameCode.length > 1
@@ -518,6 +590,7 @@ export function milestoneFor(result, cliPath) {
       ? `Representative paths: ${sameCode.slice(0, 4).map((error) => error.path).filter(Boolean).join(", ")}.`
       : undefined,
     first?.phase === "configuration" ? `Use this initializer with task-specific values: ${initialize}` : undefined,
+    sourceBootstrap ? `Bootstrap the manifest-bound source ledger with: ${sourceBootstrap}` : undefined,
     reference ? `Load the bundled legal guidance through its stable CLI interface before the next canonical write: ${reference}` : undefined,
     `After the fix, run: ${command}`,
     "Do not claim completion and do not create completion-proof.json manually.",
@@ -546,6 +619,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
   const initialize = initializerCommandFor(result, cliPath);
   const reference = referenceCommandFor(first?.phase, cliPath);
+  const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -573,9 +647,10 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     progress: result.counts,
     ...(result.passed ? {} : { workBatch: workBatchFor(first?.phase) }),
     ...(first?.phase === "configuration" ? { initializerCommand: initialize } : {}),
+    ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference, sourceBootstrap),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -586,6 +661,13 @@ function initializerCommandFor(result, cliPath) {
     ? "--input-from-manifest"
     : "--input <source-root>";
   return `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" ${inputOption} --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+}
+
+function sourceBootstrapCommandFor(result, cliPath) {
+  const first = result.errors[0];
+  if (!result.inputManifest?.originalRoot || first?.phase !== "sources") return undefined;
+  if (first.code !== "source_not_inventoried" && first.code !== "manifest_original_not_inventoried") return undefined;
+  return `node ${JSON.stringify(cliPath)} bootstrap-sources --workspace \"$PWD\" --from-manifest`;
 }
 
 function milestoneName(result) {
@@ -614,7 +696,7 @@ function workBatchFor(phase) {
   }
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize, reference) {
+function nextActionFor(result, occurrenceCount, command, initialize, reference, sourceBootstrap) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -629,6 +711,14 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference) 
     return `Create a non-empty user deliverable skeleton at the exact configured workspace-relative path `
       + `${JSON.stringify(first.path)} with write_file, then run: ${command}. `
       + `Do not change the configured path or move the user deliverable into ${STATE_DIRECTORY} merely because it does not exist yet.`;
+  }
+  if (sourceBootstrap) {
+    const guidance = reference
+      ? `Load the bundled data contract with: ${reference}. `
+      : "";
+    return `Execute this exact deterministic source bootstrap before manually listing manifest rows: ${sourceBootstrap}. `
+      + guidance
+      + `Then delegate disjoint pending-source batches, merge returned fragments as the single canonical writer, and run: ${command}`;
   }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {
@@ -658,6 +748,12 @@ function referenceCommandFor(phase, cliPath) {
     return `node ${JSON.stringify(cliPath)} reference --name issue-rules`;
   }
   return undefined;
+}
+
+function legalCoverageError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 function objectiveForPhase(phase) {

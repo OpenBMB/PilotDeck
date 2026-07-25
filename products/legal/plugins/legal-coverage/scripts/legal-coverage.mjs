@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   applyCoverageBatch,
+  bootstrapSourcesFromManifest,
   coverageBatchSchema,
   ensureWorkspace,
   initializeDeliverableSkeletons,
@@ -74,6 +75,26 @@ if (command === "init") {
     }));
     process.exitCode = 1;
   }
+} else if (command === "bootstrap-sources") {
+  try {
+    if (!args.includes("--from-manifest")) {
+      throw initCliError(
+        "legal_coverage_source_bootstrap_mode_required",
+        "bootstrap-sources requires --from-manifest.",
+      );
+    }
+    const result = await bootstrapSourcesFromManifest(workspaceRoot);
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: {
+        code: typeof error?.code === "string" ? error.code : "legal_coverage_source_bootstrap_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }));
+    process.exitCode = 1;
+  }
 } else if (command === "reference") {
   const name = readOption(args, "--name");
   const reference = REFERENCE_FILES[name];
@@ -138,7 +159,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 

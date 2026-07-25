@@ -193,6 +193,76 @@ test("legal coverage initializer binds trusted manifests to original inputs", as
   }
 });
 
+test("legal coverage source bootstrap creates only deterministic pending manifest rows", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-source-bootstrap-"));
+  try {
+    const fixture = await writeManifestBoundFixture(workspace);
+    await writeJson(join(workspace, STATE_ROOT, "sources.json"), { schemaVersion: 1, sources: [] });
+
+    const preModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "manifest-source-bootstrap",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /"sourceBootstrapCommand":/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /bootstrap-sources --workspace/u);
+    assert.match(preModel.hookSpecificOutput.additionalContext ?? "", /--from-manifest/u);
+
+    const bootstrapped = await runCli(workspace, "bootstrap-sources", "--from-manifest");
+    assert.equal(bootstrapped.exitCode, 0, bootstrapped.stderr);
+    const result = JSON.parse(bootstrapped.stdout) as {
+      bootstrapped: number;
+      preserved: number;
+      created: Array<{ id: string; path: string }>;
+    };
+    assert.equal(result.bootstrapped, 1);
+    assert.equal(result.preserved, 0);
+    assert.equal(result.created[0]?.path, fixture.originalPath);
+    assert.match(result.created[0]?.id ?? "", /^SRC-[A-F0-9]{12}$/u);
+
+    const ledger = JSON.parse(await readFile(join(workspace, STATE_ROOT, "sources.json"), "utf8")) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    assert.deepEqual(ledger.sources, [{
+      id: result.created[0]?.id,
+      path: fixture.originalPath,
+      sha256: sha256(fixture.originalBytes),
+      status: "pending",
+      derivedArtifacts: [{
+        path: fixture.derivedPath,
+        sha256: sha256(fixture.derivedBytes),
+        extractionMethod: "docx-text-extraction",
+        extractorVersion: "pilotdeck-eval-runner-v1",
+      }],
+    }]);
+
+    const repeated = await runCli(workspace, "bootstrap-sources", "--from-manifest");
+    assert.equal(repeated.exitCode, 0, repeated.stderr);
+    const repeatedResult = JSON.parse(repeated.stdout) as { bootstrapped: number; preserved: number };
+    assert.equal(repeatedResult.bootstrapped, 0);
+    assert.equal(repeatedResult.preserved, 1);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(workspace, STATE_ROOT, "sources.json"), "utf8")),
+      ledger,
+    );
+
+    const validation = await runCli(workspace, "validate");
+    assert.equal(validation.exitCode, 2);
+    const validationResult = JSON.parse(validation.stdout) as { errors: Array<{ code: string }> };
+    const codes = new Set(validationResult.errors.map((error) => error.code));
+    assert.equal(codes.has("source_pending"), true);
+    assert.equal(codes.has("source_not_inventoried"), false);
+    assert.equal(codes.has("manifest_original_not_inventoried"), false);
+
+    const missingMode = await runCli(workspace, "bootstrap-sources");
+    assert.equal(missingMode.exitCode, 1);
+    assert.match(missingMode.stderr, /legal_coverage_source_bootstrap_mode_required/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage CLI exposes bundled guidance through stable named references", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-reference-"));
   try {

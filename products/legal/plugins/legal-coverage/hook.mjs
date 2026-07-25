@@ -42,6 +42,7 @@ try {
           "Keep legal facts, issue rules, authorities, and coverage mappings under .pilotdeck/work/legal-coverage.",
           "When configuration is incomplete, execute the injected initializerCommand and preserve its manifest-bound input option.",
           "When .pilotdeck/input-manifest.json exists, bind sources to its originalRoot and use derivedRoot files only as recorded inspection artifacts.",
+          "When the source milestone exposes sourceBootstrapCommand, execute it before manually copying manifest rows.",
           "Use one main-agent writer for canonical ledgers and deliverables; delegated workers may write only disjoint evidence fragments.",
           "The completion proof is generated only by the bundled validator and is required before completion.",
         ].join("\n"),

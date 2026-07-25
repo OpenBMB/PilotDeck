@@ -93,6 +93,18 @@ extraction methods, and extractor versions become part of the validator-owned
 state hash and completion proof. Existing non-runner workspaces remain compatible
 when no input manifest is present.
 
+After manifest-bound initialization, the source milestone exposes a deterministic
+bootstrap command:
+
+```bash
+node products/legal/plugins/legal-coverage/scripts/legal-coverage.mjs \
+  bootstrap-sources --workspace /path/to/project --from-manifest
+```
+
+It atomically adds only missing manifest originals as `pending` source rows,
+with stable IDs, exact hashes, and derivation lineage. It never marks a source
+reviewed, creates facts, assigns materiality, or overwrites an existing row.
+
 For document rooms larger than 20 files, the legal Skill requires two to four
 read-only evidence batches. This keeps raw extraction out of the main context
 while preserving a single writer for canonical state.
