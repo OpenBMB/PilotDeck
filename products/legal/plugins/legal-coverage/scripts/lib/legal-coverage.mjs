@@ -55,8 +55,11 @@ const AUTHORITY_STATUSES = new Set(["verified", "pending-verification", "not-app
 const MATRIX_STATUSES = new Set(["pending", "complete", "not-applicable"]);
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".html", ".htm", ".csv"]);
 const SOURCE_REVIEW_FRAGMENT_PATTERN = /^source-review-[a-f0-9]{12}\.json$/u;
+const SOURCE_MERGE_READINESS_PATTERN = /^source-merge-ready-[a-f0-9]{12}\.json$/u;
 const SOURCE_REVIEW_FRAGMENT_TYPE = "legal-evidence-source-batch-review";
+const SOURCE_MERGE_READINESS_TYPE = "legal-source-merge-readiness";
 const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
+const SOURCE_MERGE_READINESS_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
 const SOURCE_MERGE_MAX_FACTS = 32;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
@@ -177,15 +180,18 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
     ? options.expectedStateHash
     : (await validateWorkspace({ workspaceRoot, writeProof: false })).stateHash;
   const proposalPlan = sourceMergeProposalPlanFor(mergePlan, expectedStateHash);
-  const proposalReceipt = await validSourceMergeProposalReceipt(workspaceRoot, proposalPlan, receipts, loaded.state);
-  if (proposalReceipt?.valid) return sourceMergeApplyPlanFor(proposalPlan, proposalReceipt);
+  const readinessReceipt = await validSourceMergeReadinessReceipt(workspaceRoot, proposalPlan);
+  if (!readinessReceipt) return proposalPlan;
+  const proposePlan = sourceMergeProposePlanFor(proposalPlan, readinessReceipt);
+  const proposalReceipt = await validSourceMergeProposalReceipt(workspaceRoot, proposePlan, receipts, loaded.state);
+  if (proposalReceipt?.valid) return sourceMergeApplyPlanFor(proposePlan, proposalReceipt);
   if (proposalReceipt?.error) {
     return {
-      ...proposalPlan,
-      proposal: { ...proposalPlan.proposal, validationError: proposalReceipt.error },
+      ...proposePlan,
+      proposal: { ...proposePlan.proposal, validationError: proposalReceipt.error },
     };
   }
-  return proposalPlan;
+  return proposePlan;
 }
 
 function sourceReviewPlanFor(sourceRows, options = {}) {
@@ -466,8 +472,15 @@ function sourceMergeProposalPlanFor(mergePlan, expectedStateHash) {
     ...item.sourceIds,
   ].join("\0")).slice(0, 12);
   const proposalPath = `${STATE_DIRECTORY}/fragments/source-merge-${digest}.json`;
+  const readinessPath = `${STATE_DIRECTORY}/fragments/source-merge-ready-${digest}.json`;
   return {
     ...mergePlan,
+    readiness: {
+      path: readinessPath,
+      checkpointType: SOURCE_MERGE_READINESS_TYPE,
+      expectedStateHash,
+      validated: false,
+    },
     proposal: {
       path: proposalPath,
       expectedStateHash,
@@ -504,6 +517,19 @@ function sourceMergeProposalPlanFor(mergePlan, expectedStateHash) {
         }],
         noMaterialFacts: [],
       },
+    },
+  };
+}
+
+function sourceMergeProposePlanFor(proposalPlan, readinessReceipt) {
+  return {
+    ...proposalPlan,
+    group: "source-fragment-propose",
+    mode: "main-agent-propose",
+    readiness: {
+      ...proposalPlan.readiness,
+      validated: true,
+      sliceSha256: readinessReceipt.sliceSha256,
     },
   };
 }
@@ -583,6 +609,96 @@ export async function sourceReviewFragmentSlice(workspaceRoot, options = {}) {
     throw batchError("source_fragment_slice_byte_limit", `fragment-slice output is ${serializedBytes} bytes; maximum is ${maxSerializedBytes}.`);
   }
   return result;
+}
+
+export async function prepareSourceMergeProposal(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.readinessPath)
+    || !SOURCE_MERGE_READINESS_PATTERN.test(options.readinessPath.split("/").at(-1) ?? "")) {
+    throw batchError("source_merge_readiness_path_invalid", "source-merge-prepare requires the injected deterministic readiness path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.expectedStateHash ?? ""))) {
+    throw batchError("source_merge_expected_state_hash_invalid", "source-merge-prepare requires the injected lowercase expected state SHA-256.");
+  }
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  if (before.stateHash !== options.expectedStateHash) {
+    throw batchError(
+      "stale_state_hash",
+      `expectedStateHash ${String(options.expectedStateHash)} does not match current state ${before.stateHash}. Request a fresh source merge preparation command.`,
+    );
+  }
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
+  const receipts = await validSourceReviewReceipts(workspaceRoot, sourceRows);
+  const mergePlan = sourceReviewMergePlanFor(sourceRows, receipts, { maxMergeSources: options.maxRecords });
+  if (!mergePlan) throw batchError("source_merge_not_applicable", "No validated pending source fragment is currently mergeable.");
+  const proposalPlan = sourceMergeProposalPlanFor(mergePlan, before.stateHash);
+  if (proposalPlan.readiness.path !== options.readinessPath) {
+    throw batchError("source_merge_readiness_path_stale", "The readiness path is not bound to the current source merge transaction.");
+  }
+  if (proposalPlan.proposal.fragmentPath !== options.fragmentPath) {
+    throw batchError("source_merge_readiness_fragment_stale", "The fragment path is not bound to the current source merge transaction.");
+  }
+  if (proposalPlan.proposal.receiptSha256 !== options.receiptSha256) {
+    throw batchError("source_merge_readiness_receipt_stale", "The fragment receipt is not bound to the current source merge transaction.");
+  }
+  if (JSON.stringify(proposalPlan.proposal.sourceIds) !== JSON.stringify(options.sourceIds ?? [])) {
+    throw batchError("source_merge_readiness_sources_stale", "The ordered source IDs are not bound to the current source merge transaction.");
+  }
+  const slice = await sourceReviewFragmentSlice(workspaceRoot, options);
+  const checkpoint = {
+    schemaVersion: 1,
+    checkpointType: SOURCE_MERGE_READINESS_TYPE,
+    expectedStateHash: before.stateHash,
+    proposalPath: proposalPlan.proposal.path,
+    fragmentPath: proposalPlan.proposal.fragmentPath,
+    receiptSha256: proposalPlan.proposal.receiptSha256,
+    sourceIds: [...proposalPlan.proposal.sourceIds],
+    sliceSha256: sha256(Buffer.from(JSON.stringify(slice))),
+  };
+  const readinessPath = await resolveSafeWorkspacePath(workspaceRoot, options.readinessPath, { allowMissing: true });
+  await writeJsonAtomic(readinessPath, checkpoint);
+  return slice;
+}
+
+async function validSourceMergeReadinessReceipt(workspaceRoot, plan) {
+  try {
+    const readinessPath = await resolveSafeWorkspacePath(workspaceRoot, plan.readiness.path);
+    const bytes = await readFile(readinessPath);
+    if (bytes.byteLength > SOURCE_MERGE_READINESS_MAX_BYTES) return undefined;
+    const checkpoint = JSON.parse(bytes.toString("utf8"));
+    const expectedKeys = [
+      "checkpointType",
+      "expectedStateHash",
+      "fragmentPath",
+      "proposalPath",
+      "receiptSha256",
+      "schemaVersion",
+      "sliceSha256",
+      "sourceIds",
+    ];
+    if (!isRecord(checkpoint)
+      || !hasOnlyKeys(checkpoint, expectedKeys)
+      || checkpoint.schemaVersion !== 1
+      || checkpoint.checkpointType !== SOURCE_MERGE_READINESS_TYPE
+      || checkpoint.expectedStateHash !== plan.proposal.expectedStateHash
+      || checkpoint.proposalPath !== plan.proposal.path
+      || checkpoint.fragmentPath !== plan.proposal.fragmentPath
+      || checkpoint.receiptSha256 !== plan.proposal.receiptSha256
+      || JSON.stringify(checkpoint.sourceIds) !== JSON.stringify(plan.proposal.sourceIds)
+      || !/^[a-f0-9]{64}$/u.test(String(checkpoint.sliceSha256 ?? ""))) return undefined;
+    const slice = await sourceReviewFragmentSlice(workspaceRoot, {
+      fragmentPath: plan.proposal.fragmentPath,
+      receiptSha256: plan.proposal.receiptSha256,
+      sourceIds: plan.proposal.sourceIds,
+      maxRecords: plan.limits.maxRecords,
+      maxSerializedBytes: plan.limits.maxSerializedBytes,
+    });
+    if (checkpoint.sliceSha256 !== sha256(Buffer.from(JSON.stringify(slice)))) return undefined;
+    return { sliceSha256: checkpoint.sliceSha256 };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return undefined;
+  }
 }
 
 async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, state) {
@@ -1463,7 +1579,9 @@ function sourceFragmentSliceCommandFor(workItems, cliPath) {
   const item = workItems.mergeItems?.[0];
   if (!item) return undefined;
   const sourceOptions = item.sourceIds.map((sourceId) => `--source-id ${JSON.stringify(sourceId)}`).join(" ");
-  return `node ${JSON.stringify(cliPath)} fragment-slice --workspace "$PWD" `
+  return `node ${JSON.stringify(cliPath)} source-merge-prepare --workspace "$PWD" `
+    + `--checkpoint ${JSON.stringify(workItems.readiness.path)} `
+    + `--expected-state-hash ${workItems.proposal.expectedStateHash} `
     + `--fragment ${JSON.stringify(item.fragmentPath)} --receipt-sha256 ${item.receiptSha256} `
     + `${sourceOptions} --limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
 }
@@ -1578,21 +1696,25 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
   }
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-merge") {
+    return `A validated worker receipt is ready. In the same assistant response, execute sourceFragmentCommand exactly and issue sibling read_file calls for current sources.json and facts.json: ${sourceFragment}. `
+      + `The preparation command records a state-bound readiness checkpoint after validating the bounded slice. On the following model request, follow the advanced source-fragment-propose workItems instead of repeating inspection. `
+      + `Do not re-dispatch workers or read raw sources. Do not edit canonical ledgers.`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending"
+    && workItems?.group === "source-fragment-propose") {
     if (workItems.proposal?.validationError) {
       return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
         + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
-        + `Rewrite that proposal from the already returned bounded fragment slice and injected proposal.template. `
+        + `Rewrite that proposal from the prepared bounded evidence and injected proposal.template. `
         + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
         + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
-        + `Do not re-read fragments or raw sources, and do not edit canonical ledgers.`;
+        + `Do not inspect fragments or raw sources, and do not edit canonical ledgers.`;
     }
     const item = workItems.mergeItems?.[0];
-    return `A validated worker receipt is ready. In the same assistant response, execute sourceFragmentCommand exactly and issue sibling read_file calls for current sources.json and facts.json: ${sourceFragment}. `
-      + `In the next response, without another inspection call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
-      + `Replace every placeholder with your source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators returned by sourceFragmentCommand. `
-      + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
-      + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
-      + `Do not re-dispatch workers or re-read raw sources. Do not edit canonical ledgers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
+    return `The bounded evidence handoff is prepared and state-bound. As the next tool call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
+      + `Replace every placeholder with source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators from the prepared slice already present in context. `
+      + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
+      + `Do not issue another inspection call, re-dispatch workers, or edit canonical ledgers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-apply") {

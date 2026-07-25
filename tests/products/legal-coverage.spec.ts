@@ -415,14 +415,12 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(mergeContext, /A validated worker receipt is ready/u);
     assert.match(mergeContext, /sibling read_file calls for current sources\.json and facts\.json/u);
     assert.match(mergeContext, /"sourceFragmentCommand":/u);
-    assert.match(mergeContext, /fragment-slice/u);
+    assert.match(mergeContext, /source-merge-prepare/u);
     assert.match(mergeContext, /"proposal":/u);
     assert.match(mergeContext, /"template":/u);
-    assert.match(mergeContext, /write one source-merge proposal/u);
-    assert.match(mergeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
-    assert.match(mergeContext, /never prose/u);
+    assert.match(mergeContext, /records a state-bound readiness checkpoint/u);
     assert.match(mergeContext, /Do not edit canonical ledgers/u);
-    assert.match(mergeContext, /Do not re-dispatch workers or re-read raw sources/u);
+    assert.match(mergeContext, /Do not re-dispatch workers or read raw sources/u);
     const mergeConvergence = mergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash?: string;
       nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
@@ -436,39 +434,11 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     });
     assert.deepEqual(mergeConvergence.writeBudget, { maxRecords: 4, maxSerializedBytes: 24576 });
 
-    const firstReceiptHash = sha256(await readFile(join(workspace, firstBatch.fragmentPath)));
-    const fragmentSlice = await runCli(
-      workspace,
-      "fragment-slice",
-      "--fragment", firstBatch.fragmentPath,
-      "--receipt-sha256", firstReceiptHash,
-      ...firstBatch.sourceIds.slice(0, 4).flatMap((sourceId) => ["--source-id", sourceId]),
-      "--limit", "4",
-      "--max-bytes", "24576",
-    );
-    assert.equal(fragmentSlice.exitCode, 0, fragmentSlice.stderr);
-    const fragmentSliceResult = JSON.parse(fragmentSlice.stdout) as {
-      receiptSha256: string;
-      sources: Array<{ sourceId: string }>;
-    };
-    assert.equal(fragmentSliceResult.receiptSha256, firstReceiptHash);
-    assert.deepEqual(fragmentSliceResult.sources.map((source) => source.sourceId), firstBatch.sourceIds.slice(0, 4));
-    assert.equal(Buffer.byteLength(JSON.stringify(fragmentSliceResult)) <= 24576, true);
-
-    const staleSlice = await runCli(
-      workspace,
-      "fragment-slice",
-      "--fragment", firstBatch.fragmentPath,
-      "--receipt-sha256", "0".repeat(64),
-      "--source-id", firstBatch.sourceIds[0]!,
-    );
-    assert.equal(staleSlice.exitCode, 1);
-    assert.match(staleSlice.stderr, /source_fragment_receipt_invalid/u);
-
     const envelope = JSON.parse(mergeContext
       .replace(/^<legal_coverage_state>\n/u, "")
       .replace(/\n<\/legal_coverage_state>$/u, "")) as {
       workItems: {
+        readiness: { path: string };
         proposal: {
           path: string;
           expectedStateHash: string;
@@ -479,6 +449,101 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       };
     };
     const proposal = envelope.workItems.proposal;
+    const firstReceiptHash = sha256(await readFile(join(workspace, firstBatch.fragmentPath)));
+    const prepared = await runCli(
+      workspace,
+      "source-merge-prepare",
+      "--checkpoint", envelope.workItems.readiness.path,
+      "--expected-state-hash", proposal.expectedStateHash,
+      "--fragment", proposal.fragmentPath,
+      "--receipt-sha256", proposal.receiptSha256,
+      ...proposal.sourceIds.flatMap((sourceId) => ["--source-id", sourceId]),
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(prepared.exitCode, 0, prepared.stderr);
+    const preparedResult = JSON.parse(prepared.stdout) as {
+      receiptSha256: string;
+      sources: Array<{ sourceId: string }>;
+    };
+    assert.equal(preparedResult.receiptSha256, proposal.receiptSha256);
+    assert.deepEqual(preparedResult.sources.map((source) => source.sourceId), proposal.sourceIds);
+    assert.equal(Buffer.byteLength(JSON.stringify(preparedResult)) <= 24576, true);
+
+    const readinessPath = join(workspace, envelope.workItems.readiness.path);
+    const readinessBytes = await readFile(readinessPath);
+    const readiness = JSON.parse(readinessBytes.toString("utf8")) as {
+      checkpointType: string;
+      expectedStateHash: string;
+      proposalPath: string;
+      sourceIds: string[];
+      sliceSha256: string;
+    };
+    assert.equal(readiness.checkpointType, "legal-source-merge-readiness");
+    assert.equal(readiness.expectedStateHash, proposal.expectedStateHash);
+    assert.equal(readiness.proposalPath, proposal.path);
+    assert.deepEqual(readiness.sourceIds, proposal.sourceIds);
+    assert.match(readiness.sliceSha256, /^[a-f0-9]{64}$/u);
+
+    const proposeReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const proposeContext = proposeReceipt.hookSpecificOutput.additionalContext ?? "";
+    assert.match(proposeContext, /"group": "source-fragment-propose"/u);
+    assert.match(proposeContext, /"mode": "main-agent-propose"/u);
+    assert.match(proposeContext, /"validated": true/u);
+    assert.match(proposeContext, /The bounded evidence handoff is prepared and state-bound/u);
+    assert.match(proposeContext, /As the next tool call, write one source-merge proposal/u);
+    assert.match(proposeContext, /Do not issue another inspection call/u);
+    assert.match(proposeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
+    assert.doesNotMatch(proposeContext, /"sourceFragmentCommand":/u);
+    assert.doesNotMatch(proposeContext, /"sourceMergeApplyCommand":/u);
+    const proposeConvergenceHash = (
+      proposeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
+    )?.stateHash;
+    assert.notEqual(proposeConvergenceHash, mergeConvergence.stateHash);
+
+    await writeJson(readinessPath, { ...readiness, sliceSha256: "0".repeat(64) });
+    const tamperedReadiness = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(tamperedReadiness.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-merge"/u);
+    assert.equal(
+      (tamperedReadiness.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      mergeConvergence.stateHash,
+    );
+    await writeFile(readinessPath, readinessBytes);
+
+    const stalePrepare = await runCli(
+      workspace,
+      "source-merge-prepare",
+      "--checkpoint", envelope.workItems.readiness.path,
+      "--expected-state-hash", "0".repeat(64),
+      "--fragment", proposal.fragmentPath,
+      "--receipt-sha256", proposal.receiptSha256,
+      ...proposal.sourceIds.flatMap((sourceId) => ["--source-id", sourceId]),
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(stalePrepare.exitCode, 1);
+    assert.match(stalePrepare.stderr, /stale_state_hash/u);
+    assert.deepEqual(await readFile(readinessPath), readinessBytes);
+
+    const staleSlice = await runCli(
+      workspace,
+      "fragment-slice",
+      "--fragment", firstBatch.fragmentPath,
+      "--receipt-sha256", "0".repeat(64),
+      "--source-id", firstBatch.sourceIds[0]!,
+    );
+    assert.equal(staleSlice.exitCode, 1);
+    assert.match(staleSlice.stderr, /source_fragment_receipt_invalid/u);
     const proposalPath = join(workspace, proposal.path);
     const proposalBase = {
       schemaVersion: 1,
@@ -516,15 +581,15 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-merge"/u);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-propose"/u);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_locator_unverified/u);
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Rewrite that proposal from the already returned bounded fragment slice/u);
+    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Rewrite that proposal from the prepared bounded evidence/u);
     assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceFragmentCommand":/u);
     assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
     const repairConvergenceHash = (
       invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
     )?.stateHash;
-    assert.notEqual(repairConvergenceHash, mergeConvergence.stateHash);
+    assert.notEqual(repairConvergenceHash, proposeConvergenceHash);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /never prose/u);
 
@@ -565,7 +630,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       stateHash?: string;
       nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
     };
-    assert.notEqual(applyConvergence.stateHash, mergeConvergence.stateHash);
+    assert.notEqual(applyConvergence.stateHash, proposeConvergenceHash);
     assert.deepEqual(applyConvergence.nextBatch, {
       group: "source-fragment-apply",
       returned: 4,

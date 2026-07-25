@@ -9,6 +9,7 @@ import {
   ensureWorkspace,
   initializeDeliverableSkeletons,
   nextCoverageBatch,
+  prepareSourceMergeProposal,
   resolveSafeWorkspacePath,
   sourceReviewFragmentSlice,
   validateWorkspace,
@@ -135,6 +136,28 @@ if (command === "init") {
     }));
     process.exitCode = 1;
   }
+} else if (command === "source-merge-prepare") {
+  try {
+    const result = await prepareSourceMergeProposal(workspaceRoot, {
+      readinessPath: readOption(args, "--checkpoint"),
+      expectedStateHash: readOption(args, "--expected-state-hash"),
+      fragmentPath: readOption(args, "--fragment"),
+      receiptSha256: readOption(args, "--receipt-sha256"),
+      sourceIds: readOptions(args, "--source-id"),
+      maxRecords: readOption(args, "--limit"),
+      maxSerializedBytes: readOption(args, "--max-bytes"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: {
+        code: typeof error?.code === "string" ? error.code : "source_merge_prepare_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }));
+    process.exitCode = 1;
+  }
 } else if (command === "source-merge-apply") {
   try {
     const result = await applySourceMergeProposal(workspaceRoot, {
@@ -200,7 +223,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|fragment-slice|source-merge-apply|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--fragment PATH] [--receipt-sha256 HASH] [--source-id ID] [--phase coverage] [--input-file PATH] [--proposal-sha256 HASH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|fragment-slice|source-merge-prepare|source-merge-apply|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--checkpoint PATH] [--expected-state-hash HASH] [--fragment PATH] [--receipt-sha256 HASH] [--source-id ID] [--phase coverage] [--input-file PATH] [--proposal-sha256 HASH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 

@@ -145,7 +145,7 @@ async function dynamicWorkItems(workspaceRoot, result) {
   const first = result.errors[0];
   if (first?.phase === "sources" && first.code === "source_pending") {
     const plan = await pendingSourceReviewPlan(workspaceRoot, { expectedStateHash: result.stateHash });
-    return ["delegated", "main-agent-merge", "main-agent-apply"].includes(plan.mode) ? plan : undefined;
+    return ["delegated", "main-agent-merge", "main-agent-propose", "main-agent-apply"].includes(plan.mode) ? plan : undefined;
   }
   if (first?.phase === "coverage") {
     return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
