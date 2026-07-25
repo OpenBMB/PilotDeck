@@ -495,9 +495,19 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(proposeContext, /"group": "source-fragment-propose"/u);
     assert.match(proposeContext, /"mode": "main-agent-propose"/u);
     assert.match(proposeContext, /"validated": true/u);
+    const proposeEnvelope = JSON.parse(proposeContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: {
+        preparedSlice: typeof preparedResult;
+      };
+    };
+    assert.deepEqual(proposeEnvelope.workItems.preparedSlice, preparedResult);
+    assert.equal(Buffer.byteLength(JSON.stringify(proposeEnvelope.workItems.preparedSlice)) <= 24576, true);
     assert.match(proposeContext, /The bounded evidence handoff is prepared and state-bound/u);
     assert.match(proposeContext, /As the next tool call, write one source-merge proposal/u);
-    assert.match(proposeContext, /Do not issue another inspection call/u);
+    assert.match(proposeContext, /workItems\.preparedSlice as the complete current evidence interface/u);
+    assert.match(proposeContext, /Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources/u);
     assert.match(proposeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
     assert.doesNotMatch(proposeContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(proposeContext, /"sourceMergeApplyCommand":/u);
@@ -514,6 +524,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       cwd: workspace,
     });
     assert.match(tamperedReadiness.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-merge"/u);
+    assert.doesNotMatch(tamperedReadiness.hookSpecificOutput.additionalContext ?? "", /"preparedSlice":/u);
     assert.equal(
       (tamperedReadiness.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       mergeConvergence.stateHash,
@@ -581,11 +592,13 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"group": "source-fragment-propose"/u);
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_locator_unverified/u);
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Rewrite that proposal from the prepared bounded evidence/u);
-    assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceFragmentCommand":/u);
-    assert.doesNotMatch(invalidProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
+    const invalidProposalContext = invalidProposal.hookSpecificOutput.additionalContext ?? "";
+    assert.match(invalidProposalContext, /"group": "source-fragment-propose"/u);
+    assert.match(invalidProposalContext, /source_merge_fact_locator_unverified/u);
+    assert.match(invalidProposalContext, /Rewrite that proposal from injected workItems\.preparedSlice/u);
+    assert.match(invalidProposalContext, /"preparedSlice":/u);
+    assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
+    assert.doesNotMatch(invalidProposalContext, /"sourceMergeApplyCommand":/u);
     const repairConvergenceHash = (
       invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
     )?.stateHash;
@@ -624,6 +637,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const applyContext = applyReceipt.hookSpecificOutput.additionalContext ?? "";
     assert.match(applyContext, /"group": "source-fragment-apply"/u);
     assert.match(applyContext, /"mode": "main-agent-apply"/u);
+    assert.doesNotMatch(applyContext, /"preparedSlice":/u);
     assert.match(applyContext, /"sourceMergeApplyCommand":/u);
     assert.match(applyContext, /source-merge-apply/u);
     const applyConvergence = applyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {

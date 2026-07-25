@@ -526,6 +526,7 @@ function sourceMergeProposePlanFor(proposalPlan, readinessReceipt) {
     ...proposalPlan,
     group: "source-fragment-propose",
     mode: "main-agent-propose",
+    preparedSlice: readinessReceipt.slice,
     readiness: {
       ...proposalPlan.readiness,
       validated: true,
@@ -535,8 +536,9 @@ function sourceMergeProposePlanFor(proposalPlan, readinessReceipt) {
 }
 
 function sourceMergeApplyPlanFor(proposalPlan, proposalReceipt) {
+  const { preparedSlice: _preparedSlice, ...applyPlan } = proposalPlan;
   return {
-    ...proposalPlan,
+    ...applyPlan,
     group: "source-fragment-apply",
     mode: "main-agent-apply",
     proposal: {
@@ -694,7 +696,7 @@ async function validSourceMergeReadinessReceipt(workspaceRoot, plan) {
       maxSerializedBytes: plan.limits.maxSerializedBytes,
     });
     if (checkpoint.sliceSha256 !== sha256(Buffer.from(JSON.stringify(slice)))) return undefined;
-    return { sliceSha256: checkpoint.sliceSha256 };
+    return { sliceSha256: checkpoint.sliceSha256, slice };
   } catch (error) {
     if (error?.code === "ENOENT") return undefined;
     return undefined;
@@ -1747,16 +1749,16 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
     if (workItems.proposal?.validationError) {
       return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
         + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
-        + `Rewrite that proposal from the prepared bounded evidence and injected proposal.template. `
+        + `Rewrite that proposal from injected workItems.preparedSlice and proposal.template. `
         + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
         + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
-        + `Do not inspect fragments or raw sources, and do not edit canonical ledgers.`;
+        + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources.`;
     }
     const item = workItems.mergeItems?.[0];
     return `The bounded evidence handoff is prepared and state-bound. As the next tool call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
-      + `Replace every placeholder with source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators from the prepared slice already present in context. `
+      + `Use workItems.preparedSlice as the complete current evidence interface. Replace every placeholder with source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators from that injected slice. `
       + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
-      + `Do not issue another inspection call, re-dispatch workers, or edit canonical ledgers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
+      + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources; do not re-dispatch workers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-apply") {
