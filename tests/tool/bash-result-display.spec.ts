@@ -63,6 +63,74 @@ test("bash success result is formatted with assertions, stdout, and stderr", asy
   assert.match(text, /stderr:\nwarning stderr/);
 });
 
+test("bash allows hyphenated commands whose names merely start with next", async () => {
+  const commands: string[] = [];
+  const runtime = createRuntime({
+    async run(command) {
+      commands.push(command);
+      return {
+        exitCode: 0,
+        stdout: "bounded batch\n",
+        stderr: "",
+        timedOut: false,
+        durationMs: 4,
+      };
+    },
+  });
+
+  for (const command of [
+    "node legal-coverage.mjs next-batch --phase coverage",
+    "./tools/next-batch --limit 12",
+    "node scripts/next-batch.mjs",
+  ]) {
+    const result = await runtime.execute(
+      { id: `call-${commands.length}`, name: "bash", input: { command } },
+      context(),
+    );
+    assert.equal(result.type, "success", command);
+  }
+
+  assert.deepEqual(commands, [
+    "node legal-coverage.mjs next-batch --phase coverage",
+    "./tools/next-batch --limit 12",
+    "node scripts/next-batch.mjs",
+  ]);
+});
+
+test("bash still rejects exact framework CLI tokens that start long-lived processes", async () => {
+  const commands: string[] = [];
+  const runtime = createRuntime({
+    async run(command) {
+      commands.push(command);
+      return {
+        exitCode: 0,
+        stdout: "unexpected\n",
+        stderr: "",
+        timedOut: false,
+        durationMs: 1,
+      };
+    },
+  });
+
+  for (const command of [
+    "next dev",
+    "npx next --host 127.0.0.1",
+    "./node_modules/.bin/next start",
+  ]) {
+    const result = await runtime.execute(
+      { id: `call-${command}`, name: "bash", input: { command } },
+      context(),
+    );
+    assert.equal(result.type, "error", command);
+    if (result.type === "error") {
+      assert.equal(result.error.code, "invalid_tool_input");
+      assert.match(result.error.message, /long-lived server, watcher, or dev process/u);
+    }
+  }
+
+  assert.deepEqual(commands, [], "rejected framework commands must not reach the shell runner");
+});
+
 test("bash failure tool result includes raw stdout and stderr tail for UI and model", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pilotdeck-bash-error-budget-"));
   const stderrTail = "TAIL ROOT CAUSE: missing package @example/pkg";

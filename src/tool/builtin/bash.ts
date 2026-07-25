@@ -64,7 +64,7 @@ const TRAILING_BACKGROUND_RE = /(?:^|[^&])&\s*(?:[)#}\]]\s*)?$/u;
 const INLINE_BACKGROUND_RE = /(?:^|[;|]\s*)[^\n;&|]+&\s*(?:[;|]|&&|\|\|)/u;
 const LONG_LIVED_COMMAND_PATTERNS = [
   /(?:^|\s)(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|preview|watch)\b/iu,
-  /(?:^|\s)(?:vite|webpack(?:-dev-server)?|next|nuxt|astro|remix|svelte-kit)\b(?:[^\n]*\s(?:dev|start|preview|--host)\b|[^\n]*$)/iu,
+  /(?:^|[\s;&|])(?:[^\s;&|]+[\\/])?(?:vite|webpack(?:-dev-server)?|next|nuxt|astro|remix|svelte-kit)(?=\s|$)(?:[^\n]*\s(?:dev|start|preview|--host)\b|[^\n]*$)/iu,
   /(?:^|\s)(?:python(?:3)?\s+-m\s+http\.server|uvicorn|gunicorn|flask\s+run|streamlit\s+run|fastapi\s+dev)\b/iu,
   /(?:^|\s)(?:nodemon|tsx\s+watch|ts-node-dev|watchmedo)\b/iu,
   /(?:^|\s)(?:cargo\s+watch|watchexec|entr)\b/iu,
