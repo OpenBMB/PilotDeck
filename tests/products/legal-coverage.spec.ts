@@ -61,7 +61,7 @@ test("legal coverage initializer creates a text skeleton before source review an
       "--input",
       "source-room",
       "--deliverable",
-      "opinion=deliverables/opinion.md",
+      "opinion=opinion.md",
       "--jurisdiction",
       "pending-confirmation",
       "--basis-date",
@@ -71,8 +71,8 @@ test("legal coverage initializer creates a text skeleton before source review an
     const initializedResult = JSON.parse(initialized.stdout) as {
       deliverableSkeletons: { created: Array<{ path: string }>; preserved: Array<{ path: string }> };
     };
-    assert.deepEqual(initializedResult.deliverableSkeletons.created, [{ path: "deliverables/opinion.md" }]);
-    const deliverablePath = join(workspace, "deliverables", "opinion.md");
+    assert.deepEqual(initializedResult.deliverableSkeletons.created, [{ path: "opinion.md" }]);
+    const deliverablePath = join(workspace, "opinion.md");
     const skeleton = await readFile(deliverablePath, "utf8");
     assert.match(skeleton, /^# Draft legal deliverable/u);
 
@@ -80,7 +80,7 @@ test("legal coverage initializer creates a text skeleton before source review an
       workspace,
       "init",
       "--input", "source-room",
-      "--deliverable", "opinion=deliverables/opinion.md",
+      "--deliverable", "opinion=opinion.md",
       "--jurisdiction", "pending-confirmation",
       "--basis-date", "pending-confirmation",
     );
@@ -90,7 +90,7 @@ test("legal coverage initializer creates a text skeleton before source review an
     };
     assert.deepEqual(repeatedResult.deliverableSkeletons.created, []);
     assert.deepEqual(repeatedResult.deliverableSkeletons.preserved, [{
-      path: "deliverables/opinion.md",
+      path: "opinion.md",
       reason: "already_exists",
     }]);
     assert.equal(await readFile(deliverablePath, "utf8"), skeleton);
@@ -110,7 +110,7 @@ test("legal coverage initializer creates a text skeleton before source review an
       cwd: workspace,
     });
     assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /Create a non-empty user deliverable skeleton/u);
-    assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /deliverables\/opinion\.md/u);
+    assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /opinion\.md/u);
     assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /with write_file/u);
   } finally {
     await rm(workspace, { recursive: true, force: true });

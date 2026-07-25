@@ -131,10 +131,11 @@ export async function initializeDeliverableSkeletons(workspaceRoot, deliverables
 
   for (const deliverable of missingTextDeliverables) {
     const parentPath = dirname(deliverable.filePath);
+    const parentWorkspacePath = toWorkspacePath(workspace, parentPath) || ".";
     try {
-      await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, parentPath), { allowMissing: true });
+      await resolveSafeWorkspacePath(workspace, parentWorkspacePath, { allowMissing: true });
       await mkdir(parentPath, { recursive: true });
-      await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, parentPath));
+      await resolveSafeWorkspacePath(workspace, parentWorkspacePath);
       await resolveSafeWorkspacePath(workspace, deliverable.path, { allowMissing: true });
       await writeFile(deliverable.filePath, deliverableSkeletonContent(deliverable.extension), {
         encoding: "utf8",
