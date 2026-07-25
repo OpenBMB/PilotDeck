@@ -11,6 +11,7 @@ import {
   milestoneEnvelopeFor,
   milestoneFor,
   nextCoverageBatch,
+  nextMatrixRelationBatch,
   pendingSourceReviewPlan,
   resolveSafeWorkspacePath,
   validateWorkspace,
@@ -149,6 +150,13 @@ async function dynamicWorkItems(workspaceRoot, result) {
   }
   if (first?.phase === "coverage") {
     return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
+  }
+  if (first?.phase === "matrices" && first.code === "material_fact_matrix_orphaned") {
+    return nextMatrixRelationBatch(workspaceRoot, {
+      limit: 12,
+      maxSerializedBytes: 8192,
+      validationResult: result,
+    });
   }
   return undefined;
 }

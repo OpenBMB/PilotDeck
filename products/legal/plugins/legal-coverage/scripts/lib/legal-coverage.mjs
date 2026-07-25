@@ -1262,6 +1262,38 @@ export async function nextCoverageBatch(workspaceRoot, options = {}) {
   return packCoverageBatch("validation-errors", errors, limit, maxSerializedBytes, validation.stateHash);
 }
 
+export async function nextMatrixRelationBatch(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const limit = boundedInteger(options.limit, 1, 12, 12);
+  const maxSerializedBytes = boundedInteger(options.maxSerializedBytes, 1024, 8192, 8192);
+  const validation = options.validationResult
+    ?? await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
+  const first = validation.errors[0];
+  if (first?.phase !== "matrices" || first.code !== "material_fact_matrix_orphaned") return undefined;
+
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const linkedFactIds = new Set();
+  for (const matrix of matrices) {
+    for (const entry of Array.isArray(matrix?.entries) ? matrix.entries : []) {
+      for (const factId of stringArray(entry?.factIds)) linkedFactIds.add(factId);
+    }
+  }
+  const candidates = (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+    .filter((fact) => isRecord(fact)
+      && nonEmpty(fact.id)
+      && (fact.material === true || fact.critical === true)
+      && !linkedFactIds.has(fact.id))
+    .map(matrixRelationFactItem);
+
+  return packMatrixRelationBatch(
+    candidates,
+    matrices,
+    limit,
+    maxSerializedBytes,
+    validation.stateHash,
+  );
+}
+
 export function coverageBatchSchema() {
   return {
     schemaVersion: 1,
@@ -1520,7 +1552,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
-  const mutationContract = phaseMutationContractFor(result);
+  const mutationContract = phaseMutationContractFor(result, workItems);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -1620,7 +1652,7 @@ function workBatchFor(phase) {
   }
 }
 
-function phaseMutationContractFor(result) {
+function phaseMutationContractFor(result, workItems) {
   const first = result.errors[0];
   if (first?.phase !== "matrices") return undefined;
   const batch = workBatchFor(first.phase);
@@ -1635,6 +1667,10 @@ function phaseMutationContractFor(result) {
       recordId: first.recordId ?? null,
       collectionIndex: Number.isInteger(first.collectionIndex) ? first.collectionIndex : null,
       validatorPath: first.path ?? STATE_FILES.matrices,
+      ...(workItems?.group === "material-fact-matrix-closure" ? {
+        selectionRequired: true,
+        eligibleRecordIds: REQUIRED_MATRICES,
+      } : {}),
     },
     limits: {
       maxChangedRecords: batch.maxRecords,
@@ -1642,11 +1678,17 @@ function phaseMutationContractFor(result) {
       preserveUnchangedRecords: true,
       validateAfterWrite: true,
     },
-    prerequisites: [
-      "Load guidanceCommand exactly if issue-rules has not already been loaded.",
-      `Read ${STATE_DIRECTORY}/${STATE_FILES.matrices} and ${STATE_DIRECTORY}/${STATE_FILES.facts} before writing.`,
-      "Base every entry or not-applicable reason on the canonical facts; preserve uncertainty.",
-    ],
+    prerequisites: workItems?.group === "material-fact-matrix-closure"
+      ? [
+          "Load guidanceCommand exactly if issue-rules has not already been loaded.",
+          `Read ${STATE_DIRECTORY}/${STATE_FILES.matrices} before writing; use the injected canonical fact batch instead of rereading the full facts ledger.`,
+          "Choose the target matrix through legal judgment; preserve uncertainty and leave incompatible injected facts for a later batch.",
+        ]
+      : [
+          "Load guidanceCommand exactly if issue-rules has not already been loaded.",
+          `Read ${STATE_DIRECTORY}/${STATE_FILES.matrices} and ${STATE_DIRECTORY}/${STATE_FILES.facts} before writing.`,
+          "Base every entry or not-applicable reason on the canonical facts; preserve uncertainty.",
+        ],
     interface: {
       kind: "workspace-file-write",
       phaseApplyCommandAvailable: false,
@@ -1742,6 +1784,12 @@ function nextActionFor(result, occurrenceCount, command, initialize, reference, 
     ? `Before the next canonical write, load the bundled guidance with this exact command instead of guessing a workspace-relative references path: ${reference}. `
     : "";
   if (first?.phase === "matrices") {
+    if (workItems?.group === "material-fact-matrix-closure") {
+      return guidance + `A deterministic relation-closure batch is already injected in workItems. Read only mutationContract.canonicalPath, then in this repair cycle choose exactly one legally compatible matrix, set its status consistently, and update or create one fact-grounded entry whose summary and factIds cover the compatible injected facts. `
+        + `Preserve every other matrix record, do not read the full facts.json, do not run a discovery script, and do not change fact materiality merely to remove an orphan error. `
+        + `If an injected fact does not belong in the chosen matrix, leave it for a later batch rather than forcing a false relationship. `
+        + `Change at most one matrix and ${batch.maxSerializedBytes} serialized bytes, then run: ${command}.`;
+    }
     const target = first.recordId ? ` ${JSON.stringify(first.recordId)}` : " identified by mutationContract.target";
     return guidance + `Follow mutationContract as the complete write interface. Read its canonicalPath and facts.json, then as the sole canonical writer update only matrix${target} `
       + `with the workspace file-write tool while preserving every other record. Change at most one matrix and ${batch.maxSerializedBytes} serialized bytes. `
@@ -1834,6 +1882,74 @@ function packCoverageBatch(group, candidates, limit, maxSerializedBytes, stateHa
     hasMore: candidates.length > items.length,
     limits: { maxRecords: limit, maxSerializedBytes },
     serializedBytes,
+    items,
+  };
+}
+
+function matrixRelationFactItem(fact) {
+  return {
+    factId: fact.id,
+    subject: fact.subject,
+    predicate: fact.predicate,
+    value: fact.value,
+    ...(nonEmpty(fact.unit) ? { unit: fact.unit } : {}),
+    ...(nonEmpty(fact.dateOrPeriod) ? { dateOrPeriod: fact.dateOrPeriod } : {}),
+    ...(nonEmpty(fact.missingTimeReason) ? { missingTimeReason: fact.missingTimeReason } : {}),
+    material: fact.material === true,
+    critical: fact.critical === true,
+    verificationStatus: fact.verificationStatus,
+    conflictStatus: fact.conflictStatus,
+    sourceRefs: (Array.isArray(fact.sourceRefs) ? fact.sourceRefs : [])
+      .filter((reference) => isRecord(reference) && nonEmpty(reference.sourceId) && nonEmpty(reference.locator))
+      .map((reference) => ({ sourceId: reference.sourceId, locator: reference.locator })),
+  };
+}
+
+function packMatrixRelationBatch(candidates, matrices, limit, maxSerializedBytes, stateHash) {
+  const items = [];
+  for (const candidate of candidates.slice(0, limit)) {
+    const candidateBytes = Buffer.byteLength(JSON.stringify(candidate));
+    if (candidateBytes > maxSerializedBytes) {
+      if (items.length === 0) {
+        const pointer = {
+          factId: candidate.factId,
+          oversizedRecord: true,
+          serializedBytes: candidateBytes,
+          recordPointer: `state://legal-coverage/facts/${candidate.factId}`,
+        };
+        items.push(pointer);
+      }
+      break;
+    }
+    if (Buffer.byteLength(JSON.stringify([...items, candidate])) > maxSerializedBytes) break;
+    items.push(candidate);
+  }
+  const serializedBytes = Buffer.byteLength(JSON.stringify(items));
+  const matrixTargets = matrices
+    .map((matrix, collectionIndex) => ({ matrix, collectionIndex }))
+    .filter(({ matrix }) => isRecord(matrix) && REQUIRED_MATRICES.includes(matrix.id))
+    .map(({ matrix, collectionIndex }) => ({
+      recordId: matrix.id,
+      collectionIndex,
+      status: matrix.status,
+    }));
+  return {
+    phase: "matrices",
+    group: "material-fact-matrix-closure",
+    stateHash,
+    remaining: candidates.length,
+    returned: items.length,
+    hasMore: candidates.length > items.length,
+    limits: {
+      maxRecords: 1,
+      maxSerializedBytes: 24576,
+    },
+    batchLimits: {
+      maxRecords: limit,
+      maxSerializedBytes,
+    },
+    serializedBytes,
+    matrixTargets,
     items,
   };
 }

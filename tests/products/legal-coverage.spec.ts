@@ -1843,6 +1843,189 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
   }
 });
 
+test("legal coverage injects a bounded deterministic matrix relation-closure batch", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-closure-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const factsPath = join(root, "facts.json");
+    const sourcesPath = join(root, "sources.json");
+    const matricesPath = join(root, "matrices.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    const sources = JSON.parse(await readFile(sourcesPath, "utf8")) as {
+      sources: Array<{ factIds: string[] }>;
+    };
+    const seededMatrices = JSON.parse(await readFile(matricesPath, "utf8")) as {
+      matrices: Array<Record<string, unknown>>;
+    };
+    seededMatrices.matrices.push({
+      id: "custom-non-contract-matrix",
+      status: "not-applicable",
+      notApplicableReason: "This custom projection is outside the configured legal task.",
+      entries: [],
+    });
+    for (let index = 2; index <= 15; index += 1) {
+      const factId = `F-${String(index).padStart(3, "0")}`;
+      facts.facts.push({
+        id: factId,
+        subject: `Synthetic subject ${index}`,
+        predicate: `material relationship ${index}`,
+        value: `Synthetic source-grounded value ${index}`,
+        missingTimeReason: "The synthetic source does not state a date.",
+        sourceRefs: [{ sourceId: "S-001", locator: `line ${index}` }],
+        evidenceClass: "official-record",
+        verificationStatus: "verified",
+        conflictStatus: "none",
+        material: true,
+        critical: false,
+        thresholdAssessment: null,
+      });
+      sources.sources[0]!.factIds.push(factId);
+    }
+    await writeJson(factsPath, facts);
+    await writeJson(sourcesPath, sources);
+    await writeJson(matricesPath, seededMatrices);
+
+    const first = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-relation-closure",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const context = first.hookSpecificOutput.additionalContext ?? "";
+    const envelope = JSON.parse(context
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      knownGaps: Array<{ code: string; occurrences: number }>;
+      mutationContract: {
+        target: {
+          recordId: null;
+          collectionIndex: null;
+          selectionRequired: boolean;
+          eligibleRecordIds: string[];
+        };
+        limits: { maxChangedRecords: number; maxSerializedBytes: number };
+        prerequisites: string[];
+      };
+      workItems: {
+        phase: string;
+        group: string;
+        stateHash: string;
+        remaining: number;
+        returned: number;
+        hasMore: boolean;
+        serializedBytes: number;
+        limits: { maxRecords: number; maxSerializedBytes: number };
+        batchLimits: { maxRecords: number; maxSerializedBytes: number };
+        matrixTargets: Array<{ recordId: string; collectionIndex: number; status: string }>;
+        items: Array<{ factId: string; subject: string; sourceRefs: Array<{ sourceId: string; locator: string }> }>;
+      };
+      nextAction: string;
+    };
+    assert.deepEqual(envelope.knownGaps[0], {
+      phase: "matrices",
+      code: "material_fact_matrix_orphaned",
+      occurrences: 14,
+      representativePaths: ["matrices.json", "matrices.json", "matrices.json", "matrices.json"],
+    });
+    assert.equal(envelope.workItems.phase, "matrices");
+    assert.equal(envelope.workItems.group, "material-fact-matrix-closure");
+    assert.equal(envelope.workItems.remaining, 14);
+    assert.equal(envelope.workItems.returned, 12);
+    assert.equal(envelope.workItems.hasMore, true);
+    assert.deepEqual(envelope.workItems.limits, {
+      maxRecords: 1,
+      maxSerializedBytes: 24576,
+    });
+    assert.deepEqual(envelope.workItems.batchLimits, { maxRecords: 12, maxSerializedBytes: 8192 });
+    assert.equal(envelope.workItems.serializedBytes <= 8192, true);
+    assert.equal(envelope.workItems.serializedBytes, Buffer.byteLength(JSON.stringify(envelope.workItems.items)));
+    assert.deepEqual(
+      envelope.workItems.items.map((item) => item.factId),
+      Array.from({ length: 12 }, (_, index) => `F-${String(index + 2).padStart(3, "0")}`),
+    );
+    assert.deepEqual(envelope.workItems.items[0]?.sourceRefs, [{ sourceId: "S-001", locator: "line 2" }]);
+    assert.deepEqual(
+      envelope.workItems.matrixTargets.map(({ recordId, collectionIndex }) => ({ recordId, collectionIndex })),
+      [
+        "equity-capital-timeline",
+        "holding-platform-special-rights",
+        "governance-personnel-timeline",
+        "contract-key-terms",
+        "debt-collateral-liquidity",
+        "employment-ip-timeline",
+        "legal-authority",
+      ].map((recordId, collectionIndex) => ({ recordId, collectionIndex })),
+    );
+    assert.equal(envelope.mutationContract.target.recordId, null);
+    assert.equal(envelope.mutationContract.target.collectionIndex, null);
+    assert.equal(envelope.mutationContract.target.selectionRequired, true);
+    assert.deepEqual(envelope.mutationContract.target.eligibleRecordIds, envelope.workItems.matrixTargets.map((item) => item.recordId));
+    assert.equal(envelope.mutationContract.limits.maxChangedRecords, 1);
+    assert.equal(envelope.mutationContract.prerequisites.some((item) => item.includes("full facts ledger")), true);
+    assert.equal(envelope.mutationContract.prerequisites.some((item) => item.includes("and .pilotdeck/work/legal-coverage/facts.json")), false);
+    assert.match(envelope.nextAction, /relation-closure batch is already injected/u);
+    assert.match(envelope.nextAction, /choose exactly one legally compatible matrix/u);
+    assert.match(envelope.nextAction, /update or create one fact-grounded entry/u);
+    assert.match(envelope.nextAction, /do not read the full facts\.json/u);
+    assert.match(envelope.nextAction, /do not run a discovery script/u);
+    assert.match(envelope.nextAction, /do not change fact materiality/u);
+
+    const convergence = first.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string;
+      nextBatch: { group: string; returned: number; hasMore: boolean };
+      writeBudget: { maxRecords: number; maxSerializedBytes: number };
+    };
+    assert.deepEqual(convergence.nextBatch, {
+      group: "material-fact-matrix-closure",
+      returned: 12,
+      hasMore: true,
+    });
+    assert.deepEqual(convergence.writeBudget, { maxRecords: 1, maxSerializedBytes: 24576 });
+
+    const repeated = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-relation-closure",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(repeated.hookSpecificOutput.additionalContext, context);
+    assert.equal(
+      (repeated.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash,
+      convergence.stateHash,
+    );
+
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as {
+      matrices: Array<{ id: string; entries: Array<{ summary: string; factIds: string[] }> }>;
+    };
+    const target = matrices.matrices.find((matrix) => matrix.id === "equity-capital-timeline")!;
+    target.entries[0]!.summary += " Synthetic subject 2 is included in this matrix for the test.";
+    target.entries[0]!.factIds.push("F-002");
+    await writeJson(matricesPath, matrices);
+
+    const advanced = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-relation-closure",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const advancedContext = advanced.hookSpecificOutput.additionalContext ?? "";
+    const advancedEnvelope = JSON.parse(advancedContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: { remaining: number; items: Array<{ factId: string }> };
+    };
+    assert.equal(advancedEnvelope.workItems.remaining, 13);
+    assert.equal(advancedEnvelope.workItems.items[0]?.factId, "F-003");
+    assert.notEqual(
+      (advanced.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash,
+      convergence.stateHash,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage milestone digest ignores opaque incomplete-state hash churn", async () => {
   const { convergenceStateHash, milestoneDigest } = await import(pathToFileURL(VALIDATOR_LIB).href) as {
     convergenceStateHash: (result: Record<string, unknown>, workItems?: Record<string, unknown>) => string;
