@@ -51,7 +51,7 @@ test("legal coverage validator creates a current proof and removes it when the d
   }
 });
 
-test("legal coverage treats a safe not-yet-created deliverable as missing and gives an executable next action", async () => {
+test("legal coverage initializer creates a text skeleton before source review and remains idempotent", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-missing-deliverable-"));
   try {
     await mkdir(join(workspace, "source-room"), { recursive: true });
@@ -68,6 +68,34 @@ test("legal coverage treats a safe not-yet-created deliverable as missing and gi
       "pending-confirmation",
     );
     assert.equal(initialized.exitCode, 0, initialized.stderr);
+    const initializedResult = JSON.parse(initialized.stdout) as {
+      deliverableSkeletons: { created: Array<{ path: string }>; preserved: Array<{ path: string }> };
+    };
+    assert.deepEqual(initializedResult.deliverableSkeletons.created, [{ path: "deliverables/opinion.md" }]);
+    const deliverablePath = join(workspace, "deliverables", "opinion.md");
+    const skeleton = await readFile(deliverablePath, "utf8");
+    assert.match(skeleton, /^# Draft legal deliverable/u);
+
+    const repeated = await runCli(
+      workspace,
+      "init",
+      "--input", "source-room",
+      "--deliverable", "opinion=deliverables/opinion.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(repeated.exitCode, 0, repeated.stderr);
+    const repeatedResult = JSON.parse(repeated.stdout) as {
+      deliverableSkeletons: { created: unknown[]; preserved: Array<{ path: string; reason: string }> };
+    };
+    assert.deepEqual(repeatedResult.deliverableSkeletons.created, []);
+    assert.deepEqual(repeatedResult.deliverableSkeletons.preserved, [{
+      path: "deliverables/opinion.md",
+      reason: "already_exists",
+    }]);
+    assert.equal(await readFile(deliverablePath, "utf8"), skeleton);
+
+    await rm(deliverablePath);
 
     const validation = await runCli(workspace, "validate", "--write-proof");
     assert.equal(validation.exitCode, 2);
@@ -86,6 +114,108 @@ test("legal coverage treats a safe not-yet-created deliverable as missing and gi
     assert.match(milestone.hookSpecificOutput.additionalContext ?? "", /with write_file/u);
   } finally {
     await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage initializer creates only explicit text formats and preserves existing content", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-skeleton-formats-"));
+  try {
+    await mkdir(join(workspace, "source-room"), { recursive: true });
+    await mkdir(join(workspace, "deliverables"), { recursive: true });
+    const existingPath = join(workspace, "deliverables", "existing.md");
+    await writeFile(existingPath, "# User-authored draft\n");
+    const initialized = await runCli(
+      workspace,
+      "init",
+      "--input", "source-room",
+      "--deliverable", "markdown=deliverables/report.md",
+      "--deliverable", "text=deliverables/report.txt",
+      "--deliverable", "html=deliverables/report.html",
+      "--deliverable", "legacy-html=deliverables/report.htm",
+      "--deliverable", "csv=deliverables/report.csv",
+      "--deliverable", "binary=deliverables/report.docx",
+      "--deliverable", "existing=deliverables/existing.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(initialized.exitCode, 0, initialized.stderr);
+    const result = JSON.parse(initialized.stdout) as {
+      deliverableSkeletons: {
+        created: Array<{ path: string }>;
+        preserved: Array<{ path: string; reason: string }>;
+        unsupported: Array<{ path: string; reason: string }>;
+      };
+    };
+    assert.deepEqual(result.deliverableSkeletons.created.map((item) => item.path), [
+      "deliverables/report.md",
+      "deliverables/report.txt",
+      "deliverables/report.html",
+      "deliverables/report.htm",
+      "deliverables/report.csv",
+    ]);
+    assert.deepEqual(result.deliverableSkeletons.preserved, [{
+      path: "deliverables/existing.md",
+      reason: "already_exists",
+    }]);
+    assert.deepEqual(result.deliverableSkeletons.unsupported, [{
+      path: "deliverables/report.docx",
+      reason: "non_text_format",
+    }]);
+    for (const extension of ["md", "txt", "html", "htm", "csv"]) {
+      assert.equal((await stat(join(workspace, "deliverables", `report.${extension}`))).size > 0, true);
+    }
+    await assert.rejects(stat(join(workspace, "deliverables", "report.docx")), { code: "ENOENT" });
+    assert.equal(await readFile(existingPath, "utf8"), "# User-authored draft\n");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage initializer rejects traversal and symlink ancestors without external writes", async () => {
+  const container = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-skeleton-boundary-"));
+  const workspace = join(container, "workspace");
+  const outside = join(container, "outside");
+  try {
+    await mkdir(join(workspace, "source-room"), { recursive: true });
+    await mkdir(outside, { recursive: true });
+    const traversal = await runCli(
+      workspace,
+      "init",
+      "--input", "source-room",
+      "--deliverable", "opinion=../outside/escaped.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(traversal.exitCode, 1);
+    assert.match(traversal.stderr, /"code":"deliverable_skeleton_path_invalid"/u);
+    await assert.rejects(stat(join(outside, "escaped.md")), { code: "ENOENT" });
+
+    const absolute = await runCli(
+      workspace,
+      "init",
+      "--input", "source-room",
+      "--deliverable", `opinion=${join(outside, "absolute.md")}`,
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(absolute.exitCode, 1);
+    assert.match(absolute.stderr, /"code":"deliverable_skeleton_path_invalid"/u);
+    await assert.rejects(stat(join(outside, "absolute.md")), { code: "ENOENT" });
+
+    await symlink(outside, join(workspace, "deliverables"));
+    const symlinked = await runCli(
+      workspace,
+      "init",
+      "--input", "source-room",
+      "--deliverable", "opinion=deliverables/escaped.md",
+      "--jurisdiction", "pending-confirmation",
+      "--basis-date", "pending-confirmation",
+    );
+    assert.equal(symlinked.exitCode, 1);
+    assert.match(symlinked.stderr, /"code":"deliverable_skeleton_path_invalid"/u);
+    await assert.rejects(stat(join(outside, "escaped.md")), { code: "ENOENT" });
+  } finally {
+    await rm(container, { recursive: true, force: true });
   }
 });
 

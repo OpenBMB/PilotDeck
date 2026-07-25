@@ -88,6 +88,79 @@ export async function ensureWorkspace(workspaceRoot) {
   return { workspace, stateRoot, paths: statePaths(workspace) };
 }
 
+export async function initializeDeliverableSkeletons(workspaceRoot, deliverables) {
+  const workspace = resolve(workspaceRoot);
+  const result = { created: [], preserved: [], unsupported: [] };
+  const missingTextDeliverables = [];
+
+  for (const deliverable of Array.isArray(deliverables) ? deliverables : []) {
+    if (isRecord(deliverable) && deliverable.required === false) continue;
+    if (!isRecord(deliverable) || !nonEmpty(deliverable.path)) {
+      throw deliverableSkeletonError("deliverable_skeleton_invalid", "Every deliverable skeleton requires a non-empty workspace-relative path.");
+    }
+
+    let filePath;
+    try {
+      filePath = await resolveSafeWorkspacePath(workspace, deliverable.path, { allowMissing: true });
+    } catch (error) {
+      throw deliverableSkeletonError("deliverable_skeleton_path_invalid", errorMessage(error));
+    }
+
+    const info = await lstat(filePath).catch((error) => {
+      if (error?.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (info) {
+      if (!info.isFile()) {
+        throw deliverableSkeletonError(
+          "deliverable_skeleton_target_invalid",
+          `Existing deliverable target is not a regular file: ${deliverable.path}.`,
+        );
+      }
+      result.preserved.push({ path: deliverable.path, reason: "already_exists" });
+      continue;
+    }
+
+    const extension = extname(filePath).toLowerCase();
+    if (!TEXT_EXTENSIONS.has(extension)) {
+      result.unsupported.push({ path: deliverable.path, reason: "non_text_format" });
+      continue;
+    }
+    missingTextDeliverables.push({ path: deliverable.path, filePath, extension });
+  }
+
+  for (const deliverable of missingTextDeliverables) {
+    const parentPath = dirname(deliverable.filePath);
+    try {
+      await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, parentPath), { allowMissing: true });
+      await mkdir(parentPath, { recursive: true });
+      await resolveSafeWorkspacePath(workspace, toWorkspacePath(workspace, parentPath));
+      await resolveSafeWorkspacePath(workspace, deliverable.path, { allowMissing: true });
+      await writeFile(deliverable.filePath, deliverableSkeletonContent(deliverable.extension), {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      });
+      result.created.push({ path: deliverable.path });
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        try {
+          const existingPath = await resolveSafeWorkspacePath(workspace, deliverable.path);
+          const info = await lstat(existingPath);
+          if (!info.isFile()) throw new Error(`Existing target is not a regular file: ${deliverable.path}.`);
+          result.preserved.push({ path: deliverable.path, reason: "created_concurrently" });
+          continue;
+        } catch (existingError) {
+          throw deliverableSkeletonError("deliverable_skeleton_target_invalid", errorMessage(existingError));
+        }
+      }
+      throw deliverableSkeletonError("deliverable_skeleton_write_failed", errorMessage(error));
+    }
+  }
+
+  return result;
+}
+
 export async function readWorkspaceState(workspaceRoot) {
   const workspace = resolve(workspaceRoot);
   const paths = statePaths(workspace);
@@ -1711,6 +1784,25 @@ async function writeJsonAtomic(filePath, value) {
   const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, filePath);
+}
+
+function deliverableSkeletonContent(extension) {
+  if (extension === ".html" || extension === ".htm") {
+    return "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>Draft legal deliverable</title></head><body><h1>Draft legal deliverable</h1><p>Status: initialized; legal analysis pending.</p></body></html>\n";
+  }
+  if (extension === ".csv") {
+    return "section,status,notes\ninitialization,draft,legal analysis pending\n";
+  }
+  if (extension === ".md") {
+    return "# Draft legal deliverable\n\nStatus: initialized; legal analysis pending.\n";
+  }
+  return "Draft legal deliverable\nStatus: initialized; legal analysis pending.\n";
+}
+
+function deliverableSkeletonError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 function requireSchemaVersion(context, phase, value, path) {
