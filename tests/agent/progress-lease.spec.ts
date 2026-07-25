@@ -41,6 +41,27 @@ test("two stagnant observations require a boundary and allow exactly one post-bo
   assert.equal(failed?.reason, "post_boundary_stagnation");
 });
 
+test("cold-start allowance expires after the first opaque state progress", () => {
+  const lease = new ProgressLease({
+    enabled: true,
+    mode: "evaluation",
+    maxStagnantObservations: 2,
+    maxInitialStagnantObservations: 4,
+  });
+  lease.observe(report(), none);
+
+  assert.equal(lease.observe(report(), none)?.forceBoundaryNext, false);
+  assert.equal(lease.observe(report(), none)?.forceBoundaryNext, false);
+  assert.equal(lease.observe(report(), none)?.forceBoundaryNext, true);
+
+  const renewed = lease.observe(report({ stateHash: "initialized" }), none);
+  assert.equal(renewed?.decision, "renewed");
+  assert.equal(lease.shouldForceBoundary(), false);
+
+  const steadyStateStagnation = lease.observe(report({ stateHash: "initialized" }), none);
+  assert.equal(steadyStateStagnation?.forceBoundaryNext, true);
+});
+
 test("evaluation mode fails closed when the required boundary is rejected or unavailable", () => {
   for (const boundary of [
     { requested: true, attempted: true, applied: false, rejectionReason: "post_compact_blocking" },

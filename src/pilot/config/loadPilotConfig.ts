@@ -382,7 +382,7 @@ function parseAgentProgressLease(
     throw new PilotConfigError("CONFIG_AGENT_PROGRESS_LEASE_INVALID", "agent.progressLease must be an object.");
   }
   for (const key of Object.keys(value)) {
-    if (!["enabled", "mode", "maxStagnantObservations"].includes(key)) {
+    if (!["enabled", "mode", "maxStagnantObservations", "maxInitialStagnantObservations"].includes(key)) {
       diagnostics.push({
         code: "CONFIG_AGENT_UNKNOWN_FIELD",
         severity: "warning",
@@ -408,7 +408,28 @@ function parseAgentProgressLease(
       "agent.progressLease.maxStagnantObservations must be an integer from 2 through 10.",
     );
   }
-  return { enabled: true, mode: "evaluation", maxStagnantObservations };
+  const maxInitialStagnantObservations = value.maxInitialStagnantObservations === undefined
+    ? maxStagnantObservations
+    : readOptionalPositiveInteger(
+      value.maxInitialStagnantObservations,
+      "agent.progressLease.maxInitialStagnantObservations",
+    );
+  if (
+    maxInitialStagnantObservations === undefined
+    || maxInitialStagnantObservations < maxStagnantObservations
+    || maxInitialStagnantObservations > 20
+  ) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_PROGRESS_LEASE_INITIAL_LIMIT_INVALID",
+      "agent.progressLease.maxInitialStagnantObservations must be an integer from maxStagnantObservations through 20.",
+    );
+  }
+  return {
+    enabled: true,
+    mode: "evaluation",
+    maxStagnantObservations,
+    maxInitialStagnantObservations,
+  };
 }
 
 function parseAgentThinking(value: unknown): PilotAgentConfig["thinking"] | undefined {

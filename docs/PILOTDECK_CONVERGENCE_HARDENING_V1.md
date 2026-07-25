@@ -161,7 +161,15 @@ agent:
     enabled: true
     mode: evaluation
     maxStagnantObservations: 2
+    maxInitialStagnantObservations: 6
 ```
+
+The initial limit applies only until the first changed state hash or lower
+remaining count for a scope. This gives bounded room for skill loading, source
+inventory, and other cold-start work without teaching Core about tool names or
+domain phases. After the first progress renewal, the stricter steady-state
+limit applies. Omitting `maxInitialStagnantObservations` preserves the previous
+behavior by defaulting it to `maxStagnantObservations`.
 
 The report is read from the opaque `pilotdeckConvergence` model-request
 metadata field. Core does not inspect `scope`, `phase`, or `blockingCode`; it

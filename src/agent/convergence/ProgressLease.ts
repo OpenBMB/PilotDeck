@@ -4,6 +4,7 @@ export type ProgressLeaseConfig = {
   enabled: true;
   mode: "evaluation";
   maxStagnantObservations: number;
+  maxInitialStagnantObservations?: number;
 };
 
 export type ConvergenceReport = {
@@ -40,6 +41,7 @@ type ScopeState = {
   remainingCount: number;
   stagnantObservations: number;
   awaitingPostBoundaryProgress: boolean;
+  hasProgressed: boolean;
 };
 
 /**
@@ -55,7 +57,7 @@ export class ProgressLease {
     if (!this.config?.enabled) return false;
     return [...this.scopes.values()].some((state) =>
       !state.awaitingPostBoundaryProgress
-      && state.stagnantObservations >= this.config!.maxStagnantObservations - 1
+      && state.stagnantObservations >= this.stagnationLimit(state) - 1
     );
   }
 
@@ -77,6 +79,7 @@ export class ProgressLease {
         remainingCount: report.remainingCount,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
+        hasProgressed: false,
       });
       return observation(report, 0, "baseline", false);
     }
@@ -89,6 +92,7 @@ export class ProgressLease {
         remainingCount: report.remainingCount,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
+        hasProgressed: true,
       });
       return observation(report, 0, "renewed", false);
     }
@@ -120,8 +124,13 @@ export class ProgressLease {
       report,
       stagnantObservations,
       "stagnant",
-      stagnantObservations >= this.config.maxStagnantObservations - 1,
+      stagnantObservations >= this.stagnationLimit(existing) - 1,
     );
+  }
+
+  private stagnationLimit(state: ScopeState): number {
+    if (state.hasProgressed) return this.config!.maxStagnantObservations;
+    return this.config!.maxInitialStagnantObservations ?? this.config!.maxStagnantObservations;
   }
 }
 

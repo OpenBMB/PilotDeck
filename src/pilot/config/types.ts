@@ -81,6 +81,7 @@ export type PilotAgentConfig = {
     enabled: true;
     mode: "evaluation";
     maxStagnantObservations: number;
+    maxInitialStagnantObservations: number;
   };
 };
 

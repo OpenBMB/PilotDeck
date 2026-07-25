@@ -193,7 +193,12 @@ test("evaluation progress lease stops before a third unchanged model request whe
   });
   const loop = new AgentLoop(createConfig(process.cwd(), {
     maxContextTokens: 10_000,
-    progressLease: { enabled: true, mode: "evaluation", maxStagnantObservations: 2 },
+    progressLease: {
+      enabled: true,
+      mode: "evaluation",
+      maxStagnantObservations: 2,
+      maxInitialStagnantObservations: 2,
+    },
   }), dependencies);
 
   const completed = await drainLoop(loop.run({

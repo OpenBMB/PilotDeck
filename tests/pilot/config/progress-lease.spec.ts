@@ -20,7 +20,22 @@ test("progress lease is disabled by default and opt-in evaluation config is pres
       enabled: true,
       mode: "evaluation",
       maxStagnantObservations: 2,
+      maxInitialStagnantObservations: 2,
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("progress lease preserves an explicit cold-start allowance", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-config-progress-lease-initial-"));
+  try {
+    await writeFile(
+      join(root, "pilotdeck.yaml"),
+      configYaml(true).replace("    mode: evaluation\n", "    mode: evaluation\n    maxInitialStagnantObservations: 6\n"),
+    );
+    const loaded = loadPilotConfig({ env: { PILOT_HOME: root } });
+    assert.equal(loaded.config.agent.progressLease?.maxInitialStagnantObservations, 6);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -35,6 +50,24 @@ test("progress lease rejects non-evaluation modes", async () => {
       && error !== null
       && "code" in error
       && (error as { code?: unknown }).code === "CONFIG_AGENT_PROGRESS_LEASE_MODE_INVALID");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("progress lease rejects a cold-start allowance below the steady-state limit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-config-progress-lease-initial-invalid-"));
+  try {
+    const yaml = configYaml(true).replace(
+      "    mode: evaluation\n",
+      "    mode: evaluation\n    maxStagnantObservations: 4\n    maxInitialStagnantObservations: 3\n",
+    );
+    await writeFile(join(root, "pilotdeck.yaml"), yaml);
+    assert.throws(() => loadPilotConfig({ env: { PILOT_HOME: root } }), (error: unknown) =>
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "CONFIG_AGENT_PROGRESS_LEASE_INITIAL_LIMIT_INVALID");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
