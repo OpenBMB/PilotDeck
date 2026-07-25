@@ -6,7 +6,13 @@ export {
   type AgentPreparedContext,
 } from "./ContextRuntime.js";
 export { NullContextRuntime } from "./NullContextRuntime.js";
-export { DefaultContextRuntime, type AutoCompactResult, type CompactionTier, type DefaultContextRuntimeOptions } from "./DefaultContextRuntime.js";
+export {
+  DefaultContextRuntime,
+  type AutoCompactResult,
+  type AutoCompactTrace,
+  type CompactionTier,
+  type DefaultContextRuntimeOptions,
+} from "./DefaultContextRuntime.js";
 export type {
   ContextBoundary,
   ContextDiagnostic,

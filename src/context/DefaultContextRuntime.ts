@@ -33,14 +33,25 @@ import type {
 
 export type CompactionTier = "micro" | "snip" | "full";
 
+export type AutoCompactTrace = {
+  triggered: boolean;
+  attemptedTiers: CompactionTier[];
+  appliedTier?: CompactionTier;
+  rejectionReason?: "not_required" | "warning_only" | "summary_failed" | "post_compact_blocking" | "no_effective_compactor";
+  summarySucceeded?: boolean;
+  initialSnapshot: TokenBudgetSnapshot;
+  finalSnapshot: TokenBudgetSnapshot;
+};
+
 export type AutoCompactResult =
-  | { type: "skipped"; snapshot: TokenBudgetSnapshot }
+  | { type: "skipped"; snapshot: TokenBudgetSnapshot; trace?: AutoCompactTrace }
   | {
       type: "compacted";
       messages: CanonicalMessage[];
       tier: CompactionTier;
       snapshot: TokenBudgetSnapshot;
       result?: CompactionResult;
+      trace?: AutoCompactTrace;
     };
 
 export type DefaultContextRuntimeOptions = {
@@ -362,13 +373,25 @@ export class DefaultContextRuntime implements ContextRuntime {
     const initialSnapshot = await evaluateBudget(messages, input.lastUsage);
     const decision = this.autoCompactionPolicy.evaluateSnapshot(initialSnapshot);
     if (decision.type !== "trigger") {
-      return { type: "skipped", snapshot: decision.snapshot };
+      return {
+        type: "skipped",
+        snapshot: decision.snapshot,
+        trace: {
+          triggered: false,
+          attemptedTiers: [],
+          rejectionReason: "not_required",
+          initialSnapshot,
+          finalSnapshot: decision.snapshot,
+        },
+      };
     }
+    const attemptedTiers: CompactionTier[] = [];
 
     // Tier 1: MicroCompaction — truncate old tool_result content.
     if (this.microCompaction) {
       const r = this.microCompaction.apply({ messages });
       if (r.rewritten > 0) {
+        attemptedTiers.push("micro");
         messages = r.messages;
         const snap = await evaluateBudget(messages);
         if (snap.state !== "blocking") {
@@ -377,19 +400,37 @@ export class DefaultContextRuntime implements ContextRuntime {
             messages: ensureTrailingUserMessage(messages),
             tier: "micro",
             snapshot: snap,
+            trace: {
+              triggered: true,
+              attemptedTiers,
+              appliedTier: "micro",
+              initialSnapshot,
+              finalSnapshot: snap,
+            },
           };
         }
       }
     }
 
     if (decision.reason === "warning_threshold") {
-      return { type: "skipped", snapshot: decision.snapshot };
+      return {
+        type: "skipped",
+        snapshot: decision.snapshot,
+        trace: {
+          triggered: true,
+          attemptedTiers,
+          rejectionReason: "warning_only",
+          initialSnapshot,
+          finalSnapshot: decision.snapshot,
+        },
+      };
     }
 
     // Tier 2: SnipEngine — prune middle turns, keep head + tail.
     if (this.snipEngine) {
       const r = this.snipEngine.snip(messages);
       if (r.applied) {
+        attemptedTiers.push("snip");
         messages = r.messages;
         const snap = await evaluateBudget(messages);
         if (snap.state !== "blocking") {
@@ -398,6 +439,13 @@ export class DefaultContextRuntime implements ContextRuntime {
             messages: ensureTrailingUserMessage(messages),
             tier: "snip",
             snapshot: snap,
+            trace: {
+              triggered: true,
+              attemptedTiers,
+              appliedTier: "snip",
+              initialSnapshot,
+              finalSnapshot: snap,
+            },
           };
         }
       }
@@ -405,18 +453,41 @@ export class DefaultContextRuntime implements ContextRuntime {
 
     // Tier 3: CompactionEngine — full summarization via model call.
     if (this.compactionEngine) {
+      attemptedTiers.push("full");
       const result = await this.compactionEngine.run({
         trigger: "auto",
         messages,
         signal: input.abortSignal,
       });
       if (result.error || !result.summaryMessage) {
-        return { type: "skipped", snapshot: decision.snapshot };
+        return {
+          type: "skipped",
+          snapshot: decision.snapshot,
+          trace: {
+            triggered: true,
+            attemptedTiers,
+            rejectionReason: "summary_failed",
+            summarySucceeded: false,
+            initialSnapshot,
+            finalSnapshot: decision.snapshot,
+          },
+        };
       }
       const postCompactMessages = ensureTrailingUserMessage(buildPostCompactMessages(result));
       const snapshot = await evaluateBudget(postCompactMessages);
       if (snapshot.state === "blocking") {
-        return { type: "skipped", snapshot };
+        return {
+          type: "skipped",
+          snapshot,
+          trace: {
+            triggered: true,
+            attemptedTiers,
+            rejectionReason: "post_compact_blocking",
+            summarySucceeded: true,
+            initialSnapshot,
+            finalSnapshot: snapshot,
+          },
+        };
       }
       return {
         type: "compacted",
@@ -424,10 +495,28 @@ export class DefaultContextRuntime implements ContextRuntime {
         tier: "full",
         snapshot,
         result,
+        trace: {
+          triggered: true,
+          attemptedTiers,
+          appliedTier: "full",
+          summarySucceeded: true,
+          initialSnapshot,
+          finalSnapshot: snapshot,
+        },
       };
     }
 
-    return { type: "skipped", snapshot: decision.snapshot };
+    return {
+      type: "skipped",
+      snapshot: decision.snapshot,
+      trace: {
+        triggered: true,
+        attemptedTiers,
+        rejectionReason: "no_effective_compactor",
+        initialSnapshot,
+        finalSnapshot: decision.snapshot,
+      },
+    };
   }
 
   async recoverFromModelError(input: ContextRecoveryInput): Promise<ContextRecoveryDecision> {

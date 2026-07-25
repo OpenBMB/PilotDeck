@@ -1601,6 +1601,25 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         event: "compact_completed",
         detail: { status: event.status, preTokens: event.preTokens, postTokens: event.postTokens },
       }];
+    case "context_compaction_evaluated":
+      return [{
+        type: "agent_status",
+        event: "context_compaction_evaluated",
+        detail: {
+          triggered: event.triggered,
+          attemptedTiers: event.attemptedTiers,
+          applied: event.applied,
+          appliedTier: event.appliedTier,
+          rejectionReason: event.rejectionReason,
+          summarySucceeded: event.summarySucceeded,
+          preState: event.preState,
+          postState: event.postState,
+          preTokens: event.preTokens,
+          postTokens: event.postTokens,
+          preRatio: event.preRatio,
+          postRatio: event.postRatio,
+        },
+      }];
     case "context_budget":
       const reservedOutputTokens = event.snapshot.reservedOutputTokens ?? event.snapshot.maxOutputTokens ?? 0;
       const totalContextTokens = event.snapshot.effectiveContextTokens !== undefined

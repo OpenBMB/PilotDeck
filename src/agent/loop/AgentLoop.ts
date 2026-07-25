@@ -370,6 +370,25 @@ export class AgentLoop {
               reservedOutputTokens,
             }),
           });
+          if (compact.trace?.triggered) {
+            yield {
+              type: "context_compaction_evaluated",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              triggered: true,
+              attemptedTiers: compact.trace.attemptedTiers,
+              applied: compact.type === "compacted",
+              appliedTier: compact.trace.appliedTier,
+              rejectionReason: compact.trace.rejectionReason,
+              summarySucceeded: compact.trace.summarySucceeded,
+              preState: compact.trace.initialSnapshot.state,
+              postState: compact.trace.finalSnapshot.state,
+              preTokens: compact.trace.initialSnapshot.tokens,
+              postTokens: compact.trace.finalSnapshot.tokens,
+              preRatio: compact.trace.initialSnapshot.ratio,
+              postRatio: compact.trace.finalSnapshot.ratio,
+            };
+          }
           if (compact.type === "compacted") {
             messages = compact.messages;
             yield {
