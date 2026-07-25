@@ -13,6 +13,10 @@ import {
 
 const [command = "status", ...args] = process.argv.slice(2);
 const workspaceRoot = resolve(readOption(args, "--workspace") ?? process.cwd());
+const REFERENCE_FILES = {
+  "data-contracts": new URL("../skills/conduct-legal-due-diligence/references/data-contracts.txt", import.meta.url),
+  "issue-rules": new URL("../skills/conduct-legal-due-diligence/references/issue-rules.txt", import.meta.url),
+};
 
 if (command === "init") {
   try {
@@ -51,6 +55,21 @@ if (command === "init") {
       },
     }));
     process.exitCode = 1;
+  }
+} else if (command === "reference") {
+  const name = readOption(args, "--name");
+  const reference = REFERENCE_FILES[name];
+  if (!reference) {
+    console.error(JSON.stringify({
+      error: {
+        code: "legal_coverage_reference_invalid",
+        message: "reference requires --name " + Object.keys(REFERENCE_FILES).join(" or ") + ".",
+      },
+    }));
+    process.exitCode = 1;
+  } else {
+    process.stdout.write(await readFile(reference, "utf8"));
+    process.exitCode = 0;
   }
 } else if (command === "schema") {
   console.log(JSON.stringify(coverageBatchSchema(), null, 2));
@@ -101,7 +120,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|reference|schema|validate|status|next-batch|apply-batch> [--workspace PATH] [--name data-contracts|issue-rules] [--phase coverage] [--input-file PATH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 

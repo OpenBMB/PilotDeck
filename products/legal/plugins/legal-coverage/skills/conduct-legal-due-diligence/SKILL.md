@@ -11,7 +11,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 
 1. Follow the current `<hook_context>` legal coverage milestone as the single next action.
 2. If configuration is incomplete, use the injected `legal-coverage.mjs init` command as the next tool call before inspecting plugin or validator source. Supply every source root, required deliverable, jurisdiction, and basis date from the task and input manifest. When a required value is not stated, record an explicit pending-confirmation value instead of delaying initialization with more framework inspection. The initializer creates a non-empty skeleton for each missing `.md`, `.txt`, `.html`, `.htm`, or `.csv` deliverable and never overwrites an existing target. Check its `deliverableSkeletons` result; create unsupported binary formats with the appropriate artifact tool before continuing.
-3. Confirm that every required text deliverable skeleton exists at its configured user path. Only then read `references/data-contracts.txt` before writing ledger data and `references/issue-rules.txt` before completing matrices or issues.
+3. Confirm that every required text deliverable skeleton exists at its configured user path. Only then use the exact injected `reference --name data-contracts` command before writing ledger data and `reference --name issue-rules` before completing matrices or issues. These are bundled plugin resources: use the injected CLI command and never guess a workspace-relative `references/` path.
 4. Keep all working state under `.pilotdeck/work/legal-coverage/`; keep user deliverables at the configured paths.
 5. If `.pilotdeck/input-manifest.json` exists, initialize `config.inputRoots` from its `originalRoot`. Never initialize from attachments or `derivedRoot`.
 

@@ -117,6 +117,26 @@ test("legal coverage initializer creates a text skeleton before source review an
   }
 });
 
+test("legal coverage CLI exposes bundled guidance through stable named references", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-reference-"));
+  try {
+    const dataContracts = await runCli(workspace, "reference", "--name", "data-contracts");
+    assert.equal(dataContracts.exitCode, 0, dataContracts.stderr);
+    assert.match(dataContracts.stdout, /sources\.json/u);
+    assert.match(dataContracts.stdout, /facts\.json/u);
+
+    const issueRules = await runCli(workspace, "reference", "--name", "issue-rules");
+    assert.equal(issueRules.exitCode, 0, issueRules.stderr);
+    assert.match(issueRules.stdout, /timeline/u);
+
+    const invalid = await runCli(workspace, "reference", "--name", "unknown");
+    assert.equal(invalid.exitCode, 1);
+    assert.match(invalid.stderr, /legal_coverage_reference_invalid/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage initializer creates only explicit text formats and preserves existing content", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-skeleton-formats-"));
   try {
@@ -1065,6 +1085,8 @@ test("legal coverage hook activates only legal work and injects one observable m
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"milestone": "SOURCES_READY"/u);
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxRecords": 12/u);
     assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /"maxSerializedBytes": 24576/u);
+    assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /reference --name data-contracts/u);
+    assert.match(sourceReview.hookSpecificOutput.additionalContext ?? "", /instead of guessing a workspace-relative references path/u);
     const sourceConvergence = sourceReview.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
       writeBudget?: { maxRecords?: number; maxSerializedBytes?: number };

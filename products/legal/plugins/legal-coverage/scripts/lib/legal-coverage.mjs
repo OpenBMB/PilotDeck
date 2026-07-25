@@ -499,6 +499,7 @@ export function milestoneFor(result, cliPath) {
   const sameCode = result.errors.filter((error) => error.code === first?.code);
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
   const initialize = `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" --input <source-root> --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+  const reference = referenceCommandFor(first?.phase, cliPath);
   return [
     `Legal coverage milestone (${first?.phase ?? "configuration"}): fix validator code ${first?.code ?? "state_file_invalid"} now.`,
     sameCode.length > 1
@@ -509,6 +510,7 @@ export function milestoneFor(result, cliPath) {
       ? `Representative paths: ${sameCode.slice(0, 4).map((error) => error.path).filter(Boolean).join(", ")}.`
       : undefined,
     first?.phase === "configuration" ? `Use this initializer with task-specific values: ${initialize}` : undefined,
+    reference ? `Load the bundled legal guidance through its stable CLI interface before the next canonical write: ${reference}` : undefined,
     `After the fix, run: ${command}`,
     "Do not claim completion and do not create completion-proof.json manually.",
   ].filter(Boolean).join("\n");
@@ -535,6 +537,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sameCode = result.errors.filter((error) => error.code === first?.code);
   const command = `node ${JSON.stringify(cliPath)} validate --workspace \"$PWD\" --write-proof`;
   const initialize = `node ${JSON.stringify(cliPath)} init --workspace \"$PWD\" --input <source-root> --deliverable <id>=<path> --jurisdiction <name> --basis-date <date>`;
+  const reference = referenceCommandFor(first?.phase, cliPath);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
     .slice(0, 4)
@@ -561,8 +564,9 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     }],
     progress: result.counts,
     ...(result.passed ? {} : { workBatch: workBatchFor(first?.phase) }),
+    ...(reference ? { guidanceCommand: reference } : {}),
     ...(workItems ? { workItems } : {}),
-    nextAction: nextActionFor(result, sameCode.length, command, initialize),
+    nextAction: nextActionFor(result, sameCode.length, command, initialize, reference),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
   };
   return `<legal_coverage_state>\n${JSON.stringify(envelope, null, 2)}\n</legal_coverage_state>`;
@@ -594,7 +598,7 @@ function workBatchFor(phase) {
   }
 }
 
-function nextActionFor(result, occurrenceCount, command, initialize) {
+function nextActionFor(result, occurrenceCount, command, initialize, reference) {
   if (result.passed) {
     return "Run any remaining task-specific deliverable QA; rerun legal coverage validation after any bound artifact changes.";
   }
@@ -621,10 +625,23 @@ function nextActionFor(result, occurrenceCount, command, initialize) {
       + `Repair at most ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes, then run: ${command}. `
       + "Repeat only after validation reports progress.";
   }
-  return `Repair the next ${batch.scope} for ${first?.code ?? "state_file_invalid"} `
+  const guidance = reference
+    ? `Before the next canonical write, load the bundled guidance with this exact command instead of guessing a workspace-relative references path: ${reference}. `
+    : "";
+  return guidance + `Repair the next ${batch.scope} for ${first?.code ?? "state_file_invalid"} `
     + `(up to ${batch.maxRecords} records and ${batch.maxSerializedBytes} serialized bytes; `
     + `${occurrenceCount} occurrence(s) currently visible), then run: ${command}. `
     + "Repeat with the next bounded batch only after validation reports progress.";
+}
+
+function referenceCommandFor(phase, cliPath) {
+  if (phase === "sources" || phase === "facts" || phase === "coverage") {
+    return `node ${JSON.stringify(cliPath)} reference --name data-contracts`;
+  }
+  if (phase === "matrices" || phase === "issues" || phase === "authorities") {
+    return `node ${JSON.stringify(cliPath)} reference --name issue-rules`;
+  }
+  return undefined;
 }
 
 function objectiveForPhase(phase) {
