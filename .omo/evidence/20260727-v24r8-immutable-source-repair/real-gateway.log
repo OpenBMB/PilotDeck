@@ -1,0 +1,36 @@
+TAP version 13
+# (node:68772) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: real gateway drives legal plugin milestones through bounded artifact correction
+ok 1 - real gateway drives legal plugin milestones through bounded artifact correction
+  ---
+  duration_ms: 717.367709
+  type: 'test'
+  ...
+# Subtest: real gateway blocks completion when the legal Stop hook cannot read session state
+ok 2 - real gateway blocks completion when the legal Stop hook cannot read session state
+  ---
+  duration_ms: 428.993292
+  type: 'test'
+  ...
+# Subtest: real gateway executes the state-bound legal authority closure with complete O1 evidence
+ok 3 - real gateway executes the state-bound legal authority closure with complete O1 evidence
+  ---
+  duration_ms: 491.581917
+  type: 'test'
+  ...
+# Subtest: real gateway applies an immutable source repair before renewing legal progress
+ok 4 - real gateway applies an immutable source repair before renewing legal progress
+  ---
+  duration_ms: 648.222583
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2670.662875
