@@ -58,6 +58,61 @@ test("two stagnant observations require a boundary and allow exactly one post-bo
   assert.equal(failed?.reason, "post_boundary_stagnation");
 });
 
+test("new repair feedback after a boundary gets one delivery turn without renewing progress", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  assert.equal(
+    lease.observe(
+      report({ progressOrdinal: 1, repairOrdinal: 0 }),
+      { requested: true, attempted: true, applied: true },
+    )?.decision,
+    "boundary_grace",
+  );
+
+  const feedback = lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none);
+  assert.equal(feedback?.decision, "feedback_grace");
+  assert.equal(feedback?.stagnantObservations, 3);
+  assert.equal(lease.shouldForceBoundary(), false);
+
+  const replayed = lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none);
+  assert.equal(replayed?.decision, "fail_closed");
+  assert.equal(replayed?.reason, "post_boundary_stagnation");
+});
+
+test("genuine progress after repair feedback renews the lease", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none);
+
+  const renewed = lease.observe(report({ progressOrdinal: 2, repairOrdinal: 1 }), none);
+  assert.equal(renewed?.decision, "renewed");
+  assert.equal(renewed?.stagnantObservations, 0);
+});
+
+test("repair feedback already delivered before a boundary cannot be replayed as grace", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none)?.decision,
+    "stagnant",
+  );
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 1 }),
+    { requested: true, attempted: true, applied: true },
+  );
+
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none)?.decision,
+    "fail_closed",
+  );
+});
+
 test("cold-start allowance expires after the first explicit domain progress", () => {
   const lease = new ProgressLease({
     enabled: true,
@@ -106,6 +161,8 @@ test("convergence metadata parser rejects malformed and oversized reports", () =
   assert.equal(parseConvergenceReport({ ...report(), remainingCount: -1 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), progressOrdinal: -1 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), progressOrdinal: 1.5 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), repairOrdinal: -1 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), repairOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), scope: "x".repeat(129) }), undefined);
   assert.deepEqual(parseConvergenceReport(report()), report());
 });

@@ -21,6 +21,7 @@ import {
 
 const cliPath = fileURLToPath(new URL("./scripts/legal-coverage.mjs", import.meta.url));
 const MAX_PROGRESS_CHECKPOINT_DIGESTS = 64;
+const MAX_REPAIR_CHECKPOINT_DIGESTS = 64;
 let hookEventName = "Unknown";
 
 try {
@@ -77,7 +78,7 @@ try {
       phase: result.passed ? "complete" : result.errors[0]?.phase ?? "incomplete",
       blockingCode: result.errors[0]?.code ?? null,
       remainingCount: result.errors.length,
-    }, legalProgressCheckpointDigest(workItems));
+    }, legalProgressCheckpointDigest(workItems), legalRepairCheckpointDigest(workItems));
     output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
     if (progressState.changed || sessionState?.lastMilestoneDigest !== digest) {
       await writeSessionState(input.cwd, sessionPath, {
@@ -87,6 +88,8 @@ try {
         progressOrdinal: progressState.ordinal,
         progressCheckpointDigests: progressState.seenCheckpointDigests,
         progressMaxPhaseRank: progressState.maxPhaseRank,
+        repairOrdinal: progressState.repairOrdinal,
+        repairCheckpointDigests: progressState.seenRepairCheckpointDigests,
         progressMilestoneDigests: undefined,
         progressObservation: progressState.observation,
       });
@@ -100,6 +103,7 @@ try {
           workItems,
           convergenceStateHash(result, workItems),
           progressState.ordinal,
+          progressState.repairOrdinal,
         ),
       },
     };
@@ -187,7 +191,7 @@ async function dynamicWorkItems(workspaceRoot, result) {
   return undefined;
 }
 
-function convergenceReport(result, workItems, milestoneStateHash, progressOrdinal) {
+function convergenceReport(result, workItems, milestoneStateHash, progressOrdinal, repairOrdinal) {
   const first = result.errors[0];
   return {
     schemaVersion: 1,
@@ -199,6 +203,7 @@ function convergenceReport(result, workItems, milestoneStateHash, progressOrdina
     ...(first?.code ? { blockingCode: first.code } : {}),
     remainingCount: result.errors.length,
     progressOrdinal,
+    repairOrdinal,
     ...(workItems ? {
       nextBatch: {
         group: workItems.group,
@@ -213,7 +218,7 @@ function convergenceReport(result, workItems, milestoneStateHash, progressOrdina
   };
 }
 
-function advanceProgressState(sessionState, digest, current, checkpointDigest) {
+function advanceProgressState(sessionState, digest, current, checkpointDigest, repairCheckpointDigest) {
   const ordinal = Number.isSafeInteger(sessionState?.progressOrdinal) && sessionState.progressOrdinal >= 0
     ? sessionState.progressOrdinal
     : 0;
@@ -221,6 +226,14 @@ function advanceProgressState(sessionState, digest, current, checkpointDigest) {
     ? sessionState.progressCheckpointDigests.filter((value) =>
         typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
       ).slice(-MAX_PROGRESS_CHECKPOINT_DIGESTS)
+    : [];
+  const repairOrdinal = Number.isSafeInteger(sessionState?.repairOrdinal) && sessionState.repairOrdinal >= 0
+    ? sessionState.repairOrdinal
+    : 0;
+  const seenRepairCheckpointDigests = Array.isArray(sessionState?.repairCheckpointDigests)
+    ? sessionState.repairCheckpointDigests.filter((value) =>
+        typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+      ).slice(-MAX_REPAIR_CHECKPOINT_DIGESTS)
     : [];
   const previous = parseProgressObservation(sessionState?.progressObservation);
   const observation = { ...current, digest };
@@ -236,14 +249,24 @@ function advanceProgressState(sessionState, digest, current, checkpointDigest) {
     && /^[a-f0-9]{64}$/u.test(checkpointDigest)
     && !seenCheckpointDigests.includes(checkpointDigest);
   const advanced = phaseAdvanced || unseenCheckpoint;
+  const unseenRepairCheckpoint = typeof repairCheckpointDigest === "string"
+    && /^[a-f0-9]{64}$/u.test(repairCheckpointDigest)
+    && !seenRepairCheckpointDigests.includes(repairCheckpointDigest);
   return {
     ordinal: advanced && ordinal < Number.MAX_SAFE_INTEGER ? ordinal + 1 : ordinal,
     seenCheckpointDigests: unseenCheckpoint
       ? [...seenCheckpointDigests, checkpointDigest].slice(-MAX_PROGRESS_CHECKPOINT_DIGESTS)
       : seenCheckpointDigests,
     maxPhaseRank,
+    repairOrdinal: unseenRepairCheckpoint && repairOrdinal < Number.MAX_SAFE_INTEGER
+      ? repairOrdinal + 1
+      : repairOrdinal,
+    seenRepairCheckpointDigests: unseenRepairCheckpoint
+      ? [...seenRepairCheckpointDigests, repairCheckpointDigest].slice(-MAX_REPAIR_CHECKPOINT_DIGESTS)
+      : seenRepairCheckpointDigests,
     observation,
-    changed: unseenCheckpoint || maxPhaseRank !== previousMaxPhaseRank || previous === undefined
+    changed: unseenCheckpoint || unseenRepairCheckpoint
+      || maxPhaseRank !== previousMaxPhaseRank || previous === undefined
       || previous.phase !== observation.phase
       || previous.blockingCode !== observation.blockingCode
       || previous.remainingCount !== observation.remainingCount,
@@ -283,6 +306,51 @@ function legalProgressCheckpointDigest(workItems) {
       targetMatrixId: workItems.proposal.targetMatrixId,
     };
   }
+  return checkpointDigest(checkpoint);
+}
+
+function legalRepairCheckpointDigest(workItems) {
+  let checkpoint;
+  if (workItems?.group === "source-fragment-propose"
+    && hasRepairFeedback(workItems.proposal)
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && Array.isArray(workItems.proposal.sourceIds)) {
+    const sourceIds = workItems.proposal.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0 || sourceIds.length !== workItems.proposal.sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-repair",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      sourceIds,
+    };
+  } else if (workItems?.group === "matrix-pending-selection"
+    && hasRepairFeedback(workItems.selection)
+    && validStateHash(workItems.selection.expectedStateHash)
+    && nonEmptyString(workItems.selection.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-pending-selection-repair",
+      expectedStateHash: workItems.selection.expectedStateHash,
+      targetMatrixId: workItems.selection.targetMatrixId,
+    };
+  } else if (workItems?.group === "matrix-pending-propose"
+    && hasRepairFeedback(workItems.proposal)
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && nonEmptyString(workItems.proposal.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-pending-proposal-repair",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetMatrixId: workItems.proposal.targetMatrixId,
+    };
+  }
+  return checkpointDigest(checkpoint);
+}
+
+function hasRepairFeedback(value) {
+  return value?.repairRequired === true
+    || nonEmptyString(value?.validationError?.code)
+    || (Number.isSafeInteger(value?.validationDiagnostics?.total) && value.validationDiagnostics.total > 0);
+}
+
+function checkpointDigest(checkpoint) {
   return checkpoint === undefined
     ? undefined
     : createHash("sha256").update(JSON.stringify(checkpoint)).digest("hex");

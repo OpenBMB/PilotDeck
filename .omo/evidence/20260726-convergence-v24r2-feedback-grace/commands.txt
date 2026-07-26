@@ -1,0 +1,6 @@
+pnpm install --frozen-lockfile
+pnpm run build
+node --test --test-force-exit --test-timeout 60000 dist/tests/agent/progress-lease.spec.js dist/tests/agent/agent-loop-runtime-controls.spec.js dist/tests/context/auto-compaction-observability.spec.js dist/tests/observability/recorder.spec.js dist/tests/products/legal-coverage.spec.js
+pnpm test
+git diff --check
+rg -ni '(api[_-]?key|authorization:|bearer |token[=:]|llm-center|BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9])' .omo/evidence/20260726-convergence-v24r2-feedback-grace

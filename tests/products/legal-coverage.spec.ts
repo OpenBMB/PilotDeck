@@ -515,6 +515,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       proposeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         stateHash?: string;
         progressOrdinal: number;
+        repairOrdinal: number;
       }
     );
     const proposeConvergenceHash = proposeConvergence.stateHash;
@@ -634,10 +635,15 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(invalidProposalContext, /"preparedSlice":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceMergeApplyCommand":/u);
-    const repairConvergenceHash = (
-      invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
-    )?.stateHash;
+    const repairConvergence = (
+      invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        stateHash?: string;
+        repairOrdinal: number;
+      }
+    );
+    const repairConvergenceHash = repairConvergence.stateHash;
     assert.notEqual(repairConvergenceHash, proposeConvergenceHash);
+    assert.equal(repairConvergence.repairOrdinal, proposeConvergence.repairOrdinal + 1);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /never prose/u);
 
@@ -660,6 +666,10 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(
       (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       repairConvergenceHash,
+    );
+    assert.equal(
+      (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
+      repairConvergence.repairOrdinal,
     );
 
     await writeJson(proposalPath, {
@@ -712,6 +722,10 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       (boundedDiagnostics.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       repairConvergenceHash,
     );
+    assert.equal(
+      (boundedDiagnostics.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
+      repairConvergence.repairOrdinal,
+    );
 
     await writeJson(proposalPath, proposalBase);
     const applyReceipt = await runHook({
@@ -729,6 +743,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const applyConvergence = applyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash?: string;
       progressOrdinal: number;
+      repairOrdinal: number;
       nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
     };
     assert.notEqual(applyConvergence.stateHash, proposeConvergenceHash);
@@ -738,6 +753,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       hasMore: true,
     });
     assert.equal(applyConvergence.progressOrdinal, proposeConvergence.progressOrdinal + 1);
+    assert.equal(applyConvergence.repairOrdinal, repairConvergence.repairOrdinal);
     const replayedApplyReceipt = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "large-pending-source-plan",
@@ -1735,6 +1751,7 @@ test("legal coverage hook activates only legal work and injects one observable m
       blockingCode: "jurisdiction_missing",
       remainingCount: 12,
       progressOrdinal: 0,
+      repairOrdinal: 0,
       writeBudget: { maxRecords: 12, maxSerializedBytes: 24576 },
     });
 
@@ -2186,6 +2203,7 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     const invalidConvergenceOne = invalidHookOne.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash: string;
       progressOrdinal: number;
+      repairOrdinal: number;
     };
     const invalidHashOne = invalidConvergenceOne.stateHash;
 
@@ -2195,10 +2213,12 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     const invalidConvergenceTwo = invalidHookTwo.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash: string;
       progressOrdinal: number;
+      repairOrdinal: number;
     };
     const invalidHashTwo = invalidConvergenceTwo.stateHash;
     assert.equal(invalidHashTwo, invalidHashOne);
     assert.equal(invalidConvergenceTwo.progressOrdinal, invalidConvergenceOne.progressOrdinal);
+    assert.equal(invalidConvergenceTwo.repairOrdinal, invalidConvergenceOne.repairOrdinal);
 
     const valid = structuredClone(firstEnvelope.workItems.selection.template) as {
       selectedFactIds: string[];
@@ -2251,6 +2271,10 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     assert.equal(
       (afterUserPrompt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
       secondProgressOrdinal,
+    );
+    assert.equal(
+      (afterUserPrompt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
+      invalidConvergenceOne.repairOrdinal,
     );
 
     const selectedId = secondEnvelope.workItems.evidencePage.items[0]!.factId;

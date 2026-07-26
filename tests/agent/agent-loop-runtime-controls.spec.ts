@@ -238,6 +238,143 @@ test("evaluation progress lease stops before a third unchanged model request whe
   assert.equal(compactCalls, 3);
 });
 
+test("AgentLoop delivers newly surfaced repair feedback once after an applied boundary", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const defaultContext = new DefaultContextRuntime();
+  const context: AgentContextRuntime = {
+    prepareForModel: (input) => defaultContext.prepareForModel(input),
+    commitPreparedContext: (input) => defaultContext.commitPreparedContext(input),
+    async tryAutoCompact(input) {
+      if (!input.forceFull) return { type: "skipped", snapshot: budgetSnapshot(10_000) };
+      return {
+        type: "compacted",
+        messages: input.messages,
+        tier: "full",
+        snapshot: budgetSnapshot(5_000),
+        trace: {
+          triggered: true,
+          attemptedTiers: ["full"],
+          appliedTier: "full",
+          summaryAttempted: true,
+          summarySucceeded: true,
+          initialSnapshot: budgetSnapshot(10_000),
+          finalSnapshot: budgetSnapshot(5_000),
+        },
+      };
+    },
+  };
+  const router = {
+    async decide(input: { request: CanonicalModelRequest }): Promise<RouterDecision> {
+      return {
+        provider: input.request.provider,
+        model: input.request.model,
+        scenarioType: "default" as const,
+        isSubagent: false,
+        orchestrating: false,
+        resolvedFrom: "scenario" as const,
+        mutations: {},
+      };
+    },
+    async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+      requests.push(request);
+      yield { type: "message_start", role: "assistant" };
+      if (requests.length < 4) {
+        const toolCall = { id: `repair-${requests.length}`, name: "noop", input: {} };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      yield { type: "text_delta", text: "repair feedback received" };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    async *stream(): AsyncIterable<CanonicalModelEvent> {
+      throw new Error("stream fallback should not be used");
+    },
+  };
+  let preModelCalls = 0;
+  const dependencies = createDependencies(requests, {
+    context,
+    router,
+    lifecycle: {
+      async dispatch(input: { event: string }) {
+        if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+        preModelCalls += 1;
+        const feedbackAvailable = preModelCalls >= 4;
+        return {
+          ...emptyLifecycleResult(),
+          messages: feedbackAvailable ? [userMessage("first stable repair diagnostics")] : [],
+          effects: [{
+            type: "model_request_patch" as const,
+            patch: {
+              metadata: {
+                pilotdeckConvergence: {
+                  schemaVersion: 1,
+                  scope: "synthetic-validation",
+                  phase: "coverage",
+                  stateHash: feedbackAvailable ? "repair-feedback" : "unchanged",
+                  blockingCode: "missing_rows",
+                  remainingCount: 4,
+                  progressOrdinal: 1,
+                  repairOrdinal: feedbackAvailable ? 1 : 0,
+                },
+              },
+            },
+          }],
+        };
+      },
+    } as never,
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: {
+        async executeAll(calls) {
+          return calls.map((call) => ({
+            type: "success" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text" as const, text: "no genuine progress" }],
+            startedAt: "2026-07-26T00:00:00.000Z",
+            completedAt: "2026-07-26T00:00:00.000Z",
+          }));
+        },
+      },
+    },
+  });
+  const loop = new AgentLoop(createConfig(process.cwd(), {
+    maxContextTokens: 10_000,
+    progressLease: {
+      enabled: true,
+      mode: "evaluation",
+      maxStagnantObservations: 2,
+      maxInitialStagnantObservations: 2,
+    },
+  }), dependencies);
+
+  const events: Array<{ type?: string; decision?: string }> = [];
+  const iterator = loop.run({
+    sessionId: "session-feedback-grace",
+    turnId: "turn-feedback-grace",
+    messages: [userMessage("repair the synthetic state")],
+  });
+  let completed: AgentLoopRunResult | undefined;
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      completed = next.value;
+      break;
+    }
+    events.push(next.value as { type?: string; decision?: string });
+  }
+
+  assert.equal(completed.result.type, "success");
+  assert.equal(requests.length, 4);
+  assert.match(messageText(requests[3]?.messages ?? []), /first stable repair diagnostics/u);
+  assert.equal(
+    events.some((event) => event.type === "progress_lease_evaluated" && event.decision === "feedback_grace"),
+    true,
+  );
+});
+
 test("artifact failure injects one bounded correction turn and succeeds after validation", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-agent-loop-artifact-"));
   try {

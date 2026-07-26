@@ -1,0 +1,1708 @@
+
+> pilotdeck@0.1.0 test /Users/da/Documents/PilotDeck-worktrees/20260726-fix-convergence-v24r2-feedback-grace-v1
+> npm run build && node --test --test-force-exit --test-timeout 60000 "dist/tests/**/*.test.js" "dist/tests/**/*.spec.js"
+
+
+> pilotdeck@0.1.0 prebuild
+> npm run check:runtime && node scripts/bootstrap-pilotdeck-config.mjs && cd src/context/memory/edgeclaw-memory-core && npm run build
+
+
+> pilotdeck@0.1.0 check:runtime
+> node scripts/check-node-runtime.mjs
+
+
+> edgeclaw-memory-core@0.0.0 build
+> node -e "require('fs').rmSync('lib',{recursive:true,force:true})" && tsc -p tsconfig.json
+
+
+> pilotdeck@0.1.0 build
+> node -e "require('fs').rmSync('dist',{recursive:true,force:true})" && tsc -p tsconfig.json && node -e "require('fs').cpSync('src/extension/plugins/builtin','dist/src/extension/plugins/builtin',{recursive:true})"
+
+TAP version 13
+# Subtest: Feishu handles permission replies before the active chat drain finishes
+ok 1 - Feishu handles permission replies before the active chat drain finishes
+  ---
+  duration_ms: 2.130625
+  type: 'test'
+  ...
+# Subtest: ImPermissionHelper resolves all pending permission requests for a chat
+ok 2 - ImPermissionHelper resolves all pending permission requests for a chat
+  ---
+  duration_ms: 1.076542
+  type: 'test'
+  ...
+# Subtest: ImPermissionHelper keeps pending requests when the reply is invalid
+ok 3 - ImPermissionHelper keeps pending requests when the reply is invalid
+  ---
+  duration_ms: 0.057625
+  type: 'test'
+  ...
+# (node:29935) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: PreModelRequest mutations survive a post-routing request rebuild and remain model-only
+ok 4 - PreModelRequest mutations survive a post-routing request rebuild and remain model-only
+  ---
+  duration_ms: 5.99775
+  type: 'test'
+  ...
+# Subtest: AgentLoop exposes explicit subagent identity to lifecycle hooks
+ok 5 - AgentLoop exposes explicit subagent identity to lifecycle hooks
+  ---
+  duration_ms: 0.398834
+  type: 'test'
+  ...
+# Subtest: evaluation progress lease stops before a third unchanged model request when full compaction is rejected
+ok 6 - evaluation progress lease stops before a third unchanged model request when full compaction is rejected
+  ---
+  duration_ms: 3.609042
+  type: 'test'
+  ...
+# Subtest: AgentLoop delivers newly surfaced repair feedback once after an applied boundary
+ok 7 - AgentLoop delivers newly surfaced repair feedback once after an applied boundary
+  ---
+  duration_ms: 6.191666
+  type: 'test'
+  ...
+# Subtest: artifact failure injects one bounded correction turn and succeeds after validation
+ok 8 - artifact failure injects one bounded correction turn and succeeds after validation
+  ---
+  duration_ms: 5.667625
+  type: 'test'
+  ...
+# Subtest: required artifact failure wins over max-turn completion after a final tool call
+ok 9 - required artifact failure wins over max-turn completion after a final tool call
+  ---
+  duration_ms: 2.139041
+  type: 'test'
+  ...
+# Subtest: AgentSession restores terminal state and dispatches SessionEnd when the runner throws
+ok 10 - AgentSession restores terminal state and dispatches SessionEnd when the runner throws
+  ---
+  duration_ms: 2.359416
+  type: 'test'
+  ...
+# Subtest: AgentSession cleanup runs when a consumer stops reading early
+ok 11 - AgentSession cleanup runs when a consumer stops reading early
+  ---
+  duration_ms: 0.118916
+  type: 'test'
+  ...
+# (node:29937) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: real gateway drives legal plugin milestones through bounded artifact correction
+ok 12 - real gateway drives legal plugin milestones through bounded artifact correction
+  ---
+  duration_ms: 1452.808708
+  type: 'test'
+  ...
+# Subtest: real gateway blocks completion when the legal Stop hook cannot read session state
+ok 13 - real gateway blocks completion when the legal Stop hook cannot read session state
+  ---
+  duration_ms: 712.400583
+  type: 'test'
+  ...
+# (node:29938) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: local gateway applies project hook context and enforces artifact correction
+ok 14 - local gateway applies project hook context and enforces artifact correction
+  ---
+  duration_ms: 1084.751125
+  type: 'test'
+  ...
+# Subtest: ordinary edit failures after a successful write do not enter large-file repair
+ok 15 - ordinary edit failures after a successful write do not enter large-file repair
+  ---
+  duration_ms: 0.804958
+  type: 'test'
+  ...
+# Subtest: an explicit post-draft large-file failure starts bounded recovery
+ok 16 - an explicit post-draft large-file failure starts bounded recovery
+  ---
+  duration_ms: 0.192417
+  type: 'test'
+  ...
+# Subtest: successful focused write clears an active large-file repair episode
+ok 17 - successful focused write clears an active large-file repair episode
+  ---
+  duration_ms: 0.15725
+  type: 'test'
+  ...
+# Subtest: permission failures are never reclassified as large-file recovery
+ok 18 - permission failures are never reclassified as large-file recovery
+  ---
+  duration_ms: 0.050333
+  type: 'test'
+  ...
+# Subtest: progress lease stays inert unless explicitly enabled
+ok 19 - progress lease stays inert unless explicitly enabled
+  ---
+  duration_ms: 0.5735
+  type: 'test'
+  ...
+# Subtest: opaque hash churn is stagnant while a smaller remaining count renews the lease
+ok 20 - opaque hash churn is stagnant while a smaller remaining count renews the lease
+  ---
+  duration_ms: 0.127333
+  type: 'test'
+  ...
+# Subtest: only a strictly increasing domain progress ordinal renews the lease
+ok 21 - only a strictly increasing domain progress ordinal renews the lease
+  ---
+  duration_ms: 0.053208
+  type: 'test'
+  ...
+# Subtest: a lower remaining count cannot roll the stored progress ordinal backward
+ok 22 - a lower remaining count cannot roll the stored progress ordinal backward
+  ---
+  duration_ms: 0.076667
+  type: 'test'
+  ...
+# Subtest: two stagnant observations require a boundary and allow exactly one post-boundary turn
+ok 23 - two stagnant observations require a boundary and allow exactly one post-boundary turn
+  ---
+  duration_ms: 0.08875
+  type: 'test'
+  ...
+# Subtest: new repair feedback after a boundary gets one delivery turn without renewing progress
+ok 24 - new repair feedback after a boundary gets one delivery turn without renewing progress
+  ---
+  duration_ms: 0.054917
+  type: 'test'
+  ...
+# Subtest: genuine progress after repair feedback renews the lease
+ok 25 - genuine progress after repair feedback renews the lease
+  ---
+  duration_ms: 0.080375
+  type: 'test'
+  ...
+# Subtest: repair feedback already delivered before a boundary cannot be replayed as grace
+ok 26 - repair feedback already delivered before a boundary cannot be replayed as grace
+  ---
+  duration_ms: 0.03375
+  type: 'test'
+  ...
+# Subtest: cold-start allowance expires after the first explicit domain progress
+ok 27 - cold-start allowance expires after the first explicit domain progress
+  ---
+  duration_ms: 0.18375
+  type: 'test'
+  ...
+# Subtest: evaluation mode fails closed when the required boundary is rejected or unavailable
+ok 28 - evaluation mode fails closed when the required boundary is rejected or unavailable
+  ---
+  duration_ms: 0.223209
+  type: 'test'
+  ...
+# Subtest: a completed report releases the tracked scope
+ok 29 - a completed report releases the tracked scope
+  ---
+  duration_ms: 0.073416
+  type: 'test'
+  ...
+# Subtest: convergence metadata parser rejects malformed and oversized reports
+ok 30 - convergence metadata parser rejects malformed and oversized reports
+  ---
+  duration_ms: 0.515833
+  type: 'test'
+  ...
+# Subtest: explore subagent does not probe tool safety before execution
+ok 31 - explore subagent does not probe tool safety before execution
+  ---
+  duration_ms: 18.009584
+  type: 'test'
+  ...
+# Subtest: explore registry ignores an unallowed dynamic execute_code tool without probing it
+ok 32 - explore registry ignores an unallowed dynamic execute_code tool without probing it
+  ---
+  duration_ms: 0.672959
+  type: 'test'
+  ...
+# Subtest: read-only subagent evaluates bash safety from the real command
+ok 33 - read-only subagent evaluates bash safety from the real command
+  ---
+  duration_ms: 5.63975
+  type: 'test'
+  ...
+# Subtest: read-only execute_code checks the real code instead of crashing on registry setup
+ok 34 - read-only execute_code checks the real code instead of crashing on registry setup
+  ---
+  duration_ms: 0.27525
+  type: 'test'
+  ...
+# Subtest: filterIncompleteToolCalls tolerates malformed messages without content
+ok 35 - filterIncompleteToolCalls tolerates malformed messages without content
+  ---
+  duration_ms: 1.323542
+  type: 'test'
+  ...
+# Subtest: turn environment provides an isolated PilotDeck-owned work directory
+ok 36 - turn environment provides an isolated PilotDeck-owned work directory
+  ---
+  duration_ms: 1.201
+  type: 'test'
+  ...
+# Subtest: turn environment inherits the process environment when no override is configured
+ok 37 - turn environment inherits the process environment when no override is configured
+  ---
+  duration_ms: 0.289666
+  type: 'test'
+  ...
+# Subtest: validates a required artifact and keeps contracts isolated by session
+ok 38 - validates a required artifact and keeps contracts isolated by session
+  ---
+  duration_ms: 6.328
+  type: 'test'
+  ...
+# Subtest: missing or wrong-format artifacts fail with reviewer-readable issues
+ok 39 - missing or wrong-format artifacts fail with reviewer-readable issues
+  ---
+  duration_ms: 1.1205
+  type: 'test'
+  ...
+# Subtest: empty required artifacts fail validation
+ok 40 - empty required artifacts fail validation
+  ---
+  duration_ms: 1.999792
+  type: 'test'
+  ...
+# Subtest: rejects traversal and symlink escapes before a domain validator runs
+ok 41 - rejects traversal and symlink escapes before a domain validator runs
+  ---
+  duration_ms: 1.621125
+  type: 'test'
+  ...
+# Subtest: legal-specific validator data stays in the plugin validator
+ok 42 - legal-specific validator data stays in the plugin validator
+  ---
+  duration_ms: 0.662
+  type: 'test'
+  ...
+# Subtest: validator exceptions become structured failures instead of escaping the runtime
+ok 43 - validator exceptions become structured failures instead of escaping the runtime
+  ---
+  duration_ms: 1.130875
+  type: 'test'
+  ...
+# Subtest: duplicate validator ids cannot override an existing validator
+ok 44 - duplicate validator ids cannot override an existing validator
+  ---
+  duration_ms: 0.210791
+  type: 'test'
+  ...
+# Subtest: contract registration is atomic when one contract is invalid
+ok 45 - contract registration is atomic when one contract is invalid
+  ---
+  duration_ms: 0.055125
+  type: 'test'
+  ...
+# Subtest: extension watcher ignores generated Python and Office runtime files
+ok 46 - extension watcher ignores generated Python and Office runtime files
+  ---
+  duration_ms: 1.169041
+  type: 'test'
+  ...
+# Subtest: config bootstrap does not copy bundled skills into user storage
+ok 47 - config bootstrap does not copy bundled skills into user storage
+  ---
+  duration_ms: 87.207458
+  type: 'test'
+  ...
+# Subtest: Office attachments are reported unsupported before size checks
+ok 48 - Office attachments are reported unsupported before size checks
+  ---
+  duration_ms: 5.467833
+  type: 'test'
+  ...
+# Subtest: auto compaction reports summary success separately from rejected oversized output
+ok 49 - auto compaction reports summary success separately from rejected oversized output
+  ---
+  duration_ms: 1.283417
+  type: 'test'
+  ...
+# Subtest: auto compaction marks a budget-clearing summary as applied
+ok 50 - auto compaction marks a budget-clearing summary as applied
+  ---
+  duration_ms: 0.095917
+  type: 'test'
+  ...
+# Subtest: progress policy can force a full boundary while the token budget is still healthy
+ok 51 - progress policy can force a full boundary while the token budget is still healthy
+  ---
+  duration_ms: 0.103875
+  type: 'test'
+  ...
+# Subtest: full compaction distinguishes a protected prefix with no summarizable messages from model failure
+ok 52 - full compaction distinguishes a protected prefix with no summarizable messages from model failure
+  ---
+  duration_ms: 459.280667
+  type: 'test'
+  ...
+# Subtest: auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+ok 53 - auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+  ---
+  duration_ms: 0.602375
+  type: 'test'
+  ...
+# Subtest: bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+ok 54 - bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+  ---
+  duration_ms: 1.991
+  type: 'test'
+  ...
+# Subtest: full compaction summarizes a real-shaped single-prompt Agent trajectory
+ok 55 - full compaction summarizes a real-shaped single-prompt Agent trajectory
+  ---
+  duration_ms: 5.411458
+  type: 'test'
+  ...
+# Subtest: full compaction aligns a message-count tail boundary to complete tool turns
+ok 56 - full compaction aligns a message-count tail boundary to complete tool turns
+  ---
+  duration_ms: 4.6365
+  type: 'test'
+  ...
+# Subtest: sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+ok 57 - sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+  ---
+  duration_ms: 6.882375
+  type: 'test'
+  ...
+# Subtest: lifecycle context is injected as a transient model-only message
+ok 58 - lifecycle context is injected as a transient model-only message
+  ---
+  duration_ms: 10.685541
+  type: 'test'
+  ...
+# Subtest: lifecycle without a dynamic store preserves legacy hook messages
+ok 59 - lifecycle without a dynamic store preserves legacy hook messages
+  ---
+  duration_ms: 0.108167
+  type: 'test'
+  ...
+# Subtest: SessionEnd clears session-scoped runtime state even when a hook throws
+ok 60 - SessionEnd clears session-scoped runtime state even when a hook throws
+  ---
+  duration_ms: 0.602875
+  type: 'test'
+  ...
+# Subtest: merges pending context by priority and consumes it once
+ok 61 - merges pending context by priority and consumes it once
+  ---
+  duration_ms: 2.989959
+  type: 'test'
+  ...
+# Subtest: re-registering the same source and id replaces stale content without changing order
+ok 62 - re-registering the same source and id replaces stale content without changing order
+  ---
+  duration_ms: 0.115709
+  type: 'test'
+  ...
+# Subtest: expired context is pruned without affecting another session
+ok 63 - expired context is pruned without affecting another session
+  ---
+  duration_ms: 0.05625
+  type: 'test'
+  ...
+# Subtest: blank context is ignored
+ok 64 - blank context is ignored
+  ---
+  duration_ms: 0.037375
+  type: 'test'
+  ...
+# Subtest: clearing a session does not disturb another session with a shared prefix
+ok 65 - clearing a session does not disturb another session with a shared prefix
+  ---
+  duration_ms: 0.085458
+  type: 'test'
+  ...
+# Subtest: context budgets retain higher-priority entries and cap merged prompt size
+ok 66 - context budgets retain higher-priority entries and cap merged prompt size
+  ---
+  duration_ms: 1.109541
+  type: 'test'
+  ...
+# Subtest: source and id tuples cannot collide through delimiter characters
+ok 67 - source and id tuples cannot collide through delimiter characters
+  ---
+  duration_ms: 0.172917
+  type: 'test'
+  ...
+# Subtest: default prompt does not require Markdown links for generated files
+ok 68 - default prompt does not require Markdown links for generated files
+  ---
+  duration_ms: 4.28375
+  type: 'test'
+  ...
+# Subtest: default prompt does not advertise web search when the tool is unavailable
+ok 69 - default prompt does not advertise web search when the tool is unavailable
+  ---
+  duration_ms: 0.612709
+  type: 'test'
+  ...
+# Subtest: available skills include the resolved SKILL.md path and bounded lookup guidance
+ok 70 - available skills include the resolved SKILL.md path and bounded lookup guidance
+  ---
+  duration_ms: 2.39675
+  type: 'test'
+  ...
+# Subtest: budget snapshot uses conservative budget tokens for ratio while preserving real tokens
+ok 71 - budget snapshot uses conservative budget tokens for ratio while preserving real tokens
+  ---
+  duration_ms: 0.573917
+  type: 'test'
+  ...
+# Subtest: tool text under token budget remains inline even when over legacy byte threshold
+ok 72 - tool text under token budget remains inline even when over legacy byte threshold
+  ---
+  duration_ms: 5296.684875
+  type: 'test'
+  ...
+# Subtest: tool text over token budget is persisted with expanded grep-first preview
+ok 73 - tool text over token budget is persisted with expanded grep-first preview
+  ---
+  duration_ms: 6.531
+  type: 'test'
+  ...
+# Subtest: large tool error references preserve error semantics for model replay
+ok 74 - large tool error references preserve error semantics for model replay
+  ---
+  duration_ms: 1.76875
+  type: 'test'
+  ...
+# Subtest: multibyte truncated tool result references advertise read_file access
+ok 75 - multibyte truncated tool result references advertise read_file access
+  ---
+  duration_ms: 1.020833
+  type: 'test'
+  ...
+# Subtest: parses declarative artifact contracts without domain-specific knowledge
+ok 76 - parses declarative artifact contracts without domain-specific knowledge
+  ---
+  duration_ms: 1.094542
+  type: 'test'
+  ...
+# (node:29957) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: an active domain plugin contributes only generic runtime contracts
+ok 77 - an active domain plugin contributes only generic runtime contracts
+  ---
+  duration_ms: 1.271834
+  type: 'test'
+  ...
+# Subtest: internal prompts do not reactivate domain detection
+ok 78 - internal prompts do not reactivate domain detection
+  ---
+  duration_ms: 0.079166
+  type: 'test'
+  ...
+# Subtest: parses only the supported model request patch fields
+ok 79 - parses only the supported model request patch fields
+  ---
+  duration_ms: 1.081791
+  type: 'test'
+  ...
+# Subtest: parses bounded dynamic context controls for hook-driven injection
+ok 80 - parses bounded dynamic context controls for hook-driven injection
+  ---
+  duration_ms: 0.114625
+  type: 'test'
+  ...
+# Subtest: standalone skills expose only their slug without a parent-directory namespace
+ok 81 - standalone skills expose only their slug without a parent-directory namespace
+  ---
+  duration_ms: 14.411458
+  type: 'test'
+  ...
+# Subtest: a plugin skill directory used as the configured base never derives a parent namespace
+ok 82 - a plugin skill directory used as the configured base never derives a parent namespace
+  ---
+  duration_ms: 0.274459
+  type: 'test'
+  ...
+# Subtest: standalone skill precedence is project > user > builtin without legacy aliases
+ok 83 - standalone skill precedence is project > user > builtin without legacy aliases
+  ---
+  duration_ms: 20.853334
+  type: 'test'
+  ...
+# Subtest: legacy bundled migration backs up only byte-identical bootstrap copies
+ok 84 - legacy bundled migration backs up only byte-identical bootstrap copies
+  ---
+  duration_ms: 28.696417
+  type: 'test'
+  ...
+# Subtest: legacy bundled migration leaves user skills untouched when the release bundle is missing
+ok 85 - legacy bundled migration leaves user skills untouched when the release bundle is missing
+  ---
+  duration_ms: 3.402709
+  type: 'test'
+  ...
+# Subtest: SkillManager lists built-ins separately and describes override relationships
+ok 86 - SkillManager lists built-ins separately and describes override relationships
+  ---
+  duration_ms: 28.22975
+  type: 'test'
+  ...
+# Subtest: SkillManager permits reading but rejects mutations of built-in skills
+ok 87 - SkillManager permits reading but rejects mutations of built-in skills
+  ---
+  duration_ms: 4.258792
+  type: 'test'
+  ...
+# Subtest: registered plain-text attachments with non-whitelisted names are described as read_file inspectable
+ok 88 - registered plain-text attachments with non-whitelisted names are described as read_file inspectable
+  ---
+  duration_ms: 9.438292
+  type: 'test'
+  ...
+# Subtest: registered Office attachments are still described as not directly inspectable
+ok 89 - registered Office attachments are still described as not directly inspectable
+  ---
+  duration_ms: 4.747833
+  type: 'test'
+  ...
+# Subtest: startPilotDeckServer listens before a background channel finishes starting
+ok 90 - startPilotDeckServer listens before a background channel finishes starting
+  ---
+  duration_ms: 23.984916
+  type: 'test'
+  ...
+# (node:30003) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: browser-use args do not inherit generic proxy env by default
+ok 91 - browser-use args do not inherit generic proxy env by default
+  ---
+  duration_ms: 1.003208
+  type: 'test'
+  ...
+# Subtest: browser-use args use explicit browser proxy server
+ok 92 - browser-use args use explicit browser proxy server
+  ---
+  duration_ms: 0.217042
+  type: 'test'
+  ...
+# Subtest: browser-use args only inherit generic proxy env when opted in
+ok 93 - browser-use args only inherit generic proxy env when opted in
+  ---
+  duration_ms: 0.256875
+  type: 'test'
+  ...
+# Subtest: browser-use args use config proxy when browser env proxy is absent
+ok 94 - browser-use args use config proxy when browser env proxy is absent
+  ---
+  duration_ms: 0.203208
+  type: 'test'
+  ...
+# Subtest: browser-use args allow explicit direct mode to disable config proxy
+ok 95 - browser-use args allow explicit direct mode to disable config proxy
+  ---
+  duration_ms: 0.3595
+  type: 'test'
+  ...
+# Subtest: internal prompt dispatch waits for the user turn and fully drains the synthetic turn
+ok 96 - internal prompt dispatch waits for the user turn and fully drains the synthetic turn
+  ---
+  duration_ms: 3.144708
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent propagates runId to streaming lifecycle boundaries
+ok 97 - mapAgentEvent propagates runId to streaming lifecycle boundaries
+  ---
+  duration_ms: 2.06825
+  type: 'test'
+  ...
+# Subtest: defer returns immediately while a user turn is busy
+ok 98 - defer returns immediately while a user turn is busy
+  ---
+  duration_ms: 1.015083
+  type: 'test'
+  ...
+# Subtest: enqueue waits for idle and dispatches exactly once
+ok 99 - enqueue waits for idle and dispatches exactly once
+  ---
+  duration_ms: 1.64825
+  type: 'test'
+  ...
+# Subtest: same semantic key coalesces in-flight and dedupes after completion
+ok 100 - same semantic key coalesces in-flight and dedupes after completion
+  ---
+  duration_ms: 0.158125
+  type: 'test'
+  ...
+# Subtest: an idle-settle race retries when the gateway reports busy
+ok 101 - an idle-settle race retries when the gateway reports busy
+  ---
+  duration_ms: 0.156958
+  type: 'test'
+  ...
+# Subtest: abort while queued does not run an internal turn
+ok 102 - abort while queued does not run an internal turn
+  ---
+  duration_ms: 0.109959
+  type: 'test'
+  ...
+# Subtest: turn timeouts are reported distinctly from generic execution failures
+ok 103 - turn timeouts are reported distinctly from generic execution failures
+  ---
+  duration_ms: 0.052833
+  type: 'test'
+  ...
+# Subtest: a zero recent-dedupe window disables completed-result deduplication
+ok 104 - a zero recent-dedupe window disables completed-result deduplication
+  ---
+  duration_ms: 0.151792
+  type: 'test'
+  ...
+# Subtest: dispose prevents a queued prompt from starting after shutdown
+ok 105 - dispose prevents a queued prompt from starting after shutdown
+  ---
+  duration_ms: 0.117042
+  type: 'test'
+  ...
+# Subtest: the public WebSocket boundary strips trusted in-process turn controls
+ok 106 - the public WebSocket boundary strips trusted in-process turn controls
+  ---
+  duration_ms: 0.926792
+  type: 'test'
+  ...
+# Subtest: waitForIdle resolves only after the matching turn slot is released
+ok 107 - waitForIdle resolves only after the matching turn slot is released
+  ---
+  duration_ms: 1.507292
+  type: 'test'
+  ...
+# Subtest: waitForIdle honors AbortSignal without releasing the turn
+ok 108 - waitForIdle honors AbortSignal without releasing the turn
+  ---
+  duration_ms: 0.568375
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent bounds live tool result previews at the gateway
+ok 109 - mapAgentEvent bounds live tool result previews at the gateway
+  ---
+  duration_ms: 2.470541
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent bounds large strings inside successful tool data
+ok 110 - mapAgentEvent bounds large strings inside successful tool data
+  ---
+  duration_ms: 0.680583
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent bounds subagent tool result content and preview
+ok 111 - mapAgentEvent bounds subagent tool result content and preview
+  ---
+  duration_ms: 0.28375
+  type: 'test'
+  ...
+# Subtest: WeixinChannel.start returns while QR login is waiting
+ok 112 - WeixinChannel.start returns while QR login is waiting
+  ---
+  duration_ms: 12.78625
+  type: 'test'
+  ...
+# Subtest: channel runtime status reporter persists the latest channel state
+ok 113 - channel runtime status reporter persists the latest channel state
+  ---
+  duration_ms: 4.376875
+  type: 'test'
+  ...
+# Subtest: UI weixin QR route only reads runtime status
+ok 114 - UI weixin QR route only reads runtime status
+  ---
+  duration_ms: 1.384708
+  type: 'test'
+  ...
+# Subtest: UI weixin QR begin route delegates to gateway prepare RPC
+ok 115 - UI weixin QR begin route delegates to gateway prepare RPC
+  ---
+  duration_ms: 0.178042
+  type: 'test'
+  ...
+# Subtest: Gateway settings keeps existing status rendered during silent refresh
+ok 116 - Gateway settings keeps existing status rendered during silent refresh
+  ---
+  duration_ms: 0.386958
+  type: 'test'
+  ...
+# Subtest: Gateway settings starts weixin QR by begin route and ignores stale runtime errors
+ok 117 - Gateway settings starts weixin QR by begin route and ignores stale runtime errors
+  ---
+  duration_ms: 0.335291
+  type: 'test'
+  ...
+# Subtest: Gateway protocol exposes prepare_weixin_login RPC
+ok 118 - Gateway protocol exposes prepare_weixin_login RPC
+  ---
+  duration_ms: 0.437375
+  type: 'test'
+  ...
+# Subtest: applies context, system messages, and restricted model request patches
+ok 119 - applies context, system messages, and restricted model request patches
+  ---
+  duration_ms: 1.014208
+  type: 'test'
+  ...
+# Subtest: blocks before any request mutation is used
+ok 120 - blocks before any request mutation is used
+  ---
+  duration_ms: 0.056916
+  type: 'test'
+  ...
+# Subtest: McpClient keeps stdio clients idle before connection
+ok 121 - McpClient keeps stdio clients idle before connection
+  ---
+  duration_ms: 0.493791
+  type: 'test'
+  ...
+# Subtest: McpClient constructs streamable_http transport without requiring stdio fields
+ok 122 - McpClient constructs streamable_http transport without requiring stdio fields
+  ---
+  duration_ms: 0.042167
+  type: 'test'
+  ...
+# Subtest: McpClient routes streamable_http fetches with bounded timeouts
+ok 123 - McpClient routes streamable_http fetches with bounded timeouts
+  ---
+  duration_ms: 0.675125
+  type: 'test'
+  ...
+# Subtest: expandMcpString expands ${env:*} placeholders
+ok 124 - expandMcpString expands ${env:*} placeholders
+  ---
+  duration_ms: 0.607958
+  type: 'test'
+  ...
+# Subtest: expandMcpString expands ${userHome} placeholder
+ok 125 - expandMcpString expands ${userHome} placeholder
+  ---
+  duration_ms: 0.2315
+  type: 'test'
+  ...
+# Subtest: expandMcpString expands ~ prefix
+ok 126 - expandMcpString expands ~ prefix
+  ---
+  duration_ms: 0.084375
+  type: 'test'
+  ...
+# Subtest: expandMcpString leaves unknown env vars as empty string
+ok 127 - expandMcpString leaves unknown env vars as empty string
+  ---
+  duration_ms: 0.072
+  type: 'test'
+  ...
+# Subtest: expandMcpString handles combined placeholders
+ok 128 - expandMcpString handles combined placeholders
+  ---
+  duration_ms: 0.084416
+  type: 'test'
+  ...
+# Subtest: expandMcpConfig recursively expands objects and arrays
+ok 129 - expandMcpConfig recursively expands objects and arrays
+  ---
+  duration_ms: 1.144709
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ${env:*} in stdio env
+ok 130 - parsePluginMcpServers expands ${env:*} in stdio env
+  ---
+  duration_ms: 0.348
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ${env:*} in stdio command before transport detection
+ok 131 - parsePluginMcpServers expands ${env:*} in stdio command before transport detection
+  ---
+  duration_ms: 0.1055
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers drops empty expanded stdio command
+ok 132 - parsePluginMcpServers drops empty expanded stdio command
+  ---
+  duration_ms: 0.384917
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ${userHome} in stdio cwd
+ok 133 - parsePluginMcpServers expands ${userHome} in stdio cwd
+  ---
+  duration_ms: 0.468166
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ~ in stdio args (backward compat)
+ok 134 - parsePluginMcpServers expands ~ in stdio args (backward compat)
+  ---
+  duration_ms: 0.227542
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ${env:*} in streamable_http url
+ok 135 - parsePluginMcpServers expands ${env:*} in streamable_http url
+  ---
+  duration_ms: 0.108625
+  type: 'test'
+  ...
+# Subtest: parsePluginMcpServers expands ${env:*} in streamable_http headers
+ok 136 - parsePluginMcpServers expands ${env:*} in streamable_http headers
+  ---
+  duration_ms: 0.084
+  type: 'test'
+  ...
+# Subtest: user config and plugin config resolve same placeholders consistently
+ok 137 - user config and plugin config resolve same placeholders consistently
+  ---
+  duration_ms: 0.077875
+  type: 'test'
+  ...
+# Subtest: Anthropic-compatible terminated SSE errors remain retryable
+ok 138 - Anthropic-compatible terminated SSE errors remain retryable
+  ---
+  duration_ms: 3.498041
+  type: 'test'
+  ...
+# Subtest: catalog provider resolves api key from default env var when apiKey is omitted
+ok 139 - catalog provider resolves api key from default env var when apiKey is omitted
+  ---
+  duration_ms: 0.751292
+  type: 'test'
+  ...
+# Subtest: catalog provider resolves api key from default env var when apiKey is blank
+ok 140 - catalog provider resolves api key from default env var when apiKey is blank
+  ---
+  duration_ms: 0.081125
+  type: 'test'
+  ...
+# Subtest: normalizeModelError classifies common network failures
+ok 141 - normalizeModelError classifies common network failures
+  ---
+  duration_ms: 2.626084
+  type: 'test'
+  ...
+# Subtest: model request failure preserves provider raw message before action guidance
+ok 142 - model request failure preserves provider raw message before action guidance
+  ---
+  duration_ms: 1.716083
+  type: 'test'
+  ...
+# Subtest: model_not_found guidance points users to local model settings
+ok 143 - model_not_found guidance points users to local model settings
+  ---
+  duration_ms: 0.764125
+  type: 'test'
+  ...
+# Subtest: stream idle timeout is classified as timeout with network and timeoutMs guidance
+ok 144 - stream idle timeout is classified as timeout with network and timeoutMs guidance
+  ---
+  duration_ms: 0.265333
+  type: 'test'
+  ...
+# Subtest: provider terminated stream is classified as a retryable connection reset
+ok 145 - provider terminated stream is classified as a retryable connection reset
+  ---
+  duration_ms: 0.194875
+  type: 'test'
+  ...
+# Subtest: billing and rate limit guidance distinguish provider-side fixes
+ok 146 - billing and rate limit guidance distinguish provider-side fixes
+  ---
+  duration_ms: 0.08225
+  type: 'test'
+  ...
+# Subtest: unknown provider errors still give actionable settings and provider checks
+ok 147 - unknown provider errors still give actionable settings and provider checks
+  ---
+  duration_ms: 0.044125
+  type: 'test'
+  ...
+# Subtest: OpenAI Responses usage reads cached tokens from input token details
+ok 148 - OpenAI Responses usage reads cached tokens from input token details
+  ---
+  duration_ms: 0.548208
+  type: 'test'
+  ...
+# Subtest: Gemini usage counts thoughts tokens as output consumption
+ok 149 - Gemini usage counts thoughts tokens as output consumption
+  ---
+  duration_ms: 0.082958
+  type: 'test'
+  ...
+# Subtest: Ollama provider uses catalog defaults and does not require apiKey
+ok 150 - Ollama provider uses catalog defaults and does not require apiKey
+  ---
+  duration_ms: 0.709792
+  type: 'test'
+  ...
+# Subtest: Ollama provider builds OpenAI-compatible chat completions body
+ok 151 - Ollama provider builds OpenAI-compatible chat completions body
+  ---
+  duration_ms: 0.82425
+  type: 'test'
+  ...
+# Subtest: model request builders tolerate malformed messages with missing content
+ok 152 - model request builders tolerate malformed messages with missing content
+  ---
+  duration_ms: 0.864292
+  type: 'test'
+  ...
+# Subtest: cloneMessages normalizes malformed messages with missing content
+ok 153 - cloneMessages normalizes malformed messages with missing content
+  ---
+  duration_ms: 0.506125
+  type: 'test'
+  ...
+# Subtest: streamModel retries Anthropic-compatible terminated SSE errors
+ok 154 - streamModel retries Anthropic-compatible terminated SSE errors
+  ---
+  duration_ms: 7.62275
+  type: 'test'
+  ...
+# Subtest: networkFetch retries retryable status responses and then succeeds
+ok 155 - networkFetch retries retryable status responses and then succeeds
+  ---
+  duration_ms: 2.725084
+  type: 'test'
+  ...
+# Subtest: networkFetch uses retry-after when calculating retry delay
+ok 156 - networkFetch uses retry-after when calculating retry delay
+  ---
+  duration_ms: 0.072667
+  type: 'test'
+  ...
+# Subtest: networkFetch caps retry-after delays with maxDelayMs
+ok 157 - networkFetch caps retry-after delays with maxDelayMs
+  ---
+  duration_ms: 0.0355
+  type: 'test'
+  ...
+# Subtest: networkFetch normalizes DNS and reset errors
+ok 158 - networkFetch normalizes DNS and reset errors
+  ---
+  duration_ms: 0.090625
+  type: 'test'
+  ...
+# Subtest: networkFetch times out requests
+ok 159 - networkFetch times out requests
+  ---
+  duration_ms: 2.262042
+  type: 'test'
+  ...
+# Subtest: networkFetch honors init.signal abort reasons without options.signal
+ok 160 - networkFetch honors init.signal abort reasons without options.signal
+  ---
+  duration_ms: 0.2975
+  type: 'test'
+  ...
+# Subtest: networkFetch preserves parent NetworkFetchError reasons passed through options.signal
+ok 161 - networkFetch preserves parent NetworkFetchError reasons passed through options.signal
+  ---
+  duration_ms: 0.197875
+  type: 'test'
+  ...
+# (node:30039) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# [session-title] generation skipped (invalid_json): Unexpected token 'Q', "QA" is not valid JSON
+# Subtest: local gateway writes a complete shadow bundle linked to the final request
+ok 162 - local gateway writes a complete shadow bundle linked to the final request
+  ---
+  duration_ms: 608.020292
+  type: 'test'
+  ...
+# [session-title] generation skipped (invalid_json): Unexpected token 'Q', "QA" is not valid JSON
+# [session-title] generation skipped (invalid_json): Unexpected token 'Q', "QA" is not valid JSON
+# Subtest: enabling O1 does not change Agent-visible model input
+ok 163 - enabling O1 does not change Agent-visible model input
+  ---
+  duration_ms: 309.516541
+  type: 'test'
+  ...
+# Subtest: subagent tool detection and result pair at the model projection layer
+ok 164 - subagent tool detection and result pair at the model projection layer
+  ---
+  duration_ms: 5.63475
+  type: 'test'
+  ...
+# Subtest: main tool detection and result produce one exact O1 pair
+ok 165 - main tool detection and result produce one exact O1 pair
+  ---
+  duration_ms: 0.5825
+  type: 'test'
+  ...
+# Subtest: repair feedback grace is observable without becoming progress
+ok 166 - repair feedback grace is observable without becoming progress
+  ---
+  duration_ms: 0.069958
+  type: 'test'
+  ...
+# Subtest: recorder finalizes a complete hash-only trajectory
+ok 167 - recorder finalizes a complete hash-only trajectory
+  ---
+  duration_ms: 8.84
+  type: 'test'
+  ...
+# Subtest: queue overflow is explicit and makes integrity partial
+ok 168 - queue overflow is explicit and makes integrity partial
+  ---
+  duration_ms: 5.49775
+  type: 'test'
+  ...
+# Subtest: verifier rejects reused model request identity and duplicate terminals
+ok 169 - verifier rejects reused model request identity and duplicate terminals
+  ---
+  duration_ms: 3.28325
+  type: 'test'
+  ...
+# Subtest: verifier rejects duplicate identity and secret-bearing keys
+ok 170 - verifier rejects duplicate identity and secret-bearing keys
+  ---
+  duration_ms: 0.247917
+  type: 'test'
+  ...
+# [PilotDeck] transientRetry: rate_limit (attempt 1/1, delay=1ms)
+# Subtest: router observation closes every fallback and retry attempt
+ok 171 - router observation closes every fallback and retry attempt
+  ---
+  duration_ms: 24.071458
+  type: 'test'
+  ...
+# Subtest: router request identity separates sessions sharing a turn id
+ok 172 - router request identity separates sessions sharing a turn id
+  ---
+  duration_ms: 4.397708
+  type: 'test'
+  ...
+# Subtest: router request identity advances across sequential calls in one turn
+ok 173 - router request identity advances across sequential calls in one turn
+  ---
+  duration_ms: 4.696041
+  type: 'test'
+  ...
+# Subtest: observability is disabled by default and preserves the O1 diagnostic profile
+ok 174 - observability is disabled by default and preserves the O1 diagnostic profile
+  ---
+  duration_ms: 24.579166
+  type: 'test'
+  ...
+# Subtest: O1 rejects unsupported profiles and unsafe labels
+ok 175 - O1 rejects unsupported profiles and unsafe labels
+  ---
+  duration_ms: 13.155167
+  type: 'test'
+  ...
+# Subtest: web search can be explicitly disabled without discarding provider config
+ok 176 - web search can be explicitly disabled without discarding provider config
+  ---
+  duration_ms: 2.011416
+  type: 'test'
+  ...
+# Subtest: web search enabled remains optional for backwards compatibility
+ok 177 - web search enabled remains optional for backwards compatibility
+  ---
+  duration_ms: 0.109333
+  type: 'test'
+  ...
+# Subtest: web search enabled must be a boolean
+ok 178 - web search enabled must be a boolean
+  ---
+  duration_ms: 0.110625
+  type: 'test'
+  ...
+# Subtest: progress lease is disabled by default and opt-in evaluation config is preserved
+ok 179 - progress lease is disabled by default and opt-in evaluation config is preserved
+  ---
+  duration_ms: 23.322625
+  type: 'test'
+  ...
+# Subtest: progress lease preserves an explicit cold-start allowance
+ok 180 - progress lease preserves an explicit cold-start allowance
+  ---
+  duration_ms: 2.847292
+  type: 'test'
+  ...
+# Subtest: progress lease rejects non-evaluation modes
+ok 181 - progress lease rejects non-evaluation modes
+  ---
+  duration_ms: 2.542917
+  type: 'test'
+  ...
+# Subtest: progress lease rejects a cold-start allowance below the steady-state limit
+ok 182 - progress lease rejects a cold-start allowance below the steady-state limit
+  ---
+  duration_ms: 2.498625
+  type: 'test'
+  ...
+# Subtest: legal coverage validator creates a current proof and removes it when the deliverable changes
+ok 183 - legal coverage validator creates a current proof and removes it when the deliverable changes
+  ---
+  duration_ms: 289.419583
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer creates a text skeleton before source review and remains idempotent
+ok 184 - legal coverage initializer creates a text skeleton before source review and remains idempotent
+  ---
+  duration_ms: 321.775209
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer binds trusted manifests to original inputs
+ok 185 - legal coverage initializer binds trusted manifests to original inputs
+  ---
+  duration_ms: 344.5915
+  type: 'test'
+  ...
+# Subtest: legal coverage source bootstrap creates only deterministic pending manifest rows
+ok 186 - legal coverage source bootstrap creates only deterministic pending manifest rows
+  ---
+  duration_ms: 337.260208
+  type: 'test'
+  ...
+# Subtest: legal coverage injects deterministic disjoint worker batches for large pending source rooms
+ok 187 - legal coverage injects deterministic disjoint worker batches for large pending source rooms
+  ---
+  duration_ms: 1354.772834
+  type: 'test'
+  ...
+# Subtest: legal coverage CLI exposes bundled guidance through stable named references
+ok 188 - legal coverage CLI exposes bundled guidance through stable named references
+  ---
+  duration_ms: 136.502917
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer creates only explicit text formats and preserves existing content
+ok 189 - legal coverage initializer creates only explicit text formats and preserves existing content
+  ---
+  duration_ms: 53.516042
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer rejects traversal and symlink ancestors without external writes
+ok 190 - legal coverage initializer rejects traversal and symlink ancestors without external writes
+  ---
+  duration_ms: 145.820458
+  type: 'test'
+  ...
+# Subtest: legal coverage validator binds runner originals and derivations into its proof
+ok 191 - legal coverage validator binds runner originals and derivations into its proof
+  ---
+  duration_ms: 225.564375
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects missing lineage and mutable or derived input roots
+ok 192 - legal coverage validator rejects missing lineage and mutable or derived input roots
+  ---
+  duration_ms: 281.055708
+  type: 'test'
+  ...
+# Subtest: legal coverage next-batch exposes one bounded deterministic repair slice
+ok 193 - legal coverage next-batch exposes one bounded deterministic repair slice
+  ---
+  duration_ms: 212.442792
+  type: 'test'
+  ...
+# Subtest: legal coverage apply-batch atomically updates only the current bounded slice
+ok 194 - legal coverage apply-batch atomically updates only the current bounded slice
+  ---
+  duration_ms: 318.026041
+  type: 'test'
+  ...
+# Subtest: legal coverage apply-batch rejects record and byte limit violations before writing
+ok 195 - legal coverage apply-batch rejects record and byte limit violations before writing
+  ---
+  duration_ms: 200.62925
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects orphaned conflicts and incomplete final disclosure
+ok 196 - legal coverage validator rejects orphaned conflicts and incomplete final disclosure
+  ---
+  duration_ms: 101.080542
+  type: 'test'
+  ...
+# Subtest: legal coverage validator detects un-inventoried sources and cross-fact timeline collisions
+ok 197 - legal coverage validator detects un-inventoried sources and cross-fact timeline collisions
+  ---
+  duration_ms: 107.488458
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects reused generic quotes and unsupported fact coverage
+ok 198 - legal coverage validator rejects reused generic quotes and unsupported fact coverage
+  ---
+  duration_ms: 102.65675
+  type: 'test'
+  ...
+# Subtest: legal coverage validator requires authority links for critical issues and legal-authority matrices
+ok 199 - legal coverage validator requires authority links for critical issues and legal-authority matrices
+  ---
+  duration_ms: 102.472958
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects non-object canonical JSON documents
+ok 200 - legal coverage validator rejects non-object canonical JSON documents
+  ---
+  duration_ms: 705.291916
+  type: 'test'
+  ...
+# Subtest: legal coverage validator binds reviewed source bytes to the ledger and state hash
+ok 201 - legal coverage validator binds reviewed source bytes to the ledger and state hash
+  ---
+  duration_ms: 202.381084
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects ancestor symlinks and a symlinked proof
+ok 202 - legal coverage validator rejects ancestor symlinks and a symlinked proof
+  ---
+  duration_ms: 151.133625
+  type: 'test'
+  ...
+# Subtest: legal coverage validator does not read or write through a symlinked state ancestor
+ok 203 - legal coverage validator does not read or write through a symlinked state ancestor
+  ---
+  duration_ms: 96.590958
+  type: 'test'
+  ...
+# Subtest: legal coverage validator requires unresolved disclosure for unverified material facts
+ok 204 - legal coverage validator requires unresolved disclosure for unverified material facts
+  ---
+  duration_ms: 100.883083
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects unique but irrelevant issue and authority quotes
+ok 205 - legal coverage validator rejects unique but irrelevant issue and authority quotes
+  ---
+  duration_ms: 101.861541
+  type: 'test'
+  ...
+# Subtest: legal coverage validator enforces reciprocal and same-entry ledger relationships
+ok 206 - legal coverage validator enforces reciprocal and same-entry ledger relationships
+  ---
+  duration_ms: 101.91025
+  type: 'test'
+  ...
+# Subtest: legal coverage validator accepts null for an optional threshold assessment
+ok 207 - legal coverage validator accepts null for an optional threshold assessment
+  ---
+  duration_ms: 101.142417
+  type: 'test'
+  ...
+# Subtest: legal coverage validator uses locators without quotes for binary deliverables
+ok 208 - legal coverage validator uses locators without quotes for binary deliverables
+  ---
+  duration_ms: 100.496125
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects empty-fact shortcuts and material facts outside matrices
+ok 209 - legal coverage validator rejects empty-fact shortcuts and material facts outside matrices
+  ---
+  duration_ms: 201.267542
+  type: 'test'
+  ...
+# Subtest: legal coverage hook activates only legal work and injects one observable milestone
+ok 210 - legal coverage hook activates only legal work and injects one observable milestone
+  ---
+  duration_ms: 535.200375
+  type: 'test'
+  ...
+# Subtest: legal coverage hook groups repeated validator errors into one bounded milestone
+ok 211 - legal coverage hook groups repeated validator errors into one bounded milestone
+  ---
+  duration_ms: 534.767459
+  type: 'test'
+  ...
+# Subtest: legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress
+ok 212 - legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress
+  ---
+  duration_ms: 825.603208
+  type: 'test'
+  ...
+# Subtest: legal coverage progress ordinal advances once for a new legal phase
+ok 213 - legal coverage progress ordinal advances once for a new legal phase
+  ---
+  duration_ms: 207.883917
+  type: 'test'
+  ...
+# Subtest: legal coverage permits not-applicable only after exhaustive selection and rejects stale or changed matrix proposals
+ok 214 - legal coverage permits not-applicable only after exhaustive selection and rejects stale or changed matrix proposals
+  ---
+  duration_ms: 472.6295
+  type: 'test'
+  ...
+# Subtest: legal coverage rejects oversized matrix evidence before making a selection receipt immutable
+ok 215 - legal coverage rejects oversized matrix evidence before making a selection receipt immutable
+  ---
+  duration_ms: 157.6395
+  type: 'test'
+  ...
+# Subtest: legal coverage fails closed when one matrix index item exceeds the bounded page
+ok 216 - legal coverage fails closed when one matrix index item exceeds the bounded page
+  ---
+  duration_ms: 155.959125
+  type: 'test'
+  ...
+# Subtest: legal coverage injects a bounded deterministic matrix relation-closure batch
+ok 217 - legal coverage injects a bounded deterministic matrix relation-closure batch
+  ---
+  duration_ms: 212.026708
+  type: 'test'
+  ...
+# Subtest: legal coverage milestone digest ignores opaque incomplete-state hash churn
+ok 218 - legal coverage milestone digest ignores opaque incomplete-state hash churn
+  ---
+  duration_ms: 2.152042
+  type: 'test'
+  ...
+# Subtest: legal coverage hook activates a malformed configured workspace so the agent can repair it
+ok 219 - legal coverage hook activates a malformed configured workspace so the agent can repair it
+  ---
+  duration_ms: 101.003125
+  type: 'test'
+  ...
+# Subtest: legal coverage hook rejects a symlinked session-state ancestor without writing outside the workspace
+ok 220 - legal coverage hook rejects a symlinked session-state ancestor without writing outside the workspace
+  ---
+  duration_ms: 50.328458
+  type: 'test'
+  ...
+# Subtest: legal product plugin loads one skill and contains no benchmark-specific controls
+ok 221 - legal product plugin loads one skill and contains no benchmark-specific controls
+  ---
+  duration_ms: 2.882583
+  type: 'test'
+  ...
+# Subtest: file artifacts include every meaningful workspace change without an extension allowlist
+ok 222 - file artifacts include every meaningful workspace change without an extension allowlist
+  ---
+  duration_ms: 35.398583
+  type: 'test'
+  ...
+# Subtest: file artifact fingerprints are reused for unchanged files across scans and turns
+ok 223 - file artifact fingerprints are reused for unchanged files across scans and turns
+  ---
+  duration_ms: 8.352917
+  type: 'test'
+  ...
+# Subtest: TurnRunner emits and persists file artifacts before completing the turn
+ok 224 - TurnRunner emits and persists file artifacts before completing the turn
+  ---
+  duration_ms: 32.846708
+  type: 'test'
+  ...
+# Subtest: TurnRunner does not collect generated files when artifacts are disabled
+ok 225 - TurnRunner does not collect generated files when artifacts are disabled
+  ---
+  duration_ms: 2.090625
+  type: 'test'
+  ...
+# Subtest: bash success result is formatted with assertions, stdout, and stderr
+ok 226 - bash success result is formatted with assertions, stdout, and stderr
+  ---
+  duration_ms: 4.415625
+  type: 'test'
+  ...
+# Subtest: bash allows hyphenated commands whose names merely start with next
+ok 227 - bash allows hyphenated commands whose names merely start with next
+  ---
+  duration_ms: 2.660916
+  type: 'test'
+  ...
+# Subtest: bash still rejects exact framework CLI tokens that start long-lived processes
+ok 228 - bash still rejects exact framework CLI tokens that start long-lived processes
+  ---
+  duration_ms: 2.041458
+  type: 'test'
+  ...
+# Subtest: bash failure tool result includes raw stdout and stderr tail for UI and model
+ok 229 - bash failure tool result includes raw stdout and stderr tail for UI and model
+  ---
+  duration_ms: 15.371167
+  type: 'test'
+  ...
+# Subtest: bash failure diagnostic extracts Python traceback location and exception
+ok 230 - bash failure diagnostic extracts Python traceback location and exception
+  ---
+  duration_ms: 1.136709
+  type: 'test'
+  ...
+# Subtest: bash success keeps full output for ToolResultBudget persistence
+ok 231 - bash success keeps full output for ToolResultBudget persistence
+  ---
+  duration_ms: 6.827042
+  type: 'test'
+  ...
+# Subtest: agent tool accepts explorer as an alias for explore
+ok 232 - agent tool accepts explorer as an alias for explore
+  ---
+  duration_ms: 1.218333
+  type: 'test'
+  ...
+# Subtest: agent tool defaults general-purpose to explore in ask mode
+ok 233 - agent tool defaults general-purpose to explore in ask mode
+  ---
+  duration_ms: 0.079583
+  type: 'test'
+  ...
+# Subtest: agent tool preserves unknown custom fallback subagent names
+ok 234 - agent tool preserves unknown custom fallback subagent names
+  ---
+  duration_ms: 0.186792
+  type: 'test'
+  ...
+# Subtest: execute_code read-only probe handles missing input
+ok 235 - execute_code read-only probe handles missing input
+  ---
+  duration_ms: 0.541667
+  type: 'test'
+  ...
+# Subtest: disabling web search removes it from the registry but keeps web fetch
+ok 236 - disabling web search removes it from the registry but keeps web fetch
+  ---
+  duration_ms: 1.089542
+  type: 'test'
+  ...
+# Subtest: execute_code rejects nested web search calls when web search is disabled
+ok 237 - execute_code rejects nested web search calls when web search is disabled
+  ---
+  duration_ms: 0.120458
+  type: 'test'
+  ...
+# Subtest: read_skill returns the resolved SKILL.md path with the skill body
+ok 238 - read_skill returns the resolved SKILL.md path with the skill body
+  ---
+  duration_ms: 0.589666
+  type: 'test'
+  ...
+# Subtest: read_skill preserves legacy content-only loading when metadata is unavailable
+ok 239 - read_skill preserves legacy content-only loading when metadata is unavailable
+  ---
+  duration_ms: 0.063
+  type: 'test'
+  ...
+# Subtest: web_search retries transient provider failures
+ok 240 - web_search retries transient provider failures
+  ---
+  duration_ms: 596.183583
+  type: 'test'
+  ...
+# Subtest: web_search turns request timeout into tool_timeout
+ok 241 - web_search turns request timeout into tool_timeout
+  ---
+  duration_ms: 2.155625
+  type: 'test'
+  ...
+# Subtest: web_search turns network timeout errors into tool_timeout
+ok 242 - web_search turns network timeout errors into tool_timeout
+  ---
+  duration_ms: 0.830541
+  type: 'test'
+  ...
+# Subtest: write_file freshness error tells the model to read the file first
+ok 243 - write_file freshness error tells the model to read the file first
+  ---
+  duration_ms: 0.953333
+  type: 'test'
+  ...
+# Subtest: write_file missing content points at the missing field and chunked recovery
+ok 244 - write_file missing content points at the missing field and chunked recovery
+  ---
+  duration_ms: 0.246
+  type: 'test'
+  ...
+# Subtest: invalid tool input keeps a bounded original error block
+ok 245 - invalid tool input keeps a bounded original error block
+  ---
+  duration_ms: 0.201042
+  type: 'test'
+  ...
+# Subtest: edit_file old_string miss tells the model to reread and copy exact text
+ok 246 - edit_file old_string miss tells the model to reread and copy exact text
+  ---
+  duration_ms: 0.062083
+  type: 'test'
+  ...
+# Subtest: read_file invalid range preserves the concrete issue
+ok 247 - read_file invalid range preserves the concrete issue
+  ---
+  duration_ms: 0.108334
+  type: 'test'
+  ...
+# Subtest: bash missing command reports the required command parameter
+ok 248 - bash missing command reports the required command parameter
+  ---
+  duration_ms: 0.0955
+  type: 'test'
+  ...
+# Subtest: bash timeout over max keeps foreground and task_wait guidance
+ok 249 - bash timeout over max keeps foreground and task_wait guidance
+  ---
+  duration_ms: 0.128625
+  type: 'test'
+  ...
+# Subtest: bash background rejection keeps background-specific guidance
+ok 250 - bash background rejection keeps background-specific guidance
+  ---
+  duration_ms: 0.075666
+  type: 'test'
+  ...
+# Subtest: write_file can create a new file without a prior read_file call
+ok 251 - write_file can create a new file without a prior read_file call
+  ---
+  duration_ms: 5.888583
+  type: 'test'
+  ...
+# Subtest: edit_file can create a new file with empty old_string without a prior read_file call
+ok 252 - edit_file can create a new file with empty old_string without a prior read_file call
+  ---
+  duration_ms: 2.556667
+  type: 'test'
+  ...
+# Subtest: read_file auto-pages large text files instead of failing
+ok 253 - read_file auto-pages large text files instead of failing
+  ---
+  duration_ms: 2078.941041
+  type: 'test'
+  ...
+# Subtest: read_file rejects Office container files during validation
+ok 254 - read_file rejects Office container files during validation
+  ---
+  duration_ms: 0.944042
+  type: 'test'
+  ...
+# Subtest: read_file explicit limit reads a large file range without auto paging
+ok 255 - read_file explicit limit reads a large file range without auto paging
+  ---
+  duration_ms: 5.035833
+  type: 'test'
+  ...
+# Subtest: read_file auto-shrinks oversized persisted tool-result ref ranges
+ok 256 - read_file auto-shrinks oversized persisted tool-result ref ranges
+  ---
+  duration_ms: 22734.693334
+  type: 'test'
+  ...
+# Subtest: read_file keeps explicit oversized ordinary file ranges strict
+ok 257 - read_file keeps explicit oversized ordinary file ranges strict
+  ---
+  duration_ms: 2.238
+  type: 'test'
+  ...
+# Subtest: read_file explicit limit records a ranged snapshot for follow-up edits
+ok 258 - read_file explicit limit records a ranged snapshot for follow-up edits
+  ---
+  duration_ms: 1.485708
+  type: 'test'
+  ...
+# Subtest: read_file auto-paged large files record a ranged snapshot for follow-up edits
+ok 259 - read_file auto-paged large files record a ranged snapshot for follow-up edits
+  ---
+  duration_ms: 1609.044875
+  type: 'test'
+  ...
+# Subtest: read_file returns a head-tail preview for a single oversized line
+ok 260 - read_file returns a head-tail preview for a single oversized line
+  ---
+  duration_ms: 2.774625
+  type: 'test'
+  ...
+# Subtest: read_file classifies common Office formats as binary
+ok 261 - read_file classifies common Office formats as binary
+  ---
+  duration_ms: 0.198083
+  type: 'test'
+  ...
+# Subtest: read_file rejects ranged binary input instead of hanging
+ok 262 - read_file rejects ranged binary input instead of hanging
+  ---
+  duration_ms: 0.854666
+  type: 'test'
+  ...
+# Subtest: read_file range honors an aborted signal
+ok 263 - read_file range honors an aborted signal
+  ---
+  duration_ms: 0.562042
+  type: 'test'
+  ...
+# Subtest: glob result text tells the model when more files are available
+ok 264 - glob result text tells the model when more files are available
+  ---
+  duration_ms: 303.583084
+  type: 'test'
+  ...
+# Subtest: grep result text includes next offset when paginated
+ok 265 - grep result text includes next offset when paginated
+  ---
+  duration_ms: 11.996125
+  type: 'test'
+  ...
+# Subtest: todo_write returns the actual todo list in model-visible content
+ok 266 - todo_write returns the actual todo list in model-visible content
+  ---
+  duration_ms: 0.654625
+  type: 'test'
+  ...
+# Subtest: task_list returns model-visible status and next action hints
+ok 267 - task_list returns model-visible status and next action hints
+  ---
+  duration_ms: 0.674625
+  type: 'test'
+  ...
+# Subtest: applyResultSizeLimit keeps both head and tail when truncating text output
+ok 268 - applyResultSizeLimit keeps both head and tail when truncating text output
+  ---
+  duration_ms: 0.681
+  type: 'test'
+  ...
+# Subtest: large tool results are persisted under workspace .pilotdeck and readable by read_file
+ok 269 - large tool results are persisted under workspace .pilotdeck and readable by read_file
+  ---
+  duration_ms: 12.716375
+  type: 'test'
+  ...
+# Subtest: large tool result read_file aliases are short and sequential
+ok 270 - large tool result read_file aliases are short and sequential
+  ---
+  duration_ms: 4.608916
+  type: 'test'
+  ...
+# Subtest: history replay restores structured agent file artifacts
+ok 271 - history replay restores structured agent file artifacts
+  ---
+  duration_ms: 14.327083
+  type: 'test'
+  ...
+# Subtest: history replay hides Agent file artifacts in general conversations
+ok 272 - history replay hides Agent file artifacts in general conversations
+  ---
+  duration_ms: 7.040542
+  type: 'test'
+  ...
+# Subtest: history replay preserves agent status i18n metadata and user hint
+ok 273 - history replay preserves agent status i18n metadata and user hint
+  ---
+  duration_ms: 10.698916
+  type: 'test'
+  ...
+# Subtest: history token usage restores latest non-empty turn past latest empty turn result
+ok 274 - history token usage restores latest non-empty turn past latest empty turn result
+  ---
+  duration_ms: 4.45075
+  type: 'test'
+  ...
+# Subtest: history token usage prefers persisted context budget snapshot
+ok 275 - history token usage prefers persisted context budget snapshot
+  ---
+  duration_ms: 3.905792
+  type: 'test'
+  ...
+# Subtest: web reducer merges persisted tool result detail path into existing tool result
+ok 276 - web reducer merges persisted tool result detail path into existing tool result
+  ---
+  duration_ms: 2.060916
+  type: 'test'
+  ...
+# Subtest: web reducer bounds huge live tool result previews
+ok 277 - web reducer bounds huge live tool result previews
+  ---
+  duration_ms: 0.414875
+  type: 'test'
+  ...
+1..277
+# tests 277
+# suites 0
+# pass 277
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28459.222375

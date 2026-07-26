@@ -16,6 +16,8 @@ export type ConvergenceReport = {
   remainingCount: number;
   /** Domain-issued monotonic witness. Core only compares the ordinal. */
   progressOrdinal?: number;
+  /** Domain-issued stable repair-feedback revision. Never counts as progress. */
+  repairOrdinal?: number;
   nextBatch?: unknown;
   writeBudget?: unknown;
 };
@@ -33,8 +35,9 @@ export type ProgressLeaseObservation = {
   blockingCode?: string;
   remainingCount: number;
   progressOrdinal?: number;
+  repairOrdinal?: number;
   stagnantObservations: number;
-  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "fail_closed";
+  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "fail_closed";
   forceBoundaryNext: boolean;
   reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
 };
@@ -43,6 +46,7 @@ type ScopeState = {
   stateHash: string;
   remainingCount: number;
   progressOrdinal?: number;
+  repairOrdinal?: number;
   stagnantObservations: number;
   awaitingPostBoundaryProgress: boolean;
   hasProgressed: boolean;
@@ -83,6 +87,7 @@ export class ProgressLease {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
         progressOrdinal: report.progressOrdinal,
+        repairOrdinal: report.repairOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         hasProgressed: false,
@@ -95,10 +100,12 @@ export class ProgressLease {
         && (existing.progressOrdinal === undefined || report.progressOrdinal > existing.progressOrdinal));
     if (progressed) {
       const progressOrdinal = maxDefined(existing.progressOrdinal, report.progressOrdinal);
+      const repairOrdinal = maxDefined(existing.repairOrdinal, report.repairOrdinal);
       this.scopes.set(report.scope, {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
         progressOrdinal,
+        repairOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         hasProgressed: true,
@@ -107,13 +114,24 @@ export class ProgressLease {
     }
 
     const stagnantObservations = existing.stagnantObservations + 1;
+    const repairAdvanced = report.repairOrdinal !== undefined
+      && (existing.repairOrdinal === undefined || report.repairOrdinal > existing.repairOrdinal);
     if (existing.awaitingPostBoundaryProgress) {
+      if (repairAdvanced) {
+        this.scopes.set(report.scope, {
+          ...existing,
+          repairOrdinal: report.repairOrdinal,
+          stagnantObservations,
+        });
+        return observation(report, stagnantObservations, "feedback_grace", false);
+      }
       return observation(report, stagnantObservations, "fail_closed", false, "post_boundary_stagnation");
     }
 
     if (boundary.applied) {
       this.scopes.set(report.scope, {
         ...existing,
+        repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
         stagnantObservations,
         awaitingPostBoundaryProgress: true,
       });
@@ -127,6 +145,7 @@ export class ProgressLease {
 
     this.scopes.set(report.scope, {
       ...existing,
+      repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
       stagnantObservations,
     });
     return observation(
@@ -151,6 +170,9 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
   if (value.progressOrdinal !== undefined
     && (!Number.isSafeInteger(value.progressOrdinal) || (value.progressOrdinal as number) < 0)
   ) return undefined;
+  if (value.repairOrdinal !== undefined
+    && (!Number.isSafeInteger(value.repairOrdinal) || (value.repairOrdinal as number) < 0)
+  ) return undefined;
   if (value.blockingCode !== undefined && !boundedString(value.blockingCode, 256)) return undefined;
   return {
     schemaVersion: 1,
@@ -160,6 +182,7 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
     ...(value.blockingCode !== undefined ? { blockingCode: value.blockingCode } : {}),
     remainingCount: value.remainingCount,
     ...(value.progressOrdinal !== undefined ? { progressOrdinal: value.progressOrdinal } : {}),
+    ...(value.repairOrdinal !== undefined ? { repairOrdinal: value.repairOrdinal } : {}),
     ...(value.nextBatch !== undefined ? { nextBatch: value.nextBatch } : {}),
     ...(value.writeBudget !== undefined ? { writeBudget: value.writeBudget } : {}),
   } as ConvergenceReport;
@@ -178,6 +201,7 @@ function observation(
     blockingCode: report.blockingCode,
     remainingCount: report.remainingCount,
     ...(report.progressOrdinal !== undefined ? { progressOrdinal: report.progressOrdinal } : {}),
+    ...(report.repairOrdinal !== undefined ? { repairOrdinal: report.repairOrdinal } : {}),
     stagnantObservations,
     decision,
     forceBoundaryNext,

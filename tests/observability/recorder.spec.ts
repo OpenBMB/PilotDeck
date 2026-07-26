@@ -111,6 +111,45 @@ test("main tool detection and result produce one exact O1 pair", () => {
   assert.equal(JSON.stringify(drafts).includes("private tool output"), false);
 });
 
+test("repair feedback grace is observable without becoming progress", () => {
+  const drafts: ObservationEventDraft[] = [];
+  const recorder = {
+    emit: (draft: ObservationEventDraft) => {
+      drafts.push(draft);
+      return undefined;
+    },
+  } as unknown as ObservationRecorder;
+
+  observeAgentEvent(recorder, {
+    type: "progress_lease_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scope: "legal-coverage",
+    phase: "sources",
+    blockingCode: "source_pending",
+    remainingCount: 33,
+    progressOrdinal: 1,
+    repairOrdinal: 1,
+    stagnantObservations: 3,
+    decision: "feedback_grace",
+    forceBoundaryNext: false,
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0]?.type, "harness.decision");
+  assert.equal(drafts[0]?.payload?.policyVersion, "progress-lease/v3");
+  assert.equal(drafts[0]?.payload?.decision, "feedback_grace");
+  assert.deepEqual(drafts[0]?.payload?.observed, {
+    scope: "legal-coverage",
+    phase: "sources",
+    blockingCode: "source_pending",
+    remainingCount: 33,
+    progressOrdinal: 1,
+    repairOrdinal: 1,
+    stagnantObservations: 3,
+  });
+});
+
 test("recorder finalizes a complete hash-only trajectory", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-observation-recorder-"));
   try {

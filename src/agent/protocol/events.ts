@@ -59,8 +59,9 @@ export type AgentEvent =
       blockingCode?: string;
       remainingCount: number;
       progressOrdinal?: number;
+      repairOrdinal?: number;
       stagnantObservations: number;
-      decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "fail_closed";
+      decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "fail_closed";
       forceBoundaryNext: boolean;
       reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
     }
