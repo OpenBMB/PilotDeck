@@ -63,6 +63,7 @@ const SOURCE_MERGE_READINESS_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
 const SOURCE_MERGE_MAX_FACTS = 32;
 const SOURCE_MERGE_MAX_VALIDATION_DIAGNOSTICS = SOURCE_MERGE_MAX_FACTS + SOURCE_REVIEW_MERGE_MAX_SOURCES;
+const SOURCE_MERGE_REPAIR_SLICE_MAX_BYTES = 196608;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 const MATRIX_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/matrix-transactions`;
 const MATRIX_SELECTION_PATTERN = /^matrix-selection-[a-f0-9]{12}\.json$/u;
@@ -203,6 +204,9 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
         validationError: proposalReceipt.error,
         ...(proposalReceipt.validationDiagnostics
           ? { validationDiagnostics: proposalReceipt.validationDiagnostics }
+          : {}),
+        ...(proposalReceipt.repairSlice
+          ? { repairSlice: proposalReceipt.repairSlice }
           : {}),
       },
     };
@@ -720,12 +724,15 @@ async function validSourceMergeReadinessReceipt(workspaceRoot, plan) {
 }
 
 async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, state) {
+  let bytes;
+  let patch;
+  let receipt;
   try {
     const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, plan.proposal.path);
-    const bytes = await readFile(proposalPath);
+    bytes = await readFile(proposalPath);
     if (bytes.byteLength > plan.proposal.limits.maxSerializedBytes) return undefined;
-    const patch = JSON.parse(bytes.toString("utf8"));
-    const receipt = receipts.find((candidate) => candidate.fragmentPath === plan.proposal.fragmentPath
+    patch = JSON.parse(bytes.toString("utf8"));
+    receipt = receipts.find((candidate) => candidate.fragmentPath === plan.proposal.fragmentPath
       && candidate.receiptSha256 === plan.proposal.receiptSha256);
     if (!receipt) return undefined;
     const normalized = validateSourceMergeProposal(
@@ -751,22 +758,84 @@ async function validSourceMergeProposalReceipt(workspaceRoot, plan, receipts, st
     const diagnosticCount = Number.isSafeInteger(error?.diagnosticCount)
       ? error.diagnosticCount
       : diagnostics.length;
+    const validationDiagnostics = diagnostics.length > 0 ? {
+      total: diagnosticCount,
+      returned: diagnostics.length,
+      hasMore: diagnosticCount > diagnostics.length,
+      items: diagnostics,
+    } : undefined;
+    const repairSlice = validationDiagnostics && bytes && patch !== undefined && receipt
+      ? sourceMergeRepairSliceFor(patch, bytes, plan, receipt, validationDiagnostics)
+      : undefined;
     return {
       valid: false,
       error: {
         code: typeof error?.code === "string" ? error.code : "source_merge_proposal_invalid",
         message: errorMessage(error),
       },
-      ...(diagnostics.length > 0 ? {
-        validationDiagnostics: {
-          total: diagnosticCount,
-          returned: diagnostics.length,
-          hasMore: diagnosticCount > diagnostics.length,
-          items: diagnostics,
-        },
-      } : {}),
+      ...(validationDiagnostics ? { validationDiagnostics } : {}),
+      ...(repairSlice ? { repairSlice } : {}),
     };
   }
+}
+
+function sourceMergeRepairSliceFor(patch, bytes, plan, receipt, validationDiagnostics) {
+  const facts = Array.isArray(patch?.facts) ? patch.facts : [];
+  const factNumbers = [...new Set(validationDiagnostics.items
+    .map((diagnostic) => diagnostic.factNumber)
+    .filter((factNumber) => Number.isSafeInteger(factNumber)
+      && factNumber >= 1
+      && factNumber <= facts.length))]
+    .sort((left, right) => left - right);
+  const rejectedFacts = factNumbers.map((factNumber) => ({
+    factNumber,
+    diagnosticCodes: [...new Set(validationDiagnostics.items
+      .filter((diagnostic) => diagnostic.factNumber === factNumber)
+      .map((diagnostic) => diagnostic.code))],
+    fact: facts[factNumber - 1],
+  }));
+  const referencedSourceIds = new Set(rejectedFacts.flatMap(({ fact }) => (
+    isRecord(fact) && Array.isArray(fact.sourceRefs)
+      ? fact.sourceRefs
+        .filter((reference) => isRecord(reference) && nonEmpty(reference.sourceId))
+        .map((reference) => reference.sourceId)
+      : []
+  )));
+  const sourceContext = plan.proposal.sourceIds
+    .filter((sourceId) => referencedSourceIds.has(sourceId))
+    .flatMap((sourceId) => {
+      const row = receipt.sourceRows.find((candidate) => candidate.sourceId === sourceId);
+      if (!row) return [];
+      return [{
+        sourceId,
+        allowedFragmentFacts: (Array.isArray(row.facts) ? row.facts : [])
+          .filter((fact) => isRecord(fact) && nonEmpty(fact.locator) && nonEmpty(fact.statement))
+          .map((fact) => ({ locator: fact.locator, statement: fact.statement }))
+          .sort((left, right) => left.locator.localeCompare(right.locator)
+            || left.statement.localeCompare(right.statement)),
+        conflicts: [...new Set(stringArray(row.conflicts))].sort(),
+        unresolvedItems: [...new Set(stringArray(row.unresolvedItems))].sort(),
+      }];
+    });
+  const repairSlice = {
+    schemaVersion: 1,
+    proposal: {
+      path: plan.proposal.path,
+      sha256: sha256(bytes),
+      byteCount: bytes.byteLength,
+      maxSerializedBytes: plan.proposal.limits.maxSerializedBytes,
+    },
+    currentProposal: patch,
+    diagnostics: validationDiagnostics,
+    rejectedFacts,
+    sourceContext,
+    limits: {
+      maxSerializedBytes: SOURCE_MERGE_REPAIR_SLICE_MAX_BYTES,
+    },
+  };
+  return Buffer.byteLength(JSON.stringify(repairSlice)) <= SOURCE_MERGE_REPAIR_SLICE_MAX_BYTES
+    ? repairSlice
+    : undefined;
 }
 
 export async function applySourceMergeProposal(workspaceRoot, options = {}) {
@@ -1020,6 +1089,7 @@ function validateSourceMergeProposal(patch, plan, receipt, state, serializedByte
     } catch (error) {
       if (options.collectFactDiagnostics !== true) throw error;
       proposalDiagnostics.push({
+        factNumber: index + 1,
         code: typeof error?.code === "string" ? error.code : "source_merge_fact_invalid",
         message: errorMessage(error),
       });
@@ -1099,6 +1169,7 @@ function sourceMergeFactContractDiagnostics(fact, factNumber) {
       validate();
     } catch (error) {
       diagnostics.push({
+        factNumber,
         code: typeof error?.code === "string" ? error.code : "source_merge_fact_invalid",
         message: errorMessage(error),
       });
@@ -2366,6 +2437,7 @@ function convergenceWorkProjection(workItems) {
   const proposal = { ...workItems.proposal };
   delete proposal.validationError;
   delete proposal.validationDiagnostics;
+  delete proposal.repairSlice;
   // A first rejection must reach the model before the steady-state lease can
   // fail closed. Keep every rejected revision on one stable repair marker so
   // rewriting invalid proposals cannot manufacture unlimited progress.
@@ -2634,11 +2706,18 @@ function nextActionFor(
       const rejection = hasDiagnostics
         ? `${diagnosticCount} validation diagnostic${diagnosticCount === 1 ? "" : "s"}. Fix every entry in workItems.proposal.validationDiagnostics.items in one rewrite. `
         : `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `;
+      const repairInstruction = workItems.proposal.repairSlice
+        ? `Rewrite workItems.proposal.repairSlice.currentProposal as one complete JSON document to that same path; preserve every unrelated fact exactly. `
+          + `Use repairSlice.rejectedFacts and repairSlice.sourceContext instead of reconstructing the proposal through paginated reads. `
+          + `For an unsupported locator, replace it with an exact locator from allowedFragmentFacts only when that source statement supports the fact; otherwise remove a fact that merely restates conflict or unresolved metadata already preserved in the source context. `
+        : `Rewrite that proposal from injected workItems.preparedSlice and proposal.template. `;
       return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with ${rejection}`
-        + `Rewrite that proposal from injected workItems.preparedSlice and proposal.template. `
+        + repairInstruction
         + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present use the exact shape `
         + `{"operator":"gt","actual":120,"threshold":100,"unit":"currency units","breached":true}, with operator one of gt, gte, lt, lte, or eq; never use prose or alternate field names. `
-        + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources.`;
+        + (workItems.proposal.repairSlice
+          ? `Do not read the proposal, readiness checkpoint, fragment, canonical ledgers, or raw sources.`
+          : `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources.`);
     }
     const item = workItems.mergeItems?.[0];
     return `The bounded evidence handoff is prepared and state-bound. As the next tool call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `

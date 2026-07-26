@@ -1,0 +1,31 @@
+{
+  "replay": "passed",
+  "sourceRun": "20260727_011301_54e4b6be",
+  "diagnostic": {
+    "factNumber": 11,
+    "code": "source_merge_fact_locator_unverified"
+  },
+  "proposal": {
+    "lineCount": 349,
+    "byteCount": 13416,
+    "factCount": 16
+  },
+  "repairSlice": {
+    "rejectedFactCount": 1,
+    "sourceContextCount": 1,
+    "allowedLocatorCount": 7,
+    "conflictCount": 1,
+    "unresolvedItemCount": 1,
+    "serializedBytes": 13310,
+    "maxSerializedBytes": 196608
+  },
+  "counterfactualApply": {
+    "sourceCount": 4,
+    "factCount": 15,
+    "reviewedSourcesBefore": 16,
+    "reviewedSourcesAfter": 20,
+    "canonicalFactsBefore": 71,
+    "canonicalFactsAfter": 86
+  },
+  "originalCampaignWorkspaceUnchanged": true
+}

@@ -396,8 +396,12 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
           facts: [{ locator: "converted.txt:1", statement: `Reviewed ${sourceId}.` }],
           evidenceClass: "other",
           verificationState: "verified",
-          conflicts: [],
-          unresolvedItems: [],
+          conflicts: sourceId === batch.sourceIds[0]
+            ? ["Synthetic conflict is preserved on the source ledger."]
+            : [],
+          unresolvedItems: sourceId === batch.sourceIds[0]
+            ? ["Synthetic unresolved item is preserved on the source ledger."]
+            : [],
           proposedMateriality: "non-material",
         })),
       });
@@ -586,7 +590,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       })),
       noMaterialFacts: [],
     };
-    await writeJson(proposalPath, {
+    const invalidProposalBody = {
       ...proposalBase,
       facts: [
         { ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] },
@@ -601,12 +605,14 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
             breached: true,
           },
         },
+        proposalBase.facts[2]!,
       ],
-      noMaterialFacts: proposal.sourceIds.slice(2).map((sourceId) => ({
+      noMaterialFacts: proposal.sourceIds.slice(3).map((sourceId) => ({
         sourceId,
         reason: "Synthetic invalid-proposal fixture.",
       })),
-    });
+    };
+    await writeJson(proposalPath, invalidProposalBody);
     const invalidProposal = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "large-pending-source-plan",
@@ -627,7 +633,31 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
             total: number;
             returned: number;
             hasMore: boolean;
-            items: Array<{ code: string; message: string }>;
+            items: Array<{ factNumber?: number; code: string; message: string }>;
+          };
+          repairSlice: {
+            proposal: {
+              path: string;
+              sha256: string;
+              byteCount: number;
+              maxSerializedBytes: number;
+            };
+            currentProposal: typeof invalidProposalBody;
+            diagnostics: {
+              items: Array<{ factNumber?: number; code: string; message: string }>;
+            };
+            rejectedFacts: Array<{
+              factNumber: number;
+              diagnosticCodes: string[];
+              fact: unknown;
+            }>;
+            sourceContext: Array<{
+              sourceId: string;
+              allowedFragmentFacts: Array<{ locator: string; statement: string }>;
+              conflicts: string[];
+              unresolvedItems: string[];
+            }>;
+            limits: { maxSerializedBytes: number };
           };
         };
       };
@@ -643,13 +673,40 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
         "source_merge_threshold_invalid",
       ],
     );
+    assert.deepEqual(
+      invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items.map((item) => item.factNumber),
+      [1, 2, 2],
+    );
     assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
     assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
     assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[2]?.message ?? "", /Proposal fact 2 has an invalid thresholdAssessment/u);
     assert.match(invalidProposalEnvelope.nextAction, /Fix every entry in workItems\.proposal\.validationDiagnostics\.items in one rewrite/u);
     assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_locator_unverified/u);
     assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_time_invalid/u);
-    assert.match(invalidProposalContext, /Rewrite that proposal from injected workItems\.preparedSlice/u);
+    const repairSlice = invalidProposalEnvelope.workItems.proposal.repairSlice;
+    const invalidProposalBytes = await readFile(proposalPath);
+    assert.equal(repairSlice.proposal.path, proposal.path);
+    assert.equal(repairSlice.proposal.sha256, sha256(invalidProposalBytes));
+    assert.equal(repairSlice.proposal.byteCount, invalidProposalBytes.byteLength);
+    assert.equal(repairSlice.proposal.maxSerializedBytes, 24576);
+    assert.equal(repairSlice.proposal.byteCount <= repairSlice.proposal.maxSerializedBytes, true);
+    assert.deepEqual(repairSlice.currentProposal, invalidProposalBody);
+    assert.deepEqual(repairSlice.currentProposal.facts[2], proposalBase.facts[2]);
+    assert.deepEqual(repairSlice.diagnostics.items, invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items);
+    assert.deepEqual(repairSlice.rejectedFacts.map((item) => item.factNumber), [1, 2]);
+    assert.deepEqual(repairSlice.rejectedFacts[0]?.fact, invalidProposalBody.facts[0]);
+    assert.deepEqual(repairSlice.rejectedFacts[0]?.diagnosticCodes, ["source_merge_fact_locator_unverified"]);
+    const firstRepairSource = repairSlice.sourceContext.find((source) => source.sourceId === proposal.sourceIds[0]);
+    assert.deepEqual(firstRepairSource?.allowedFragmentFacts, [
+      { locator: "converted.txt:1", statement: `Reviewed ${proposal.sourceIds[0]}.` },
+    ]);
+    assert.deepEqual(firstRepairSource?.conflicts, ["Synthetic conflict is preserved on the source ledger."]);
+    assert.deepEqual(firstRepairSource?.unresolvedItems, ["Synthetic unresolved item is preserved on the source ledger."]);
+    assert.equal(Buffer.byteLength(JSON.stringify(repairSlice)) <= repairSlice.limits.maxSerializedBytes, true);
+    assert.match(invalidProposalContext, /Rewrite workItems\.proposal\.repairSlice\.currentProposal as one complete JSON document/u);
+    assert.match(invalidProposalContext, /preserve every unrelated fact exactly/u);
+    assert.match(invalidProposalContext, /instead of reconstructing the proposal through paginated reads/u);
+    assert.match(invalidProposalContext, /otherwise remove a fact that merely restates conflict or unresolved metadata/u);
     assert.match(invalidProposalContext, /"preparedSlice":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceMergeApplyCommand":/u);
@@ -668,7 +725,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(invalidProposalEnvelope.nextAction, /"operator":"gt","actual":120,"threshold":100/u);
     assert.match(invalidProposalEnvelope.nextAction, /never use prose or alternate field names/u);
 
-    const invalidProposalHash = sha256(await readFile(proposalPath));
+    const invalidProposalHash = sha256(invalidProposalBytes);
     const rejectedDirectApply = await runCli(
       workspace,
       "source-merge-apply",
@@ -761,6 +818,12 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     });
     assert.match(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_content_missing/u);
     assert.doesNotMatch(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
+    const placeholderEnvelope = JSON.parse((placeholderProposal.hookSpecificOutput.additionalContext ?? "")
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      workItems: { proposal: { repairSlice: { proposal: { sha256: string } } } };
+    };
+    assert.notEqual(placeholderEnvelope.workItems.proposal.repairSlice.proposal.sha256, repairSlice.proposal.sha256);
     assert.equal(
       (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       repairConvergenceHash,
@@ -789,6 +852,23 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.doesNotMatch(malformedFactContext, /source_merge_fact_time_invalid/u);
     assert.doesNotMatch(malformedFactContext, /source_merge_threshold_invalid/u);
     assert.doesNotMatch(malformedFactContext, /source_merge_fact_sources_missing/u);
+
+    await writeJson(proposalPath, { unsupportedTopLevelKey: true });
+    const topLevelInvalidProposal = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const topLevelInvalidContext = topLevelInvalidProposal.hookSpecificOutput.additionalContext ?? "";
+    assert.match(topLevelInvalidContext, /source_merge_proposal_keys_invalid/u);
+    assert.doesNotMatch(topLevelInvalidContext, /"repairSlice":/u);
+    assert.doesNotMatch(topLevelInvalidContext, /repairSlice\.currentProposal/u);
+    assert.match(topLevelInvalidContext, /Rewrite that proposal from injected workItems\.preparedSlice and proposal\.template/u);
+    assert.equal(
+      (topLevelInvalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+      repairConvergenceHash,
+    );
 
     await writeJson(proposalPath, {
       ...proposalBase,

@@ -1,0 +1,24 @@
+# Run from the V24R5 worktree with Node 22 and pnpm 10.32.1.
+
+# Install and build
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+
+# Focused Legal Coverage suite
+node --test --test-force-exit --test-timeout 60000 dist/tests/products/legal-coverage.spec.js
+
+# Full repository suite (includes a clean build)
+corepack pnpm test
+
+# Real local Gateway integration
+node --test --test-force-exit --test-timeout 60000 \
+  dist/tests/agent/legal-coverage-plugin-runtime.spec.js \
+  dist/tests/agent/local-gateway-runtime-controls.spec.js
+
+# Exact Case 09 failure replay
+# Copy the retained V24R4 run to a generated temporary directory, overlay the
+# V24R5 Legal Coverage plugin, invoke its PreModelRequest hook, assert the
+# bounded repair-slice contract, remove unsupported fact 11 in the temporary
+# proposal, invoke source-merge-apply, assert atomic 16/71 -> 20/86 progress,
+# compare the original proposal hash, and delete the temporary copy.
+# No API key is required and no source campaign file is written.
