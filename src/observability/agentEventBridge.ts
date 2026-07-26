@@ -36,6 +36,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
       });
       return;
     case "tool_result":
+    case "subagent_tool_result":
       recorder.emit({
         ...base,
         type: "tool.call.completed",
@@ -44,6 +45,9 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         payload: {
           toolCallId: event.result.toolCallId,
           toolName: event.result.toolName,
+          ...(event.type === "subagent_tool_result"
+            ? { subagentId: event.subagentId, subagentType: event.subagentType }
+            : {}),
           ...fingerprintToolResult(event.result),
         },
         priority: "critical",
