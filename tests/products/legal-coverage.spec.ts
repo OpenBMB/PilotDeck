@@ -511,9 +511,13 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(proposeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
     assert.doesNotMatch(proposeContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(proposeContext, /"sourceMergeApplyCommand":/u);
-    const proposeConvergenceHash = (
-      proposeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string }
-    )?.stateHash;
+    const proposeConvergence = (
+      proposeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        stateHash?: string;
+        progressOrdinal: number;
+      }
+    );
+    const proposeConvergenceHash = proposeConvergence.stateHash;
     assert.notEqual(proposeConvergenceHash, mergeConvergence.stateHash);
 
     await writeJson(readinessPath, { ...readiness, sliceSha256: "0".repeat(64) });
@@ -724,6 +728,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(applyContext, /source-merge-apply/u);
     const applyConvergence = applyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
       stateHash?: string;
+      progressOrdinal: number;
       nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
     };
     assert.notEqual(applyConvergence.stateHash, proposeConvergenceHash);
@@ -732,6 +737,17 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       returned: 4,
       hasMore: true,
     });
+    assert.equal(applyConvergence.progressOrdinal, proposeConvergence.progressOrdinal + 1);
+    const replayedApplyReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedApplyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      applyConvergence.progressOrdinal,
+    );
 
     const validProposalBytes = await readFile(proposalPath);
     const proposalHash = sha256(validProposalBytes);
@@ -2216,7 +2232,7 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     const secondProgressOrdinal = (
       secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
     ).progressOrdinal;
-    assert.ok(secondProgressOrdinal > invalidConvergenceOne.progressOrdinal);
+    assert.equal(secondProgressOrdinal, invalidConvergenceOne.progressOrdinal);
 
     await runHook({
       hookEventName: "UserPromptSubmit",
@@ -2247,18 +2263,113 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     secondSelection.decision = "finalize";
     secondSelection.reason = "This fact is sufficient to ground the current synthetic matrix.";
     await writeJson(join(workspace, secondEnvelope.workItems.selection.path), secondSelection);
+    const finalSelectionHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal((legalEnvelope(finalSelectionHook) as { workItems: { group: string } }).workItems.group, "matrix-pending-selection-apply");
+    const finalSelectionOrdinal = (
+      finalSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
+    ).progressOrdinal;
+    assert.equal(finalSelectionOrdinal, secondProgressOrdinal + 1);
+    const replayedFinalSelectionHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedFinalSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      finalSelectionOrdinal,
+    );
     const secondApply = await runCli(workspace, "matrix-selection-apply", "--input-file", secondEnvelope.workItems.selection.path);
     assert.equal(secondApply.exitCode, 0, secondApply.stderr);
 
     const proposalHook = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
     const proposalEnvelope = legalEnvelope(proposalHook) as {
-      workItems: { group: string; selectedFactIds: string[]; preparedSlice: { returned: number; serializedBytes: number; items: Array<{ factId: string }> } };
+      workItems: {
+        group: string;
+        selectedFactIds: string[];
+        preparedSlice: { returned: number; serializedBytes: number; items: Array<{ factId: string }> };
+        proposal: { path: string; template: Record<string, unknown> };
+      };
     };
     assert.equal(proposalEnvelope.workItems.group, "matrix-pending-propose");
     assert.deepEqual(proposalEnvelope.workItems.selectedFactIds, [selectedId]);
     assert.deepEqual(proposalEnvelope.workItems.preparedSlice.items.map((item) => item.factId), [selectedId]);
     assert.equal(proposalEnvelope.workItems.preparedSlice.returned, 1);
     assert.equal(proposalEnvelope.workItems.preparedSlice.serializedBytes <= 8192, true);
+    assert.equal(
+      (proposalHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      finalSelectionOrdinal,
+    );
+
+    const matrixProposal = structuredClone(proposalEnvelope.workItems.proposal.template) as {
+      matrix: { entries: Array<{ id: string; summary: string; factIds: string[] }> };
+    };
+    matrixProposal.matrix.entries[0]!.id = "M-PAGED-001";
+    matrixProposal.matrix.entries[0]!.summary = "The selected synthetic fact grounds the pending matrix.";
+    await writeJson(join(workspace, proposalEnvelope.workItems.proposal.path), matrixProposal);
+    const matrixApplyHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal((legalEnvelope(matrixApplyHook) as { workItems: { group: string } }).workItems.group, "matrix-pending-apply");
+    const matrixApplyOrdinal = (
+      matrixApplyHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
+    ).progressOrdinal;
+    assert.equal(matrixApplyOrdinal, finalSelectionOrdinal + 1);
+    const replayedMatrixApplyHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedMatrixApplyHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      matrixApplyOrdinal,
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage progress ordinal advances once for a new legal phase", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-phase-progress-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const matricesPath = join(workspace, STATE_ROOT, "matrices.json");
+    const originalMatrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<Record<string, unknown>> };
+    const pendingMatrices = structuredClone(originalMatrices);
+    pendingMatrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    await writeJson(matricesPath, pendingMatrices);
+    await mkdir(join(workspace, STATE_ROOT, "matrix-transactions"), { recursive: true });
+
+    const initial = await runHook({ hookEventName: "PreModelRequest", sessionId: "phase-progress", transcriptPath: "", cwd: workspace });
+    const initialConvergence = initial.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      phase: string;
+      progressOrdinal: number;
+    };
+    assert.equal(initialConvergence.phase, "matrices");
+
+    await writeJson(matricesPath, originalMatrices);
+    const advanced = await runHook({ hookEventName: "PreModelRequest", sessionId: "phase-progress", transcriptPath: "", cwd: workspace });
+    const advancedConvergence = advanced.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      phase: string;
+      progressOrdinal: number;
+    };
+    assert.equal(advancedConvergence.phase, "complete");
+    assert.equal(advancedConvergence.progressOrdinal, initialConvergence.progressOrdinal + 1);
+
+    const replayed = await runHook({ hookEventName: "PreModelRequest", sessionId: "phase-progress", transcriptPath: "", cwd: workspace });
+    assert.equal(
+      (replayed.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      advancedConvergence.progressOrdinal,
+    );
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

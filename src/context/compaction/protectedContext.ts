@@ -42,6 +42,8 @@ export type MessageTurn = {
   messages: CanonicalMessage[];
 };
 
+export type AtomicMessageFrame = MessageTurn;
+
 export function protectedToolNameSet(names?: Iterable<string>): ReadonlySet<string> {
   if (names === undefined) {
     return DEFAULT_PROTECTED_TOOL_RESULT_NAMES;
@@ -82,6 +84,46 @@ export function splitMessagesIntoTurns(messages: CanonicalMessage[]): MessageTur
   return turns;
 }
 
+/**
+ * Split a long Agent trajectory into contiguous frames without separating a
+ * tool call from its result. Unlike conversational turns, this remains useful
+ * when one user prompt drives many assistant/tool-result iterations.
+ */
+export function splitMessagesIntoAtomicFrames(messages: CanonicalMessage[]): AtomicMessageFrame[] {
+  const callIndexes = new Map<string, number>();
+  const resultIndexes = new Map<string, number>();
+  for (const [index, message] of messages.entries()) {
+    for (const block of message.content) {
+      if (block.type === "tool_call") {
+        callIndexes.set(block.id, index);
+      } else if (block.type === "tool_result" || block.type === "tool_result_reference") {
+        resultIndexes.set(block.toolCallId, index);
+      }
+    }
+  }
+
+  const intervalEnds = new Map<number, number>();
+  for (const [toolCallId, callIndex] of callIndexes) {
+    const resultIndex = resultIndexes.get(toolCallId);
+    if (resultIndex === undefined) continue;
+    const start = Math.min(callIndex, resultIndex);
+    const end = Math.max(callIndex, resultIndex);
+    intervalEnds.set(start, Math.max(intervalEnds.get(start) ?? start, end));
+  }
+
+  const frames: AtomicMessageFrame[] = [];
+  let start = 0;
+  while (start < messages.length) {
+    let end = Math.max(start, intervalEnds.get(start) ?? start);
+    for (let cursor = start + 1; cursor <= end; cursor += 1) {
+      end = Math.max(end, intervalEnds.get(cursor) ?? cursor);
+    }
+    frames.push({ index: frames.length, messages: messages.slice(start, end + 1) });
+    start = end + 1;
+  }
+  return frames;
+}
+
 export function collectProtectedTurnIndexes(
   messages: CanonicalMessage[],
   options: ProtectedContextOptions = {},
@@ -97,6 +139,33 @@ export function collectProtectedTurnIndexes(
       })
     )) {
       protectedIndexes.add(turn.index);
+    }
+  }
+  if (options.maxProtectedTurns === undefined) {
+    return protectedIndexes;
+  }
+  const limit = Math.max(0, Math.floor(options.maxProtectedTurns));
+  if (limit === 0) {
+    return new Set();
+  }
+  return new Set([...protectedIndexes].slice(-limit));
+}
+
+export function collectProtectedFrameIndexes(
+  messages: CanonicalMessage[],
+  options: ProtectedContextOptions = {},
+): Set<number> {
+  const toolNamesByCallId = collectToolNamesByCallId(messages);
+  const protectedIndexes = new Set<number>();
+  const frames = splitMessagesIntoAtomicFrames(messages);
+  for (const frame of frames) {
+    if (frame.messages.some((message) =>
+      isProtectedContextMessage(message, {
+        ...options,
+        toolNamesByCallId,
+      })
+    )) {
+      protectedIndexes.add(frame.index);
     }
   }
   if (options.maxProtectedTurns === undefined) {

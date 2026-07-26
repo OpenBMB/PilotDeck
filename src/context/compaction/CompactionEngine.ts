@@ -17,9 +17,9 @@ import {
 } from "./toolPairIntegrity.js";
 import type { AgentEventEmitter } from "../../agent/protocol/events.js";
 import {
-  collectProtectedTurnIndexes,
+  collectProtectedFrameIndexes,
   protectedToolNameSet,
-  splitMessagesIntoTurns,
+  splitMessagesIntoAtomicFrames,
 } from "./protectedContext.js";
 
 export type CompactionTrigger = "manual" | "auto" | "reactive";
@@ -46,7 +46,7 @@ export type CompactionEngineOptions = {
   maxOutputTokens?: number;
   /** Tool names whose turns should be preserved verbatim across full compaction. */
   protectedToolNames?: Iterable<string>;
-  /** Maximum protected turns retained outside the normal tail window. */
+  /** Maximum protected interaction frames retained outside the normal tail window. */
   maxProtectedPrefixTurns?: number;
   now?: () => Date;
   eventEmitter?: AgentEventEmitter;
@@ -343,40 +343,44 @@ function planFullCompactionMessages(
   protectedToolNames?: Iterable<string>,
   maxProtectedPrefixTurns = DEFAULT_MAX_PROTECTED_PREFIX_TURNS,
 ): { messagesToSummarize: CanonicalMessage[]; messagesToKeep: CanonicalMessage[] } {
-  const turns = splitMessagesIntoTurns(messages);
-  let tailStart = turns.length;
+  const frames = splitMessagesIntoAtomicFrames(messages);
+  let tailStart = frames.length;
   let keptMessages = 0;
   while (tailStart > 0 && keptMessages < keepCount) {
     tailStart -= 1;
-    keptMessages += turns[tailStart]?.messages.length ?? 0;
+    keptMessages += frames[tailStart]?.messages.length ?? 0;
   }
-  const prefix = turns.slice(0, tailStart).flatMap((turn) => turn.messages);
-  const tail = turns.slice(tailStart).flatMap((turn) => turn.messages);
-  const protectedIndexes = collectProtectedTurnIndexes(prefix, {
+  const prefix = frames.slice(0, tailStart).flatMap((frame) => frame.messages);
+  const tail = frames.slice(tailStart).flatMap((frame) => frame.messages);
+  const protectedIndexes = collectProtectedFrameIndexes(prefix, {
     protectedToolNames,
     maxProtectedTurns: maxProtectedPrefixTurns,
   });
   const protectedMessages: CanonicalMessage[] = [];
-  const messagesToSummarize: CanonicalMessage[] = [];
+  const summaryCandidates: CanonicalMessage[] = [];
 
-  for (const turn of splitMessagesIntoTurns(prefix)) {
-    if (protectedIndexes.has(turn.index)) {
-      protectedMessages.push(...turn.messages);
+  for (const frame of splitMessagesIntoAtomicFrames(prefix)) {
+    if (protectedIndexes.has(frame.index)) {
+      protectedMessages.push(...frame.messages);
     } else {
-      messagesToSummarize.push(...turn.messages);
+      summaryCandidates.push(...frame.messages);
     }
   }
 
   // Tool pair integrity: the summarized portion will be replaced by a summary
   // message, so any tool_result in the preserved portion whose tool_call was
   // summarized away (and vice versa) must be stripped.
-  const preserved = [...protectedMessages, ...tail];
-  const preservedToolResultIds = collectToolResultIds(preserved);
-  const withoutDanglingCalls = stripUnpairedToolCalls(preserved, preservedToolResultIds);
-  const pairedToolCallIds = collectToolCallIds(withoutDanglingCalls);
-  const messagesToKeep = stripUnpairedToolResults(withoutDanglingCalls, pairedToolCallIds);
+  const messagesToSummarize = keepExactToolPairs(summaryCandidates);
+  const messagesToKeep = keepExactToolPairs([...protectedMessages, ...tail]);
 
   return { messagesToSummarize, messagesToKeep };
+}
+
+function keepExactToolPairs(messages: CanonicalMessage[]): CanonicalMessage[] {
+  const toolResultIds = collectToolResultIds(messages);
+  const withoutDanglingCalls = stripUnpairedToolCalls(messages, toolResultIds);
+  const toolCallIds = collectToolCallIds(withoutDanglingCalls);
+  return stripUnpairedToolResults(withoutDanglingCalls, toolCallIds);
 }
 
 /**

@@ -137,11 +137,13 @@ export {
 export {
   DEFAULT_PROTECTED_TOOL_RESULT_NAMES,
   collectProtectedTurnIndexes,
+  collectProtectedFrameIndexes,
   collectToolNamesByCallId,
   isProtectedContextMessage,
   isProtectedToolCallId,
   protectedToolNameSet,
   splitMessagesIntoTurns,
+  splitMessagesIntoAtomicFrames,
   type MessageTurn,
   type ProtectedContextMessageOptions,
   type ProtectedContextOptions,

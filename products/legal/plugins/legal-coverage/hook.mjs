@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,7 @@ import {
 } from "./scripts/lib/legal-coverage.mjs";
 
 const cliPath = fileURLToPath(new URL("./scripts/legal-coverage.mjs", import.meta.url));
-const MAX_PROGRESS_MILESTONE_DIGESTS = 64;
+const MAX_PROGRESS_CHECKPOINT_DIGESTS = 64;
 let hookEventName = "Unknown";
 
 try {
@@ -76,7 +77,7 @@ try {
       phase: result.passed ? "complete" : result.errors[0]?.phase ?? "incomplete",
       blockingCode: result.errors[0]?.code ?? null,
       remainingCount: result.errors.length,
-    });
+    }, legalProgressCheckpointDigest(workItems));
     output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
     if (progressState.changed || sessionState?.lastMilestoneDigest !== digest) {
       await writeSessionState(input.cwd, sessionPath, {
@@ -84,7 +85,9 @@ try {
         active: true,
         lastMilestoneDigest: digest,
         progressOrdinal: progressState.ordinal,
-        progressMilestoneDigests: progressState.seenDigests,
+        progressCheckpointDigests: progressState.seenCheckpointDigests,
+        progressMaxPhaseRank: progressState.maxPhaseRank,
+        progressMilestoneDigests: undefined,
         progressObservation: progressState.observation,
       });
     }
@@ -210,40 +213,87 @@ function convergenceReport(result, workItems, milestoneStateHash, progressOrdina
   };
 }
 
-function advanceProgressState(sessionState, digest, current) {
+function advanceProgressState(sessionState, digest, current, checkpointDigest) {
   const ordinal = Number.isSafeInteger(sessionState?.progressOrdinal) && sessionState.progressOrdinal >= 0
     ? sessionState.progressOrdinal
     : 0;
-  const seenDigests = Array.isArray(sessionState?.progressMilestoneDigests)
-    ? sessionState.progressMilestoneDigests.filter((value) =>
+  const seenCheckpointDigests = Array.isArray(sessionState?.progressCheckpointDigests)
+    ? sessionState.progressCheckpointDigests.filter((value) =>
         typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
-      ).slice(-MAX_PROGRESS_MILESTONE_DIGESTS)
+      ).slice(-MAX_PROGRESS_CHECKPOINT_DIGESTS)
     : [];
   const previous = parseProgressObservation(sessionState?.progressObservation);
   const observation = { ...current, digest };
-  const unseen = !seenDigests.includes(digest);
-  const advanced = unseen && previous !== undefined && isForwardLegalProgress(previous, observation);
+  const previousMaxPhaseRank = Number.isSafeInteger(sessionState?.progressMaxPhaseRank)
+    && sessionState.progressMaxPhaseRank >= 0
+    && sessionState.progressMaxPhaseRank <= legalPhaseRank("complete")
+    ? sessionState.progressMaxPhaseRank
+    : previous === undefined ? legalPhaseRank(current.phase) : legalPhaseRank(previous.phase);
+  const currentPhaseRank = legalPhaseRank(current.phase);
+  const maxPhaseRank = Math.max(previousMaxPhaseRank, currentPhaseRank);
+  const phaseAdvanced = previous !== undefined && currentPhaseRank > previousMaxPhaseRank;
+  const unseenCheckpoint = typeof checkpointDigest === "string"
+    && /^[a-f0-9]{64}$/u.test(checkpointDigest)
+    && !seenCheckpointDigests.includes(checkpointDigest);
+  const advanced = phaseAdvanced || unseenCheckpoint;
   return {
     ordinal: advanced && ordinal < Number.MAX_SAFE_INTEGER ? ordinal + 1 : ordinal,
-    seenDigests: unseen
-      ? [...seenDigests, digest].slice(-MAX_PROGRESS_MILESTONE_DIGESTS)
-      : seenDigests,
+    seenCheckpointDigests: unseenCheckpoint
+      ? [...seenCheckpointDigests, checkpointDigest].slice(-MAX_PROGRESS_CHECKPOINT_DIGESTS)
+      : seenCheckpointDigests,
+    maxPhaseRank,
     observation,
-    changed: unseen || previous === undefined
+    changed: unseenCheckpoint || maxPhaseRank !== previousMaxPhaseRank || previous === undefined
       || previous.phase !== observation.phase
       || previous.blockingCode !== observation.blockingCode
       || previous.remainingCount !== observation.remainingCount,
   };
 }
 
-function isForwardLegalProgress(previous, current) {
-  const previousPhase = legalPhaseRank(previous.phase);
-  const currentPhase = legalPhaseRank(current.phase);
-  if (currentPhase < previousPhase) return false;
-  if (currentPhase > previousPhase) return true;
-  if (current.remainingCount > previous.remainingCount) return false;
-  if (current.remainingCount < previous.remainingCount) return true;
-  return current.digest !== previous.digest;
+function legalProgressCheckpointDigest(workItems) {
+  let checkpoint;
+  if (workItems?.group === "source-fragment-apply"
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && Array.isArray(workItems.proposal.sourceIds)) {
+    const sourceIds = workItems.proposal.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0 || sourceIds.length !== workItems.proposal.sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-apply",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      sourceIds,
+    };
+  } else if (workItems?.group === "matrix-pending-selection-apply"
+    && workItems.selection?.validated === true
+    && workItems.selection.acceptedSelection?.decision === "finalize"
+    && validStateHash(workItems.selection.expectedStateHash)
+    && nonEmptyString(workItems.selection.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-pending-selection-finalize",
+      expectedStateHash: workItems.selection.expectedStateHash,
+      targetMatrixId: workItems.selection.targetMatrixId,
+    };
+  } else if (workItems?.group === "matrix-pending-apply"
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && nonEmptyString(workItems.proposal.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-pending-apply",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetMatrixId: workItems.proposal.targetMatrixId,
+    };
+  }
+  return checkpoint === undefined
+    ? undefined
+    : createHash("sha256").update(JSON.stringify(checkpoint)).digest("hex");
+}
+
+function validStateHash(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+}
+
+function nonEmptyString(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 256;
 }
 
 function parseProgressObservation(value) {

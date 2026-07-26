@@ -13,7 +13,7 @@ import {
   type ObservationRecorder,
 } from "../../src/observability/index.js";
 
-test("subagent tool results close the tool span without persisting output", () => {
+test("subagent tool detection and result pair at the model projection layer", () => {
   const drafts: ObservationEventDraft[] = [];
   const recorder = {
     emit: (draft: ObservationEventDraft) => {
@@ -23,11 +23,29 @@ test("subagent tool results close the tool span without persisting output", () =
   } as unknown as ObservationRecorder;
 
   observeAgentEvent(recorder, {
+    type: "subagent_tool_calls_detected",
+    sessionId: "parent-1",
+    turnId: "parent-turn-1",
+    subagentId: "sub-1",
+    subagentType: "researcher",
+    calls: [{ id: "tool-1", name: "read_file", input: { path: "/private/input" } }],
+  });
+  // Internal execution lifecycle events are deliberately not O1 span
+  // boundaries because nested tools do not have top-level result projections.
+  observeAgentEvent(recorder, {
     type: "pre_tool_execute",
     sessionId: "subagent:researcher:sub-1",
     turnId: "sub-turn-1",
-    toolCallId: "tool-1",
+    toolCallId: "tool-1:code:1",
     toolName: "read_file",
+  });
+  observeAgentEvent(recorder, {
+    type: "post_tool_execute",
+    sessionId: "subagent:researcher:sub-1",
+    turnId: "sub-turn-1",
+    toolCallId: "tool-1:code:1",
+    toolName: "read_file",
+    success: true,
   });
   observeAgentEvent(recorder, {
     type: "subagent_tool_result",
@@ -46,10 +64,50 @@ test("subagent tool results close the tool span without persisting output", () =
   });
 
   assert.equal(drafts.length, 2);
+  assert.equal(drafts[0]?.type, "tool.call.started");
+  assert.equal(drafts[0]?.payload?.subagentId, "sub-1");
   assert.equal(drafts[1]?.type, "tool.call.completed");
   assert.equal(drafts[1]?.payload?.toolCallId, "tool-1");
   assert.equal(drafts[1]?.payload?.subagentId, "sub-1");
   assert.equal(typeof drafts[1]?.payload?.outputHash, "string");
+  assert.equal(JSON.stringify(drafts).includes("private tool output"), false);
+});
+
+test("main tool detection and result produce one exact O1 pair", () => {
+  const drafts: ObservationEventDraft[] = [];
+  const recorder = {
+    emit: (draft: ObservationEventDraft) => {
+      drafts.push(draft);
+      return undefined;
+    },
+  } as unknown as ObservationRecorder;
+
+  observeAgentEvent(recorder, {
+    type: "tool_calls_detected",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    calls: [{ id: "tool-main", name: "read_file", input: { path: "/private/input" } }],
+  });
+  observeAgentEvent(recorder, {
+    type: "tool_result",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    result: {
+      type: "success",
+      toolCallId: "tool-main",
+      toolName: "read_file",
+      content: [{ type: "text", text: "private tool output" }],
+      startedAt: "2026-07-26T00:00:00.000Z",
+      completedAt: "2026-07-26T00:00:01.000Z",
+    },
+  });
+
+  assert.deepEqual(drafts.map((draft) => draft.type), [
+    "tool.call.started",
+    "tool.call.completed",
+  ]);
+  assert.equal(drafts[0]?.payload?.toolCallId, "tool-main");
+  assert.equal(drafts[1]?.payload?.toolCallId, "tool-main");
   assert.equal(JSON.stringify(drafts).includes("private tool output"), false);
 });
 

@@ -86,7 +86,7 @@ test("full compaction distinguishes a protected prefix with no summarizable mess
 
   const result = await engine.run({
     trigger: "auto",
-    messages: protectedAgentTurns(4),
+    messages: protectedAgentPairs(4),
     keepTailRatio: 0.25,
   });
 
@@ -151,15 +151,45 @@ test("bounded protected-prefix retention summarizes old agent turns and preserve
 
   const result = await engine.run({
     trigger: "auto",
-    messages: protectedAgentTurns(14),
+    messages: singlePromptAgentTrajectory(24),
     keepTailRatio: 0.2,
   });
 
   assert.equal(result.outcome, "summarized");
   assert.equal(requests.length, 1);
   assert.ok((requests[0]?.messages.length ?? 0) > 1);
-  assert.ok(result.messagesToKeep.length < protectedAgentTurns(14).length);
+  assert.ok(result.messagesToKeep.length < singlePromptAgentTrajectory(24).length);
   const summarizedMessages = requests[0]!.messages.slice(0, -1);
+  assert.deepEqual(collectToolCallIds(summarizedMessages), collectToolResultIds(summarizedMessages));
+  assert.deepEqual(collectToolCallIds(result.messagesToKeep), collectToolResultIds(result.messagesToKeep));
+});
+
+test("full compaction summarizes a real-shaped single-prompt Agent trajectory", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const engine = new CompactionEngine({
+    provider: "test",
+    model_: "test",
+    maxProtectedPrefixTurns: 0,
+    model: {
+      async *stream(request) {
+        requests.push(request);
+        yield { type: "text_delta" as const, text: "single-prompt summary" };
+      },
+    },
+  });
+  const trajectory = singlePromptToolTrajectory(30);
+
+  const result = await engine.run({
+    trigger: "auto",
+    messages: trajectory,
+    keepTailRatio: 0.35,
+  });
+
+  assert.equal(result.outcome, "summarized");
+  assert.equal(requests.length, 1);
+  const summarizedMessages = requests[0]!.messages.slice(0, -1);
+  assert.ok(summarizedMessages.length > 1);
+  assert.ok(result.messagesToKeep.length < trajectory.length);
   assert.deepEqual(collectToolCallIds(summarizedMessages), collectToolResultIds(summarizedMessages));
   assert.deepEqual(collectToolCallIds(result.messagesToKeep), collectToolResultIds(result.messagesToKeep));
 });
@@ -286,6 +316,48 @@ function protectedAgentTurns(count: number): CanonicalMessage[] {
       },
     ];
   }).flat();
+}
+
+function protectedAgentPairs(count: number): CanonicalMessage[] {
+  return Array.from({ length: count }, (_, index): CanonicalMessage[] => {
+    const id = `agent-pair-${index}`;
+    return [
+      {
+        role: "assistant",
+        content: [{ type: "tool_call", id, name: "agent", input: { task: `task-${index}` } }],
+      },
+      {
+        role: "user",
+        content: [{ type: "tool_result", toolCallId: id, content: [{ type: "text", text: `done-${index}` }] }],
+      },
+    ];
+  }).flat();
+}
+
+function singlePromptAgentTrajectory(count: number): CanonicalMessage[] {
+  return [
+    { role: "user", content: [{ type: "text", text: "one long bounded task" }] },
+    ...protectedAgentPairs(count),
+  ];
+}
+
+function singlePromptToolTrajectory(count: number): CanonicalMessage[] {
+  return [
+    { role: "user", content: [{ type: "text", text: "one long tool task" }] },
+    ...Array.from({ length: count }, (_, index): CanonicalMessage[] => {
+      const id = `read-${index}`;
+      return [
+        {
+          role: "assistant",
+          content: [{ type: "tool_call", id, name: "read_file", input: { path: `fixture-${index}` } }],
+        },
+        {
+          role: "user",
+          content: [{ type: "tool_result", toolCallId: id, content: [{ type: "text", text: `result-${index}` }] }],
+        },
+      ];
+    }).flat(),
+  ];
 }
 
 function snapshot(state: TokenBudgetSnapshot["state"], tokens: number, ratio: number): TokenBudgetSnapshot {

@@ -25,15 +25,34 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         priority: "critical",
       });
       return;
-    case "pre_tool_execute":
-      recorder.emit({
-        ...base,
-        type: "tool.call.started",
-        spanId: `tool:${event.toolCallId}`,
-        parentSpanId: `turn:${event.turnId}`,
-        payload: { toolCallId: event.toolCallId, toolName: event.toolName },
-        priority: "critical",
-      });
+    case "tool_calls_detected":
+      for (const call of event.calls) {
+        recorder.emit({
+          ...base,
+          type: "tool.call.started",
+          spanId: `tool:${call.id}`,
+          parentSpanId: `turn:${event.turnId}`,
+          payload: { toolCallId: call.id, toolName: call.name },
+          priority: "critical",
+        });
+      }
+      return;
+    case "subagent_tool_calls_detected":
+      for (const call of event.calls) {
+        recorder.emit({
+          ...base,
+          type: "tool.call.started",
+          spanId: `tool:${call.id}`,
+          parentSpanId: `turn:${event.turnId}`,
+          payload: {
+            toolCallId: call.id,
+            toolName: call.name,
+            subagentId: event.subagentId,
+            subagentType: event.subagentType,
+          },
+          priority: "critical",
+        });
+      }
       return;
     case "tool_result":
     case "subagent_tool_result":
