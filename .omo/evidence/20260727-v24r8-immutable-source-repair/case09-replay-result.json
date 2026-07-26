@@ -1,0 +1,36 @@
+{
+  "replay": "v24r8-preserved-case09-source-failure",
+  "rejectedFactNumbers": [
+    4,
+    7
+  ],
+  "repairPath": ".pilotdeck/work/legal-coverage/fragments/source-repair-ded7e1630645.json",
+  "appliedReceiptPath": ".pilotdeck/work/legal-coverage/fragments/source-repair-applied-ded7e1630645.json",
+  "groups": [
+    "source-fragment-repair",
+    "source-fragment-repair-apply",
+    "source-fragment-merge"
+  ],
+  "repairPreparationOrdinals": [
+    0,
+    1,
+    1
+  ],
+  "progressOrdinals": [
+    0,
+    0,
+    1
+  ],
+  "proposalUnchanged": true,
+  "applied": {
+    "sourceCount": 4,
+    "factCount": 19,
+    "errorCountBefore": 89,
+    "errorCountAfter": 181
+  },
+  "canonical": {
+    "reviewedSources": 8,
+    "pendingSources": 16,
+    "factCount": 34
+  }
+}
