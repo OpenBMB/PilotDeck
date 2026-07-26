@@ -1951,6 +1951,7 @@ test("legal coverage hook activates only legal work and injects one observable m
       progressOrdinal: 0,
       repairOrdinal: 0,
       repairPreparationOrdinal: 0,
+      handoffOrdinal: 0,
       writeBudget: { maxRecords: 12, maxSerializedBytes: 24576 },
     });
 
@@ -2403,6 +2404,7 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       stateHash: string;
       progressOrdinal: number;
       repairOrdinal: number;
+      handoffOrdinal: number;
     };
     const invalidHashOne = invalidConvergenceOne.stateHash;
 
@@ -2413,11 +2415,16 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       stateHash: string;
       progressOrdinal: number;
       repairOrdinal: number;
+      handoffOrdinal: number;
     };
     const invalidHashTwo = invalidConvergenceTwo.stateHash;
     assert.equal(invalidHashTwo, invalidHashOne);
     assert.equal(invalidConvergenceTwo.progressOrdinal, invalidConvergenceOne.progressOrdinal);
     assert.equal(invalidConvergenceTwo.repairOrdinal, invalidConvergenceOne.repairOrdinal);
+    assert.equal(
+      invalidConvergenceTwo.handoffOrdinal,
+      invalidConvergenceOne.handoffOrdinal,
+    );
 
     const valid = structuredClone(firstEnvelope.workItems.selection.template) as {
       selectedFactIds: string[];
@@ -2428,6 +2435,32 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     valid.decision = "continue";
     valid.reason = "No fact on this page is needed for the target matrix; inspect the next bounded page.";
     await writeJson(join(workspace, firstEnvelope.workItems.selection.path), valid);
+    const validSelectionHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (legalEnvelope(validSelectionHook) as { workItems: { group: string } }).workItems.group,
+      "matrix-pending-selection-apply",
+    );
+    const validSelectionConvergence = validSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      progressOrdinal: number;
+      handoffOrdinal: number;
+    };
+    assert.equal(validSelectionConvergence.progressOrdinal, invalidConvergenceOne.progressOrdinal);
+    assert.equal(validSelectionConvergence.handoffOrdinal, invalidConvergenceOne.handoffOrdinal + 1);
+    const replayedValidSelectionHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedValidSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }).handoffOrdinal,
+      validSelectionConvergence.handoffOrdinal,
+    );
     const validApply = await runCli(workspace, "matrix-selection-apply", "--input-file", firstEnvelope.workItems.selection.path);
     assert.equal(validApply.exitCode, 0, validApply.stderr);
 
@@ -2452,6 +2485,20 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
     ).progressOrdinal;
     assert.equal(secondProgressOrdinal, invalidConvergenceOne.progressOrdinal);
+    const secondHandoffOrdinal = (
+      secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }
+    ).handoffOrdinal;
+    assert.equal(secondHandoffOrdinal, validSelectionConvergence.handoffOrdinal + 1);
+    const replayedSecondPageHook = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedSecondPageHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }).handoffOrdinal,
+      secondHandoffOrdinal,
+    );
 
     await runHook({
       hookEventName: "UserPromptSubmit",
@@ -2475,6 +2522,10 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       (afterUserPrompt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
       invalidConvergenceOne.repairOrdinal,
     );
+    assert.equal(
+      (afterUserPrompt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }).handoffOrdinal,
+      secondHandoffOrdinal,
+    );
 
     const selectedId = secondEnvelope.workItems.evidencePage.items[0]!.factId;
     const secondSelection = structuredClone(secondEnvelope.workItems.selection.template) as {
@@ -2497,6 +2548,10 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       finalSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
     ).progressOrdinal;
     assert.equal(finalSelectionOrdinal, secondProgressOrdinal + 1);
+    assert.equal(
+      (finalSelectionHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }).handoffOrdinal,
+      secondHandoffOrdinal,
+    );
     const replayedFinalSelectionHook = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "matrix-pages",

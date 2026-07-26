@@ -23,6 +23,7 @@ const cliPath = fileURLToPath(new URL("./scripts/legal-coverage.mjs", import.met
 const MAX_PROGRESS_CHECKPOINT_DIGESTS = 64;
 const MAX_REPAIR_CHECKPOINT_DIGESTS = 64;
 const MAX_REPAIR_PREPARATION_CHECKPOINT_DIGESTS = 64;
+const MAX_HANDOFF_CHECKPOINT_DIGESTS = 64;
 let hookEventName = "Unknown";
 
 try {
@@ -95,8 +96,9 @@ try {
       blockingCode: result.errors[0]?.code ?? null,
       remainingCount: result.errors.length,
     }, legalProgressCheckpointDigest(workItems), repairCheckpointDigest);
+    const handoffState = advanceHandoffState(sessionState, legalHandoffCheckpointDigest(workItems));
     output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
-    if (progressState.changed || sessionState?.lastMilestoneDigest !== digest
+    if (progressState.changed || handoffState.changed || sessionState?.lastMilestoneDigest !== digest
       || !sameRepairTarget(sessionState?.repairTarget, repairTarget)
     ) {
       await writeSessionState(input.cwd, sessionPath, {
@@ -109,6 +111,8 @@ try {
         repairOrdinal: progressState.repairOrdinal,
         repairCheckpointDigests: progressState.seenRepairCheckpointDigests,
         repairTarget,
+        handoffOrdinal: handoffState.ordinal,
+        handoffCheckpointDigests: handoffState.seenCheckpointDigests,
         progressMilestoneDigests: undefined,
         progressObservation: progressState.observation,
       });
@@ -124,6 +128,7 @@ try {
           progressState.ordinal,
           progressState.repairOrdinal,
           repairPreparationOrdinal(sessionState),
+          handoffState.ordinal,
         ),
       },
     };
@@ -218,6 +223,7 @@ function convergenceReport(
   progressOrdinal,
   repairOrdinal,
   repairPreparationOrdinal,
+  handoffOrdinal,
 ) {
   const first = result.errors[0];
   return {
@@ -232,6 +238,7 @@ function convergenceReport(
     progressOrdinal,
     repairOrdinal,
     repairPreparationOrdinal,
+    handoffOrdinal,
     ...(workItems ? {
       nextBatch: {
         group: workItems.group,
@@ -335,6 +342,61 @@ function legalProgressCheckpointDigest(workItems) {
     };
   }
   return checkpointDigest(checkpoint);
+}
+
+function legalHandoffCheckpointDigest(workItems) {
+  let checkpoint;
+  if (workItems?.group === "matrix-pending-selection-apply"
+    && workItems.selection?.validated === true
+    && workItems.selection.acceptedSelection?.decision === "continue"
+    && validStateHash(workItems.selection.expectedStateHash)
+    && validStateHash(workItems.selection.evidenceBatchSha256)
+    && validStateHash(workItems.selection.selectionSha256)
+    && nonEmptyString(workItems.selection.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-selection-continue-apply-ready",
+      expectedStateHash: workItems.selection.expectedStateHash,
+      targetMatrixId: workItems.selection.targetMatrixId,
+      evidenceBatchSha256: workItems.selection.evidenceBatchSha256,
+      selectionSha256: workItems.selection.selectionSha256,
+    };
+  } else if (workItems?.group === "matrix-pending-selection"
+    && workItems.selection?.validationError === undefined
+    && validStateHash(workItems.selection?.expectedStateHash)
+    && validStateHash(workItems.selection?.evidenceBatchSha256)
+    && nonEmptyString(workItems.selection?.targetMatrixId)
+    && Number.isSafeInteger(workItems.evidencePage?.offset)
+    && workItems.evidencePage.offset > 0
+    && typeof workItems.selection?.path === "string"
+    && workItems.selection.path.length > 0
+    && workItems.selection.path.length <= 2048) {
+    checkpoint = {
+      kind: "matrix-selection-next-evidence-page",
+      expectedStateHash: workItems.selection.expectedStateHash,
+      targetMatrixId: workItems.selection.targetMatrixId,
+      offset: workItems.evidencePage.offset,
+      evidenceBatchSha256: workItems.selection.evidenceBatchSha256,
+      selectionPath: workItems.selection.path,
+    };
+  }
+  return checkpointDigest(checkpoint);
+}
+
+function advanceHandoffState(sessionState, checkpoint) {
+  const ordinal = Number.isSafeInteger(sessionState?.handoffOrdinal) && sessionState.handoffOrdinal >= 0
+    ? sessionState.handoffOrdinal
+    : 0;
+  const seenCheckpointDigests = Array.isArray(sessionState?.handoffCheckpointDigests)
+    ? sessionState.handoffCheckpointDigests.filter(validStateHash).slice(-MAX_HANDOFF_CHECKPOINT_DIGESTS)
+    : [];
+  const unseenCheckpoint = validStateHash(checkpoint) && !seenCheckpointDigests.includes(checkpoint);
+  return {
+    ordinal: unseenCheckpoint && ordinal < Number.MAX_SAFE_INTEGER ? ordinal + 1 : ordinal,
+    seenCheckpointDigests: unseenCheckpoint
+      ? [...seenCheckpointDigests, checkpoint].slice(-MAX_HANDOFF_CHECKPOINT_DIGESTS)
+      : seenCheckpointDigests,
+    changed: unseenCheckpoint,
+  };
 }
 
 function legalRepairCheckpoint(workItems) {
