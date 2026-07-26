@@ -73,8 +73,14 @@ try {
   const active = !isSubagent && (sessionState?.active === true
     || await pathExists(input.cwd, `${STATE_DIRECTORY}/config.json`)
     || await pathExists(input.cwd, PROOF_PATH));
-  if (active && input.hookEventName === "PostToolUse" && input.toolName === "read_file") {
-    const preparation = await advanceRepairPreparation(input.cwd, sessionState, input.toolInput);
+  if (active && input.hookEventName === "PostToolUse"
+    && ["read_file", "write_file"].includes(input.toolName)) {
+    const preparation = await advanceRepairPreparation(
+      input.cwd,
+      sessionState,
+      input.toolName,
+      input.toolInput,
+    );
     if (preparation.changed) {
       await writeSessionState(input.cwd, sessionPath, {
         ...sessionState,
@@ -199,7 +205,14 @@ async function dynamicWorkItems(workspaceRoot, result) {
   const first = result.errors[0];
   if (first?.phase === "sources" && first.code === "source_pending") {
     const plan = await pendingSourceReviewPlan(workspaceRoot, { expectedStateHash: result.stateHash });
-    return ["delegated", "main-agent-merge", "main-agent-propose", "main-agent-apply"].includes(plan.mode) ? plan : undefined;
+    return [
+      "delegated",
+      "main-agent-merge",
+      "main-agent-propose",
+      "main-agent-apply",
+      "main-agent-repair",
+      "main-agent-repair-apply",
+    ].includes(plan.mode) ? plan : undefined;
   }
   if (first?.phase === "coverage") {
     return nextCoverageBatch(workspaceRoot, { limit: 4, maxSerializedBytes: 2048, validationResult: result });
@@ -314,7 +327,19 @@ function advanceProgressState(sessionState, digest, current, checkpointDigest, r
 
 function legalProgressCheckpointDigest(workItems) {
   let checkpoint;
-  if (workItems?.group === "source-fragment-apply"
+  if (workItems?.appliedRepair
+    && validStateHash(workItems.appliedRepair.stateHash)
+    && validStateHash(workItems.appliedRepair.repairSha256)
+    && Array.isArray(workItems.appliedRepair.sourceIds)) {
+    const sourceIds = workItems.appliedRepair.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0 || sourceIds.length !== workItems.appliedRepair.sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-repair-applied",
+      stateHash: workItems.appliedRepair.stateHash,
+      sourceIds,
+      repairSha256: workItems.appliedRepair.repairSha256,
+    };
+  } else if (workItems?.group === "source-fragment-apply"
     && workItems.proposal?.validated === true
     && validStateHash(workItems.proposal.expectedStateHash)
     && Array.isArray(workItems.proposal.sourceIds)) {
@@ -416,7 +441,22 @@ function advanceHandoffState(sessionState, checkpoint) {
 
 function legalRepairCheckpoint(workItems) {
   let checkpoint;
-  if (workItems?.group === "source-fragment-propose"
+  if (workItems?.group === "source-fragment-repair"
+    && hasRepairFeedback(workItems.repair)
+    && validStateHash(workItems.repair.expectedStateHash)
+    && validStateHash(workItems.repair.proposalSha256)
+    && validStateHash(workItems.repair.diagnosticSha256)
+    && Array.isArray(workItems.repair.sourceIds)) {
+    const sourceIds = workItems.repair.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0 || sourceIds.length !== workItems.repair.sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-immutable-repair",
+      expectedStateHash: workItems.repair.expectedStateHash,
+      proposalSha256: workItems.repair.proposalSha256,
+      diagnosticSha256: workItems.repair.diagnosticSha256,
+      sourceIds,
+    };
+  } else if (workItems?.group === "source-fragment-propose"
     && hasRepairFeedback(workItems.proposal)
     && validStateHash(workItems.proposal.expectedStateHash)
     && Array.isArray(workItems.proposal.sourceIds)) {
@@ -461,7 +501,11 @@ function legalRepairCheckpoint(workItems) {
 function legalRepairTarget(workItems, repairDigest) {
   if (!validStateHash(repairDigest)) return undefined;
   let path;
-  if (workItems?.group === "source-fragment-propose" && hasRepairFeedback(workItems.proposal)) {
+  let preparationTool = "read_file";
+  if (workItems?.group === "source-fragment-repair" && hasRepairFeedback(workItems.repair)) {
+    path = workItems.repair?.path;
+    preparationTool = "write_file";
+  } else if (workItems?.group === "source-fragment-propose" && hasRepairFeedback(workItems.proposal)) {
     path = workItems.proposal?.path;
   } else if (workItems?.group === "matrix-pending-selection" && hasRepairFeedback(workItems.selection)) {
     path = workItems.selection?.path;
@@ -471,10 +515,10 @@ function legalRepairTarget(workItems, repairDigest) {
     path = workItems.proposal?.path;
   }
   if (typeof path !== "string" || path.length === 0 || path.length > 2048) return undefined;
-  return { repairDigest, path };
+  return { repairDigest, path, preparationTool };
 }
 
-async function advanceRepairPreparation(workspaceRoot, sessionState, toolInput) {
+async function advanceRepairPreparation(workspaceRoot, sessionState, toolName, toolInput) {
   const ordinal = repairPreparationOrdinal(sessionState);
   const seenCheckpointDigests = Array.isArray(sessionState?.repairPreparationCheckpointDigests)
     ? sessionState.repairPreparationCheckpointDigests.filter(validStateHash)
@@ -484,14 +528,27 @@ async function advanceRepairPreparation(workspaceRoot, sessionState, toolInput) 
   const inputPath = toolInput && typeof toolInput === "object" && !Array.isArray(toolInput)
     ? toolInput.file_path
     : undefined;
-  if (!target || typeof inputPath !== "string" || inputPath.length === 0 || inputPath.length > 2048) {
+  if (!target || toolName !== target.preparationTool
+    || typeof inputPath !== "string" || inputPath.length === 0 || inputPath.length > 2048) {
     return { ordinal, seenCheckpointDigests, changed: false };
   }
   const targetPath = await resolveSafeWorkspacePath(workspaceRoot, target.path, { allowMissing: true });
   const readPath = await resolveSafeWorkspacePath(workspaceRoot, inputPath, { allowMissing: true });
   if (targetPath !== readPath) return { ordinal, seenCheckpointDigests, changed: false };
+  if (toolName === "write_file") {
+    let info;
+    try {
+      info = await stat(targetPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return { ordinal, seenCheckpointDigests, changed: false };
+      throw error;
+    }
+    if (!info.isFile() || info.size <= 0 || info.size > 24576) {
+      return { ordinal, seenCheckpointDigests, changed: false };
+    }
+  }
   const preparationDigest = checkpointDigest({
-    kind: "repair-target-read",
+    kind: `repair-target-${toolName === "write_file" ? "write" : "read"}`,
     repairDigest: target.repairDigest,
   });
   if (!preparationDigest || seenCheckpointDigests.includes(preparationDigest)) {
@@ -516,14 +573,17 @@ function parseRepairTarget(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   if (!validStateHash(value.repairDigest)) return undefined;
   if (typeof value.path !== "string" || value.path.length === 0 || value.path.length > 2048) return undefined;
-  return { repairDigest: value.repairDigest, path: value.path };
+  const preparationTool = value.preparationTool === "write_file" ? "write_file" : "read_file";
+  return { repairDigest: value.repairDigest, path: value.path, preparationTool };
 }
 
 function sameRepairTarget(left, right) {
   const parsedLeft = parseRepairTarget(left);
   const parsedRight = parseRepairTarget(right);
   if (!parsedLeft || !parsedRight) return parsedLeft === undefined && parsedRight === undefined;
-  return parsedLeft.repairDigest === parsedRight.repairDigest && parsedLeft.path === parsedRight.path;
+  return parsedLeft.repairDigest === parsedRight.repairDigest
+    && parsedLeft.path === parsedRight.path
+    && parsedLeft.preparationTool === parsedRight.preparationTool;
 }
 
 function hasRepairFeedback(value) {

@@ -265,6 +265,7 @@ test("legal coverage source bootstrap creates only deterministic pending manifes
 
 test("legal coverage injects deterministic disjoint worker batches for large pending source rooms", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-source-plan-"));
+  const outside = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-source-repair-outside-"));
   try {
     const fixture = await writeManifestBoundFixture(workspace);
     const manifestPath = join(workspace, ".pilotdeck/input-manifest.json");
@@ -620,7 +621,8 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       cwd: workspace,
     });
     const invalidProposalContext = invalidProposal.hookSpecificOutput.additionalContext ?? "";
-    assert.match(invalidProposalContext, /"group": "source-fragment-propose"/u);
+    assert.match(invalidProposalContext, /"group": "source-fragment-repair"/u);
+    assert.match(invalidProposalContext, /"mode": "main-agent-repair"/u);
     assert.match(invalidProposalContext, /source_merge_fact_locator_unverified/u);
     assert.match(invalidProposalContext, /source_merge_fact_time_invalid/u);
     const invalidProposalEnvelope = JSON.parse(invalidProposalContext
@@ -629,21 +631,32 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       nextAction: string;
       workItems: {
         proposal: {
-          validationDiagnostics: {
-            total: number;
-            returned: number;
-            hasMore: boolean;
-            items: Array<{ factNumber?: number; code: string; message: string }>;
+          path: string;
+          expectedStateHash: string;
+          sourceIds: string[];
+        };
+        repair: {
+          path: string;
+          proposalPath: string;
+          proposalSha256: string;
+          diagnosticSha256: string;
+          appliedReceiptPath: string;
+          limits: { maxOperations: number; maxSerializedBytes: number };
+          template: {
+            schemaVersion: number;
+            phase: string;
+            group: string;
+            expectedStateHash: string;
+            proposalPath: string;
+            proposalSha256: string;
+            diagnosticSha256: string;
+            operations: Array<{ factNumber: number; action: string; fact: Record<string, unknown> }>;
           };
           repairSlice: {
-            proposal: {
-              path: string;
-              sha256: string;
-              byteCount: number;
-              maxSerializedBytes: number;
-            };
-            currentProposal: typeof invalidProposalBody;
             diagnostics: {
+              total: number;
+              returned: number;
+              hasMore: boolean;
               items: Array<{ factNumber?: number; code: string; message: string }>;
             };
             rejectedFacts: Array<{
@@ -657,16 +670,16 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
               conflicts: string[];
               unresolvedItems: string[];
             }>;
-            limits: { maxSerializedBytes: number };
           };
         };
       };
     };
-    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.total, 3);
-    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.returned, 3);
-    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.hasMore, false);
+    const immutableRepair = invalidProposalEnvelope.workItems.repair;
+    assert.equal(immutableRepair.repairSlice.diagnostics.total, 3);
+    assert.equal(immutableRepair.repairSlice.diagnostics.returned, 3);
+    assert.equal(immutableRepair.repairSlice.diagnostics.hasMore, false);
     assert.deepEqual(
-      invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items.map((item) => item.code),
+      immutableRepair.repairSlice.diagnostics.items.map((item) => item.code),
       [
         "source_merge_fact_locator_unverified",
         "source_merge_fact_time_invalid",
@@ -674,45 +687,40 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       ],
     );
     assert.deepEqual(
-      invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items.map((item) => item.factNumber),
+      immutableRepair.repairSlice.diagnostics.items.map((item) => item.factNumber),
       [1, 2, 2],
     );
-    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
-    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
-    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[2]?.message ?? "", /Proposal fact 2 has an invalid thresholdAssessment/u);
-    assert.match(invalidProposalEnvelope.nextAction, /Fix every entry in workItems\.proposal\.validationDiagnostics\.items in one rewrite/u);
-    assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_locator_unverified/u);
-    assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_time_invalid/u);
-    const repairSlice = invalidProposalEnvelope.workItems.proposal.repairSlice;
+    assert.match(immutableRepair.repairSlice.diagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
+    assert.match(immutableRepair.repairSlice.diagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
+    assert.match(immutableRepair.repairSlice.diagnostics.items[2]?.message ?? "", /Proposal fact 2 has an invalid thresholdAssessment/u);
+    assert.match(invalidProposalEnvelope.nextAction, /Write exactly one new immutable source repair transaction/u);
+    assert.match(invalidProposalEnvelope.nextAction, /Do not read or overwrite the rejected proposal/u);
     const invalidProposalBytes = await readFile(proposalPath);
-    assert.equal(repairSlice.proposal.path, proposal.path);
-    assert.equal(repairSlice.proposal.sha256, sha256(invalidProposalBytes));
-    assert.equal(repairSlice.proposal.byteCount, invalidProposalBytes.byteLength);
-    assert.equal(repairSlice.proposal.maxSerializedBytes, 24576);
-    assert.equal(repairSlice.proposal.byteCount <= repairSlice.proposal.maxSerializedBytes, true);
-    assert.deepEqual(repairSlice.currentProposal, invalidProposalBody);
-    assert.deepEqual(repairSlice.currentProposal.facts[2], proposalBase.facts[2]);
-    assert.deepEqual(repairSlice.diagnostics.items, invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items);
-    assert.deepEqual(repairSlice.rejectedFacts.map((item) => item.factNumber), [1, 2]);
-    assert.deepEqual(repairSlice.rejectedFacts[0]?.fact, invalidProposalBody.facts[0]);
-    assert.deepEqual(repairSlice.rejectedFacts[0]?.diagnosticCodes, ["source_merge_fact_locator_unverified"]);
-    const firstRepairSource = repairSlice.sourceContext.find((source) => source.sourceId === proposal.sourceIds[0]);
+    assert.equal(immutableRepair.proposalPath, proposal.path);
+    assert.equal(immutableRepair.proposalSha256, sha256(invalidProposalBytes));
+    assert.match(immutableRepair.path, /source-repair-[a-f0-9]{12}\.json$/u);
+    assert.match(immutableRepair.appliedReceiptPath, /source-repair-applied-[a-f0-9]{12}\.json$/u);
+    assert.equal(immutableRepair.limits.maxOperations, 2);
+    assert.equal(immutableRepair.limits.maxSerializedBytes, 24576);
+    assert.deepEqual(immutableRepair.repairSlice.rejectedFacts.map((item) => item.factNumber), [1, 2]);
+    assert.deepEqual(immutableRepair.repairSlice.rejectedFacts[0]?.fact, invalidProposalBody.facts[0]);
+    assert.deepEqual(immutableRepair.repairSlice.rejectedFacts[0]?.diagnosticCodes, ["source_merge_fact_locator_unverified"]);
+    const firstRepairSource = immutableRepair.repairSlice.sourceContext
+      .find((source) => source.sourceId === proposal.sourceIds[0]);
     assert.deepEqual(firstRepairSource?.allowedFragmentFacts, [
       { locator: "converted.txt:1", statement: `Reviewed ${proposal.sourceIds[0]}.` },
     ]);
     assert.deepEqual(firstRepairSource?.conflicts, ["Synthetic conflict is preserved on the source ledger."]);
     assert.deepEqual(firstRepairSource?.unresolvedItems, ["Synthetic unresolved item is preserved on the source ledger."]);
-    assert.equal(Buffer.byteLength(JSON.stringify(repairSlice)) <= repairSlice.limits.maxSerializedBytes, true);
-    assert.match(invalidProposalContext, /Rewrite workItems\.proposal\.repairSlice\.currentProposal as one complete JSON document/u);
-    assert.match(invalidProposalContext, /preserve every unrelated fact exactly/u);
-    assert.match(invalidProposalContext, /instead of reconstructing the proposal through paginated reads/u);
-    assert.match(invalidProposalContext, /otherwise remove a fact that merely restates conflict or unresolved metadata/u);
-    assert.match(invalidProposalContext, /"preparedSlice":/u);
+    assert.doesNotMatch(invalidProposalContext, /"currentProposal":/u);
+    assert.doesNotMatch(invalidProposalContext, /"preparedSlice":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceMergeApplyCommand":/u);
+    assert.doesNotMatch(invalidProposalContext, /"sourceMergeRepairApplyCommand":/u);
     const repairConvergence = (
       invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         stateHash?: string;
+        progressOrdinal: number;
         repairOrdinal: number;
         repairPreparationOrdinal: number;
       }
@@ -721,9 +729,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.notEqual(repairConvergenceHash, proposeConvergenceHash);
     assert.equal(repairConvergence.repairOrdinal, proposeConvergence.repairOrdinal + 1);
     assert.equal(repairConvergence.repairPreparationOrdinal, 0);
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
-    assert.match(invalidProposalEnvelope.nextAction, /"operator":"gt","actual":120,"threshold":100/u);
-    assert.match(invalidProposalEnvelope.nextAction, /never use prose or alternate field names/u);
+    assert.equal(repairConvergence.progressOrdinal, proposeConvergence.progressOrdinal);
 
     const invalidProposalHash = sha256(invalidProposalBytes);
     const rejectedDirectApply = await runCli(
@@ -736,14 +742,16 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(rejectedDirectApply.stderr, /source_merge_fact_locator_unverified/u);
     assert.doesNotMatch(rejectedDirectApply.stderr, /source_merge_threshold_invalid/u);
 
+    const wrongRepairPath = join(workspace, STATE_ROOT, "fragments", "wrong-repair.json");
+    await writeJson(wrongRepairPath, { wrong: true });
     await runHook({
       hookEventName: "PostToolUse",
       sessionId: "large-pending-source-plan",
       transcriptPath: "",
       cwd: workspace,
-      toolName: "read_file",
-      toolInput: { file_path: envelope.workItems.readiness.path },
-      toolUseId: "wrong-target-read",
+      toolName: "write_file",
+      toolInput: { file_path: `${STATE_ROOT}/fragments/wrong-repair.json` },
+      toolUseId: "wrong-target-write",
     });
     const afterWrongRead = await runHook({
       hookEventName: "PreModelRequest",
@@ -763,21 +771,21 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       sessionId: "large-pending-source-plan",
       transcriptPath: "",
       cwd: workspace,
-      toolName: "read_file",
-      toolInput: { file_path: proposal.path },
-      toolUseId: "target-read",
+      toolName: "write_file",
+      toolInput: { file_path: immutableRepair.path },
+      toolUseId: "missing-target-write",
     });
-    const afterTargetRead = await runHook({
+    const afterMissingTargetWrite = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "large-pending-source-plan",
       transcriptPath: "",
       cwd: workspace,
     });
     assert.equal(
-      (afterTargetRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      (afterMissingTargetWrite.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         repairPreparationOrdinal: number;
       }).repairPreparationOrdinal,
-      1,
+      0,
     );
 
     await runHook({
@@ -786,212 +794,320 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       transcriptPath: "",
       cwd: workspace,
       toolName: "read_file",
-      toolInput: { file_path: proposal.path, offset: 1, limit: 1 },
-      toolUseId: "replayed-target-read",
+      toolInput: { file_path: proposal.path },
+      toolUseId: "rejected-proposal-read",
     });
-    const afterReplayedRead = await runHook({
+    const afterRejectedProposalRead = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "large-pending-source-plan",
       transcriptPath: "",
       cwd: workspace,
     });
     assert.equal(
-      (afterReplayedRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      (afterRejectedProposalRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        repairPreparationOrdinal: number;
+      }).repairPreparationOrdinal,
+      0,
+    );
+
+    const repairBody = {
+      ...immutableRepair.template,
+      operations: [
+        {
+          factNumber: 1,
+          action: "replace",
+          fact: {
+            ...invalidProposalBody.facts[0],
+            sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "converted.txt:1" }],
+          },
+        },
+        {
+          factNumber: 2,
+          action: "replace",
+          fact: {
+            ...invalidProposalBody.facts[1],
+            missingTimeReason: undefined,
+            thresholdAssessment: {
+              operator: "gt",
+              actual: 120,
+              threshold: 100,
+              breached: true,
+            },
+          },
+        },
+      ],
+    };
+    const repairPath = join(workspace, immutableRepair.path);
+    const canonicalSourcesBeforeRepair = await readFile(join(workspace, STATE_ROOT, "sources.json"));
+    const canonicalFactsBeforeRepair = await readFile(join(workspace, STATE_ROOT, "facts.json"));
+    const invalidRepairs: Array<{
+      name: string;
+      body: Record<string, unknown>;
+      errorCode: RegExp;
+    }> = [
+      {
+        name: "missing rejected fact operation",
+        body: { ...repairBody, operations: repairBody.operations.slice(0, 1) },
+        errorCode: /source_repair_operation_count_invalid/u,
+      },
+      {
+        name: "duplicate fact operation",
+        body: { ...repairBody, operations: [repairBody.operations[0], repairBody.operations[0]] },
+        errorCode: /source_repair_fact_scope_invalid/u,
+      },
+      {
+        name: "unknown fact operation",
+        body: {
+          ...repairBody,
+          operations: [repairBody.operations[0], { ...repairBody.operations[1], factNumber: 99 }],
+        },
+        errorCode: /source_repair_fact_scope_invalid/u,
+      },
+      {
+        name: "extra valid-fact operation",
+        body: {
+          ...repairBody,
+          operations: [
+            ...repairBody.operations,
+            { factNumber: 3, action: "replace", fact: invalidProposalBody.facts[2] },
+          ],
+        },
+        errorCode: /source_repair_operation_count_invalid/u,
+      },
+      {
+        name: "unsupported action",
+        body: {
+          ...repairBody,
+          operations: [repairBody.operations[0], { ...repairBody.operations[1], action: "merge" }],
+        },
+        errorCode: /source_repair_operation_invalid/u,
+      },
+      {
+        name: "placeholder replacement",
+        body: {
+          ...repairBody,
+          operations: [
+            {
+              ...repairBody.operations[0],
+              fact: { ...repairBody.operations[0]!.fact, subject: "<legal subject>" },
+            },
+            repairBody.operations[1],
+          ],
+        },
+        errorCode: /source_merge_fact_content_missing/u,
+      },
+      {
+        name: "removal without reason",
+        body: {
+          ...repairBody,
+          operations: [
+            repairBody.operations[0],
+            { factNumber: 2, action: "remove", reason: "" },
+          ],
+        },
+        errorCode: /source_repair_removal_invalid/u,
+      },
+      {
+        name: "changed diagnostic identity",
+        body: { ...repairBody, diagnosticSha256: "0".repeat(64) },
+        errorCode: /source_repair_scope_mismatch/u,
+      },
+      {
+        name: "unverified replacement locator",
+        body: {
+          ...repairBody,
+          operations: [
+            {
+              ...repairBody.operations[0],
+              fact: {
+                ...repairBody.operations[0]!.fact,
+                sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "converted.txt:999" }],
+              },
+            },
+            repairBody.operations[1],
+          ],
+        },
+        errorCode: /source_merge_fact_locator_unverified/u,
+      },
+      {
+        name: "byte overflow",
+        body: { ...repairBody, padding: "x".repeat(24576) },
+        errorCode: /source_repair_byte_limit/u,
+      },
+    ];
+    for (const invalidRepair of invalidRepairs) {
+      await writeJson(repairPath, invalidRepair.body);
+      const rejectedRepair = await runHook({
+        hookEventName: "PreModelRequest",
+        sessionId: "large-pending-source-plan",
+        transcriptPath: "",
+        cwd: workspace,
+      });
+      const rejectedRepairContext = rejectedRepair.hookSpecificOutput.additionalContext ?? "";
+      assert.match(rejectedRepairContext, invalidRepair.errorCode, invalidRepair.name);
+      assert.doesNotMatch(rejectedRepairContext, /"sourceMergeRepairApplyCommand":/u, invalidRepair.name);
+      assert.deepEqual(
+        await readFile(join(workspace, STATE_ROOT, "sources.json")),
+        canonicalSourcesBeforeRepair,
+        invalidRepair.name,
+      );
+      assert.deepEqual(
+        await readFile(join(workspace, STATE_ROOT, "facts.json")),
+        canonicalFactsBeforeRepair,
+        invalidRepair.name,
+      );
+    }
+    await writeJson(repairPath, repairBody);
+    await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "write_file",
+      toolInput: { file_path: immutableRepair.path },
+      toolUseId: "immutable-repair-write",
+    });
+    const repairApplyReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const repairApplyContext = repairApplyReceipt.hookSpecificOutput.additionalContext ?? "";
+    assert.match(repairApplyContext, /"group": "source-fragment-repair-apply"/u);
+    assert.match(repairApplyContext, /"mode": "main-agent-repair-apply"/u);
+    assert.match(repairApplyContext, /"sourceMergeRepairApplyCommand":/u);
+    assert.match(repairApplyContext, /source-repair-apply/u);
+    assert.doesNotMatch(repairApplyContext, /"repairSlice":/u);
+    assert.doesNotMatch(repairApplyContext, /"template":/u);
+    const repairApplyEnvelope = JSON.parse(repairApplyContext
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      sourceMergeRepairApplyCommand: string;
+      workItems: { repair: { path: string; repairSha256: string; validated: boolean } };
+    };
+    assert.equal(repairApplyEnvelope.workItems.repair.path, immutableRepair.path);
+    assert.equal(repairApplyEnvelope.workItems.repair.validated, true);
+    const repairApplyConvergence = repairApplyReceipt.hookSpecificOutput.modelRequestPatch?.metadata
+      ?.pilotdeckConvergence as {
+        progressOrdinal: number;
+        repairOrdinal: number;
+        repairPreparationOrdinal: number;
+      };
+    assert.equal(
+      repairApplyConvergence.repairPreparationOrdinal,
+      1,
+    );
+    assert.equal(repairApplyConvergence.progressOrdinal, repairConvergence.progressOrdinal);
+    assert.equal(repairApplyConvergence.repairOrdinal, repairConvergence.repairOrdinal);
+
+    await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "write_file",
+      toolInput: { file_path: immutableRepair.path },
+      toolUseId: "replayed-repair-write",
+    });
+    const afterReplayedWrite = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (afterReplayedWrite.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         repairPreparationOrdinal: number;
       }).repairPreparationOrdinal,
       1,
     );
 
-    await writeJson(proposalPath, {
-      ...proposalBase,
-      facts: [{ ...proposalBase.facts[0], subject: "<legal subject>" }],
-      noMaterialFacts: proposal.sourceIds.slice(1).map((sourceId) => ({
-        sourceId,
-        reason: "Synthetic placeholder-proposal fixture.",
-      })),
-    });
-    const placeholderProposal = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    assert.match(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /source_merge_fact_content_missing/u);
-    assert.doesNotMatch(placeholderProposal.hookSpecificOutput.additionalContext ?? "", /"sourceMergeApplyCommand":/u);
-    const placeholderEnvelope = JSON.parse((placeholderProposal.hookSpecificOutput.additionalContext ?? "")
-      .replace(/^<legal_coverage_state>\n/u, "")
-      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
-      workItems: { proposal: { repairSlice: { proposal: { sha256: string } } } };
-    };
-    assert.notEqual(placeholderEnvelope.workItems.proposal.repairSlice.proposal.sha256, repairSlice.proposal.sha256);
-    assert.equal(
-      (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      repairConvergenceHash,
-    );
-    assert.equal(
-      (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
-      repairConvergence.repairOrdinal,
-    );
-
-    await writeJson(proposalPath, {
-      ...proposalBase,
-      facts: [null],
-      noMaterialFacts: proposal.sourceIds.map((sourceId) => ({
-        sourceId,
-        reason: "Synthetic malformed-fact fixture.",
-      })),
-    });
-    const malformedFactProposal = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    const malformedFactContext = malformedFactProposal.hookSpecificOutput.additionalContext ?? "";
-    assert.match(malformedFactContext, /source_merge_fact_keys_invalid/u);
-    assert.doesNotMatch(malformedFactContext, /source_merge_fact_time_invalid/u);
-    assert.doesNotMatch(malformedFactContext, /source_merge_threshold_invalid/u);
-    assert.doesNotMatch(malformedFactContext, /source_merge_fact_sources_missing/u);
-
-    await writeJson(proposalPath, { unsupportedTopLevelKey: true });
-    const topLevelInvalidProposal = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    const topLevelInvalidContext = topLevelInvalidProposal.hookSpecificOutput.additionalContext ?? "";
-    assert.match(topLevelInvalidContext, /source_merge_proposal_keys_invalid/u);
-    assert.doesNotMatch(topLevelInvalidContext, /"repairSlice":/u);
-    assert.doesNotMatch(topLevelInvalidContext, /repairSlice\.currentProposal/u);
-    assert.match(topLevelInvalidContext, /Rewrite that proposal from injected workItems\.preparedSlice and proposal\.template/u);
-    assert.equal(
-      (topLevelInvalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      repairConvergenceHash,
-    );
-
-    await writeJson(proposalPath, {
-      ...proposalBase,
-      facts: Array.from({ length: 32 }, (_, index) => ({
-        ...proposalBase.facts[0],
-        subject: `Synthetic invalid fact ${index + 1}`,
-        dateOrPeriod: "2026",
-        missingTimeReason: "Conflicting synthetic time fields.",
-      })),
-      noMaterialFacts: proposal.sourceIds.map((sourceId) => ({
-        sourceId,
-        reason: "<specific no-material reason>",
-      })),
-    });
-    const boundedDiagnostics = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    const boundedContext = boundedDiagnostics.hookSpecificOutput.additionalContext ?? "";
-    const boundedEnvelope = JSON.parse(boundedContext
-      .replace(/^<legal_coverage_state>\n/u, "")
-      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
-      workItems: {
-        proposal: {
-          validationDiagnostics: {
-            total: number;
-            returned: number;
-            hasMore: boolean;
-            items: Array<{ code: string; message: string }>;
-          };
-        };
-      };
-    };
-    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.total, 36);
-    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.returned, 36);
-    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.hasMore, false);
-    assert.equal(boundedEnvelope.workItems.proposal.validationDiagnostics.items.length, 36);
-    assert.deepEqual(
-      boundedEnvelope.workItems.proposal.validationDiagnostics.items.slice(0, 32).map((item) => item.code),
-      Array.from({ length: 32 }, () => "source_merge_fact_time_invalid"),
-    );
-    assert.deepEqual(
-      boundedEnvelope.workItems.proposal.validationDiagnostics.items.slice(32).map((item) => item.code),
-      Array.from({ length: 4 }, () => "source_merge_no_material_invalid"),
-    );
-    assert.equal(
-      (boundedDiagnostics.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
-      repairConvergenceHash,
-    );
-    assert.equal(
-      (boundedDiagnostics.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
-      repairConvergence.repairOrdinal,
-    );
-
-    await writeJson(proposalPath, proposalBase);
-    const applyReceipt = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    const applyContext = applyReceipt.hookSpecificOutput.additionalContext ?? "";
-    assert.match(applyContext, /"group": "source-fragment-apply"/u);
-    assert.match(applyContext, /"mode": "main-agent-apply"/u);
-    assert.doesNotMatch(applyContext, /"preparedSlice":/u);
-    assert.match(applyContext, /"sourceMergeApplyCommand":/u);
-    assert.match(applyContext, /source-merge-apply/u);
-    const applyConvergence = applyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
-      stateHash?: string;
-      progressOrdinal: number;
-      repairOrdinal: number;
-      nextBatch?: { group?: string; returned?: number; hasMore?: boolean };
-    };
-    assert.notEqual(applyConvergence.stateHash, proposeConvergenceHash);
-    assert.deepEqual(applyConvergence.nextBatch, {
-      group: "source-fragment-apply",
-      returned: 4,
-      hasMore: true,
-    });
-    assert.equal(applyConvergence.progressOrdinal, proposeConvergence.progressOrdinal + 1);
-    assert.equal(applyConvergence.repairOrdinal, repairConvergence.repairOrdinal);
-    const replayedApplyReceipt = await runHook({
-      hookEventName: "PreModelRequest",
-      sessionId: "large-pending-source-plan",
-      transcriptPath: "",
-      cwd: workspace,
-    });
-    assert.equal(
-      (replayedApplyReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
-      applyConvergence.progressOrdinal,
-    );
-
-    const validProposalBytes = await readFile(proposalPath);
-    const proposalHash = sha256(validProposalBytes);
     const beforeApplySources = await readFile(join(workspace, STATE_ROOT, "sources.json"));
     const beforeApplyFacts = await readFile(join(workspace, STATE_ROOT, "facts.json"));
-    await writeFile(proposalPath, Buffer.concat([validProposalBytes, Buffer.from("\n")]));
+    const validRepairBytes = await readFile(repairPath);
+    const repairHash = sha256(validRepairBytes);
+
+    await writeFile(proposalPath, Buffer.concat([invalidProposalBytes, Buffer.from("\n")]));
     const changedProposal = await runCli(
       workspace,
-      "source-merge-apply",
-      "--input-file", proposal.path,
-      "--proposal-sha256", proposalHash,
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
     );
     assert.equal(changedProposal.exitCode, 1);
-    assert.match(changedProposal.stderr, /source_merge_proposal_changed/u);
+    assert.match(changedProposal.stderr, /source_repair_out_of_scope/u);
     assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
     assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
-    await writeFile(proposalPath, validProposalBytes);
+    await writeFile(proposalPath, invalidProposalBytes);
+
+    const originalSourcePath = join(workspace, fixture.originalPath);
+    const originalSourceBytes = await readFile(originalSourcePath);
+    await writeFile(originalSourcePath, Buffer.concat([originalSourceBytes, Buffer.from("changed")]));
+    const staleState = await runCli(
+      workspace,
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
+    );
+    assert.equal(staleState.exitCode, 1);
+    assert.match(staleState.stderr, /source_repair_out_of_scope/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+    await writeFile(originalSourcePath, originalSourceBytes);
+
+    const traversal = await runCli(
+      workspace,
+      "source-repair-apply",
+      "--input-file", `../${immutableRepair.path}`,
+      "--repair-sha256", repairHash,
+    );
+    assert.equal(traversal.exitCode, 1);
+    assert.match(traversal.stderr, /source_repair_out_of_scope/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+
+    const outsideRepairPath = join(outside, "source-repair.json");
+    await writeFile(outsideRepairPath, validRepairBytes);
+    await rm(repairPath);
+    await symlink(outsideRepairPath, repairPath);
+    const symlinkedRepair = await runCli(
+      workspace,
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
+    );
+    assert.equal(symlinkedRepair.exitCode, 1);
+    assert.match(symlinkedRepair.stderr, /source_repair_out_of_scope/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+    await rm(repairPath);
+    await writeFile(repairPath, validRepairBytes);
+
+    await writeFile(repairPath, Buffer.concat([validRepairBytes, Buffer.from("\n")]));
+    const changedRepair = await runCli(
+      workspace,
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
+    );
+    assert.equal(changedRepair.exitCode, 1);
+    assert.match(changedRepair.stderr, /source_repair_changed/u);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
+    assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
+    await writeFile(repairPath, validRepairBytes);
     const applied = await runCli(
       workspace,
-      "source-merge-apply",
-      "--input-file", proposal.path,
-      "--proposal-sha256", proposalHash,
-      "--limit", "4",
-      "--max-bytes", "24576",
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
     );
     assert.equal(applied.exitCode, 0, applied.stderr);
     const appliedResult = JSON.parse(applied.stdout) as { applied: boolean; sourceCount: number; factCount: number };
     assert.equal(appliedResult.applied, true);
     assert.equal(appliedResult.sourceCount, 4);
-    assert.equal(appliedResult.factCount, 4);
+    assert.equal(appliedResult.factCount, 3);
+    assert.deepEqual(await readFile(proposalPath), invalidProposalBytes);
     const sourcesAfterApply = JSON.parse(await readFile(join(workspace, STATE_ROOT, "sources.json"), "utf8")) as {
       sources: Array<{ id: string; status: string; extractionMethod?: string; factIds?: string[] }>;
     };
@@ -1001,10 +1117,10 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const mergedSources = sourcesAfterApply.sources.filter((source) => proposal.sourceIds.includes(source.id));
     assert.equal(mergedSources.every((source) => source.status === "reviewed"), true);
     assert.equal(mergedSources.every((source) => source.extractionMethod === "verified derived text inspection"), true);
-    assert.equal(mergedSources.every((source) => source.factIds?.length === 1), true);
+    assert.deepEqual(mergedSources.map((source) => source.factIds?.length ?? 0), [1, 1, 1, 0]);
     const factsBeforeApply = JSON.parse(beforeApplyFacts.toString("utf8")) as { facts: unknown[] };
-    assert.equal(factsAfterApply.facts.length, factsBeforeApply.facts.length + 4);
-    for (const source of mergedSources) {
+    assert.equal(factsAfterApply.facts.length, factsBeforeApply.facts.length + 3);
+    for (const source of mergedSources.slice(0, 3)) {
       const factId = source.factIds?.[0];
       assert.equal(factsAfterApply.facts.some((fact) => fact.id === factId
         && fact.sourceRefs.some((reference) => reference.sourceId === source.id)), true);
@@ -1012,20 +1128,64 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.notDeepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), beforeApplySources);
     assert.notDeepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), beforeApplyFacts);
 
+    const appliedReceiptPath = join(workspace, immutableRepair.appliedReceiptPath);
+    const appliedReceiptBytes = await readFile(appliedReceiptPath);
+    const tamperedAppliedReceipt = JSON.parse(appliedReceiptBytes.toString("utf8")) as { repairSha256: string };
+    tamperedAppliedReceipt.repairSha256 = "0".repeat(64);
+    await writeJson(appliedReceiptPath, tamperedAppliedReceipt);
+    const ignoredTamperedReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (ignoredTamperedReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }).progressOrdinal,
+      repairApplyConvergence.progressOrdinal,
+    );
+    assert.doesNotMatch(ignoredTamperedReceipt.hookSpecificOutput.additionalContext ?? "", /"appliedRepair":/u);
+    await writeFile(appliedReceiptPath, appliedReceiptBytes);
+
+    const afterRepairApply = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const afterRepairProgress = afterRepairApply.hookSpecificOutput.modelRequestPatch?.metadata
+      ?.pilotdeckConvergence as { progressOrdinal: number };
+    assert.equal(afterRepairProgress.progressOrdinal, repairApplyConvergence.progressOrdinal + 1);
+    assert.match(afterRepairApply.hookSpecificOutput.additionalContext ?? "", /"appliedRepair":/u);
+    const replayedAppliedReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedAppliedReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }).progressOrdinal,
+      afterRepairProgress.progressOrdinal,
+    );
+
     const sourcesBeforeReplay = await readFile(join(workspace, STATE_ROOT, "sources.json"));
     const factsBeforeReplay = await readFile(join(workspace, STATE_ROOT, "facts.json"));
     const replay = await runCli(
       workspace,
-      "source-merge-apply",
-      "--input-file", proposal.path,
-      "--proposal-sha256", proposalHash,
+      "source-repair-apply",
+      "--input-file", immutableRepair.path,
+      "--repair-sha256", repairHash,
     );
     assert.equal(replay.exitCode, 1);
-    assert.match(replay.stderr, /stale_state_hash/u);
+    assert.match(replay.stderr, /source_repair_out_of_scope/u);
     assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "sources.json")), sourcesBeforeReplay);
     assert.deepEqual(await readFile(join(workspace, STATE_ROOT, "facts.json")), factsBeforeReplay);
   } finally {
     await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
 
@@ -3364,7 +3524,7 @@ test("legal product plugin loads one skill and contains no benchmark-specific co
   assert.equal(plugin.skills?.[0]?.name, "legal-coverage:conduct-legal-due-diligence");
   assert.equal(plugin.hooksConfig?.PreModelRequest?.length, 1);
   assert.equal(plugin.hooksConfig?.PostToolUse?.length, 1);
-  assert.equal(plugin.hooksConfig?.PostToolUse?.[0]?.matcher, "read_file");
+  assert.equal(plugin.hooksConfig?.PostToolUse?.[0]?.matcher, "read_file|write_file");
   assert.equal(plugin.hooksConfig?.PostCompact?.length, 1);
 
   const files = await collectFiles(PLUGIN_ROOT);

@@ -65,14 +65,19 @@ const MATRIX_STATUSES = new Set(["pending", "complete", "not-applicable"]);
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".html", ".htm", ".csv"]);
 const SOURCE_REVIEW_FRAGMENT_PATTERN = /^source-review-[a-f0-9]{12}\.json$/u;
 const SOURCE_MERGE_READINESS_PATTERN = /^source-merge-ready-[a-f0-9]{12}\.json$/u;
+const SOURCE_MERGE_REPAIR_PATTERN = /^source-repair-[a-f0-9]{12}\.json$/u;
+const SOURCE_MERGE_REPAIR_APPLIED_PATTERN = /^source-repair-applied-[a-f0-9]{12}\.json$/u;
 const SOURCE_REVIEW_FRAGMENT_TYPE = "legal-evidence-source-batch-review";
 const SOURCE_MERGE_READINESS_TYPE = "legal-source-merge-readiness";
+const SOURCE_MERGE_REPAIR_APPLIED_TYPE = "legal-source-repair-applied";
 const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
 const SOURCE_MERGE_READINESS_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
 const SOURCE_MERGE_MAX_FACTS = 32;
 const SOURCE_MERGE_MAX_VALIDATION_DIAGNOSTICS = SOURCE_MERGE_MAX_FACTS + SOURCE_REVIEW_MERGE_MAX_SOURCES;
 const SOURCE_MERGE_REPAIR_SLICE_MAX_BYTES = 196608;
+const SOURCE_MERGE_REPAIR_MAX_BYTES = 24576;
+const SOURCE_MERGE_REPAIR_APPLIED_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 const MATRIX_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/matrix-transactions`;
 const MATRIX_SELECTION_PATTERN = /^matrix-selection-[a-f0-9]{12}\.json$/u;
@@ -205,13 +210,20 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
     ? options.expectedStateHash
     : (await validateWorkspace({ workspaceRoot, writeProof: false })).stateHash;
   const proposalPlan = sourceMergeProposalPlanFor(mergePlan, expectedStateHash);
+  const appliedRepair = await currentSourceMergeRepairAppliedReceipt(
+    workspaceRoot,
+    expectedStateHash,
+    sourceRows,
+  );
   const readinessReceipt = await validSourceMergeReadinessReceipt(workspaceRoot, proposalPlan);
-  if (!readinessReceipt) return proposalPlan;
+  if (!readinessReceipt) return withAppliedRepairCheckpoint(proposalPlan, appliedRepair);
   const proposePlan = sourceMergeProposePlanFor(proposalPlan, readinessReceipt);
   const proposalReceipt = await validSourceMergeProposalReceipt(workspaceRoot, proposePlan, receipts, loaded.state);
-  if (proposalReceipt?.valid) return sourceMergeApplyPlanFor(proposePlan, proposalReceipt);
+  if (proposalReceipt?.valid) {
+    return withAppliedRepairCheckpoint(sourceMergeApplyPlanFor(proposePlan, proposalReceipt), appliedRepair);
+  }
   if (proposalReceipt?.error) {
-    return {
+    const rejectedPlan = {
       ...proposePlan,
       proposal: {
         ...proposePlan.proposal,
@@ -224,8 +236,32 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
           : {}),
       },
     };
+    const repairPlan = sourceMergeRepairPlanFor(rejectedPlan);
+    if (!repairPlan) return withAppliedRepairCheckpoint(rejectedPlan, appliedRepair);
+    const repairReceipt = await validSourceMergeRepairReceipt(
+      workspaceRoot,
+      repairPlan,
+      receipts,
+      loaded.state,
+    );
+    if (repairReceipt?.valid) {
+      return withAppliedRepairCheckpoint(
+        sourceMergeRepairApplyPlanFor(repairPlan, repairReceipt),
+        appliedRepair,
+      );
+    }
+    if (repairReceipt?.error) {
+      return withAppliedRepairCheckpoint({
+        ...repairPlan,
+        repair: {
+          ...repairPlan.repair,
+          validationError: repairReceipt.error,
+        },
+      }, appliedRepair);
+    }
+    return withAppliedRepairCheckpoint(repairPlan, appliedRepair);
   }
-  return proposePlan;
+  return withAppliedRepairCheckpoint(proposePlan, appliedRepair);
 }
 
 function sourceReviewPlanFor(sourceRows, options = {}) {
@@ -586,6 +622,111 @@ function sourceMergeApplyPlanFor(proposalPlan, proposalReceipt) {
   };
 }
 
+function sourceMergeRepairPlanFor(rejectedPlan) {
+  const repairSlice = rejectedPlan.proposal?.repairSlice;
+  const diagnostics = repairSlice?.diagnostics;
+  const rejectedFacts = Array.isArray(repairSlice?.rejectedFacts) ? repairSlice.rejectedFacts : [];
+  const diagnosticItems = Array.isArray(diagnostics?.items) ? diagnostics.items : [];
+  if (rejectedFacts.length === 0 || diagnosticItems.length === 0
+    || diagnosticItems.some((item) => !Number.isSafeInteger(item?.factNumber))) return undefined;
+  const factNumbers = rejectedFacts.map((item) => item.factNumber);
+  if (new Set(factNumbers).size !== factNumbers.length
+    || diagnosticItems.some((item) => !factNumbers.includes(item.factNumber))) return undefined;
+  const diagnosticIdentity = diagnosticItems.map((item) => ({
+    factNumber: item.factNumber,
+    code: item.code,
+  }));
+  const diagnosticSha256 = sha256(Buffer.from(stableStringify(diagnosticIdentity)));
+  const digest = sha256([
+    rejectedPlan.proposal.expectedStateHash,
+    rejectedPlan.proposal.path,
+    repairSlice.proposal.sha256,
+    diagnosticSha256,
+  ].join("\0")).slice(0, 12);
+  const repairPath = `${STATE_DIRECTORY}/fragments/source-repair-${digest}.json`;
+  const appliedReceiptPath = `${STATE_DIRECTORY}/fragments/source-repair-applied-${digest}.json`;
+  const { preparedSlice: _preparedSlice, ...boundedPlan } = rejectedPlan;
+  const proposal = { ...boundedPlan.proposal };
+  delete proposal.template;
+  delete proposal.validationError;
+  delete proposal.validationDiagnostics;
+  delete proposal.repairSlice;
+  return {
+    ...boundedPlan,
+    group: "source-fragment-repair",
+    mode: "main-agent-repair",
+    proposal,
+    repair: {
+      repairRequired: true,
+      path: repairPath,
+      expectedStateHash: rejectedPlan.proposal.expectedStateHash,
+      proposalPath: rejectedPlan.proposal.path,
+      proposalSha256: repairSlice.proposal.sha256,
+      sourceIds: [...rejectedPlan.proposal.sourceIds],
+      diagnosticSha256,
+      appliedReceiptPath,
+      limits: {
+        maxOperations: rejectedFacts.length,
+        maxSerializedBytes: SOURCE_MERGE_REPAIR_MAX_BYTES,
+      },
+      template: {
+        schemaVersion: 1,
+        phase: "sources",
+        group: "source-fragment-repair",
+        expectedStateHash: rejectedPlan.proposal.expectedStateHash,
+        proposalPath: rejectedPlan.proposal.path,
+        proposalSha256: repairSlice.proposal.sha256,
+        diagnosticSha256,
+        operations: rejectedFacts.map((item) => ({
+          factNumber: item.factNumber,
+          action: "replace",
+          fact: item.fact,
+        })),
+      },
+      repairSlice: {
+        schemaVersion: 1,
+        diagnostics,
+        rejectedFacts,
+        sourceContext: repairSlice.sourceContext,
+      },
+    },
+  };
+}
+
+function sourceMergeRepairApplyPlanFor(repairPlan, repairReceipt) {
+  const { preparedSlice: _preparedSlice, ...boundedPlan } = repairPlan;
+  const proposal = { ...boundedPlan.proposal };
+  delete proposal.template;
+  delete proposal.validationError;
+  delete proposal.validationDiagnostics;
+  delete proposal.repairSlice;
+  return {
+    ...boundedPlan,
+    group: "source-fragment-repair-apply",
+    mode: "main-agent-repair-apply",
+    proposal,
+    repair: {
+      path: repairPlan.repair.path,
+      expectedStateHash: repairPlan.repair.expectedStateHash,
+      proposalPath: repairPlan.repair.proposalPath,
+      proposalSha256: repairPlan.repair.proposalSha256,
+      sourceIds: [...repairPlan.repair.sourceIds],
+      diagnosticSha256: repairPlan.repair.diagnosticSha256,
+      appliedReceiptPath: repairPlan.repair.appliedReceiptPath,
+      repairSha256: repairReceipt.sha256,
+      validated: true,
+      operationCount: repairReceipt.operationCount,
+      factCount: repairReceipt.factCount,
+      noMaterialFactCount: repairReceipt.noMaterialFactCount,
+      transactionBytes: repairReceipt.transactionBytes,
+    },
+  };
+}
+
+function withAppliedRepairCheckpoint(plan, appliedRepair) {
+  return appliedRepair ? { ...plan, appliedRepair } : plan;
+}
+
 function boundedReceiptSourceIds(receipt, maxRecords, maxSerializedBytes) {
   const rowsById = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
   const selected = [];
@@ -852,6 +993,230 @@ function sourceMergeRepairSliceFor(patch, bytes, plan, receipt, validationDiagno
     : undefined;
 }
 
+async function validSourceMergeRepairReceipt(workspaceRoot, plan, receipts, state) {
+  let repairBytes;
+  try {
+    const repairPath = await resolveSafeWorkspacePath(workspaceRoot, plan.repair.path);
+    repairBytes = await readFile(repairPath);
+    if (repairBytes.byteLength > plan.repair.limits.maxSerializedBytes) {
+      throw batchError(
+        "source_repair_byte_limit",
+        `Source repair transaction is ${repairBytes.byteLength} bytes; maximum is ${plan.repair.limits.maxSerializedBytes}.`,
+      );
+    }
+    const originalPath = await resolveSafeWorkspacePath(workspaceRoot, plan.repair.proposalPath);
+    const proposalBytes = await readFile(originalPath);
+    if (sha256(proposalBytes) !== plan.repair.proposalSha256) {
+      throw batchError("source_repair_proposal_changed", "The rejected source proposal changed after repair preparation.");
+    }
+    const transaction = JSON.parse(repairBytes.toString("utf8"));
+    const proposal = JSON.parse(proposalBytes.toString("utf8"));
+    const receipt = receipts.find((candidate) => candidate.fragmentPath === plan.proposal.fragmentPath
+      && candidate.receiptSha256 === plan.proposal.receiptSha256);
+    if (!receipt) throw batchError("source_fragment_receipt_invalid", "The source fragment receipt is no longer valid.");
+    const validated = validateSourceMergeRepairTransaction(
+      transaction,
+      plan,
+      proposal,
+      receipt,
+      state,
+    );
+    return {
+      valid: true,
+      sha256: sha256(repairBytes),
+      operationCount: validated.operationCount,
+      factCount: validated.normalized.facts.length,
+      noMaterialFactCount: validated.normalized.noMaterialFacts.length,
+      transactionBytes: validated.normalized.transactionBytes,
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return {
+      valid: false,
+      error: {
+        code: typeof error?.code === "string" ? error.code : "source_repair_invalid",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+function validateSourceMergeRepairTransaction(transaction, plan, proposal, receipt, state) {
+  if (!isRecord(transaction)) {
+    throw batchError("source_repair_not_object", "Source repair transaction must be a JSON object.");
+  }
+  const expectedKeys = [
+    "diagnosticSha256",
+    "expectedStateHash",
+    "group",
+    "operations",
+    "phase",
+    "proposalPath",
+    "proposalSha256",
+    "schemaVersion",
+  ];
+  if (!hasOnlyKeys(transaction, expectedKeys)) {
+    throw batchError("source_repair_keys_invalid", `Source repair transaction must contain only: ${expectedKeys.join(", ")}.`);
+  }
+  if (transaction.schemaVersion !== 1 || transaction.phase !== "sources"
+    || transaction.group !== "source-fragment-repair") {
+    throw batchError("source_repair_identity_invalid", "Source repair requires schemaVersion 1, phase sources, and group source-fragment-repair.");
+  }
+  if (transaction.expectedStateHash !== plan.repair.expectedStateHash
+    || transaction.proposalPath !== plan.repair.proposalPath
+    || transaction.proposalSha256 !== plan.repair.proposalSha256
+    || transaction.diagnosticSha256 !== plan.repair.diagnosticSha256) {
+    throw batchError("source_repair_scope_mismatch", "Source repair state, proposal, and diagnostic identities must match the injected transaction.");
+  }
+  const rejectedFacts = plan.repair.repairSlice.rejectedFacts;
+  const rejectedNumbers = rejectedFacts.map((item) => item.factNumber).sort((left, right) => left - right);
+  if (!Array.isArray(transaction.operations)
+    || transaction.operations.length !== rejectedNumbers.length
+    || transaction.operations.length > plan.repair.limits.maxOperations) {
+    throw batchError("source_repair_operation_count_invalid", "Source repair requires exactly one operation for every rejected fact.");
+  }
+  const operationNumbers = transaction.operations
+    .map((operation) => operation?.factNumber)
+    .sort((left, right) => left - right);
+  if (operationNumbers.some((number) => !Number.isSafeInteger(number))
+    || new Set(operationNumbers).size !== operationNumbers.length
+    || JSON.stringify(operationNumbers) !== JSON.stringify(rejectedNumbers)) {
+    throw batchError("source_repair_fact_scope_invalid", "Source repair operations must cover only, and every, rejected fact number exactly once.");
+  }
+  if (!Array.isArray(proposal?.facts)) {
+    throw batchError("source_repair_proposal_facts_invalid", "The rejected source proposal no longer has a facts array.");
+  }
+  const repairedFacts = [...proposal.facts];
+  const removals = [];
+  for (const operation of transaction.operations) {
+    if (!isRecord(operation) || !["replace", "remove"].includes(operation.action)) {
+      throw batchError("source_repair_operation_invalid", "Every source repair operation requires action replace or remove.");
+    }
+    if (operation.action === "replace") {
+      if (!hasOnlyKeys(operation, ["action", "fact", "factNumber"]) || !isRecord(operation.fact)) {
+        throw batchError("source_repair_replacement_invalid", `Replacement for fact ${operation.factNumber} requires one complete fact object.`);
+      }
+      repairedFacts[operation.factNumber - 1] = operation.fact;
+    } else {
+      if (!hasOnlyKeys(operation, ["action", "factNumber", "reason"])
+        || !nonEmpty(operation.reason) || containsProposalPlaceholder(operation.reason)) {
+        throw batchError("source_repair_removal_invalid", `Removal for fact ${operation.factNumber} requires a specific non-placeholder reason.`);
+      }
+      removals.push(operation.factNumber);
+    }
+  }
+  for (const factNumber of removals.sort((left, right) => right - left)) {
+    repairedFacts.splice(factNumber - 1, 1);
+  }
+  const repairedProposal = { ...proposal, facts: repairedFacts };
+  const serializedBytes = Buffer.byteLength(JSON.stringify(repairedProposal));
+  const normalized = validateSourceMergeProposal(
+    repairedProposal,
+    plan,
+    receipt,
+    state,
+    serializedBytes,
+  );
+  return {
+    repairedProposal,
+    normalized,
+    operationCount: transaction.operations.length,
+  };
+}
+
+async function currentSourceMergeRepairAppliedReceipt(workspaceRoot, expectedStateHash, sourceRows) {
+  const fragmentDirectory = `${STATE_DIRECTORY}/fragments`;
+  const directoryPath = await resolveSafeWorkspacePath(workspaceRoot, fragmentDirectory, { allowMissing: true });
+  let entries;
+  try {
+    entries = await readdir(directoryPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+  const sourceById = new Map(sourceRows
+    .filter((source) => isRecord(source) && nonEmpty(source.id))
+    .map((source) => [source.id, source]));
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !SOURCE_MERGE_REPAIR_APPLIED_PATTERN.test(entry.name)) continue;
+    try {
+      const receiptPath = `${fragmentDirectory}/${entry.name}`;
+      const path = await resolveSafeWorkspacePath(workspaceRoot, receiptPath);
+      const receiptInfo = await stat(path);
+      if (!receiptInfo.isFile() || receiptInfo.size <= 0
+        || receiptInfo.size > SOURCE_MERGE_REPAIR_APPLIED_MAX_BYTES) continue;
+      const bytes = await readFile(path);
+      const receipt = JSON.parse(bytes.toString("utf8"));
+      const expectedKeys = [
+        "checkpointType",
+        "previousStateHash",
+        "repairPath",
+        "repairSha256",
+        "schemaVersion",
+        "sourceIds",
+        "stateHash",
+      ];
+      if (!isRecord(receipt) || !hasOnlyKeys(receipt, expectedKeys)
+        || receipt.schemaVersion !== 1
+        || receipt.checkpointType !== SOURCE_MERGE_REPAIR_APPLIED_TYPE
+        || receipt.stateHash !== expectedStateHash
+        || !/^[a-f0-9]{64}$/u.test(String(receipt.previousStateHash ?? ""))
+        || !/^[a-f0-9]{64}$/u.test(String(receipt.repairSha256 ?? ""))
+        || !Array.isArray(receipt.sourceIds)
+        || receipt.sourceIds.length < 1
+        || receipt.sourceIds.length > SOURCE_REVIEW_MERGE_MAX_SOURCES
+        || new Set(receipt.sourceIds).size !== receipt.sourceIds.length
+        || receipt.sourceIds.some((sourceId) => !nonEmpty(sourceId)
+          || !sourceById.has(sourceId)
+          || sourceById.get(sourceId)?.status === "pending")) continue;
+      const digest = entry.name.match(/^source-repair-applied-([a-f0-9]{12})\.json$/u)?.[1];
+      const expectedRepairPath = `${fragmentDirectory}/source-repair-${digest}.json`;
+      if (!digest || receipt.repairPath !== expectedRepairPath) continue;
+      const repairPath = await resolveSafeWorkspacePath(workspaceRoot, expectedRepairPath);
+      const repairInfo = await stat(repairPath);
+      if (!repairInfo.isFile() || repairInfo.size <= 0 || repairInfo.size > SOURCE_MERGE_REPAIR_MAX_BYTES) continue;
+      const repairBytes = await readFile(repairPath);
+      if (sha256(repairBytes) !== receipt.repairSha256) continue;
+      const transaction = JSON.parse(repairBytes.toString("utf8"));
+      if (!isRecord(transaction)
+        || transaction.schemaVersion !== 1
+        || transaction.phase !== "sources"
+        || transaction.group !== "source-fragment-repair"
+        || transaction.expectedStateHash !== receipt.previousStateHash
+        || !nonEmpty(transaction.proposalPath)
+        || !/^source-merge-[a-f0-9]{12}\.json$/u.test(transaction.proposalPath.split("/").at(-1) ?? "")
+        || !/^[a-f0-9]{64}$/u.test(String(transaction.proposalSha256 ?? ""))
+        || !/^[a-f0-9]{64}$/u.test(String(transaction.diagnosticSha256 ?? ""))) continue;
+      const expectedDigest = sha256([
+        transaction.expectedStateHash,
+        transaction.proposalPath,
+        transaction.proposalSha256,
+        transaction.diagnosticSha256,
+      ].join("\0")).slice(0, 12);
+      if (expectedDigest !== digest) continue;
+      const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, transaction.proposalPath);
+      const proposalInfo = await stat(proposalPath);
+      if (!proposalInfo.isFile() || proposalInfo.size <= 0 || proposalInfo.size > 24576) continue;
+      const proposalBytes = await readFile(proposalPath);
+      if (sha256(proposalBytes) !== transaction.proposalSha256) continue;
+      const proposal = JSON.parse(proposalBytes.toString("utf8"));
+      const proposalSourceIds = Array.isArray(proposal?.sourceIds) ? [...proposal.sourceIds].sort() : [];
+      if (proposalSourceIds.length !== receipt.sourceIds.length
+        || proposalSourceIds.some((sourceId) => !nonEmpty(sourceId))
+        || JSON.stringify(proposalSourceIds) !== JSON.stringify([...receipt.sourceIds].sort())) continue;
+      return {
+        path: receiptPath,
+        stateHash: receipt.stateHash,
+        sourceIds: [...receipt.sourceIds],
+        repairSha256: receipt.repairSha256,
+      };
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 export async function applySourceMergeProposal(workspaceRoot, options = {}) {
   if (!nonEmpty(options.proposalPath) || !/^source-merge-[a-f0-9]{12}\.json$/u.test(options.proposalPath.split("/").at(-1) ?? "")) {
     throw batchError("source_merge_proposal_path_invalid", "source-merge-apply requires the injected deterministic proposal path.");
@@ -897,6 +1262,121 @@ export async function applySourceMergeProposal(workspaceRoot, options = {}) {
   if (!receipt) throw batchError("source_fragment_receipt_invalid", "The source fragment receipt is no longer valid.");
   const normalized = validateSourceMergeProposal(patch, proposalPlan, receipt, loaded.state, proposalBytes.byteLength);
 
+  return applyNormalizedSourceMerge(workspaceRoot, {
+    before,
+    loaded,
+    proposalPlan,
+    receipt,
+    normalized,
+    group: "source-fragment-merge",
+  });
+}
+
+export async function applySourceMergeRepair(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.repairPath)
+    || !SOURCE_MERGE_REPAIR_PATTERN.test(options.repairPath.split("/").at(-1) ?? "")) {
+    throw batchError("source_repair_path_invalid", "source-repair-apply requires the injected deterministic repair path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.repairSha256 ?? ""))) {
+    throw batchError("source_repair_hash_invalid", "source-repair-apply requires the injected lowercase repair SHA-256.");
+  }
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const plan = await pendingSourceReviewPlan(workspaceRoot, { expectedStateHash: before.stateHash });
+  if (plan.group !== "source-fragment-repair-apply" || plan.repair?.validated !== true
+    || plan.repair.path !== options.repairPath) {
+    throw batchError("source_repair_out_of_scope", "The repair is not the current validated source transaction.");
+  }
+  if (plan.repair.repairSha256 !== options.repairSha256) {
+    throw batchError("source_repair_changed", "The source repair transaction changed after validation.");
+  }
+  const repairPath = await resolveSafeWorkspacePath(workspaceRoot, options.repairPath);
+  const repairBytes = await readFile(repairPath);
+  if (sha256(repairBytes) !== options.repairSha256) {
+    throw batchError("source_repair_changed", "The source repair transaction changed after validation.");
+  }
+  if (repairBytes.byteLength > SOURCE_MERGE_REPAIR_MAX_BYTES) {
+    throw batchError("source_repair_byte_limit", `Source repair transaction is ${repairBytes.byteLength} bytes; maximum is ${SOURCE_MERGE_REPAIR_MAX_BYTES}.`);
+  }
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
+  const receipts = await validSourceReviewReceipts(workspaceRoot, sourceRows);
+  const mergePlan = sourceReviewMergePlanFor(sourceRows, receipts);
+  if (!mergePlan) throw batchError("source_repair_out_of_scope", "No rejected source proposal is currently repairable.");
+  const proposalPlan = sourceMergeProposalPlanFor(mergePlan, before.stateHash);
+  const readinessReceipt = await validSourceMergeReadinessReceipt(workspaceRoot, proposalPlan);
+  if (!readinessReceipt) throw batchError("source_repair_out_of_scope", "The source merge readiness receipt is no longer valid.");
+  const proposePlan = sourceMergeProposePlanFor(proposalPlan, readinessReceipt);
+  const proposalReceipt = await validSourceMergeProposalReceipt(
+    workspaceRoot,
+    proposePlan,
+    receipts,
+    loaded.state,
+  );
+  if (!proposalReceipt?.error) {
+    throw batchError("source_repair_out_of_scope", "The source proposal is no longer in the rejected repair state.");
+  }
+  const rejectedPlan = {
+    ...proposePlan,
+    proposal: {
+      ...proposePlan.proposal,
+      validationError: proposalReceipt.error,
+      ...(proposalReceipt.validationDiagnostics
+        ? { validationDiagnostics: proposalReceipt.validationDiagnostics }
+        : {}),
+      ...(proposalReceipt.repairSlice ? { repairSlice: proposalReceipt.repairSlice } : {}),
+    },
+  };
+  const repairPlan = sourceMergeRepairPlanFor(rejectedPlan);
+  if (!repairPlan
+    || repairPlan.repair.path !== plan.repair.path
+    || repairPlan.repair.proposalSha256 !== plan.repair.proposalSha256
+    || repairPlan.repair.diagnosticSha256 !== plan.repair.diagnosticSha256) {
+    throw batchError("source_repair_out_of_scope", "The rejected source proposal no longer matches this repair transaction.");
+  }
+  const receipt = receipts.find((candidate) => candidate.fragmentPath === repairPlan.proposal.fragmentPath
+    && candidate.receiptSha256 === repairPlan.proposal.receiptSha256);
+  if (!receipt) throw batchError("source_fragment_receipt_invalid", "The source fragment receipt is no longer valid.");
+  const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, repairPlan.repair.proposalPath);
+  const proposalBytes = await readFile(proposalPath);
+  if (sha256(proposalBytes) !== repairPlan.repair.proposalSha256) {
+    throw batchError("source_repair_proposal_changed", "The rejected source proposal changed after repair validation.");
+  }
+  const transaction = JSON.parse(repairBytes.toString("utf8"));
+  const proposal = JSON.parse(proposalBytes.toString("utf8"));
+  const validated = validateSourceMergeRepairTransaction(
+    transaction,
+    repairPlan,
+    proposal,
+    receipt,
+    loaded.state,
+  );
+  return applyNormalizedSourceMerge(workspaceRoot, {
+    before,
+    loaded,
+    proposalPlan: repairPlan,
+    receipt,
+    normalized: validated.normalized,
+    group: "source-fragment-repair",
+    appliedReceipt: {
+      path: repairPlan.repair.appliedReceiptPath,
+      repairPath: repairPlan.repair.path,
+      repairSha256: options.repairSha256,
+    },
+  });
+}
+
+async function applyNormalizedSourceMerge(workspaceRoot, options) {
+  const {
+    before,
+    loaded,
+    proposalPlan,
+    receipt,
+    normalized,
+    group,
+    appliedReceipt,
+  } = options;
+
+  const sourceRows = Array.isArray(loaded.state.sources?.sources) ? loaded.state.sources.sources : [];
   const selectedIds = new Set(proposalPlan.proposal.sourceIds);
   const fragmentRows = new Map(receipt.sourceRows.map((row) => [row.sourceId, row]));
   const factIdsBySource = new Map(proposalPlan.proposal.sourceIds.map((sourceId) => [sourceId, []]));
@@ -949,10 +1429,40 @@ export async function applySourceMergeProposal(workspaceRoot, options = {}) {
   }
 
   const after = await validateWorkspace({ workspaceRoot, writeProof: true });
+  if (appliedReceipt) {
+    try {
+      if (!SOURCE_MERGE_REPAIR_APPLIED_PATTERN.test(appliedReceipt.path.split("/").at(-1) ?? "")) {
+        throw batchError("source_repair_receipt_path_invalid", "Applied source repair receipt path is invalid.");
+      }
+      const receiptPath = await resolveSafeWorkspacePath(workspaceRoot, appliedReceipt.path, { allowMissing: true });
+      await writeJsonAtomic(receiptPath, {
+        schemaVersion: 1,
+        checkpointType: SOURCE_MERGE_REPAIR_APPLIED_TYPE,
+        previousStateHash: before.stateHash,
+        stateHash: after.stateHash,
+        sourceIds: [...selectedIds].sort(),
+        repairPath: appliedReceipt.repairPath,
+        repairSha256: appliedReceipt.repairSha256,
+      });
+    } catch (error) {
+      try {
+        await writeJsonAtomic(loaded.paths.facts, loaded.state.facts);
+        await writeJsonAtomic(loaded.paths.sources, loaded.state.sources);
+        const receiptPath = await resolveSafeWorkspacePath(workspaceRoot, appliedReceipt.path, { allowMissing: true });
+        await rm(receiptPath, { force: true });
+      } catch (rollbackError) {
+        throw batchError(
+          "source_repair_receipt_rollback_failed",
+          `Applied receipt failed (${errorMessage(error)}) and canonical rollback also failed (${errorMessage(rollbackError)}).`,
+        );
+      }
+      throw error;
+    }
+  }
   return {
     applied: true,
     phase: "sources",
-    group: "source-fragment-merge",
+    group,
     sourceCount: selectedIds.size,
     factCount: normalized.facts.length,
     previousStateHash: before.stateHash,
@@ -2978,6 +3488,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceBootstrap = sourceBootstrapCommandFor(result, cliPath);
   const sourceFragment = sourceFragmentSliceCommandFor(workItems, cliPath);
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
+  const sourceRepairApply = sourceRepairApplyCommandFor(workItems, cliPath);
   const matrixSelectionApply = matrixSelectionApplyCommandFor(workItems, cliPath);
   const matrixProposalApply = matrixProposalApplyCommandFor(workItems, cliPath);
   const authorityClosureApply = authorityClosureApplyCommandFor(workItems, cliPath);
@@ -3012,6 +3523,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceBootstrap ? { sourceBootstrapCommand: sourceBootstrap } : {}),
     ...(sourceFragment ? { sourceFragmentCommand: sourceFragment } : {}),
     ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
+    ...(sourceRepairApply ? { sourceMergeRepairApplyCommand: sourceRepairApply } : {}),
     ...(matrixSelectionApply ? { matrixSelectionApplyCommand: matrixSelectionApply } : {}),
     ...(matrixProposalApply ? { matrixProposalApplyCommand: matrixProposalApply } : {}),
     ...(authorityClosureApply ? { authorityClosureApplyCommand: authorityClosureApply } : {}),
@@ -3027,6 +3539,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
       sourceBootstrap,
       sourceFragment,
       sourceMergeApply,
+      sourceRepairApply,
       matrixSelectionApply,
       matrixProposalApply,
       authorityClosureApply,
@@ -3069,6 +3582,13 @@ function sourceMergeApplyCommandFor(workItems, cliPath) {
     + `--input-file ${JSON.stringify(workItems.proposal.path)} `
     + `--proposal-sha256 ${workItems.proposal.proposalSha256} `
     + `--limit ${workItems.limits.maxRecords} --max-bytes ${workItems.limits.maxSerializedBytes}`;
+}
+
+function sourceRepairApplyCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "source-fragment-repair-apply" || workItems?.repair?.validated !== true) return undefined;
+  return `node ${JSON.stringify(cliPath)} source-repair-apply --workspace "$PWD" `
+    + `--input-file ${JSON.stringify(workItems.repair.path)} `
+    + `--repair-sha256 ${workItems.repair.repairSha256}`;
 }
 
 function matrixSelectionApplyCommandFor(workItems, cliPath) {
@@ -3234,6 +3754,7 @@ function nextActionFor(
   sourceBootstrap,
   sourceFragment,
   sourceMergeApply,
+  sourceRepairApply,
   matrixSelectionApply,
   matrixProposalApply,
   authorityClosureApply,
@@ -3297,6 +3818,26 @@ function nextActionFor(
       + `Use workItems.preparedSlice as the complete current evidence interface. Replace every placeholder with source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators from that injected slice. `
       + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present use the exact shape {"operator":"gt","actual":120,"threshold":100,"unit":"currency units","breached":true}, with operator one of gt, gte, lt, lte, or eq; never use prose or alternate field names. `
       + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources; do not re-dispatch workers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending"
+    && workItems?.group === "source-fragment-repair") {
+    if (workItems.repair?.validationError) {
+      return `The immutable source repair transaction at ${JSON.stringify(workItems.repair.path)} was rejected with `
+        + `${workItems.repair.validationError.code}: ${workItems.repair.validationError.message}. `
+        + `Do not read or overwrite the rejected proposal, repair transaction, canonical ledgers, fragment, or raw sources. `
+        + `The bounded repair opportunity is exhausted unless a later user request authorizes a fresh transaction.`;
+    }
+    return `Write exactly one new immutable source repair transaction to ${JSON.stringify(workItems.repair.path)} as the next tool call. `
+      + `Use workItems.repair.template and workItems.repair.repairSlice; cover every rejected fact exactly once with action replace or remove. `
+      + `For replace, provide the complete corrected fact. For remove, provide a specific reason and rely on the unchanged full validator to enforce source disposition. `
+      + `Do not read or overwrite the rejected proposal, readiness checkpoint, canonical ledgers, fragment, or raw sources. `
+      + `The Legal Plugin will combine the repair with every unchanged fact and validate it before exposing an apply command.`;
+  }
+  if (first?.phase === "sources" && first.code === "source_pending"
+    && workItems?.group === "source-fragment-repair-apply") {
+    return `The immutable source repair is valid and state-bound. Execute sourceMergeRepairApplyCommand exactly as the next tool call: ${sourceRepairApply}. `
+      + `Do not read or edit the repair, rejected proposal, canonical ledgers, fragment, or raw sources. `
+      + `The command reconstructs the corrected proposal in memory, atomically updates sources.json and facts.json, and records a current canonical progress receipt.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending"
     && workItems?.group === "source-fragment-apply") {
