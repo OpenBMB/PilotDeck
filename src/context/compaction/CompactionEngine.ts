@@ -46,6 +46,8 @@ export type CompactionEngineOptions = {
   maxOutputTokens?: number;
   /** Tool names whose turns should be preserved verbatim across full compaction. */
   protectedToolNames?: Iterable<string>;
+  /** Maximum protected turns retained outside the normal tail window. */
+  maxProtectedPrefixTurns?: number;
   now?: () => Date;
   eventEmitter?: AgentEventEmitter;
 };
@@ -55,6 +57,12 @@ export const COMPACT_SYSTEM_PROMPT_DEFAULT =
   "the early conversation history, so it MUST preserve all information the agent " +
   "needs to continue working without repeating past steps.";
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000;
+export const DEFAULT_MAX_PROTECTED_PREFIX_TURNS = 8;
+
+export type CompactionOutcome =
+  | "summarized"
+  | "no_summarizable_messages"
+  | "summary_failed";
 
 const SUMMARY_MARKDOWN_HEADINGS = [
   "Objective",
@@ -76,6 +84,7 @@ const CORE_SUMMARY_MARKDOWN_HEADINGS = [
 ] as const;
 
 export type CompactionResult = {
+  outcome: CompactionOutcome;
   trigger: CompactionTrigger;
   preTokens: number;
   postTokens?: number;
@@ -119,11 +128,16 @@ export class CompactionEngine {
   private readonly tokenBudget: TokenBudgetManager;
   private readonly options: CompactionEngineOptions;
   private readonly protectedToolNames: ReadonlySet<string>;
+  private readonly maxProtectedPrefixTurns: number;
 
   constructor(options: CompactionEngineOptions) {
     this.options = options;
     this.tokenBudget = options.tokenBudget ?? new TokenBudgetManager();
     this.protectedToolNames = protectedToolNameSet(options.protectedToolNames);
+    this.maxProtectedPrefixTurns = Math.max(
+      0,
+      Math.floor(options.maxProtectedPrefixTurns ?? DEFAULT_MAX_PROTECTED_PREFIX_TURNS),
+    );
   }
 
   async run(input: CompactionInput): Promise<CompactionResult> {
@@ -134,6 +148,7 @@ export class CompactionEngine {
       input.messages,
       keepCount,
       this.protectedToolNames,
+      this.maxProtectedPrefixTurns,
     );
     const messagesToSummarize = compactPlan.messagesToSummarize;
     const messagesToKeep = compactPlan.messagesToKeep;
@@ -165,11 +180,16 @@ export class CompactionEngine {
       }
     }
 
+    const outcome: CompactionOutcome = summaryError
+      ? "summary_failed"
+      : summaryMessage
+        ? "summarized"
+        : "no_summarizable_messages";
     const boundaryMarker = this.createBoundaryMarker({
       trigger: input.trigger,
       preTokens,
       messagesSummarized: messagesToSummarize.length,
-      summarySucceeded: summaryError === undefined && summaryMessage !== undefined,
+      outcome,
     });
 
     const diagnostics = summaryError
@@ -182,9 +202,14 @@ export class CompactionEngine {
         ]
       : summaryMessage
         ? validateSummaryMarkdownStructure(summaryMessage)
-        : [];
+        : [{
+            code: "compact_no_summarizable_messages",
+            severity: "info" as const,
+            message: "No message prefix remained after bounded protected-context planning.",
+          }];
 
     const result: CompactionResult = {
+      outcome,
       trigger: input.trigger,
       preTokens,
       summaryMessage,
@@ -204,7 +229,7 @@ export class CompactionEngine {
       event: "PostCompact",
       payload: {
         trigger: input.trigger,
-        status: summaryError ? "error" : "success",
+        status: outcome === "summarized" ? "success" : outcome,
         error: summaryError,
         preTokens,
         postTokens: result.postTokens,
@@ -215,7 +240,7 @@ export class CompactionEngine {
       type: "compact_completed",
       sessionId: input.sessionId ?? "",
       turnId: input.turnId ?? "",
-      status: summaryError ? "error" : "success",
+      status: outcome === "summarized" ? "success" : outcome,
       preTokens,
       postTokens: result.postTokens,
     });
@@ -282,9 +307,9 @@ export class CompactionEngine {
     trigger: CompactionTrigger;
     preTokens: number;
     messagesSummarized: number;
-    summarySucceeded: boolean;
+    outcome: CompactionOutcome;
   }): CanonicalMessage {
-    const status = opts.summarySucceeded ? "ok" : "summary_failed";
+    const status = opts.outcome === "summarized" ? "ok" : opts.outcome;
     return {
       role: "user",
       content: [
@@ -316,11 +341,21 @@ function planFullCompactionMessages(
   messages: CanonicalMessage[],
   keepCount: number,
   protectedToolNames?: Iterable<string>,
+  maxProtectedPrefixTurns = DEFAULT_MAX_PROTECTED_PREFIX_TURNS,
 ): { messagesToSummarize: CanonicalMessage[]; messagesToKeep: CanonicalMessage[] } {
-  const summarizeLimit = Math.max(0, messages.length - keepCount);
-  const prefix = messages.slice(0, summarizeLimit);
-  const tail = messages.slice(summarizeLimit);
-  const protectedIndexes = collectProtectedTurnIndexes(prefix, { protectedToolNames });
+  const turns = splitMessagesIntoTurns(messages);
+  let tailStart = turns.length;
+  let keptMessages = 0;
+  while (tailStart > 0 && keptMessages < keepCount) {
+    tailStart -= 1;
+    keptMessages += turns[tailStart]?.messages.length ?? 0;
+  }
+  const prefix = turns.slice(0, tailStart).flatMap((turn) => turn.messages);
+  const tail = turns.slice(tailStart).flatMap((turn) => turn.messages);
+  const protectedIndexes = collectProtectedTurnIndexes(prefix, {
+    protectedToolNames,
+    maxProtectedTurns: maxProtectedPrefixTurns,
+  });
   const protectedMessages: CanonicalMessage[] = [];
   const messagesToSummarize: CanonicalMessage[] = [];
 

@@ -15,12 +15,29 @@ test("progress lease stays inert unless explicitly enabled", () => {
   assert.equal(lease.shouldForceBoundary(), false);
 });
 
-test("progress renews the lease when the opaque hash changes or remaining count falls", () => {
+test("opaque hash churn is stagnant while a smaller remaining count renews the lease", () => {
   const lease = configuredLease();
   assert.equal(lease.observe(report(), none)?.decision, "baseline");
-  assert.equal(lease.observe(report({ stateHash: "state-b" }), none)?.decision, "renewed");
+  assert.equal(lease.observe(report({ stateHash: "state-b" }), none)?.decision, "stagnant");
   assert.equal(lease.observe(report({ stateHash: "state-b", remainingCount: 3 }), none)?.decision, "renewed");
   assert.equal(lease.shouldForceBoundary(), false);
+});
+
+test("only a strictly increasing domain progress ordinal renews the lease", () => {
+  const lease = configuredLease();
+  assert.equal(lease.observe(report({ progressOrdinal: 7 }), none)?.decision, "baseline");
+  assert.equal(lease.observe(report({ stateHash: "state-b", progressOrdinal: 8 }), none)?.decision, "renewed");
+  assert.equal(lease.observe(report({ stateHash: "state-c", progressOrdinal: 8 }), none)?.decision, "stagnant");
+  const replayed = lease.observe(report({ stateHash: "state-d", progressOrdinal: 7 }), none);
+  assert.equal(replayed?.decision, "stagnant");
+  assert.equal(replayed?.forceBoundaryNext, true);
+});
+
+test("a lower remaining count cannot roll the stored progress ordinal backward", () => {
+  const lease = configuredLease();
+  lease.observe(report({ remainingCount: 5, progressOrdinal: 8 }), none);
+  assert.equal(lease.observe(report({ remainingCount: 4, progressOrdinal: 7 }), none)?.decision, "renewed");
+  assert.equal(lease.observe(report({ remainingCount: 4, progressOrdinal: 8 }), none)?.decision, "stagnant");
 });
 
 test("two stagnant observations require a boundary and allow exactly one post-boundary turn", () => {
@@ -41,7 +58,7 @@ test("two stagnant observations require a boundary and allow exactly one post-bo
   assert.equal(failed?.reason, "post_boundary_stagnation");
 });
 
-test("cold-start allowance expires after the first opaque state progress", () => {
+test("cold-start allowance expires after the first explicit domain progress", () => {
   const lease = new ProgressLease({
     enabled: true,
     mode: "evaluation",
@@ -54,11 +71,11 @@ test("cold-start allowance expires after the first opaque state progress", () =>
   assert.equal(lease.observe(report(), none)?.forceBoundaryNext, false);
   assert.equal(lease.observe(report(), none)?.forceBoundaryNext, true);
 
-  const renewed = lease.observe(report({ stateHash: "initialized" }), none);
+  const renewed = lease.observe(report({ stateHash: "initialized", progressOrdinal: 1 }), none);
   assert.equal(renewed?.decision, "renewed");
   assert.equal(lease.shouldForceBoundary(), false);
 
-  const steadyStateStagnation = lease.observe(report({ stateHash: "initialized" }), none);
+  const steadyStateStagnation = lease.observe(report({ stateHash: "initialized", progressOrdinal: 1 }), none);
   assert.equal(steadyStateStagnation?.forceBoundaryNext, true);
 });
 
@@ -87,6 +104,8 @@ test("a completed report releases the tracked scope", () => {
 test("convergence metadata parser rejects malformed and oversized reports", () => {
   assert.equal(parseConvergenceReport(undefined), undefined);
   assert.equal(parseConvergenceReport({ ...report(), remainingCount: -1 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), progressOrdinal: -1 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), progressOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), scope: "x".repeat(129) }), undefined);
   assert.deepEqual(parseConvergenceReport(report()), report());
 });

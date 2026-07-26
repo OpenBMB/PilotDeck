@@ -1,5 +1,9 @@
 # PilotDeck Convergence Hardening V1
 
+> The hash-based progress semantics in this historical design are superseded
+> by `PILOTDECK_CONVERGENCE_V24_OBSERVATION_GUIDED.md`. In V24, `stateHash` is
+> identity only; it cannot renew a progress lease.
+
 ## 1. Purpose
 
 This document defines the implementation and experiment contract for fixing the

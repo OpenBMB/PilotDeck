@@ -1718,6 +1718,7 @@ test("legal coverage hook activates only legal work and injects one observable m
       stateHash: (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       blockingCode: "jurisdiction_missing",
       remainingCount: 12,
+      progressOrdinal: 0,
       writeBudget: { maxRecords: 12, maxSerializedBytes: 24576 },
     });
 
@@ -1736,6 +1737,34 @@ test("legal coverage hook activates only legal work and injects one observable m
     assert.equal(
       (unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
       (preModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash?: string })?.stateHash,
+    );
+    assert.equal(
+      (unchangedPreModel.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal?: number })?.progressOrdinal,
+      0,
+    );
+
+    const simulatedPriorDigest = "f".repeat(64);
+    await writeJson(join(workspace, STATE_ROOT, "sessions", "legal-session.json"), {
+      active: true,
+      lastMilestoneDigest: simulatedPriorDigest,
+      progressOrdinal: 5,
+      progressMilestoneDigests: [simulatedPriorDigest],
+      progressObservation: {
+        phase: "configuration",
+        blockingCode: "jurisdiction_missing",
+        remainingCount: 1,
+        digest: simulatedPriorDigest,
+      },
+    });
+    const increasedRemaining = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "legal-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (increasedRemaining.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal?: number })?.progressOrdinal,
+      5,
     );
 
     const subagentPreModel = await runHook({
@@ -2138,13 +2167,22 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
       workItems: { selection: { validationError: { code: string } } };
     };
     assert.equal(invalidEnvelopeOne.workItems.selection.validationError.code, "matrix_selection_fact_out_of_scope");
-    const invalidHashOne = (invalidHookOne.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash;
+    const invalidConvergenceOne = invalidHookOne.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string;
+      progressOrdinal: number;
+    };
+    const invalidHashOne = invalidConvergenceOne.stateHash;
 
     invalid.selectedFactIds = ["F-ANOTHER-OUTSIDE-PAGE"];
     await writeJson(join(workspace, firstEnvelope.workItems.selection.path), invalid);
     const invalidHookTwo = await runHook({ hookEventName: "PreModelRequest", sessionId: "matrix-pages", transcriptPath: "", cwd: workspace });
-    const invalidHashTwo = (invalidHookTwo.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash;
+    const invalidConvergenceTwo = invalidHookTwo.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string;
+      progressOrdinal: number;
+    };
+    const invalidHashTwo = invalidConvergenceTwo.stateHash;
     assert.equal(invalidHashTwo, invalidHashOne);
+    assert.equal(invalidConvergenceTwo.progressOrdinal, invalidConvergenceOne.progressOrdinal);
 
     const valid = structuredClone(firstEnvelope.workItems.selection.template) as {
       selectedFactIds: string[];
@@ -2174,6 +2212,29 @@ test("legal coverage pending-matrix selection is bounded across pages and invali
     assert.notEqual(
       (secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { stateHash: string }).stateHash,
       invalidHashOne,
+    );
+    const secondProgressOrdinal = (
+      secondHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
+    ).progressOrdinal;
+    assert.ok(secondProgressOrdinal > invalidConvergenceOne.progressOrdinal);
+
+    await runHook({
+      hookEventName: "UserPromptSubmit",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+      prompt: "Continue the configured legal review.",
+      internal: false,
+    });
+    const afterUserPrompt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "matrix-pages",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (afterUserPrompt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }).progressOrdinal,
+      secondProgressOrdinal,
     );
 
     const selectedId = secondEnvelope.workItems.evidencePage.items[0]!.factId;

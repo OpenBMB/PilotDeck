@@ -404,6 +404,7 @@ export class AgentLoop {
               applied: compact.type === "compacted",
               appliedTier: compact.trace.appliedTier,
               rejectionReason: compact.trace.rejectionReason,
+              summaryAttempted: compact.trace.summaryAttempted,
               summarySucceeded: compact.trace.summarySucceeded,
               preState: compact.trace.initialSnapshot.state,
               postState: compact.trace.finalSnapshot.state,

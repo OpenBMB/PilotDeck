@@ -1,0 +1,6 @@
+pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --force
+pnpm build
+node --test --test-force-exit --test-timeout 60000 dist/tests/agent/progress-lease.spec.js dist/tests/context/auto-compaction-observability.spec.js dist/tests/products/legal-coverage.spec.js dist/tests/agent/agent-loop-runtime-controls.spec.js
+pnpm test
+git diff --check

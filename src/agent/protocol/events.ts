@@ -40,6 +40,7 @@ export type AgentEvent =
       applied: boolean;
       appliedTier?: string;
       rejectionReason?: string;
+      summaryAttempted?: boolean;
       summarySucceeded?: boolean;
       preState: TokenBudgetSnapshot["state"];
       postState: TokenBudgetSnapshot["state"];
@@ -57,6 +58,7 @@ export type AgentEvent =
       phase: string;
       blockingCode?: string;
       remainingCount: number;
+      progressOrdinal?: number;
       stagnantObservations: number;
       decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "fail_closed";
       forceBoundaryNext: boolean;

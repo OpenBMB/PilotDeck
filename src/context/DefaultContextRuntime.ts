@@ -39,7 +39,14 @@ export type AutoCompactTrace = {
   triggered: boolean;
   attemptedTiers: CompactionTier[];
   appliedTier?: CompactionTier;
-  rejectionReason?: "not_required" | "warning_only" | "summary_failed" | "post_compact_blocking" | "no_effective_compactor";
+  rejectionReason?:
+    | "not_required"
+    | "warning_only"
+    | "summary_failed"
+    | "no_summarizable_messages"
+    | "post_compact_blocking"
+    | "no_effective_compactor";
+  summaryAttempted?: boolean;
   summarySucceeded?: boolean;
   initialSnapshot: TokenBudgetSnapshot;
   finalSnapshot: TokenBudgetSnapshot;
@@ -483,15 +490,18 @@ export class DefaultContextRuntime implements ContextRuntime {
         messages,
         signal: input.abortSignal,
       });
-      if (result.error || !result.summaryMessage) {
+      if (result.outcome !== "summarized" || result.error || !result.summaryMessage) {
         return {
           type: "skipped",
           snapshot: decision.snapshot,
           trace: {
             triggered: true,
             attemptedTiers,
-            rejectionReason: "summary_failed",
-            summarySucceeded: false,
+            rejectionReason: result.outcome === "no_summarizable_messages"
+              ? "no_summarizable_messages"
+              : "summary_failed",
+            summaryAttempted: result.outcome !== "no_summarizable_messages",
+            summarySucceeded: result.outcome === "summary_failed" ? false : undefined,
             initialSnapshot,
             finalSnapshot: decision.snapshot,
           },
@@ -508,6 +518,7 @@ export class DefaultContextRuntime implements ContextRuntime {
             attemptedTiers,
             rejectionReason: "post_compact_blocking",
             summarySucceeded: true,
+            summaryAttempted: true,
             initialSnapshot,
             finalSnapshot: snapshot,
           },
@@ -524,6 +535,7 @@ export class DefaultContextRuntime implements ContextRuntime {
           attemptedTiers,
           appliedTier: "full",
           summarySucceeded: true,
+          summaryAttempted: true,
           initialSnapshot,
           finalSnapshot: snapshot,
         },
@@ -567,15 +579,18 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: input.messages,
       signal: input.input.abortSignal,
     });
-    if (result.error || !result.summaryMessage) {
+    if (result.outcome !== "summarized" || result.error || !result.summaryMessage) {
       return {
         type: "skipped",
         snapshot: input.initialSnapshot,
         trace: {
           triggered: true,
           attemptedTiers: ["full"],
-          rejectionReason: "summary_failed",
-          summarySucceeded: false,
+          rejectionReason: result.outcome === "no_summarizable_messages"
+            ? "no_summarizable_messages"
+            : "summary_failed",
+          summaryAttempted: result.outcome !== "no_summarizable_messages",
+          summarySucceeded: result.outcome === "summary_failed" ? false : undefined,
           initialSnapshot: input.initialSnapshot,
           finalSnapshot: input.initialSnapshot,
         },
@@ -592,6 +607,7 @@ export class DefaultContextRuntime implements ContextRuntime {
           attemptedTiers: ["full"],
           rejectionReason: "post_compact_blocking",
           summarySucceeded: true,
+          summaryAttempted: true,
           initialSnapshot: input.initialSnapshot,
           finalSnapshot: snapshot,
         },
@@ -608,6 +624,7 @@ export class DefaultContextRuntime implements ContextRuntime {
         attemptedTiers: ["full"],
         appliedTier: "full",
         summarySucceeded: true,
+        summaryAttempted: true,
         initialSnapshot: input.initialSnapshot,
         finalSnapshot: snapshot,
       },

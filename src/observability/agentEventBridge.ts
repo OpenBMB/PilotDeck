@@ -80,6 +80,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
           applied: event.applied,
           appliedTier: event.appliedTier,
           rejectionReason: event.rejectionReason,
+          summaryAttempted: event.summaryAttempted,
           summarySucceeded: event.summarySucceeded,
           preState: event.preState,
           postState: event.postState,
@@ -96,7 +97,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         type: "harness.decision",
         payload: {
           component: "progress-lease",
-          policyVersion: "progress-lease/v1",
+          policyVersion: "progress-lease/v2",
           decision: event.decision,
           reasonCode: event.reason,
           observed: {
@@ -104,6 +105,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
             phase: event.phase,
             blockingCode: event.blockingCode,
             remainingCount: event.remainingCount,
+            progressOrdinal: event.progressOrdinal,
             stagnantObservations: event.stagnantObservations,
           },
           forceBoundaryNext: event.forceBoundaryNext,

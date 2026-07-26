@@ -14,6 +14,8 @@ export type ConvergenceReport = {
   stateHash: string;
   blockingCode?: string;
   remainingCount: number;
+  /** Domain-issued monotonic witness. Core only compares the ordinal. */
+  progressOrdinal?: number;
   nextBatch?: unknown;
   writeBudget?: unknown;
 };
@@ -30,6 +32,7 @@ export type ProgressLeaseObservation = {
   phase: string;
   blockingCode?: string;
   remainingCount: number;
+  progressOrdinal?: number;
   stagnantObservations: number;
   decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "fail_closed";
   forceBoundaryNext: boolean;
@@ -39,14 +42,16 @@ export type ProgressLeaseObservation = {
 type ScopeState = {
   stateHash: string;
   remainingCount: number;
+  progressOrdinal?: number;
   stagnantObservations: number;
   awaitingPostBoundaryProgress: boolean;
   hasProgressed: boolean;
 };
 
 /**
- * Domain-neutral convergence guard. State hashes and counts are deliberately
- * opaque: Core decides only whether progress changed, never what it means.
+ * Domain-neutral convergence guard. State hashes remain opaque identity only;
+ * lease renewal requires a smaller remaining count or a domain-issued
+ * monotonic progress ordinal.
  */
 export class ProgressLease {
   private readonly scopes = new Map<string, ScopeState>();
@@ -77,6 +82,7 @@ export class ProgressLease {
       this.scopes.set(report.scope, {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
+        progressOrdinal: report.progressOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         hasProgressed: false,
@@ -84,12 +90,15 @@ export class ProgressLease {
       return observation(report, 0, "baseline", false);
     }
 
-    const progressed = report.stateHash !== existing.stateHash
-      || report.remainingCount < existing.remainingCount;
+    const progressed = report.remainingCount < existing.remainingCount
+      || (report.progressOrdinal !== undefined
+        && (existing.progressOrdinal === undefined || report.progressOrdinal > existing.progressOrdinal));
     if (progressed) {
+      const progressOrdinal = maxDefined(existing.progressOrdinal, report.progressOrdinal);
       this.scopes.set(report.scope, {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
+        progressOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         hasProgressed: true,
@@ -139,6 +148,9 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
   if (!boundedString(value.scope, 128) || !boundedString(value.phase, 128)) return undefined;
   if (!boundedString(value.stateHash, 256)) return undefined;
   if (!Number.isSafeInteger(value.remainingCount) || (value.remainingCount as number) < 0) return undefined;
+  if (value.progressOrdinal !== undefined
+    && (!Number.isSafeInteger(value.progressOrdinal) || (value.progressOrdinal as number) < 0)
+  ) return undefined;
   if (value.blockingCode !== undefined && !boundedString(value.blockingCode, 256)) return undefined;
   return {
     schemaVersion: 1,
@@ -147,6 +159,7 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
     stateHash: value.stateHash,
     ...(value.blockingCode !== undefined ? { blockingCode: value.blockingCode } : {}),
     remainingCount: value.remainingCount,
+    ...(value.progressOrdinal !== undefined ? { progressOrdinal: value.progressOrdinal } : {}),
     ...(value.nextBatch !== undefined ? { nextBatch: value.nextBatch } : {}),
     ...(value.writeBudget !== undefined ? { writeBudget: value.writeBudget } : {}),
   } as ConvergenceReport;
@@ -164,6 +177,7 @@ function observation(
     phase: report.phase,
     blockingCode: report.blockingCode,
     remainingCount: report.remainingCount,
+    ...(report.progressOrdinal !== undefined ? { progressOrdinal: report.progressOrdinal } : {}),
     stagnantObservations,
     decision,
     forceBoundaryNext,
@@ -177,4 +191,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function boundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
+}
+
+function maxDefined(left: number | undefined, right: number | undefined): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return Math.max(left, right);
 }

@@ -26,6 +26,11 @@ export const DEFAULT_PROTECTED_TOOL_RESULT_NAMES: ReadonlySet<string> = new Set(
 
 export type ProtectedContextOptions = {
   protectedToolNames?: Iterable<string>;
+  /**
+   * Keep only the newest protected turns when callers need a bounded context
+   * projection. Undefined preserves the historical unbounded behavior.
+   */
+  maxProtectedTurns?: number;
 };
 
 export type ProtectedContextMessageOptions = ProtectedContextOptions & {
@@ -94,7 +99,14 @@ export function collectProtectedTurnIndexes(
       protectedIndexes.add(turn.index);
     }
   }
-  return protectedIndexes;
+  if (options.maxProtectedTurns === undefined) {
+    return protectedIndexes;
+  }
+  const limit = Math.max(0, Math.floor(options.maxProtectedTurns));
+  if (limit === 0) {
+    return new Set();
+  }
+  return new Set([...protectedIndexes].slice(-limit));
 }
 
 export function isProtectedContextMessage(
