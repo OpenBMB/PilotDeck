@@ -131,6 +131,7 @@ test("repair preparation grace is observable without becoming progress", () => {
     progressOrdinal: 1,
     repairOrdinal: 1,
     repairPreparationOrdinal: 1,
+    handoffOrdinal: 2,
     stagnantObservations: 4,
     decision: "repair_preparation_grace",
     forceBoundaryNext: false,
@@ -138,7 +139,7 @@ test("repair preparation grace is observable without becoming progress", () => {
 
   assert.equal(drafts.length, 1);
   assert.equal(drafts[0]?.type, "harness.decision");
-  assert.equal(drafts[0]?.payload?.policyVersion, "progress-lease/v4");
+  assert.equal(drafts[0]?.payload?.policyVersion, "progress-lease/v5");
   assert.equal(drafts[0]?.payload?.decision, "repair_preparation_grace");
   assert.deepEqual(drafts[0]?.payload?.observed, {
     scope: "legal-coverage",
@@ -148,6 +149,7 @@ test("repair preparation grace is observable without becoming progress", () => {
     progressOrdinal: 1,
     repairOrdinal: 1,
     repairPreparationOrdinal: 1,
+    handoffOrdinal: 2,
     stagnantObservations: 4,
   });
 });
