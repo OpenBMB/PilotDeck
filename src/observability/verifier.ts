@@ -50,16 +50,26 @@ export function verifyObservationEvents(
     previousSequence = event.sequence;
   }
 
-  const sentRequests = idsByPayload(events, "model.request.sent", "requestId");
-  const terminalRequests = new Set([
-    ...idsByPayload(events, "model.response.received", "requestId"),
-    ...idsByPayload(events, "model.request.failed", "requestId"),
-  ]);
-  const modelRequestsPaired = allResolved(sentRequests, terminalRequests, omissions, "model_request_terminal_missing");
+  const sentRequests = valuesByPayload(events, "model.request.sent", "requestId");
+  const terminalRequests = [
+    ...valuesByPayload(events, "model.response.received", "requestId"),
+    ...valuesByPayload(events, "model.request.failed", "requestId"),
+  ];
+  const modelRequestsPaired = exactlyPaired(sentRequests, terminalRequests, omissions, {
+    duplicateStart: "model_request_id_duplicate",
+    missingTerminal: "model_request_terminal_missing",
+    duplicateTerminal: "model_request_terminal_duplicate",
+    missingStart: "model_request_start_missing",
+  });
 
-  const toolStarts = idsByPayload(events, "tool.call.started", "toolCallId");
-  const toolTerminals = idsByPayload(events, "tool.call.completed", "toolCallId");
-  const toolCallsPaired = allResolved(toolStarts, toolTerminals, omissions, "tool_call_terminal_missing");
+  const toolStarts = valuesByPayload(events, "tool.call.started", "toolCallId");
+  const toolTerminals = valuesByPayload(events, "tool.call.completed", "toolCallId");
+  const toolCallsPaired = exactlyPaired(toolStarts, toolTerminals, omissions, {
+    duplicateStart: "tool_call_id_duplicate",
+    missingTerminal: "tool_call_terminal_missing",
+    duplicateTerminal: "tool_call_terminal_duplicate",
+    missingStart: "tool_call_start_missing",
+  });
 
   const turnStarts = keysForTurns(events, "turn.started");
   const turnTerminals = new Set([
@@ -95,13 +105,56 @@ export function verifyObservationEvents(
   };
 }
 
-function idsByPayload(events: readonly ObservationEvent[], type: string, field: string): Set<string> {
-  const values = new Set<string>();
+function valuesByPayload(events: readonly ObservationEvent[], type: string, field: string): string[] {
+  const values: string[] = [];
   for (const event of events) {
     const value = event.type === type ? event.payload[field] : undefined;
-    if (typeof value === "string") values.add(value);
+    if (typeof value === "string") values.push(value);
   }
   return values;
+}
+
+function exactlyPaired(
+  starts: readonly string[],
+  terminals: readonly string[],
+  omissions: ObservationIntegrityReport["omissions"],
+  codes: {
+    duplicateStart: string;
+    missingTerminal: string;
+    duplicateTerminal: string;
+    missingStart: string;
+  },
+): boolean {
+  const startCounts = countValues(starts);
+  const terminalCounts = countValues(terminals);
+  let paired = true;
+  for (const [value, startCount] of startCounts) {
+    if (startCount !== 1) {
+      paired = false;
+      omissions.push({ code: codes.duplicateStart, scope: value });
+    }
+    const terminalCount = terminalCounts.get(value) ?? 0;
+    if (terminalCount === 0) {
+      paired = false;
+      omissions.push({ code: codes.missingTerminal, scope: value });
+    } else if (terminalCount !== 1) {
+      paired = false;
+      omissions.push({ code: codes.duplicateTerminal, scope: value });
+    }
+  }
+  for (const value of terminalCounts.keys()) {
+    if (!startCounts.has(value)) {
+      paired = false;
+      omissions.push({ code: codes.missingStart, scope: value });
+    }
+  }
+  return paired;
+}
+
+function countValues(values: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
 }
 
 function keysForTurns(events: readonly ObservationEvent[], type: string): Set<string> {

@@ -100,6 +100,38 @@ test("router request identity separates sessions sharing a turn id", async () =>
   }
 });
 
+test("router request identity advances across sequential calls in one turn", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-router-sequential-identity-"));
+  const recorder = new JsonlObservationRecorder({ directory: root });
+  const router = createRouterRuntime({
+    enabled: false,
+    scenarios: { default: modelRef("primary", "model-a") },
+  }, { modelRuntime: successRuntime() });
+
+  try {
+    for (let index = 0; index < 2; index += 1) {
+      for await (const _event of router.execute(
+        decision("primary", "model-a"),
+        request("primary", "model-a"),
+        { sessionId: "session-1", turnId: "turn-1", observation: recorder },
+      )) {
+        // Drain two sequential model calls inside the same Agent turn.
+      }
+    }
+    await recorder.finalize();
+    const observations = await readObservationEvents(recorder.paths.observations);
+    const sentIds = payloadIds(observations, "model.request.sent", "requestId");
+
+    assert.equal(sentIds.length, 2);
+    assert.equal(new Set(sentIds).size, 2);
+    assert.equal(sentIds[0]?.endsWith(":turn-1:model:1"), true);
+    assert.equal(sentIds[1]?.endsWith(":turn-1:model:2"), true);
+  } finally {
+    await router.shutdown();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function modelRef(provider: string, model: string) {
   return { id: `${provider}/${model}`, provider, model };
 }

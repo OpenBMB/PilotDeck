@@ -56,7 +56,13 @@ import {
   fingerprintModelRequest,
   fingerprintModelResponse,
   observationHash,
+  type ObservationRecorder,
 } from "../observability/index.js";
+
+const observationRequestSequences = new WeakMap<
+  ObservationRecorder,
+  Map<string, Map<string, number>>
+>();
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -575,7 +581,11 @@ export function createRouterRuntime(
         deps.modelRuntime,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
-      const requestId = observationRequestId(ctx.sessionId, ctx.turnId, 1);
+      const requestId = observationRequestId(
+        ctx.sessionId,
+        ctx.turnId,
+        nextObservationRequestSequence(ctx.observation, ctx.sessionId, ctx.turnId),
+      );
       observeRequestAttempt(ctx, {
         requestId,
         decision,
@@ -647,7 +657,7 @@ export function createRouterRuntime(
     let lastAttempt: RouterModelRef | undefined;
     let lastDecision: RouterDecision = decision;
     let lastHasYieldedContent = false;
-    let observationRequestSequence = 0;
+    let observationAttemptSequence = 0;
 
     if (attemptPlans.length === 0) {
       const missing = missingForModel(requestedAttempt, requiredModalities);
@@ -725,16 +735,17 @@ export function createRouterRuntime(
         let hasYieldedContent = false;
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
+        const observationAttempt = ++observationAttemptSequence;
         const requestId = observationRequestId(
           ctx.sessionId,
           ctx.turnId,
-          ++observationRequestSequence,
+          nextObservationRequestSequence(ctx.observation, ctx.sessionId, ctx.turnId),
         );
         observeRequestAttempt(ctx, {
           requestId,
           decision: attemptDecision,
           request: attemptRequest,
-          attempt: observationRequestSequence,
+          attempt: observationAttempt,
         });
 
         for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
@@ -1310,6 +1321,27 @@ function observationRequestId(sessionId: string, turnId: string, sequence: numbe
     "sha256:".length + hashPrefixLength,
   );
   return `${sessionFingerprint}:${turnId}:model:${sequence}`;
+}
+
+function nextObservationRequestSequence(
+  recorder: ObservationRecorder | undefined,
+  sessionId: string,
+  turnId: string,
+): number {
+  if (!recorder) return 1;
+  let sessionSequences = observationRequestSequences.get(recorder);
+  if (!sessionSequences) {
+    sessionSequences = new Map();
+    observationRequestSequences.set(recorder, sessionSequences);
+  }
+  let turnSequences = sessionSequences.get(sessionId);
+  if (!turnSequences) {
+    turnSequences = new Map();
+    sessionSequences.set(sessionId, turnSequences);
+  }
+  const sequence = (turnSequences.get(turnId) ?? 0) + 1;
+  turnSequences.set(turnId, sequence);
+  return sequence;
 }
 
 /**

@@ -135,6 +135,39 @@ test("queue overflow is explicit and makes integrity partial", async () => {
   }
 });
 
+test("verifier rejects reused model request identity and duplicate terminals", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-observation-request-identity-"));
+  try {
+    const recorder = new JsonlObservationRecorder({ directory: root });
+    for (let index = 0; index < 2; index += 1) {
+      recorder.emit({
+        type: "model.request.sent",
+        sessionId: "s1",
+        turnId: "r1",
+        payload: { requestId: "reused-request" },
+        priority: "critical",
+      });
+      recorder.emit({
+        type: "model.response.received",
+        sessionId: "s1",
+        turnId: "r1",
+        payload: { requestId: "reused-request" },
+        priority: "critical",
+      });
+    }
+    await recorder.finalize();
+    const integrity = JSON.parse(await readFile(recorder.paths.integrity, "utf8"));
+    const codes = integrity.omissions.map((entry: { code: string }) => entry.code);
+
+    assert.equal(integrity.status, "partial");
+    assert.equal(integrity.checks.modelRequestsPaired, false);
+    assert.equal(codes.includes("model_request_id_duplicate"), true);
+    assert.equal(codes.includes("model_request_terminal_duplicate"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("verifier rejects duplicate identity and secret-bearing keys", () => {
   const base = {
     schemaVersion: "1.0",
