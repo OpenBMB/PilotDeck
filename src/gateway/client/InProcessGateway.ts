@@ -1651,6 +1651,8 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
           remainingCount: event.remainingCount,
           progressOrdinal: event.progressOrdinal,
           repairOrdinal: event.repairOrdinal,
+          repairPreparationOrdinal: event.repairPreparationOrdinal,
+          handoffOrdinal: event.handoffOrdinal,
           stagnantObservations: event.stagnantObservations,
           decision: event.decision,
           forceBoundaryNext: event.forceBoundaryNext,

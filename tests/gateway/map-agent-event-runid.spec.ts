@@ -37,3 +37,39 @@ test("mapAgentEvent propagates runId to streaming lifecycle boundaries", () => {
   assert.equal(failed[0]?.type, "error");
   assert.equal(failed[0]?.runId, runId);
 });
+
+test("mapAgentEvent projects every convergence ordinal", () => {
+  const [status] = mapAgentEvent({
+    type: "progress_lease_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scope: "domain-validation",
+    phase: "coverage",
+    blockingCode: "missing_rows",
+    remainingCount: 4,
+    progressOrdinal: 8,
+    repairOrdinal: 3,
+    repairPreparationOrdinal: 2,
+    handoffOrdinal: 1,
+    stagnantObservations: 1,
+    decision: "handoff_grace",
+    forceBoundaryNext: true,
+  }, "run-1");
+
+  assert.equal(status?.type, "agent_status");
+  if (status?.type !== "agent_status") return;
+  assert.deepEqual(status.detail, {
+    scope: "domain-validation",
+    phase: "coverage",
+    blockingCode: "missing_rows",
+    remainingCount: 4,
+    progressOrdinal: 8,
+    repairOrdinal: 3,
+    repairPreparationOrdinal: 2,
+    handoffOrdinal: 1,
+    stagnantObservations: 1,
+    decision: "handoff_grace",
+    forceBoundaryNext: true,
+    reason: undefined,
+  });
+});
