@@ -14,6 +14,9 @@ import {
 } from "./AgentSessionState.js";
 import type { AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { AgentLoopSeedState } from "../loop/AgentLoop.js";
+import type { ObservationRecorder } from "../../observability/index.js";
+import { observeAgentEvent } from "../../observability/index.js";
+import type { TurnRunnerResult } from "../turn/TurnRunner.js";
 
 export type AgentSessionOptions = {
   sessionId: string;
@@ -24,6 +27,7 @@ export type AgentSessionOptions = {
   initialState?: AgentSessionStateShape;
   replayEvents?: AgentEvent[];
   lifecycle?: LifecycleRuntime;
+  observation?: ObservationRecorder;
 };
 
 export type AgentSessionRuntimeReloadSnapshot = {
@@ -48,7 +52,9 @@ export class AgentSession {
     this.state.abortController = new AbortController();
     let sessionEndAttempted = false;
     try {
-      yield { type: "session_started", sessionId: this.state.sessionId };
+      const sessionStarted: AgentEvent = { type: "session_started", sessionId: this.state.sessionId };
+      observeAgentEvent(this.options.observation, sessionStarted);
+      yield sessionStarted;
       await this.options.lifecycle?.dispatch({
         event: "SessionStart",
         baseInput: {
@@ -73,7 +79,7 @@ export class AgentSession {
       });
       yield { type: "setup_completed", sessionId: this.state.sessionId };
 
-      const runResult = yield* this.options.turnRunner.run({
+      const runResult = yield* this.observeTurn(this.options.turnRunner.run({
         sessionId: this.state.sessionId,
         turnId,
         messages: this.state.messages,
@@ -88,7 +94,7 @@ export class AgentSession {
         permissionRules: submitOptions.permissionRules,
         syntheticMessages: submitOptions.syntheticMessages,
         abortSignal: this.state.abortController.signal,
-      });
+      }));
 
       this.state.messages = runResult.messages;
       this.state.usage = mergeSessionUsage(this.state.usage, runResult.result.usage);
@@ -111,7 +117,9 @@ export class AgentSession {
         matchQuery: "SessionEnd",
         signal: this.state.abortController.signal,
       });
-      yield { type: "session_ended", sessionId: this.state.sessionId, reason: sessionEndReason };
+      const sessionEnded: AgentEvent = { type: "session_ended", sessionId: this.state.sessionId, reason: sessionEndReason };
+      observeAgentEvent(this.options.observation, sessionEnded);
+      yield sessionEnded;
     } finally {
       if (this.state.currentTurnId === turnId) {
         this.state.status = this.state.abortController.signal.aborted ? "aborted" : "failed";
@@ -130,7 +138,15 @@ export class AgentSession {
           matchQuery: "SessionEnd",
           signal: this.state.abortController.signal,
         }).catch(() => undefined);
+        this.options.observation?.emit({
+          type: "session.failed",
+          sessionId: this.state.sessionId,
+          turnId,
+          payload: { reason },
+          priority: "critical",
+        });
       }
+      await this.options.observation?.finalize().catch(() => undefined);
     }
   }
 
@@ -162,6 +178,17 @@ export class AgentSession {
 
   private nextId(): string {
     return this.options.uuid?.() ?? randomUUID();
+  }
+
+  private async *observeTurn(
+    generator: AsyncGenerator<AgentEvent, TurnRunnerResult, unknown>,
+  ): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
+    while (true) {
+      const next = await generator.next();
+      if (next.done) return next.value;
+      observeAgentEvent(this.options.observation, next.value);
+      yield next.value;
+    }
   }
 }
 

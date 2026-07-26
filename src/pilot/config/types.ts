@@ -46,6 +46,7 @@ export type PilotRawConfig = {
   cron?: unknown;
   tools?: unknown;
   telemetry?: unknown;
+  observability?: unknown;
   proxy?: unknown;
   webui?: unknown;
 };
@@ -232,6 +233,14 @@ export type PilotTelemetryConfig = {
   enabled: boolean;
 };
 
+export type PilotObservabilityConfig = {
+  enabled: true;
+  profile: "diagnostic";
+  campaignId?: string;
+  variant?: string;
+  queueCapacity: number;
+};
+
 export type PilotConfig = {
   agent: PilotAgentConfig;
   model: ModelConfig;
@@ -244,6 +253,7 @@ export type PilotConfig = {
   cron?: CronConfig;
   tools?: PilotToolsConfig;
   telemetry?: PilotTelemetryConfig;
+  observability?: PilotObservabilityConfig;
   proxy?: PilotProxyConfig;
 };
 

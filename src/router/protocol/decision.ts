@@ -86,4 +86,6 @@ export type RouterExecuteContext = {
   turnId: string;
   projectPath?: string;
   abortSignal?: AbortSignal;
+  observation?: import("../../observability/index.js").ObservationRecorder;
+  promptInjections?: readonly import("../../observability/index.js").PromptInjectionObservation[];
 };

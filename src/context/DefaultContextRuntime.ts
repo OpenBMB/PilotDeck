@@ -30,6 +30,8 @@ import type {
   ContextToolResultResult,
   ModelContext,
 } from "./protocol/types.js";
+import { observationHash } from "../observability/index.js";
+import type { PromptInjectionObservation } from "../observability/index.js";
 
 export type CompactionTier = "micro" | "snip" | "full";
 
@@ -157,6 +159,7 @@ export class DefaultContextRuntime implements ContextRuntime {
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
     const diagnostics: ContextDiagnostic[] = [];
+    const injections: PromptInjectionObservation[] = [];
 
     const projection = this.messageProjector.project({
       messages: input.messages,
@@ -182,6 +185,16 @@ export class DefaultContextRuntime implements ContextRuntime {
         severity: "info",
         message: `Injected ${dynamicContext.entries.length} dynamic context entr${dynamicContext.entries.length === 1 ? "y" : "ies"}.`,
       });
+      for (const entry of dynamicContext.entries) {
+        injections.push({
+          id: entry.id,
+          source: entry.source,
+          position: "after:last-message",
+          contentHash: observationHash(entry.content),
+          bytes: Buffer.byteLength(entry.content, "utf8"),
+          reasonCode: "dynamic_context_pending",
+        });
+      }
     }
 
     for (const warning of projection.warnings) {
@@ -237,6 +250,7 @@ export class DefaultContextRuntime implements ContextRuntime {
           tools: input.tools,
           diagnostics,
           boundaries: [],
+          injections,
           metadata: {
             droppedCount: projection.droppedCount,
             toolCount: input.tools.length,
@@ -281,6 +295,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       diagnostics,
       boundaries: [],
+      injections,
       metadata: {
         droppedCount: projection.droppedCount,
         toolCount: input.tools.length,

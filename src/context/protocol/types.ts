@@ -3,6 +3,7 @@ import type {
   CanonicalModelError,
   CanonicalToolSchema,
 } from "../../model/index.js";
+import type { PromptInjectionObservation } from "../../observability/index.js";
 
 /** Diagnostic produced by context runtime; non-fatal except for `severity:"fatal"`. */
 export type ContextDiagnostic = {
@@ -33,6 +34,8 @@ export type ModelContext = {
   tools: CanonicalToolSchema[];
   diagnostics: ContextDiagnostic[];
   boundaries: ContextBoundary[];
+  /** Request-scoped, non-model-visible lineage for dynamic prompt material. */
+  injections?: PromptInjectionObservation[];
   metadata?: Record<string, unknown>;
   /** A4: message indices for `cache_control` breakpoints (Anthropic only). */
   cacheBreakpoints?: number[];

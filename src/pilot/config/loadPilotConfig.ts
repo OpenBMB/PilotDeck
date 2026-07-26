@@ -23,6 +23,7 @@ import {
   type PilotConfigLoadOptions,
   type PilotConfigSnapshot,
   type PilotConfigSource,
+  type PilotObservabilityConfig,
   type PilotRawConfig,
   type PilotTelemetryConfig,
 } from "./types.js";
@@ -125,6 +126,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   const cron = parseCronConfig(rawConfig.cron, diagnostics);
   const tools = parseToolsConfig(rawConfig.tools, diagnostics);
   const telemetry = parseTelemetryConfig(rawConfig.telemetry);
+  const observability = parseObservabilityConfig(rawConfig.observability, diagnostics);
   const proxy = parseProxyConfig(rawConfig, diagnostics);
   throwConfigErrorIfFatal(diagnostics);
 
@@ -140,6 +142,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     cron,
     tools,
     telemetry,
+    observability,
     proxy,
   });
   return deepFreeze({
@@ -161,6 +164,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
       ...(cron ? { cron } : {}),
       ...(tools ? { tools } : {}),
       telemetry,
+      ...(observability ? { observability } : {}),
       ...(proxy ? { proxy } : {}),
     },
   });
@@ -314,6 +318,7 @@ function validateTopLevel(rawConfig: PilotRawConfig, diagnostics: PilotConfigDia
     // config without producing diagnostic noise.
     "webui",
     "telemetry",
+    "observability",
   ]);
   for (const key of Object.keys(rawConfig)) {
     if (!allowedKeys.has(key)) {
@@ -702,6 +707,66 @@ function parseTelemetryConfig(raw: unknown): PilotTelemetryConfig {
   return {
     enabled: isRecord(raw) && (raw as Record<string, unknown>).enabled === true,
   };
+}
+
+function parseObservabilityConfig(
+  raw: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+): PilotObservabilityConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw)) {
+    throw new PilotConfigError(
+      "CONFIG_OBSERVABILITY_INVALID",
+      "observability must be an object.",
+    );
+  }
+  for (const key of Object.keys(raw)) {
+    if (!["enabled", "profile", "campaignId", "variant", "queueCapacity"].includes(key)) {
+      diagnostics.push({
+        code: "CONFIG_OBSERVABILITY_UNKNOWN_FIELD",
+        severity: "warning",
+        message: `Unknown observability field ${key}.`,
+        path: `observability.${key}`,
+        recoverable: true,
+      });
+    }
+  }
+  if (raw.enabled !== true) return undefined;
+  if (raw.profile !== undefined && raw.profile !== "diagnostic") {
+    throw new PilotConfigError(
+      "CONFIG_OBSERVABILITY_PROFILE_INVALID",
+      "observability.profile must be diagnostic in O1.",
+    );
+  }
+  const queueCapacity = raw.queueCapacity === undefined
+    ? 4096
+    : readOptionalPositiveInteger(raw.queueCapacity, "observability.queueCapacity");
+  if (queueCapacity === undefined || queueCapacity < 64 || queueCapacity > 65_536) {
+    throw new PilotConfigError(
+      "CONFIG_OBSERVABILITY_QUEUE_CAPACITY_INVALID",
+      "observability.queueCapacity must be an integer from 64 through 65536.",
+    );
+  }
+  const campaignId = readObservationLabel(raw.campaignId, "campaignId");
+  const variant = readObservationLabel(raw.variant, "variant");
+  return {
+    enabled: true,
+    profile: "diagnostic",
+    queueCapacity,
+    ...(campaignId ? { campaignId } : {}),
+    ...(variant ? { variant } : {}),
+  };
+}
+
+function readObservationLabel(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || value.length > 128 || !/^[A-Za-z0-9._-]+$/u.test(value)) {
+    throw new PilotConfigError(
+      "CONFIG_OBSERVABILITY_LABEL_INVALID",
+      `observability.${field} must use 1-128 ASCII letters, digits, dot, underscore, or hyphen.`,
+    );
+  }
+  return value;
 }
 
 function parseProxyConfig(

@@ -88,6 +88,7 @@ import type {
 import { createRouterRuntime, type RouterRuntime } from "../router/index.js";
 import { SessionRouterStore } from "../router/session/SessionRouterStore.js";
 import type { RouterEventBus, RouterEvent } from "../router/protocol/events.js";
+import { JsonlObservationRecorder } from "../observability/index.js";
 import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
 import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
@@ -1240,6 +1241,17 @@ class ProjectRuntimeRegistry {
       };
       const planFileManager = createPlanFileManager({ projectRoot });
       const planTodoManager = createPlanTodoStateManager();
+      const observability = runtime.snapshot.config.observability;
+      const observation = observability?.enabled
+        ? new JsonlObservationRecorder({
+            directory: storage.observabilityDir,
+            campaignId: observability.campaignId,
+            variant: observability.variant,
+            queueCapacity: observability.queueCapacity,
+            producerVersion: this.options.env.PILOTDECK_BUILD_SHA ?? "unknown",
+            now: this.options.now,
+          })
+        : undefined;
       return {
         context: contextRuntime,
         fileHistory,
@@ -1247,6 +1259,7 @@ class ProjectRuntimeRegistry {
         elicitation,
         planFileManager,
         planTodoManager,
+        observation,
       };
     };
     return {
@@ -1339,7 +1352,7 @@ function mergeSessionDependencies(
   extension: Partial<
     Pick<
       AgentRuntimeDependencies,
-      "context" | "fileHistory" | "subagentTranscript" | "elicitation" | "eventEmitter" | "drainEvents" | "planFileManager" | "planTodoManager"
+      "context" | "fileHistory" | "subagentTranscript" | "elicitation" | "eventEmitter" | "drainEvents" | "planFileManager" | "planTodoManager" | "observation"
     >
   >,
 ): CreateAgentSessionOptions["dependencies"] {
@@ -1353,6 +1366,7 @@ function mergeSessionDependencies(
     ...(extension.drainEvents ? { drainEvents: extension.drainEvents } : {}),
     ...(extension.planFileManager ? { planFileManager: extension.planFileManager } : {}),
     ...(extension.planTodoManager ? { planTodoManager: extension.planTodoManager } : {}),
+    ...(extension.observation ? { observation: extension.observation } : {}),
   };
 }
 

@@ -105,6 +105,7 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
       initialState: options.initialState,
       replayEvents: options.replayEvents,
       lifecycle: dependencies.lifecycle,
+      observation: dependencies.observation,
     }),
     storage,
   };

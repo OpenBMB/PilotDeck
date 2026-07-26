@@ -15,6 +15,7 @@ import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ArtifactValidationRuntime } from "../../artifact/index.js";
+import type { ObservationRecorder } from "../../observability/index.js";
 
 /**
  * Narrow view of the router that the agent loop actually consumes. Tests can
@@ -139,6 +140,8 @@ export type AgentRuntimeDependencies = {
   planTodoManager?: PlanTodoStateManager;
   eventEmitter?: AgentEventEmitter;
   artifactValidation?: ArtifactValidationRuntime;
+  /** Hash-only shadow evidence. It must never mutate Agent-visible state. */
+  observation?: ObservationRecorder;
   drainEvents?: () => AgentEvent[];
 };
 

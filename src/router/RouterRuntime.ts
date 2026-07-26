@@ -52,6 +52,11 @@ import {
   missingInputModalities,
 } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
+import {
+  fingerprintModelRequest,
+  fingerprintModelResponse,
+  observationHash,
+} from "../observability/index.js";
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -570,7 +575,15 @@ export function createRouterRuntime(
         deps.modelRuntime,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
+      const requestId = observationRequestId(ctx.sessionId, ctx.turnId, 1);
+      observeRequestAttempt(ctx, {
+        requestId,
+        decision,
+        request: cappedPassthroughRequest,
+        attempt: 1,
+      });
       let sawErrorEvent = false;
+      let terminalObserved = false;
       for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx, events)) {
         if (item.kind === "event") {
           if (item.event.type === "error") {
@@ -579,9 +592,18 @@ export function createRouterRuntime(
           yield item.event;
           continue;
         }
+        terminalObserved = true;
+        if (item.outcome.error) {
+          observeRequestFailure(ctx, requestId, item.outcome.error);
+        } else {
+          observeRequestResponse(ctx, requestId, item.outcome.buffered, item.outcome.usage);
+        }
         if (item.outcome.error && !sawErrorEvent) {
           yield { type: "error", error: item.outcome.error };
         }
+      }
+      if (!terminalObserved) {
+        observeRequestFailure(ctx, requestId, { code: "stream_ended_without_terminal", retryable: false });
       }
       return;
     }
@@ -625,6 +647,7 @@ export function createRouterRuntime(
     let lastAttempt: RouterModelRef | undefined;
     let lastDecision: RouterDecision = decision;
     let lastHasYieldedContent = false;
+    let observationRequestSequence = 0;
 
     if (attemptPlans.length === 0) {
       const missing = missingForModel(requestedAttempt, requiredModalities);
@@ -702,6 +725,17 @@ export function createRouterRuntime(
         let hasYieldedContent = false;
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
+        const requestId = observationRequestId(
+          ctx.sessionId,
+          ctx.turnId,
+          ++observationRequestSequence,
+        );
+        observeRequestAttempt(ctx, {
+          requestId,
+          decision: attemptDecision,
+          request: attemptRequest,
+          attempt: observationRequestSequence,
+        });
 
         for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
           if (item.kind === "outcome") {
@@ -730,6 +764,7 @@ export function createRouterRuntime(
         }
 
         if (!outcome) {
+          observeRequestFailure(ctx, requestId, { code: "stream_ended_without_terminal", retryable: false });
           lastHasYieldedContent = hasYieldedContent;
           break outer;
         }
@@ -738,6 +773,7 @@ export function createRouterRuntime(
         lastUsage = outcome.usage;
 
         if (outcome.error) {
+          observeRequestFailure(ctx, requestId, outcome.error);
           lastError = outcome.error;
           getHealthTracker(ctx.sessionId).recordFailure(attempt.provider);
           if (!hasYieldedContent && isFallbackEligible(outcome.error)) {
@@ -754,6 +790,21 @@ export function createRouterRuntime(
                 toProvider: next.provider,
                 toModel: next.model,
                 error: outcome.error,
+              });
+              ctx.observation?.emit({
+                type: "model.fallback.selected",
+                sessionId: ctx.sessionId,
+                turnId: ctx.turnId,
+                parentSpanId: `turn:${ctx.turnId}`,
+                payload: {
+                  previousRequestId: requestId,
+                  fromProvider: attempt.provider,
+                  fromModel: attempt.model,
+                  toProvider: next.provider,
+                  toModel: next.model,
+                  reasonCode: outcome.error.code,
+                },
+                priority: "important",
               });
               telemetry?.trackFeatureLoopStage({
                 module: "router",
@@ -798,6 +849,7 @@ export function createRouterRuntime(
               model: attempt.model,
               errorCode: outcome.error.code,
             });
+            observeRetryScheduled(ctx, requestId, transientRetryCount + 1, Math.round(delay), outcome.error.code);
             events.emit({
               type: "pilotdeck_router_retry_progress",
               sessionId: ctx.sessionId,
@@ -854,6 +906,7 @@ export function createRouterRuntime(
                 provider: attempt.provider,
                 model: attempt.model,
               });
+              observeRetryScheduled(ctx, requestId, transientRetryCount + 1, Math.round(midDelay), outcome.error.code);
               await abortableDelay(midDelay, ctx.abortSignal);
               attemptRequest = buildLiteLLMContinuationRequest(attemptRequest, partialText);
               transientRetryCount++;
@@ -873,6 +926,7 @@ export function createRouterRuntime(
           outcome.shouldRetryZeroUsage &&
           zeroUsageAttempt < zeroUsageMax
         ) {
+          observeRequestResponse(ctx, requestId, outcome.buffered, outcome.usage);
           console.warn(
             `[PilotDeck] zeroUsageRetry: empty response from ${attempt.provider}/${attempt.model} ` +
             `(attempt ${zeroUsageAttempt}/${zeroUsageMax}, session=${ctx.sessionId})`,
@@ -885,6 +939,7 @@ export function createRouterRuntime(
             provider: attempt.provider,
             model: attempt.model,
           });
+          observeRetryScheduled(ctx, requestId, zeroUsageAttempt, 500 * zeroUsageAttempt, "zero_usage");
           events.emit({
             type: "pilotdeck_router_retry_progress",
             sessionId: ctx.sessionId,
@@ -915,6 +970,7 @@ export function createRouterRuntime(
         }
 
         getHealthTracker(ctx.sessionId).recordSuccess(attempt.provider);
+        observeRequestResponse(ctx, requestId, outcome.buffered, outcome.usage);
 
         if (!hasYieldedContent) {
           for (const queued of pending) {
@@ -988,6 +1044,130 @@ export function createRouterRuntime(
       }
       yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
     }
+  }
+
+  function observeRequestAttempt(
+    ctx: RouterExecuteContext,
+    input: {
+      requestId: string;
+      decision: RouterDecision;
+      request: CanonicalModelRequest;
+      attempt: number;
+    },
+  ): void {
+    const observation = ctx.observation;
+    if (!observation) return;
+    const spanId = `model:${input.requestId}`;
+    observation.emit({
+      type: "model.request.routed",
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      spanId,
+      parentSpanId: `turn:${ctx.turnId}`,
+      payload: {
+        requestId: input.requestId,
+        provider: input.request.provider,
+        model: input.request.model,
+        attempt: input.attempt,
+        scenarioType: input.decision.scenarioType,
+        resolvedFrom: input.decision.resolvedFrom,
+        tokenSaverTier: input.decision.tokenSaverTier,
+        mutations: input.decision.mutations,
+      },
+      priority: "important",
+    });
+    for (const injection of ctx.promptInjections ?? []) {
+      observation.emit({
+        type: "prompt.injection.applied",
+        sessionId: ctx.sessionId,
+        turnId: ctx.turnId,
+        spanId: `injection:${input.requestId}:${injection.id}`,
+        parentSpanId: spanId,
+        payload: {
+          requestId: input.requestId,
+          injectionId: injection.id,
+          source: injection.source,
+          position: injection.position,
+          contentHash: injection.contentHash,
+          bytes: injection.bytes,
+          reasonCode: injection.reasonCode,
+        },
+        priority: "important",
+      });
+    }
+    observation.emit({
+      type: "model.request.sent",
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      spanId,
+      parentSpanId: `turn:${ctx.turnId}`,
+      payload: {
+        requestId: input.requestId,
+        provider: input.request.provider,
+        model: input.request.model,
+        attempt: input.attempt,
+        injectionIds: (ctx.promptInjections ?? []).map((injection) => injection.id),
+        ...fingerprintModelRequest(input.request),
+      },
+      priority: "critical",
+    });
+  }
+
+  function observeRequestResponse(
+    ctx: RouterExecuteContext,
+    requestId: string,
+    responseEvents: readonly CanonicalModelEvent[],
+    usage?: import("../model/index.js").CanonicalUsage,
+  ): void {
+    ctx.observation?.emit({
+      type: "model.response.received",
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      spanId: `model:${requestId}`,
+      parentSpanId: `turn:${ctx.turnId}`,
+      payload: {
+        requestId,
+        ...fingerprintModelResponse(responseEvents, usage),
+      },
+      priority: "critical",
+    });
+  }
+
+  function observeRequestFailure(
+    ctx: RouterExecuteContext,
+    requestId: string,
+    error: { code: string; retryable?: boolean },
+  ): void {
+    ctx.observation?.emit({
+      type: "model.request.failed",
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      spanId: `model:${requestId}`,
+      parentSpanId: `turn:${ctx.turnId}`,
+      payload: {
+        requestId,
+        errorCode: error.code,
+        retryable: error.retryable === true,
+      },
+      priority: "critical",
+    });
+  }
+
+  function observeRetryScheduled(
+    ctx: RouterExecuteContext,
+    previousRequestId: string,
+    attempt: number,
+    delayMs: number,
+    reasonCode: string,
+  ): void {
+    ctx.observation?.emit({
+      type: "model.retry.scheduled",
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      parentSpanId: `model:${previousRequestId}`,
+      payload: { previousRequestId, attempt, delayMs, reasonCode },
+      priority: "important",
+    });
   }
 
   async function* stream(
@@ -1121,6 +1301,15 @@ function downgradeRequestForAttempt(
   const messages = cloneMessages(request.messages);
   downgradeUnsupportedContent(messages, multimodal);
   return { ...request, messages };
+}
+
+function observationRequestId(sessionId: string, turnId: string, sequence: number): string {
+  const hashPrefixLength = 16;
+  const sessionFingerprint = observationHash(sessionId).slice(
+    "sha256:".length,
+    "sha256:".length + hashPrefixLength,
+  );
+  return `${sessionFingerprint}:${turnId}:model:${sequence}`;
 }
 
 /**

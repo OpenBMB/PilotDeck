@@ -73,6 +73,8 @@ import {
   parseConvergenceReport,
   type ProgressBoundaryOutcome,
 } from "../convergence/ProgressLease.js";
+import { observationHash } from "../../observability/index.js";
+import type { PromptInjectionObservation } from "../../observability/index.js";
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -136,6 +138,11 @@ export type AgentLoopSeedState = {
   readFileState?: PilotDeckReadFileStateMap;
   writeSnapshots?: PilotDeckWriteSnapshotMap;
   allowedReadFiles?: string[];
+};
+
+type PreparedModelRequest = {
+  request: CanonicalModelRequest;
+  injections: PromptInjectionObservation[];
 };
 
 export class AgentLoop {
@@ -423,7 +430,9 @@ export class AgentLoop {
         yield* this.drainEventBuffer();
       }
 
-      let request = await this.createModelRequest(messages, input);
+      let preparedRequest = await this.createModelRequest(messages, input);
+      let request = preparedRequest.request;
+      let promptInjections = preparedRequest.injections;
       if (input.abortSignal?.aborted) {
         const result = this.createTurnResult(input, {
           type: "aborted",
@@ -448,6 +457,7 @@ export class AgentLoop {
         turnId: input.turnId,
         contextBudget: pendingContextBudget,
       });
+      const preModelInjections = describePreModelInjections(preModelHooks);
       const transformedRequest = applyPreModelRequestEffects(request, preModelHooks);
       if (transformedRequest.type === "blocked") {
         const error = agentError("agent_unsupported_feature", transformedRequest.reason);
@@ -468,6 +478,7 @@ export class AgentLoop {
         return { result, messages };
       }
       request = transformedRequest.request;
+      promptInjections = [...promptInjections, ...preModelInjections];
       const convergenceReport = parseConvergenceReport(request.metadata?.[CONVERGENCE_METADATA_KEY]);
       if (convergenceReport) {
         const progress = progressLease.observe(convergenceReport, progressBoundary);
@@ -550,12 +561,14 @@ export class AgentLoop {
             });
             if (recompact.type === "compacted") {
               messages = recompact.messages;
-              request = await this.createModelRequest(messages, input);
+              preparedRequest = await this.createModelRequest(messages, input);
+              request = preparedRequest.request;
               const retransformedRequest = applyPreModelRequestEffects(request, preModelHooks);
               if (retransformedRequest.type === "blocked") {
                 throw new Error("PreModelRequest effects changed from ready to blocked while rebuilding the request.");
               }
               request = retransformedRequest.request;
+              promptInjections = [...preparedRequest.injections, ...preModelInjections];
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               yield {
                 type: "turn_continued",
@@ -598,6 +611,8 @@ export class AgentLoop {
           turnId: input.turnId,
           projectPath: this.config.cwd,
           abortSignal: input.abortSignal,
+          observation: this.dependencies.observation,
+          promptInjections,
         })) {
           yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event };
           applyModelEventToAssembler(assembler, event);
@@ -1847,7 +1862,7 @@ export class AgentLoop {
     messages: CanonicalMessage[],
     input: AgentLoopInput,
     options: { emitInstructionEvents?: boolean } = {},
-  ): Promise<CanonicalModelRequest> {
+  ): Promise<PreparedModelRequest> {
     const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
     const canPrompt = input.canPrompt ?? this.config.permissionContext.canPrompt;
@@ -1921,20 +1936,23 @@ export class AgentLoop {
     }
 
     return {
-      provider: this.config.provider,
-      model: this.config.model,
-      messages: this.config.permissionMode === "plan"
-        ? appendPlanModeReminder(materialized.messages)
-        : materialized.messages,
-      systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
-      tools: prepared.tools,
-      toolChoice: this.config.toolChoice,
-      maxOutputTokens: this.config.maxOutputTokens,
-      temperature: this.config.temperature,
-      thinking: this.config.thinking,
-      stream: true,
-      metadata: this.config.metadata,
-      cacheBreakpoints: prepared.cacheBreakpoints,
+      request: {
+        provider: this.config.provider,
+        model: this.config.model,
+        messages: this.config.permissionMode === "plan"
+          ? appendPlanModeReminder(materialized.messages)
+          : materialized.messages,
+        systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
+        tools: prepared.tools,
+        toolChoice: this.config.toolChoice,
+        maxOutputTokens: this.config.maxOutputTokens,
+        temperature: this.config.temperature,
+        thinking: this.config.thinking,
+        stream: true,
+        metadata: this.config.metadata,
+        cacheBreakpoints: prepared.cacheBreakpoints,
+      },
+      injections: prepared.injections ?? [],
     };
   }
 
@@ -1953,9 +1971,9 @@ export class AgentLoop {
       return undefined;
     }
     return async (candidateMessages, lastUsage) => {
-      let candidateRequest = await this.createModelRequest(candidateMessages, input, {
+      let candidateRequest = (await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
-      });
+      })).request;
       if (options.decision && options.baseRequest && this.dependencies.router.materializeRequest) {
         const patchedBase = { ...options.baseRequest, messages: candidateRequest.messages };
         candidateRequest = this.dependencies.router.materializeRequest(options.decision, {
@@ -2806,6 +2824,35 @@ function mergeMessageMetadata(
     ...(first ?? {}),
     ...(second ?? {}),
   };
+}
+
+function describePreModelInjections(result: LifecycleDispatchResult): PromptInjectionObservation[] {
+  const injections: PromptInjectionObservation[] = [];
+  let index = 0;
+  for (const effect of result.effects) {
+    if (effect.type === "additional_context") {
+      injections.push({
+        id: effect.id ?? `additional-context-${index++}`,
+        source: effect.source,
+        position: "after:last-message",
+        contentHash: observationHash(effect.content),
+        bytes: Buffer.byteLength(effect.content, "utf8"),
+        reasonCode: "pre_model_request_effect",
+      });
+      continue;
+    }
+    if (effect.type === "system_message") {
+      injections.push({
+        id: `system-message-${index++}`,
+        source: "lifecycle:PreModelRequest",
+        position: "system:end",
+        contentHash: observationHash(effect.content),
+        bytes: Buffer.byteLength(effect.content, "utf8"),
+        reasonCode: "pre_model_request_effect",
+      });
+    }
+  }
+  return injections;
 }
 
 function detectRepeatedToolFailure(

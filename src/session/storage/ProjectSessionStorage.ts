@@ -25,6 +25,7 @@ export type AgentProjectSessionStorage = {
    * Each forked subagent gets its own `<subagentId>.jsonl` here.
    */
   subagentsDir: string;
+  observabilityDir: string;
   subagentTranscriptPath(subagentId: string): string;
   transcript: JsonlTranscriptWriter;
 };
@@ -65,6 +66,7 @@ export function createAgentProjectSessionStorage(
   const toolResultsDir = resolve(options.projectRoot, ".pilotdeck", "tool-results", safeId);
   const fileHistoryDir = resolve(chatDir, safeId, "file-history");
   const subagentsDir = resolve(chatDir, safeId, "subagents");
+  const observabilityDir = resolve(chatDir, safeId, "observability");
   const subagentTranscriptPath = (subagentId: string): string =>
     resolve(subagentsDir, `${sanitizeSessionIdForPath(subagentId)}.jsonl`);
   return {
@@ -73,6 +75,7 @@ export function createAgentProjectSessionStorage(
     toolResultsDir,
     fileHistoryDir,
     subagentsDir,
+    observabilityDir,
     subagentTranscriptPath,
     transcript: new JsonlTranscriptWriter({
       path: transcriptPath,
