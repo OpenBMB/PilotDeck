@@ -28,3 +28,14 @@ export {
   type SubagentReport,
 } from "./SubAgentSession.js";
 export type { CanonicalAssistantTextSummary } from "./types.js";
+export {
+  DEFAULT_SUBAGENT_TIMEOUT_MS,
+  SUBAGENT_PARENT_HANDOFF_RESERVE_MS,
+  SubagentTimeoutError,
+  appendSubagentBudgetDirective,
+  awaitSubagentOperation,
+  composeSubagentAbortSignal,
+  isSubagentTimeoutError,
+  resolveSubagentExecutionBudget,
+  type SubagentExecutionBudget,
+} from "./SubagentBudget.js";

@@ -236,6 +236,8 @@ export type PilotDeckToolRuntimeContext = {
   cwd: string;
   abortSignal?: AbortSignal;
   subagentTimeoutMs?: number;
+  /** Absolute parent-turn deadline used to keep child work inside the parent budget. */
+  turnDeadlineAtMs?: number;
   /** The tool call ID assigned by the model for the current invocation. */
   currentToolCallId?: string;
   /**

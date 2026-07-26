@@ -45,7 +45,7 @@ import {
   cloneReadFileState,
   cloneWriteSnapshots,
 } from "./contextInheritance.js";
-
+import { awaitSubagentOperation } from "./SubagentBudget.js";
 
 const SUMMARY_FIELDS = ["Scope", "Result", "Key files", "Files changed", "Issues"] as const;
 
@@ -143,7 +143,10 @@ export class SubAgentSession {
       abortSignal: this.options.abortSignal,
     });
     while (true) {
-      const next = await generator.next();
+      const pending = generator.next();
+      const next = this.options.abortSignal
+        ? await awaitSubagentOperation(pending, this.options.abortSignal)
+        : await pending;
       if (next.done) {
         last = next.value;
         break;
@@ -213,6 +216,7 @@ export class SubAgentSession {
   }
 
   private forwardActivity(event: AgentEvent): void {
+    if (this.options.abortSignal?.aborted) return;
     const emit = this.options.parentDependencies.eventEmitter;
     if (!emit) return;
     const base = {

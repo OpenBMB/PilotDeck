@@ -85,6 +85,7 @@ export class AgentSession {
         messages: this.state.messages,
         input,
         maxTurns: submitOptions.maxTurns,
+        turnDeadlineAtMs: submitOptions.turnDeadlineAtMs,
         runMode: submitOptions.runMode,
         permissionMode: submitOptions.permissionMode,
         allowedReadFiles: submitOptions.allowedReadFiles,

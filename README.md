@@ -413,6 +413,8 @@ This initializes `~/.pilotdeck/pilotdeck.yaml` for first-run onboarding so the G
 schemaVersion: 1
 agent:
   model: deepseek/deepseek-v4-pro
+  subagents:
+    timeoutMs: 600000 # optional; defaults to 10 minutes
 model:
   providers:
     deepseek:
@@ -420,6 +422,12 @@ model:
       url: https://api.deepseek.com/v1
       apiKey: sk-your-api-key
 ```
+
+Forked subagents are also bounded by the parent turn deadline. PilotDeck keeps
+at least 30 seconds for the parent to handle the child result and finish the
+turn, and dynamically tells each child its effective budget. Set
+`agent.subagents.timeoutMs` lower when the parent needs a larger synthesis or
+artifact-delivery window.
 
 Native Gemini can be configured with `protocol: google`:
 

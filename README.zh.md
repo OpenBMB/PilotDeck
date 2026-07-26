@@ -412,6 +412,8 @@ node scripts/bootstrap-pilotdeck-config.mjs
 schemaVersion: 1
 agent:
   model: deepseek/deepseek-v4-pro
+  subagents:
+    timeoutMs: 600000 # 可选；默认 10 分钟
 model:
   providers:
     deepseek:
@@ -419,6 +421,11 @@ model:
       url: https://api.deepseek.com/v1
       apiKey: sk-your-api-key
 ```
+
+子 Agent 还会受父任务 deadline 约束。PilotDeck 至少为父 Agent 保留 30 秒，
+用于接收子 Agent 结果、处理失败并完成当前 turn；同时会将实际可用
+时间动态注入子 Agent prompt。如果父 Agent 需要更长的汇总或产物交付时间，
+应将 `agent.subagents.timeoutMs` 设得更低。
 
 原生 Gemini 可以使用 `protocol: google`：
 

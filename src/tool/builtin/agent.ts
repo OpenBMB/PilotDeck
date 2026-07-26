@@ -2,6 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { CanonicalModelRequest, CanonicalUsage } from "../../model/index.js";
 import type { PermissionResult } from "../../permission/index.js";
 import { SUBAGENT_DEFINITIONS } from "../../agent/sub/builtinSubagentTypes.js";
+import {
+  SUBAGENT_PARENT_HANDOFF_RESERVE_MS,
+  appendSubagentBudgetDirective,
+  awaitSubagentOperation,
+  composeSubagentAbortSignal,
+  isSubagentTimeoutError,
+  resolveSubagentExecutionBudget,
+  type SubagentExecutionBudget,
+} from "../../agent/sub/SubagentBudget.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
   PilotDeckSubagentForkApi,
@@ -109,7 +118,6 @@ export type CreateAgentToolOptions = {
 const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
-const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;
 const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
 
 export function createAgentTool(
@@ -164,7 +172,22 @@ export function createAgentTool(
       const explicit = normalizeRequestedSubagentType(
         input.subagent_type ?? input.subagentType,
       );
-      const directive = input.prompt;
+      const budget = resolveSubagentExecutionBudget({
+        configuredTimeoutMs: context.subagentTimeoutMs,
+        parentDeadlineAtMs: context.turnDeadlineAtMs,
+        nowMs: context.now?.().getTime(),
+      });
+      if (!budget) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_execution_failed",
+          "agent subagent cannot start because the parent turn must retain its final handoff window.",
+          {
+            errorCode: "subagent_budget_exhausted",
+            parentHandoffReserveMs: SUBAGENT_PARENT_HANDOFF_RESERVE_MS,
+          },
+        );
+      }
+      const directive = appendSubagentBudgetDirective(input.prompt, budget);
 
       // Full fork path (C2): preferred when AgentLoop wired the fork API.
       if (context.subagent) {
@@ -177,6 +200,7 @@ export function createAgentTool(
           context,
           requestedType,
           directive,
+          budget,
           fork: context.subagent,
         });
       }
@@ -190,6 +214,7 @@ export function createAgentTool(
         context,
         requestedType,
         directive,
+        budget,
         presets: fallbackPresets,
         model: options.model,
         provider: options.provider ?? DEFAULT_PROVIDER_FALLBACK,
@@ -320,9 +345,10 @@ async function runFullFork(args: {
   context: PilotDeckToolRuntimeContext;
   requestedType: string;
   directive: string;
+  budget: SubagentExecutionBudget;
   fork: PilotDeckSubagentForkApi;
 }): Promise<PilotDeckToolExecutionOutput<AgentToolOutput>> {
-  const { input, context, requestedType, directive, fork } = args;
+  const { input, context, requestedType, directive, budget, fork } = args;
 
   if (!fork.isAllowedDefinition(requestedType)) {
     const allowed = fork.listDefinitions().map((d) => d.id).join(", ");
@@ -340,7 +366,7 @@ async function runFullFork(args: {
     );
   }
   const subagentId = randomUUID();
-  const timeoutMs = context.subagentTimeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
+  const timeoutMs = budget.timeoutMs;
   let report;
   try {
     report = await fork.fork({
@@ -356,6 +382,13 @@ async function runFullFork(args: {
       throw new PilotDeckToolRuntimeError(
         "tool_aborted",
         "agent subagent aborted before completion.",
+      );
+    }
+    if (isSubagentTimeoutError(error)) {
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `agent subagent timed out after ${timeoutMs}ms.`,
+        { errorCode: "subagent_timeout", timeoutMs },
       );
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -395,6 +428,8 @@ async function runFullFork(args: {
       forkMode: "full",
       turns: report.turns,
       durationMs: report.durationMs,
+      timeoutMs,
+      parentBounded: budget.parentBounded,
     },
   };
 }
@@ -404,6 +439,7 @@ async function runFallback(args: {
   context: PilotDeckToolRuntimeContext;
   requestedType: string;
   directive: string;
+  budget: SubagentExecutionBudget;
   presets: Record<string, AgentSubagentDefinition>;
   model?: PilotDeckToolModelClient;
   provider: string;
@@ -416,6 +452,7 @@ async function runFallback(args: {
     context,
     requestedType,
     directive,
+    budget,
     presets,
     model: explicitModel,
     provider,
@@ -452,28 +489,79 @@ async function runFallback(args: {
   };
   let text = "";
   let usage: CanonicalUsage | undefined;
-  for await (const event of model.stream(request, context.abortSignal)) {
+  const composedAbort = composeSubagentAbortSignal({
+    parent: context.abortSignal,
+    timeoutMs: budget.timeoutMs,
+  });
+  const iterator = model.stream(request, composedAbort.signal)[Symbol.asyncIterator]();
+  let iteratorCompleted = false;
+  try {
+    while (true) {
+      const next = await awaitSubagentOperation(iterator.next(), composedAbort.signal);
+      if (next.done) {
+        iteratorCompleted = true;
+        break;
+      }
+      const event = next.value;
+      if (context.abortSignal?.aborted) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_aborted",
+          "agent subagent aborted before completion.",
+        );
+      }
+      if (composedAbort.timedOut()) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_execution_failed",
+          `agent subagent timed out after ${budget.timeoutMs}ms.`,
+          { errorCode: "subagent_timeout", timeoutMs: budget.timeoutMs },
+        );
+      }
+      switch (event.type) {
+        case "text_delta":
+          text += event.text;
+          break;
+        case "usage":
+          usage = event.usage;
+          break;
+        case "error":
+          throw new PilotDeckToolRuntimeError(
+            "tool_execution_failed",
+            `agent subagent model error: ${event.error.message}`,
+            { errorCode: event.error.code },
+          );
+        default:
+          break;
+      }
+    }
+    if (composedAbort.timedOut()) {
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `agent subagent timed out after ${budget.timeoutMs}ms.`,
+        { errorCode: "subagent_timeout", timeoutMs: budget.timeoutMs },
+      );
+    }
+  } catch (error) {
     if (context.abortSignal?.aborted) {
       throw new PilotDeckToolRuntimeError(
         "tool_aborted",
         "agent subagent aborted before completion.",
       );
     }
-    switch (event.type) {
-      case "text_delta":
-        text += event.text;
-        break;
-      case "usage":
-        usage = event.usage;
-        break;
-      case "error":
-        throw new PilotDeckToolRuntimeError(
-          "tool_execution_failed",
-          `agent subagent model error: ${event.error.message}`,
-          { errorCode: event.error.code },
-        );
-      default:
-        break;
+    if (composedAbort.timedOut() || isSubagentTimeoutError(error)) {
+      if (error instanceof PilotDeckToolRuntimeError && error.details?.errorCode === "subagent_timeout") {
+        throw error;
+      }
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `agent subagent timed out after ${budget.timeoutMs}ms.`,
+        { errorCode: "subagent_timeout", timeoutMs: budget.timeoutMs },
+      );
+    }
+    throw error;
+  } finally {
+    composedAbort.cleanup();
+    if (!iteratorCompleted) {
+      void iterator.return?.().catch(() => undefined);
     }
   }
   const trimmed = text.trim();
@@ -498,6 +586,8 @@ async function runFallback(args: {
       provider,
       model: modelId,
       promptBytes: Buffer.byteLength(directive, "utf8"),
+      timeoutMs: budget.timeoutMs,
+      parentBounded: budget.parentBounded,
     },
   };
 }

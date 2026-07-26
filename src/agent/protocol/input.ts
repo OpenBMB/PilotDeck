@@ -10,6 +10,8 @@ export type AgentInput =
 export type AgentSubmitOptions = {
   turnId?: string;
   maxTurns?: number;
+  /** Absolute wall-clock deadline propagated by the owning Gateway turn. */
+  turnDeadlineAtMs?: number;
   metadata?: Record<string, unknown>;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;

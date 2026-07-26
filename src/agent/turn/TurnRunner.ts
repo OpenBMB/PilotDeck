@@ -21,6 +21,8 @@ export type TurnRunnerOptions = {
   messages: CanonicalMessage[];
   input: AgentInput;
   maxTurns?: number;
+  /** Absolute wall-clock deadline propagated by the owning Gateway turn. */
+  turnDeadlineAtMs?: number;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -194,6 +196,7 @@ export class TurnRunner {
         turnId: options.turnId,
         messages,
         maxTurns: options.maxTurns,
+        turnDeadlineAtMs: options.turnDeadlineAtMs,
         runMode: options.runMode,
         permissionMode: options.permissionMode,
         allowedReadFiles: options.allowedReadFiles,

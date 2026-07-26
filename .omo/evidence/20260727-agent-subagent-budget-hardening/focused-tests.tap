@@ -1,0 +1,102 @@
+TAP version 13
+# Subtest: subagent budget defaults to ten minutes without a parent deadline
+ok 1 - subagent budget defaults to ten minutes without a parent deadline
+  ---
+  duration_ms: 1.048334
+  type: 'test'
+  ...
+# Subtest: subagent budget preserves the parent handoff window
+ok 2 - subagent budget preserves the parent handoff window
+  ---
+  duration_ms: 0.116125
+  type: 'test'
+  ...
+# Subtest: subagent budget directive exposes the effective bound and diminishing-return rule
+ok 3 - subagent budget directive exposes the effective bound and diminishing-return rule
+  ---
+  duration_ms: 0.095125
+  type: 'test'
+  ...
+# Subtest: composed subagent timeout aborts with a typed reason
+ok 4 - composed subagent timeout aborts with a typed reason
+  ---
+  duration_ms: 5.781041
+  type: 'test'
+  ...
+# Subtest: subagent operation returns control even when the callee ignores abort
+ok 5 - subagent operation returns control even when the callee ignores abort
+  ---
+  duration_ms: 6.449667
+  type: 'test'
+  ...
+# Subtest: parent abort wins without being misclassified as a child timeout
+ok 6 - parent abort wins without being misclassified as a child timeout
+  ---
+  duration_ms: 0.410625
+  type: 'test'
+  ...
+# Subtest: fork timeout closes child lifecycle and lets the parent finish
+ok 7 - fork timeout closes child lifecycle and lets the parent finish
+  ---
+  duration_ms: 30.505417
+  type: 'test'
+  ...
+# Subtest: Gateway propagates its absolute turn deadline into the Agent session
+ok 8 - Gateway propagates its absolute turn deadline into the Agent session
+  ---
+  duration_ms: 2.148625
+  type: 'test'
+  ...
+# (node:91690) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: local Gateway records a complete O1 trajectory when a bounded child times out
+ok 9 - local Gateway records a complete O1 trajectory when a bounded child times out
+  ---
+  duration_ms: 1340.166167
+  type: 'test'
+  ...
+# Subtest: agent tool accepts explorer as an alias for explore
+ok 10 - agent tool accepts explorer as an alias for explore
+  ---
+  duration_ms: 1.49125
+  type: 'test'
+  ...
+# Subtest: agent tool defaults general-purpose to explore in ask mode
+ok 11 - agent tool defaults general-purpose to explore in ask mode
+  ---
+  duration_ms: 0.115125
+  type: 'test'
+  ...
+# Subtest: agent tool injects and forwards the parent-bounded timeout
+ok 12 - agent tool injects and forwards the parent-bounded timeout
+  ---
+  duration_ms: 0.181
+  type: 'test'
+  ...
+# Subtest: agent tool rejects a launch that would consume the parent handoff window
+ok 13 - agent tool rejects a launch that would consume the parent handoff window
+  ---
+  duration_ms: 0.250834
+  type: 'test'
+  ...
+# Subtest: agent fallback path enforces the same timeout
+ok 14 - agent fallback path enforces the same timeout
+  ---
+  duration_ms: 5.883833
+  type: 'test'
+  ...
+# Subtest: agent tool preserves unknown custom fallback subagent names
+ok 15 - agent tool preserves unknown custom fallback subagent names
+  ---
+  duration_ms: 0.297334
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2125.145125

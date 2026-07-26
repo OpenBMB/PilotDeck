@@ -405,6 +405,7 @@ export class InProcessGateway implements Gateway {
     const telemetryContext = resolveSubmitTurnTelemetry(input);
     let timeoutHandle: NodeJS.Timeout | undefined;
     let timedOut = false;
+    let turnDeadlineAtMs: number | undefined;
 
     // Background pump: agent events → queue.
     const pump = (async () => {
@@ -420,6 +421,7 @@ export class InProcessGateway implements Gateway {
         const onExternalAbort = () => session.abort(`external:${runId}`);
         input.signal?.addEventListener("abort", onExternalAbort, { once: true });
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
+          turnDeadlineAtMs = Date.now() + input.timeoutMs;
           timeoutHandle = setTimeout(() => {
             timedOut = true;
             const message = `Turn exceeded the ${input.timeoutMs}ms timeout.`;
@@ -494,6 +496,7 @@ export class InProcessGateway implements Gateway {
           {
             turnId: runId,
             maxTurns: input.maxTurns,
+            turnDeadlineAtMs,
             runMode,
             permissionMode,
             basePermissionMode,

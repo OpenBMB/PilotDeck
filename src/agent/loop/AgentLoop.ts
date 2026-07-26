@@ -36,6 +36,11 @@ import {
   SUBAGENT_DEFINITIONS,
   getSubagentDefinition,
 } from "../sub/builtinSubagentTypes.js";
+import {
+  SubagentTimeoutError,
+  awaitSubagentOperation,
+  composeSubagentAbortSignal,
+} from "../sub/SubagentBudget.js";
 import { agentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.js";
@@ -115,6 +120,8 @@ export type AgentLoopInput = {
   turnId: string;
   messages: CanonicalMessage[];
   maxTurns?: number;
+  /** Absolute wall-clock deadline propagated by the owning Gateway turn. */
+  turnDeadlineAtMs?: number;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -2145,6 +2152,7 @@ export class AgentLoop {
       cwd: this.config.cwd,
       abortSignal: input.abortSignal,
       subagentTimeoutMs: this.config.subagentTimeoutMs,
+      turnDeadlineAtMs: input.turnDeadlineAtMs,
       toolAliases: this.config.toolAliases,
       runMode: this.config.runMode ?? "agent",
       permissionMode: this.config.permissionMode,
@@ -2217,9 +2225,9 @@ export class AgentLoop {
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
         const def = getSubagentDefinition(definitionId);
         if (!def) throw new Error(`Unknown subagent type: ${definitionId}`);
-        const composedAbort = composeAbortSignal({
+        const composedAbort = composeSubagentAbortSignal({
           parent: abortSignal,
-          timeoutMs,
+          timeoutMs: timeoutMs ?? 1,
         });
 
         const subagentSessionId = `${this.config.cwd}::sub::${subagentId}`;
@@ -2276,9 +2284,9 @@ export class AgentLoop {
         let report;
         let errored = false;
         try {
-          report = await subSession.run();
+          report = await awaitSubagentOperation(subSession.run(), composedAbort.signal);
           if (composedAbort.timedOut()) {
-            throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
+            throw new SubagentTimeoutError(timeoutMs ?? 1);
           }
         } catch (err) {
           composedAbort.cleanup();
@@ -3501,42 +3509,5 @@ function modelErrorTarget(error: CanonicalModelError, fallbackProvider: string, 
   return {
     provider: error.provider || fallbackProvider,
     model: error.model || fallbackModel,
-  };
-}
-
-function composeAbortSignal(args: {
-  parent?: AbortSignal;
-  timeoutMs?: number;
-}): { signal: AbortSignal | undefined; cleanup: () => void; timedOut: () => boolean } {
-  const { parent, timeoutMs } = args;
-  if (!parent && (!timeoutMs || timeoutMs <= 0)) {
-    return { signal: undefined, cleanup: () => {}, timedOut: () => false };
-  }
-  const controller = new AbortController();
-  const cleanupFns: Array<() => void> = [];
-  let timedOut = false;
-  if (parent) {
-    if (parent.aborted) {
-      controller.abort(parent.reason);
-    } else {
-      const onAbort = () => controller.abort(parent.reason);
-      parent.addEventListener("abort", onAbort, { once: true });
-      cleanupFns.push(() => parent.removeEventListener("abort", onAbort));
-    }
-  }
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  if (timeoutMs && timeoutMs > 0 && !controller.signal.aborted) {
-    timeout = setTimeout(() => {
-      timedOut = true;
-      controller.abort(new Error(`Subagent timed out after ${timeoutMs}ms.`));
-    }, timeoutMs);
-    cleanupFns.push(() => clearTimeout(timeout));
-  }
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      for (const fn of cleanupFns) fn();
-    },
-    timedOut: () => timedOut,
   };
 }
