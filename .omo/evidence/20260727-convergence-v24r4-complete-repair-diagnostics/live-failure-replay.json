@@ -1,0 +1,21 @@
+{
+  "group": "source-fragment-propose",
+  "total": 10,
+  "returned": 10,
+  "hasMore": false,
+  "codes": [
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_threshold_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid",
+    "source_merge_fact_time_invalid"
+  ],
+  "timeCount": 9,
+  "thresholdCount": 1,
+  "exactThresholdContract": true
+}

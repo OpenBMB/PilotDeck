@@ -1,0 +1,17 @@
+# Run from the V24R4 worktree with Node 22 and pnpm 10.32.1.
+
+# Focused Legal Coverage suite
+pnpm build
+node --test --test-force-exit --test-timeout 60000 dist/tests/products/legal-coverage.spec.js
+
+# Full repository suite (includes a clean build)
+pnpm test
+
+# Real local Gateway integration tests
+node --test --test-force-exit --test-timeout 60000 dist/tests/agent/legal-coverage-plugin-runtime.spec.js dist/tests/agent/local-gateway-runtime-controls.spec.js
+
+# Live-failure replay
+# Copy the rejected V24R3 Case 09 workspace to a disposable directory, invoke
+# the V24R4 PreModelRequest hook on the copied state, parse the emitted
+# validationDiagnostics envelope, and retain only the aggregate sanitized JSON.
+# The source campaign remains immutable and no API key is required.

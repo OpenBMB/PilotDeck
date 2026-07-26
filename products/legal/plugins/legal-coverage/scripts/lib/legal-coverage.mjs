@@ -923,6 +923,13 @@ function validateSourceMergeProposal(patch, plan, receipt, state, serializedByte
   const generatedFactIds = new Set();
   const proposalDiagnostics = [];
   const facts = patch.facts.flatMap((fact, index) => {
+    if (options.collectFactDiagnostics === true) {
+      const contractDiagnostics = sourceMergeFactContractDiagnostics(fact, index + 1);
+      if (contractDiagnostics.length > 0) {
+        proposalDiagnostics.push(...contractDiagnostics);
+        return [];
+      }
+    }
     try {
       if (!isRecord(fact) || !hasOnlyKeys(fact, [
         "subject",
@@ -1083,6 +1090,82 @@ function validateSourceMergeProposal(patch, plan, receipt, state, serializedByte
     );
   }
   return { facts, noMaterialFacts, transactionBytes };
+}
+
+function sourceMergeFactContractDiagnostics(fact, factNumber) {
+  const diagnostics = [];
+  const capture = (validate) => {
+    try {
+      validate();
+    } catch (error) {
+      diagnostics.push({
+        code: typeof error?.code === "string" ? error.code : "source_merge_fact_invalid",
+        message: errorMessage(error),
+      });
+    }
+  };
+
+  capture(() => {
+    if (!isRecord(fact) || !hasOnlyKeys(fact, [
+      "subject",
+      "predicate",
+      "value",
+      "unit",
+      "dateOrPeriod",
+      "missingTimeReason",
+      "sourceRefs",
+      "evidenceClass",
+      "verificationStatus",
+      "conflictStatus",
+      "material",
+      "critical",
+      "thresholdAssessment",
+    ])) throw batchError("source_merge_fact_keys_invalid", `Proposal fact ${factNumber} contains unsupported fields.`);
+  });
+  if (!isRecord(fact)) return diagnostics;
+
+  capture(() => {
+    if (!nonEmpty(fact.subject) || !nonEmpty(fact.predicate) || !hasValue(fact.value)
+      || containsProposalPlaceholder(fact.subject) || containsProposalPlaceholder(fact.predicate)
+      || containsProposalPlaceholder(fact.value)) {
+      throw batchError("source_merge_fact_content_missing", `Proposal fact ${factNumber} requires subject, predicate, and value.`);
+    }
+  });
+  capture(() => {
+    const hasDate = nonEmpty(fact.dateOrPeriod);
+    const hasMissingTimeReason = nonEmpty(fact.missingTimeReason);
+    if (hasDate === hasMissingTimeReason
+      || containsProposalPlaceholder(fact.dateOrPeriod)
+      || containsProposalPlaceholder(fact.missingTimeReason)) {
+      throw batchError("source_merge_fact_time_invalid", `Proposal fact ${factNumber} requires exactly one of dateOrPeriod or missingTimeReason, without template placeholders.`);
+    }
+  });
+  capture(() => {
+    if (fact.unit !== undefined && fact.unit !== null
+      && (!nonEmpty(fact.unit) || containsProposalPlaceholder(fact.unit))) {
+      throw batchError("source_merge_fact_unit_invalid", `Proposal fact ${factNumber} unit must be a non-empty string, null, or omitted.`);
+    }
+  });
+  capture(() => {
+    if (!EVIDENCE_CLASSES.has(fact.evidenceClass)
+      || !VERIFICATION_STATUSES.has(fact.verificationStatus)
+      || !CONFLICT_STATUSES.has(fact.conflictStatus)) {
+      throw batchError("source_merge_fact_classification_invalid", `Proposal fact ${factNumber} has an invalid evidence, verification, or conflict classification.`);
+    }
+  });
+  capture(() => {
+    if (typeof fact.material !== "boolean" || typeof fact.critical !== "boolean"
+      || (fact.critical && !fact.material)) {
+      throw batchError("source_merge_fact_materiality_invalid", `Proposal fact ${factNumber} requires boolean material/critical fields and critical implies material.`);
+    }
+  });
+  capture(() => {
+    if (!Array.isArray(fact.sourceRefs) || fact.sourceRefs.length === 0) {
+      throw batchError("source_merge_fact_sources_missing", `Proposal fact ${factNumber} requires sourceRefs.`);
+    }
+  });
+  capture(() => validateProposedThresholdAssessment(fact.thresholdAssessment, factNumber));
+  return diagnostics;
 }
 
 function validateProposedThresholdAssessment(assessment, factNumber) {
@@ -2553,14 +2636,14 @@ function nextActionFor(
         : `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `;
       return `The source-merge proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with ${rejection}`
         + `Rewrite that proposal from injected workItems.preparedSlice and proposal.template. `
-        + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be `
-        + `an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
+        + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present use the exact shape `
+        + `{"operator":"gt","actual":120,"threshold":100,"unit":"currency units","breached":true}, with operator one of gt, gte, lt, lte, or eq; never use prose or alternate field names. `
         + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources.`;
     }
     const item = workItems.mergeItems?.[0];
     return `The bounded evidence handoff is prepared and state-bound. As the next tool call, write one source-merge proposal to ${JSON.stringify(workItems.proposal.path)} using the injected proposal.template for only source IDs ${(item?.sourceIds ?? []).join(", ")}. `
       + `Use workItems.preparedSlice as the complete current evidence interface. Replace every placeholder with source-grounded legal judgment, remove unused optional null fields when appropriate, and use only exact locators from that injected slice. `
-      + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present it must be an object with operator, numeric actual, numeric threshold, optional unit, and boolean breached, never prose. `
+      + `Set thresholdAssessment to null unless the source supports a numeric threshold comparison; when present use the exact shape {"operator":"gt","actual":120,"threshold":100,"unit":"currency units","breached":true}, with operator one of gt, gte, lt, lte, or eq; never use prose or alternate field names. `
       + `Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources; do not re-dispatch workers. The Legal Plugin will validate the proposal receipt before exposing an apply command.`;
   }
   if (first?.phase === "sources" && first.code === "source_pending"

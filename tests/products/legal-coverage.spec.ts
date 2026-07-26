@@ -498,6 +498,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const proposeEnvelope = JSON.parse(proposeContext
       .replace(/^<legal_coverage_state>\n/u, "")
       .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      nextAction: string;
       workItems: {
         preparedSlice: typeof preparedResult;
       };
@@ -509,6 +510,8 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.match(proposeContext, /workItems\.preparedSlice as the complete current evidence interface/u);
     assert.match(proposeContext, /Do not read the readiness checkpoint, fragment, canonical ledgers, or raw sources/u);
     assert.match(proposeContext, /Set thresholdAssessment to null unless the source supports a numeric threshold comparison/u);
+    assert.match(proposeEnvelope.nextAction, /"operator":"gt","actual":120,"threshold":100/u);
+    assert.match(proposeEnvelope.nextAction, /operator one of gt, gte, lt, lte, or eq/u);
     assert.doesNotMatch(proposeContext, /"sourceFragmentCommand":/u);
     assert.doesNotMatch(proposeContext, /"sourceMergeApplyCommand":/u);
     const proposeConvergence = (
@@ -587,7 +590,17 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       ...proposalBase,
       facts: [
         { ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] },
-        { ...proposalBase.facts[1], dateOrPeriod: "2026", missingTimeReason: "Conflicting synthetic time fields." },
+        {
+          ...proposalBase.facts[1],
+          dateOrPeriod: "2026",
+          missingTimeReason: "Conflicting synthetic time fields.",
+          thresholdAssessment: {
+            operator: ">",
+            numericActual: 120,
+            numericThreshold: 100,
+            breached: true,
+          },
+        },
       ],
       noMaterialFacts: proposal.sourceIds.slice(2).map((sourceId) => ({
         sourceId,
@@ -619,15 +632,20 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
         };
       };
     };
-    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.total, 2);
-    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.returned, 2);
+    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.total, 3);
+    assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.returned, 3);
     assert.equal(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.hasMore, false);
     assert.deepEqual(
       invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items.map((item) => item.code),
-      ["source_merge_fact_locator_unverified", "source_merge_fact_time_invalid"],
+      [
+        "source_merge_fact_locator_unverified",
+        "source_merge_fact_time_invalid",
+        "source_merge_threshold_invalid",
+      ],
     );
     assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
     assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
+    assert.match(invalidProposalEnvelope.workItems.proposal.validationDiagnostics.items[2]?.message ?? "", /Proposal fact 2 has an invalid thresholdAssessment/u);
     assert.match(invalidProposalEnvelope.nextAction, /Fix every entry in workItems\.proposal\.validationDiagnostics\.items in one rewrite/u);
     assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_locator_unverified/u);
     assert.doesNotMatch(invalidProposalEnvelope.nextAction, /source_merge_fact_time_invalid/u);
@@ -647,7 +665,19 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(repairConvergence.repairOrdinal, proposeConvergence.repairOrdinal + 1);
     assert.equal(repairConvergence.repairPreparationOrdinal, 0);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
-    assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /never prose/u);
+    assert.match(invalidProposalEnvelope.nextAction, /"operator":"gt","actual":120,"threshold":100/u);
+    assert.match(invalidProposalEnvelope.nextAction, /never use prose or alternate field names/u);
+
+    const invalidProposalHash = sha256(await readFile(proposalPath));
+    const rejectedDirectApply = await runCli(
+      workspace,
+      "source-merge-apply",
+      "--input-file", proposal.path,
+      "--proposal-sha256", invalidProposalHash,
+    );
+    assert.equal(rejectedDirectApply.exitCode, 1);
+    assert.match(rejectedDirectApply.stderr, /source_merge_fact_locator_unverified/u);
+    assert.doesNotMatch(rejectedDirectApply.stderr, /source_merge_threshold_invalid/u);
 
     await runHook({
       hookEventName: "PostToolUse",
@@ -739,6 +769,26 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       (placeholderProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { repairOrdinal: number }).repairOrdinal,
       repairConvergence.repairOrdinal,
     );
+
+    await writeJson(proposalPath, {
+      ...proposalBase,
+      facts: [null],
+      noMaterialFacts: proposal.sourceIds.map((sourceId) => ({
+        sourceId,
+        reason: "Synthetic malformed-fact fixture.",
+      })),
+    });
+    const malformedFactProposal = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const malformedFactContext = malformedFactProposal.hookSpecificOutput.additionalContext ?? "";
+    assert.match(malformedFactContext, /source_merge_fact_keys_invalid/u);
+    assert.doesNotMatch(malformedFactContext, /source_merge_fact_time_invalid/u);
+    assert.doesNotMatch(malformedFactContext, /source_merge_threshold_invalid/u);
+    assert.doesNotMatch(malformedFactContext, /source_merge_fact_sources_missing/u);
 
     await writeJson(proposalPath, {
       ...proposalBase,
