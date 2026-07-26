@@ -1,0 +1,7 @@
+npm run build > .omo/evidence/20260727-convergence-v24r7-bounded-authority-closure/build.log 2>&1
+node --test --test-force-exit --test-timeout 60000 --test-reporter=tap --test-reporter-destination=.omo/evidence/20260727-convergence-v24r7-bounded-authority-closure/focused-tests.tap dist/tests/agent/progress-lease.spec.js dist/tests/agent/agent-loop-runtime-controls.spec.js dist/tests/agent/legal-coverage-plugin-runtime.spec.js dist/tests/context/auto-compaction-observability.spec.js dist/tests/gateway/map-agent-event-runid.spec.js dist/tests/observability/recorder.spec.js dist/tests/observability/local-gateway-progress-handoff.spec.js dist/tests/products/legal-coverage.spec.js
+node --test --test-force-exit --test-timeout 60000 --test-reporter=tap --test-reporter-destination=.omo/evidence/20260727-convergence-v24r7-bounded-authority-closure/full-suite.tap "dist/tests/**/*.test.js" "dist/tests/**/*.spec.js"
+git diff --check
+jq empty /Users/da/Documents/PilotDeck-worktrees/registry.json products/legal/plugins/legal-coverage/hooks/hooks.json
+rg -n 'legal-coverage|authority-closure|legal_authority_links_missing' src/agent/convergence src/agent/protocol/events.ts src/observability/agentEventBridge.ts src/gateway/client/InProcessGateway.ts
+rg -n -g '!commands.txt' '(authorization:|bearer [A-Za-z0-9]|BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9])' .omo/evidence/20260727-convergence-v24r7-bounded-authority-closure

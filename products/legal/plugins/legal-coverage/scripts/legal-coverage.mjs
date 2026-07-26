@@ -2,6 +2,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  applyAuthorityClosure,
   applyCoverageBatch,
   applyMatrixProposal,
   applyMatrixSelection,
@@ -212,6 +213,23 @@ if (command === "init") {
     }));
     process.exitCode = 1;
   }
+} else if (command === "authority-closure-apply") {
+  try {
+    const result = await applyAuthorityClosure(workspaceRoot, {
+      proposalPath: readOption(args, "--input-file"),
+      proposalSha256: readOption(args, "--proposal-sha256"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: {
+        code: typeof error?.code === "string" ? error.code : "authority_closure_apply_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }));
+    process.exitCode = 1;
+  }
 } else if (command === "next-batch") {
   if (readOption(args, "--phase") !== "coverage") {
     console.error("next-batch currently requires --phase coverage");
@@ -258,7 +276,7 @@ if (command === "init") {
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.passed || command === "status" ? 0 : 2;
 } else {
-  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|fragment-slice|source-merge-prepare|source-merge-apply|matrix-selection-apply|matrix-proposal-apply|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--checkpoint PATH] [--expected-state-hash HASH] [--fragment PATH] [--receipt-sha256 HASH] [--source-id ID] [--phase coverage] [--input-file PATH] [--proposal-sha256 HASH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
+  console.error("Usage: legal-coverage.mjs <init|bootstrap-sources|reference|schema|fragment-slice|source-merge-prepare|source-merge-apply|matrix-selection-apply|matrix-proposal-apply|authority-closure-apply|validate|status|next-batch|apply-batch> [--workspace PATH] [--from-manifest] [--name data-contracts|issue-rules] [--checkpoint PATH] [--expected-state-hash HASH] [--fragment PATH] [--receipt-sha256 HASH] [--source-id ID] [--phase coverage] [--input-file PATH] [--proposal-sha256 HASH] [--limit 1..12] [--max-bytes 1024..24576] [--input PATH|--input-from-manifest] [--deliverable ID=PATH] [--jurisdiction NAME] [--basis-date DATE] [--allow-no-material-facts] [--write-proof]");
   process.exitCode = 1;
 }
 

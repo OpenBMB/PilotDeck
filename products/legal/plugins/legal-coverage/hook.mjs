@@ -6,6 +6,7 @@ import {
   PROOF_PATH,
   STATE_DIRECTORY,
   activationMatches,
+  authorityClosurePlan,
   convergenceStateHash,
   ensureWorkspace,
   milestoneDigest,
@@ -213,6 +214,9 @@ async function dynamicWorkItems(workspaceRoot, result) {
   if (first?.phase === "matrices" && first.code === "matrix_pending") {
     return pendingMatrixPlan(workspaceRoot, { validationResult: result });
   }
+  if (first?.phase === "authorities" && first.code === "legal_authority_links_missing") {
+    return authorityClosurePlan(workspaceRoot, { validationResult: result });
+  }
   return undefined;
 }
 
@@ -378,6 +382,17 @@ function legalHandoffCheckpointDigest(workItems) {
       evidenceBatchSha256: workItems.selection.evidenceBatchSha256,
       selectionPath: workItems.selection.path,
     };
+  } else if (workItems?.group === "authority-closure-apply"
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && validStateHash(workItems.proposal.proposalSha256)
+    && nonEmptyString(workItems.proposal.targetEntryId)) {
+    checkpoint = {
+      kind: "authority-closure-apply-ready",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetEntryId: workItems.proposal.targetEntryId,
+      proposalSha256: workItems.proposal.proposalSha256,
+    };
   }
   return checkpointDigest(checkpoint);
 }
@@ -430,6 +445,15 @@ function legalRepairCheckpoint(workItems) {
       expectedStateHash: workItems.proposal.expectedStateHash,
       targetMatrixId: workItems.proposal.targetMatrixId,
     };
+  } else if (workItems?.group === "authority-closure-propose"
+    && hasRepairFeedback(workItems.proposal)
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && nonEmptyString(workItems.proposal.targetEntryId)) {
+    checkpoint = {
+      kind: "authority-closure-repair",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetEntryId: workItems.proposal.targetEntryId,
+    };
   }
   return checkpoint;
 }
@@ -442,6 +466,8 @@ function legalRepairTarget(workItems, repairDigest) {
   } else if (workItems?.group === "matrix-pending-selection" && hasRepairFeedback(workItems.selection)) {
     path = workItems.selection?.path;
   } else if (workItems?.group === "matrix-pending-propose" && hasRepairFeedback(workItems.proposal)) {
+    path = workItems.proposal?.path;
+  } else if (workItems?.group === "authority-closure-propose" && hasRepairFeedback(workItems.proposal)) {
     path = workItems.proposal?.path;
   }
   if (typeof path !== "string" || path.length === 0 || path.length > 2048) return undefined;

@@ -50,6 +50,7 @@ Create the legal analysis; let the bundled validator enforce structure and cover
 5. Translate each material risk into concrete controls such as conditions precedent, remediation, representations, warranties, indemnities, price or structure changes, covenants, or post-closing monitoring.
 6. Record every relied-on legal authority in `authorities.json`. Every critical issue requires at least one authority. For verified authorities, retain the name, article, effective version and date, source locator, and supported conclusion. Mark unverifiable citations pending instead of fabricating them.
 7. Link every complete `legal-authority` matrix entry to `authorityIds`; do not use `authorityNotRequiredReason` to bypass authority support for a critical issue.
+8. When the authority milestone injects `authority-closure-propose`, treat its `preparedSlice` as the complete current legal-authority entry and fact slice. Choose an issue rule only when its injected `whenToUse` condition is genuinely supported; do not fabricate a conflict or threshold merely to close links. Write only the injected proposal path from its template. After the plugin validates the reciprocal issue-authority-matrix transaction, execute `authorityClosureApplyCommand` exactly. Do not directly edit or reread `issues.json`, `authorities.json`, or `matrices.json` during this closure.
 
 ## Bind Final Coverage
 

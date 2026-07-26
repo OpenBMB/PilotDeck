@@ -26,6 +26,15 @@ export const ISSUE_RULES = {
   "source-contradiction": "source_contradiction",
 };
 
+const ISSUE_RULE_GUIDANCE = {
+  "timeline-collision": "Use only when the same subject, predicate, and period have conflicting values.",
+  "threshold-breach": "Use only when a normalized numeric threshold assessment is breached.",
+  "rights-governance-conflict": "Use when ownership, special rights, voting, appointment, reserved matters, or actual control do not align.",
+  "liquidity-relationship": "Use when debt maturity, collateral, guarantees, cash, receivables, or operating obligations interact to create liquidity risk.",
+  "employment-ip-ownership": "Use when personnel history, confidentiality, invention assignment, licensing, registration, or chain of title creates ownership or continuity risk.",
+  "source-contradiction": "Use only for an unresolved contradiction between source records.",
+};
+
 const STATE_FILES = {
   config: "config.json",
   sources: "sources.json",
@@ -74,6 +83,11 @@ const MATRIX_INDEX_MAX_BYTES = 8192;
 const MATRIX_SELECTED_FACT_MAX_RECORDS = 12;
 const MATRIX_SELECTED_FACT_MAX_BYTES = 8192;
 const MATRIX_MUTATION_MAX_BYTES = 24576;
+const AUTHORITY_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/authority-transactions`;
+const AUTHORITY_CLOSURE_PATTERN = /^authority-closure-[a-f0-9]{12}\.json$/u;
+const AUTHORITY_CLOSURE_MAX_RECORDS = 8;
+const AUTHORITY_CLOSURE_MAX_FACTS = 12;
+const AUTHORITY_CLOSURE_MAX_BYTES = 24576;
 
 export async function ensureWorkspace(workspaceRoot) {
   const workspace = resolve(workspaceRoot);
@@ -1763,6 +1777,497 @@ export async function applyMatrixProposal(workspaceRoot, options = {}) {
   };
 }
 
+export async function authorityClosurePlan(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const validation = options.validationResult
+    ?? await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
+  const first = validation.errors[0];
+  if (first?.phase !== "authorities" || first.code !== "legal_authority_links_missing") return undefined;
+
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const matrixIndex = matrices.findIndex((matrix) => isRecord(matrix) && matrix.id === "legal-authority");
+  const matrix = matrices[matrixIndex];
+  const entries = Array.isArray(matrix?.entries) ? matrix.entries : [];
+  const entryIndex = entries.findIndex((entry) => isRecord(entry)
+    && nonEmpty(entry.id) && stringArray(entry.authorityIds).length === 0);
+  const entry = entries[entryIndex];
+  if (matrixIndex < 0 || entryIndex < 0 || !isRecord(entry) || !nonEmpty(entry.id)) return undefined;
+
+  const factIds = stringArray(entry.factIds);
+  const factsById = recordMap(loaded.state.facts?.facts);
+  const factItems = factIds.map((factId) => factsById.get(factId)).filter(Boolean).map(matrixRelationFactItem);
+  const existingIssuesById = recordMap(loaded.state.issues?.issues);
+  const existingAuthoritiesById = recordMap(loaded.state.authorities?.authorities);
+  const existingIssues = stringArray(entry.issueIds).map((issueId) => existingIssuesById.get(issueId)).filter(Boolean);
+  const existingAuthorityIds = [...new Set(existingIssues.flatMap((issue) => stringArray(issue.authorityIds)))];
+  const existingAuthorities = existingAuthorityIds.map((authorityId) => existingAuthoritiesById.get(authorityId)).filter(Boolean);
+  const preparedSlice = {
+    stateHash: validation.stateHash,
+    target: {
+      matrixId: "legal-authority",
+      matrixIndex,
+      entryId: entry.id,
+      entryIndex,
+      summary: entry.summary,
+      factIds,
+      riskSignals: stringArray(entry.riskSignals),
+      issueIds: stringArray(entry.issueIds),
+      authorityIds: stringArray(entry.authorityIds),
+    },
+    allowedIssueRules: Object.entries(ISSUE_RULES).map(([ruleId, riskSignal]) => ({
+      ruleId,
+      riskSignal,
+      whenToUse: ISSUE_RULE_GUIDANCE[ruleId],
+    })),
+    facts: factItems,
+    existingIssues,
+    existingAuthorities,
+  };
+  const preparedBytes = Buffer.byteLength(JSON.stringify(preparedSlice));
+  const preparedSliceSha256 = sha256(JSON.stringify(preparedSlice));
+  const digest = sha256([
+    validation.stateHash,
+    entry.id,
+    String(entryIndex),
+    preparedSliceSha256,
+  ].join("\0")).slice(0, 12);
+  const proposalPath = `${AUTHORITY_TRANSACTION_DIRECTORY}/authority-closure-${digest}.json`;
+  const issueTemplate = existingIssues.length > 0
+    ? existingIssues.map((issue) => ({ ...issue, authorityIds: [...new Set([
+        ...stringArray(issue.authorityIds),
+        "<authority id>",
+      ])] }))
+    : [{
+        id: "<issue id>",
+        ruleId: "<one allowed ruleId>",
+        status: "open",
+        severity: "<low|medium|high|critical>",
+        critical: factItems.some((fact) => fact.critical === true),
+        factIds: [...factIds],
+        authorityIds: ["<authority id>"],
+        analysis: "<fact-grounded legal analysis>",
+        conclusion: "<specific legal conclusion>",
+        recommendations: ["<concrete legal or transaction control>"],
+      }];
+  const authorityTemplate = existingAuthorities.length > 0
+    ? existingAuthorities
+    : [{
+        id: "<authority id>",
+        name: "<authority name>",
+        article: "<article or provision>",
+        effectiveVersion: "<effective version>",
+        effectiveDate: "<effective date>",
+        verificationStatus: "verified",
+        sourceLocator: "<authoritative source locator>",
+        supportedIssueIds: issueTemplate.map((issue) => issue.id),
+        supportedConclusion: "<conclusion this authority supports>",
+      }];
+  const proposal = {
+    path: proposalPath,
+    expectedStateHash: validation.stateHash,
+    targetEntryId: entry.id,
+    preparedSliceSha256,
+    template: {
+      schemaVersion: 1,
+      phase: "authorities",
+      group: "authority-closure-proposal",
+      expectedStateHash: validation.stateHash,
+      targetEntryId: entry.id,
+      preparedSliceSha256,
+      issueUpserts: issueTemplate,
+      authorityUpserts: authorityTemplate,
+      matrixEntryLinks: {
+        issueIds: issueTemplate.map((issue) => issue.id),
+        authorityIds: authorityTemplate.map((authority) => authority.id),
+      },
+    },
+  };
+  const base = {
+    phase: "authorities",
+    group: "authority-closure-propose",
+    mode: "main-agent-propose",
+    stateHash: validation.stateHash,
+    target: { matrixId: "legal-authority", matrixIndex, entryId: entry.id, entryIndex },
+    returned: 1,
+    hasMore: entries.slice(entryIndex + 1).some((candidate) =>
+      isRecord(candidate) && stringArray(candidate.authorityIds).length === 0
+    ),
+    limits: {
+      maxRecords: AUTHORITY_CLOSURE_MAX_RECORDS,
+      maxFacts: AUTHORITY_CLOSURE_MAX_FACTS,
+      maxSerializedBytes: AUTHORITY_CLOSURE_MAX_BYTES,
+    },
+    preparedSlice: preparedBytes <= AUTHORITY_CLOSURE_MAX_BYTES ? preparedSlice : {
+      stateHash: validation.stateHash,
+      target: preparedSlice.target,
+      oversized: true,
+      serializedBytes: preparedBytes,
+    },
+    proposal,
+  };
+  if (factIds.length === 0 || factItems.length !== factIds.length
+    || factIds.length > AUTHORITY_CLOSURE_MAX_FACTS
+    || existingIssues.length + existingAuthorities.length > AUTHORITY_CLOSURE_MAX_RECORDS
+    || preparedBytes > AUTHORITY_CLOSURE_MAX_BYTES) {
+    return {
+      ...base,
+      proposal: {
+        ...proposal,
+        validationError: {
+          code: "authority_closure_slice_invalid",
+          message: `Authority closure requires 1-${AUTHORITY_CLOSURE_MAX_FACTS} known target facts within ${AUTHORITY_CLOSURE_MAX_BYTES} serialized bytes.`,
+        },
+        repairRequired: true,
+      },
+    };
+  }
+  const receipt = await validAuthorityClosureProposal(workspaceRoot, proposal, base, loaded.state);
+  if (receipt?.valid) {
+    const { preparedSlice: _preparedSlice, ...applyBase } = base;
+    return {
+      ...applyBase,
+      group: "authority-closure-apply",
+      mode: "main-agent-apply",
+      proposal: {
+        path: proposal.path,
+        expectedStateHash: proposal.expectedStateHash,
+        targetEntryId: proposal.targetEntryId,
+        preparedSliceSha256: proposal.preparedSliceSha256,
+        validated: true,
+        proposalSha256: receipt.sha256,
+        transactionBytes: receipt.transactionBytes,
+        ...(options.includeValidatedTransaction === true ? { transaction: receipt.transaction } : {}),
+      },
+    };
+  }
+  if (receipt?.error) {
+    return {
+      ...base,
+      proposal: { ...proposal, validationError: receipt.error, repairRequired: true },
+    };
+  }
+  return base;
+}
+
+export async function applyAuthorityClosure(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.proposalPath)
+    || !AUTHORITY_CLOSURE_PATTERN.test(options.proposalPath.split("/").at(-1) ?? "")) {
+    throw batchError("authority_closure_path_invalid", "authority-closure-apply requires the injected deterministic proposal path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.proposalSha256 ?? ""))) {
+    throw batchError("authority_closure_hash_invalid", "authority-closure-apply requires the injected lowercase proposal SHA-256.");
+  }
+  const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, options.proposalPath);
+  const proposalBytes = await readFile(proposalPath);
+  if (sha256(proposalBytes) !== options.proposalSha256) {
+    throw batchError("authority_closure_changed", "The authority closure proposal changed after validation; request a fresh apply step.");
+  }
+  if (proposalBytes.byteLength > AUTHORITY_CLOSURE_MAX_BYTES) {
+    throw batchError("authority_closure_byte_limit", `Authority closure proposal is ${proposalBytes.byteLength} bytes; maximum is ${AUTHORITY_CLOSURE_MAX_BYTES}.`);
+  }
+
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const plan = await authorityClosurePlan(workspaceRoot, {
+    validationResult: before,
+    includeValidatedTransaction: true,
+  });
+  if (plan?.group !== "authority-closure-apply" || plan.proposal?.path !== options.proposalPath
+    || plan.proposal?.proposalSha256 !== options.proposalSha256) {
+    throw batchError("authority_closure_out_of_scope", "The proposal is not the current validated authority closure transaction.");
+  }
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const transaction = plan.proposal.transaction;
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const matrix = matrices[plan.target.matrixIndex];
+  const entries = Array.isArray(matrix?.entries) ? matrix.entries : [];
+  const entry = entries[plan.target.entryIndex];
+  if (!isRecord(matrix) || matrix.id !== "legal-authority" || !isRecord(entry)
+    || entry.id !== plan.target.entryId || stringArray(entry.authorityIds).length > 0) {
+    throw batchError("authority_closure_target_changed", "The target legal-authority entry is no longer current.");
+  }
+  const nextIssues = upsertLedgerRows(loaded.state.issues, "issues", transaction.issueUpserts);
+  const nextAuthorities = upsertLedgerRows(loaded.state.authorities, "authorities", transaction.authorityUpserts);
+  const nextMatrices = {
+    ...loaded.state.matrices,
+    matrices: matrices.map((candidate, matrixIndex) => matrixIndex === plan.target.matrixIndex
+      ? {
+          ...candidate,
+          entries: entries.map((candidateEntry, entryIndex) => entryIndex === plan.target.entryIndex
+            ? {
+                ...candidateEntry,
+                issueIds: transaction.matrixEntryLinks.issueIds,
+                authorityIds: transaction.matrixEntryLinks.authorityIds,
+              }
+            : candidateEntry),
+        }
+      : candidate),
+  };
+  try {
+    await writeJsonAtomic(loaded.paths.issues, nextIssues);
+    await writeJsonAtomic(loaded.paths.authorities, nextAuthorities);
+    await writeJsonAtomic(loaded.paths.matrices, nextMatrices);
+  } catch (error) {
+    await writeJsonAtomic(loaded.paths.issues, loaded.state.issues);
+    await writeJsonAtomic(loaded.paths.authorities, loaded.state.authorities);
+    await writeJsonAtomic(loaded.paths.matrices, loaded.state.matrices);
+    throw error;
+  }
+  const after = await validateWorkspace({ workspaceRoot, writeProof: true });
+  return {
+    applied: true,
+    phase: "authorities",
+    group: "authority-closure-proposal",
+    entryId: plan.target.entryId,
+    issuesUpserted: transaction.issueUpserts.length,
+    authoritiesUpserted: transaction.authorityUpserts.length,
+    previousStateHash: before.stateHash,
+    stateHash: after.stateHash,
+    passed: after.passed,
+    errorCountBefore: before.errors.length,
+    errorCountAfter: after.errors.length,
+  };
+}
+
+async function validAuthorityClosureProposal(workspaceRoot, expected, plan, state) {
+  try {
+    const path = await resolveSafeWorkspacePath(workspaceRoot, expected.path);
+    const bytes = await readFile(path);
+    if (bytes.byteLength > AUTHORITY_CLOSURE_MAX_BYTES) {
+      throw batchError("authority_closure_byte_limit", `Authority closure proposal is ${bytes.byteLength} bytes; maximum is ${AUTHORITY_CLOSURE_MAX_BYTES}.`);
+    }
+    let patch;
+    try {
+      patch = JSON.parse(bytes.toString("utf8"));
+    } catch (error) {
+      throw batchError("authority_closure_json_invalid", errorMessage(error));
+    }
+    const transaction = validateAuthorityClosureProposal(patch, expected, plan, state);
+    return {
+      valid: true,
+      sha256: sha256(bytes),
+      transactionBytes: Buffer.byteLength(JSON.stringify(transaction)),
+      transaction,
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    return {
+      valid: false,
+      error: {
+        code: typeof error?.code === "string" ? error.code : "authority_closure_invalid",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+function validateAuthorityClosureProposal(patch, expected, plan, state) {
+  if (!isRecord(patch) || !hasOnlyKeys(patch, [
+    "schemaVersion", "phase", "group", "expectedStateHash", "targetEntryId",
+    "preparedSliceSha256", "issueUpserts", "authorityUpserts", "matrixEntryLinks",
+  ])) throw batchError("authority_closure_keys_invalid", "Authority closure proposal contains missing or unsupported envelope fields.");
+  if (patch.schemaVersion !== 1 || patch.phase !== "authorities" || patch.group !== "authority-closure-proposal") {
+    throw batchError("authority_closure_envelope_invalid", "Authority closure proposal requires schemaVersion 1 and the injected phase/group.");
+  }
+  if (patch.expectedStateHash !== expected.expectedStateHash
+    || patch.targetEntryId !== expected.targetEntryId
+    || patch.preparedSliceSha256 !== expected.preparedSliceSha256) {
+    throw batchError("authority_closure_binding_invalid", "Authority closure proposal does not match the injected state, target entry, or prepared fact slice.");
+  }
+  if (!Array.isArray(patch.issueUpserts) || patch.issueUpserts.length < 1
+    || !Array.isArray(patch.authorityUpserts) || patch.authorityUpserts.length < 1
+    || patch.issueUpserts.length + patch.authorityUpserts.length > AUTHORITY_CLOSURE_MAX_RECORDS
+    || !isRecord(patch.matrixEntryLinks)
+    || !hasOnlyKeys(patch.matrixEntryLinks, ["issueIds", "authorityIds"])) {
+    throw batchError("authority_closure_records_invalid", `Authority closure requires issue and authority upserts totaling at most ${AUTHORITY_CLOSURE_MAX_RECORDS} records plus matrixEntryLinks.`);
+  }
+  if (containsProposalPlaceholder(patch)) {
+    throw batchError("authority_closure_placeholder", "Replace every authority closure proposal placeholder before validation.");
+  }
+  const issueIds = uniqueNonEmptyIds(patch.matrixEntryLinks.issueIds, "authority_closure_issue_links_invalid");
+  const authorityIds = uniqueNonEmptyIds(patch.matrixEntryLinks.authorityIds, "authority_closure_authority_links_invalid");
+  if (issueIds.length === 0 || authorityIds.length === 0) {
+    throw batchError("authority_closure_links_missing", "Authority closure matrix links require at least one issue and one authority.");
+  }
+  const targetFactIds = new Set(plan.preparedSlice.target.factIds);
+  const existingIssues = recordMap(state.issues?.issues);
+  const existingAuthorities = recordMap(state.authorities?.authorities);
+  const issueUpserts = patch.issueUpserts.map((issue) => normalizeAuthorityClosureIssue(
+    issue,
+    existingIssues.get(issue?.id),
+    targetFactIds,
+  ));
+  const authorityUpserts = patch.authorityUpserts.map((authority) => normalizeAuthorityClosureAuthority(
+    authority,
+    existingAuthorities.get(authority?.id),
+  ));
+  const issueUpsertsById = recordMap(issueUpserts);
+  const authorityUpsertsById = recordMap(authorityUpserts);
+  if (issueUpsertsById.size !== issueUpserts.length || authorityUpsertsById.size !== authorityUpserts.length) {
+    throw batchError("authority_closure_duplicate_id", "Authority closure upsert IDs must be unique within each ledger.");
+  }
+  if ([...issueUpsertsById.keys()].some((id) => !issueIds.includes(id))
+    || [...authorityUpsertsById.keys()].some((id) => !authorityIds.includes(id))) {
+    throw batchError("authority_closure_upsert_out_of_scope", "Every authority closure upsert must be linked on the target matrix entry.");
+  }
+  for (const existingId of plan.preparedSlice.target.issueIds) {
+    if (!issueIds.includes(existingId)) throw batchError("authority_closure_existing_issue_removed", `Matrix link must preserve existing issue ${existingId}.`);
+  }
+  for (const id of issueIds) {
+    const issue = issueUpsertsById.get(id) ?? existingIssues.get(id);
+    if (!issue || !stringArray(issue.factIds).some((factId) => targetFactIds.has(factId))) {
+      throw batchError("authority_closure_issue_scope_invalid", `Linked issue ${id} must exist and share a target-entry fact.`);
+    }
+    const linkedAuthorities = stringArray(issue.authorityIds);
+    if (!linkedAuthorities.some((authorityId) => authorityIds.includes(authorityId))) {
+      throw batchError("authority_closure_issue_authority_invalid", `Linked issue ${id} must reference an authority linked on the target entry.`);
+    }
+    const existingAuthorityIds = stringArray(existingIssues.get(id)?.authorityIds);
+    if (linkedAuthorities.some((authorityId) =>
+      !existingAuthorityIds.includes(authorityId) && !authorityIds.includes(authorityId)
+    )) {
+      throw batchError("authority_closure_issue_authority_out_of_scope", `Issue ${id} may add only authorities linked on the target entry.`);
+    }
+  }
+  for (const id of authorityIds) {
+    const authority = authorityUpsertsById.get(id) ?? existingAuthorities.get(id);
+    if (!authority) throw batchError("authority_closure_authority_unknown", `Linked authority ${id} must exist or be upserted.`);
+    const supportedIssueIds = stringArray(authority.supportedIssueIds);
+    if (!supportedIssueIds.some((issueId) => issueIds.includes(issueId))) {
+      throw batchError("authority_closure_authority_issue_invalid", `Linked authority ${id} must support an issue linked on the target entry.`);
+    }
+    const existingSupportedIssueIds = stringArray(existingAuthorities.get(id)?.supportedIssueIds);
+    if (supportedIssueIds.some((issueId) =>
+      !existingSupportedIssueIds.includes(issueId) && !issueIds.includes(issueId)
+    )) {
+      throw batchError("authority_closure_authority_issue_out_of_scope", `Authority ${id} may add only issues linked on the target entry.`);
+    }
+  }
+  for (const issueId of issueIds) {
+    const issue = issueUpsertsById.get(issueId) ?? existingIssues.get(issueId);
+    for (const authorityId of stringArray(issue.authorityIds)) {
+      const authority = authorityUpsertsById.get(authorityId) ?? existingAuthorities.get(authorityId);
+      if (!authority || !stringArray(authority.supportedIssueIds).includes(issueId)) {
+        throw batchError("authority_closure_backlink_missing", `Authority ${authorityId} must backlink issue ${issueId}.`);
+      }
+    }
+  }
+  for (const authority of authorityUpserts) {
+    for (const issueId of stringArray(authority.supportedIssueIds)) {
+      const issue = issueUpsertsById.get(issueId) ?? existingIssues.get(issueId);
+      if (!issue || !stringArray(issue.authorityIds).includes(authority.id)) {
+        throw batchError("authority_closure_forward_link_missing", `Issue ${issueId} must reference authority ${authority.id}.`);
+      }
+    }
+  }
+  for (const signal of plan.preparedSlice.target.riskSignals) {
+    const ruleId = Object.keys(ISSUE_RULES).find((candidate) => ISSUE_RULES[candidate] === signal);
+    const matching = issueIds.map((id) => issueUpsertsById.get(id) ?? existingIssues.get(id))
+      .find((issue) => issue?.ruleId === ruleId
+        && [...targetFactIds].every((factId) => stringArray(issue.factIds).includes(factId)));
+    if (!matching) throw batchError("authority_closure_risk_signal_uncovered", `Risk signal ${signal} requires a linked ${ruleId} issue covering every target fact.`);
+  }
+  return {
+    issueUpserts,
+    authorityUpserts,
+    matrixEntryLinks: { issueIds, authorityIds },
+  };
+}
+
+function normalizeAuthorityClosureIssue(issue, existing, targetFactIds) {
+  const allowed = [
+    "id", "ruleId", "status", "severity", "critical", "factIds", "authorityIds",
+    "authorityNotRequiredReason", "analysis", "conclusion", "recommendations",
+  ];
+  if (!isRecord(issue) || !hasOnlyKeys(issue, allowed) || !nonEmpty(issue.id)
+    || !Object.hasOwn(ISSUE_RULES, issue.ruleId) || !ISSUE_STATUSES.has(issue.status)
+    || !nonEmpty(issue.severity) || typeof issue.critical !== "boolean"
+    || !nonEmpty(issue.analysis) || !nonEmpty(issue.conclusion)
+    || stringArray(issue.recommendations).length === 0) {
+    throw batchError("authority_closure_issue_invalid", "Every issue upsert requires the canonical issue fields and legal reasoning.");
+  }
+  const factIds = uniqueNonEmptyIds(issue.factIds, "authority_closure_issue_facts_invalid");
+  const authorityIds = uniqueNonEmptyIds(issue.authorityIds, "authority_closure_issue_authorities_invalid");
+  if (factIds.length === 0 || factIds.some((factId) => !targetFactIds.has(factId)) || authorityIds.length === 0) {
+    throw batchError("authority_closure_issue_scope_invalid", `Issue ${issue.id} must use target-entry facts and at least one authority.`);
+  }
+  if (existing) {
+    const before = { ...existing };
+    const after = { ...issue };
+    delete before.authorityIds;
+    delete after.authorityIds;
+    if (stableStringify(before) !== stableStringify(after)) {
+      throw batchError("authority_closure_existing_issue_changed", `Existing issue ${issue.id} may change only authorityIds.`);
+    }
+  }
+  return {
+    ...issue,
+    factIds,
+    authorityIds,
+    recommendations: stringArray(issue.recommendations),
+  };
+}
+
+function normalizeAuthorityClosureAuthority(authority, existing) {
+  const allowed = [
+    "id", "name", "article", "effectiveVersion", "effectiveDate", "verificationStatus",
+    "sourceLocator", "pendingReason", "supportedIssueIds", "supportedConclusion",
+  ];
+  if (!isRecord(authority) || !hasOnlyKeys(authority, allowed) || !nonEmpty(authority.id)
+    || !nonEmpty(authority.name) || !AUTHORITY_STATUSES.has(authority.verificationStatus)
+    || !nonEmpty(authority.supportedConclusion)) {
+    throw batchError("authority_closure_authority_invalid", "Every authority upsert requires canonical identity, verification, and supported conclusion fields.");
+  }
+  const supportedIssueIds = uniqueNonEmptyIds(
+    authority.supportedIssueIds,
+    "authority_closure_authority_issues_invalid",
+  );
+  if (supportedIssueIds.length === 0) {
+    throw batchError("authority_closure_authority_issues_invalid", `Authority ${authority.id} requires supportedIssueIds.`);
+  }
+  if (authority.verificationStatus === "verified"
+    && ["article", "effectiveVersion", "effectiveDate", "sourceLocator"].some((field) => !nonEmpty(authority[field]))) {
+    throw batchError("authority_closure_verified_fields_missing", `Verified authority ${authority.id} requires article, effectiveVersion, effectiveDate, and sourceLocator.`);
+  }
+  if (authority.verificationStatus === "pending-verification" && !nonEmpty(authority.pendingReason)) {
+    throw batchError("authority_closure_pending_reason_missing", `Pending authority ${authority.id} requires pendingReason.`);
+  }
+  if (existing) {
+    const before = { ...existing };
+    const after = { ...authority };
+    delete before.supportedIssueIds;
+    delete after.supportedIssueIds;
+    if (stableStringify(before) !== stableStringify(after)) {
+      throw batchError("authority_closure_existing_authority_changed", `Existing authority ${authority.id} may change only supportedIssueIds.`);
+    }
+  }
+  return { ...authority, supportedIssueIds };
+}
+
+function uniqueNonEmptyIds(value, code) {
+  const ids = stringArray(value);
+  if (!Array.isArray(value) || ids.length !== value.length || new Set(ids).size !== ids.length) {
+    throw batchError(code, "Expected a unique array of non-empty IDs.");
+  }
+  return ids;
+}
+
+function upsertLedgerRows(ledger, collectionKey, rows) {
+  const current = Array.isArray(ledger?.[collectionKey]) ? ledger[collectionKey] : [];
+  const updates = new Map(rows.map((row) => [row.id, row]));
+  const replaced = new Set();
+  const preservedOrder = current.map((row) => {
+    if (!isRecord(row) || !updates.has(row.id)) return row;
+    replaced.add(row.id);
+    return updates.get(row.id);
+  });
+  const appended = rows.filter((row) => !replaced.has(row.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return {
+    ...ledger,
+    [collectionKey]: [...preservedOrder, ...appended],
+  };
+}
+
 function matrixPendingFactIndexItem(fact) {
   return {
     factId: fact.id,
@@ -2398,6 +2903,25 @@ export function convergenceStateHash(result, workItems) {
 }
 
 function convergenceWorkProjection(workItems) {
+  if (workItems?.group === "authority-closure-propose" && workItems.proposal?.validationError) {
+    const proposal = { ...workItems.proposal };
+    delete proposal.validationError;
+    proposal.repairRequired = true;
+    return { ...workItems, proposal };
+  }
+  if (workItems?.group === "authority-closure-apply" && workItems.proposal?.validated === true) {
+    return {
+      ...workItems,
+      proposal: {
+        path: workItems.proposal.path,
+        expectedStateHash: workItems.proposal.expectedStateHash,
+        targetEntryId: workItems.proposal.targetEntryId,
+        preparedSliceSha256: workItems.proposal.preparedSliceSha256,
+        proposalSha256: workItems.proposal.proposalSha256,
+        validated: true,
+      },
+    };
+  }
   if (workItems?.group === "matrix-pending-selection-apply" && workItems.selection?.validated === true) {
     return {
       ...workItems,
@@ -2456,6 +2980,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
   const matrixSelectionApply = matrixSelectionApplyCommandFor(workItems, cliPath);
   const matrixProposalApply = matrixProposalApplyCommandFor(workItems, cliPath);
+  const authorityClosureApply = authorityClosureApplyCommandFor(workItems, cliPath);
   const mutationContract = phaseMutationContractFor(result, workItems);
   const milestone = milestoneName(result);
   const representativePaths = sameCode
@@ -2489,6 +3014,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
     ...(matrixSelectionApply ? { matrixSelectionApplyCommand: matrixSelectionApply } : {}),
     ...(matrixProposalApply ? { matrixProposalApplyCommand: matrixProposalApply } : {}),
+    ...(authorityClosureApply ? { authorityClosureApplyCommand: authorityClosureApply } : {}),
     ...(reference ? { guidanceCommand: reference } : {}),
     ...(mutationContract ? { mutationContract } : {}),
     ...(workItems ? { workItems } : {}),
@@ -2503,6 +3029,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
       sourceMergeApply,
       matrixSelectionApply,
       matrixProposalApply,
+      authorityClosureApply,
       workItems,
     ),
     completionSignal: result.passed ? "legal-coverage-validated" : "legal-coverage-blocked",
@@ -2558,6 +3085,13 @@ function matrixProposalApplyCommandFor(workItems, cliPath) {
     + `--proposal-sha256 ${workItems.proposal.proposalSha256}`;
 }
 
+function authorityClosureApplyCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "authority-closure-apply" || workItems.proposal?.validated !== true) return undefined;
+  return `node ${JSON.stringify(cliPath)} authority-closure-apply --workspace "$PWD" `
+    + `--input-file ${JSON.stringify(workItems.proposal.path)} `
+    + `--proposal-sha256 ${workItems.proposal.proposalSha256}`;
+}
+
 function milestoneName(result) {
   if (result.passed) return "COMPLETE";
   switch (result.errors[0]?.phase) {
@@ -2586,6 +3120,44 @@ function workBatchFor(phase) {
 
 function phaseMutationContractFor(result, workItems) {
   const first = result.errors[0];
+  if (first?.phase === "authorities" && typeof workItems?.group === "string"
+    && workItems.group.startsWith("authority-closure-")) {
+    return {
+      schemaVersion: 1,
+      phase: "authorities",
+      writer: "main-agent-only",
+      strategy: "state-bound-proposal-apply",
+      canonicalPaths: [
+        `${STATE_DIRECTORY}/${STATE_FILES.issues}`,
+        `${STATE_DIRECTORY}/${STATE_FILES.authorities}`,
+        `${STATE_DIRECTORY}/${STATE_FILES.matrices}`,
+      ],
+      target: {
+        errorCode: first.code,
+        matrixId: workItems.target.matrixId,
+        matrixIndex: workItems.target.matrixIndex,
+        entryId: workItems.target.entryId,
+        entryIndex: workItems.target.entryIndex,
+      },
+      limits: {
+        maxChangedRecords: workItems.limits.maxRecords,
+        maxFacts: workItems.limits.maxFacts,
+        maxSerializedBytes: workItems.limits.maxSerializedBytes,
+        preserveUnchangedRecords: true,
+        validateAfterWrite: true,
+      },
+      prerequisites: [
+        "Use only the injected preparedSlice and proposal template; do not reread canonical ledgers or source files.",
+        "Create mutually linked issue and authority records through legal judgment; the plugin supplies only bounded evidence and transaction enforcement.",
+        "Write only the proposal path, then use the injected apply command after validation.",
+      ],
+      interface: {
+        kind: "state-bound-proposal",
+        phaseApplyCommandAvailable: workItems.group === "authority-closure-apply",
+        instruction: "Never edit issues.json, authorities.json, or matrices.json directly for this closure.",
+      },
+    };
+  }
   if (first?.phase !== "matrices") return undefined;
   const batch = workBatchFor(first.phase);
   const pendingProtocol = typeof workItems?.group === "string" && workItems.group.startsWith("matrix-pending-");
@@ -2664,6 +3236,7 @@ function nextActionFor(
   sourceMergeApply,
   matrixSelectionApply,
   matrixProposalApply,
+  authorityClosureApply,
   workItems,
 ) {
   if (result.passed) {
@@ -2770,6 +3343,25 @@ function nextActionFor(
     && workItems?.group === "matrix-pending-apply") {
     return `The one-matrix proposal is valid and state-bound. Execute matrixProposalApplyCommand exactly as the next tool call: ${matrixProposalApply}. `
       + `Do not inspect or edit any canonical ledger manually. The command replaces only the pending target matrix atomically and immediately runs the unchanged validator.`;
+  }
+  if (first?.phase === "authorities" && first.code === "legal_authority_links_missing"
+    && workItems?.group === "authority-closure-propose") {
+    if (workItems.proposal?.validationError) {
+      return `The authority closure proposal at ${JSON.stringify(workItems.proposal.path)} was rejected with `
+        + `${workItems.proposal.validationError.code}: ${workItems.proposal.validationError.message}. `
+        + `Rewrite only that proposal from workItems.proposal.template and workItems.preparedSlice. `
+        + `Do not read canonical ledgers, source files, plugin source, or CLI help; the plugin will validate the rewritten state-bound transaction.`;
+    }
+    return `The legal-authority entry and its bounded facts are already injected in workItems.preparedSlice. `
+      + `As the next tool call, write exactly one proposal to ${JSON.stringify(workItems.proposal.path)} using workItems.proposal.template. `
+      + `Replace every placeholder with fact-grounded legal judgment, use only target fact IDs, make issue-authority links reciprocal, and preserve any injected existing rows except for their link arrays. `
+      + `Do not read issues.json, authorities.json, matrices.json, facts.json, source files, plugin source, references, or CLI help. `
+      + `Do not edit a canonical ledger directly; the Legal Plugin will validate the proposal before exposing the apply command.`;
+  }
+  if (first?.phase === "authorities" && first.code === "legal_authority_links_missing"
+    && workItems?.group === "authority-closure-apply") {
+    return `The bounded issue-authority-matrix closure is valid and state-bound. Execute authorityClosureApplyCommand exactly as the next tool call: ${authorityClosureApply}. `
+      + `Do not inspect or edit the proposal or any canonical ledger. The command applies the reciprocal links as one logical transaction and immediately runs the unchanged validator.`;
   }
   const batch = workBatchFor(first?.phase);
   if (first?.phase === "coverage") {

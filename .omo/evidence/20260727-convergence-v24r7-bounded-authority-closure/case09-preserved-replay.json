@@ -1,0 +1,24 @@
+{
+  "sourceCampaign": "20260727-convergence-v24r6-bounded-matrix-handoff-gate-v2",
+  "sourceRun": "20260727_050408_423b00b8",
+  "workspaceMode": "temporary-copy",
+  "firstError": {
+    "phase": "authorities",
+    "code": "legal_authority_links_missing",
+    "occurrences": 1
+  },
+  "workGroup": "authority-closure-propose",
+  "targetEntryId": "LA-001-guarantee-mortgage-pledge-authority-chain",
+  "targetFactCount": 12,
+  "injectedFactCount": 12,
+  "preparedSliceUtf8Bytes": 11167,
+  "limits": {
+    "maxRecords": 8,
+    "maxFacts": 12,
+    "maxSerializedBytes": 24576
+  },
+  "existingIssueCount": 0,
+  "existingAuthorityCount": 0,
+  "applyCommandExposedBeforeValidation": false,
+  "originalCampaignMutated": false
+}

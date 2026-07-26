@@ -65,6 +65,7 @@ authorities.json
 - authorities: { id, name, article, effectiveVersion, effectiveDate, verificationStatus, sourceLocator, pendingReason, supportedIssueIds, supportedConclusion }
 - verificationStatus: verified | pending-verification | not-applicable
 - Verified authorities require article, effectiveVersion, effectiveDate, and sourceLocator.
+- When the authority milestone exposes a bounded authority-closure proposal, use only its injected target entry, fact slice, issue-rule guidance, and existing linked rows. Write the proposal path, then use the injected apply command after validation. The plugin applies reciprocal issue-authority-matrix links as one state-bound transaction; never edit the three canonical ledgers directly during that closure.
 
 coverage.json
 - deliverables: { path, sha256 }

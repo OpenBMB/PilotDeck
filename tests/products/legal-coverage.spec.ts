@@ -3009,6 +3009,269 @@ test("legal coverage injects a bounded deterministic matrix relation-closure bat
   }
 });
 
+test("legal coverage authority closure uses one bounded state-bound transaction", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-authority-closure-"));
+  try {
+    await writeAuthorityClosureFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const sessionId = "authority-closure";
+    const firstHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    const firstEnvelope = legalEnvelope(firstHook) as {
+      workItems: {
+        group: string;
+        returned: number;
+        limits: { maxRecords: number; maxFacts: number; maxSerializedBytes: number };
+        preparedSlice: {
+          target: { entryId: string; factIds: string[]; issueIds: string[]; authorityIds: string[] };
+          allowedIssueRules: Array<{ ruleId: string; riskSignal: string; whenToUse: string }>;
+          facts: Array<{ factId: string }>;
+          existingIssues: Array<{ id: string }>;
+        };
+        proposal: { path: string; template: Record<string, unknown> };
+      };
+      authorityClosureApplyCommand?: string;
+      mutationContract: { canonicalPaths: string[]; strategy: string; interface: { instruction: string } };
+      nextAction: string;
+    };
+    assert.equal(firstEnvelope.workItems.group, "authority-closure-propose");
+    assert.equal(firstEnvelope.workItems.returned, 1);
+    assert.deepEqual(firstEnvelope.workItems.limits, { maxRecords: 8, maxFacts: 12, maxSerializedBytes: 24576 });
+    assert.deepEqual(firstEnvelope.workItems.preparedSlice.target, {
+      matrixId: "legal-authority",
+      matrixIndex: 6,
+      entryId: "LA-001",
+      entryIndex: 0,
+      summary: "The critical capital threshold requires controlling legal support.",
+      factIds: ["F-001"],
+      riskSignals: [],
+      issueIds: ["I-001"],
+      authorityIds: [],
+    });
+    assert.deepEqual(firstEnvelope.workItems.preparedSlice.facts.map((fact) => fact.factId), ["F-001"]);
+    assert.deepEqual(firstEnvelope.workItems.preparedSlice.existingIssues.map((issue) => issue.id), ["I-001"]);
+    assert.equal(
+      firstEnvelope.workItems.preparedSlice.allowedIssueRules.some((rule) =>
+        rule.ruleId === "liquidity-relationship"
+          && rule.riskSignal === "liquidity_relationship"
+          && rule.whenToUse.includes("collateral")
+      ),
+      true,
+    );
+    assert.equal(firstEnvelope.authorityClosureApplyCommand, undefined);
+    assert.deepEqual(firstEnvelope.mutationContract.canonicalPaths, [
+      `${STATE_ROOT}/issues.json`,
+      `${STATE_ROOT}/authorities.json`,
+      `${STATE_ROOT}/matrices.json`,
+    ]);
+    assert.equal(firstEnvelope.mutationContract.strategy, "state-bound-proposal-apply");
+    assert.match(firstEnvelope.mutationContract.interface.instruction, /Never edit issues\.json/u);
+    assert.match(firstEnvelope.nextAction, /already injected/u);
+    assert.match(firstEnvelope.nextAction, /write exactly one proposal/u);
+    assert.match(firstEnvelope.nextAction, /Do not read issues\.json/u);
+
+    const proposalPath = join(workspace, firstEnvelope.workItems.proposal.path);
+    const canonicalPaths = ["issues.json", "authorities.json", "matrices.json"].map((name) => join(root, name));
+    const beforeInvalid = await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8")));
+    const invalid = authorityClosureProposal(firstEnvelope.workItems.proposal.template);
+    invalid.issueUpserts[0]!.factIds = ["F-OUT-OF-SCOPE"];
+    await writeJson(proposalPath, invalid);
+    const invalidHookOne = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    const invalidEnvelopeOne = legalEnvelope(invalidHookOne) as {
+      workItems: { group: string; proposal: { validationError: { code: string } } };
+    };
+    assert.equal(invalidEnvelopeOne.workItems.group, "authority-closure-propose");
+    assert.equal(invalidEnvelopeOne.workItems.proposal.validationError.code, "authority_closure_issue_scope_invalid");
+    const invalidConvergenceOne = invalidHookOne.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string; progressOrdinal: number; repairOrdinal: number; handoffOrdinal: number;
+    };
+    assert.deepEqual(await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8"))), beforeInvalid);
+
+    invalid.issueUpserts[0]!.factIds = ["F-ANOTHER-OUT-OF-SCOPE"];
+    await writeJson(proposalPath, invalid);
+    const invalidHookTwo = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    const invalidConvergenceTwo = invalidHookTwo.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      stateHash: string; progressOrdinal: number; repairOrdinal: number; handoffOrdinal: number;
+    };
+    assert.equal(invalidConvergenceTwo.stateHash, invalidConvergenceOne.stateHash);
+    assert.equal(invalidConvergenceTwo.progressOrdinal, invalidConvergenceOne.progressOrdinal);
+    assert.equal(invalidConvergenceTwo.repairOrdinal, invalidConvergenceOne.repairOrdinal);
+    assert.equal(invalidConvergenceTwo.handoffOrdinal, invalidConvergenceOne.handoffOrdinal);
+
+    const changedExistingIssue = authorityClosureProposal(firstEnvelope.workItems.proposal.template);
+    changedExistingIssue.issueUpserts[0]!.analysis = "An unauthorized rewrite of existing legal reasoning.";
+    await writeJson(proposalPath, changedExistingIssue);
+    const changedHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    assert.equal(
+      (legalEnvelope(changedHook) as { workItems: { proposal: { validationError: { code: string } } } })
+        .workItems.proposal.validationError.code,
+      "authority_closure_existing_issue_changed",
+    );
+    assert.deepEqual(await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8"))), beforeInvalid);
+
+    const tooMany = authorityClosureProposal(firstEnvelope.workItems.proposal.template);
+    tooMany.issueUpserts = Array.from({ length: 9 }, (_, index) => ({
+      ...tooMany.issueUpserts[0]!,
+      id: `I-LIMIT-${index}`,
+    }));
+    await writeJson(proposalPath, tooMany);
+    const tooManyHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    assert.equal(
+      (legalEnvelope(tooManyHook) as { workItems: { proposal: { validationError: { code: string } } } })
+        .workItems.proposal.validationError.code,
+      "authority_closure_records_invalid",
+    );
+
+    const extraUpsert = authorityClosureProposal(firstEnvelope.workItems.proposal.template);
+    extraUpsert.authorityUpserts.push({
+      ...extraUpsert.authorityUpserts[0]!,
+      id: "A-UNLINKED",
+    });
+    await writeJson(proposalPath, extraUpsert);
+    const extraUpsertHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    assert.equal(
+      (legalEnvelope(extraUpsertHook) as { workItems: { proposal: { validationError: { code: string } } } })
+        .workItems.proposal.validationError.code,
+      "authority_closure_upsert_out_of_scope",
+    );
+    assert.deepEqual(await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8"))), beforeInvalid);
+
+    const valid = authorityClosureProposal(firstEnvelope.workItems.proposal.template);
+    await writeJson(proposalPath, valid);
+    const validHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    const validEnvelope = legalEnvelope(validHook) as {
+      workItems: {
+        group: string;
+        preparedSlice?: unknown;
+        proposal: {
+          path: string;
+          proposalSha256: string;
+          validated: boolean;
+          template?: unknown;
+          transaction?: unknown;
+        };
+      };
+      authorityClosureApplyCommand: string;
+      nextAction: string;
+    };
+    assert.equal(validEnvelope.workItems.group, "authority-closure-apply");
+    assert.equal(validEnvelope.workItems.preparedSlice, undefined);
+    assert.equal(validEnvelope.workItems.proposal.validated, true);
+    assert.equal(validEnvelope.workItems.proposal.template, undefined);
+    assert.equal(validEnvelope.workItems.proposal.transaction, undefined);
+    assert.match(validEnvelope.authorityClosureApplyCommand, /authority-closure-apply/u);
+    assert.match(validEnvelope.authorityClosureApplyCommand, new RegExp(validEnvelope.workItems.proposal.proposalSha256, "u"));
+    assert.match(validEnvelope.nextAction, /Execute authorityClosureApplyCommand exactly/u);
+    const validConvergence = validHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+      progressOrdinal: number; handoffOrdinal: number;
+    };
+    assert.equal(validConvergence.progressOrdinal, invalidConvergenceOne.progressOrdinal);
+    assert.equal(validConvergence.handoffOrdinal, invalidConvergenceOne.handoffOrdinal + 1);
+    const replayedHook = await runHook({ hookEventName: "PreModelRequest", sessionId, transcriptPath: "", cwd: workspace });
+    assert.equal(
+      (replayedHook.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { handoffOrdinal: number }).handoffOrdinal,
+      validConvergence.handoffOrdinal,
+    );
+
+    const applied = await runCli(
+      workspace,
+      "authority-closure-apply",
+      "--input-file", validEnvelope.workItems.proposal.path,
+      "--proposal-sha256", validEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const appliedResult = JSON.parse(applied.stdout) as {
+      applied: boolean; entryId: string; issuesUpserted: number; authoritiesUpserted: number;
+    };
+    assert.deepEqual(
+      { applied: appliedResult.applied, entryId: appliedResult.entryId, issuesUpserted: appliedResult.issuesUpserted, authoritiesUpserted: appliedResult.authoritiesUpserted },
+      { applied: true, entryId: "LA-001", issuesUpserted: 1, authoritiesUpserted: 1 },
+    );
+    const issues = JSON.parse(await readFile(join(root, "issues.json"), "utf8")) as { issues: Array<{ id: string; authorityIds: string[] }> };
+    const authorities = JSON.parse(await readFile(join(root, "authorities.json"), "utf8")) as { authorities: Array<{ id: string; supportedIssueIds: string[] }> };
+    const matrices = JSON.parse(await readFile(join(root, "matrices.json"), "utf8")) as { matrices: Array<{ id: string; entries: Array<{ id: string; issueIds: string[]; authorityIds: string[] }> }> };
+    assert.deepEqual(issues.issues.find((issue) => issue.id === "I-001")?.authorityIds, ["A-LEGAL"]);
+    assert.deepEqual(authorities.authorities, [{
+      id: "A-LEGAL",
+      name: "Synthetic transactions act",
+      article: "Article 1",
+      effectiveVersion: "Current synthetic version",
+      effectiveDate: "Synthetic effective date",
+      verificationStatus: "verified",
+      sourceLocator: "Synthetic official source",
+      supportedIssueIds: ["I-001"],
+      supportedConclusion: "A closing condition may address the identified risk.",
+    }]);
+    const legalMatrix = matrices.matrices.find((matrix) => matrix.id === "legal-authority")!;
+    assert.deepEqual(legalMatrix.entries[0], {
+      id: "LA-001",
+      summary: "The critical capital threshold requires controlling legal support.",
+      factIds: ["F-001"],
+      riskSignals: [],
+      issueIds: ["I-001"],
+      authorityIds: ["A-LEGAL"],
+    });
+
+    const replayApply = await runCli(
+      workspace,
+      "authority-closure-apply",
+      "--input-file", validEnvelope.workItems.proposal.path,
+      "--proposal-sha256", validEnvelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(replayApply.exitCode, 1);
+    assert.equal(JSON.parse(replayApply.stderr).error.code, "authority_closure_out_of_scope");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage rejects changed and symlinked authority closure proposals without ledger mutation", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-authority-closure-reject-"));
+  const outside = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-authority-closure-outside-"));
+  try {
+    await writeAuthorityClosureFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const first = legalEnvelope(await runHook({ hookEventName: "PreModelRequest", sessionId: "authority-reject", transcriptPath: "", cwd: workspace })) as {
+      workItems: { proposal: { path: string; template: Record<string, unknown> } };
+    };
+    const proposal = authorityClosureProposal(first.workItems.proposal.template);
+    await writeJson(join(workspace, first.workItems.proposal.path), proposal);
+    const validated = legalEnvelope(await runHook({ hookEventName: "PreModelRequest", sessionId: "authority-reject", transcriptPath: "", cwd: workspace })) as {
+      workItems: { proposal: { path: string; proposalSha256: string } };
+    };
+    const canonicalPaths = ["issues.json", "authorities.json", "matrices.json"].map((name) => join(root, name));
+    const unchanged = await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8")));
+    proposal.authorityUpserts[0]!.supportedConclusion = "Changed after validation.";
+    await writeJson(join(workspace, validated.workItems.proposal.path), proposal);
+    const changed = await runCli(
+      workspace,
+      "authority-closure-apply",
+      "--input-file", validated.workItems.proposal.path,
+      "--proposal-sha256", validated.workItems.proposal.proposalSha256,
+    );
+    assert.equal(changed.exitCode, 1);
+    assert.equal(JSON.parse(changed.stderr).error.code, "authority_closure_changed");
+    assert.deepEqual(await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8"))), unchanged);
+
+    await rm(join(root, "authority-transactions"), { recursive: true, force: true });
+    await symlink(outside, join(root, "authority-transactions"));
+    const outsideProposal = join(outside, validated.workItems.proposal.path.split("/").at(-1)!);
+    await writeJson(outsideProposal, authorityClosureProposal(first.workItems.proposal.template));
+    const outsideBytes = await readFile(outsideProposal);
+    const symlinked = await runCli(
+      workspace,
+      "authority-closure-apply",
+      "--input-file", validated.workItems.proposal.path,
+      "--proposal-sha256", sha256(outsideBytes),
+    );
+    assert.equal(symlinked.exitCode, 1);
+    assert.equal(JSON.parse(symlinked.stderr).error.code, "authority_closure_apply_failed");
+    assert.deepEqual(await Promise.all(canonicalPaths.map((path) => readFile(path, "utf8"))), unchanged);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage milestone digest ignores opaque incomplete-state hash churn", async () => {
   const { convergenceStateHash, milestoneDigest } = await import(pathToFileURL(VALIDATOR_LIB).href) as {
     convergenceStateHash: (result: Record<string, unknown>, workItems?: Record<string, unknown>) => string;
@@ -3252,6 +3515,97 @@ export async function writeCompleteFixture(workspace: string): Promise<void> {
       quote: "Synthetic transactions act Article 1 states that a closing condition may address the identified risk.",
     }],
   });
+}
+
+async function writeAuthorityClosureFixture(workspace: string): Promise<void> {
+  await writeCompleteFixture(workspace);
+  const root = join(workspace, STATE_ROOT);
+  await mkdir(join(root, "authority-transactions"), { recursive: true });
+  await writeJson(join(root, "matrices.json"), {
+    schemaVersion: 1,
+    matrices: [
+      ...[
+        "equity-capital-timeline",
+        "holding-platform-special-rights",
+        "governance-personnel-timeline",
+        "contract-key-terms",
+        "debt-collateral-liquidity",
+        "employment-ip-timeline",
+      ].map((id) => ({
+        id,
+        status: "not-applicable",
+        entries: [],
+        notApplicableReason: "No separate synthetic relationship is required for this fixture.",
+      })),
+      {
+        id: "legal-authority",
+        status: "complete",
+        entries: [{
+          id: "LA-001",
+          summary: "The critical capital threshold requires controlling legal support.",
+          factIds: ["F-001"],
+          riskSignals: [],
+          issueIds: ["I-001"],
+          authorityIds: [],
+        }],
+      },
+    ],
+  });
+  const issues = JSON.parse(await readFile(join(root, "issues.json"), "utf8")) as {
+    schemaVersion: number;
+    issues: Array<Record<string, unknown>>;
+  };
+  issues.issues[0]!.authorityIds = [];
+  await writeJson(join(root, "issues.json"), issues);
+  await writeJson(join(root, "authorities.json"), { schemaVersion: 1, authorities: [] });
+}
+
+function authorityClosureProposal(template: Record<string, unknown>): {
+  schemaVersion: number;
+  phase: string;
+  group: string;
+  expectedStateHash: string;
+  targetEntryId: string;
+  preparedSliceSha256: string;
+  issueUpserts: Array<Record<string, unknown> & { factIds: string[]; analysis: string }>;
+  authorityUpserts: Array<Record<string, unknown> & { supportedConclusion: string }>;
+  matrixEntryLinks: { issueIds: string[]; authorityIds: string[] };
+} {
+  const envelope = structuredClone(template) as {
+    schemaVersion: number;
+    phase: string;
+    group: string;
+    expectedStateHash: string;
+    targetEntryId: string;
+    preparedSliceSha256: string;
+  };
+  return {
+    ...envelope,
+    issueUpserts: [{
+      id: "I-001",
+      ruleId: "threshold-breach",
+      status: "open",
+      severity: "high",
+      critical: true,
+      factIds: ["F-001"],
+      authorityIds: ["A-LEGAL"],
+      analysis: "The normalized amount is above the analytical threshold.",
+      conclusion: "The transaction should not close before confirmation.",
+      recommendations: ["Use a documented condition precedent."],
+    }],
+    authorityUpserts: [{
+      id: "A-LEGAL",
+      name: "Synthetic transactions act",
+      article: "Article 1",
+      effectiveVersion: "Current synthetic version",
+      effectiveDate: "Synthetic effective date",
+      verificationStatus: "verified",
+      sourceLocator: "Synthetic official source",
+      supportedIssueIds: ["I-001"],
+      supportedConclusion: "A closing condition may address the identified risk.",
+    }],
+    matrixEntryLinks: { issueIds: ["I-001"], authorityIds: ["A-LEGAL"] },
+  };
 }
 
 async function writeManifestBoundFixture(workspace: string): Promise<{

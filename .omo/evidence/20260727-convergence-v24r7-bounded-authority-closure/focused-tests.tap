@@ -1,0 +1,581 @@
+TAP version 13
+# (node:39183) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: PreModelRequest mutations survive a post-routing request rebuild and remain model-only
+ok 1 - PreModelRequest mutations survive a post-routing request rebuild and remain model-only
+  ---
+  duration_ms: 6.683375
+  type: 'test'
+  ...
+# Subtest: AgentLoop exposes explicit subagent identity to lifecycle hooks
+ok 2 - AgentLoop exposes explicit subagent identity to lifecycle hooks
+  ---
+  duration_ms: 2.17375
+  type: 'test'
+  ...
+# Subtest: evaluation progress lease stops before a third unchanged model request when full compaction is rejected
+ok 3 - evaluation progress lease stops before a third unchanged model request when full compaction is rejected
+  ---
+  duration_ms: 1.929916
+  type: 'test'
+  ...
+# Subtest: AgentLoop delivers newly surfaced repair feedback once after an applied boundary
+ok 4 - AgentLoop delivers newly surfaced repair feedback once after an applied boundary
+  ---
+  duration_ms: 2.943167
+  type: 'test'
+  ...
+# Subtest: AgentLoop permits one prepared-target request and then requires genuine progress
+ok 5 - AgentLoop permits one prepared-target request and then requires genuine progress
+  ---
+  duration_ms: 2.107667
+  type: 'test'
+  ...
+# Subtest: AgentLoop carries a bounded handoff through the required boundary to genuine progress
+ok 6 - AgentLoop carries a bounded handoff through the required boundary to genuine progress
+  ---
+  duration_ms: 1.469958
+  type: 'test'
+  ...
+# Subtest: artifact failure injects one bounded correction turn and succeeds after validation
+ok 7 - artifact failure injects one bounded correction turn and succeeds after validation
+  ---
+  duration_ms: 7.849916
+  type: 'test'
+  ...
+# Subtest: required artifact failure wins over max-turn completion after a final tool call
+ok 8 - required artifact failure wins over max-turn completion after a final tool call
+  ---
+  duration_ms: 1.387666
+  type: 'test'
+  ...
+# (node:39184) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: real gateway drives legal plugin milestones through bounded artifact correction
+ok 9 - real gateway drives legal plugin milestones through bounded artifact correction
+  ---
+  duration_ms: 772.909875
+  type: 'test'
+  ...
+# Subtest: real gateway blocks completion when the legal Stop hook cannot read session state
+ok 10 - real gateway blocks completion when the legal Stop hook cannot read session state
+  ---
+  duration_ms: 467.1835
+  type: 'test'
+  ...
+# Subtest: real gateway executes the state-bound legal authority closure with complete O1 evidence
+ok 11 - real gateway executes the state-bound legal authority closure with complete O1 evidence
+  ---
+  duration_ms: 525.998458
+  type: 'test'
+  ...
+# Subtest: progress lease stays inert unless explicitly enabled
+ok 12 - progress lease stays inert unless explicitly enabled
+  ---
+  duration_ms: 0.697208
+  type: 'test'
+  ...
+# Subtest: opaque hash churn is stagnant while a smaller remaining count renews the lease
+ok 13 - opaque hash churn is stagnant while a smaller remaining count renews the lease
+  ---
+  duration_ms: 0.139125
+  type: 'test'
+  ...
+# Subtest: only a strictly increasing domain progress ordinal renews the lease
+ok 14 - only a strictly increasing domain progress ordinal renews the lease
+  ---
+  duration_ms: 0.059041
+  type: 'test'
+  ...
+# Subtest: a lower remaining count cannot roll the stored progress ordinal backward
+ok 15 - a lower remaining count cannot roll the stored progress ordinal backward
+  ---
+  duration_ms: 0.081417
+  type: 'test'
+  ...
+# Subtest: two stagnant observations require a boundary and allow exactly one post-boundary turn
+ok 16 - two stagnant observations require a boundary and allow exactly one post-boundary turn
+  ---
+  duration_ms: 0.055666
+  type: 'test'
+  ...
+# Subtest: new repair feedback after a boundary gets one delivery turn without renewing progress
+ok 17 - new repair feedback after a boundary gets one delivery turn without renewing progress
+  ---
+  duration_ms: 0.150584
+  type: 'test'
+  ...
+# Subtest: genuine progress after repair feedback renews the lease
+ok 18 - genuine progress after repair feedback renews the lease
+  ---
+  duration_ms: 0.045417
+  type: 'test'
+  ...
+# Subtest: a newly prepared repair target gets one non-progress request after feedback
+ok 19 - a newly prepared repair target gets one non-progress request after feedback
+  ---
+  duration_ms: 0.050959
+  type: 'test'
+  ...
+# Subtest: genuine progress immediately after repair preparation renews the lease
+ok 20 - genuine progress immediately after repair preparation renews the lease
+  ---
+  duration_ms: 0.166917
+  type: 'test'
+  ...
+# Subtest: preparation observed before feedback cannot be replayed after the boundary
+ok 21 - preparation observed before feedback cannot be replayed after the boundary
+  ---
+  duration_ms: 0.227875
+  type: 'test'
+  ...
+# Subtest: a second repair revision cannot replace missing progress after feedback
+ok 22 - a second repair revision cannot replace missing progress after feedback
+  ---
+  duration_ms: 0.073875
+  type: 'test'
+  ...
+# Subtest: repair feedback already delivered before a boundary cannot be replayed as grace
+ok 23 - repair feedback already delivered before a boundary cannot be replayed as grace
+  ---
+  duration_ms: 0.03475
+  type: 'test'
+  ...
+# Subtest: a new operational handoff gets one bounded request without renewing progress
+ok 24 - a new operational handoff gets one bounded request without renewing progress
+  ---
+  duration_ms: 0.05125
+  type: 'test'
+  ...
+# Subtest: a post-boundary handoff is bounded and its replay still fails closed
+ok 25 - a post-boundary handoff is bounded and its replay still fails closed
+  ---
+  duration_ms: 0.031292
+  type: 'test'
+  ...
+# Subtest: simultaneous repair and handoff revisions cannot be redeemed on separate turns
+ok 26 - simultaneous repair and handoff revisions cannot be redeemed on separate turns
+  ---
+  duration_ms: 0.039
+  type: 'test'
+  ...
+# Subtest: a lower handoff ordinal cannot be replayed as grace
+ok 27 - a lower handoff ordinal cannot be replayed as grace
+  ---
+  duration_ms: 0.023625
+  type: 'test'
+  ...
+# Subtest: handoff allowance has a hard per-progress-epoch limit and resets only on progress
+ok 28 - handoff allowance has a hard per-progress-epoch limit and resets only on progress
+  ---
+  duration_ms: 0.03175
+  type: 'test'
+  ...
+# Subtest: handoff cannot bypass an unavailable required boundary
+ok 29 - handoff cannot bypass an unavailable required boundary
+  ---
+  duration_ms: 0.0245
+  type: 'test'
+  ...
+# Subtest: sanitized Case 09 matrix handoff trajectory reaches the next semantic checkpoint
+ok 30 - sanitized Case 09 matrix handoff trajectory reaches the next semantic checkpoint
+  ---
+  duration_ms: 2.694541
+  type: 'test'
+  ...
+# Subtest: cold-start allowance expires after the first explicit domain progress
+ok 31 - cold-start allowance expires after the first explicit domain progress
+  ---
+  duration_ms: 0.049666
+  type: 'test'
+  ...
+# Subtest: evaluation mode fails closed when the required boundary is rejected or unavailable
+ok 32 - evaluation mode fails closed when the required boundary is rejected or unavailable
+  ---
+  duration_ms: 0.035584
+  type: 'test'
+  ...
+# Subtest: a completed report releases the tracked scope
+ok 33 - a completed report releases the tracked scope
+  ---
+  duration_ms: 0.028958
+  type: 'test'
+  ...
+# Subtest: convergence metadata parser rejects malformed and oversized reports
+ok 34 - convergence metadata parser rejects malformed and oversized reports
+  ---
+  duration_ms: 0.089875
+  type: 'test'
+  ...
+# Subtest: auto compaction reports summary success separately from rejected oversized output
+ok 35 - auto compaction reports summary success separately from rejected oversized output
+  ---
+  duration_ms: 3.007041
+  type: 'test'
+  ...
+# Subtest: auto compaction marks a budget-clearing summary as applied
+ok 36 - auto compaction marks a budget-clearing summary as applied
+  ---
+  duration_ms: 0.1935
+  type: 'test'
+  ...
+# Subtest: progress policy can force a full boundary while the token budget is still healthy
+ok 37 - progress policy can force a full boundary while the token budget is still healthy
+  ---
+  duration_ms: 0.18775
+  type: 'test'
+  ...
+# Subtest: full compaction distinguishes a protected prefix with no summarizable messages from model failure
+ok 38 - full compaction distinguishes a protected prefix with no summarizable messages from model failure
+  ---
+  duration_ms: 288.645167
+  type: 'test'
+  ...
+# Subtest: auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+ok 39 - auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+  ---
+  duration_ms: 0.126583
+  type: 'test'
+  ...
+# Subtest: bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+ok 40 - bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+  ---
+  duration_ms: 1.117166
+  type: 'test'
+  ...
+# Subtest: full compaction summarizes a real-shaped single-prompt Agent trajectory
+ok 41 - full compaction summarizes a real-shaped single-prompt Agent trajectory
+  ---
+  duration_ms: 0.694875
+  type: 'test'
+  ...
+# Subtest: full compaction aligns a message-count tail boundary to complete tool turns
+ok 42 - full compaction aligns a message-count tail boundary to complete tool turns
+  ---
+  duration_ms: 0.31475
+  type: 'test'
+  ...
+# Subtest: sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+ok 43 - sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+  ---
+  duration_ms: 3.62975
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent propagates runId to streaming lifecycle boundaries
+ok 44 - mapAgentEvent propagates runId to streaming lifecycle boundaries
+  ---
+  duration_ms: 1.058625
+  type: 'test'
+  ...
+# Subtest: mapAgentEvent projects every convergence ordinal
+ok 45 - mapAgentEvent projects every convergence ordinal
+  ---
+  duration_ms: 0.567791
+  type: 'test'
+  ...
+# (node:39188) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# [session-title] generation skipped (invalid_json): Unexpected token 'B', "Bounded co"... is not valid JSON
+# Subtest: local Gateway records a bounded handoff through boundary to progress
+ok 46 - local Gateway records a bounded handoff through boundary to progress
+  ---
+  duration_ms: 709.79925
+  type: 'test'
+  ...
+# Subtest: subagent tool detection and result pair at the model projection layer
+ok 47 - subagent tool detection and result pair at the model projection layer
+  ---
+  duration_ms: 12.063875
+  type: 'test'
+  ...
+# Subtest: main tool detection and result produce one exact O1 pair
+ok 48 - main tool detection and result produce one exact O1 pair
+  ---
+  duration_ms: 0.62125
+  type: 'test'
+  ...
+# Subtest: repair preparation grace is observable without becoming progress
+ok 49 - repair preparation grace is observable without becoming progress
+  ---
+  duration_ms: 0.078625
+  type: 'test'
+  ...
+# Subtest: recorder finalizes a complete hash-only trajectory
+ok 50 - recorder finalizes a complete hash-only trajectory
+  ---
+  duration_ms: 14.651708
+  type: 'test'
+  ...
+# Subtest: queue overflow is explicit and makes integrity partial
+ok 51 - queue overflow is explicit and makes integrity partial
+  ---
+  duration_ms: 5.976125
+  type: 'test'
+  ...
+# Subtest: verifier rejects reused model request identity and duplicate terminals
+ok 52 - verifier rejects reused model request identity and duplicate terminals
+  ---
+  duration_ms: 15.0565
+  type: 'test'
+  ...
+# Subtest: verifier rejects duplicate identity and secret-bearing keys
+ok 53 - verifier rejects duplicate identity and secret-bearing keys
+  ---
+  duration_ms: 0.209791
+  type: 'test'
+  ...
+# Subtest: legal coverage validator creates a current proof and removes it when the deliverable changes
+ok 54 - legal coverage validator creates a current proof and removes it when the deliverable changes
+  ---
+  duration_ms: 295.099333
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer creates a text skeleton before source review and remains idempotent
+ok 55 - legal coverage initializer creates a text skeleton before source review and remains idempotent
+  ---
+  duration_ms: 235.076834
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer binds trusted manifests to original inputs
+ok 56 - legal coverage initializer binds trusted manifests to original inputs
+  ---
+  duration_ms: 267.2705
+  type: 'test'
+  ...
+# Subtest: legal coverage source bootstrap creates only deterministic pending manifest rows
+ok 57 - legal coverage source bootstrap creates only deterministic pending manifest rows
+  ---
+  duration_ms: 307.351959
+  type: 'test'
+  ...
+# Subtest: legal coverage injects deterministic disjoint worker batches for large pending source rooms
+ok 58 - legal coverage injects deterministic disjoint worker batches for large pending source rooms
+  ---
+  duration_ms: 1854.828709
+  type: 'test'
+  ...
+# Subtest: legal coverage CLI exposes bundled guidance through stable named references
+ok 59 - legal coverage CLI exposes bundled guidance through stable named references
+  ---
+  duration_ms: 126.818625
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer creates only explicit text formats and preserves existing content
+ok 60 - legal coverage initializer creates only explicit text formats and preserves existing content
+  ---
+  duration_ms: 48.772625
+  type: 'test'
+  ...
+# Subtest: legal coverage initializer rejects traversal and symlink ancestors without external writes
+ok 61 - legal coverage initializer rejects traversal and symlink ancestors without external writes
+  ---
+  duration_ms: 131.186834
+  type: 'test'
+  ...
+# Subtest: legal coverage validator binds runner originals and derivations into its proof
+ok 62 - legal coverage validator binds runner originals and derivations into its proof
+  ---
+  duration_ms: 196.696625
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects missing lineage and mutable or derived input roots
+ok 63 - legal coverage validator rejects missing lineage and mutable or derived input roots
+  ---
+  duration_ms: 246.828416
+  type: 'test'
+  ...
+# Subtest: legal coverage next-batch exposes one bounded deterministic repair slice
+ok 64 - legal coverage next-batch exposes one bounded deterministic repair slice
+  ---
+  duration_ms: 193.796375
+  type: 'test'
+  ...
+# Subtest: legal coverage apply-batch atomically updates only the current bounded slice
+ok 65 - legal coverage apply-batch atomically updates only the current bounded slice
+  ---
+  duration_ms: 283.639917
+  type: 'test'
+  ...
+# Subtest: legal coverage apply-batch rejects record and byte limit violations before writing
+ok 66 - legal coverage apply-batch rejects record and byte limit violations before writing
+  ---
+  duration_ms: 180.4995
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects orphaned conflicts and incomplete final disclosure
+ok 67 - legal coverage validator rejects orphaned conflicts and incomplete final disclosure
+  ---
+  duration_ms: 93.278625
+  type: 'test'
+  ...
+# Subtest: legal coverage validator detects un-inventoried sources and cross-fact timeline collisions
+ok 68 - legal coverage validator detects un-inventoried sources and cross-fact timeline collisions
+  ---
+  duration_ms: 98.527208
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects reused generic quotes and unsupported fact coverage
+ok 69 - legal coverage validator rejects reused generic quotes and unsupported fact coverage
+  ---
+  duration_ms: 93.806167
+  type: 'test'
+  ...
+# Subtest: legal coverage validator requires authority links for critical issues and legal-authority matrices
+ok 70 - legal coverage validator requires authority links for critical issues and legal-authority matrices
+  ---
+  duration_ms: 95.330417
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects non-object canonical JSON documents
+ok 71 - legal coverage validator rejects non-object canonical JSON documents
+  ---
+  duration_ms: 655.405334
+  type: 'test'
+  ...
+# Subtest: legal coverage validator binds reviewed source bytes to the ledger and state hash
+ok 72 - legal coverage validator binds reviewed source bytes to the ledger and state hash
+  ---
+  duration_ms: 200.625125
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects ancestor symlinks and a symlinked proof
+ok 73 - legal coverage validator rejects ancestor symlinks and a symlinked proof
+  ---
+  duration_ms: 144.996875
+  type: 'test'
+  ...
+# Subtest: legal coverage validator does not read or write through a symlinked state ancestor
+ok 74 - legal coverage validator does not read or write through a symlinked state ancestor
+  ---
+  duration_ms: 89.850666
+  type: 'test'
+  ...
+# Subtest: legal coverage validator requires unresolved disclosure for unverified material facts
+ok 75 - legal coverage validator requires unresolved disclosure for unverified material facts
+  ---
+  duration_ms: 92.923125
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects unique but irrelevant issue and authority quotes
+ok 76 - legal coverage validator rejects unique but irrelevant issue and authority quotes
+  ---
+  duration_ms: 93.176
+  type: 'test'
+  ...
+# Subtest: legal coverage validator enforces reciprocal and same-entry ledger relationships
+ok 77 - legal coverage validator enforces reciprocal and same-entry ledger relationships
+  ---
+  duration_ms: 94.713625
+  type: 'test'
+  ...
+# Subtest: legal coverage validator accepts null for an optional threshold assessment
+ok 78 - legal coverage validator accepts null for an optional threshold assessment
+  ---
+  duration_ms: 95.498959
+  type: 'test'
+  ...
+# Subtest: legal coverage validator uses locators without quotes for binary deliverables
+ok 79 - legal coverage validator uses locators without quotes for binary deliverables
+  ---
+  duration_ms: 93.948125
+  type: 'test'
+  ...
+# Subtest: legal coverage validator rejects empty-fact shortcuts and material facts outside matrices
+ok 80 - legal coverage validator rejects empty-fact shortcuts and material facts outside matrices
+  ---
+  duration_ms: 189.683208
+  type: 'test'
+  ...
+# Subtest: legal coverage hook activates only legal work and injects one observable milestone
+ok 81 - legal coverage hook activates only legal work and injects one observable milestone
+  ---
+  duration_ms: 511.615916
+  type: 'test'
+  ...
+# Subtest: legal coverage hook groups repeated validator errors into one bounded milestone
+ok 82 - legal coverage hook groups repeated validator errors into one bounded milestone
+  ---
+  duration_ms: 498.989167
+  type: 'test'
+  ...
+# Subtest: legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress
+ok 83 - legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress
+  ---
+  duration_ms: 939.41225
+  type: 'test'
+  ...
+# Subtest: legal coverage progress ordinal advances once for a new legal phase
+ok 84 - legal coverage progress ordinal advances once for a new legal phase
+  ---
+  duration_ms: 195.1115
+  type: 'test'
+  ...
+# Subtest: legal coverage permits not-applicable only after exhaustive selection and rejects stale or changed matrix proposals
+ok 85 - legal coverage permits not-applicable only after exhaustive selection and rejects stale or changed matrix proposals
+  ---
+  duration_ms: 443.000875
+  type: 'test'
+  ...
+# Subtest: legal coverage rejects oversized matrix evidence before making a selection receipt immutable
+ok 86 - legal coverage rejects oversized matrix evidence before making a selection receipt immutable
+  ---
+  duration_ms: 147.183958
+  type: 'test'
+  ...
+# Subtest: legal coverage fails closed when one matrix index item exceeds the bounded page
+ok 87 - legal coverage fails closed when one matrix index item exceeds the bounded page
+  ---
+  duration_ms: 144.910208
+  type: 'test'
+  ...
+# Subtest: legal coverage injects a bounded deterministic matrix relation-closure batch
+ok 88 - legal coverage injects a bounded deterministic matrix relation-closure batch
+  ---
+  duration_ms: 197.718209
+  type: 'test'
+  ...
+# Subtest: legal coverage authority closure uses one bounded state-bound transaction
+ok 89 - legal coverage authority closure uses one bounded state-bound transaction
+  ---
+  duration_ms: 554.859458
+  type: 'test'
+  ...
+# Subtest: legal coverage rejects changed and symlinked authority closure proposals without ledger mutation
+ok 90 - legal coverage rejects changed and symlinked authority closure proposals without ledger mutation
+  ---
+  duration_ms: 234.792708
+  type: 'test'
+  ...
+# Subtest: legal coverage milestone digest ignores opaque incomplete-state hash churn
+ok 91 - legal coverage milestone digest ignores opaque incomplete-state hash churn
+  ---
+  duration_ms: 2.137416
+  type: 'test'
+  ...
+# Subtest: legal coverage hook activates a malformed configured workspace so the agent can repair it
+ok 92 - legal coverage hook activates a malformed configured workspace so the agent can repair it
+  ---
+  duration_ms: 94.17625
+  type: 'test'
+  ...
+# Subtest: legal coverage hook rejects a symlinked session-state ancestor without writing outside the workspace
+ok 93 - legal coverage hook rejects a symlinked session-state ancestor without writing outside the workspace
+  ---
+  duration_ms: 47.043
+  type: 'test'
+  ...
+# Subtest: legal product plugin loads one skill and contains no benchmark-specific controls
+ok 94 - legal product plugin loads one skill and contains no benchmark-specific controls
+  ---
+  duration_ms: 2.631084
+  type: 'test'
+  ...
+1..94
+# tests 94
+# suites 0
+# pass 94
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10613.161709
