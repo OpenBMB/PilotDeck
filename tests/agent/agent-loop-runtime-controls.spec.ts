@@ -375,6 +375,151 @@ test("AgentLoop delivers newly surfaced repair feedback once after an applied bo
   );
 });
 
+test("AgentLoop permits one prepared-target request and then requires genuine progress", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const defaultContext = new DefaultContextRuntime();
+  const context: AgentContextRuntime = {
+    prepareForModel: (input) => defaultContext.prepareForModel(input),
+    commitPreparedContext: (input) => defaultContext.commitPreparedContext(input),
+    async tryAutoCompact(input) {
+      if (!input.forceFull) return { type: "skipped", snapshot: budgetSnapshot(10_000) };
+      return {
+        type: "compacted",
+        messages: input.messages,
+        tier: "full",
+        snapshot: budgetSnapshot(5_000),
+        trace: {
+          triggered: true,
+          attemptedTiers: ["full"],
+          appliedTier: "full",
+          summaryAttempted: true,
+          summarySucceeded: true,
+          initialSnapshot: budgetSnapshot(10_000),
+          finalSnapshot: budgetSnapshot(5_000),
+        },
+      };
+    },
+  };
+  const router = {
+    async decide(input: { request: CanonicalModelRequest }): Promise<RouterDecision> {
+      return {
+        provider: input.request.provider,
+        model: input.request.model,
+        scenarioType: "default" as const,
+        isSubagent: false,
+        orchestrating: false,
+        resolvedFrom: "scenario" as const,
+        mutations: {},
+      };
+    },
+    async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+      requests.push(request);
+      yield { type: "message_start", role: "assistant" };
+      if (requests.length < 6) {
+        const toolCall = { id: `repair-step-${requests.length}`, name: "noop", input: {} };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      yield { type: "text_delta", text: "bounded repair completed" };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    async *stream(): AsyncIterable<CanonicalModelEvent> {
+      throw new Error("stream fallback should not be used");
+    },
+  };
+  let preModelCalls = 0;
+  const dependencies = createDependencies(requests, {
+    context,
+    router,
+    lifecycle: {
+      async dispatch(input: { event: string }) {
+        if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+        preModelCalls += 1;
+        const feedbackAvailable = preModelCalls >= 4;
+        const targetPrepared = preModelCalls >= 5;
+        const acceptedProgress = preModelCalls >= 6;
+        return {
+          ...emptyLifecycleResult(),
+          messages: preModelCalls === 4
+            ? [userMessage("repair diagnostics for one stable target")]
+            : preModelCalls === 5
+              ? [userMessage("the stable repair target was read successfully")]
+              : [],
+          effects: [{
+            type: "model_request_patch" as const,
+            patch: {
+              metadata: {
+                pilotdeckConvergence: {
+                  schemaVersion: 1,
+                  scope: "synthetic-validation",
+                  phase: "coverage",
+                  stateHash: acceptedProgress ? "accepted" : targetPrepared ? "prepared" : feedbackAvailable ? "feedback" : "unchanged",
+                  blockingCode: "missing_rows",
+                  remainingCount: 4,
+                  progressOrdinal: acceptedProgress ? 2 : 1,
+                  repairOrdinal: feedbackAvailable ? 1 : 0,
+                  repairPreparationOrdinal: targetPrepared ? 1 : 0,
+                },
+              },
+            },
+          }],
+        };
+      },
+    } as never,
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: {
+        async executeAll(calls) {
+          return calls.map((call) => ({
+            type: "success" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text" as const, text: "synthetic step completed" }],
+            startedAt: "2026-07-27T00:00:00.000Z",
+            completedAt: "2026-07-27T00:00:00.000Z",
+          }));
+        },
+      },
+    },
+  });
+  const loop = new AgentLoop(createConfig(process.cwd(), {
+    maxContextTokens: 10_000,
+    progressLease: {
+      enabled: true,
+      mode: "evaluation",
+      maxStagnantObservations: 2,
+      maxInitialStagnantObservations: 2,
+    },
+  }), dependencies);
+
+  const events: Array<{ type?: string; decision?: string }> = [];
+  const iterator = loop.run({
+    sessionId: "session-repair-preparation",
+    turnId: "turn-repair-preparation",
+    messages: [userMessage("repair the synthetic state")],
+  });
+  let completed: AgentLoopRunResult | undefined;
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      completed = next.value;
+      break;
+    }
+    events.push(next.value as { type?: string; decision?: string });
+  }
+
+  assert.equal(completed.result.type, "success");
+  assert.equal(requests.length, 6);
+  assert.match(messageText(requests[3]?.messages ?? []), /repair diagnostics for one stable target/u);
+  assert.match(messageText(requests[4]?.messages ?? []), /stable repair target was read successfully/u);
+  assert.deepEqual(
+    events.filter((event) => event.type === "progress_lease_evaluated").map((event) => event.decision),
+    ["baseline", "stagnant", "boundary_grace", "feedback_grace", "repair_preparation_grace", "renewed"],
+  );
+});
+
 test("artifact failure injects one bounded correction turn and succeeds after validation", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-agent-loop-artifact-"));
   try {

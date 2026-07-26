@@ -116,7 +116,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         type: "harness.decision",
         payload: {
           component: "progress-lease",
-          policyVersion: "progress-lease/v3",
+          policyVersion: "progress-lease/v4",
           decision: event.decision,
           reasonCode: event.reason,
           observed: {
@@ -126,6 +126,7 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
             remainingCount: event.remainingCount,
             progressOrdinal: event.progressOrdinal,
             repairOrdinal: event.repairOrdinal,
+            repairPreparationOrdinal: event.repairPreparationOrdinal,
             stagnantObservations: event.stagnantObservations,
           },
           forceBoundaryNext: event.forceBoundaryNext,

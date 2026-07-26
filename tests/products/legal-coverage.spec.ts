@@ -639,13 +639,81 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       invalidProposal.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         stateHash?: string;
         repairOrdinal: number;
+        repairPreparationOrdinal: number;
       }
     );
     const repairConvergenceHash = repairConvergence.stateHash;
     assert.notEqual(repairConvergenceHash, proposeConvergenceHash);
     assert.equal(repairConvergence.repairOrdinal, proposeConvergence.repairOrdinal + 1);
+    assert.equal(repairConvergence.repairPreparationOrdinal, 0);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /Set thresholdAssessment to null/u);
     assert.match(invalidProposal.hookSpecificOutput.additionalContext ?? "", /never prose/u);
+
+    await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "read_file",
+      toolInput: { file_path: envelope.workItems.readiness.path },
+      toolUseId: "wrong-target-read",
+    });
+    const afterWrongRead = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (afterWrongRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        repairPreparationOrdinal: number;
+      }).repairPreparationOrdinal,
+      0,
+    );
+
+    await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "read_file",
+      toolInput: { file_path: proposal.path },
+      toolUseId: "target-read",
+    });
+    const afterTargetRead = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (afterTargetRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        repairPreparationOrdinal: number;
+      }).repairPreparationOrdinal,
+      1,
+    );
+
+    await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "read_file",
+      toolInput: { file_path: proposal.path, offset: 1, limit: 1 },
+      toolUseId: "replayed-target-read",
+    });
+    const afterReplayedRead = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (afterReplayedRead.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        repairPreparationOrdinal: number;
+      }).repairPreparationOrdinal,
+      1,
+    );
 
     await writeJson(proposalPath, {
       ...proposalBase,
@@ -1752,6 +1820,7 @@ test("legal coverage hook activates only legal work and injects one observable m
       remainingCount: 12,
       progressOrdinal: 0,
       repairOrdinal: 0,
+      repairPreparationOrdinal: 0,
       writeBudget: { maxRecords: 12, maxSerializedBytes: 24576 },
     });
 
@@ -2846,6 +2915,8 @@ test("legal product plugin loads one skill and contains no benchmark-specific co
   assert.equal(plugin.skills?.length, 1);
   assert.equal(plugin.skills?.[0]?.name, "legal-coverage:conduct-legal-due-diligence");
   assert.equal(plugin.hooksConfig?.PreModelRequest?.length, 1);
+  assert.equal(plugin.hooksConfig?.PostToolUse?.length, 1);
+  assert.equal(plugin.hooksConfig?.PostToolUse?.[0]?.matcher, "read_file");
   assert.equal(plugin.hooksConfig?.PostCompact?.length, 1);
 
   const files = await collectFiles(PLUGIN_ROOT);

@@ -19,6 +19,17 @@
       ]
     }
   ],
+  "PostToolUse": [
+    {
+      "matcher": "read_file",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node hook.mjs"
+        }
+      ]
+    }
+  ],
   "PostCompact": [
     {
       "hooks": [

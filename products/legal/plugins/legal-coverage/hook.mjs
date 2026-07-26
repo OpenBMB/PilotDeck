@@ -22,6 +22,7 @@ import {
 const cliPath = fileURLToPath(new URL("./scripts/legal-coverage.mjs", import.meta.url));
 const MAX_PROGRESS_CHECKPOINT_DIGESTS = 64;
 const MAX_REPAIR_CHECKPOINT_DIGESTS = 64;
+const MAX_REPAIR_PREPARATION_CHECKPOINT_DIGESTS = 64;
 let hookEventName = "Unknown";
 
 try {
@@ -70,17 +71,34 @@ try {
   const active = !isSubagent && (sessionState?.active === true
     || await pathExists(input.cwd, `${STATE_DIRECTORY}/config.json`)
     || await pathExists(input.cwd, PROOF_PATH));
+  if (active && input.hookEventName === "PostToolUse" && input.toolName === "read_file") {
+    const preparation = await advanceRepairPreparation(input.cwd, sessionState, input.toolInput);
+    if (preparation.changed) {
+      await writeSessionState(input.cwd, sessionPath, {
+        ...sessionState,
+        active: true,
+        repairPreparationOrdinal: preparation.ordinal,
+        repairPreparationCheckpointDigests: preparation.seenCheckpointDigests,
+      });
+    }
+  }
+
   if (active && input.hookEventName === "PreModelRequest") {
     const result = await validateWorkspace({ workspaceRoot: input.cwd, writeProof: true });
     const workItems = await dynamicWorkItems(input.cwd, result);
     const digest = milestoneDigest(result, workItems);
+    const repairCheckpoint = legalRepairCheckpoint(workItems);
+    const repairCheckpointDigest = checkpointDigest(repairCheckpoint);
+    const repairTarget = legalRepairTarget(workItems, repairCheckpointDigest);
     const progressState = advanceProgressState(sessionState, digest, {
       phase: result.passed ? "complete" : result.errors[0]?.phase ?? "incomplete",
       blockingCode: result.errors[0]?.code ?? null,
       remainingCount: result.errors.length,
-    }, legalProgressCheckpointDigest(workItems), legalRepairCheckpointDigest(workItems));
+    }, legalProgressCheckpointDigest(workItems), repairCheckpointDigest);
     output.hookSpecificOutput.additionalContext = milestoneEnvelopeFor(result, cliPath, workItems);
-    if (progressState.changed || sessionState?.lastMilestoneDigest !== digest) {
+    if (progressState.changed || sessionState?.lastMilestoneDigest !== digest
+      || !sameRepairTarget(sessionState?.repairTarget, repairTarget)
+    ) {
       await writeSessionState(input.cwd, sessionPath, {
         ...sessionState,
         active: true,
@@ -90,6 +108,7 @@ try {
         progressMaxPhaseRank: progressState.maxPhaseRank,
         repairOrdinal: progressState.repairOrdinal,
         repairCheckpointDigests: progressState.seenRepairCheckpointDigests,
+        repairTarget,
         progressMilestoneDigests: undefined,
         progressObservation: progressState.observation,
       });
@@ -104,6 +123,7 @@ try {
           convergenceStateHash(result, workItems),
           progressState.ordinal,
           progressState.repairOrdinal,
+          repairPreparationOrdinal(sessionState),
         ),
       },
     };
@@ -191,7 +211,14 @@ async function dynamicWorkItems(workspaceRoot, result) {
   return undefined;
 }
 
-function convergenceReport(result, workItems, milestoneStateHash, progressOrdinal, repairOrdinal) {
+function convergenceReport(
+  result,
+  workItems,
+  milestoneStateHash,
+  progressOrdinal,
+  repairOrdinal,
+  repairPreparationOrdinal,
+) {
   const first = result.errors[0];
   return {
     schemaVersion: 1,
@@ -204,6 +231,7 @@ function convergenceReport(result, workItems, milestoneStateHash, progressOrdina
     remainingCount: result.errors.length,
     progressOrdinal,
     repairOrdinal,
+    repairPreparationOrdinal,
     ...(workItems ? {
       nextBatch: {
         group: workItems.group,
@@ -309,7 +337,7 @@ function legalProgressCheckpointDigest(workItems) {
   return checkpointDigest(checkpoint);
 }
 
-function legalRepairCheckpointDigest(workItems) {
+function legalRepairCheckpoint(workItems) {
   let checkpoint;
   if (workItems?.group === "source-fragment-propose"
     && hasRepairFeedback(workItems.proposal)
@@ -341,7 +369,73 @@ function legalRepairCheckpointDigest(workItems) {
       targetMatrixId: workItems.proposal.targetMatrixId,
     };
   }
-  return checkpointDigest(checkpoint);
+  return checkpoint;
+}
+
+function legalRepairTarget(workItems, repairDigest) {
+  if (!validStateHash(repairDigest)) return undefined;
+  let path;
+  if (workItems?.group === "source-fragment-propose" && hasRepairFeedback(workItems.proposal)) {
+    path = workItems.proposal?.path;
+  } else if (workItems?.group === "matrix-pending-selection" && hasRepairFeedback(workItems.selection)) {
+    path = workItems.selection?.path;
+  } else if (workItems?.group === "matrix-pending-propose" && hasRepairFeedback(workItems.proposal)) {
+    path = workItems.proposal?.path;
+  }
+  if (typeof path !== "string" || path.length === 0 || path.length > 2048) return undefined;
+  return { repairDigest, path };
+}
+
+async function advanceRepairPreparation(workspaceRoot, sessionState, toolInput) {
+  const ordinal = repairPreparationOrdinal(sessionState);
+  const seenCheckpointDigests = Array.isArray(sessionState?.repairPreparationCheckpointDigests)
+    ? sessionState.repairPreparationCheckpointDigests.filter(validStateHash)
+      .slice(-MAX_REPAIR_PREPARATION_CHECKPOINT_DIGESTS)
+    : [];
+  const target = parseRepairTarget(sessionState?.repairTarget);
+  const inputPath = toolInput && typeof toolInput === "object" && !Array.isArray(toolInput)
+    ? toolInput.file_path
+    : undefined;
+  if (!target || typeof inputPath !== "string" || inputPath.length === 0 || inputPath.length > 2048) {
+    return { ordinal, seenCheckpointDigests, changed: false };
+  }
+  const targetPath = await resolveSafeWorkspacePath(workspaceRoot, target.path, { allowMissing: true });
+  const readPath = await resolveSafeWorkspacePath(workspaceRoot, inputPath, { allowMissing: true });
+  if (targetPath !== readPath) return { ordinal, seenCheckpointDigests, changed: false };
+  const preparationDigest = checkpointDigest({
+    kind: "repair-target-read",
+    repairDigest: target.repairDigest,
+  });
+  if (!preparationDigest || seenCheckpointDigests.includes(preparationDigest)) {
+    return { ordinal, seenCheckpointDigests, changed: false };
+  }
+  return {
+    ordinal: ordinal < Number.MAX_SAFE_INTEGER ? ordinal + 1 : ordinal,
+    seenCheckpointDigests: [...seenCheckpointDigests, preparationDigest]
+      .slice(-MAX_REPAIR_PREPARATION_CHECKPOINT_DIGESTS),
+    changed: true,
+  };
+}
+
+function repairPreparationOrdinal(sessionState) {
+  return Number.isSafeInteger(sessionState?.repairPreparationOrdinal)
+    && sessionState.repairPreparationOrdinal >= 0
+    ? sessionState.repairPreparationOrdinal
+    : 0;
+}
+
+function parseRepairTarget(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!validStateHash(value.repairDigest)) return undefined;
+  if (typeof value.path !== "string" || value.path.length === 0 || value.path.length > 2048) return undefined;
+  return { repairDigest: value.repairDigest, path: value.path };
+}
+
+function sameRepairTarget(left, right) {
+  const parsedLeft = parseRepairTarget(left);
+  const parsedRight = parseRepairTarget(right);
+  if (!parsedLeft || !parsedRight) return parsedLeft === undefined && parsedRight === undefined;
+  return parsedLeft.repairDigest === parsedRight.repairDigest && parsedLeft.path === parsedRight.path;
 }
 
 function hasRepairFeedback(value) {

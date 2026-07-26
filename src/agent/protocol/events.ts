@@ -60,8 +60,9 @@ export type AgentEvent =
       remainingCount: number;
       progressOrdinal?: number;
       repairOrdinal?: number;
+      repairPreparationOrdinal?: number;
       stagnantObservations: number;
-      decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "fail_closed";
+      decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "repair_preparation_grace" | "fail_closed";
       forceBoundaryNext: boolean;
       reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
     }

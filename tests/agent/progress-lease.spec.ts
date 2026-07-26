@@ -95,6 +95,81 @@ test("genuine progress after repair feedback renews the lease", () => {
   assert.equal(renewed?.stagnantObservations, 0);
 });
 
+test("a newly prepared repair target gets one non-progress request after feedback", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 0 }), none);
+
+  const preparation = lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  assert.equal(preparation?.decision, "repair_preparation_grace");
+  assert.equal(preparation?.stagnantObservations, 4);
+
+  const replayed = lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  assert.equal(replayed?.decision, "fail_closed");
+  assert.equal(replayed?.reason, "post_boundary_stagnation");
+});
+
+test("genuine progress immediately after repair preparation renews the lease", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 1 }), none);
+
+  const renewed = lease.observe(
+    report({ progressOrdinal: 2, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  assert.equal(renewed?.decision, "renewed");
+  assert.equal(renewed?.stagnantObservations, 0);
+});
+
+test("preparation observed before feedback cannot be replayed after the boundary", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 1 }), none);
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 1 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 1 }), none);
+
+  const replayed = lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  assert.equal(replayed?.decision, "fail_closed");
+});
+
+test("a second repair revision cannot replace missing progress after feedback", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 1, repairOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  lease.observe(report({ progressOrdinal: 1, repairOrdinal: 1 }), none);
+
+  const secondRepair = lease.observe(report({ progressOrdinal: 1, repairOrdinal: 2 }), none);
+  assert.equal(secondRepair?.decision, "fail_closed");
+});
+
 test("repair feedback already delivered before a boundary cannot be replayed as grace", () => {
   const lease = configuredLease();
   lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);
@@ -163,6 +238,8 @@ test("convergence metadata parser rejects malformed and oversized reports", () =
   assert.equal(parseConvergenceReport({ ...report(), progressOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), repairOrdinal: -1 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), repairOrdinal: 1.5 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), repairPreparationOrdinal: -1 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), repairPreparationOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), scope: "x".repeat(129) }), undefined);
   assert.deepEqual(parseConvergenceReport(report()), report());
 });

@@ -1,0 +1,7 @@
+npm run build
+node --test --test-force-exit --test-timeout 60000 dist/tests/agent/progress-lease.spec.js dist/tests/agent/agent-loop-runtime-controls.spec.js dist/tests/context/auto-compaction-observability.spec.js dist/tests/observability/recorder.spec.js dist/tests/products/legal-coverage.spec.js
+npm test
+git diff --check
+jq empty /Users/da/Documents/PilotDeck-worktrees/registry.json .pilotdeck/benchmark-admin/worktree.json products/legal/plugins/legal-coverage/hooks/hooks.json
+rg -n 'legal-coverage|source_pending|source_merge|matrix_pending' src/agent/convergence src/agent/protocol/events.ts src/observability/agentEventBridge.ts
+rg -n -g '!commands.txt' '(authorization:|bearer [A-Za-z0-9]|BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9])' .omo/evidence/20260727-convergence-v24r3-bounded-repair-preparation

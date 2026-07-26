@@ -18,6 +18,8 @@ export type ConvergenceReport = {
   progressOrdinal?: number;
   /** Domain-issued stable repair-feedback revision. Never counts as progress. */
   repairOrdinal?: number;
+  /** Domain-issued proof that the current repair target was prepared. Never counts as progress. */
+  repairPreparationOrdinal?: number;
   nextBatch?: unknown;
   writeBudget?: unknown;
 };
@@ -36,8 +38,9 @@ export type ProgressLeaseObservation = {
   remainingCount: number;
   progressOrdinal?: number;
   repairOrdinal?: number;
+  repairPreparationOrdinal?: number;
   stagnantObservations: number;
-  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "fail_closed";
+  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "repair_preparation_grace" | "fail_closed";
   forceBoundaryNext: boolean;
   reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
 };
@@ -47,8 +50,11 @@ type ScopeState = {
   remainingCount: number;
   progressOrdinal?: number;
   repairOrdinal?: number;
+  repairPreparationOrdinal?: number;
   stagnantObservations: number;
   awaitingPostBoundaryProgress: boolean;
+  feedbackGraceUsed: boolean;
+  repairPreparationGraceUsed: boolean;
   hasProgressed: boolean;
 };
 
@@ -88,8 +94,11 @@ export class ProgressLease {
         remainingCount: report.remainingCount,
         progressOrdinal: report.progressOrdinal,
         repairOrdinal: report.repairOrdinal,
+        repairPreparationOrdinal: report.repairPreparationOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
+        feedbackGraceUsed: false,
+        repairPreparationGraceUsed: false,
         hasProgressed: false,
       });
       return observation(report, 0, "baseline", false);
@@ -101,13 +110,20 @@ export class ProgressLease {
     if (progressed) {
       const progressOrdinal = maxDefined(existing.progressOrdinal, report.progressOrdinal);
       const repairOrdinal = maxDefined(existing.repairOrdinal, report.repairOrdinal);
+      const repairPreparationOrdinal = maxDefined(
+        existing.repairPreparationOrdinal,
+        report.repairPreparationOrdinal,
+      );
       this.scopes.set(report.scope, {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
         progressOrdinal,
         repairOrdinal,
+        repairPreparationOrdinal,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
+        feedbackGraceUsed: false,
+        repairPreparationGraceUsed: false,
         hasProgressed: true,
       });
       return observation(report, 0, "renewed", false);
@@ -116,14 +132,35 @@ export class ProgressLease {
     const stagnantObservations = existing.stagnantObservations + 1;
     const repairAdvanced = report.repairOrdinal !== undefined
       && (existing.repairOrdinal === undefined || report.repairOrdinal > existing.repairOrdinal);
+    const repairPreparationAdvanced = report.repairPreparationOrdinal !== undefined
+      && (existing.repairPreparationOrdinal === undefined
+        || report.repairPreparationOrdinal > existing.repairPreparationOrdinal);
     if (existing.awaitingPostBoundaryProgress) {
-      if (repairAdvanced) {
+      if (repairAdvanced && !existing.feedbackGraceUsed) {
         this.scopes.set(report.scope, {
           ...existing,
           repairOrdinal: report.repairOrdinal,
+          repairPreparationOrdinal: maxDefined(
+            existing.repairPreparationOrdinal,
+            report.repairPreparationOrdinal,
+          ),
           stagnantObservations,
+          feedbackGraceUsed: true,
         });
         return observation(report, stagnantObservations, "feedback_grace", false);
+      }
+      if (existing.feedbackGraceUsed
+        && !existing.repairPreparationGraceUsed
+        && repairPreparationAdvanced
+      ) {
+        this.scopes.set(report.scope, {
+          ...existing,
+          repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
+          repairPreparationOrdinal: report.repairPreparationOrdinal,
+          stagnantObservations,
+          repairPreparationGraceUsed: true,
+        });
+        return observation(report, stagnantObservations, "repair_preparation_grace", false);
       }
       return observation(report, stagnantObservations, "fail_closed", false, "post_boundary_stagnation");
     }
@@ -132,8 +169,14 @@ export class ProgressLease {
       this.scopes.set(report.scope, {
         ...existing,
         repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
+        repairPreparationOrdinal: maxDefined(
+          existing.repairPreparationOrdinal,
+          report.repairPreparationOrdinal,
+        ),
         stagnantObservations,
         awaitingPostBoundaryProgress: true,
+        feedbackGraceUsed: false,
+        repairPreparationGraceUsed: false,
       });
       return observation(report, stagnantObservations, "boundary_grace", false);
     }
@@ -146,6 +189,10 @@ export class ProgressLease {
     this.scopes.set(report.scope, {
       ...existing,
       repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
+      repairPreparationOrdinal: maxDefined(
+        existing.repairPreparationOrdinal,
+        report.repairPreparationOrdinal,
+      ),
       stagnantObservations,
     });
     return observation(
@@ -173,6 +220,10 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
   if (value.repairOrdinal !== undefined
     && (!Number.isSafeInteger(value.repairOrdinal) || (value.repairOrdinal as number) < 0)
   ) return undefined;
+  if (value.repairPreparationOrdinal !== undefined
+    && (!Number.isSafeInteger(value.repairPreparationOrdinal)
+      || (value.repairPreparationOrdinal as number) < 0)
+  ) return undefined;
   if (value.blockingCode !== undefined && !boundedString(value.blockingCode, 256)) return undefined;
   return {
     schemaVersion: 1,
@@ -183,6 +234,9 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
     remainingCount: value.remainingCount,
     ...(value.progressOrdinal !== undefined ? { progressOrdinal: value.progressOrdinal } : {}),
     ...(value.repairOrdinal !== undefined ? { repairOrdinal: value.repairOrdinal } : {}),
+    ...(value.repairPreparationOrdinal !== undefined
+      ? { repairPreparationOrdinal: value.repairPreparationOrdinal }
+      : {}),
     ...(value.nextBatch !== undefined ? { nextBatch: value.nextBatch } : {}),
     ...(value.writeBudget !== undefined ? { writeBudget: value.writeBudget } : {}),
   } as ConvergenceReport;
@@ -202,6 +256,9 @@ function observation(
     remainingCount: report.remainingCount,
     ...(report.progressOrdinal !== undefined ? { progressOrdinal: report.progressOrdinal } : {}),
     ...(report.repairOrdinal !== undefined ? { repairOrdinal: report.repairOrdinal } : {}),
+    ...(report.repairPreparationOrdinal !== undefined
+      ? { repairPreparationOrdinal: report.repairPreparationOrdinal }
+      : {}),
     stagnantObservations,
     decision,
     forceBoundaryNext,
