@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "source": "Sanitized shape of Gate 2b Case 09 after the first matrix became current",
+  "steps": [
+    {
+      "label": "prior legal progress",
+      "report": { "phase": "matrices", "blockingCode": "matrix_pending", "progressOrdinal": 7, "handoffOrdinal": 0 },
+      "boundary": { "requested": false, "attempted": false, "applied": false },
+      "expectedDecision": "baseline"
+    },
+    {
+      "label": "first matrix checkpoint",
+      "report": { "phase": "matrices", "blockingCode": "matrix_pending", "progressOrdinal": 8, "handoffOrdinal": 0 },
+      "boundary": { "requested": false, "attempted": false, "applied": false },
+      "expectedDecision": "renewed"
+    },
+    {
+      "label": "valid continue selection awaits deterministic apply",
+      "report": { "phase": "matrices", "blockingCode": "matrix_pending", "progressOrdinal": 8, "handoffOrdinal": 1 },
+      "boundary": { "requested": false, "attempted": false, "applied": false },
+      "expectedDecision": "handoff_grace"
+    },
+    {
+      "label": "continue receipt exposes the next bounded evidence page",
+      "report": { "phase": "matrices", "blockingCode": "matrix_pending", "progressOrdinal": 8, "handoffOrdinal": 2 },
+      "boundary": { "requested": true, "attempted": true, "applied": true },
+      "expectedDecision": "boundary_grace"
+    },
+    {
+      "label": "finalized selection becomes genuine semantic progress",
+      "report": { "phase": "matrices", "blockingCode": "matrix_pending", "progressOrdinal": 9, "handoffOrdinal": 2 },
+      "boundary": { "requested": false, "attempted": false, "applied": false },
+      "expectedDecision": "renewed"
+    }
+  ]
+}

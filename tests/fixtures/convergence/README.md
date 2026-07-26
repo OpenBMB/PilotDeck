@@ -10,3 +10,6 @@ the E2-Elite v6 Case 09 context-control failure. A compaction summary reported
 as successful is not marked `applied` unless the Agent loop emitted an accepted
 auto-compaction continuation for the resulting message set.
 
+`case-09-matrix-handoff-replay.json` records the sanitized Gate 2b tail in
+which a valid paginated selection must cross one deterministic apply handoff
+and expose the next bounded page before the next semantic progress checkpoint.

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   ProgressLease,
   parseConvergenceReport,
@@ -188,6 +190,127 @@ test("repair feedback already delivered before a boundary cannot be replayed as 
   );
 });
 
+test("a new operational handoff gets one bounded request without renewing progress", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+
+  const handoff = lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none);
+  assert.equal(handoff?.decision, "handoff_grace");
+  assert.equal(handoff?.stagnantObservations, 1);
+  assert.equal(handoff?.forceBoundaryNext, true);
+
+  lease.observe(
+    report({ progressOrdinal: 8, handoffOrdinal: 1 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  const replayed = lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none);
+  assert.equal(replayed?.decision, "fail_closed");
+  assert.equal(replayed?.reason, "post_boundary_stagnation");
+});
+
+test("a post-boundary handoff is bounded and its replay still fails closed", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 8, handoffOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none)?.decision,
+    "handoff_grace",
+  );
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none)?.decision,
+    "fail_closed",
+  );
+});
+
+test("simultaneous repair and handoff revisions cannot be redeemed on separate turns", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 0 }), none);
+  lease.observe(
+    report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 0 }),
+    { requested: true, attempted: true, applied: true },
+  );
+
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 8, repairOrdinal: 1, handoffOrdinal: 1 }), none)?.decision,
+    "handoff_grace",
+  );
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 8, repairOrdinal: 1, handoffOrdinal: 1 }), none)?.decision,
+    "fail_closed",
+  );
+});
+
+test("a lower handoff ordinal cannot be replayed as grace", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 2 }), none);
+  const rolledBack = lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none);
+  assert.equal(rolledBack?.decision, "stagnant");
+  assert.equal(rolledBack?.forceBoundaryNext, true);
+});
+
+test("handoff allowance has a hard per-progress-epoch limit and resets only on progress", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 1, handoffOrdinal: 0 }), none);
+  assert.equal(lease.observe(report({ progressOrdinal: 1, handoffOrdinal: 1 }), none)?.decision, "handoff_grace");
+  assert.equal(lease.observe(report({ progressOrdinal: 1, handoffOrdinal: 2 }), none)?.decision, "handoff_grace");
+
+  const overLimit = lease.observe(report({ progressOrdinal: 1, handoffOrdinal: 3 }), none);
+  assert.equal(overLimit?.decision, "stagnant");
+  assert.equal(overLimit?.stagnantObservations, 3);
+
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 2, handoffOrdinal: 3 }), none)?.decision,
+    "renewed",
+  );
+  assert.equal(
+    lease.observe(report({ progressOrdinal: 2, handoffOrdinal: 4 }), none)?.decision,
+    "handoff_grace",
+  );
+});
+
+test("handoff cannot bypass an unavailable required boundary", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+  lease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+
+  const failed = lease.observe(
+    report({ progressOrdinal: 8, handoffOrdinal: 1 }),
+    { requested: true, attempted: false, applied: false },
+  );
+  assert.equal(failed?.decision, "fail_closed");
+  assert.equal(failed?.reason, "boundary_unavailable");
+});
+
+test("sanitized Case 09 matrix handoff trajectory reaches the next semantic checkpoint", () => {
+  const fixture = JSON.parse(readFileSync(
+    join(process.cwd(), "tests/fixtures/convergence/case-09-matrix-handoff-replay.json"),
+    "utf8",
+  )) as {
+    steps: Array<{
+      report: Partial<ConvergenceReport>;
+      boundary: ProgressBoundaryOutcome;
+      expectedDecision: string;
+    }>;
+  };
+  const lease = new ProgressLease({
+    enabled: true,
+    mode: "evaluation",
+    maxStagnantObservations: 2,
+    maxInitialStagnantObservations: 8,
+  });
+
+  assert.deepEqual(
+    fixture.steps.map((step) => lease.observe(report(step.report), step.boundary)?.decision),
+    fixture.steps.map((step) => step.expectedDecision),
+  );
+});
+
 test("cold-start allowance expires after the first explicit domain progress", () => {
   const lease = new ProgressLease({
     enabled: true,
@@ -240,6 +363,8 @@ test("convergence metadata parser rejects malformed and oversized reports", () =
   assert.equal(parseConvergenceReport({ ...report(), repairOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), repairPreparationOrdinal: -1 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), repairPreparationOrdinal: 1.5 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), handoffOrdinal: -1 }), undefined);
+  assert.equal(parseConvergenceReport({ ...report(), handoffOrdinal: 1.5 }), undefined);
   assert.equal(parseConvergenceReport({ ...report(), scope: "x".repeat(129) }), undefined);
   assert.deepEqual(parseConvergenceReport(report()), report());
 });

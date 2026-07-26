@@ -20,6 +20,8 @@ export type ConvergenceReport = {
   repairOrdinal?: number;
   /** Domain-issued proof that the current repair target was prepared. Never counts as progress. */
   repairPreparationOrdinal?: number;
+  /** Domain-issued stable operational handoff. Never counts as progress. */
+  handoffOrdinal?: number;
   nextBatch?: unknown;
   writeBudget?: unknown;
 };
@@ -39,8 +41,9 @@ export type ProgressLeaseObservation = {
   progressOrdinal?: number;
   repairOrdinal?: number;
   repairPreparationOrdinal?: number;
+  handoffOrdinal?: number;
   stagnantObservations: number;
-  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "repair_preparation_grace" | "fail_closed";
+  decision: "baseline" | "renewed" | "completed" | "stagnant" | "boundary_grace" | "feedback_grace" | "repair_preparation_grace" | "handoff_grace" | "fail_closed";
   forceBoundaryNext: boolean;
   reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
 };
@@ -51,6 +54,8 @@ type ScopeState = {
   progressOrdinal?: number;
   repairOrdinal?: number;
   repairPreparationOrdinal?: number;
+  handoffOrdinal?: number;
+  handoffsUsedSinceProgress: number;
   stagnantObservations: number;
   awaitingPostBoundaryProgress: boolean;
   feedbackGraceUsed: boolean;
@@ -95,6 +100,8 @@ export class ProgressLease {
         progressOrdinal: report.progressOrdinal,
         repairOrdinal: report.repairOrdinal,
         repairPreparationOrdinal: report.repairPreparationOrdinal,
+        handoffOrdinal: report.handoffOrdinal,
+        handoffsUsedSinceProgress: 0,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         feedbackGraceUsed: false,
@@ -114,12 +121,15 @@ export class ProgressLease {
         existing.repairPreparationOrdinal,
         report.repairPreparationOrdinal,
       );
+      const handoffOrdinal = maxDefined(existing.handoffOrdinal, report.handoffOrdinal);
       this.scopes.set(report.scope, {
         stateHash: report.stateHash,
         remainingCount: report.remainingCount,
         progressOrdinal,
         repairOrdinal,
         repairPreparationOrdinal,
+        handoffOrdinal,
+        handoffsUsedSinceProgress: 0,
         stagnantObservations: 0,
         awaitingPostBoundaryProgress: false,
         feedbackGraceUsed: false,
@@ -135,7 +145,28 @@ export class ProgressLease {
     const repairPreparationAdvanced = report.repairPreparationOrdinal !== undefined
       && (existing.repairPreparationOrdinal === undefined
         || report.repairPreparationOrdinal > existing.repairPreparationOrdinal);
+    const handoffAdvanced = report.handoffOrdinal !== undefined
+      && (existing.handoffOrdinal === undefined || report.handoffOrdinal > existing.handoffOrdinal);
+    const handoffsUsedSinceProgress = handoffAdvanced
+      ? Math.min(Number.MAX_SAFE_INTEGER, existing.handoffsUsedSinceProgress + 1)
+      : existing.handoffsUsedSinceProgress;
+    const handoffWithinBudget = handoffAdvanced
+      && existing.handoffsUsedSinceProgress < this.handoffLimit();
     if (existing.awaitingPostBoundaryProgress) {
+      if (handoffWithinBudget) {
+        this.scopes.set(report.scope, {
+          ...existing,
+          repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
+          repairPreparationOrdinal: maxDefined(
+            existing.repairPreparationOrdinal,
+            report.repairPreparationOrdinal,
+          ),
+          handoffOrdinal: report.handoffOrdinal,
+          handoffsUsedSinceProgress,
+          stagnantObservations,
+        });
+        return observation(report, stagnantObservations, "handoff_grace", false);
+      }
       if (repairAdvanced && !existing.feedbackGraceUsed) {
         this.scopes.set(report.scope, {
           ...existing,
@@ -144,6 +175,8 @@ export class ProgressLease {
             existing.repairPreparationOrdinal,
             report.repairPreparationOrdinal,
           ),
+          handoffOrdinal: maxDefined(existing.handoffOrdinal, report.handoffOrdinal),
+          handoffsUsedSinceProgress,
           stagnantObservations,
           feedbackGraceUsed: true,
         });
@@ -157,6 +190,8 @@ export class ProgressLease {
           ...existing,
           repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
           repairPreparationOrdinal: report.repairPreparationOrdinal,
+          handoffOrdinal: maxDefined(existing.handoffOrdinal, report.handoffOrdinal),
+          handoffsUsedSinceProgress,
           stagnantObservations,
           repairPreparationGraceUsed: true,
         });
@@ -173,6 +208,8 @@ export class ProgressLease {
           existing.repairPreparationOrdinal,
           report.repairPreparationOrdinal,
         ),
+        handoffOrdinal: maxDefined(existing.handoffOrdinal, report.handoffOrdinal),
+        handoffsUsedSinceProgress,
         stagnantObservations,
         awaitingPostBoundaryProgress: true,
         feedbackGraceUsed: false,
@@ -186,6 +223,26 @@ export class ProgressLease {
       return observation(report, stagnantObservations, "fail_closed", false, reason);
     }
 
+    if (handoffWithinBudget) {
+      this.scopes.set(report.scope, {
+        ...existing,
+        repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
+        repairPreparationOrdinal: maxDefined(
+          existing.repairPreparationOrdinal,
+          report.repairPreparationOrdinal,
+        ),
+        handoffOrdinal: report.handoffOrdinal,
+        handoffsUsedSinceProgress,
+        stagnantObservations,
+      });
+      return observation(
+        report,
+        stagnantObservations,
+        "handoff_grace",
+        stagnantObservations >= this.stagnationLimit(existing) - 1,
+      );
+    }
+
     this.scopes.set(report.scope, {
       ...existing,
       repairOrdinal: maxDefined(existing.repairOrdinal, report.repairOrdinal),
@@ -193,6 +250,8 @@ export class ProgressLease {
         existing.repairPreparationOrdinal,
         report.repairPreparationOrdinal,
       ),
+      handoffOrdinal: maxDefined(existing.handoffOrdinal, report.handoffOrdinal),
+      handoffsUsedSinceProgress,
       stagnantObservations,
     });
     return observation(
@@ -205,6 +264,10 @@ export class ProgressLease {
 
   private stagnationLimit(state: ScopeState): number {
     if (state.hasProgressed) return this.config!.maxStagnantObservations;
+    return this.config!.maxInitialStagnantObservations ?? this.config!.maxStagnantObservations;
+  }
+
+  private handoffLimit(): number {
     return this.config!.maxInitialStagnantObservations ?? this.config!.maxStagnantObservations;
   }
 }
@@ -224,6 +287,9 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
     && (!Number.isSafeInteger(value.repairPreparationOrdinal)
       || (value.repairPreparationOrdinal as number) < 0)
   ) return undefined;
+  if (value.handoffOrdinal !== undefined
+    && (!Number.isSafeInteger(value.handoffOrdinal) || (value.handoffOrdinal as number) < 0)
+  ) return undefined;
   if (value.blockingCode !== undefined && !boundedString(value.blockingCode, 256)) return undefined;
   return {
     schemaVersion: 1,
@@ -237,6 +303,7 @@ export function parseConvergenceReport(value: unknown): ConvergenceReport | unde
     ...(value.repairPreparationOrdinal !== undefined
       ? { repairPreparationOrdinal: value.repairPreparationOrdinal }
       : {}),
+    ...(value.handoffOrdinal !== undefined ? { handoffOrdinal: value.handoffOrdinal } : {}),
     ...(value.nextBatch !== undefined ? { nextBatch: value.nextBatch } : {}),
     ...(value.writeBudget !== undefined ? { writeBudget: value.writeBudget } : {}),
   } as ConvergenceReport;
@@ -259,6 +326,7 @@ function observation(
     ...(report.repairPreparationOrdinal !== undefined
       ? { repairPreparationOrdinal: report.repairPreparationOrdinal }
       : {}),
+    ...(report.handoffOrdinal !== undefined ? { handoffOrdinal: report.handoffOrdinal } : {}),
     stagnantObservations,
     decision,
     forceBoundaryNext,
