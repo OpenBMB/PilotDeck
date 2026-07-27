@@ -547,6 +547,13 @@ async function advanceRepairPreparation(workspaceRoot, sessionState, toolName, t
     if (!info.isFile() || info.size <= 0 || info.size > 24576) {
       return { ordinal, seenCheckpointDigests, changed: false };
     }
+    const result = await validateWorkspace({ workspaceRoot, writeProof: false });
+    const workItems = await dynamicWorkItems(workspaceRoot, result);
+    if (workItems?.group !== "source-fragment-repair-apply"
+      || workItems.repair?.validated !== true
+      || workItems.repair.path !== target.path) {
+      return { ordinal, seenCheckpointDigests, changed: false };
+    }
   }
   const preparationDigest = checkpointDigest({
     kind: `repair-target-${toolName === "write_file" ? "write" : "read"}`,
