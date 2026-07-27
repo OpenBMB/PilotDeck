@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "fixture": "preserved-v24r11-case09-second-source-repair",
+  "sourceRunSummarySha256": "e6cf59642dcbf882c68aa5f435437e905bafe13674f6397786ba4b8893a1d3b2",
+  "workItem": {
+    "group": "source-fragment-repair-apply",
+    "mode": "main-agent-repair-apply",
+    "validated": true,
+    "repairPath": ".pilotdeck/work/legal-coverage/fragments/source-repair-cb249643d05a.json",
+    "repairSha256": "ad8cbb630fd081f54bc6c28c596bf82cd1342b67e8286266046382f32f1df69d",
+    "operationCount": 2,
+    "sourceCount": 4,
+    "factCount": 10,
+    "transactionBytes": 8838,
+    "exactApplyCommandPresent": true
+  },
+  "apply": {
+    "applied": true,
+    "previousStateHash": "2c78fb482cedcbc8cf037e8f5e37daab7bf232d8c1bff437b7de79503ee5a560",
+    "stateHash": "a7454ce3260da2233d301fea1649d5676e52f04366d6837746c2ddcdb06680bc",
+    "sourceCount": 4,
+    "factCount": 10,
+    "durableReceipt": "source-repair-applied-cb249643d05a.json",
+    "durableReceiptSha256": "6c981e0ab1b2d65b25e82a2de7cb999347a09b0ade10b70d6f4098f6bc12544e",
+    "nextGroup": "source-fragment-merge"
+  },
+  "inputTreeSha256Before": "9b63090fe73ccafcd28e77b024759f8acf774409bc23045bad65acbba001980b",
+  "inputTreeSha256After": "9b63090fe73ccafcd28e77b024759f8acf774409bc23045bad65acbba001980b",
+  "preservedRunMutated": false
+}
