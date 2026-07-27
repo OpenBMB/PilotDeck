@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "fixture": "preserved-v24r10-case09-valid-source-proposal",
+  "proposal": "source-merge-d2979ab3c066.json",
+  "proposalBytes": 15355,
+  "proposalSha256": "ae2542ae4844585fa77ab54debbf896fbc693fb959b8fa888631bfa0608afb37",
+  "sourceIds": [
+    "SRC-99DF1C894092",
+    "SRC-C2260EF3FDB3",
+    "SRC-125B91D6E09F",
+    "SRC-E6DBDE335351"
+  ],
+  "handoffOrdinal": [
+    0,
+    1,
+    1,
+    1,
+    1
+  ],
+  "progressOrdinal": [
+    0,
+    0,
+    0,
+    1,
+    1
+  ],
+  "appliedSourceCount": 4,
+  "appliedFactCount": 20,
+  "stateHashBefore": "6473f1f29eb346dbf0219bbf8c39e75ce143e9555c3d2e3a26fdef51360d8cc8",
+  "stateHashAfter": "6cfcb3d840075247cdb0295c3240838db6fd69b7f5e349544d6afd0a60cf7410",
+  "durableReceipt": "source-merge-applied-d2979ab3c066.json",
+  "nextGroup": "source-fragment-merge",
+  "inputTreeSha256": "9b63090fe73ccafcd28e77b024759f8acf774409bc23045bad65acbba001980b"
+}
