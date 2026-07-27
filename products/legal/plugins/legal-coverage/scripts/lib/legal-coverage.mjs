@@ -90,6 +90,10 @@ const MATRIX_INDEX_MAX_BYTES = 8192;
 const MATRIX_SELECTED_FACT_MAX_RECORDS = 12;
 const MATRIX_SELECTED_FACT_MAX_BYTES = 8192;
 const MATRIX_MUTATION_MAX_BYTES = 24576;
+const MATRIX_FRONTIER_MAX_RECORDS = 3;
+const MATRIX_FRONTIER_MAX_FACT_INDEX_RECORDS = 48;
+const MATRIX_FRONTIER_MAX_BYTES = 8192;
+const MATRIX_FRONTIER_TYPE = "legal-matrix-frontier/v1";
 const ISSUE_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/issue-transactions`;
 const ISSUE_CLOSURE_PATTERN = /^issue-closure-[a-f0-9]{12}\.json$/u;
 const ISSUE_CLOSURE_MAX_RECORDS = Object.keys(ISSUE_RULES).length;
@@ -2179,6 +2183,90 @@ export async function nextMatrixRelationBatch(workspaceRoot, options = {}) {
     maxSerializedBytes,
     validation.stateHash,
   );
+}
+
+/**
+ * Return one bounded, read-only matrix frontier and its shared fact index.
+ * The frontier is advisory only: canonical matrix writes still go through the
+ * existing one-matrix state-bound selection/proposal/apply transactions.
+ */
+export async function matrixFrontierPlan(workspaceRoot, options = {}) {
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const validation = options.validationResult
+    ?? await validateWorkspace({ workspaceRoot: loaded.workspace, writeProof: false });
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const issues = Array.isArray(loaded.state.issues?.issues) ? loaded.state.issues.issues : [];
+  const facts = (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+    .filter((fact) => isRecord(fact) && nonEmpty(fact.id));
+  const linkedFactIds = new Set();
+  for (const matrix of matrices) {
+    for (const entry of Array.isArray(matrix?.entries) ? matrix.entries : []) {
+      for (const factId of stringArray(entry?.factIds)) linkedFactIds.add(factId);
+    }
+  }
+  const pending = matrices
+    .map((matrix, collectionIndex) => ({ matrix, collectionIndex }))
+    .filter(({ matrix }) => isRecord(matrix) && matrix.status === "pending" && nonEmpty(matrix.id));
+  const frontier = pending.slice(0, boundedInteger(options.limit, 1, MATRIX_FRONTIER_MAX_RECORDS, MATRIX_FRONTIER_MAX_RECORDS))
+    .map(({ matrix, collectionIndex }) => {
+      const authorityBlocked = matrix.id === "legal-authority" && issues.length === 0;
+      return {
+        matrixId: matrix.id,
+        collectionIndex,
+        status: matrix.status,
+        eligible: !authorityBlocked,
+        ...(authorityBlocked ? { blockedBy: ["issues"] } : {}),
+      };
+    });
+  const indexItems = facts.slice(0, MATRIX_FRONTIER_MAX_FACT_INDEX_RECORDS).map((fact) => ({
+    factId: fact.id,
+    ...(nonEmpty(fact.subject) ? { subject: fact.subject } : {}),
+    ...(nonEmpty(fact.predicate) ? { predicate: fact.predicate } : {}),
+    ...(nonEmpty(fact.dateOrPeriod) ? { dateOrPeriod: fact.dateOrPeriod } : {}),
+    material: fact.material === true,
+    critical: fact.critical === true,
+    linked: linkedFactIds.has(fact.id),
+  }));
+  const snapshot = {
+    schemaVersion: 1,
+    type: MATRIX_FRONTIER_TYPE,
+    stateHash: validation.stateHash,
+    factsHash: sha256(stableStringify(facts)),
+    factCount: facts.length,
+    materialFactCount: facts.filter((fact) => fact.material === true).length,
+    criticalFactCount: facts.filter((fact) => fact.critical === true).length,
+    unlinkedMaterialFactCount: facts.filter((fact) =>
+      (fact.material === true || fact.critical === true) && !linkedFactIds.has(fact.id)
+    ).length,
+    indexItems,
+  };
+  const result = {
+    schemaVersion: 1,
+    type: MATRIX_FRONTIER_TYPE,
+    phase: "matrices",
+    stateHash: validation.stateHash,
+    returned: frontier.length,
+    hasMore: pending.length > frontier.length,
+    limits: {
+      maxMatrices: MATRIX_FRONTIER_MAX_RECORDS,
+      maxFactIndexRecords: MATRIX_FRONTIER_MAX_FACT_INDEX_RECORDS,
+      maxSerializedBytes: MATRIX_FRONTIER_MAX_BYTES,
+    },
+    snapshot,
+    frontier,
+  };
+  const serializedBytes = Buffer.byteLength(JSON.stringify(result));
+  if (serializedBytes <= MATRIX_FRONTIER_MAX_BYTES) return { ...result, serializedBytes };
+  const boundedSnapshot = {
+    ...snapshot,
+    indexItems: [],
+    indexTruncated: true,
+  };
+  return {
+    ...result,
+    snapshot: boundedSnapshot,
+    serializedBytes: Buffer.byteLength(JSON.stringify({ ...result, snapshot: boundedSnapshot })),
+  };
 }
 
 export async function pendingMatrixPlan(workspaceRoot, options = {}) {
@@ -4445,7 +4533,7 @@ function nextActionFor(
         + `Rewrite only that selection from workItems.selection.template and workItems.evidencePage. The Legal Plugin will validate it before exposing the selection apply command. `
         + `Do not read matrices.json, facts.json, plugin source, or another page.`;
     }
-    return `For pending matrix ${JSON.stringify(workItems.target.recordId)}, treat workItems.evidencePage as the complete current fact-index page. `
+    return `The bounded workItems.frontier is a read-only planning snapshot. Eligible frontier matrices may be analyzed in bounded parallel, but every write must remain a separate state-bound transaction. For pending matrix ${JSON.stringify(workItems.target.recordId)}, treat workItems.evidencePage as the complete current fact-index page. `
       + `Through legal judgment, choose only compatible fact IDs from that page and write the exact selection envelope to ${JSON.stringify(workItems.selection.path)} from workItems.selection.template as the next tool call. The Legal Plugin will validate it before exposing the selection apply command. `
       + `Use decision continue when another page is needed; finalize only when the accumulated selection is sufficient, or after exhaustive zero-selection review for not-applicable. `
       + `Do not read matrices.json, the full facts.json, plugin source, source files, or another page; do not edit a canonical ledger.`;

@@ -2736,6 +2736,59 @@ test("legal coverage hook groups repeated validator errors into one bounded mile
   }
 });
 
+test("legal coverage exposes a bounded matrix frontier with one shared fact-index snapshot", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-frontier-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const matricesPath = join(workspace, STATE_ROOT, "matrices.json");
+    const matrices = JSON.parse(await readFile(matricesPath, "utf8")) as {
+      matrices: Array<Record<string, unknown>>;
+    };
+    matrices.matrices[0] = { id: "equity-capital-timeline", status: "pending", entries: [] };
+    matrices.matrices[1] = { id: "holding-platform-special-rights", status: "pending", entries: [] };
+    await writeJson(matricesPath, matrices);
+
+    const frontier = await runCli(workspace, "matrix-frontier", "--limit", "3");
+    assert.equal(frontier.exitCode, 0, frontier.stderr);
+    const result = JSON.parse(frontier.stdout) as {
+      type: string;
+      stateHash: string;
+      returned: number;
+      frontier: Array<{ matrixId: string; eligible: boolean; collectionIndex: number }>;
+      snapshot: {
+        stateHash: string;
+        factsHash: string;
+        factCount: number;
+        indexItems: Array<Record<string, unknown>>;
+      };
+    };
+    assert.equal(result.type, "legal-matrix-frontier/v1");
+    assert.match(result.stateHash, /^[a-f0-9]{64}$/u);
+    assert.equal(result.snapshot.stateHash, result.stateHash);
+    assert.match(result.snapshot.factsHash, /^[a-f0-9]{64}$/u);
+    assert.equal(result.returned, 2);
+    assert.deepEqual(result.frontier, [
+      { matrixId: "equity-capital-timeline", collectionIndex: 0, status: "pending", eligible: true },
+      { matrixId: "holding-platform-special-rights", collectionIndex: 1, status: "pending", eligible: true },
+    ]);
+    assert.equal(result.snapshot.factCount, 1);
+    assert.equal("value" in (result.snapshot.indexItems[0] ?? {}), false);
+    assert.equal(Buffer.byteLength(frontier.stdout) <= 8192, true);
+
+    const preModel = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "frontier-session",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const context = preModel.hookSpecificOutput.additionalContext ?? "";
+    assert.match(context, /legal-matrix-frontier\/v1/u);
+    assert.match(context, /bounded parallel/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("legal coverage pending-matrix selection is bounded across pages and invalid revisions cannot manufacture progress", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-pages-"));
   try {

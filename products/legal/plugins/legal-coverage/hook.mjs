@@ -13,6 +13,7 @@ import {
   milestoneDigest,
   milestoneEnvelopeFor,
   milestoneFor,
+  matrixFrontierPlan,
   nextCoverageBatch,
   nextMatrixRelationBatch,
   pendingMatrixPlan,
@@ -235,7 +236,10 @@ async function dynamicWorkItems(workspaceRoot, result) {
     });
   }
   if (first?.phase === "matrices" && first.code === "matrix_pending") {
-    return pendingMatrixPlan(workspaceRoot, { validationResult: result });
+    const plan = await pendingMatrixPlan(workspaceRoot, { validationResult: result });
+    if (!plan) return undefined;
+    const frontier = await matrixFrontierPlan(workspaceRoot, { validationResult: result });
+    return frontier ? { ...plan, frontier } : plan;
   }
   if (first?.phase === "issues" && first.code === "risk_signal_orphaned") {
     return issueClosurePlan(workspaceRoot, { validationResult: result });
