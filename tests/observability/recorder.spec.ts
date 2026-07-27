@@ -154,6 +154,31 @@ test("repair preparation grace is observable without becoming progress", () => {
   });
 });
 
+test("post-tool boundary deferral is independently observable and domain-bounded", () => {
+  const drafts: ObservationEventDraft[] = [];
+  const recorder = {
+    emit: (draft: ObservationEventDraft) => {
+      drafts.push(draft);
+      return undefined;
+    },
+  } as unknown as ObservationRecorder;
+
+  observeAgentEvent(recorder, {
+    type: "progress_boundary_deferred",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scopes: ["legal-coverage"],
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0]?.type, "harness.decision");
+  assert.equal(drafts[0]?.payload?.component, "progress-boundary");
+  assert.equal(drafts[0]?.payload?.policyVersion, "progress-boundary/v1");
+  assert.equal(drafts[0]?.payload?.decision, "deferred");
+  assert.deepEqual(drafts[0]?.payload?.observed, { scopes: ["legal-coverage"] });
+  assert.equal(JSON.stringify(drafts).includes("nextBatch"), false);
+});
+
 test("recorder finalizes a complete hash-only trajectory", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-observation-recorder-"));
   try {

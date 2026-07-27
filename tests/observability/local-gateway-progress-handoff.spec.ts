@@ -17,6 +17,7 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
   const pilotHome = join(root, "home");
   const pluginRoot = join(projectRoot, ".pilotdeck", "plugins", "handoff-qa");
   const requests: CanonicalModelRequest[] = [];
+  const modelMetrics = { compactions: 0 };
   await mkdir(join(pluginRoot, "hooks"), { recursive: true });
   await mkdir(pilotHome, { recursive: true });
   await writeFile(join(pilotHome, "pilotdeck.yaml"), TEST_CONFIG);
@@ -27,6 +28,7 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
   }));
   await writeFile(join(pluginRoot, "hooks", "hooks.json"), JSON.stringify({
     PreModelRequest: [{ hooks: [{ type: "command", command: "node hook.mjs" }] }],
+    PostToolUse: [{ matcher: "bash", hooks: [{ type: "command", command: "node hook.mjs" }] }],
   }));
   await writeFile(join(pluginRoot, "hook.mjs"), HOOK_SCRIPT);
 
@@ -35,7 +37,7 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
     fallbackProjectRoot: projectRoot,
     pilotHome,
     env: { ...process.env, PILOT_HOME: pilotHome, PILOTDECK_BUILD_SHA: "test-build" },
-    __testModelFactory: () => handoffModelRuntime(requests),
+    __testModelFactory: () => handoffModelRuntime(requests, modelMetrics),
   });
   try {
     const gatewayEvents = [];
@@ -59,9 +61,17 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
       ["baseline", 0],
       ["renewed", 0],
       ["handoff_grace", 1],
-      ["boundary_grace", 2],
+      ["handoff_grace", 2],
       ["renewed", 2],
     ]);
+    assert.equal(modelMetrics.compactions, 0);
+    assert.deepEqual(
+      gatewayEvents.flatMap((event) => event.type === "agent_status"
+          && event.event === "progress_boundary_deferred"
+        ? [event.detail?.scopes]
+        : []),
+      [["handoff-qa"], ["handoff-qa"]],
+    );
     assert.equal(
       gatewayEvents.some((event) => event.type === "turn_completed" && event.finishReason === "completed"),
       true,
@@ -81,9 +91,22 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
         event.payload.decision,
         (event.payload.observed as { handoffOrdinal?: number } | undefined)?.handoffOrdinal,
       ]);
+    const decisionSequence = observations
+      .filter((event) => event.type === "harness.decision"
+        && ["progress-boundary", "progress-lease"].includes(String(event.payload.component)))
+      .map((event) => [event.payload.component, event.payload.decision]);
     const integrity = JSON.parse(await readFile(join(storage.observabilityDir, "integrity.json"), "utf8"));
 
     assert.deepEqual(decisions, gatewayDecisions);
+    assert.deepEqual(decisionSequence, [
+      ["progress-lease", "baseline"],
+      ["progress-lease", "renewed"],
+      ["progress-lease", "handoff_grace"],
+      ["progress-boundary", "deferred"],
+      ["progress-lease", "handoff_grace"],
+      ["progress-boundary", "deferred"],
+      ["progress-lease", "renewed"],
+    ]);
     assert.equal(integrity.status, "complete");
     assert.equal(integrity.checks.modelRequestsPaired, true);
     assert.equal(integrity.checks.toolCallsPaired, true);
@@ -96,7 +119,10 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
   }
 });
 
-function handoffModelRuntime(requests: CanonicalModelRequest[]): ModelRuntime {
+function handoffModelRuntime(
+  requests: CanonicalModelRequest[],
+  metrics: { compactions: number },
+): ModelRuntime {
   return {
     async *stream(request) {
       if (isCompactionRequest(request)) {
@@ -125,7 +151,8 @@ function handoffModelRuntime(requests: CanonicalModelRequest[]): ModelRuntime {
       yield { type: "usage", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
       yield { type: "message_end", finishReason: "stop" };
     },
-    async complete() {
+    async complete(request) {
+      if (isCompactionRequest(request)) metrics.compactions += 1;
       return {
         role: "assistant",
         content: [{ type: "text", text: "Bounded context summary." }],
@@ -186,9 +213,6 @@ const input = JSON.parse(body);
 const counterPath = join(input.cwd, ".pilotdeck", "handoff-qa-counter");
 let count = 0;
 try { count = Number(await readFile(counterPath, "utf8")) || 0; } catch {}
-count += 1;
-await mkdir(dirname(counterPath), { recursive: true });
-await writeFile(counterPath, String(count));
 const reports = [
   { progressOrdinal: 7, handoffOrdinal: 0, stateHash: "prior" },
   { progressOrdinal: 8, handoffOrdinal: 0, stateHash: "first-matrix" },
@@ -196,16 +220,34 @@ const reports = [
   { progressOrdinal: 8, handoffOrdinal: 2, stateHash: "next-page" },
   { progressOrdinal: 9, handoffOrdinal: 2, stateHash: "finalized" }
 ];
-const report = reports[Math.min(count - 1, reports.length - 1)];
-console.log(JSON.stringify({ hookSpecificOutput: {
-  hookEventName: input.hookEventName,
-  modelRequestPatch: { metadata: { pilotdeckConvergence: {
-    schemaVersion: 1,
-    scope: "handoff-qa",
-    phase: "coverage",
-    blockingCode: "missing_rows",
-    remainingCount: 4,
-    ...report
-  } } }
-} }));
+if (input.hookEventName === "PostToolUse") {
+  const report = reports[Math.min(count, reports.length - 1)];
+  console.log(JSON.stringify({ hookSpecificOutput: {
+    hookEventName: input.hookEventName,
+    convergencePreview: {
+      schemaVersion: 1,
+      scope: "handoff-qa",
+      phase: "coverage",
+      blockingCode: "missing_rows",
+      remainingCount: 4,
+      ...report
+    }
+  } }));
+} else {
+  count += 1;
+  await mkdir(dirname(counterPath), { recursive: true });
+  await writeFile(counterPath, String(count));
+  const report = reports[Math.min(count - 1, reports.length - 1)];
+  console.log(JSON.stringify({ hookSpecificOutput: {
+    hookEventName: input.hookEventName,
+    modelRequestPatch: { metadata: { pilotdeckConvergence: {
+      schemaVersion: 1,
+      scope: "handoff-qa",
+      phase: "coverage",
+      blockingCode: "missing_rows",
+      remainingCount: 4,
+      ...report
+    } } }
+  } }));
+}
 `;

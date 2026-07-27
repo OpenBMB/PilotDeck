@@ -63,9 +63,35 @@ function parseSpecificOutput(value: unknown): PilotDeckHookSpecificOutput | unde
     retry: booleanOrUndefined(record.retry),
     worktreePath: stringOrUndefined(record.worktreePath),
     modelRequestPatch: parseModelRequestPatch(record.modelRequestPatch),
+    convergencePreview: parseConvergencePreview(record.convergencePreview),
     artifactContracts: parseArtifactContracts(record.artifactContracts),
     dynamicContext: parseDynamicContext(record.dynamicContext),
   };
+}
+
+function parseConvergencePreview(value: unknown): PilotDeckHookSpecificOutput["convergencePreview"] {
+  if (!isRecord(value) || value.schemaVersion !== 1) return undefined;
+  if (!boundedString(value.scope, 128) || !boundedString(value.phase, 128)) return undefined;
+  if (!boundedString(value.stateHash, 256)) return undefined;
+  if (!nonNegativeInteger(value.remainingCount)) return undefined;
+  if (value.blockingCode !== undefined && !boundedString(value.blockingCode, 256)) return undefined;
+  for (const key of ["progressOrdinal", "repairOrdinal", "repairPreparationOrdinal", "handoffOrdinal"] as const) {
+    if (value[key] !== undefined && !nonNegativeInteger(value[key])) return undefined;
+  }
+  return {
+    schemaVersion: 1,
+    scope: value.scope,
+    phase: value.phase,
+    stateHash: value.stateHash,
+    ...(value.blockingCode !== undefined ? { blockingCode: value.blockingCode } : {}),
+    remainingCount: value.remainingCount,
+    ...(value.progressOrdinal !== undefined ? { progressOrdinal: value.progressOrdinal } : {}),
+    ...(value.repairOrdinal !== undefined ? { repairOrdinal: value.repairOrdinal } : {}),
+    ...(value.repairPreparationOrdinal !== undefined
+      ? { repairPreparationOrdinal: value.repairPreparationOrdinal }
+      : {}),
+    ...(value.handoffOrdinal !== undefined ? { handoffOrdinal: value.handoffOrdinal } : {}),
+  } as PilotDeckHookSpecificOutput["convergencePreview"];
 }
 
 function parseDynamicContext(value: unknown): PilotDeckHookSpecificOutput["dynamicContext"] {
@@ -152,4 +178,12 @@ function stringOrUndefined(value: unknown): string | undefined {
 
 function booleanOrUndefined(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function boundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= maxLength;
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
 }

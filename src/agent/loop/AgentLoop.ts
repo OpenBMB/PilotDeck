@@ -76,6 +76,7 @@ import {
   CONVERGENCE_METADATA_KEY,
   ProgressLease,
   parseConvergenceReport,
+  type ConvergenceReport,
   type ProgressBoundaryOutcome,
 } from "../convergence/ProgressLease.js";
 import { observationHash } from "../../observability/index.js";
@@ -277,6 +278,7 @@ export class AgentLoop {
     let transientPromptCounter = 0;
     const activeTransientPromptIds = new Set<string>();
     const progressLease = new ProgressLease(this.config.progressLease);
+    let pendingConvergencePreviews: ConvergenceReport[] = [];
 
     const pushTransientSyntheticPrompt = (prompt: string, purpose: string): void => {
       const transientId = this.dependencies.uuid?.() ?? `transient-${++transientPromptCounter}`;
@@ -377,7 +379,18 @@ export class AgentLoop {
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
-      const forceProgressBoundary = progressLease.shouldForceBoundary();
+      const boundaryPlan = progressLease.planBoundary(pendingConvergencePreviews);
+      const forceProgressBoundary = boundaryPlan.requested;
+      const deferredBoundaryScopes = boundaryPlan.deferredScopes;
+      pendingConvergencePreviews = [];
+      if (deferredBoundaryScopes.length > 0) {
+        yield {
+          type: "progress_boundary_deferred",
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          scopes: deferredBoundaryScopes,
+        };
+      }
       const progressBoundary: ProgressBoundaryOutcome = {
         requested: forceProgressBoundary,
         attempted: false,
@@ -488,8 +501,10 @@ export class AgentLoop {
       request = transformedRequest.request;
       promptInjections = [...promptInjections, ...preModelInjections];
       const convergenceReport = parseConvergenceReport(request.metadata?.[CONVERGENCE_METADATA_KEY]);
+      let progressDecision: ReturnType<ProgressLease["observe"]> = undefined;
       if (convergenceReport) {
         const progress = progressLease.observe(convergenceReport, progressBoundary);
+        progressDecision = progress;
         if (progress) {
           yield {
             type: "progress_lease_evaluated",
@@ -520,6 +535,36 @@ export class AgentLoop {
             return { result, messages };
           }
         }
+      }
+      const deferredBoundaryConfirmed = deferredBoundaryScopes.length === 0
+        || (progressDecision !== undefined
+          && deferredBoundaryScopes.includes(progressDecision.scope)
+          && ["renewed", "completed", "handoff_grace"].includes(progressDecision.decision));
+      if (!deferredBoundaryConfirmed) {
+        const error = agentError(
+          "agent_convergence_stalled",
+          "A post-tool convergence preview deferred a required boundary but the next model request did not confirm progress or a bounded handoff.",
+          {
+            reason: "boundary_preview_unconfirmed",
+            deferredScopes: deferredBoundaryScopes,
+            observedDecision: progressDecision?.decision,
+          },
+          "Inspect the preserved post-tool preview and PreModelRequest convergence report before retrying.",
+        );
+        const result = this.createTurnResult(input, {
+          type: "error",
+          stopReason: "unsupported_recovery",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+          errors: [error],
+        });
+        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+        await captureTurn(true);
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
       }
       yield {
         type: "model_request_started",
@@ -1584,6 +1629,7 @@ export class AgentLoop {
         lastToolFailureFingerprint,
       );
       pairedResults = annotateRepeatedToolFailures(pairedResults, repeatedFailure.repeatedKeys);
+      pendingConvergencePreviews = convergencePreviewsFromToolResults(pairedResults);
       lastToolFailureFingerprint = repeatedFailure.currentFingerprint;
       const toolResultRepair = largeFileRepair.analyzeToolResults(pairedResults, {
         outputTruncated: assembled.finishReason === "length" || assembled.hasRepairedToolCalls === true,
@@ -2636,6 +2682,32 @@ function findToolLifecycleBlock(results: PilotDeckToolResult[]): { reason: strin
     }
   }
   return undefined;
+}
+
+function convergencePreviewsFromToolResults(results: PilotDeckToolResult[]): ConvergenceReport[] {
+  const candidates: Array<{
+    report: ConvergenceReport;
+    completedAt: string;
+    resultIndex: number;
+    previewIndex: number;
+  }> = [];
+  for (const [resultIndex, result] of results.entries()) {
+    const lifecycle = result.metadata?.lifecycle;
+    if (!isRecord(lifecycle) || !Array.isArray(lifecycle.convergencePreviews)) continue;
+    for (const [previewIndex, value] of lifecycle.convergencePreviews.slice(0, 16).entries()) {
+      const report = parseConvergenceReport(value);
+      if (!report) continue;
+      candidates.push({ report, completedAt: result.completedAt, resultIndex, previewIndex });
+    }
+  }
+  candidates.sort((left, right) =>
+    left.completedAt.localeCompare(right.completedAt)
+    || left.resultIndex - right.resultIndex
+    || left.previewIndex - right.previewIndex
+  );
+  const latestByScope = new Map<string, ConvergenceReport>();
+  for (const candidate of candidates) latestByScope.set(candidate.report.scope, candidate.report);
+  return [...latestByScope.values()].sort((left, right) => left.scope.localeCompare(right.scope));
 }
 
 function textFromMessage(message: CanonicalMessage): string {

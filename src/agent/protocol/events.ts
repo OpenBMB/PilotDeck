@@ -51,6 +51,12 @@ export type AgentEvent =
     }
   | { type: "context_budget"; sessionId: string; turnId: string; snapshot: TokenBudgetSnapshot }
   | {
+      type: "progress_boundary_deferred";
+      sessionId: string;
+      turnId: string;
+      scopes: string[];
+    }
+  | {
       type: "progress_lease_evaluated";
       sessionId: string;
       turnId: string;

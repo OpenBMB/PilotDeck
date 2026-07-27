@@ -97,6 +97,64 @@ test("bash allows hyphenated commands whose names merely start with next", async
   ]);
 });
 
+test("PostToolUse carries bounded convergence previews only in internal lifecycle metadata", async () => {
+  const registry = new ToolRegistry();
+  registry.register(createBashTool({
+    runner: {
+      async run() {
+        return { exitCode: 0, stdout: "applied\n", stderr: "", timedOut: false, durationMs: 2 };
+      },
+    },
+  }));
+  const runtime = new ToolRuntime(registry, new PermissionRuntime(), {
+    async dispatch(input: { event: string }) {
+      if (input.event !== "PostToolUse") {
+        return { effects: [], messages: [], events: [], blockingErrors: [], nonBlockingErrors: [] };
+      }
+      return {
+        effects: [{
+          type: "convergence_preview" as const,
+          report: {
+            schemaVersion: 1,
+            scope: "synthetic-validation",
+            phase: "matrices",
+            stateHash: "apply-ready",
+            blockingCode: "matrix_pending",
+            remainingCount: 4,
+            progressOrdinal: 8,
+            handoffOrdinal: 1,
+          },
+        }],
+        messages: [],
+        events: [],
+        blockingErrors: [],
+        nonBlockingErrors: [],
+      };
+    },
+  } as never);
+
+  const result = await runtime.execute(
+    { id: "call-preview", name: "bash", input: { command: "true" } },
+    context(),
+  );
+
+  assert.equal(result.type, "success");
+  assert.deepEqual(result.metadata?.lifecycle, {
+    convergencePreviews: [{
+      schemaVersion: 1,
+      scope: "synthetic-validation",
+      phase: "matrices",
+      stateHash: "apply-ready",
+      blockingCode: "matrix_pending",
+      remainingCount: 4,
+      progressOrdinal: 8,
+      handoffOrdinal: 1,
+    }],
+  });
+  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  assert.doesNotMatch(text, /synthetic-validation|apply-ready/u);
+});
+
 test("bash still rejects exact framework CLI tokens that start long-lived processes", async () => {
   const commands: string[] = [];
   const runtime = createRuntime({

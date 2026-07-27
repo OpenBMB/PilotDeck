@@ -3753,6 +3753,46 @@ test("legal coverage risk-signal issue closure exposes one bounded state-bound t
 
     const valid = issueClosureProposal(envelope.workItems.proposal.template);
     await writeJson(join(workspace, envelope.workItems.proposal.path), valid);
+    const postWrite = await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "issue-closure",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "write_file",
+      toolInput: { file_path: envelope.workItems.proposal.path },
+    });
+    assert.equal(postWrite.hookSpecificOutput.modelRequestPatch, undefined);
+    assert.equal(
+      postWrite.hookSpecificOutput.convergencePreview?.handoffOrdinal,
+      initialConvergence.handoffOrdinal + 1,
+    );
+    const unrelatedWrite = await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "issue-closure",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "write_file",
+      toolInput: { file_path: "notes.md" },
+    });
+    assert.equal(unrelatedWrite.hookSpecificOutput.convergencePreview, undefined);
+    const proposalRead = await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "issue-closure",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "read_file",
+      toolInput: { file_path: envelope.workItems.proposal.path },
+    });
+    assert.equal(proposalRead.hookSpecificOutput.convergencePreview, undefined);
+    const readOnlyCli = await runHook({
+      hookEventName: "PostToolUse",
+      sessionId: "issue-closure",
+      transcriptPath: "",
+      cwd: workspace,
+      toolName: "bash",
+      toolInput: { command: `node ${JSON.stringify(CLI)} status --workspace .` },
+    });
+    assert.equal(readOnlyCli.hookSpecificOutput.convergencePreview, undefined);
     const validHook = await runHook({
       hookEventName: "PreModelRequest",
       sessionId: "issue-closure",
@@ -4063,7 +4103,7 @@ test("legal product plugin loads one skill and contains no benchmark-specific co
   assert.equal(plugin.skills?.[0]?.name, "legal-coverage:conduct-legal-due-diligence");
   assert.equal(plugin.hooksConfig?.PreModelRequest?.length, 1);
   assert.equal(plugin.hooksConfig?.PostToolUse?.length, 1);
-  assert.equal(plugin.hooksConfig?.PostToolUse?.[0]?.matcher, "read_file|write_file");
+  assert.equal(plugin.hooksConfig?.PostToolUse?.[0]?.matcher, "bash|read_file|write_file");
   assert.equal(plugin.hooksConfig?.PostCompact?.length, 1);
 
   const files = await collectFiles(PLUGIN_ROOT);
@@ -4501,6 +4541,10 @@ async function runHook(input: Record<string, unknown>): Promise<{
     dynamicContext?: unknown[];
     artifactContracts?: Array<{ path: string }>;
     modelRequestPatch?: { metadata?: Record<string, unknown> };
+    convergencePreview?: {
+      progressOrdinal?: number;
+      handoffOrdinal?: number;
+    };
   };
 }> {
   const result = await runHookProcess(input);
