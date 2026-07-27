@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROOF_PATH,
@@ -75,20 +75,29 @@ try {
     || await pathExists(input.cwd, `${STATE_DIRECTORY}/config.json`)
     || await pathExists(input.cwd, PROOF_PATH));
   if (active && input.hookEventName === "PostToolUse"
-    && ["read_file", "write_file"].includes(input.toolName)) {
+    && ["bash", "read_file", "write_file"].includes(input.toolName)) {
     const preparation = await advanceRepairPreparation(
       input.cwd,
       sessionState,
       input.toolName,
       input.toolInput,
     );
+    const previewSessionState = preparation.changed
+      ? {
+          ...sessionState,
+          active: true,
+          repairPreparationOrdinal: preparation.ordinal,
+          repairPreparationCheckpointDigests: preparation.seenCheckpointDigests,
+        }
+      : sessionState;
     if (preparation.changed) {
-      await writeSessionState(input.cwd, sessionPath, {
-        ...sessionState,
-        active: true,
-        repairPreparationOrdinal: preparation.ordinal,
-        repairPreparationCheckpointDigests: preparation.seenCheckpointDigests,
-      });
+      await writeSessionState(input.cwd, sessionPath, previewSessionState);
+    }
+    if (await toolMayChangeConvergence(input.cwd, input.toolName, input.toolInput)) {
+      output.hookSpecificOutput.convergencePreview = await postToolConvergencePreview(
+        input.cwd,
+        previewSessionState,
+      );
     }
   }
 
@@ -235,6 +244,58 @@ async function dynamicWorkItems(workspaceRoot, result) {
     return authorityClosurePlan(workspaceRoot, { validationResult: result });
   }
   return undefined;
+}
+
+async function postToolConvergencePreview(workspaceRoot, sessionState) {
+  const result = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const workItems = await dynamicWorkItems(workspaceRoot, result);
+  const digest = milestoneDigest(result, workItems);
+  const repairCheckpointDigest = checkpointDigest(legalRepairCheckpoint(workItems));
+  const progressState = advanceProgressState(sessionState, digest, {
+    phase: result.passed ? "complete" : result.errors[0]?.phase ?? "incomplete",
+    blockingCode: result.errors[0]?.code ?? null,
+    remainingCount: result.errors.length,
+  }, legalProgressCheckpointDigest(workItems), repairCheckpointDigest);
+  const handoffState = advanceHandoffState(sessionState, legalHandoffCheckpointDigest(workItems));
+  const report = convergenceReport(
+    result,
+    workItems,
+    convergenceStateHash(result, workItems),
+    progressState.ordinal,
+    progressState.repairOrdinal,
+    repairPreparationOrdinal(sessionState),
+    handoffState.ordinal,
+  );
+  return {
+    schemaVersion: 1,
+    scope: report.scope,
+    phase: report.phase,
+    stateHash: report.stateHash,
+    ...(report.blockingCode ? { blockingCode: report.blockingCode } : {}),
+    remainingCount: report.remainingCount,
+    progressOrdinal: report.progressOrdinal,
+    repairOrdinal: report.repairOrdinal,
+    repairPreparationOrdinal: report.repairPreparationOrdinal,
+    handoffOrdinal: report.handoffOrdinal,
+  };
+}
+
+async function toolMayChangeConvergence(workspaceRoot, toolName, toolInput) {
+  if (!toolInput || typeof toolInput !== "object" || Array.isArray(toolInput)) return false;
+  if (toolName === "write_file") {
+    const inputPath = toolInput.file_path;
+    if (typeof inputPath !== "string" || inputPath.length === 0 || inputPath.length > 2048) return false;
+    const stateRoot = await resolveSafeWorkspacePath(workspaceRoot, STATE_DIRECTORY, { allowMissing: true });
+    const writtenPath = await resolveSafeWorkspacePath(workspaceRoot, inputPath, { allowMissing: true });
+    const stateRelativePath = relative(stateRoot, writtenPath);
+    return stateRelativePath === ""
+      || (!stateRelativePath.startsWith("..") && !isAbsolute(stateRelativePath));
+  }
+  if (toolName !== "bash") return false;
+  const command = toolInput.command;
+  if (typeof command !== "string" || command.length === 0 || command.length > 32768) return false;
+  if (!command.includes("legal-coverage.mjs")) return false;
+  return /(?:^|\s)(?:init|bootstrap-sources|reference|fragment-slice|source-merge-prepare|source-merge-apply|source-repair-apply|matrix-selection-apply|matrix-proposal-apply|issue-closure-apply|authority-closure-apply|apply-batch)(?:\s|$)/u.test(command);
 }
 
 function convergenceReport(

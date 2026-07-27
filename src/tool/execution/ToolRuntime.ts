@@ -550,14 +550,20 @@ function lifecycleMetadata(result: { effects: PilotDeckHookEffect[] }): Record<s
   const blocking = result.effects.find((effect) => effect.type === "block");
   const additionalContext = result.effects.filter((effect) => effect.type === "additional_context");
   const updatedMcpOutput = result.effects.find((effect) => effect.type === "updated_mcp_tool_output");
-  if (!blocking && additionalContext.length === 0 && !updatedMcpOutput) {
+  const convergencePreviews = result.effects
+    .filter((effect) => effect.type === "convergence_preview")
+    .map((effect) => effect.report);
+  if (!blocking && additionalContext.length === 0 && !updatedMcpOutput && convergencePreviews.length === 0) {
     return undefined;
   }
   return {
     lifecycle: {
-      blocked: blocking ? { reason: blocking.reason, stopReason: blocking.stopReason } : undefined,
-      additionalContext: additionalContext.map((effect) => effect.content),
-      updatedMcpToolOutput: updatedMcpOutput?.output,
+      ...(blocking ? { blocked: { reason: blocking.reason, stopReason: blocking.stopReason } } : {}),
+      ...(additionalContext.length > 0
+        ? { additionalContext: additionalContext.map((effect) => effect.content) }
+        : {}),
+      ...(updatedMcpOutput ? { updatedMcpToolOutput: updatedMcpOutput.output } : {}),
+      ...(convergencePreviews.length > 0 ? { convergencePreviews } : {}),
     },
   };
 }

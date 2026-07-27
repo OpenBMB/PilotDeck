@@ -73,3 +73,17 @@ test("mapAgentEvent projects every convergence ordinal", () => {
     reason: undefined,
   });
 });
+
+test("mapAgentEvent exposes a post-tool boundary deferral without domain payload", () => {
+  const [status] = mapAgentEvent({
+    type: "progress_boundary_deferred",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scopes: ["domain-validation"],
+  }, "run-1");
+
+  assert.equal(status?.type, "agent_status");
+  if (status?.type !== "agent_status") return;
+  assert.equal(status.event, "progress_boundary_deferred");
+  assert.deepEqual(status.detail, { scopes: ["domain-validation"] });
+});

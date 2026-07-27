@@ -9,6 +9,7 @@ export type PilotDeckModelRequestPatch = {
 };
 
 import type { ArtifactContract } from "../../artifact/index.js";
+import type { PilotDeckConvergencePreview } from "../../extension/hooks/protocol/output.js";
 
 export type PilotDeckPermissionRequestResult =
   | {
@@ -33,6 +34,7 @@ export type PilotDeckHookEffect =
     }
   | { type: "system_message"; content: string }
   | { type: "model_request_patch"; patch: PilotDeckModelRequestPatch }
+  | { type: "convergence_preview"; report: PilotDeckConvergencePreview }
   | { type: "artifact_contracts"; sourcePluginId: string; contracts: readonly ArtifactContract[] }
   | { type: "block"; reason: string; stopReason?: string }
   | { type: "permission_decision"; behavior: PilotDeckHookPermissionBehavior; reason?: string }

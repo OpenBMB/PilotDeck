@@ -10,6 +10,19 @@ export type PilotDeckPermissionHookDecision =
       interrupt?: boolean;
     };
 
+export type PilotDeckConvergencePreview = {
+  schemaVersion: 1;
+  scope: string;
+  phase: string;
+  stateHash: string;
+  blockingCode?: string;
+  remainingCount: number;
+  progressOrdinal?: number;
+  repairOrdinal?: number;
+  repairPreparationOrdinal?: number;
+  handoffOrdinal?: number;
+};
+
 export type PilotDeckHookSpecificOutput = {
   hookEventName: string;
   additionalContext?: string;
@@ -30,6 +43,8 @@ export type PilotDeckHookSpecificOutput = {
     temperature?: number;
     metadata?: Record<string, unknown>;
   };
+  /** Bounded post-tool preview; Core must confirm it on PreModelRequest. */
+  convergencePreview?: PilotDeckConvergencePreview;
   artifactContracts?: Array<{
     id: string;
     path: string;

@@ -523,11 +523,13 @@ test("AgentLoop permits one prepared-target request and then requires genuine pr
 test("AgentLoop carries a bounded handoff through the required boundary to genuine progress", async () => {
   const requests: CanonicalModelRequest[] = [];
   const defaultContext = new DefaultContextRuntime();
+  let forcedFullCompactions = 0;
   const context: AgentContextRuntime = {
     prepareForModel: (input) => defaultContext.prepareForModel(input),
     commitPreparedContext: (input) => defaultContext.commitPreparedContext(input),
     async tryAutoCompact(input) {
       if (!input.forceFull) return { type: "skipped", snapshot: budgetSnapshot(10_000) };
+      forcedFullCompactions += 1;
       return {
         type: "compacted",
         messages: input.messages,
@@ -575,6 +577,7 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
     },
   };
   let preModelCalls = 0;
+  let toolBatches = 0;
   const dependencies = createDependencies(requests, {
     context,
     router,
@@ -618,6 +621,13 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
       registry: new ToolRegistry(),
       scheduler: {
         async executeAll(calls) {
+          toolBatches += 1;
+          const nextReport = [
+            { progressOrdinal: 8, handoffOrdinal: 0, stateHash: "first-matrix" },
+            { progressOrdinal: 8, handoffOrdinal: 1, stateHash: "apply-ready" },
+            { progressOrdinal: 8, handoffOrdinal: 2, stateHash: "next-page" },
+            { progressOrdinal: 9, handoffOrdinal: 2, stateHash: "finalized" },
+          ][toolBatches - 1];
           return calls.map((call) => ({
             type: "success" as const,
             toolCallId: call.id,
@@ -625,6 +635,20 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
             content: [{ type: "text" as const, text: "synthetic handoff completed" }],
             startedAt: "2026-07-27T00:00:00.000Z",
             completedAt: "2026-07-27T00:00:00.000Z",
+            ...(nextReport ? {
+              metadata: {
+                lifecycle: {
+                  convergencePreviews: [{
+                    schemaVersion: 1,
+                    scope: "synthetic-validation",
+                    phase: "coverage",
+                    blockingCode: "missing_rows",
+                    remainingCount: 4,
+                    ...nextReport,
+                  }],
+                },
+              },
+            } : {}),
           }));
         },
       },
@@ -640,7 +664,7 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
     },
   }), dependencies);
 
-  const events: Array<{ type?: string; decision?: string; handoffOrdinal?: number }> = [];
+  const events: Array<{ type?: string; decision?: string; handoffOrdinal?: number; scopes?: string[] }> = [];
   const iterator = loop.run({
     sessionId: "session-bounded-handoff",
     turnId: "turn-bounded-handoff",
@@ -653,11 +677,12 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
       completed = next.value;
       break;
     }
-    events.push(next.value as { type?: string; decision?: string; handoffOrdinal?: number });
+    events.push(next.value as { type?: string; decision?: string; handoffOrdinal?: number; scopes?: string[] });
   }
 
   assert.equal(completed.result.type, "success");
   assert.equal(requests.length, 5);
+  assert.equal(forcedFullCompactions, 0);
   assert.match(messageText(requests[2]?.messages ?? []), /state-bound apply command/u);
   assert.match(messageText(requests[3]?.messages ?? []), /next bounded evidence page/u);
   assert.deepEqual(
@@ -667,10 +692,159 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
       ["baseline", 0],
       ["renewed", 0],
       ["handoff_grace", 1],
-      ["boundary_grace", 2],
+      ["handoff_grace", 2],
       ["renewed", 2],
     ],
   );
+  assert.deepEqual(
+    events.filter((event) => event.type === "progress_boundary_deferred").map((event) => event.scopes),
+    [["synthetic-validation"], ["synthetic-validation"]],
+  );
+});
+
+test("AgentLoop fails closed before the model when a deferred preview is not confirmed", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const defaultContext = new DefaultContextRuntime();
+  let forcedFullCompactions = 0;
+  const context: AgentContextRuntime = {
+    prepareForModel: (input) => defaultContext.prepareForModel(input),
+    commitPreparedContext: (input) => defaultContext.commitPreparedContext(input),
+    async tryAutoCompact(input) {
+      if (!input.forceFull) return { type: "skipped", snapshot: budgetSnapshot(10_000) };
+      forcedFullCompactions += 1;
+      return {
+        type: "compacted",
+        messages: input.messages,
+        tier: "full",
+        snapshot: budgetSnapshot(5_000),
+      };
+    },
+  };
+  const router = {
+    async decide(input: { request: CanonicalModelRequest }): Promise<RouterDecision> {
+      return {
+        provider: input.request.provider,
+        model: input.request.model,
+        scenarioType: "default" as const,
+        isSubagent: false,
+        orchestrating: false,
+        resolvedFrom: "scenario" as const,
+        mutations: {},
+      };
+    },
+    async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+      requests.push(request);
+      const toolCall = { id: `stale-preview-${requests.length}`, name: "noop", input: {} };
+      yield { type: "message_start", role: "assistant" };
+      yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+      yield { type: "tool_call_end", toolCall };
+      yield { type: "message_end", finishReason: "tool_call" };
+    },
+    async *stream(): AsyncIterable<CanonicalModelEvent> {
+      throw new Error("stream fallback should not be used");
+    },
+  };
+  let preModelCalls = 0;
+  let toolBatches = 0;
+  const dependencies = createDependencies(requests, {
+    context,
+    router,
+    lifecycle: {
+      async dispatch(input: { event: string }) {
+        if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+        preModelCalls += 1;
+        return {
+          ...emptyLifecycleResult(),
+          effects: [{
+            type: "model_request_patch" as const,
+            patch: {
+              metadata: {
+                pilotdeckConvergence: {
+                  schemaVersion: 1,
+                  scope: "synthetic-validation",
+                  phase: "coverage",
+                  stateHash: "unchanged",
+                  blockingCode: "missing_rows",
+                  remainingCount: 4,
+                  progressOrdinal: 8,
+                  handoffOrdinal: 0,
+                },
+              },
+            },
+          }],
+        };
+      },
+    } as never,
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: {
+        async executeAll(calls) {
+          toolBatches += 1;
+          return calls.map((call) => ({
+            type: "success" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text" as const, text: "synthetic state unchanged" }],
+            startedAt: "2026-07-27T00:00:00.000Z",
+            completedAt: "2026-07-27T00:00:00.000Z",
+            ...(toolBatches === 2 ? {
+              metadata: {
+                lifecycle: {
+                  convergencePreviews: [{
+                    schemaVersion: 1,
+                    scope: "synthetic-validation",
+                    phase: "coverage",
+                    stateHash: "claimed-handoff",
+                    blockingCode: "missing_rows",
+                    remainingCount: 4,
+                    progressOrdinal: 8,
+                    handoffOrdinal: 1,
+                  }],
+                },
+              },
+            } : {}),
+          }));
+        },
+      },
+    },
+  });
+  const loop = new AgentLoop(createConfig(process.cwd(), {
+    maxContextTokens: 10_000,
+    progressLease: {
+      enabled: true,
+      mode: "evaluation",
+      maxStagnantObservations: 2,
+      maxInitialStagnantObservations: 2,
+    },
+  }), dependencies);
+
+  const events: Array<{ type?: string }> = [];
+  const iterator = loop.run({
+    sessionId: "session-stale-preview",
+    turnId: "turn-stale-preview",
+    messages: [userMessage("complete the synthetic matrix")],
+  });
+  let completed: AgentLoopRunResult | undefined;
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      completed = next.value;
+      break;
+    }
+    events.push(next.value as { type?: string });
+  }
+
+  assert.equal(completed.result.type, "error");
+  assert.equal(completed.result.errors?.[0]?.code, "agent_convergence_stalled");
+  assert.equal(
+    completed.result.errors?.[0]?.details
+      && (completed.result.errors[0].details as { reason?: string }).reason,
+    "boundary_preview_unconfirmed",
+  );
+  assert.equal(requests.length, 2);
+  assert.equal(preModelCalls, 3);
+  assert.equal(forcedFullCompactions, 0);
+  assert.equal(events.filter((event) => event.type === "progress_boundary_deferred").length, 1);
 });
 
 test("artifact failure injects one bounded correction turn and succeeds after validation", async () => {

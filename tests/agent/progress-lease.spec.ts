@@ -60,6 +60,62 @@ test("two stagnant observations require a boundary and allow exactly one post-bo
   assert.equal(failed?.reason, "post_boundary_stagnation");
 });
 
+test("a post-tool progress or bounded handoff preview defers but does not consume a required boundary", () => {
+  const progressLease = configuredLease();
+  progressLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+  progressLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+
+  assert.deepEqual(progressLease.planBoundary([
+    report({ progressOrdinal: 9, handoffOrdinal: 0, remainingCount: 3 }),
+  ]), {
+    requested: false,
+    deferredScopes: ["domain-validation"],
+  });
+  assert.deepEqual(progressLease.planBoundary([
+    report({ progressOrdinal: 8, handoffOrdinal: 1 }),
+  ]), {
+    requested: false,
+    deferredScopes: ["domain-validation"],
+  });
+  assert.equal(
+    progressLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none)?.decision,
+    "handoff_grace",
+  );
+});
+
+test("replayed, repair-only, and over-budget previews cannot defer a required boundary", () => {
+  const replayLease = configuredLease();
+  replayLease.observe(report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 1 }), none);
+  replayLease.observe(report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 1 }), none);
+  assert.deepEqual(replayLease.planBoundary([
+    report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 1 }),
+  ]), { requested: true, deferredScopes: [] });
+  assert.deepEqual(replayLease.planBoundary([
+    report({ progressOrdinal: 8, repairOrdinal: 1, handoffOrdinal: 1 }),
+  ]), { requested: true, deferredScopes: [] });
+
+  const budgetLease = configuredLease();
+  budgetLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
+  budgetLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none);
+  budgetLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 2 }), none);
+  assert.deepEqual(budgetLease.planBoundary([
+    report({ progressOrdinal: 8, handoffOrdinal: 3 }),
+  ]), { requested: true, deferredScopes: [] });
+});
+
+test("previews cannot defer when more than one scope requires a boundary", () => {
+  const lease = configuredLease();
+  for (const scope of ["domain-a", "domain-b"]) {
+    lease.observe(report({ scope, progressOrdinal: 1 }), none);
+    lease.observe(report({ scope, progressOrdinal: 1 }), none);
+  }
+
+  assert.deepEqual(lease.planBoundary([
+    report({ scope: "domain-a", progressOrdinal: 2 }),
+    report({ scope: "domain-b", progressOrdinal: 2 }),
+  ]), { requested: true, deferredScopes: [] });
+});
+
 test("new repair feedback after a boundary gets one delivery turn without renewing progress", () => {
   const lease = configuredLease();
   lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0 }), none);

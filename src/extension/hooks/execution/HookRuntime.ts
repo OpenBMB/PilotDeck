@@ -105,7 +105,7 @@ export class HookRuntime {
         });
       }
 
-      effects.push(...effectsFromHookOutput(result.output, hookName));
+      effects.push(...effectsFromHookOutput(result.output, hookName, input.event));
     }
 
     return { effects, events, blockingErrors, nonBlockingErrors };
@@ -167,7 +167,11 @@ export class HookRuntime {
   }
 }
 
-function effectsFromHookOutput(output: PilotDeckHookOutput, hookName: string): PilotDeckHookEffect[] {
+function effectsFromHookOutput(
+  output: PilotDeckHookOutput,
+  hookName: string,
+  hookEvent: PilotDeckHookEvent,
+): PilotDeckHookEffect[] {
   if (output.type === "async") {
     return [];
   }
@@ -218,6 +222,9 @@ function effectsFromHookOutput(output: PilotDeckHookOutput, hookName: string): P
     }
     if (specific.modelRequestPatch) {
       effects.push({ type: "model_request_patch", patch: specific.modelRequestPatch });
+    }
+    if (specific.convergencePreview && hookEvent === "PostToolUse") {
+      effects.push({ type: "convergence_preview", report: specific.convergencePreview });
     }
     if (specific.artifactContracts?.length) {
       effects.push({ type: "artifact_contracts", sourcePluginId: hookName, contracts: specific.artifactContracts });

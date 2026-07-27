@@ -135,6 +135,21 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         priority: "important",
       });
       return;
+    case "progress_boundary_deferred":
+      recorder.emit({
+        ...base,
+        type: "harness.decision",
+        payload: {
+          component: "progress-boundary",
+          policyVersion: "progress-boundary/v1",
+          decision: "deferred",
+          reasonCode: "post_tool_convergence_preview",
+          observed: { scopes: event.scopes },
+          forceBoundaryNext: false,
+        },
+        priority: "important",
+      });
+      return;
     case "subagent_started":
       recorder.emit({
         ...base,

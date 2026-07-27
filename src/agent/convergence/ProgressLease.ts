@@ -33,6 +33,11 @@ export type ProgressBoundaryOutcome = {
   rejectionReason?: string;
 };
 
+export type ProgressBoundaryPlan = {
+  requested: boolean;
+  deferredScopes: string[];
+};
+
 export type ProgressLeaseObservation = {
   scope: string;
   phase: string;
@@ -73,12 +78,29 @@ export class ProgressLease {
 
   constructor(private readonly config?: ProgressLeaseConfig) {}
 
-  shouldForceBoundary(): boolean {
-    if (!this.config?.enabled) return false;
-    return [...this.scopes.values()].some((state) =>
+  shouldForceBoundary(previews: readonly ConvergenceReport[] = []): boolean {
+    return this.planBoundary(previews).requested;
+  }
+
+  planBoundary(previews: readonly ConvergenceReport[] = []): ProgressBoundaryPlan {
+    if (!this.config?.enabled) return { requested: false, deferredScopes: [] };
+    const required = [...this.scopes.entries()].filter(([, state]) =>
       !state.awaitingPostBoundaryProgress
       && state.stagnantObservations >= this.stagnationLimit(state) - 1
     );
+    if (required.length === 0) return { requested: false, deferredScopes: [] };
+    if (required.length !== 1) return { requested: true, deferredScopes: [] };
+
+    const previewByScope = new Map<string, ConvergenceReport>();
+    for (const preview of previews) previewByScope.set(preview.scope, preview);
+    const deferredScopes = required.flatMap(([scope, state]) => {
+      const preview = previewByScope.get(scope);
+      return preview && this.previewCanDeferBoundary(state, preview) ? [scope] : [];
+    });
+    if (deferredScopes.length !== required.length) {
+      return { requested: true, deferredScopes: [] };
+    }
+    return { requested: false, deferredScopes: deferredScopes.sort() };
   }
 
   observe(
@@ -269,6 +291,17 @@ export class ProgressLease {
 
   private handoffLimit(): number {
     return this.config!.maxInitialStagnantObservations ?? this.config!.maxStagnantObservations;
+  }
+
+  private previewCanDeferBoundary(state: ScopeState, preview: ConvergenceReport): boolean {
+    if (preview.remainingCount === 0 && preview.blockingCode === undefined) return true;
+    const progressed = preview.remainingCount < state.remainingCount
+      || (preview.progressOrdinal !== undefined
+        && (state.progressOrdinal === undefined || preview.progressOrdinal > state.progressOrdinal));
+    if (progressed) return true;
+    const handoffAdvanced = preview.handoffOrdinal !== undefined
+      && (state.handoffOrdinal === undefined || preview.handoffOrdinal > state.handoffOrdinal);
+    return handoffAdvanced && state.handoffsUsedSinceProgress < this.handoffLimit();
   }
 }
 
