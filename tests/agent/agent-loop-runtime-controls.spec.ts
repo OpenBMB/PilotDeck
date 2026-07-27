@@ -125,6 +125,100 @@ test("AgentLoop exposes explicit subagent identity to lifecycle hooks", async ()
   assert.equal(observed.get("Stop"), true);
 });
 
+test("AgentLoop emits a phase budget decision for a convergence report", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const lifecycle = {
+    async dispatch(input: { event: string }) {
+      if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+      return {
+        ...emptyLifecycleResult(),
+        effects: [{
+          type: "model_request_patch" as const,
+          patch: {
+            metadata: {
+              pilotdeckConvergence: {
+                schemaVersion: 1,
+                scope: "synthetic-budget",
+                phase: "matrices",
+                stateHash: "state-1",
+                blockingCode: "matrix_pending",
+                remainingCount: 3,
+              },
+            },
+          },
+        }],
+      };
+    },
+  } as never;
+  const startedAtMs = Date.parse("2026-07-22T00:00:00.000Z");
+  const loop = new AgentLoop(createConfig(process.cwd(), {
+    phaseBudget: {
+      enabled: true,
+      finalizationReserveMs: 200,
+      phaseBudgetsMs: { matrices: 5_000 },
+    },
+  }), createDependencies(requests, { lifecycle }));
+  const events: Array<{ type?: string; phase?: string; reason?: string; finishFirst?: boolean }> = [];
+  const iterator = loop.run({
+    sessionId: "session-budget",
+    turnId: "turn-budget",
+    messages: [userMessage("complete the bounded matrix work")],
+    turnDeadlineAtMs: startedAtMs + 100,
+  });
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) break;
+    if (next.value && typeof next.value === "object") events.push(next.value as typeof events[number]);
+  }
+
+  const decision = events.find((event) => event.type === "phase_budget_evaluated");
+  assert.equal(decision?.phase, "matrices");
+  assert.equal(decision?.reason, "finalization_reserve");
+  assert.equal(decision?.finishFirst, true);
+});
+
+test("AgentLoop does not emit phase budget events when the policy is not configured", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const lifecycle = {
+    async dispatch(input: { event: string }) {
+      if (input.event !== "PreModelRequest") return emptyLifecycleResult();
+      return {
+        ...emptyLifecycleResult(),
+        effects: [{
+          type: "model_request_patch" as const,
+          patch: {
+            metadata: {
+              pilotdeckConvergence: {
+                schemaVersion: 1,
+                scope: "synthetic-budget-default",
+                phase: "coverage",
+                stateHash: "state-1",
+                remainingCount: 1,
+              },
+            },
+          },
+        }],
+      };
+    },
+  } as never;
+  const loop = new AgentLoop(createConfig(process.cwd()), createDependencies(requests, { lifecycle }));
+  const events: unknown[] = [];
+  const iterator = loop.run({
+    sessionId: "session-budget-default",
+    turnId: "turn-budget-default",
+    messages: [userMessage("complete the bounded coverage work")],
+    turnDeadlineAtMs: Date.parse("2026-07-22T00:00:01.000Z"),
+  });
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) break;
+    events.push(next.value);
+  }
+  assert.equal(events.some((event) => (
+    event && typeof event === "object" && "type" in event && event.type === "phase_budget_evaluated"
+  )), false);
+});
+
 test("evaluation progress lease stops before a third unchanged model request when full compaction is rejected", async () => {
   const requests: CanonicalModelRequest[] = [];
   const defaultContext = new DefaultContextRuntime();

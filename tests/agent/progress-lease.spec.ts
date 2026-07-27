@@ -8,8 +8,30 @@ import {
   type ConvergenceReport,
   type ProgressBoundaryOutcome,
 } from "../../src/agent/convergence/ProgressLease.js";
+import { PhaseBudgetController } from "../../src/agent/convergence/PhaseBudget.js";
 
 const none: ProgressBoundaryOutcome = { requested: false, attempted: false, applied: false };
+
+test("phase budget preserves a finalization reserve without changing lease policy", () => {
+  const controller = new PhaseBudgetController({
+    enabled: true,
+    finalizationReserveMs: 300_000,
+    phaseBudgetsMs: { matrices: 900_000 },
+  }, 2_100_000, 0);
+  assert.deepEqual(controller.evaluate("matrices", 800_000), {
+    phase: "matrices",
+    allowed: true,
+    finishFirst: false,
+    remainingMs: 1_300_000,
+    reserveMs: 300_000,
+    phaseBudgetMs: 900_000,
+    reason: "within_budget",
+  });
+  assert.equal(controller.evaluate("matrices", 1_850_000)?.reason, "finalization_reserve");
+  assert.equal(controller.evaluate("matrices", 950_000)?.reason, "phase_budget_exhausted");
+  assert.equal(controller.evaluate("coverage", 1_850_000)?.allowed, false);
+  assert.equal(controller.evaluate("complete", 2_100_000)?.allowed, false);
+});
 
 test("progress lease stays inert unless explicitly enabled", () => {
   const lease = new ProgressLease();

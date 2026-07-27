@@ -107,3 +107,33 @@ test("mapAgentEvent exposes the bounded preview evaluation reason", () => {
     reason: "preview_not_renewable",
   });
 });
+
+test("mapAgentEvent exposes phase budget decisions as bounded status", () => {
+  const [status] = mapAgentEvent({
+    type: "phase_budget_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    phase: "matrices",
+    allowed: false,
+    finishFirst: true,
+    remainingMs: 250,
+    reserveMs: 300,
+    phaseBudgetMs: 900,
+    reason: "finalization_reserve",
+  }, "run-1");
+
+  assert.deepEqual(status, {
+    type: "agent_status",
+    runId: "run-1",
+    event: "phase_budget_evaluated",
+    detail: {
+      phase: "matrices",
+      allowed: false,
+      finishFirst: true,
+      remainingMs: 250,
+      reserveMs: 300,
+      phaseBudgetMs: 900,
+      reason: "finalization_reserve",
+    },
+  });
+});

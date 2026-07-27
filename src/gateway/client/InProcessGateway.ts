@@ -1675,6 +1675,20 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
           reason: event.reason,
         },
       }];
+    case "phase_budget_evaluated":
+      return [{
+        type: "agent_status",
+        event: "phase_budget_evaluated",
+        detail: {
+          phase: event.phase,
+          allowed: event.allowed,
+          finishFirst: event.finishFirst,
+          remainingMs: event.remainingMs,
+          reserveMs: event.reserveMs,
+          phaseBudgetMs: event.phaseBudgetMs,
+          reason: event.reason,
+        },
+      }];
     case "warning":
       return [{
         type: "agent_status",

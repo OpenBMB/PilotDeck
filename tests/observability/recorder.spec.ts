@@ -206,6 +206,40 @@ test("rejected post-tool previews record only a bounded reason", () => {
   assert.equal(JSON.stringify(drafts).includes("stateHash"), false);
 });
 
+test("phase budget decisions are recorded as bounded harness decisions", () => {
+  const drafts: ObservationEventDraft[] = [];
+  const recorder = {
+    emit: (draft: ObservationEventDraft) => {
+      drafts.push(draft);
+      return undefined;
+    },
+  } as unknown as ObservationRecorder;
+  observeAgentEvent(recorder, {
+    type: "phase_budget_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    phase: "matrices",
+    allowed: false,
+    finishFirst: true,
+    remainingMs: 250_000,
+    reserveMs: 300_000,
+    phaseBudgetMs: 900_000,
+    reason: "finalization_reserve",
+  });
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0]?.payload?.component, "phase-budget");
+  assert.equal(drafts[0]?.payload?.policyVersion, "phase-budget/v1");
+  assert.equal(drafts[0]?.payload?.decision, "finish_first");
+  assert.equal(drafts[0]?.payload?.reasonCode, "finalization_reserve");
+  assert.deepEqual(drafts[0]?.payload?.observed, {
+    phase: "matrices",
+    remainingMs: 250_000,
+    reserveMs: 300_000,
+    phaseBudgetMs: 900_000,
+  });
+  assert.equal(JSON.stringify(drafts).includes("prompt"), false);
+});
+
 test("recorder finalizes a complete hash-only trajectory", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-observation-recorder-"));
   try {

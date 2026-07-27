@@ -2,6 +2,7 @@ import type { CanonicalThinkingConfig, CanonicalToolChoice, MultimodalConstraint
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
 import type { ProgressLeaseConfig } from "../convergence/ProgressLease.js";
+import type { PhaseBudgetConfig } from "../convergence/PhaseBudget.js";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -55,4 +56,6 @@ export type AgentRuntimeConfig = {
   maxContextTokens?: number;
   /** Explicitly enabled generic convergence guard. Disabled when omitted. */
   progressLease?: ProgressLeaseConfig;
+  /** Optional phase budget policy; it never changes validator semantics. */
+  phaseBudget?: PhaseBudgetConfig;
 };

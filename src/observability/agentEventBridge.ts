@@ -165,6 +165,26 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         priority: "important",
       });
       return;
+    case "phase_budget_evaluated":
+      recorder.emit({
+        ...base,
+        type: "harness.decision",
+        payload: {
+          component: "phase-budget",
+          policyVersion: "phase-budget/v1",
+          decision: event.allowed ? "allow" : "finish_first",
+          reasonCode: event.reason,
+          observed: {
+            phase: event.phase,
+            remainingMs: event.remainingMs,
+            reserveMs: event.reserveMs,
+            ...(event.phaseBudgetMs !== undefined ? { phaseBudgetMs: event.phaseBudgetMs } : {}),
+          },
+          forceBoundaryNext: event.finishFirst,
+        },
+        priority: "important",
+      });
+      return;
     case "subagent_started":
       recorder.emit({
         ...base,

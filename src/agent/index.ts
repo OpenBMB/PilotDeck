@@ -8,6 +8,12 @@ export {
   type ProgressLeaseConfig,
   type ProgressLeaseObservation,
 } from "./convergence/ProgressLease.js";
+export {
+  PhaseBudgetController,
+  type PhaseBudgetConfig,
+  type PhaseBudgetDecision,
+  type PhaseBudgetPhase,
+} from "./convergence/PhaseBudget.js";
 export { collectToolCalls } from "./loop/collectToolCalls.js";
 export { decideLoopContinuation, type LoopContinuationDecision } from "./loop/decideLoopContinuation.js";
 export { createMissingToolResult, ensureToolResultPairing } from "./loop/ensureToolResultPairing.js";

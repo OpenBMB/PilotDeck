@@ -81,6 +81,18 @@ export type AgentEvent =
       forceBoundaryNext: boolean;
       reason?: "boundary_unavailable" | "boundary_rejected" | "post_boundary_stagnation";
     }
+  | {
+      type: "phase_budget_evaluated";
+      sessionId: string;
+      turnId: string;
+      phase: string;
+      allowed: boolean;
+      finishFirst: boolean;
+      remainingMs: number;
+      reserveMs: number;
+      phaseBudgetMs?: number;
+      reason: "within_budget" | "finalization_reserve" | "deadline_expired" | "phase_budget_exhausted";
+    }
   | { type: "warning"; sessionId: string; turnId: string; code: string; message: string; metadata?: Record<string, unknown> }
   | { type: "agent_status"; sessionId: string; turnId: string; event: string; detail?: Record<string, unknown> }
   | {

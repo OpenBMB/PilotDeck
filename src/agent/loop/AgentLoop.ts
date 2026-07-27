@@ -79,6 +79,7 @@ import {
   type ConvergenceReport,
   type ProgressBoundaryOutcome,
 } from "../convergence/ProgressLease.js";
+import { PhaseBudgetController } from "../convergence/PhaseBudget.js";
 import { observationHash } from "../../observability/index.js";
 import type { PromptInjectionObservation } from "../../observability/index.js";
 
@@ -189,7 +190,8 @@ export class AgentLoop {
     for (const filePath of input.allowedReadFiles ?? []) {
       this.allowedReadFiles.add(filePath);
     }
-    const startedAt = this.now().toISOString();
+    const startedAtMs = this.now().getTime();
+    const startedAt = new Date(startedAtMs).toISOString();
     let messages = [...input.messages];
     let turnCount = 1;
     let artifactCorrectionAttempts = 0;
@@ -278,6 +280,11 @@ export class AgentLoop {
     let transientPromptCounter = 0;
     const activeTransientPromptIds = new Set<string>();
     const progressLease = new ProgressLease(this.config.progressLease);
+    const phaseBudget = new PhaseBudgetController(
+      this.config.phaseBudget,
+      input.turnDeadlineAtMs,
+      startedAtMs,
+    );
     let pendingConvergencePreviews: ConvergenceReport[] = [];
 
     const pushTransientSyntheticPrompt = (prompt: string, purpose: string): void => {
@@ -511,6 +518,15 @@ export class AgentLoop {
       const convergenceReport = parseConvergenceReport(request.metadata?.[CONVERGENCE_METADATA_KEY]);
       let progressDecision: ReturnType<ProgressLease["observe"]> = undefined;
       if (convergenceReport) {
+        const phaseBudgetDecision = phaseBudget.evaluate(convergenceReport.phase, this.now().getTime());
+        if (phaseBudgetDecision) {
+          yield {
+            type: "phase_budget_evaluated",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            ...phaseBudgetDecision,
+          };
+        }
         const progress = progressLease.observe(convergenceReport, progressBoundary);
         progressDecision = progress;
         if (progress) {
