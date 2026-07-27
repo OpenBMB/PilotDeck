@@ -1171,6 +1171,165 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       afterRepairProgress.progressOrdinal,
     );
 
+    const legal = await import(pathToFileURL(join(PLUGIN_ROOT, "scripts", "lib", "legal-coverage.mjs")).href) as any;
+    const nextMerge = await legal.pendingSourceReviewPlan(workspace);
+    assert.equal(nextMerge.group, "source-fragment-merge");
+    assert.ok(nextMerge.appliedRepair);
+    const nextPrepared = await runCli(
+      workspace,
+      "source-merge-prepare",
+      "--checkpoint", nextMerge.readiness.path,
+      "--expected-state-hash", nextMerge.proposal.expectedStateHash,
+      "--fragment", nextMerge.proposal.fragmentPath,
+      "--receipt-sha256", nextMerge.proposal.receiptSha256,
+      ...nextMerge.proposal.sourceIds.flatMap((sourceId: string) => ["--source-id", sourceId]),
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(nextPrepared.exitCode, 0, nextPrepared.stderr);
+    const nextPropose = await legal.pendingSourceReviewPlan(workspace);
+    assert.equal(nextPropose.group, "source-fragment-propose");
+    const nextProposalBody = {
+      ...nextPropose.proposal.template,
+      facts: nextPropose.proposal.sourceIds.map((sourceId: string) => {
+        const source = nextPropose.preparedSlice.sources.find((item: any) => item.sourceId === sourceId);
+        return {
+          subject: sourceId,
+          predicate: "contains reviewed evidence",
+          value: `Reviewed ${sourceId}.`,
+          missingTimeReason: "The synthetic source contains no usable date.",
+          sourceRefs: [{ sourceId, locator: source.facts[0].locator }],
+          evidenceClass: "other",
+          verificationStatus: "verified",
+          conflictStatus: "none",
+          material: false,
+          critical: false,
+        };
+      }),
+      noMaterialFacts: [],
+    };
+    await writeJson(join(workspace, nextPropose.proposal.path), nextProposalBody);
+    const nextApplyReady = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const nextApplyEnvelope = JSON.parse((nextApplyReady.hookSpecificOutput.additionalContext ?? "")
+      .replace(/^<legal_coverage_state>\n/u, "")
+      .replace(/\n<\/legal_coverage_state>$/u, "")) as {
+      sourceMergeApplyCommand: string;
+      workItems: { proposal: { path: string; proposalSha256: string } };
+    };
+    assert.match(nextApplyEnvelope.sourceMergeApplyCommand, /source-merge-apply/u);
+    const applyReadyProgress = (
+      nextApplyReady.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
+    ).progressOrdinal;
+    assert.equal(applyReadyProgress, afterRepairProgress.progressOrdinal);
+    const nextApplied = await runCli(
+      workspace,
+      "source-merge-apply",
+      "--input-file", nextApplyEnvelope.workItems.proposal.path,
+      "--proposal-sha256", nextApplyEnvelope.workItems.proposal.proposalSha256,
+      "--limit", "4",
+      "--max-bytes", "24576",
+    );
+    assert.equal(nextApplied.exitCode, 0, nextApplied.stderr);
+    const nextAppliedResult = JSON.parse(nextApplied.stdout) as { applied: boolean; sourceCount: number };
+    assert.equal(nextAppliedResult.applied, true);
+    assert.equal(nextAppliedResult.sourceCount, 4);
+    const proposalDigest = nextApplyEnvelope.workItems.proposal.path.match(/source-merge-([a-f0-9]{12})\.json$/u)?.[1];
+    assert.ok(proposalDigest);
+    const mergeAppliedReceiptPath = join(
+      workspace,
+      STATE_ROOT,
+      "fragments",
+      `source-merge-applied-${proposalDigest}.json`,
+    );
+    const mergeAppliedReceiptBytes = await readFile(mergeAppliedReceiptPath);
+    const tamperedMergeReceipt = JSON.parse(mergeAppliedReceiptBytes.toString("utf8")) as { proposalSha256: string };
+    tamperedMergeReceipt.proposalSha256 = "0".repeat(64);
+    await writeJson(mergeAppliedReceiptPath, tamperedMergeReceipt);
+    const ignoredMergeReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (ignoredMergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }).progressOrdinal,
+      applyReadyProgress,
+    );
+    await writeFile(mergeAppliedReceiptPath, mergeAppliedReceiptBytes);
+    const mergedSourcesPath = join(workspace, STATE_ROOT, "sources.json");
+    const mergedSourcesBytes = await readFile(mergedSourcesPath);
+    const invalidStatusSources = JSON.parse(mergedSourcesBytes.toString("utf8")) as {
+      sources: Array<{ id: string; status: string }>;
+    };
+    const invalidStatusSource = invalidStatusSources.sources
+      .find((source) => nextPropose.proposal.sourceIds.includes(source.id));
+    assert.ok(invalidStatusSource);
+    invalidStatusSource.status = "unknown";
+    await writeJson(mergedSourcesPath, invalidStatusSources);
+    const invalidStatusState = await legal.validateWorkspace({ workspaceRoot: workspace, writeProof: false });
+    const invalidStatusBaseline = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "invalid-status-source-receipt",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const invalidStatusBaselineProgress = (
+      invalidStatusBaseline.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }
+    ).progressOrdinal;
+    assert.doesNotMatch(invalidStatusBaseline.hookSpecificOutput.additionalContext ?? "", /"appliedSource":/u);
+    const forgedCurrentReceipt = JSON.parse(mergeAppliedReceiptBytes.toString("utf8")) as { stateHash: string };
+    forgedCurrentReceipt.stateHash = invalidStatusState.stateHash;
+    await writeJson(mergeAppliedReceiptPath, forgedCurrentReceipt);
+    const ignoredInvalidStatusReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "invalid-status-source-receipt",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (ignoredInvalidStatusReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }).progressOrdinal,
+      invalidStatusBaselineProgress,
+    );
+    assert.doesNotMatch(ignoredInvalidStatusReceipt.hookSpecificOutput.additionalContext ?? "", /"appliedSource":/u);
+    await writeFile(mergedSourcesPath, mergedSourcesBytes);
+    await writeFile(mergeAppliedReceiptPath, mergeAppliedReceiptBytes);
+    const observedMergeReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const observedMergeProgress = (
+      observedMergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }
+    ).progressOrdinal;
+    assert.equal(observedMergeProgress, applyReadyProgress + 1);
+    assert.match(observedMergeReceipt.hookSpecificOutput.additionalContext ?? "", /"appliedSource":/u);
+    const replayedMergeReceipt = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.equal(
+      (replayedMergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+      }).progressOrdinal,
+      observedMergeProgress,
+    );
+
     const sourcesBeforeReplay = await readFile(join(workspace, STATE_ROOT, "sources.json"));
     const factsBeforeReplay = await readFile(join(workspace, STATE_ROOT, "facts.json"));
     const replay = await runCli(
