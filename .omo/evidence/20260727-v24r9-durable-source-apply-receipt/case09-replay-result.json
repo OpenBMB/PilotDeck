@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "fixture": "preserved-v24r8-case09-failure",
+  "proposal": "source-merge-5dadf825216f.json",
+  "receipt": "source-merge-applied-5dadf825216f.json",
+  "sourceCount": 4,
+  "factCountApplied": 23,
+  "totalSources": 24,
+  "reviewedSources": 8,
+  "pendingSources": 16,
+  "totalFacts": 45,
+  "stateHashBefore": "74abe7a06581a13c456ed97f7124a6157733ba4e0f76ad41737e62a7bf3a49ca",
+  "stateHashAfter": "4d3a3cc1504b6372b90b8e8472b9f0189b431c9b6e05030d7cef896448d0a059",
+  "progressOrdinal": [
+    1,
+    2,
+    2
+  ],
+  "nextGroup": "source-fragment-merge"
+}
