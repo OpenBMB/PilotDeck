@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "description": "Sanitized Case 09 shape after one matrix applies and a risk signal has no issue link.",
+  "target": {
+    "matrixId": "equity-capital-timeline",
+    "entryId": "M-SYNTHETIC-001",
+    "summary": "Synthetic ownership and governance facts require cross-fact analysis.",
+    "factIds": ["F-SYNTHETIC-001", "F-SYNTHETIC-002", "F-SYNTHETIC-003"],
+    "riskSignals": ["rights_governance_conflict"],
+    "issueIds": [],
+    "authorityIds": []
+  },
+  "expected": {
+    "phase": "issues",
+    "blockingCode": "risk_signal_orphaned",
+    "workGroup": "issue-closure-propose",
+    "applyCommand": "issue-closure-apply"
+  }
+}
