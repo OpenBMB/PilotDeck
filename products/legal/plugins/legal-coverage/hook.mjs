@@ -327,7 +327,19 @@ function advanceProgressState(sessionState, digest, current, checkpointDigest, r
 
 function legalProgressCheckpointDigest(workItems) {
   let checkpoint;
-  if (workItems?.appliedRepair
+  if (workItems?.appliedSource
+    && validStateHash(workItems.appliedSource.stateHash)
+    && validStateHash(workItems.appliedSource.proposalSha256)
+    && Array.isArray(workItems.appliedSource.sourceIds)) {
+    const sourceIds = workItems.appliedSource.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0 || sourceIds.length !== workItems.appliedSource.sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-applied",
+      stateHash: workItems.appliedSource.stateHash,
+      sourceIds,
+      proposalSha256: workItems.appliedSource.proposalSha256,
+    };
+  } else if (workItems?.appliedRepair
     && validStateHash(workItems.appliedRepair.stateHash)
     && validStateHash(workItems.appliedRepair.repairSha256)
     && Array.isArray(workItems.appliedRepair.sourceIds)) {
@@ -338,17 +350,6 @@ function legalProgressCheckpointDigest(workItems) {
       stateHash: workItems.appliedRepair.stateHash,
       sourceIds,
       repairSha256: workItems.appliedRepair.repairSha256,
-    };
-  } else if (workItems?.group === "source-fragment-apply"
-    && workItems.proposal?.validated === true
-    && validStateHash(workItems.proposal.expectedStateHash)
-    && Array.isArray(workItems.proposal.sourceIds)) {
-    const sourceIds = workItems.proposal.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
-    if (sourceIds.length === 0 || sourceIds.length !== workItems.proposal.sourceIds.length) return undefined;
-    checkpoint = {
-      kind: "source-fragment-apply",
-      expectedStateHash: workItems.proposal.expectedStateHash,
-      sourceIds,
     };
   } else if (workItems?.group === "matrix-pending-selection-apply"
     && workItems.selection?.validated === true
