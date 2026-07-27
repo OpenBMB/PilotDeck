@@ -524,6 +524,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
         stateHash?: string;
         progressOrdinal: number;
         repairOrdinal: number;
+        handoffOrdinal: number;
       }
     );
     const proposeConvergenceHash = proposeConvergence.stateHash;
@@ -728,6 +729,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
         progressOrdinal: number;
         repairOrdinal: number;
         repairPreparationOrdinal: number;
+        handoffOrdinal: number;
       }
     );
     const repairConvergenceHash = repairConvergence.stateHash;
@@ -735,6 +737,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(repairConvergence.repairOrdinal, proposeConvergence.repairOrdinal + 1);
     assert.equal(repairConvergence.repairPreparationOrdinal, 0);
     assert.equal(repairConvergence.progressOrdinal, proposeConvergence.progressOrdinal);
+    assert.equal(repairConvergence.handoffOrdinal, proposeConvergence.handoffOrdinal);
 
     const invalidProposalHash = sha256(invalidProposalBytes);
     const rejectedDirectApply = await runCli(
@@ -1242,10 +1245,33 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       workItems: { proposal: { path: string; proposalSha256: string } };
     };
     assert.match(nextApplyEnvelope.sourceMergeApplyCommand, /source-merge-apply/u);
-    const applyReadyProgress = (
-      nextApplyReady.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as { progressOrdinal: number }
-    ).progressOrdinal;
+    const beforeApplyReadyConvergence = replayedAppliedReceipt.hookSpecificOutput.modelRequestPatch?.metadata
+      ?.pilotdeckConvergence as { progressOrdinal: number; handoffOrdinal: number };
+    const applyReadyConvergence = (
+      nextApplyReady.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+        progressOrdinal: number;
+        handoffOrdinal: number;
+      }
+    );
+    const applyReadyProgress = applyReadyConvergence.progressOrdinal;
     assert.equal(applyReadyProgress, afterRepairProgress.progressOrdinal);
+    assert.equal(applyReadyConvergence.handoffOrdinal, beforeApplyReadyConvergence.handoffOrdinal + 1);
+    const replayedApplyReady = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "large-pending-source-plan",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const replayedApplyReadyConvergence = replayedApplyReady.hookSpecificOutput.modelRequestPatch?.metadata
+      ?.pilotdeckConvergence as { progressOrdinal: number; handoffOrdinal: number };
+    assert.equal(replayedApplyReadyConvergence.progressOrdinal, applyReadyConvergence.progressOrdinal);
+    assert.equal(replayedApplyReadyConvergence.handoffOrdinal, applyReadyConvergence.handoffOrdinal);
+    assert.equal(
+      JSON.parse((replayedApplyReady.hookSpecificOutput.additionalContext ?? "")
+        .replace(/^<legal_coverage_state>\n/u, "")
+        .replace(/\n<\/legal_coverage_state>$/u, "")).sourceMergeApplyCommand,
+      nextApplyEnvelope.sourceMergeApplyCommand,
+    );
     const nextApplied = await runCli(
       workspace,
       "source-merge-apply",
@@ -1333,9 +1359,11 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const observedMergeProgress = (
       observedMergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         progressOrdinal: number;
+        handoffOrdinal: number;
       }
-    ).progressOrdinal;
-    assert.equal(observedMergeProgress, applyReadyProgress + 1);
+    );
+    assert.equal(observedMergeProgress.progressOrdinal, applyReadyProgress + 1);
+    assert.equal(observedMergeProgress.handoffOrdinal, applyReadyConvergence.handoffOrdinal);
     assert.match(observedMergeReceipt.hookSpecificOutput.additionalContext ?? "", /"appliedSource":/u);
     const replayedMergeReceipt = await runHook({
       hookEventName: "PreModelRequest",
@@ -1343,10 +1371,11 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       transcriptPath: "",
       cwd: workspace,
     });
-    assert.equal(
+    assert.deepEqual(
       (replayedMergeReceipt.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
         progressOrdinal: number;
-      }).progressOrdinal,
+        handoffOrdinal: number;
+      }),
       observedMergeProgress,
     );
 

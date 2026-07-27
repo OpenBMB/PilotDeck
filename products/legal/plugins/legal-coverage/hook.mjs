@@ -419,6 +419,21 @@ function legalHandoffCheckpointDigest(workItems) {
       targetEntryId: workItems.proposal.targetEntryId,
       proposalSha256: workItems.proposal.proposalSha256,
     };
+  } else if (workItems?.group === "source-fragment-apply"
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && validStateHash(workItems.proposal.proposalSha256)
+    && Array.isArray(workItems.proposal.sourceIds)) {
+    const sourceIds = workItems.proposal.sourceIds.filter(nonEmptyString).slice(0, 12).sort();
+    if (sourceIds.length === 0
+      || sourceIds.length !== workItems.proposal.sourceIds.length
+      || new Set(sourceIds).size !== sourceIds.length) return undefined;
+    checkpoint = {
+      kind: "source-fragment-apply-ready",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      proposalSha256: workItems.proposal.proposalSha256,
+      sourceIds,
+    };
   }
   return checkpointDigest(checkpoint);
 }

@@ -202,6 +202,89 @@ test("real gateway executes the state-bound legal authority closure with complet
   }
 });
 
+test("real gateway hands off a validated ordinary source proposal before renewing from its durable receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-legal-source-apply-gateway-"));
+  const projectRoot = join(root, "project");
+  const pilotHome = join(root, "home");
+  const installedPlugin = join(projectRoot, ".pilotdeck", "plugins", "legal-coverage");
+  const requests: CanonicalModelRequest[] = [];
+  await mkdir(projectRoot, { recursive: true });
+  await mkdir(pilotHome, { recursive: true });
+  await cp(PLUGIN_ROOT, installedPlugin, { recursive: true });
+  await writeFile(join(pilotHome, "pilotdeck.yaml"), SOURCE_APPLY_TEST_CONFIG);
+  await writeSourceApplyState(projectRoot);
+
+  const runtime = createLocalGateway({
+    projectRoot,
+    fallbackProjectRoot: projectRoot,
+    pilotHome,
+    env: { ...process.env, PILOT_HOME: pilotHome, PILOTDECK_BUILD_SHA: "source-apply-test" },
+    __testModelFactory: () => sourceApplyModelRuntime(requests, projectRoot),
+  });
+  try {
+    const events = [];
+    for await (const event of runtime.gateway.submitTurn({
+      sessionKey: "legal-source-apply-session",
+      channelKey: "test",
+      projectKey: projectRoot,
+      message: "Continue the configured legal source review.",
+      canPrompt: false,
+      timeoutMs: 60_000,
+    })) {
+      events.push(event);
+    }
+
+    const agentRequests = requests.filter((request) => !isCompactionRequest(request));
+    assert.equal(agentRequests.length, 4, JSON.stringify(events));
+    assert.match(messageText(agentRequests[0]?.messages ?? []), /"group": "source-fragment-propose"/u);
+    assert.doesNotMatch(messageText(agentRequests[0]?.messages ?? []), /sourceMergeApplyCommand/u);
+    assert.match(messageText(agentRequests[1]?.messages ?? []), /"group": "source-fragment-apply"/u);
+    assert.match(messageText(agentRequests[1]?.messages ?? []), /source-merge-apply/u);
+    assert.match(messageText(agentRequests[2]?.messages ?? []), /"appliedSource":/u);
+    assert.match(messageText(agentRequests[3]?.messages ?? []), /"milestone": "COMPLETE"/u);
+
+    const convergence = agentRequests.map((request) => request.metadata?.pilotdeckConvergence as {
+      progressOrdinal?: number;
+      handoffOrdinal?: number;
+    } | undefined);
+    assert.deepEqual(convergence.map((item) => item?.progressOrdinal), [0, 0, 1, 2]);
+    assert.deepEqual(convergence.map((item) => item?.handoffOrdinal), [0, 1, 1, 1]);
+    const decisions = events.flatMap((event) =>
+      event.type === "agent_status" && event.event === "progress_lease_evaluated"
+        ? [[event.detail?.decision, event.detail?.progressOrdinal, event.detail?.handoffOrdinal]]
+        : []
+    );
+    assert.deepEqual(decisions, [
+      ["baseline", 0, 0],
+      ["handoff_grace", 0, 1],
+      ["renewed", 1, 1],
+      ["completed", 2, 1],
+    ]);
+    assert.equal(events.some((event) => event.type === "turn_completed" && event.finishReason === "completed"), true);
+    assert.equal(events.some((event) => event.type === "agent_status"
+      && event.event === "progress_lease_evaluated"
+      && event.detail?.decision === "fail_closed"), false);
+
+    const storage = createAgentProjectSessionStorage({
+      projectRoot,
+      pilotHome,
+      sessionId: "legal-source-apply-session",
+    });
+    const observations = await readObservationEvents(join(storage.observabilityDir, "observations.jsonl"));
+    const integrity = JSON.parse(await readFile(join(storage.observabilityDir, "integrity.json"), "utf8"));
+    assert.equal(integrity.status, "complete");
+    assert.equal(integrity.checks.modelRequestsPaired, true);
+    assert.equal(integrity.checks.toolCallsPaired, true);
+    assert.equal(integrity.checks.turnsPaired, true);
+    assert.equal(integrity.recorder.droppedEvents, 0);
+    assert.equal(observations.filter((event) => event.type === "tool.call.started").length, 2);
+    assert.equal(observations.filter((event) => event.type === "tool.call.completed").length, 2);
+  } finally {
+    await runtime.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("real gateway applies an immutable source repair before renewing legal progress", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-legal-source-repair-gateway-"));
   const projectRoot = join(root, "project");
@@ -287,6 +370,163 @@ test("real gateway applies an immutable source repair before renewing legal prog
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function sourceApplyModelRuntime(
+  requests: CanonicalModelRequest[],
+  projectRoot: string,
+): ModelRuntime {
+  return {
+    async *stream(request) {
+      if (isCompactionRequest(request)) {
+        yield { type: "message_start", role: "assistant" };
+        yield { type: "text_delta", text: "Continue the validated ordinary source apply." };
+        yield { type: "message_end", finishReason: "stop" };
+        return;
+      }
+      requests.push(request);
+      const envelope = legalEnvelopeFromMessages(request.messages);
+      yield { type: "message_start", role: "assistant" };
+      if (envelope?.workItems?.group === "source-fragment-propose") {
+        const proposal = {
+          ...envelope.workItems.proposal.template,
+          facts: envelope.workItems.preparedSlice.sources.map((source: any) => ({
+            subject: source.sourceId,
+            predicate: "contains reviewed evidence",
+            value: source.facts[0].statement,
+            missingTimeReason: "The reviewed synthetic source contains no usable date.",
+            sourceRefs: [{ sourceId: source.sourceId, locator: source.facts[0].locator }],
+            evidenceClass: source.evidenceClass,
+            verificationStatus: "verified",
+            conflictStatus: "none",
+            material: false,
+            critical: false,
+          })),
+          noMaterialFacts: [],
+        };
+        const toolCall = {
+          id: "source-proposal-write",
+          name: "write_file",
+          input: {
+            file_path: envelope.workItems.proposal.path,
+            content: `${JSON.stringify(proposal, null, 2)}\n`,
+          },
+        };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      if (envelope?.workItems?.group === "source-fragment-apply") {
+        const toolCall = {
+          id: "source-proposal-apply",
+          name: "bash",
+          input: { command: envelope.sourceMergeApplyCommand },
+        };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      await writeCompletedSourceRepairState(projectRoot);
+      yield { type: "text_delta", text: "The validated source apply is durable and the synthetic review is complete." };
+      yield { type: "usage", usage: { inputTokens: 40, outputTokens: 10, totalTokens: 50 } };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    async complete() {
+      return { role: "assistant", content: [{ type: "text", text: '{"title":"Ordinary source apply QA"}' }], finishReason: "stop" };
+    },
+    getCapabilities: () => ({ ...DEFAULT_MODEL_CAPABILITIES, maxContextTokens: 1_048_576 }),
+    getMultimodal: () => DEFAULT_MULTIMODAL_CONSTRAINTS,
+    getProviderProtocol: () => "openai",
+    getProviderBaseUrl: () => "https://example.invalid",
+  };
+}
+
+async function writeSourceApplyState(workspace: string): Promise<void> {
+  const stateRoot = join(workspace, STATE_ROOT);
+  const sourceRoot = join(workspace, "source-room");
+  await mkdir(sourceRoot, { recursive: true });
+  await mkdir(join(workspace, "deliverables"), { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  await writeFile(join(workspace, "deliverables", "opinion.md"), "# Draft legal review\n");
+  const sources = [];
+  for (let index = 1; index <= 5; index += 1) {
+    const id = `S-${String(index).padStart(3, "0")}`;
+    const path = `source-room/source-${index}.txt`;
+    const content = `Reviewed synthetic source ${index}.\n`;
+    await writeFile(join(workspace, path), content);
+    sources.push({ id, path, content });
+  }
+  await writeJson(join(stateRoot, "config.json"), {
+    schemaVersion: 1,
+    enabled: true,
+    jurisdiction: "Synthetic jurisdiction",
+    basisDate: "Synthetic review date",
+    allowNoMaterialFacts: false,
+    inputRoots: ["source-room"],
+    deliverables: [{ id: "opinion", path: "deliverables/opinion.md", required: true }],
+  });
+  await writeJson(join(stateRoot, "sources.json"), {
+    schemaVersion: 1,
+    sources: sources.map((source) => ({
+      id: source.id,
+      path: source.path,
+      sha256: sha256(source.content),
+      status: "pending",
+    })),
+  });
+  await writeJson(join(stateRoot, "facts.json"), { schemaVersion: 1, facts: [] });
+  await writeJson(join(stateRoot, "matrices.json"), {
+    schemaVersion: 1,
+    matrices: REQUIRED_MATRIX_IDS.map((id) => ({ id, status: "pending", entries: [] })),
+  });
+  await writeJson(join(stateRoot, "issues.json"), { schemaVersion: 1, issues: [] });
+  await writeJson(join(stateRoot, "authorities.json"), { schemaVersion: 1, authorities: [] });
+  await writeJson(join(stateRoot, "coverage.json"), {
+    schemaVersion: 1,
+    deliverables: [],
+    sources: [],
+    facts: [],
+    issues: [],
+    authorities: [],
+  });
+
+  const legal = await import(pathToFileURL(join(PLUGIN_ROOT, "scripts", "lib", "legal-coverage.mjs")).href) as any;
+  const delegated = await legal.pendingSourceReviewPlan(workspace);
+  assert.equal(delegated.group, "pending-source-review");
+  assert.equal(delegated.batches.length, 1);
+  const batch = delegated.batches[0];
+  await mkdir(join(workspace, STATE_ROOT, "fragments"), { recursive: true });
+  await writeJson(join(workspace, batch.fragmentPath), {
+    schemaVersion: 1,
+    fragmentType: "legal-evidence-source-batch-review",
+    fragmentId: batch.id,
+    assignedSourceIds: batch.sourceIds,
+    sources: sources.map((source) => ({
+      sourceId: source.id,
+      sourcePath: source.path,
+      inspectionMethod: "plain-text inspection",
+      facts: [{ locator: "line 1", statement: source.content.trim() }],
+      evidenceClass: "other",
+      verificationState: "verified",
+      conflicts: [],
+      unresolvedItems: [],
+      proposedMateriality: "non-material",
+    })),
+  });
+  const merge = await legal.pendingSourceReviewPlan(workspace);
+  assert.equal(merge.group, "source-fragment-merge");
+  await legal.prepareSourceMergeProposal(workspace, {
+    readinessPath: merge.readiness.path,
+    expectedStateHash: merge.proposal.expectedStateHash,
+    fragmentPath: merge.proposal.fragmentPath,
+    receiptSha256: merge.proposal.receiptSha256,
+    sourceIds: merge.proposal.sourceIds,
+    maxRecords: 4,
+    maxSerializedBytes: 24576,
+  });
+  assert.equal((await legal.pendingSourceReviewPlan(workspace)).group, "source-fragment-propose");
+}
 
 function sourceRepairModelRuntime(
   requests: CanonicalModelRequest[],
@@ -962,3 +1202,8 @@ observability:
   variant: candidate
   queueCapacity: 4096
 `;
+
+const SOURCE_APPLY_TEST_CONFIG = SOURCE_REPAIR_TEST_CONFIG.replace(
+  "campaignId: immutable-source-repair-qa",
+  "campaignId: ordinary-source-apply-qa",
+);
