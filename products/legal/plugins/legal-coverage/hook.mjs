@@ -239,7 +239,12 @@ async function dynamicWorkItems(workspaceRoot, result) {
     const plan = await pendingMatrixPlan(workspaceRoot, { validationResult: result });
     if (!plan) return undefined;
     const frontier = await matrixFrontierPlan(workspaceRoot, { validationResult: result });
-    return frontier ? { ...plan, frontier } : plan;
+    return frontier ? {
+      ...plan,
+      frontier: frontier.frontier,
+      analysisFragments: frontier.analysisFragments,
+      frontierSnapshot: frontier.snapshot,
+    } : plan;
   }
   if (first?.phase === "issues" && first.code === "risk_signal_orphaned") {
     return issueClosurePlan(workspaceRoot, { validationResult: result });
@@ -299,7 +304,7 @@ async function toolMayChangeConvergence(workspaceRoot, toolName, toolInput) {
   const command = toolInput.command;
   if (typeof command !== "string" || command.length === 0 || command.length > 32768) return false;
   if (!command.includes("legal-coverage.mjs")) return false;
-  return /(?:^|\s)(?:init|bootstrap-sources|reference|fragment-slice|source-merge-prepare|source-merge-apply|source-repair-apply|matrix-selection-apply|matrix-proposal-apply|issue-closure-apply|authority-closure-apply|apply-batch)(?:\s|$)/u.test(command);
+  return /(?:^|\s)(?:init|bootstrap-sources|reference|fragment-slice|source-merge-prepare|source-merge-apply|source-repair-apply|matrix-fragment-bind|matrix-selection-apply|matrix-proposal-apply|issue-closure-apply|authority-closure-apply|apply-batch)(?:\s|$)/u.test(command);
 }
 
 function convergenceReport(
@@ -330,6 +335,11 @@ function convergenceReport(
         group: workItems.group,
         returned: workItems.returned,
         hasMore: workItems.hasMore,
+        ...(workItems.fragment ? {
+          fragmentPath: workItems.fragment.path,
+          fragmentSha256: workItems.fragment.fragmentSha256,
+          bindPath: workItems.fragment.bindPath,
+        } : {}),
       },
     } : {}),
     writeBudget: {
@@ -429,6 +439,19 @@ function legalProgressCheckpointDigest(workItems) {
       kind: "matrix-pending-selection-finalize",
       expectedStateHash: workItems.selection.expectedStateHash,
       targetMatrixId: workItems.selection.targetMatrixId,
+    };
+  } else if (workItems?.group === "matrix-pending-apply"
+    && workItems.fragment?.fragmentSha256
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && validStateHash(workItems.proposal.proposalSha256)
+    && nonEmptyString(workItems.proposal.targetMatrixId)) {
+    checkpoint = {
+      kind: "matrix-fragment-bound",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetMatrixId: workItems.proposal.targetMatrixId,
+      fragmentSha256: workItems.fragment.fragmentSha256,
+      proposalSha256: workItems.proposal.proposalSha256,
     };
   } else if (workItems?.group === "matrix-pending-apply"
     && workItems.proposal?.validated === true

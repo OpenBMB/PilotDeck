@@ -2784,6 +2784,194 @@ test("legal coverage exposes a bounded matrix frontier with one shared fact-inde
     const context = preModel.hookSpecificOutput.additionalContext ?? "";
     assert.match(context, /legal-matrix-frontier\/v1/u);
     assert.match(context, /bounded parallel/u);
+    assert.doesNotMatch(context, /<fragment-sha256>|undefined/u);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage binds read-only matrix analysis fragments to a current proposal and preserves canonical writes", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-fragment-bind-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const matricesPath = join(root, "matrices.json");
+    await writeJson(matricesPath, {
+      schemaVersion: 1,
+      matrices: [
+        { id: "equity-capital-timeline", status: "pending", entries: [] },
+        ...[
+          "holding-platform-special-rights",
+          "governance-personnel-timeline",
+          "contract-key-terms",
+          "debt-collateral-liquidity",
+          "employment-ip-timeline",
+          "legal-authority",
+        ].map((id) => ({ id, status: "not-applicable", entries: [], notApplicableReason: "No responsive synthetic facts." })),
+      ],
+    });
+    const frontier = JSON.parse((await runCli(workspace, "matrix-frontier", "--limit", "3")).stdout) as {
+      analysisFragments: Array<{ matrixId: string; collectionIndex: number; fragmentPath: string; template: Record<string, unknown> }>;
+    };
+    const target = frontier.analysisFragments[0]!;
+    const fragment = {
+      ...target.template,
+      selectedFactIds: ["F-001"],
+      proposedEntries: [{
+        id: "M-FRAGMENT-001",
+        summary: "The registered capital fact is recorded in the capital timeline.",
+        factIds: ["F-001"],
+        riskSignals: ["threshold_breach"],
+        issueIds: ["I-001"],
+        authorityIds: ["A-001"],
+      }],
+      decision: "complete",
+      reason: "The selected verified fact is sufficient for this matrix.",
+    };
+    await mkdir(join(root, "matrix-fragments"), { recursive: true });
+    const fragmentPath = join(workspace, target.fragmentPath);
+    await writeJson(fragmentPath, fragment);
+    const pendingSelection = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "fragment-bind-command",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    const pendingSelectionContext = pendingSelection.hookSpecificOutput.additionalContext ?? "";
+    assert.match(pendingSelectionContext, new RegExp(sha256(await readFile(fragmentPath))));
+    assert.doesNotMatch(pendingSelectionContext, /<fragment-sha256>|undefined/u);
+    const beforeCanonical = await readFile(matricesPath, "utf8");
+    const bound = await runCli(
+      workspace,
+      "matrix-fragment-bind",
+      "--fragment", target.fragmentPath,
+      "--fragment-sha256", sha256(await readFile(fragmentPath)),
+    );
+    assert.equal(bound.exitCode, 0, bound.stderr);
+    assert.equal((await readFile(matricesPath, "utf8")), beforeCanonical);
+    const preModel = await runHook({ hookEventName: "PreModelRequest", sessionId: "fragment-bind", transcriptPath: "", cwd: workspace });
+    const envelope = legalEnvelope(preModel) as {
+      workItems: { group: string; fragment?: { path: string; fragmentSha256: string }; proposal: { path: string; proposalSha256: string } };
+      matrixProposalApplyCommand?: string;
+    };
+    assert.equal(envelope.workItems.group, "matrix-pending-apply");
+    assert.equal(envelope.workItems.fragment?.path, target.fragmentPath);
+    assert.match(envelope.matrixProposalApplyCommand ?? "", /matrix-proposal-apply/u);
+    const applied = await runCli(
+      workspace,
+      "matrix-proposal-apply",
+      "--input-file", envelope.workItems.proposal.path,
+      "--proposal-sha256", envelope.workItems.proposal.proposalSha256,
+    );
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const finalMatrices = JSON.parse(await readFile(matricesPath, "utf8")) as { matrices: Array<{ id: string; status: string }> };
+    assert.equal(finalMatrices.matrices[0]?.status, "complete");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage rejects a matrix fragment when its fact snapshot becomes stale", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-fragment-stale-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const matricesPath = join(root, "matrices.json");
+    await writeJson(matricesPath, {
+      schemaVersion: 1,
+      matrices: [
+        { id: "equity-capital-timeline", status: "pending", entries: [] },
+        ...[
+          "holding-platform-special-rights",
+          "governance-personnel-timeline",
+          "contract-key-terms",
+          "debt-collateral-liquidity",
+          "employment-ip-timeline",
+          "legal-authority",
+        ].map((id) => ({ id, status: "not-applicable", entries: [], notApplicableReason: "No responsive synthetic facts." })),
+      ],
+    });
+    const frontier = JSON.parse((await runCli(workspace, "matrix-frontier", "--limit", "3")).stdout) as {
+      analysisFragments: Array<{ fragmentPath: string; template: Record<string, unknown> }>;
+    };
+    const target = frontier.analysisFragments[0]!;
+    await mkdir(join(root, "matrix-fragments"), { recursive: true });
+    const fragmentPath = join(workspace, target.fragmentPath);
+    await writeJson(fragmentPath, {
+      ...target.template,
+      selectedFactIds: ["F-001"],
+      proposedEntries: [{ id: "M-STALE-001", summary: "The selected fact is recorded.", factIds: ["F-001"], riskSignals: [], issueIds: [], authorityIds: [] }],
+      decision: "complete",
+      reason: "The selected fact is sufficient.",
+    });
+    const fragmentSha256 = sha256(await readFile(fragmentPath));
+    const factsPath = join(root, "facts.json");
+    const facts = JSON.parse(await readFile(factsPath, "utf8")) as { facts: Array<Record<string, unknown>> };
+    facts.facts[0]!.value = 121;
+    await writeJson(factsPath, facts);
+    const rejected = await runCli(workspace, "matrix-fragment-bind", "--fragment", target.fragmentPath, "--fragment-sha256", fragmentSha256);
+    assert.equal(rejected.exitCode, 1);
+    assert.equal(JSON.parse(rejected.stderr).error.code, "matrix_fragment_binding_invalid");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("legal coverage rebinds a later matrix fragment after an earlier matrix applies", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-legal-coverage-matrix-fragment-rebind-"));
+  try {
+    await writeCompleteFixture(workspace);
+    const root = join(workspace, STATE_ROOT);
+    const matricesPath = join(root, "matrices.json");
+    await writeJson(matricesPath, {
+      schemaVersion: 1,
+      matrices: [
+        { id: "equity-capital-timeline", status: "pending", entries: [] },
+        { id: "holding-platform-special-rights", status: "pending", entries: [] },
+        ...[
+          "governance-personnel-timeline",
+          "contract-key-terms",
+          "debt-collateral-liquidity",
+          "employment-ip-timeline",
+          "legal-authority",
+        ].map((id) => ({ id, status: "not-applicable", entries: [], notApplicableReason: "No responsive synthetic facts." })),
+      ],
+    });
+    const frontier = JSON.parse((await runCli(workspace, "matrix-frontier", "--limit", "3")).stdout) as {
+      analysisFragments: Array<{ matrixId: string; collectionIndex: number; fragmentPath: string; template: Record<string, unknown> }>;
+    };
+    const firstTarget = frontier.analysisFragments[0]!;
+    const laterTarget = frontier.analysisFragments[1]!;
+    await mkdir(join(root, "matrix-fragments"), { recursive: true });
+    const writeFragment = async (target: typeof firstTarget, id: string) => {
+      const path = join(workspace, target.fragmentPath);
+      await writeJson(path, {
+        ...target.template,
+        selectedFactIds: ["F-001"],
+        proposedEntries: [{ id, summary: `The selected fact supports ${target.matrixId}.`, factIds: ["F-001"], riskSignals: [], issueIds: [], authorityIds: [] }],
+        decision: "complete",
+        reason: "The selected verified fact is sufficient.",
+      });
+      return { path, sha256: sha256(await readFile(path)) };
+    };
+    const firstFragment = await writeFragment(firstTarget, "M-FIRST-001");
+    const firstBind = await runCli(workspace, "matrix-fragment-bind", "--fragment", firstTarget.fragmentPath, "--fragment-sha256", firstFragment.sha256);
+    assert.equal(firstBind.exitCode, 0, firstBind.stderr);
+    const firstEnvelope = legalEnvelope(await runHook({ hookEventName: "PreModelRequest", sessionId: "fragment-rebind", transcriptPath: "", cwd: workspace })) as {
+      workItems: { proposal: { path: string; proposalSha256: string } };
+    };
+    const firstApply = await runCli(workspace, "matrix-proposal-apply", "--input-file", firstEnvelope.workItems.proposal.path, "--proposal-sha256", firstEnvelope.workItems.proposal.proposalSha256);
+    assert.equal(firstApply.exitCode, 0, firstApply.stderr);
+
+    const laterFragment = await writeFragment(laterTarget, "M-LATER-001");
+    const laterBind = await runCli(workspace, "matrix-fragment-bind", "--fragment", laterTarget.fragmentPath, "--fragment-sha256", laterFragment.sha256);
+    assert.equal(laterBind.exitCode, 0, laterBind.stderr);
+    const laterEnvelope = legalEnvelope(await runHook({ hookEventName: "PreModelRequest", sessionId: "fragment-rebind", transcriptPath: "", cwd: workspace })) as {
+      workItems: { group: string; target: { recordId: string }; proposal: { path: string; proposalSha256: string } };
+    };
+    assert.equal(laterEnvelope.workItems.group, "matrix-pending-apply");
+    assert.equal(laterEnvelope.workItems.target.recordId, laterTarget.matrixId);
+    assert.notEqual(JSON.parse(firstBind.stdout).stateHash, JSON.parse(laterBind.stdout).stateHash);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

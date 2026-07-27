@@ -82,9 +82,14 @@ const SOURCE_MERGE_REPAIR_MAX_BYTES = 24576;
 const SOURCE_MERGE_REPAIR_APPLIED_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MATERIALITIES = new Set(["non-material", "material", "critical", "uncertain"]);
 const MATRIX_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/matrix-transactions`;
+const MATRIX_FRAGMENT_DIRECTORY = `${STATE_DIRECTORY}/matrix-fragments`;
 const MATRIX_SELECTION_PATTERN = /^matrix-selection-[a-f0-9]{12}\.json$/u;
 const MATRIX_PROPOSAL_PATTERN = /^matrix-proposal-[a-f0-9]{12}\.json$/u;
+const MATRIX_FRAGMENT_PATTERN = /^matrix-analysis-[a-f0-9]{12}\.json$/u;
+const MATRIX_FRAGMENT_BIND_PATTERN = /^matrix-fragment-bind-[a-f0-9]{12}\.json$/u;
 const MATRIX_SELECTION_RECEIPT_TYPE = "legal-matrix-selection-readiness";
+const MATRIX_FRAGMENT_TYPE = "legal-matrix-analysis-fragment/v1";
+const MATRIX_FRAGMENT_BIND_TYPE = "legal-matrix-fragment-bind/v1";
 const MATRIX_INDEX_MAX_RECORDS = 48;
 const MATRIX_INDEX_MAX_BYTES = 8192;
 const MATRIX_SELECTED_FACT_MAX_RECORDS = 12;
@@ -94,6 +99,7 @@ const MATRIX_FRONTIER_MAX_RECORDS = 3;
 const MATRIX_FRONTIER_MAX_FACT_INDEX_RECORDS = 48;
 const MATRIX_FRONTIER_MAX_BYTES = 8192;
 const MATRIX_FRONTIER_TYPE = "legal-matrix-frontier/v1";
+const MATRIX_FRAGMENT_MAX_BYTES = 24576;
 const ISSUE_TRANSACTION_DIRECTORY = `${STATE_DIRECTORY}/issue-transactions`;
 const ISSUE_CLOSURE_PATTERN = /^issue-closure-[a-f0-9]{12}\.json$/u;
 const ISSUE_CLOSURE_MAX_RECORDS = Object.keys(ISSUE_RULES).length;
@@ -2240,6 +2246,56 @@ export async function matrixFrontierPlan(workspaceRoot, options = {}) {
     ).length,
     indexItems,
   };
+  const factsHash = snapshot.factsHash;
+  const analysisFragments = await Promise.all(frontier.map(async ({ matrixId, collectionIndex, status, eligible }) => {
+    const matrix = matrices[collectionIndex];
+    const targetMatrixHash = sha256(stableStringify(matrix));
+    const fragmentDigest = sha256([
+      factsHash,
+      matrixId,
+      String(collectionIndex),
+      targetMatrixHash,
+    ].join("\0")).slice(0, 12);
+    const fragmentPath = `${MATRIX_FRAGMENT_DIRECTORY}/matrix-analysis-${fragmentDigest}.json`;
+    let fragmentSha256;
+    try {
+      const fragmentFile = await resolveSafeWorkspacePath(workspaceRoot, fragmentPath);
+      const fragmentBytes = await readFile(fragmentFile);
+      if (fragmentBytes.byteLength <= MATRIX_FRAGMENT_MAX_BYTES) fragmentSha256 = sha256(fragmentBytes);
+    } catch (error) {
+      if (error?.code !== "ENOENT") fragmentSha256 = undefined;
+    }
+    return {
+      fragmentPath,
+      fragmentId: `matrix-analysis-${fragmentDigest}`,
+      fragmentType: MATRIX_FRAGMENT_TYPE,
+      matrixId,
+      collectionIndex,
+      status,
+      eligible,
+      factsHash,
+      targetMatrixHash,
+      ...(fragmentSha256 ? { fragmentSha256 } : {}),
+      limits: {
+        maxSelectedFacts: MATRIX_SELECTED_FACT_MAX_RECORDS,
+        maxSerializedBytes: MATRIX_FRAGMENT_MAX_BYTES,
+      },
+      template: {
+        schemaVersion: 1,
+        fragmentType: MATRIX_FRAGMENT_TYPE,
+        fragmentId: `matrix-analysis-${fragmentDigest}`,
+        frontierStateHash: validation.stateHash,
+        factsHash,
+        matrixId,
+        collectionIndex,
+        targetMatrixHash,
+        selectedFactIds: [],
+        proposedEntries: [],
+        decision: "complete",
+        reason: "<specific fact-grounded legal rationale>",
+      },
+    };
+  }));
   const result = {
     schemaVersion: 1,
     type: MATRIX_FRONTIER_TYPE,
@@ -2254,6 +2310,7 @@ export async function matrixFrontierPlan(workspaceRoot, options = {}) {
     },
     snapshot,
     frontier,
+    analysisFragments,
   };
   const serializedBytes = Buffer.byteLength(JSON.stringify(result));
   if (serializedBytes <= MATRIX_FRONTIER_MAX_BYTES) return { ...result, serializedBytes };
@@ -2267,6 +2324,314 @@ export async function matrixFrontierPlan(workspaceRoot, options = {}) {
     snapshot: boundedSnapshot,
     serializedBytes: Buffer.byteLength(JSON.stringify({ ...result, snapshot: boundedSnapshot })),
   };
+}
+
+/**
+ * Bind a worker-owned, read-only matrix analysis fragment to the current
+ * canonical state. The resulting proposal is deliberately the same proposal
+ * shape consumed by matrix-proposal-apply; this command never edits a ledger.
+ */
+export async function bindMatrixAnalysisFragment(workspaceRoot, options = {}) {
+  if (!nonEmpty(options.fragmentPath)
+    || !MATRIX_FRAGMENT_PATTERN.test(options.fragmentPath.split("/").at(-1) ?? "")) {
+    throw batchError("matrix_fragment_path_invalid", "matrix-fragment-bind requires the deterministic matrix analysis fragment path.");
+  }
+  if (!/^[a-f0-9]{64}$/u.test(String(options.fragmentSha256 ?? ""))) {
+    throw batchError("matrix_fragment_hash_invalid", "matrix-fragment-bind requires the injected lowercase fragment SHA-256.");
+  }
+  const fragmentPath = await resolveSafeWorkspacePath(workspaceRoot, options.fragmentPath);
+  const fragmentBytes = await readFile(fragmentPath);
+  if (fragmentBytes.byteLength > MATRIX_FRAGMENT_MAX_BYTES) {
+    throw batchError("matrix_fragment_byte_limit", `Matrix analysis fragment is ${fragmentBytes.byteLength} bytes; maximum is ${MATRIX_FRAGMENT_MAX_BYTES}.`);
+  }
+  if (sha256(fragmentBytes) !== options.fragmentSha256) {
+    throw batchError("matrix_fragment_changed", "The matrix analysis fragment changed after the injected SHA-256 was calculated.");
+  }
+
+  const before = await validateWorkspace({ workspaceRoot, writeProof: false });
+  const loaded = await readWorkspaceState(workspaceRoot);
+  const fragment = parseMatrixAnalysisFragment(fragmentBytes);
+  const facts = (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
+    .filter((fact) => isRecord(fact) && nonEmpty(fact.id));
+  const matrices = Array.isArray(loaded.state.matrices?.matrices) ? loaded.state.matrices.matrices : [];
+  const target = matrices[fragment.collectionIndex];
+  const targetMatrixHash = isRecord(target) ? sha256(stableStringify(target)) : undefined;
+  const factsHash = sha256(stableStringify(facts));
+  validateMatrixAnalysisFragment(fragment, {
+    fragmentPath: options.fragmentPath,
+    fragmentSha256: options.fragmentSha256,
+    facts,
+    factsHash,
+    target,
+    targetMatrixHash,
+    stateHash: before.stateHash,
+  });
+
+  const factsById = new Map(facts.map((fact) => [fact.id, fact]));
+  const preparedItems = fragment.selectedFactIds.map((factId) => matrixRelationFactItem(factsById.get(factId)));
+  const preparedSliceSha256 = sha256(JSON.stringify(preparedItems));
+  const selectionChainSha256 = sha256(stableStringify({
+    fragmentId: fragment.fragmentId,
+    fragmentPath: options.fragmentPath,
+    fragmentSha256: options.fragmentSha256,
+    frontierStateHash: fragment.frontierStateHash,
+    factsHash: fragment.factsHash,
+    targetMatrixHash: fragment.targetMatrixHash,
+    selectedFactIds: fragment.selectedFactIds,
+    decision: fragment.decision,
+  }));
+  const digest = sha256([
+    before.stateHash,
+    fragment.matrixId,
+    String(fragment.collectionIndex),
+    options.fragmentSha256,
+    selectionChainSha256,
+    preparedSliceSha256,
+  ].join("\0")).slice(0, 12);
+  const proposalPath = `${MATRIX_TRANSACTION_DIRECTORY}/matrix-proposal-${digest}.json`;
+  const proposal = {
+    schemaVersion: 1,
+    phase: "matrices",
+    group: "matrix-pending-proposal",
+    expectedStateHash: before.stateHash,
+    targetMatrixId: fragment.matrixId,
+    selectionChainSha256,
+    preparedSliceSha256,
+    matrix: {
+      id: fragment.matrixId,
+      status: fragment.decision === "not-applicable" ? "not-applicable" : "complete",
+      entries: fragment.proposedEntries,
+      ...(fragment.decision === "not-applicable" ? { notApplicableReason: fragment.reason } : {}),
+    },
+  };
+  const proposalBytes = Buffer.from(`${JSON.stringify(proposal, null, 2)}\n`);
+  const proposalSha256 = sha256(proposalBytes);
+  const bindPath = `${MATRIX_TRANSACTION_DIRECTORY}/matrix-fragment-bind-${digest}.json`;
+  const bindReceipt = {
+    schemaVersion: 1,
+    bindType: MATRIX_FRAGMENT_BIND_TYPE,
+    expectedStateHash: before.stateHash,
+    fragmentPath: options.fragmentPath,
+    fragmentSha256: options.fragmentSha256,
+    fragmentId: fragment.fragmentId,
+    factsHash,
+    targetMatrixId: fragment.matrixId,
+    collectionIndex: fragment.collectionIndex,
+    targetMatrixHash,
+    proposalPath,
+    proposalSha256,
+    selectionChainSha256,
+    preparedSliceSha256,
+    decision: fragment.decision,
+  };
+  const proposalFile = await resolveSafeWorkspacePath(workspaceRoot, proposalPath, { allowMissing: true });
+  if (await pathExists(proposalFile)) {
+    if (sha256(await readFile(proposalFile)) !== proposalSha256) {
+      throw batchError("matrix_fragment_proposal_conflict", "The bound matrix proposal already exists with different content.");
+    }
+  } else {
+    await writeJsonAtomic(proposalFile, proposal);
+  }
+  const bindFile = await resolveSafeWorkspacePath(workspaceRoot, bindPath, { allowMissing: true });
+  if (await pathExists(bindFile)) {
+    const existing = JSON.parse(await readFile(bindFile, "utf8"));
+    if (stableStringify(existing) !== stableStringify(bindReceipt)) {
+      throw batchError("matrix_fragment_bind_conflict", "The immutable matrix fragment bind receipt already exists with different content.");
+    }
+  } else {
+    await writeJsonAtomic(bindFile, bindReceipt);
+  }
+  return {
+    bound: true,
+    phase: "matrices",
+    group: "matrix-fragment-bound",
+    stateHash: before.stateHash,
+    fragmentPath: options.fragmentPath,
+    fragmentSha256: options.fragmentSha256,
+    targetMatrixId: fragment.matrixId,
+    collectionIndex: fragment.collectionIndex,
+    proposalPath,
+    proposalSha256,
+    bindPath,
+    factsHash,
+    targetMatrixHash,
+  };
+}
+
+function parseMatrixAnalysisFragment(bytes) {
+  let fragment;
+  try {
+    fragment = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    throw batchError("matrix_fragment_json_invalid", errorMessage(error));
+  }
+  if (!isRecord(fragment) || !hasOnlyKeys(fragment, [
+    "schemaVersion", "fragmentType", "fragmentId", "frontierStateHash", "factsHash",
+    "matrixId", "collectionIndex", "targetMatrixHash", "selectedFactIds", "proposedEntries",
+    "decision", "reason",
+  ])) {
+    throw batchError("matrix_fragment_keys_invalid", "Matrix analysis fragment contains missing or unsupported envelope fields.");
+  }
+  return fragment;
+}
+
+function validateMatrixAnalysisFragment(fragment, context) {
+  const expectedFragmentId = context.fragmentPath.split("/").at(-1)?.replace(/\.json$/u, "");
+  const expectedFragmentDigest = sha256([
+    context.factsHash,
+    fragment.matrixId,
+    String(fragment.collectionIndex),
+    context.targetMatrixHash,
+  ].join("\0")).slice(0, 12);
+  if (fragment.schemaVersion !== 1 || fragment.fragmentType !== MATRIX_FRAGMENT_TYPE
+    || fragment.fragmentId !== expectedFragmentId
+    || expectedFragmentId !== `matrix-analysis-${expectedFragmentDigest}`
+    || !/^[a-f0-9]{64}$/u.test(String(fragment.frontierStateHash ?? ""))
+    || !/^[a-f0-9]{64}$/u.test(String(fragment.factsHash ?? ""))
+    || fragment.factsHash !== context.factsHash
+    || !nonEmpty(fragment.matrixId)
+    || !Number.isInteger(fragment.collectionIndex)
+    || fragment.collectionIndex < 0
+    || !/^[a-f0-9]{64}$/u.test(String(fragment.targetMatrixHash ?? ""))
+    || fragment.targetMatrixHash !== context.targetMatrixHash
+    || !isRecord(context.target)
+    || context.target.id !== fragment.matrixId
+    || context.target.status !== "pending") {
+    throw batchError("matrix_fragment_binding_invalid", "Matrix analysis fragment is stale or does not match the current pending matrix and fact snapshot.");
+  }
+  if (fragment.decision !== "complete" && fragment.decision !== "not-applicable") {
+    throw batchError("matrix_fragment_decision_invalid", "Matrix analysis fragment decision must be complete or not-applicable.");
+  }
+  if (!nonEmpty(fragment.reason) || containsProposalPlaceholder(fragment.reason)) {
+    throw batchError("matrix_fragment_reason_invalid", "Matrix analysis fragment requires a specific non-placeholder legal rationale.");
+  }
+  if (!Array.isArray(fragment.selectedFactIds)
+    || fragment.selectedFactIds.length > MATRIX_SELECTED_FACT_MAX_RECORDS
+    || new Set(fragment.selectedFactIds).size !== fragment.selectedFactIds.length
+    || fragment.selectedFactIds.some((factId) => !nonEmpty(factId))) {
+    throw batchError("matrix_fragment_fact_ids_invalid", `Matrix analysis fragment requires 0-${MATRIX_SELECTED_FACT_MAX_RECORDS} unique fact IDs.`);
+  }
+  if (!Array.isArray(fragment.proposedEntries)) {
+    throw batchError("matrix_fragment_entries_invalid", "Matrix analysis fragment proposedEntries must be an array.");
+  }
+  const knownFactIds = new Set(context.facts.map((fact) => fact.id));
+  const selected = new Set(fragment.selectedFactIds);
+  const entryIds = new Set();
+  const linked = new Set();
+  for (const entry of fragment.proposedEntries) {
+    if (!isRecord(entry) || !hasOnlyKeys(entry, ["id", "summary", "factIds", "riskSignals", "issueIds", "authorityIds"])
+      || !nonEmpty(entry.id) || containsProposalPlaceholder(entry.id)
+      || entryIds.has(entry.id) || !nonEmpty(entry.summary) || containsProposalPlaceholder(entry.summary)
+      || !Array.isArray(entry.factIds) || entry.factIds.length === 0
+      || new Set(entry.factIds).size !== entry.factIds.length
+      || entry.factIds.some((factId) => !selected.has(factId) || !knownFactIds.has(factId))) {
+      throw batchError("matrix_fragment_entry_invalid", "Every fragment entry needs a unique fact-grounded summary and selected fact IDs.");
+    }
+    entryIds.add(entry.id);
+    for (const factId of entry.factIds) linked.add(factId);
+    for (const [key, allowed] of [["riskSignals", Object.values(ISSUE_RULES)], ["issueIds", undefined], ["authorityIds", undefined]]) {
+      const values = entry[key] ?? [];
+      if (!Array.isArray(values) || new Set(values).size !== values.length
+        || values.some((value) => !nonEmpty(value) || (allowed && !allowed.includes(value)))) {
+        throw batchError("matrix_fragment_entry_links_invalid", "Fragment entry links must be unique valid arrays.");
+      }
+    }
+  }
+  if (fragment.decision === "not-applicable") {
+    if (selected.size > 0 || fragment.proposedEntries.length > 0) {
+      throw batchError("matrix_fragment_na_invalid", "Not-applicable fragments require zero selected facts, no entries, and a specific reason.");
+    }
+  } else if (fragment.proposedEntries.length === 0 || linked.size !== selected.size
+    || [...selected].some((factId) => !linked.has(factId))) {
+    throw batchError("matrix_fragment_complete_invalid", "Complete fragments require entries covering every selected fact.");
+  }
+}
+
+async function validBoundMatrixFragmentPlan(workspaceRoot, validation, target, collectionIndex, state) {
+  try {
+    const root = await resolveSafeWorkspacePath(workspaceRoot, MATRIX_TRANSACTION_DIRECTORY, { allowMissing: true });
+    const names = (await readdir(root)).filter((name) => MATRIX_FRAGMENT_BIND_PATTERN.test(name)).sort();
+    for (const name of names) {
+      const bindPath = `${MATRIX_TRANSACTION_DIRECTORY}/${name}`;
+      const bindFile = await resolveSafeWorkspacePath(workspaceRoot, bindPath);
+      const bind = JSON.parse(await readFile(bindFile, "utf8"));
+      if (!isRecord(bind) || !hasOnlyKeys(bind, [
+        "schemaVersion", "bindType", "expectedStateHash", "fragmentPath", "fragmentSha256", "fragmentId",
+        "factsHash", "targetMatrixId", "collectionIndex", "targetMatrixHash", "proposalPath", "proposalSha256",
+        "selectionChainSha256", "preparedSliceSha256", "decision",
+      ]) || bind.schemaVersion !== 1 || bind.bindType !== MATRIX_FRAGMENT_BIND_TYPE
+        || bind.expectedStateHash !== validation.stateHash
+        || bind.targetMatrixId !== target.id || bind.collectionIndex !== collectionIndex
+        || !/^[a-f0-9]{64}$/u.test(String(bind.fragmentSha256 ?? ""))
+        || !/^[a-f0-9]{64}$/u.test(String(bind.proposalSha256 ?? ""))) continue;
+      const fragmentFile = await resolveSafeWorkspacePath(workspaceRoot, bind.fragmentPath);
+      const fragmentBytes = await readFile(fragmentFile);
+      if (sha256(fragmentBytes) !== bind.fragmentSha256) continue;
+      const fragment = parseMatrixAnalysisFragment(fragmentBytes);
+      const facts = (Array.isArray(state.facts?.facts) ? state.facts.facts : [])
+        .filter((fact) => isRecord(fact) && nonEmpty(fact.id));
+      const currentFactsHash = sha256(stableStringify(facts));
+      const currentTargetMatrixHash = sha256(stableStringify(target));
+      if (bind.factsHash !== currentFactsHash || bind.targetMatrixHash !== currentTargetMatrixHash) continue;
+      validateMatrixAnalysisFragment(fragment, {
+        fragmentPath: bind.fragmentPath,
+        fragmentSha256: bind.fragmentSha256,
+        facts,
+        factsHash: currentFactsHash,
+        target,
+        targetMatrixHash: currentTargetMatrixHash,
+        stateHash: validation.stateHash,
+      });
+      const proposalFile = await resolveSafeWorkspacePath(workspaceRoot, bind.proposalPath);
+      const proposalBytes = await readFile(proposalFile);
+      if (sha256(proposalBytes) !== bind.proposalSha256) continue;
+      const proposal = JSON.parse(proposalBytes.toString("utf8"));
+      const expected = {
+        expectedStateHash: validation.stateHash,
+        targetMatrixId: target.id,
+        selectionChainSha256: bind.selectionChainSha256,
+        preparedSliceSha256: bind.preparedSliceSha256,
+        exhaustive: fragment.decision === "not-applicable",
+      };
+      const plan = { selectedFactIds: fragment.selectedFactIds, exhaustive: fragment.decision === "not-applicable" };
+      const matrix = validateMatrixProposal(proposal, expected, plan, state);
+      return {
+        phase: "matrices",
+        group: "matrix-pending-apply",
+        mode: "main-agent-apply",
+        stateHash: validation.stateHash,
+        target: { recordId: target.id, collectionIndex, status: target.status },
+        returned: fragment.selectedFactIds.length,
+        hasMore: false,
+        selectedFactIds: [...fragment.selectedFactIds],
+        fragment: {
+          path: bind.fragmentPath,
+          fragmentId: fragment.fragmentId,
+          fragmentSha256: bind.fragmentSha256,
+          factsHash: bind.factsHash,
+          targetMatrixHash: bind.targetMatrixHash,
+          bindPath,
+        },
+        proposal: {
+          path: bind.proposalPath,
+          expectedStateHash: validation.stateHash,
+          targetMatrixId: target.id,
+          selectionChainSha256: bind.selectionChainSha256,
+          preparedSliceSha256: bind.preparedSliceSha256,
+          exhaustive: fragment.decision === "not-applicable",
+          validated: true,
+          proposalSha256: bind.proposalSha256,
+          transactionBytes: Buffer.byteLength(JSON.stringify(matrix)),
+          matrix,
+        },
+      };
+    }
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    if (error?.code?.startsWith?.("matrix_fragment_")) return undefined;
+    return undefined;
+  }
+  return undefined;
 }
 
 export async function pendingMatrixPlan(workspaceRoot, options = {}) {
@@ -2283,6 +2648,14 @@ export async function pendingMatrixPlan(workspaceRoot, options = {}) {
 
   const facts = (Array.isArray(loaded.state.facts?.facts) ? loaded.state.facts.facts : [])
     .filter((fact) => isRecord(fact) && nonEmpty(fact.id));
+  const bound = await validBoundMatrixFragmentPlan(
+    workspaceRoot,
+    validation,
+    target,
+    first.collectionIndex,
+    loaded.state,
+  );
+  if (bound) return bound;
   const indexItems = facts.map(matrixPendingFactIndexItem);
   const selectedFactIds = [];
   const selectedSet = new Set();
@@ -4110,6 +4483,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
   const sourceMergeApply = sourceMergeApplyCommandFor(workItems, cliPath);
   const sourceRepairApply = sourceRepairApplyCommandFor(workItems, cliPath);
   const matrixSelectionApply = matrixSelectionApplyCommandFor(workItems, cliPath);
+  const matrixFragmentBind = matrixFragmentBindCommandFor(workItems, cliPath);
   const matrixProposalApply = matrixProposalApplyCommandFor(workItems, cliPath);
   const issueClosureApply = issueClosureApplyCommandFor(workItems, cliPath);
   const authorityClosureApply = authorityClosureApplyCommandFor(workItems, cliPath);
@@ -4146,6 +4520,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
     ...(sourceMergeApply ? { sourceMergeApplyCommand: sourceMergeApply } : {}),
     ...(sourceRepairApply ? { sourceMergeRepairApplyCommand: sourceRepairApply } : {}),
     ...(matrixSelectionApply ? { matrixSelectionApplyCommand: matrixSelectionApply } : {}),
+    ...(matrixFragmentBind ? { matrixFragmentBindCommand: matrixFragmentBind } : {}),
     ...(matrixProposalApply ? { matrixProposalApplyCommand: matrixProposalApply } : {}),
     ...(issueClosureApply ? { issueClosureApplyCommand: issueClosureApply } : {}),
     ...(authorityClosureApply ? { authorityClosureApplyCommand: authorityClosureApply } : {}),
@@ -4163,6 +4538,7 @@ export function milestoneEnvelopeFor(result, cliPath, workItems) {
       sourceMergeApply,
       sourceRepairApply,
       matrixSelectionApply,
+      matrixFragmentBind,
       matrixProposalApply,
       issueClosureApply,
       authorityClosureApply,
@@ -4219,6 +4595,16 @@ function matrixSelectionApplyCommandFor(workItems, cliPath) {
     || !nonEmpty(workItems.selection?.path)) return undefined;
   return `node ${JSON.stringify(cliPath)} matrix-selection-apply --workspace "$PWD" `
     + `--input-file ${JSON.stringify(workItems.selection.path)}`;
+}
+
+function matrixFragmentBindCommandFor(workItems, cliPath) {
+  if (workItems?.group !== "matrix-pending-selection" || !nonEmpty(workItems?.target?.recordId)) return undefined;
+  const target = (workItems.analysisFragments ?? []).find((item) =>
+    item.matrixId === workItems.target.recordId && item.collectionIndex === workItems.target.collectionIndex
+  );
+  if (!target?.fragmentPath || !target.fragmentSha256) return undefined;
+  return `node ${JSON.stringify(cliPath)} matrix-fragment-bind --workspace "$PWD" `
+    + `--fragment ${JSON.stringify(target.fragmentPath)} --fragment-sha256 ${target.fragmentSha256}`;
 }
 
 function matrixProposalApplyCommandFor(workItems, cliPath) {
@@ -4423,6 +4809,7 @@ function nextActionFor(
   sourceMergeApply,
   sourceRepairApply,
   matrixSelectionApply,
+  matrixFragmentBind,
   matrixProposalApply,
   issueClosureApply,
   authorityClosureApply,
@@ -4533,7 +4920,14 @@ function nextActionFor(
         + `Rewrite only that selection from workItems.selection.template and workItems.evidencePage. The Legal Plugin will validate it before exposing the selection apply command. `
         + `Do not read matrices.json, facts.json, plugin source, or another page.`;
     }
-    return `The bounded workItems.frontier is a read-only planning snapshot. Eligible frontier matrices may be analyzed in bounded parallel, but every write must remain a separate state-bound transaction. For pending matrix ${JSON.stringify(workItems.target.recordId)}, treat workItems.evidencePage as the complete current fact-index page. `
+    return `The bounded workItems.frontier is a read-only planning snapshot. Eligible frontier matrices may be analyzed in bounded parallel, but every write must remain a separate state-bound transaction. `
+      + (workItems.analysisFragments?.length > 0
+        ? `Workers may write only the corresponding read-only matrix analysis fragment under ${JSON.stringify(MATRIX_FRAGMENT_DIRECTORY)}; use the injected fragment template and never edit a canonical ledger. `
+          + (matrixFragmentBind
+            ? `A safe fragment is already present for the selected matrix; after reviewing or refreshing it, execute this exact bind command: ${JSON.stringify(matrixFragmentBind)}. `
+            : `No safe completed fragment is present for the selected matrix yet. Have the worker write the corresponding fragment using its injected template, then re-enter this dynamic work item to obtain the verified SHA-256 bind command. `)
+        : "")
+      + `For pending matrix ${JSON.stringify(workItems.target.recordId)}, treat workItems.evidencePage as the complete current fact-index page. `
       + `Through legal judgment, choose only compatible fact IDs from that page and write the exact selection envelope to ${JSON.stringify(workItems.selection.path)} from workItems.selection.template as the next tool call. The Legal Plugin will validate it before exposing the selection apply command. `
       + `Use decision continue when another page is needed; finalize only when the accumulated selection is sufficient, or after exhaustive zero-selection review for not-applicable. `
       + `Do not read matrices.json, the full facts.json, plugin source, source files, or another page; do not edit a canonical ledger.`;
