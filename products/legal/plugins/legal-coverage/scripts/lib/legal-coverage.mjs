@@ -67,9 +67,11 @@ const SOURCE_REVIEW_FRAGMENT_PATTERN = /^source-review-[a-f0-9]{12}\.json$/u;
 const SOURCE_MERGE_READINESS_PATTERN = /^source-merge-ready-[a-f0-9]{12}\.json$/u;
 const SOURCE_MERGE_REPAIR_PATTERN = /^source-repair-[a-f0-9]{12}\.json$/u;
 const SOURCE_MERGE_REPAIR_APPLIED_PATTERN = /^source-repair-applied-[a-f0-9]{12}\.json$/u;
+const SOURCE_MERGE_APPLIED_PATTERN = /^source-merge-applied-[a-f0-9]{12}\.json$/u;
 const SOURCE_REVIEW_FRAGMENT_TYPE = "legal-evidence-source-batch-review";
 const SOURCE_MERGE_READINESS_TYPE = "legal-source-merge-readiness";
 const SOURCE_MERGE_REPAIR_APPLIED_TYPE = "legal-source-repair-applied";
+const SOURCE_MERGE_APPLIED_TYPE = "legal-source-merge-applied";
 const SOURCE_REVIEW_FRAGMENT_MAX_BYTES = 262144;
 const SOURCE_MERGE_READINESS_MAX_BYTES = 4096;
 const SOURCE_REVIEW_MERGE_MAX_SOURCES = 4;
@@ -215,12 +217,13 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
     expectedStateHash,
     sourceRows,
   );
+  const appliedSource = await currentSourceMergeAppliedReceipt(workspaceRoot, expectedStateHash, sourceRows);
   const readinessReceipt = await validSourceMergeReadinessReceipt(workspaceRoot, proposalPlan);
-  if (!readinessReceipt) return withAppliedRepairCheckpoint(proposalPlan, appliedRepair);
+  if (!readinessReceipt) return withAppliedSourceCheckpoints(proposalPlan, appliedRepair, appliedSource);
   const proposePlan = sourceMergeProposePlanFor(proposalPlan, readinessReceipt);
   const proposalReceipt = await validSourceMergeProposalReceipt(workspaceRoot, proposePlan, receipts, loaded.state);
   if (proposalReceipt?.valid) {
-    return withAppliedRepairCheckpoint(sourceMergeApplyPlanFor(proposePlan, proposalReceipt), appliedRepair);
+    return withAppliedSourceCheckpoints(sourceMergeApplyPlanFor(proposePlan, proposalReceipt), appliedRepair, appliedSource);
   }
   if (proposalReceipt?.error) {
     const rejectedPlan = {
@@ -237,7 +240,7 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
       },
     };
     const repairPlan = sourceMergeRepairPlanFor(rejectedPlan);
-    if (!repairPlan) return withAppliedRepairCheckpoint(rejectedPlan, appliedRepair);
+    if (!repairPlan) return withAppliedSourceCheckpoints(rejectedPlan, appliedRepair, appliedSource);
     const repairReceipt = await validSourceMergeRepairReceipt(
       workspaceRoot,
       repairPlan,
@@ -245,23 +248,24 @@ export async function pendingSourceReviewPlan(workspaceRoot, options = {}) {
       loaded.state,
     );
     if (repairReceipt?.valid) {
-      return withAppliedRepairCheckpoint(
+      return withAppliedSourceCheckpoints(
         sourceMergeRepairApplyPlanFor(repairPlan, repairReceipt),
         appliedRepair,
+        appliedSource,
       );
     }
     if (repairReceipt?.error) {
-      return withAppliedRepairCheckpoint({
+      return withAppliedSourceCheckpoints({
         ...repairPlan,
         repair: {
           ...repairPlan.repair,
           validationError: repairReceipt.error,
         },
-      }, appliedRepair);
+      }, appliedRepair, appliedSource);
     }
-    return withAppliedRepairCheckpoint(repairPlan, appliedRepair);
+    return withAppliedSourceCheckpoints(repairPlan, appliedRepair, appliedSource);
   }
-  return withAppliedRepairCheckpoint(proposePlan, appliedRepair);
+  return withAppliedSourceCheckpoints(proposePlan, appliedRepair, appliedSource);
 }
 
 function sourceReviewPlanFor(sourceRows, options = {}) {
@@ -723,8 +727,12 @@ function sourceMergeRepairApplyPlanFor(repairPlan, repairReceipt) {
   };
 }
 
-function withAppliedRepairCheckpoint(plan, appliedRepair) {
-  return appliedRepair ? { ...plan, appliedRepair } : plan;
+function withAppliedSourceCheckpoints(plan, appliedRepair, appliedSource) {
+  return {
+    ...plan,
+    ...(appliedRepair ? { appliedRepair } : {}),
+    ...(appliedSource ? { appliedSource } : {}),
+  };
 }
 
 function boundedReceiptSourceIds(receipt, maxRecords, maxSerializedBytes) {
@@ -1217,6 +1225,77 @@ async function currentSourceMergeRepairAppliedReceipt(workspaceRoot, expectedSta
   return undefined;
 }
 
+async function currentSourceMergeAppliedReceipt(workspaceRoot, expectedStateHash, sourceRows) {
+  const fragmentDirectory = `${STATE_DIRECTORY}/fragments`;
+  const directoryPath = await resolveSafeWorkspacePath(workspaceRoot, fragmentDirectory, { allowMissing: true });
+  let entries;
+  try {
+    entries = await readdir(directoryPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+  const sourceById = new Map(sourceRows
+    .filter((source) => isRecord(source) && nonEmpty(source.id))
+    .map((source) => [source.id, source]));
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !SOURCE_MERGE_APPLIED_PATTERN.test(entry.name)) continue;
+    try {
+      const receiptPath = `${fragmentDirectory}/${entry.name}`;
+      const path = await resolveSafeWorkspacePath(workspaceRoot, receiptPath);
+      const receiptInfo = await stat(path);
+      if (!receiptInfo.isFile() || receiptInfo.size <= 0
+        || receiptInfo.size > SOURCE_MERGE_REPAIR_APPLIED_MAX_BYTES) continue;
+      const receipt = JSON.parse((await readFile(path)).toString("utf8"));
+      const expectedKeys = [
+        "checkpointType",
+        "previousStateHash",
+        "proposalPath",
+        "proposalSha256",
+        "schemaVersion",
+        "sourceIds",
+        "stateHash",
+      ];
+      if (!isRecord(receipt) || !hasOnlyKeys(receipt, expectedKeys)
+        || receipt.schemaVersion !== 1
+        || receipt.checkpointType !== SOURCE_MERGE_APPLIED_TYPE
+        || receipt.stateHash !== expectedStateHash
+        || !/^[a-f0-9]{64}$/u.test(String(receipt.previousStateHash ?? ""))
+        || !/^[a-f0-9]{64}$/u.test(String(receipt.proposalSha256 ?? ""))
+        || !Array.isArray(receipt.sourceIds)
+        || receipt.sourceIds.length < 1
+        || receipt.sourceIds.length > SOURCE_REVIEW_MERGE_MAX_SOURCES
+        || new Set(receipt.sourceIds).size !== receipt.sourceIds.length
+        || receipt.sourceIds.some((sourceId) => !nonEmpty(sourceId)
+          || !sourceById.has(sourceId)
+          || sourceById.get(sourceId)?.status !== "reviewed")) continue;
+      const digest = entry.name.match(/^source-merge-applied-([a-f0-9]{12})\.json$/u)?.[1];
+      const expectedProposalPath = `${fragmentDirectory}/source-merge-${digest}.json`;
+      if (!digest || receipt.proposalPath !== expectedProposalPath) continue;
+      const proposalPath = await resolveSafeWorkspacePath(workspaceRoot, expectedProposalPath);
+      const proposalInfo = await stat(proposalPath);
+      if (!proposalInfo.isFile() || proposalInfo.size <= 0 || proposalInfo.size > 24576) continue;
+      const proposalBytes = await readFile(proposalPath);
+      if (sha256(proposalBytes) !== receipt.proposalSha256) continue;
+      const proposal = JSON.parse(proposalBytes.toString("utf8"));
+      const proposalSourceIds = Array.isArray(proposal?.sourceIds) ? [...proposal.sourceIds].sort() : [];
+      if (proposal.expectedStateHash !== receipt.previousStateHash
+        || proposalSourceIds.length !== receipt.sourceIds.length
+        || proposalSourceIds.some((sourceId) => !nonEmpty(sourceId))
+        || JSON.stringify(proposalSourceIds) !== JSON.stringify([...receipt.sourceIds].sort())) continue;
+      return {
+        path: receiptPath,
+        stateHash: receipt.stateHash,
+        sourceIds: [...receipt.sourceIds],
+        proposalSha256: receipt.proposalSha256,
+      };
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 export async function applySourceMergeProposal(workspaceRoot, options = {}) {
   if (!nonEmpty(options.proposalPath) || !/^source-merge-[a-f0-9]{12}\.json$/u.test(options.proposalPath.split("/").at(-1) ?? "")) {
     throw batchError("source_merge_proposal_path_invalid", "source-merge-apply requires the injected deterministic proposal path.");
@@ -1269,6 +1348,12 @@ export async function applySourceMergeProposal(workspaceRoot, options = {}) {
     receipt,
     normalized,
     group: "source-fragment-merge",
+    appliedReceipt: {
+      kind: "proposal",
+      path: proposalPlan.proposal.path.replace(/source-merge-([a-f0-9]{12})\.json$/u, "source-merge-applied-$1.json"),
+      proposalPath: proposalPlan.proposal.path,
+      proposalSha256: options.proposalSha256,
+    },
   });
 }
 
@@ -1358,6 +1443,7 @@ export async function applySourceMergeRepair(workspaceRoot, options = {}) {
     normalized: validated.normalized,
     group: "source-fragment-repair",
     appliedReceipt: {
+      kind: "repair",
       path: repairPlan.repair.appliedReceiptPath,
       repairPath: repairPlan.repair.path,
       repairSha256: options.repairSha256,
@@ -1431,18 +1517,25 @@ async function applyNormalizedSourceMerge(workspaceRoot, options) {
   const after = await validateWorkspace({ workspaceRoot, writeProof: true });
   if (appliedReceipt) {
     try {
-      if (!SOURCE_MERGE_REPAIR_APPLIED_PATTERN.test(appliedReceipt.path.split("/").at(-1) ?? "")) {
-        throw batchError("source_repair_receipt_path_invalid", "Applied source repair receipt path is invalid.");
+      const isRepair = appliedReceipt.kind === "repair";
+      const expectedPattern = isRepair ? SOURCE_MERGE_REPAIR_APPLIED_PATTERN : SOURCE_MERGE_APPLIED_PATTERN;
+      if (!expectedPattern.test(appliedReceipt.path.split("/").at(-1) ?? "")) {
+        throw batchError("source_apply_receipt_path_invalid", "Applied source receipt path is invalid.");
       }
       const receiptPath = await resolveSafeWorkspacePath(workspaceRoot, appliedReceipt.path, { allowMissing: true });
       await writeJsonAtomic(receiptPath, {
         schemaVersion: 1,
-        checkpointType: SOURCE_MERGE_REPAIR_APPLIED_TYPE,
+        checkpointType: isRepair ? SOURCE_MERGE_REPAIR_APPLIED_TYPE : SOURCE_MERGE_APPLIED_TYPE,
         previousStateHash: before.stateHash,
         stateHash: after.stateHash,
         sourceIds: [...selectedIds].sort(),
-        repairPath: appliedReceipt.repairPath,
-        repairSha256: appliedReceipt.repairSha256,
+        ...(isRepair ? {
+          repairPath: appliedReceipt.repairPath,
+          repairSha256: appliedReceipt.repairSha256,
+        } : {
+          proposalPath: appliedReceipt.proposalPath,
+          proposalSha256: appliedReceipt.proposalSha256,
+        }),
       });
     } catch (error) {
       try {
@@ -1452,7 +1545,7 @@ async function applyNormalizedSourceMerge(workspaceRoot, options) {
         await rm(receiptPath, { force: true });
       } catch (rollbackError) {
         throw batchError(
-          "source_repair_receipt_rollback_failed",
+          "source_apply_receipt_rollback_failed",
           `Applied receipt failed (${errorMessage(error)}) and canonical rollback also failed (${errorMessage(rollbackError)}).`,
         );
       }
