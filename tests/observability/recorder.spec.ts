@@ -179,6 +179,33 @@ test("post-tool boundary deferral is independently observable and domain-bounded
   assert.equal(JSON.stringify(drafts).includes("nextBatch"), false);
 });
 
+test("rejected post-tool previews record only a bounded reason", () => {
+  const drafts: ObservationEventDraft[] = [];
+  const recorder = {
+    emit: (draft: ObservationEventDraft) => {
+      drafts.push(draft);
+      return undefined;
+    },
+  } as unknown as ObservationRecorder;
+
+  observeAgentEvent(recorder, {
+    type: "progress_boundary_preview_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scope: "legal-coverage",
+    decision: "required",
+    reason: "preview_not_renewable",
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0]?.payload?.component, "progress-boundary-preview");
+  assert.equal(drafts[0]?.payload?.policyVersion, "progress-boundary-preview/v1");
+  assert.equal(drafts[0]?.payload?.decision, "required");
+  assert.equal(drafts[0]?.payload?.reasonCode, "preview_not_renewable");
+  assert.deepEqual(drafts[0]?.payload?.observed, { scope: "legal-coverage" });
+  assert.equal(JSON.stringify(drafts).includes("stateHash"), false);
+});
+
 test("recorder finalizes a complete hash-only trajectory", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-observation-recorder-"));
   try {

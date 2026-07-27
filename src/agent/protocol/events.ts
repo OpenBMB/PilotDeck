@@ -57,6 +57,14 @@ export type AgentEvent =
       scopes: string[];
     }
   | {
+      type: "progress_boundary_preview_evaluated";
+      sessionId: string;
+      turnId: string;
+      scope: string;
+      decision: "deferred" | "required";
+      reason: "multiple_scopes" | "preview_missing" | "preview_completed" | "preview_progressed" | "preview_handoff" | "preview_not_renewable";
+    }
+  | {
       type: "progress_lease_evaluated";
       sessionId: string;
       turnId: string;

@@ -107,6 +107,16 @@ test("local Gateway records a bounded handoff through boundary to progress", asy
       ["progress-boundary", "deferred"],
       ["progress-lease", "renewed"],
     ]);
+    assert.deepEqual(
+      observations
+        .filter((event) => event.type === "harness.decision"
+          && event.payload.component === "progress-boundary-preview")
+        .map((event) => [event.payload.decision, event.payload.reasonCode]),
+      [
+        ["deferred", "preview_handoff"],
+        ["deferred", "preview_progressed"],
+      ],
+    );
     assert.equal(integrity.status, "complete");
     assert.equal(integrity.checks.modelRequestsPaired, true);
     assert.equal(integrity.checks.toolCallsPaired, true);

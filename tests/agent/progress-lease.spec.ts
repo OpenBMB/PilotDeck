@@ -70,12 +70,22 @@ test("a post-tool progress or bounded handoff preview defers but does not consum
   ]), {
     requested: false,
     deferredScopes: ["domain-validation"],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "deferred",
+      reason: "preview_progressed",
+    }],
   });
   assert.deepEqual(progressLease.planBoundary([
     report({ progressOrdinal: 8, handoffOrdinal: 1 }),
   ]), {
     requested: false,
     deferredScopes: ["domain-validation"],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "deferred",
+      reason: "preview_handoff",
+    }],
   });
   assert.equal(
     progressLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 1 }), none)?.decision,
@@ -89,10 +99,26 @@ test("replayed, repair-only, and over-budget previews cannot defer a required bo
   replayLease.observe(report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 1 }), none);
   assert.deepEqual(replayLease.planBoundary([
     report({ progressOrdinal: 8, repairOrdinal: 0, handoffOrdinal: 1 }),
-  ]), { requested: true, deferredScopes: [] });
+  ]), {
+    requested: true,
+    deferredScopes: [],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "required",
+      reason: "preview_not_renewable",
+    }],
+  });
   assert.deepEqual(replayLease.planBoundary([
     report({ progressOrdinal: 8, repairOrdinal: 1, handoffOrdinal: 1 }),
-  ]), { requested: true, deferredScopes: [] });
+  ]), {
+    requested: true,
+    deferredScopes: [],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "required",
+      reason: "preview_not_renewable",
+    }],
+  });
 
   const budgetLease = configuredLease();
   budgetLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 0 }), none);
@@ -100,7 +126,15 @@ test("replayed, repair-only, and over-budget previews cannot defer a required bo
   budgetLease.observe(report({ progressOrdinal: 8, handoffOrdinal: 2 }), none);
   assert.deepEqual(budgetLease.planBoundary([
     report({ progressOrdinal: 8, handoffOrdinal: 3 }),
-  ]), { requested: true, deferredScopes: [] });
+  ]), {
+    requested: true,
+    deferredScopes: [],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "required",
+      reason: "preview_not_renewable",
+    }],
+  });
 });
 
 test("previews cannot defer when more than one scope requires a boundary", () => {
@@ -113,7 +147,30 @@ test("previews cannot defer when more than one scope requires a boundary", () =>
   assert.deepEqual(lease.planBoundary([
     report({ scope: "domain-a", progressOrdinal: 2 }),
     report({ scope: "domain-b", progressOrdinal: 2 }),
-  ]), { requested: true, deferredScopes: [] });
+  ]), {
+    requested: true,
+    deferredScopes: [],
+    previewEvaluations: [
+      { scope: "domain-a", decision: "required", reason: "multiple_scopes" },
+      { scope: "domain-b", decision: "required", reason: "multiple_scopes" },
+    ],
+  });
+});
+
+test("a missing preview is observable without changing the required boundary", () => {
+  const lease = configuredLease();
+  lease.observe(report({ progressOrdinal: 8 }), none);
+  lease.observe(report({ progressOrdinal: 8 }), none);
+
+  assert.deepEqual(lease.planBoundary(), {
+    requested: true,
+    deferredScopes: [],
+    previewEvaluations: [{
+      scope: "domain-validation",
+      decision: "required",
+      reason: "preview_missing",
+    }],
+  });
 });
 
 test("new repair feedback after a boundary gets one delivery turn without renewing progress", () => {

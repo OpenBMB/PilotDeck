@@ -383,6 +383,14 @@ export class AgentLoop {
       const forceProgressBoundary = boundaryPlan.requested;
       const deferredBoundaryScopes = boundaryPlan.deferredScopes;
       pendingConvergencePreviews = [];
+      for (const evaluation of boundaryPlan.previewEvaluations) {
+        yield {
+          type: "progress_boundary_preview_evaluated",
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          ...evaluation,
+        };
+      }
       if (deferredBoundaryScopes.length > 0) {
         yield {
           type: "progress_boundary_deferred",

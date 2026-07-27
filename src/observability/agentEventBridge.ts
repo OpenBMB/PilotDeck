@@ -150,6 +150,21 @@ export function observeAgentEvent(recorder: ObservationRecorder | undefined, eve
         priority: "important",
       });
       return;
+    case "progress_boundary_preview_evaluated":
+      recorder.emit({
+        ...base,
+        type: "harness.decision",
+        payload: {
+          component: "progress-boundary-preview",
+          policyVersion: "progress-boundary-preview/v1",
+          decision: event.decision,
+          reasonCode: event.reason,
+          observed: { scope: event.scope },
+          forceBoundaryNext: event.decision === "required",
+        },
+        priority: "important",
+      });
+      return;
     case "subagent_started":
       recorder.emit({
         ...base,

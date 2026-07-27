@@ -36,6 +36,13 @@ export type ProgressBoundaryOutcome = {
 export type ProgressBoundaryPlan = {
   requested: boolean;
   deferredScopes: string[];
+  previewEvaluations: ProgressBoundaryPreviewEvaluation[];
+};
+
+export type ProgressBoundaryPreviewEvaluation = {
+  scope: string;
+  decision: "deferred" | "required";
+  reason: "multiple_scopes" | "preview_missing" | "preview_completed" | "preview_progressed" | "preview_handoff" | "preview_not_renewable";
 };
 
 export type ProgressLeaseObservation = {
@@ -83,24 +90,44 @@ export class ProgressLease {
   }
 
   planBoundary(previews: readonly ConvergenceReport[] = []): ProgressBoundaryPlan {
-    if (!this.config?.enabled) return { requested: false, deferredScopes: [] };
+    if (!this.config?.enabled) return { requested: false, deferredScopes: [], previewEvaluations: [] };
     const required = [...this.scopes.entries()].filter(([, state]) =>
       !state.awaitingPostBoundaryProgress
       && state.stagnantObservations >= this.stagnationLimit(state) - 1
     );
-    if (required.length === 0) return { requested: false, deferredScopes: [] };
-    if (required.length !== 1) return { requested: true, deferredScopes: [] };
+    if (required.length === 0) return { requested: false, deferredScopes: [], previewEvaluations: [] };
+    if (required.length !== 1) {
+      return {
+        requested: true,
+        deferredScopes: [],
+        previewEvaluations: required.map(([scope]) => ({ scope, decision: "required", reason: "multiple_scopes" })),
+      };
+    }
 
     const previewByScope = new Map<string, ConvergenceReport>();
     for (const preview of previews) previewByScope.set(preview.scope, preview);
-    const deferredScopes = required.flatMap(([scope, state]) => {
-      const preview = previewByScope.get(scope);
-      return preview && this.previewCanDeferBoundary(state, preview) ? [scope] : [];
-    });
-    if (deferredScopes.length !== required.length) {
-      return { requested: true, deferredScopes: [] };
+    const [scope, state] = required[0]!;
+    const preview = previewByScope.get(scope);
+    if (!preview) {
+      return {
+        requested: true,
+        deferredScopes: [],
+        previewEvaluations: [{ scope, decision: "required", reason: "preview_missing" }],
+      };
     }
-    return { requested: false, deferredScopes: deferredScopes.sort() };
+    const reason = this.previewDeferralReason(state, preview);
+    if (!reason) {
+      return {
+        requested: true,
+        deferredScopes: [],
+        previewEvaluations: [{ scope, decision: "required", reason: "preview_not_renewable" }],
+      };
+    }
+    return {
+      requested: false,
+      deferredScopes: [scope],
+      previewEvaluations: [{ scope, decision: "deferred", reason }],
+    };
   }
 
   observe(
@@ -293,15 +320,20 @@ export class ProgressLease {
     return this.config!.maxInitialStagnantObservations ?? this.config!.maxStagnantObservations;
   }
 
-  private previewCanDeferBoundary(state: ScopeState, preview: ConvergenceReport): boolean {
-    if (preview.remainingCount === 0 && preview.blockingCode === undefined) return true;
+  private previewDeferralReason(
+    state: ScopeState,
+    preview: ConvergenceReport,
+  ): ProgressBoundaryPreviewEvaluation["reason"] | undefined {
+    if (preview.remainingCount === 0 && preview.blockingCode === undefined) return "preview_completed";
     const progressed = preview.remainingCount < state.remainingCount
       || (preview.progressOrdinal !== undefined
         && (state.progressOrdinal === undefined || preview.progressOrdinal > state.progressOrdinal));
-    if (progressed) return true;
+    if (progressed) return "preview_progressed";
     const handoffAdvanced = preview.handoffOrdinal !== undefined
       && (state.handoffOrdinal === undefined || preview.handoffOrdinal > state.handoffOrdinal);
-    return handoffAdvanced && state.handoffsUsedSinceProgress < this.handoffLimit();
+    return handoffAdvanced && state.handoffsUsedSinceProgress < this.handoffLimit()
+      ? "preview_handoff"
+      : undefined;
   }
 }
 

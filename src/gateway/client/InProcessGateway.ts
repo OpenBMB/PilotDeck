@@ -1665,6 +1665,16 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         event: "progress_boundary_deferred",
         detail: { scopes: event.scopes },
       }];
+    case "progress_boundary_preview_evaluated":
+      return [{
+        type: "agent_status",
+        event: "progress_boundary_preview_evaluated",
+        detail: {
+          scope: event.scope,
+          decision: event.decision,
+          reason: event.reason,
+        },
+      }];
     case "warning":
       return [{
         type: "agent_status",

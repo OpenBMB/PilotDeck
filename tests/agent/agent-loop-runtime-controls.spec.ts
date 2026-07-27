@@ -664,7 +664,14 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
     },
   }), dependencies);
 
-  const events: Array<{ type?: string; decision?: string; handoffOrdinal?: number; scopes?: string[] }> = [];
+  const events: Array<{
+    type?: string;
+    decision?: string;
+    handoffOrdinal?: number;
+    scopes?: string[];
+    scope?: string;
+    reason?: string;
+  }> = [];
   const iterator = loop.run({
     sessionId: "session-bounded-handoff",
     turnId: "turn-bounded-handoff",
@@ -677,7 +684,14 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
       completed = next.value;
       break;
     }
-    events.push(next.value as { type?: string; decision?: string; handoffOrdinal?: number; scopes?: string[] });
+    events.push(next.value as {
+      type?: string;
+      decision?: string;
+      handoffOrdinal?: number;
+      scopes?: string[];
+      scope?: string;
+      reason?: string;
+    });
   }
 
   assert.equal(completed.result.type, "success");
@@ -699,6 +713,14 @@ test("AgentLoop carries a bounded handoff through the required boundary to genui
   assert.deepEqual(
     events.filter((event) => event.type === "progress_boundary_deferred").map((event) => event.scopes),
     [["synthetic-validation"], ["synthetic-validation"]],
+  );
+  assert.deepEqual(
+    events.filter((event) => event.type === "progress_boundary_preview_evaluated")
+      .map((event) => [event.scope, event.decision, event.reason]),
+      [
+      ["synthetic-validation", "deferred", "preview_handoff"],
+      ["synthetic-validation", "deferred", "preview_progressed"],
+    ],
   );
 });
 
@@ -818,7 +840,7 @@ test("AgentLoop fails closed before the model when a deferred preview is not con
     },
   }), dependencies);
 
-  const events: Array<{ type?: string }> = [];
+  const events: Array<{ type?: string; decision?: string; reason?: string }> = [];
   const iterator = loop.run({
     sessionId: "session-stale-preview",
     turnId: "turn-stale-preview",
@@ -831,7 +853,7 @@ test("AgentLoop fails closed before the model when a deferred preview is not con
       completed = next.value;
       break;
     }
-    events.push(next.value as { type?: string });
+    events.push(next.value as { type?: string; decision?: string; reason?: string });
   }
 
   assert.equal(completed.result.type, "error");
@@ -845,6 +867,11 @@ test("AgentLoop fails closed before the model when a deferred preview is not con
   assert.equal(preModelCalls, 3);
   assert.equal(forcedFullCompactions, 0);
   assert.equal(events.filter((event) => event.type === "progress_boundary_deferred").length, 1);
+  assert.deepEqual(
+    events.filter((event) => event.type === "progress_boundary_preview_evaluated")
+      .map((event) => [event.decision, event.reason]),
+    [["deferred", "preview_handoff"]],
+  );
 });
 
 test("artifact failure injects one bounded correction turn and succeeds after validation", async () => {

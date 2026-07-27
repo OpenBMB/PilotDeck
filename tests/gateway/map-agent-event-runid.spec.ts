@@ -87,3 +87,23 @@ test("mapAgentEvent exposes a post-tool boundary deferral without domain payload
   assert.equal(status.event, "progress_boundary_deferred");
   assert.deepEqual(status.detail, { scopes: ["domain-validation"] });
 });
+
+test("mapAgentEvent exposes the bounded preview evaluation reason", () => {
+  const [status] = mapAgentEvent({
+    type: "progress_boundary_preview_evaluated",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    scope: "domain-validation",
+    decision: "required",
+    reason: "preview_not_renewable",
+  }, "run-1");
+
+  assert.equal(status?.type, "agent_status");
+  if (status?.type !== "agent_status") return;
+  assert.equal(status.event, "progress_boundary_preview_evaluated");
+  assert.deepEqual(status.detail, {
+    scope: "domain-validation",
+    decision: "required",
+    reason: "preview_not_renewable",
+  });
+});
