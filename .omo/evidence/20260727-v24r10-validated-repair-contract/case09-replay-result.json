@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "fixture": "preserved-v24r9-case09-invalid-repair",
+  "rejectedRepair": "source-repair-43668ad6d287.json",
+  "appliedReceipt": "source-repair-applied-43668ad6d287.json",
+  "invalidRepairPreparationOrdinal": 0,
+  "validRepairPreparationOrdinal": 1,
+  "progressOrdinal": [
+    0,
+    1,
+    1
+  ],
+  "appliedSourceCount": 4,
+  "appliedFactCount": 16,
+  "reviewedSources": 4,
+  "pendingSources": 20,
+  "totalFacts": 16,
+  "stateHashAfter": "e6d480e622d25dad082ad758a9676220b091d79aba5c44e6e840eba2705f5039",
+  "repairSha256": "1ba2abb4f789eff5841fe7dc345ad5c22506a61c30ddfc57d697396ececb7fd7",
+  "nextGroup": "source-fragment-merge"
+}

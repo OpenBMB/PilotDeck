@@ -594,7 +594,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const invalidProposalBody = {
       ...proposalBase,
       facts: [
-        { ...proposalBase.facts[0], sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "invented:99" }] },
+        { ...proposalBase.facts[0], evidenceClass: "official-record" },
         {
           ...proposalBase.facts[1],
           dateOrPeriod: "2026",
@@ -623,7 +623,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     const invalidProposalContext = invalidProposal.hookSpecificOutput.additionalContext ?? "";
     assert.match(invalidProposalContext, /"group": "source-fragment-repair"/u);
     assert.match(invalidProposalContext, /"mode": "main-agent-repair"/u);
-    assert.match(invalidProposalContext, /source_merge_fact_locator_unverified/u);
+    assert.match(invalidProposalContext, /source_merge_fact_evidence_mismatch/u);
     assert.match(invalidProposalContext, /source_merge_fact_time_invalid/u);
     const invalidProposalEnvelope = JSON.parse(invalidProposalContext
       .replace(/^<legal_coverage_state>\n/u, "")
@@ -666,6 +666,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
             }>;
             sourceContext: Array<{
               sourceId: string;
+              evidenceClass: string;
               allowedFragmentFacts: Array<{ locator: string; statement: string }>;
               conflicts: string[];
               unresolvedItems: string[];
@@ -681,7 +682,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.deepEqual(
       immutableRepair.repairSlice.diagnostics.items.map((item) => item.code),
       [
-        "source_merge_fact_locator_unverified",
+        "source_merge_fact_evidence_mismatch",
         "source_merge_fact_time_invalid",
         "source_merge_threshold_invalid",
       ],
@@ -690,11 +691,13 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       immutableRepair.repairSlice.diagnostics.items.map((item) => item.factNumber),
       [1, 2, 2],
     );
-    assert.match(immutableRepair.repairSlice.diagnostics.items[0]?.message ?? "", /Proposal fact 1 locator/u);
+    assert.match(immutableRepair.repairSlice.diagnostics.items[0]?.message ?? "", /Proposal fact 1 evidenceClass/u);
     assert.match(immutableRepair.repairSlice.diagnostics.items[1]?.message ?? "", /Proposal fact 2 requires exactly one/u);
     assert.match(immutableRepair.repairSlice.diagnostics.items[2]?.message ?? "", /Proposal fact 2 has an invalid thresholdAssessment/u);
     assert.match(invalidProposalEnvelope.nextAction, /Write exactly one new immutable source repair transaction/u);
     assert.match(invalidProposalEnvelope.nextAction, /Do not read or overwrite the rejected proposal/u);
+    assert.match(invalidProposalEnvelope.nextAction, /template already applies validator-derived fields/u);
+    assert.match(invalidProposalEnvelope.nextAction, /exact sourceContext evidenceClass/u);
     const invalidProposalBytes = await readFile(proposalPath);
     assert.equal(immutableRepair.proposalPath, proposal.path);
     assert.equal(immutableRepair.proposalSha256, sha256(invalidProposalBytes));
@@ -704,14 +707,16 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(immutableRepair.limits.maxSerializedBytes, 24576);
     assert.deepEqual(immutableRepair.repairSlice.rejectedFacts.map((item) => item.factNumber), [1, 2]);
     assert.deepEqual(immutableRepair.repairSlice.rejectedFacts[0]?.fact, invalidProposalBody.facts[0]);
-    assert.deepEqual(immutableRepair.repairSlice.rejectedFacts[0]?.diagnosticCodes, ["source_merge_fact_locator_unverified"]);
+    assert.deepEqual(immutableRepair.repairSlice.rejectedFacts[0]?.diagnosticCodes, ["source_merge_fact_evidence_mismatch"]);
     const firstRepairSource = immutableRepair.repairSlice.sourceContext
       .find((source) => source.sourceId === proposal.sourceIds[0]);
+    assert.equal(firstRepairSource?.evidenceClass, "other");
     assert.deepEqual(firstRepairSource?.allowedFragmentFacts, [
       { locator: "converted.txt:1", statement: `Reviewed ${proposal.sourceIds[0]}.` },
     ]);
     assert.deepEqual(firstRepairSource?.conflicts, ["Synthetic conflict is preserved on the source ledger."]);
     assert.deepEqual(firstRepairSource?.unresolvedItems, ["Synthetic unresolved item is preserved on the source ledger."]);
+    assert.equal(immutableRepair.template.operations[0]?.fact.evidenceClass, "other");
     assert.doesNotMatch(invalidProposalContext, /"currentProposal":/u);
     assert.doesNotMatch(invalidProposalContext, /"preparedSlice":/u);
     assert.doesNotMatch(invalidProposalContext, /"sourceFragmentCommand":/u);
@@ -739,7 +744,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       "--proposal-sha256", invalidProposalHash,
     );
     assert.equal(rejectedDirectApply.exitCode, 1);
-    assert.match(rejectedDirectApply.stderr, /source_merge_fact_locator_unverified/u);
+    assert.match(rejectedDirectApply.stderr, /source_merge_fact_evidence_mismatch/u);
     assert.doesNotMatch(rejectedDirectApply.stderr, /source_merge_threshold_invalid/u);
 
     const wrongRepairPath = join(workspace, STATE_ROOT, "fragments", "wrong-repair.json");
@@ -817,8 +822,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
           factNumber: 1,
           action: "replace",
           fact: {
-            ...invalidProposalBody.facts[0],
-            sourceRefs: [{ sourceId: proposal.sourceIds[0], locator: "converted.txt:1" }],
+            ...immutableRepair.template.operations[0]?.fact,
           },
         },
         {
@@ -937,6 +941,15 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     ];
     for (const invalidRepair of invalidRepairs) {
       await writeJson(repairPath, invalidRepair.body);
+      await runHook({
+        hookEventName: "PostToolUse",
+        sessionId: "large-pending-source-plan",
+        transcriptPath: "",
+        cwd: workspace,
+        toolName: "write_file",
+        toolInput: { file_path: immutableRepair.path },
+        toolUseId: `invalid-repair-${invalidRepair.name}`,
+      });
       const rejectedRepair = await runHook({
         hookEventName: "PreModelRequest",
         sessionId: "large-pending-source-plan",
@@ -946,6 +959,13 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       const rejectedRepairContext = rejectedRepair.hookSpecificOutput.additionalContext ?? "";
       assert.match(rejectedRepairContext, invalidRepair.errorCode, invalidRepair.name);
       assert.doesNotMatch(rejectedRepairContext, /"sourceMergeRepairApplyCommand":/u, invalidRepair.name);
+      assert.equal(
+        (rejectedRepair.hookSpecificOutput.modelRequestPatch?.metadata?.pilotdeckConvergence as {
+          repairPreparationOrdinal: number;
+        }).repairPreparationOrdinal,
+        0,
+        invalidRepair.name,
+      );
       assert.deepEqual(
         await readFile(join(workspace, STATE_ROOT, "sources.json")),
         canonicalSourcesBeforeRepair,

@@ -649,6 +649,7 @@ function sourceMergeRepairPlanFor(rejectedPlan) {
   ].join("\0")).slice(0, 12);
   const repairPath = `${STATE_DIRECTORY}/fragments/source-repair-${digest}.json`;
   const appliedReceiptPath = `${STATE_DIRECTORY}/fragments/source-repair-applied-${digest}.json`;
+  const sourceContext = Array.isArray(repairSlice.sourceContext) ? repairSlice.sourceContext : [];
   const { preparedSlice: _preparedSlice, ...boundedPlan } = rejectedPlan;
   const proposal = { ...boundedPlan.proposal };
   delete proposal.template;
@@ -681,11 +682,7 @@ function sourceMergeRepairPlanFor(rejectedPlan) {
         proposalPath: rejectedPlan.proposal.path,
         proposalSha256: repairSlice.proposal.sha256,
         diagnosticSha256,
-        operations: rejectedFacts.map((item) => ({
-          factNumber: item.factNumber,
-          action: "replace",
-          fact: item.fact,
-        })),
+        operations: rejectedFacts.map((item) => sourceMergeRepairTemplateOperationFor(item, sourceContext)),
       },
       repairSlice: {
         schemaVersion: 1,
@@ -694,6 +691,29 @@ function sourceMergeRepairPlanFor(rejectedPlan) {
         sourceContext: repairSlice.sourceContext,
       },
     },
+  };
+}
+
+function sourceMergeRepairTemplateOperationFor(item, sourceContext) {
+  let fact = item.fact;
+  if (item.diagnosticCodes.includes("source_merge_fact_evidence_mismatch")
+    && isRecord(fact) && Array.isArray(fact.sourceRefs)) {
+    const evidenceBySourceId = new Map(sourceContext
+      .filter((source) => isRecord(source) && nonEmpty(source.sourceId)
+        && EVIDENCE_CLASSES.has(source.evidenceClass))
+      .map((source) => [source.sourceId, source.evidenceClass]));
+    const allowedEvidenceClasses = [...new Set(fact.sourceRefs
+      .filter((reference) => isRecord(reference) && nonEmpty(reference.sourceId))
+      .map((reference) => evidenceBySourceId.get(reference.sourceId))
+      .filter((evidenceClass) => EVIDENCE_CLASSES.has(evidenceClass)))];
+    if (allowedEvidenceClasses.length === 1) {
+      fact = { ...fact, evidenceClass: allowedEvidenceClasses[0] };
+    }
+  }
+  return {
+    factNumber: item.factNumber,
+    action: "replace",
+    fact,
   };
 }
 
@@ -971,6 +991,7 @@ function sourceMergeRepairSliceFor(patch, bytes, plan, receipt, validationDiagno
       if (!row) return [];
       return [{
         sourceId,
+        evidenceClass: row.evidenceClass,
         allowedFragmentFacts: (Array.isArray(row.facts) ? row.facts : [])
           .filter((fact) => isRecord(fact) && nonEmpty(fact.locator) && nonEmpty(fact.statement))
           .map((fact) => ({ locator: fact.locator, statement: fact.statement }))
@@ -3922,6 +3943,8 @@ function nextActionFor(
     }
     return `Write exactly one new immutable source repair transaction to ${JSON.stringify(workItems.repair.path)} as the next tool call. `
       + `Use workItems.repair.template and workItems.repair.repairSlice; cover every rejected fact exactly once with action replace or remove. `
+      + `The template already applies validator-derived fields when the referenced fragment sources permit exactly one value; preserve those fields unless another listed diagnostic requires changing them. `
+      + `For evidence-class diagnostics, use only the exact sourceContext evidenceClass for a referenced source instead of inferring a document type. `
       + `For replace, provide the complete corrected fact. For remove, provide a specific reason and rely on the unchanged full validator to enforce source disposition. `
       + `Do not read or overwrite the rejected proposal, readiness checkpoint, canonical ledgers, fragment, or raw sources. `
       + `The Legal Plugin will combine the repair with every unchanged fact and validate it before exposing an apply command.`;
