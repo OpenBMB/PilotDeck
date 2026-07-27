@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "fixture": "preserved-v24r11-case09-progress-events",
+  "eventsSha256": "ba77de58b432d2f226cb1e6567b3f91bedf03b0e909e12d2aaaa535d82e2ed36",
+  "observationCount": 21,
+  "unchangedDecisionPrefix": 20,
+  "originalTail": [
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 1,
+      "repairPreparationOrdinal": 1,
+      "handoffOrdinal": 3,
+      "decision": "stagnant"
+    },
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 2,
+      "repairPreparationOrdinal": 1,
+      "handoffOrdinal": 3,
+      "decision": "boundary_grace"
+    },
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 2,
+      "repairPreparationOrdinal": 2,
+      "handoffOrdinal": 3,
+      "decision": "fail_closed"
+    }
+  ],
+  "replayedTail": [
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 1,
+      "repairPreparationOrdinal": 1,
+      "handoffOrdinal": 3,
+      "decision": "stagnant"
+    },
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 2,
+      "repairPreparationOrdinal": 1,
+      "handoffOrdinal": 3,
+      "decision": "boundary_grace"
+    },
+    {
+      "progressOrdinal": 5,
+      "repairOrdinal": 2,
+      "repairPreparationOrdinal": 2,
+      "handoffOrdinal": 3,
+      "decision": "repair_preparation_grace"
+    }
+  ],
+  "changedDecisionIndex": 20,
+  "changedDecision": {
+    "from": "fail_closed",
+    "to": "repair_preparation_grace"
+  },
+  "lease": {
+    "maxInitialStagnantObservations": 8,
+    "maxStagnantObservations": 2
+  }
+}
