@@ -469,10 +469,16 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
     assert.equal(prepared.exitCode, 0, prepared.stderr);
     const preparedResult = JSON.parse(prepared.stdout) as {
       receiptSha256: string;
-      sources: Array<{ sourceId: string }>;
+      sources: Array<{
+        sourceId: string;
+        facts: Array<{ locator: string; locatorRef: string; statement: string }>;
+      }>;
     };
     assert.equal(preparedResult.receiptSha256, proposal.receiptSha256);
     assert.deepEqual(preparedResult.sources.map((source) => source.sourceId), proposal.sourceIds);
+    assert.equal(preparedResult.sources.every((source) => source.facts.every((fact) =>
+      /^LR-[a-f0-9]{16}$/u.test(fact.locatorRef)
+    )), true);
     assert.equal(Buffer.byteLength(JSON.stringify(preparedResult)) <= 24576, true);
 
     const readinessPath = join(workspace, envelope.workItems.readiness.path);
@@ -583,7 +589,10 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
         predicate: "contains reviewed evidence",
         value: `Reviewed ${sourceId}.`,
         missingTimeReason: "The synthetic source contains no usable date.",
-        sourceRefs: [{ sourceId, locator: "converted.txt:1" }],
+        sourceRefs: [{
+          sourceId,
+          locatorRef: preparedResult.sources.find((source) => source.sourceId === sourceId)!.facts[0]!.locatorRef,
+        }],
         evidenceClass: "other",
         verificationStatus: "verified",
         conflictStatus: "none",
@@ -592,6 +601,28 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       })),
       noMaterialFacts: [],
     };
+    const invalidLocatorRefBody = {
+      ...proposalBase,
+      facts: [{
+        ...proposalBase.facts[0],
+        sourceRefs: [{ sourceId: proposal.sourceIds[0], locatorRef: "LR-0000000000000000" }],
+      }],
+      noMaterialFacts: proposal.sourceIds.slice(1).map((sourceId) => ({
+        sourceId,
+        reason: "Synthetic locatorRef rejection fixture.",
+      })),
+    };
+    await writeJson(proposalPath, invalidLocatorRefBody);
+    const invalidLocatorRef = await runHook({
+      hookEventName: "PreModelRequest",
+      sessionId: "locator-ref-rejection",
+      transcriptPath: "",
+      cwd: workspace,
+    });
+    assert.match(
+      invalidLocatorRef.hookSpecificOutput.additionalContext ?? "",
+      /source_merge_fact_locator_ref_unverified/u,
+    );
     const invalidProposalBody = {
       ...proposalBase,
       facts: [
@@ -668,7 +699,7 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
             sourceContext: Array<{
               sourceId: string;
               evidenceClass: string;
-              allowedFragmentFacts: Array<{ locator: string; statement: string }>;
+              allowedFragmentFacts: Array<{ locatorRef: string; locator: string; statement: string }>;
               conflicts: string[];
               unresolvedItems: string[];
             }>;
@@ -713,7 +744,11 @@ test("legal coverage injects deterministic disjoint worker batches for large pen
       .find((source) => source.sourceId === proposal.sourceIds[0]);
     assert.equal(firstRepairSource?.evidenceClass, "other");
     assert.deepEqual(firstRepairSource?.allowedFragmentFacts, [
-      { locator: "converted.txt:1", statement: `Reviewed ${proposal.sourceIds[0]}.` },
+      {
+        locatorRef: preparedResult.sources[0]!.facts[0]!.locatorRef,
+        locator: "converted.txt:1",
+        statement: `Reviewed ${proposal.sourceIds[0]}.`,
+      },
     ]);
     assert.deepEqual(firstRepairSource?.conflicts, ["Synthetic conflict is preserved on the source ledger."]);
     assert.deepEqual(firstRepairSource?.unresolvedItems, ["Synthetic unresolved item is preserved on the source ledger."]);

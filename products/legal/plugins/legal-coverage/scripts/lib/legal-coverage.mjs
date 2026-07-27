@@ -586,7 +586,7 @@ function sourceMergeProposalPlanFor(mergePlan, expectedStateHash) {
           unit: null,
           dateOrPeriod: null,
           missingTimeReason: "<why no usable time appears in the source>",
-          sourceRefs: [{ sourceId: item.sourceIds[0], locator: "<exact fragment locator>" }],
+          sourceRefs: [{ sourceId: item.sourceIds[0], locatorRef: "<exact preparedSlice locatorRef>" }],
           evidenceClass: "<fragment evidence class>",
           verificationStatus: "<verified|partially-verified|unverified>",
           conflictStatus: "<none|resolved|unresolved>",
@@ -771,7 +771,7 @@ function boundedReceiptSourceIds(receipt, maxRecords, maxSerializedBytes) {
       fragmentId: receipt.id,
       fragmentPath: receipt.fragmentPath,
       receiptSha256: receipt.receiptSha256,
-      sources: candidate.map((id) => rowsById.get(id)),
+      sources: candidate.map((id) => sourceRowWithLocatorRefs(rowsById.get(id))),
     };
     if (Buffer.byteLength(JSON.stringify(payload)) > maxSerializedBytes) break;
     selected.push(sourceId);
@@ -812,7 +812,7 @@ export async function sourceReviewFragmentSlice(workspaceRoot, options = {}) {
     fragmentId: receipt.id,
     fragmentPath: receipt.fragmentPath,
     receiptSha256: receipt.receiptSha256,
-    sources: sourceIds.map((sourceId) => rowsById.get(sourceId)),
+    sources: sourceIds.map((sourceId) => sourceRowWithLocatorRefs(rowsById.get(sourceId))),
   };
   const serializedBytes = Buffer.byteLength(JSON.stringify(result));
   if (serializedBytes > maxSerializedBytes) {
@@ -999,7 +999,11 @@ function sourceMergeRepairSliceFor(patch, bytes, plan, receipt, validationDiagno
         evidenceClass: row.evidenceClass,
         allowedFragmentFacts: (Array.isArray(row.facts) ? row.facts : [])
           .filter((fact) => isRecord(fact) && nonEmpty(fact.locator) && nonEmpty(fact.statement))
-          .map((fact) => ({ locator: fact.locator, statement: fact.statement }))
+          .map((fact) => ({
+            locatorRef: sourceLocatorRef(sourceId, fact.locator),
+            locator: fact.locator,
+            statement: fact.statement,
+          }))
           .sort((left, right) => left.locator.localeCompare(right.locator)
             || left.statement.localeCompare(right.statement)),
         conflicts: [...new Set(stringArray(row.conflicts))].sort(),
@@ -1687,20 +1691,40 @@ function validateSourceMergeProposal(patch, plan, receipt, state, serializedByte
       }
       const seenRefs = new Set();
       const sourceRefs = fact.sourceRefs.map((reference) => {
-        if (!isRecord(reference) || !hasOnlyKeys(reference, ["sourceId", "locator"])
-          || !selectedIds.has(reference.sourceId) || !nonEmpty(reference.locator)) {
+        const locatorShape = isRecord(reference) && hasOnlyKeys(reference, ["sourceId", "locator"]);
+        const locatorRefShape = isRecord(reference) && hasOnlyKeys(reference, ["sourceId", "locatorRef"]);
+        if ((!locatorShape && !locatorRefShape) || !selectedIds.has(reference.sourceId)) {
           throw batchError("source_merge_fact_source_out_of_scope", `Proposal fact ${index + 1} has an invalid or out-of-scope source reference.`);
         }
-        const key = `${reference.sourceId}\0${reference.locator}`;
+        const fragmentRow = fragmentRows.get(reference.sourceId);
+        const fragmentFacts = (Array.isArray(fragmentRow?.facts) ? fragmentRow.facts : [])
+          .filter((item) => isRecord(item) && nonEmpty(item.locator));
+        let locator;
+        if (locatorRefShape) {
+          if (!nonEmpty(reference.locatorRef)) {
+            throw batchError("source_merge_fact_locator_ref_unverified", `Proposal fact ${index + 1} locatorRef is not present in the validated fragment row for ${reference.sourceId}.`);
+          }
+          locator = fragmentFacts.find((item) =>
+            sourceLocatorRef(reference.sourceId, item.locator) === reference.locatorRef
+          )?.locator;
+          if (!locator) {
+            throw batchError("source_merge_fact_locator_ref_unverified", `Proposal fact ${index + 1} locatorRef is not present in the validated fragment row for ${reference.sourceId}.`);
+          }
+        } else {
+          if (!nonEmpty(reference.locator)) {
+            throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
+          }
+          locator = reference.locator;
+          const allowedLocators = new Set(fragmentFacts.map((item) => item.locator));
+          if (!allowedLocators.has(locator)) {
+            throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
+          }
+        }
+        const key = `${reference.sourceId}\0${locator}`;
         if (seenRefs.has(key)) throw batchError("source_merge_fact_source_duplicate", `Proposal fact ${index + 1} repeats a source reference.`);
         seenRefs.add(key);
-        const fragmentRow = fragmentRows.get(reference.sourceId);
-        const allowedLocators = new Set((Array.isArray(fragmentRow?.facts) ? fragmentRow.facts : []).map((item) => item.locator));
-        if (!allowedLocators.has(reference.locator)) {
-          throw batchError("source_merge_fact_locator_unverified", `Proposal fact ${index + 1} locator is not present in the validated fragment row for ${reference.sourceId}.`);
-        }
         referencedSources.add(reference.sourceId);
-        return { sourceId: reference.sourceId, locator: reference.locator };
+        return { sourceId: reference.sourceId, locator };
       }).sort((left, right) => left.sourceId.localeCompare(right.sourceId) || left.locator.localeCompare(right.locator));
       const referencedEvidenceClasses = new Set(sourceRefs.map((reference) => fragmentRows.get(reference.sourceId)?.evidenceClass));
       if (!referencedEvidenceClasses.has(fact.evidenceClass)) {
@@ -5868,6 +5892,20 @@ function normalize(value) {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function sourceLocatorRef(sourceId, locator) {
+  return `LR-${sha256(`${sourceId}\0${locator}`).slice(0, 16)}`;
+}
+
+function sourceRowWithLocatorRefs(row) {
+  if (!isRecord(row) || !Array.isArray(row.facts)) return row;
+  return {
+    ...row,
+    facts: row.facts.map((fact) => isRecord(fact) && nonEmpty(fact.locator)
+      ? { ...fact, locatorRef: sourceLocatorRef(row.sourceId, fact.locator) }
+      : fact),
+  };
 }
 
 function stableStringify(value) {
