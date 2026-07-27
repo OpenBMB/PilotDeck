@@ -141,6 +141,64 @@ test("genuine progress immediately after repair preparation renews the lease", (
   assert.equal(renewed?.stagnantObservations, 0);
 });
 
+test("repair feedback co-delivered by a boundary preserves the later preparation turn", () => {
+  const lease = configuredLease();
+  lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+
+  const stagnant = lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  assert.equal(stagnant?.decision, "stagnant");
+  assert.equal(stagnant?.forceBoundaryNext, true);
+
+  const boundary = lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 2, repairPreparationOrdinal: 1 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  assert.equal(boundary?.decision, "boundary_grace");
+
+  const preparation = lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 2, repairPreparationOrdinal: 2 }),
+    none,
+  );
+  assert.equal(preparation?.decision, "repair_preparation_grace");
+
+  const renewed = lease.observe(
+    report({ progressOrdinal: 6, repairOrdinal: 2, repairPreparationOrdinal: 2 }),
+    none,
+  );
+  assert.equal(renewed?.decision, "renewed");
+});
+
+test("a boundary co-delivering repair feedback and preparation grants no replay turn", () => {
+  const lease = configuredLease();
+  lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+  lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 1, repairPreparationOrdinal: 1 }),
+    none,
+  );
+
+  const boundary = lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 2, repairPreparationOrdinal: 2 }),
+    { requested: true, attempted: true, applied: true },
+  );
+  assert.equal(boundary?.decision, "boundary_grace");
+
+  const replayed = lease.observe(
+    report({ progressOrdinal: 5, repairOrdinal: 2, repairPreparationOrdinal: 2 }),
+    none,
+  );
+  assert.equal(replayed?.decision, "fail_closed");
+  assert.equal(replayed?.reason, "post_boundary_stagnation");
+});
+
 test("preparation observed before feedback cannot be replayed after the boundary", () => {
   const lease = configuredLease();
   lease.observe(report({ progressOrdinal: 1, repairOrdinal: 0, repairPreparationOrdinal: 0 }), none);

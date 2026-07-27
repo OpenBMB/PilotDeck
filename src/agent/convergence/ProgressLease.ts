@@ -212,8 +212,8 @@ export class ProgressLease {
         handoffsUsedSinceProgress,
         stagnantObservations,
         awaitingPostBoundaryProgress: true,
-        feedbackGraceUsed: false,
-        repairPreparationGraceUsed: false,
+        feedbackGraceUsed: repairAdvanced,
+        repairPreparationGraceUsed: repairPreparationAdvanced,
       });
       return observation(report, stagnantObservations, "boundary_grace", false);
     }

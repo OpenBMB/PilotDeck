@@ -415,7 +415,7 @@ test("AgentLoop permits one prepared-target request and then requires genuine pr
     async *execute(_decision: RouterDecision, request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
       requests.push(request);
       yield { type: "message_start", role: "assistant" };
-      if (requests.length < 6) {
+      if (requests.length < 5) {
         const toolCall = { id: `repair-step-${requests.length}`, name: "noop", input: {} };
         yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
         yield { type: "tool_call_end", toolCall };
@@ -437,14 +437,14 @@ test("AgentLoop permits one prepared-target request and then requires genuine pr
       async dispatch(input: { event: string }) {
         if (input.event !== "PreModelRequest") return emptyLifecycleResult();
         preModelCalls += 1;
-        const feedbackAvailable = preModelCalls >= 4;
-        const targetPrepared = preModelCalls >= 5;
-        const acceptedProgress = preModelCalls >= 6;
+        const feedbackAvailable = preModelCalls >= 3;
+        const targetPrepared = preModelCalls >= 4;
+        const acceptedProgress = preModelCalls >= 5;
         return {
           ...emptyLifecycleResult(),
-          messages: preModelCalls === 4
+          messages: preModelCalls === 3
             ? [userMessage("repair diagnostics for one stable target")]
-            : preModelCalls === 5
+            : preModelCalls === 4
               ? [userMessage("the stable repair target was read successfully")]
               : [],
           effects: [{
@@ -511,12 +511,12 @@ test("AgentLoop permits one prepared-target request and then requires genuine pr
   }
 
   assert.equal(completed.result.type, "success");
-  assert.equal(requests.length, 6);
-  assert.match(messageText(requests[3]?.messages ?? []), /repair diagnostics for one stable target/u);
-  assert.match(messageText(requests[4]?.messages ?? []), /stable repair target was read successfully/u);
+  assert.equal(requests.length, 5);
+  assert.match(messageText(requests[2]?.messages ?? []), /repair diagnostics for one stable target/u);
+  assert.match(messageText(requests[3]?.messages ?? []), /stable repair target was read successfully/u);
   assert.deepEqual(
     events.filter((event) => event.type === "progress_lease_evaluated").map((event) => event.decision),
-    ["baseline", "stagnant", "boundary_grace", "feedback_grace", "repair_preparation_grace", "renewed"],
+    ["baseline", "stagnant", "boundary_grace", "repair_preparation_grace", "renewed"],
   );
 });
 
