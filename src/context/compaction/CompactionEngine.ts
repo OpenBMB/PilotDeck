@@ -90,7 +90,7 @@ export type CompactionResult = {
   postTokens?: number;
   summaryMessage?: CanonicalMessage;
   boundaryMarker: CanonicalMessage;
-  /** Messages preserved verbatim across the boundary (kept tail). */
+  /** Messages preserved verbatim across the boundary (bounded protected prefix plus tail). */
   messagesToKeep: CanonicalMessage[];
   /** Attachments to be re-injected post-compact (memory / hooks). */
   attachments: CanonicalMessage[];
@@ -143,10 +143,11 @@ export class CompactionEngine {
   async run(input: CompactionInput): Promise<CompactionResult> {
     const preTokens = this.estimateMessages(input.messages);
     const tailRatio = clamp(input.keepTailRatio ?? DEFAULT_KEEP_TAIL_RATIO, 0, 1);
-    const keepCount = Math.max(1, Math.floor(input.messages.length * tailRatio));
+    const keepTokenBudget = Math.max(1, Math.floor(preTokens * tailRatio));
     const compactPlan = planFullCompactionMessages(
       input.messages,
-      keepCount,
+      keepTokenBudget,
+      (candidate) => this.estimateMessages(candidate),
       this.protectedToolNames,
       this.maxProtectedPrefixTurns,
     );
@@ -339,28 +340,47 @@ export function buildPostCompactMessages(result: CompactionResult): CanonicalMes
 
 function planFullCompactionMessages(
   messages: CanonicalMessage[],
-  keepCount: number,
+  keepTokenBudget: number,
+  estimateMessages: (messages: CanonicalMessage[]) => number,
   protectedToolNames?: Iterable<string>,
   maxProtectedPrefixTurns = DEFAULT_MAX_PROTECTED_PREFIX_TURNS,
 ): { messagesToSummarize: CanonicalMessage[]; messagesToKeep: CanonicalMessage[] } {
   const frames = splitMessagesIntoAtomicFrames(messages);
+  const frameTokens = frames.map((frame) => estimateMessages(frame.messages));
   let tailStart = frames.length;
-  let keptMessages = 0;
-  while (tailStart > 0 && keptMessages < keepCount) {
-    tailStart -= 1;
-    keptMessages += frames[tailStart]?.messages.length ?? 0;
+  let retainedTokens = 0;
+  while (tailStart > 0) {
+    const candidateIndex = tailStart - 1;
+    const candidateTokens = frameTokens[candidateIndex] ?? 0;
+    if (tailStart < frames.length && retainedTokens + candidateTokens > keepTokenBudget) {
+      break;
+    }
+    tailStart = candidateIndex;
+    retainedTokens += candidateTokens;
+    if (retainedTokens >= keepTokenBudget) {
+      break;
+    }
   }
-  const prefix = frames.slice(0, tailStart).flatMap((frame) => frame.messages);
+  const prefixFrames = frames.slice(0, tailStart);
+  const prefix = prefixFrames.flatMap((frame) => frame.messages);
   const tail = frames.slice(tailStart).flatMap((frame) => frame.messages);
   const protectedIndexes = collectProtectedFrameIndexes(prefix, {
     protectedToolNames,
     maxProtectedTurns: maxProtectedPrefixTurns,
   });
+  const retainedProtectedIndexes = new Set<number>();
+  for (let index = prefixFrames.length - 1; index >= 0; index -= 1) {
+    if (!protectedIndexes.has(index)) continue;
+    const candidateTokens = frameTokens[index] ?? 0;
+    if (retainedTokens + candidateTokens > keepTokenBudget) continue;
+    retainedProtectedIndexes.add(index);
+    retainedTokens += candidateTokens;
+  }
   const protectedMessages: CanonicalMessage[] = [];
   const summaryCandidates: CanonicalMessage[] = [];
 
-  for (const frame of splitMessagesIntoAtomicFrames(prefix)) {
-    if (protectedIndexes.has(frame.index)) {
+  for (const frame of prefixFrames) {
+    if (retainedProtectedIndexes.has(frame.index)) {
       protectedMessages.push(...frame.messages);
     } else {
       summaryCandidates.push(...frame.messages);

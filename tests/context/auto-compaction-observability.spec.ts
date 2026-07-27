@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
 import { CompactionEngine } from "../../src/context/compaction/CompactionEngine.js";
 import { collectToolCallIds, collectToolResultIds } from "../../src/context/compaction/toolPairIntegrity.js";
-import type { TokenBudgetSnapshot } from "../../src/context/budget/TokenBudgetManager.js";
+import { TokenBudgetManager, type TokenBudgetSnapshot } from "../../src/context/budget/TokenBudgetManager.js";
 import type { CanonicalMessage, CanonicalModelRequest } from "../../src/model/index.js";
 import { ProgressLease } from "../../src/agent/convergence/ProgressLease.js";
 
@@ -67,7 +67,7 @@ test("progress policy can force a full boundary while the token budget is still 
   assert.equal(result.trace?.appliedTier, "full");
 });
 
-test("full compaction distinguishes a protected prefix with no summarizable messages from model failure", async () => {
+test("full compaction distinguishes a fully retained trajectory from model failure", async () => {
   let modelCalls = 0;
   const statuses: string[] = [];
   const engine = new CompactionEngine({
@@ -87,7 +87,7 @@ test("full compaction distinguishes a protected prefix with no summarizable mess
   const result = await engine.run({
     trigger: "auto",
     messages: protectedAgentPairs(4),
-    keepTailRatio: 0.25,
+    keepTailRatio: 1,
   });
 
   assert.equal(result.outcome, "no_summarizable_messages");
@@ -164,6 +164,88 @@ test("bounded protected-prefix retention summarizes old agent turns and preserve
   assert.deepEqual(collectToolCallIds(result.messagesToKeep), collectToolResultIds(result.messagesToKeep));
 });
 
+test("full compaction shares one token budget across the exact tail and protected prefix", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const tokenBudget = new TokenBudgetManager();
+  const engine = new CompactionEngine({
+    provider: "test",
+    model_: "test",
+    tokenBudget,
+    maxProtectedPrefixTurns: 8,
+    model: {
+      async *stream(request) {
+        requests.push(request);
+        yield {
+          type: "text_delta" as const,
+          text: "## Objective\nO\n## Current State\nS\n## Remaining\nR\n## Files And Artifacts\nF",
+        };
+      },
+    },
+  });
+  const trajectory = unevenProtectedAgentTrajectory(10, 12_000);
+  const keepRatio = 0.35;
+
+  const result = await engine.run({
+    trigger: "auto",
+    messages: trajectory,
+    keepTailRatio: keepRatio,
+  });
+
+  assert.equal(result.outcome, "summarized");
+  assert.equal(requests.length, 1);
+  const summarizedMessages = requests[0]!.messages.slice(0, -1);
+  const totalTokens = tokenBudget.estimateMessagesTokens(trajectory);
+  const retainedTokens = tokenBudget.estimateMessagesTokens(result.messagesToKeep);
+  assert.ok(retainedTokens <= Math.floor(totalTokens * keepRatio));
+  assert.ok(collectToolCallIds(summarizedMessages).size > 0);
+  assert.deepEqual(collectToolCallIds(summarizedMessages), collectToolResultIds(summarizedMessages));
+  assert.deepEqual(collectToolCallIds(result.messagesToKeep), collectToolResultIds(result.messagesToKeep));
+  assert.ok(collectToolCallIds(result.messagesToKeep).has("agent-9"));
+});
+
+test("full compaction keeps one oversized newest atomic frame intact", async () => {
+  const requests: CanonicalModelRequest[] = [];
+  const estimateMessages = (candidate: CanonicalMessage[]) => Buffer.byteLength(JSON.stringify(candidate), "utf8");
+  const engine = new CompactionEngine({
+    provider: "test",
+    model_: "test",
+    tokenAccounting: { estimateMessages } as never,
+    maxProtectedPrefixTurns: 0,
+    model: {
+      async *stream(request) {
+        requests.push(request);
+        yield { type: "text_delta" as const, text: "oversized-newest summary" };
+      },
+    },
+  });
+  const trajectory = [
+    ...singlePromptToolTrajectory(3),
+    {
+      role: "assistant" as const,
+      content: [{ type: "tool_call" as const, id: "newest", name: "read_file", input: {} }],
+    },
+    {
+      role: "user" as const,
+      content: [{
+        type: "tool_result" as const,
+        toolCallId: "newest",
+        content: [{ type: "text" as const, text: "x".repeat(8_000) }],
+      }],
+    },
+  ];
+
+  const result = await engine.run({ trigger: "auto", messages: trajectory, keepTailRatio: 0.05 });
+  const summarizedMessages = requests[0]!.messages.slice(0, -1);
+
+  assert.ok(
+    estimateMessages(result.messagesToKeep)
+      > Math.floor(estimateMessages(trajectory) * 0.05),
+  );
+  assert.deepEqual(collectToolCallIds(result.messagesToKeep), new Set(["newest"]));
+  assert.deepEqual(collectToolResultIds(result.messagesToKeep), new Set(["newest"]));
+  assert.deepEqual(collectToolCallIds(summarizedMessages), collectToolResultIds(summarizedMessages));
+});
+
 test("full compaction summarizes a real-shaped single-prompt Agent trajectory", async () => {
   const requests: CanonicalModelRequest[] = [];
   const engine = new CompactionEngine({
@@ -194,7 +276,7 @@ test("full compaction summarizes a real-shaped single-prompt Agent trajectory", 
   assert.deepEqual(collectToolCallIds(result.messagesToKeep), collectToolResultIds(result.messagesToKeep));
 });
 
-test("full compaction aligns a message-count tail boundary to complete tool turns", async () => {
+test("full compaction aligns a token-budget tail boundary to complete tool turns", async () => {
   const requests: CanonicalModelRequest[] = [];
   const engine = new CompactionEngine({
     provider: "test",
@@ -338,6 +420,29 @@ function singlePromptAgentTrajectory(count: number): CanonicalMessage[] {
   return [
     { role: "user", content: [{ type: "text", text: "one long bounded task" }] },
     ...protectedAgentPairs(count),
+  ];
+}
+
+function unevenProtectedAgentTrajectory(count: number, resultCharacters: number): CanonicalMessage[] {
+  return [
+    { role: "user", content: [{ type: "text", text: "one bounded task with several large results" }] },
+    ...Array.from({ length: count }, (_, index): CanonicalMessage[] => {
+      const id = `agent-${index}`;
+      return [
+        {
+          role: "assistant",
+          content: [{ type: "tool_call", id, name: "agent", input: { task: `task-${index}` } }],
+        },
+        {
+          role: "user",
+          content: [{
+            type: "tool_result",
+            toolCallId: id,
+            content: [{ type: "text", text: String(index).repeat(resultCharacters) }],
+          }],
+        },
+      ];
+    }).flat(),
   ];
 }
 
