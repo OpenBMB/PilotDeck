@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "surface": "legal-coverage PreModelRequest hook process",
+  "sourceCampaignFrozenAndUnchanged": true,
+  "copiedCanonicalLedgersUnchanged": true,
+  "blockingCode": "risk_signal_orphaned",
+  "workGroup": "issue-closure-propose",
+  "returned": 1,
+  "hasMore": false,
+  "target": {
+    "matrixIndex": 0,
+    "entryIndex": 1
+  },
+  "limits": {
+    "maxRecords": 6,
+    "maxFacts": 12,
+    "maxSerializedBytes": 24576
+  },
+  "factCount": 5,
+  "criticalFactCount": 4,
+  "riskSignalCount": 1,
+  "allowedRuleCount": 1,
+  "issueTemplateCount": 1,
+  "templateCriticalityPreserved": true,
+  "applyCommandExposedBeforeValidation": false,
+  "proposalPathIsDeterministic": true,
+  "convergence": {
+    "phase": "issues",
+    "blockingCode": "risk_signal_orphaned",
+    "remainingCount": 358,
+    "nextBatchGroup": "issue-closure-propose"
+  },
+  "omitted": [
+    "source text",
+    "fact text",
+    "prompt content",
+    "model reasoning",
+    "credentials"
+  ]
+}

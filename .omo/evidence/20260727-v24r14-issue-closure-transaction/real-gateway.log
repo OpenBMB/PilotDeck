@@ -1,0 +1,24 @@
+TAP version 13
+# (node:73938) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: real gateway executes the state-bound legal authority closure with complete O1 evidence
+ok 1 - real gateway executes the state-bound legal authority closure with complete O1 evidence
+  ---
+  duration_ms: 810.123041
+  type: 'test'
+  ...
+# Subtest: real gateway executes the state-bound legal issue closure with complete O1 evidence
+ok 2 - real gateway executes the state-bound legal issue closure with complete O1 evidence
+  ---
+  duration_ms: 507.504375
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1712.197708

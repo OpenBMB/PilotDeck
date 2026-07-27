@@ -9,6 +9,7 @@ import {
   authorityClosurePlan,
   convergenceStateHash,
   ensureWorkspace,
+  issueClosurePlan,
   milestoneDigest,
   milestoneEnvelopeFor,
   milestoneFor,
@@ -227,6 +228,9 @@ async function dynamicWorkItems(workspaceRoot, result) {
   if (first?.phase === "matrices" && first.code === "matrix_pending") {
     return pendingMatrixPlan(workspaceRoot, { validationResult: result });
   }
+  if (first?.phase === "issues" && first.code === "risk_signal_orphaned") {
+    return issueClosurePlan(workspaceRoot, { validationResult: result });
+  }
   if (first?.phase === "authorities" && first.code === "legal_authority_links_missing") {
     return authorityClosurePlan(workspaceRoot, { validationResult: result });
   }
@@ -416,6 +420,19 @@ function legalHandoffCheckpointDigest(workItems) {
     checkpoint = {
       kind: "authority-closure-apply-ready",
       expectedStateHash: workItems.proposal.expectedStateHash,
+      targetEntryId: workItems.proposal.targetEntryId,
+      proposalSha256: workItems.proposal.proposalSha256,
+    };
+  } else if (workItems?.group === "issue-closure-apply"
+    && workItems.proposal?.validated === true
+    && validStateHash(workItems.proposal.expectedStateHash)
+    && validStateHash(workItems.proposal.proposalSha256)
+    && nonEmptyString(workItems.proposal.targetMatrixId)
+    && nonEmptyString(workItems.proposal.targetEntryId)) {
+    checkpoint = {
+      kind: "issue-closure-apply-ready",
+      expectedStateHash: workItems.proposal.expectedStateHash,
+      targetMatrixId: workItems.proposal.targetMatrixId,
       targetEntryId: workItems.proposal.targetEntryId,
       proposalSha256: workItems.proposal.proposalSha256,
     };

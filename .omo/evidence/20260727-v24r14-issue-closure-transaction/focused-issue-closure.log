@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: legal coverage risk-signal issue closure exposes one bounded state-bound transaction
+ok 1 - legal coverage risk-signal issue closure exposes one bounded state-bound transaction
+  ---
+  duration_ms: 880.304334
+  type: 'test'
+  ...
+# Subtest: legal coverage rejects changed and symlinked issue closure proposals without ledger mutation
+ok 2 - legal coverage rejects changed and symlinked issue closure proposals without ledger mutation
+  ---
+  duration_ms: 327.928834
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1327.569458

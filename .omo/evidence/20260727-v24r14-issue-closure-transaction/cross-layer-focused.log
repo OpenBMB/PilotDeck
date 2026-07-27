@@ -1,0 +1,293 @@
+TAP version 13
+# (node:71703) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: local gateway applies project hook context and enforces artifact correction
+ok 1 - local gateway applies project hook context and enforces artifact correction
+  ---
+  duration_ms: 574.442458
+  type: 'test'
+  ...
+# Subtest: progress lease stays inert unless explicitly enabled
+ok 2 - progress lease stays inert unless explicitly enabled
+  ---
+  duration_ms: 0.78325
+  type: 'test'
+  ...
+# Subtest: opaque hash churn is stagnant while a smaller remaining count renews the lease
+ok 3 - opaque hash churn is stagnant while a smaller remaining count renews the lease
+  ---
+  duration_ms: 0.331375
+  type: 'test'
+  ...
+# Subtest: only a strictly increasing domain progress ordinal renews the lease
+ok 4 - only a strictly increasing domain progress ordinal renews the lease
+  ---
+  duration_ms: 0.136292
+  type: 'test'
+  ...
+# Subtest: a lower remaining count cannot roll the stored progress ordinal backward
+ok 5 - a lower remaining count cannot roll the stored progress ordinal backward
+  ---
+  duration_ms: 0.174166
+  type: 'test'
+  ...
+# Subtest: two stagnant observations require a boundary and allow exactly one post-boundary turn
+ok 6 - two stagnant observations require a boundary and allow exactly one post-boundary turn
+  ---
+  duration_ms: 0.133125
+  type: 'test'
+  ...
+# Subtest: new repair feedback after a boundary gets one delivery turn without renewing progress
+ok 7 - new repair feedback after a boundary gets one delivery turn without renewing progress
+  ---
+  duration_ms: 0.296959
+  type: 'test'
+  ...
+# Subtest: genuine progress after repair feedback renews the lease
+ok 8 - genuine progress after repair feedback renews the lease
+  ---
+  duration_ms: 0.091708
+  type: 'test'
+  ...
+# Subtest: a newly prepared repair target gets one non-progress request after feedback
+ok 9 - a newly prepared repair target gets one non-progress request after feedback
+  ---
+  duration_ms: 0.106917
+  type: 'test'
+  ...
+# Subtest: genuine progress immediately after repair preparation renews the lease
+ok 10 - genuine progress immediately after repair preparation renews the lease
+  ---
+  duration_ms: 0.329292
+  type: 'test'
+  ...
+# Subtest: repair feedback co-delivered by a boundary preserves the later preparation turn
+ok 11 - repair feedback co-delivered by a boundary preserves the later preparation turn
+  ---
+  duration_ms: 0.467083
+  type: 'test'
+  ...
+# Subtest: a boundary co-delivering repair feedback and preparation grants no replay turn
+ok 12 - a boundary co-delivering repair feedback and preparation grants no replay turn
+  ---
+  duration_ms: 0.282541
+  type: 'test'
+  ...
+# Subtest: preparation observed before feedback cannot be replayed after the boundary
+ok 13 - preparation observed before feedback cannot be replayed after the boundary
+  ---
+  duration_ms: 0.101042
+  type: 'test'
+  ...
+# Subtest: a second repair revision cannot replace missing progress after feedback
+ok 14 - a second repair revision cannot replace missing progress after feedback
+  ---
+  duration_ms: 0.080875
+  type: 'test'
+  ...
+# Subtest: repair feedback already delivered before a boundary cannot be replayed as grace
+ok 15 - repair feedback already delivered before a boundary cannot be replayed as grace
+  ---
+  duration_ms: 0.065709
+  type: 'test'
+  ...
+# Subtest: a new operational handoff gets one bounded request without renewing progress
+ok 16 - a new operational handoff gets one bounded request without renewing progress
+  ---
+  duration_ms: 0.106625
+  type: 'test'
+  ...
+# Subtest: a post-boundary handoff is bounded and its replay still fails closed
+ok 17 - a post-boundary handoff is bounded and its replay still fails closed
+  ---
+  duration_ms: 0.069584
+  type: 'test'
+  ...
+# Subtest: simultaneous repair and handoff revisions cannot be redeemed on separate turns
+ok 18 - simultaneous repair and handoff revisions cannot be redeemed on separate turns
+  ---
+  duration_ms: 0.077542
+  type: 'test'
+  ...
+# Subtest: a lower handoff ordinal cannot be replayed as grace
+ok 19 - a lower handoff ordinal cannot be replayed as grace
+  ---
+  duration_ms: 0.05475
+  type: 'test'
+  ...
+# Subtest: handoff allowance has a hard per-progress-epoch limit and resets only on progress
+ok 20 - handoff allowance has a hard per-progress-epoch limit and resets only on progress
+  ---
+  duration_ms: 0.077375
+  type: 'test'
+  ...
+# Subtest: handoff cannot bypass an unavailable required boundary
+ok 21 - handoff cannot bypass an unavailable required boundary
+  ---
+  duration_ms: 0.061792
+  type: 'test'
+  ...
+# Subtest: sanitized Case 09 matrix handoff trajectory reaches the next semantic checkpoint
+ok 22 - sanitized Case 09 matrix handoff trajectory reaches the next semantic checkpoint
+  ---
+  duration_ms: 2.063167
+  type: 'test'
+  ...
+# Subtest: cold-start allowance expires after the first explicit domain progress
+ok 23 - cold-start allowance expires after the first explicit domain progress
+  ---
+  duration_ms: 0.1035
+  type: 'test'
+  ...
+# Subtest: evaluation mode fails closed when the required boundary is rejected or unavailable
+ok 24 - evaluation mode fails closed when the required boundary is rejected or unavailable
+  ---
+  duration_ms: 0.076
+  type: 'test'
+  ...
+# Subtest: a completed report releases the tracked scope
+ok 25 - a completed report releases the tracked scope
+  ---
+  duration_ms: 0.059167
+  type: 'test'
+  ...
+# Subtest: convergence metadata parser rejects malformed and oversized reports
+ok 26 - convergence metadata parser rejects malformed and oversized reports
+  ---
+  duration_ms: 0.176084
+  type: 'test'
+  ...
+# Subtest: auto compaction reports summary success separately from rejected oversized output
+ok 27 - auto compaction reports summary success separately from rejected oversized output
+  ---
+  duration_ms: 3.424417
+  type: 'test'
+  ...
+# Subtest: auto compaction marks a budget-clearing summary as applied
+ok 28 - auto compaction marks a budget-clearing summary as applied
+  ---
+  duration_ms: 0.1015
+  type: 'test'
+  ...
+# Subtest: progress policy can force a full boundary while the token budget is still healthy
+ok 29 - progress policy can force a full boundary while the token budget is still healthy
+  ---
+  duration_ms: 0.101708
+  type: 'test'
+  ...
+# Subtest: full compaction distinguishes a fully retained trajectory from model failure
+ok 30 - full compaction distinguishes a fully retained trajectory from model failure
+  ---
+  duration_ms: 302.25775
+  type: 'test'
+  ...
+# Subtest: auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+ok 31 - auto compaction propagates no-summarizable as a stable rejection reason without claiming a summary attempt
+  ---
+  duration_ms: 0.129292
+  type: 'test'
+  ...
+# Subtest: bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+ok 32 - bounded protected-prefix retention summarizes old agent turns and preserves every kept tool pair
+  ---
+  duration_ms: 1.288542
+  type: 'test'
+  ...
+# Subtest: full compaction shares one token budget across the exact tail and protected prefix
+ok 33 - full compaction shares one token budget across the exact tail and protected prefix
+  ---
+  duration_ms: 44.176417
+  type: 'test'
+  ...
+# Subtest: full compaction keeps one oversized newest atomic frame intact
+ok 34 - full compaction keeps one oversized newest atomic frame intact
+  ---
+  duration_ms: 0.494541
+  type: 'test'
+  ...
+# Subtest: full compaction summarizes a real-shaped single-prompt Agent trajectory
+ok 35 - full compaction summarizes a real-shaped single-prompt Agent trajectory
+  ---
+  duration_ms: 0.965167
+  type: 'test'
+  ...
+# Subtest: full compaction aligns a token-budget tail boundary to complete tool turns
+ok 36 - full compaction aligns a token-budget tail boundary to complete tool turns
+  ---
+  duration_ms: 0.453583
+  type: 'test'
+  ...
+# Subtest: sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+ok 37 - sanitized Case 09 replay retains enough evidence to detect rejected blocking compactions
+  ---
+  duration_ms: 5.53225
+  type: 'test'
+  ...
+# Subtest: lifecycle context is injected as a transient model-only message
+ok 38 - lifecycle context is injected as a transient model-only message
+  ---
+  duration_ms: 11.480459
+  type: 'test'
+  ...
+# Subtest: lifecycle without a dynamic store preserves legacy hook messages
+ok 39 - lifecycle without a dynamic store preserves legacy hook messages
+  ---
+  duration_ms: 0.108125
+  type: 'test'
+  ...
+# Subtest: SessionEnd clears session-scoped runtime state even when a hook throws
+ok 40 - SessionEnd clears session-scoped runtime state even when a hook throws
+  ---
+  duration_ms: 0.6845
+  type: 'test'
+  ...
+# (node:71707) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: an active domain plugin contributes only generic runtime contracts
+ok 41 - an active domain plugin contributes only generic runtime contracts
+  ---
+  duration_ms: 2.568042
+  type: 'test'
+  ...
+# Subtest: internal prompts do not reactivate domain detection
+ok 42 - internal prompts do not reactivate domain detection
+  ---
+  duration_ms: 0.160166
+  type: 'test'
+  ...
+# Subtest: parses only the supported model request patch fields
+ok 43 - parses only the supported model request patch fields
+  ---
+  duration_ms: 1.684542
+  type: 'test'
+  ...
+# Subtest: parses bounded dynamic context controls for hook-driven injection
+ok 44 - parses bounded dynamic context controls for hook-driven injection
+  ---
+  duration_ms: 0.168416
+  type: 'test'
+  ...
+# Subtest: Gateway propagates its absolute turn deadline into the Agent session
+ok 45 - Gateway propagates its absolute turn deadline into the Agent session
+  ---
+  duration_ms: 2.729583
+  type: 'test'
+  ...
+# (node:71710) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# [session-title] generation skipped (invalid_json): Unexpected token 'B', "Bounded co"... is not valid JSON
+# Subtest: local Gateway records a bounded handoff through boundary to progress
+ok 46 - local Gateway records a bounded handoff through boundary to progress
+  ---
+  duration_ms: 769.81625
+  type: 'test'
+  ...
+1..46
+# tests 46
+# suites 0
+# pass 46
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1222.821583

@@ -202,6 +202,105 @@ test("real gateway executes the state-bound legal authority closure with complet
   }
 });
 
+test("real gateway executes the state-bound legal issue closure with complete O1 evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-legal-issue-gateway-"));
+  const projectRoot = join(root, "project");
+  const pilotHome = join(root, "home");
+  const installedPlugin = join(projectRoot, ".pilotdeck", "plugins", "legal-coverage");
+  const requests: CanonicalModelRequest[] = [];
+  await mkdir(projectRoot, { recursive: true });
+  await mkdir(pilotHome, { recursive: true });
+  await cp(PLUGIN_ROOT, installedPlugin, { recursive: true });
+  await writeFile(join(pilotHome, "pilotdeck.yaml"), ISSUE_CLOSURE_TEST_CONFIG);
+  await writeIssueClosureState(projectRoot);
+
+  const runtime = createLocalGateway({
+    projectRoot,
+    fallbackProjectRoot: projectRoot,
+    pilotHome,
+    env: { ...process.env, PILOT_HOME: pilotHome, PILOTDECK_BUILD_SHA: "issue-closure-test" },
+    __testModelFactory: () => issueClosureModelRuntime(requests),
+  });
+  try {
+    const events = [];
+    for await (const event of runtime.gateway.submitTurn({
+      sessionKey: "legal-issue-closure-session",
+      channelKey: "test",
+      projectKey: projectRoot,
+      message: "Continue the configured legal due diligence review.",
+      canPrompt: false,
+      timeoutMs: 60_000,
+    })) {
+      events.push(event);
+    }
+
+    const agentRequests = requests.filter((request) => !isCompactionRequest(request));
+    assert.equal(agentRequests.length, 3, JSON.stringify(events));
+    assert.match(messageText(agentRequests[0]?.messages ?? []), /"group": "issue-closure-propose"/u);
+    assert.match(messageText(agentRequests[0]?.messages ?? []), /"factId": "F-001"/u);
+    assert.match(messageText(agentRequests[1]?.messages ?? []), /"group": "issue-closure-apply"/u);
+    assert.match(messageText(agentRequests[1]?.messages ?? []), /issue-closure-apply/u);
+    assert.match(messageText(agentRequests[2]?.messages ?? []), /"milestone": "COMPLETE"/u);
+    assert.equal(events.some((event) => event.type === "turn_completed" && event.finishReason === "completed"), true);
+
+    const decisions = events.flatMap((event) =>
+      event.type === "agent_status" && event.event === "progress_lease_evaluated"
+        ? [[event.detail?.decision, event.detail?.progressOrdinal, event.detail?.handoffOrdinal]]
+        : []
+    );
+    assert.deepEqual(decisions, [
+      ["baseline", 0, 0],
+      ["handoff_grace", 0, 1],
+      ["completed", 1, 1],
+    ]);
+
+    const stateRoot = join(projectRoot, STATE_ROOT);
+    const proof = JSON.parse(await readFile(join(stateRoot, "completion-proof.json"), "utf8")) as { stateHash: string };
+    assert.match(proof.stateHash, /^[a-f0-9]{64}$/u);
+    const issues = JSON.parse(await readFile(join(stateRoot, "issues.json"), "utf8")) as {
+      issues: Array<{ id: string; critical: boolean; authorityIds: string[] }>;
+    };
+    const matrices = JSON.parse(await readFile(join(stateRoot, "matrices.json"), "utf8")) as {
+      matrices: Array<{ id: string; entries: Array<{ issueIds: string[] }> }>;
+    };
+    assert.deepEqual(issues.issues, [{
+      id: "I-RISK",
+      ruleId: "rights-governance-conflict",
+      status: "open",
+      severity: "high",
+      critical: false,
+      factIds: ["F-001", "F-002"],
+      authorityIds: [],
+      analysis: "The synthetic ownership record conflicts with the governance control.",
+      conclusion: "The governance conflict requires a documented control before closing.",
+      recommendations: ["Require a verified governance remediation before closing."],
+    }]);
+    assert.deepEqual(matrices.matrices[0]?.entries[0]?.issueIds, ["I-RISK"]);
+
+    const storage = createAgentProjectSessionStorage({
+      projectRoot,
+      pilotHome,
+      sessionId: "legal-issue-closure-session",
+    });
+    const observationPath = join(storage.observabilityDir, "observations.jsonl");
+    const observations = await readObservationEvents(observationPath);
+    const rawObservations = await readFile(observationPath, "utf8");
+    const integrity = JSON.parse(await readFile(join(storage.observabilityDir, "integrity.json"), "utf8"));
+    assert.equal(integrity.status, "complete");
+    assert.equal(integrity.checks.modelRequestsPaired, true);
+    assert.equal(integrity.checks.toolCallsPaired, true);
+    assert.equal(integrity.checks.turnsPaired, true);
+    assert.equal(integrity.recorder.droppedEvents, 0);
+    assert.equal(observations.filter((event) => event.type === "tool.call.started").length, 2);
+    assert.equal(observations.filter((event) => event.type === "tool.call.completed").length, 2);
+    assert.doesNotMatch(rawObservations, /synthetic ownership record conflicts/u);
+    assert.doesNotMatch(rawObservations, /test-key/u);
+  } finally {
+    await runtime.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("real gateway hands off a validated ordinary source proposal before renewing from its durable receipt", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-legal-source-apply-gateway-"));
   const projectRoot = join(root, "project");
@@ -865,6 +964,66 @@ function authorityClosureModelRuntime(requests: CanonicalModelRequest[]): ModelR
   };
 }
 
+function issueClosureModelRuntime(requests: CanonicalModelRequest[]): ModelRuntime {
+  return {
+    async *stream(request) {
+      if (isCompactionRequest(request)) {
+        yield { type: "message_start", role: "assistant" };
+        yield { type: "text_delta", text: "Continue the state-bound issue closure." };
+        yield { type: "message_end", finishReason: "stop" };
+        return;
+      }
+      requests.push(request);
+      const envelope = legalEnvelopeFromMessages(request.messages);
+      yield { type: "message_start", role: "assistant" };
+      if (envelope?.workItems?.group === "issue-closure-propose") {
+        const proposal = validIssueClosureProposal(envelope.workItems.proposal.template);
+        const proposalPath = envelope.workItems.proposal.path;
+        const script = [
+          'const { mkdirSync, writeFileSync } = require("node:fs");',
+          'const { dirname } = require("node:path");',
+          `const path = ${JSON.stringify(proposalPath)};`,
+          "mkdirSync(dirname(path), { recursive: true });",
+          `writeFileSync(path, ${JSON.stringify(`${JSON.stringify(proposal, null, 2)}\n`)});`,
+        ].join("\n");
+        const toolCall = {
+          id: "issue-proposal-write",
+          name: "bash",
+          input: {
+            command: "node -e 'eval(Buffer.from(process.argv[1],\"base64\").toString(\"utf8\"))' "
+              + Buffer.from(script).toString("base64"),
+          },
+        };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      if (envelope?.workItems?.group === "issue-closure-apply") {
+        const toolCall = {
+          id: "issue-proposal-apply",
+          name: "bash",
+          input: { command: envelope.issueClosureApplyCommand },
+        };
+        yield { type: "tool_call_start", id: toolCall.id, name: toolCall.name };
+        yield { type: "tool_call_end", toolCall };
+        yield { type: "message_end", finishReason: "tool_call" };
+        return;
+      }
+      yield { type: "text_delta", text: "The legal issue closure is validated." };
+      yield { type: "usage", usage: { inputTokens: 20, outputTokens: 6, totalTokens: 26 } };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    async complete() {
+      return { role: "assistant", content: [{ type: "text", text: '{"title":"Issue closure QA"}' }], finishReason: "stop" };
+    },
+    getCapabilities: () => ({ ...DEFAULT_MODEL_CAPABILITIES, maxContextTokens: 1_048_576 }),
+    getMultimodal: () => DEFAULT_MULTIMODAL_CONSTRAINTS,
+    getProviderProtocol: () => "openai",
+    getProviderBaseUrl: () => "https://example.invalid",
+  };
+}
+
 function legalEnvelopeFromMessages(messages: readonly CanonicalMessage[]): any {
   const match = messageText(messages).match(/<legal_coverage_state>\n([\s\S]*?)\n<\/legal_coverage_state>/u);
   return match ? JSON.parse(match[1]!) : undefined;
@@ -898,6 +1057,152 @@ function validAuthorityClosureProposal(template: Record<string, unknown>): Recor
     }],
     matrixEntryLinks: { issueIds: ["I-001"], authorityIds: ["A-LEGAL"] },
   };
+}
+
+function validIssueClosureProposal(template: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...template,
+    issueUpserts: [{
+      id: "I-RISK",
+      ruleId: "rights-governance-conflict",
+      status: "open",
+      severity: "high",
+      critical: false,
+      factIds: ["F-001", "F-002"],
+      authorityIds: [],
+      analysis: "The synthetic ownership record conflicts with the governance control.",
+      conclusion: "The governance conflict requires a documented control before closing.",
+      recommendations: ["Require a verified governance remediation before closing."],
+    }],
+    matrixEntryLinks: { issueIds: ["I-RISK"] },
+  };
+}
+
+async function writeIssueClosureState(workspace: string): Promise<void> {
+  const root = join(workspace, STATE_ROOT);
+  const source = "Synthetic ownership and governance record.\n";
+  const opinion = [
+    "# Legal Opinion",
+    "Synthetic ownership does not align with governance controls.",
+    "Synthetic appointment control remains with a different governance actor.",
+    "The governance conflict requires a documented control before closing and verified remediation.",
+    "",
+  ].join("\n");
+  await mkdir(join(workspace, "source-room"), { recursive: true });
+  await mkdir(join(workspace, "deliverables"), { recursive: true });
+  await mkdir(root, { recursive: true });
+  await writeFile(join(workspace, "source-room", "record.txt"), source);
+  await writeFile(join(workspace, "deliverables", "opinion.md"), opinion);
+  await writeJson(join(root, "config.json"), {
+    schemaVersion: 1,
+    enabled: true,
+    jurisdiction: "Synthetic jurisdiction",
+    basisDate: "Synthetic review date",
+    allowNoMaterialFacts: false,
+    inputRoots: ["source-room"],
+    deliverables: [{ id: "opinion", path: "deliverables/opinion.md", required: true }],
+  });
+  await writeJson(join(root, "sources.json"), {
+    schemaVersion: 1,
+    sources: [{
+      id: "S-001",
+      path: "source-room/record.txt",
+      sha256: sha256(source),
+      status: "reviewed",
+      extractionMethod: "plain-text inspection",
+      evidenceClass: "official-record",
+      factIds: ["F-001", "F-002"],
+      unresolvedItems: [],
+    }],
+  });
+  await writeJson(join(root, "facts.json"), {
+    schemaVersion: 1,
+    facts: [
+      {
+        id: "F-001",
+        subject: "Synthetic ownership",
+        predicate: "governance alignment",
+        value: "does not align",
+        dateOrPeriod: "Synthetic review date",
+        sourceRefs: [{ sourceId: "S-001", locator: "line 1" }],
+        evidenceClass: "official-record",
+        verificationStatus: "verified",
+        conflictStatus: "none",
+        material: true,
+        critical: false,
+      },
+      {
+        id: "F-002",
+        subject: "Synthetic appointment control",
+        predicate: "governance actor",
+        value: "different actor",
+        dateOrPeriod: "Synthetic review date",
+        sourceRefs: [{ sourceId: "S-001", locator: "line 1" }],
+        evidenceClass: "official-record",
+        verificationStatus: "verified",
+        conflictStatus: "none",
+        material: true,
+        critical: false,
+      },
+    ],
+  });
+  await writeJson(join(root, "matrices.json"), {
+    schemaVersion: 1,
+    matrices: [
+      {
+        id: "equity-capital-timeline",
+        status: "complete",
+        entries: [{
+          id: "ECT-001",
+          summary: "Synthetic ownership and governance controls do not align.",
+          factIds: ["F-001", "F-002"],
+          riskSignals: ["rights_governance_conflict"],
+          issueIds: [],
+          authorityIds: [],
+        }],
+      },
+      ...REQUIRED_MATRIX_IDS.slice(1).map((id) => ({
+        id,
+        status: "not-applicable",
+        entries: [],
+        notApplicableReason: "No separate synthetic relationship is required.",
+      })),
+    ],
+  });
+  await writeJson(join(root, "issues.json"), { schemaVersion: 1, issues: [] });
+  await writeJson(join(root, "authorities.json"), { schemaVersion: 1, authorities: [] });
+  await writeJson(join(root, "coverage.json"), {
+    schemaVersion: 1,
+    deliverables: [{ path: "deliverables/opinion.md", sha256: sha256(opinion) }],
+    sources: [],
+    facts: [{
+      factId: "F-001",
+      status: "covered",
+      deliverablePath: "deliverables/opinion.md",
+      section: "Legal Opinion",
+      locator: "paragraph 1",
+      claim: "The ownership fact is material.",
+      quote: "Synthetic ownership does not align with governance controls.",
+    }, {
+      factId: "F-002",
+      status: "covered",
+      deliverablePath: "deliverables/opinion.md",
+      section: "Legal Opinion",
+      locator: "paragraph 2",
+      claim: "The appointment control remains separate.",
+      quote: "Synthetic appointment control remains with a different governance actor.",
+    }],
+    issues: [{
+      issueId: "I-RISK",
+      status: "covered",
+      deliverablePath: "deliverables/opinion.md",
+      section: "Legal Opinion",
+      locator: "paragraph 3",
+      claim: "The governance conflict requires remediation.",
+      quote: "The governance conflict requires a documented control before closing and verified remediation.",
+    }],
+    authorities: [],
+  });
 }
 
 async function writeAuthorityClosureState(workspace: string): Promise<void> {
@@ -1166,6 +1471,11 @@ observability:
   variant: candidate
   queueCapacity: 4096
 `;
+
+const ISSUE_CLOSURE_TEST_CONFIG = AUTHORITY_CLOSURE_TEST_CONFIG.replace(
+  "campaignId: authority-closure-qa",
+  "campaignId: issue-closure-qa",
+);
 
 const SOURCE_REPAIR_TEST_CONFIG = `schemaVersion: 1
 agent:
