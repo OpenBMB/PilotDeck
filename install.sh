@@ -263,7 +263,7 @@ run_onboarding() {
     4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com/v1;                         model=deepseek-chat ;;
     5) pid=dashscope; protocol=openai;    url=https://dashscope.aliyuncs.com/compatible-mode/v1;   model=qwen-max ;;
     6) pid=moonshot;  protocol=openai;    url=https://api.moonshot.cn/v1;                          model=kimi-k2 ;;
-    7) pid=minimax;   protocol=openai;    url=https://api.minimaxi.com/v1;                         model=MiniMax-M2.5 ;;
+    7) pid=minimax;   protocol=openai;    url=https://api.minimax.io/v1;                           model=MiniMax-M3 ;;
     8) pid=zhipu;     protocol=openai;    url=https://api.z.ai/api/paas/v4;                        model=glm-4.6 ;;
     9)
       protocol=openai
