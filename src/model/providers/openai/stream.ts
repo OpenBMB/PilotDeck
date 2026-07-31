@@ -8,6 +8,7 @@ import {
   appendThinkingBlockText,
   clearThinkingBlock,
   createThinkingBlockTracker,
+  getThinkingBlockIdentity,
   type ThinkingBlockTracker,
 } from "../../streaming/thinkingBlock.js";
 
@@ -97,7 +98,7 @@ export function splitThinkContent(
       if (idx !== -1) {
         const before = current.substring(0, idx);
         if (before.length > 0) {
-          events.push(...emitThinkingDelta(state, thinkingKey, before, raw));
+          events.push(...emitRawThinkingDelta(state, thinkingKey, before, raw));
         }
         current = current.substring(idx + THINK_CLOSE.length);
         state.thinkFsm = "NORMAL";
@@ -109,10 +110,10 @@ export function splitThinkContent(
           state.tagBuffer = current.substring(current.length - buffered);
           const safe = current.substring(0, current.length - buffered);
           if (safe.length > 0) {
-            events.push(...emitThinkingDelta(state, thinkingKey, safe, raw));
+            events.push(...emitRawThinkingDelta(state, thinkingKey, safe, raw));
           }
         } else {
-          events.push(...emitThinkingDelta(state, thinkingKey, current, raw));
+          events.push(...emitRawThinkingDelta(state, thinkingKey, current, raw));
         }
         current = "";
       }
@@ -136,6 +137,31 @@ function bufferPartialTag(text: string, tag: string): number {
   return 0;
 }
 
+function emitRawThinkingDelta(
+  state: OpenAIStreamState,
+  key: string,
+  text: string,
+  raw: unknown,
+): CanonicalModelEvent[] {
+  if (text.length === 0) {
+    return [];
+  }
+
+  const identity = getThinkingBlockIdentity(state.thinkingBlocks, key, {
+    idPrefix: "openai-thinking",
+  });
+
+  return [{
+    type: "thinking_delta",
+    text,
+    thinkingBlockId: identity.thinkingBlockId,
+    thinkingBlockSeq: identity.thinkingBlockSeq,
+    raw,
+  }];
+}
+
+// OpenAI `reasoning_content` behaves like a growing snapshot; raw `<think>`
+// content is emitted as-is through emitRawThinkingDelta().
 function emitThinkingDelta(
   state: OpenAIStreamState,
   key: string,

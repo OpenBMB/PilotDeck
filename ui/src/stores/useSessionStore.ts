@@ -320,6 +320,133 @@ function isLocalInterruptDuplicate(
   });
 }
 
+function hasEquivalentServerMessage(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
+  if (!realtimeText) return false;
+
+  let candidates = serverMessages;
+  if (realtimeMessage.serverTailIdAtStart) {
+    const tailIndex = serverMessages.findIndex((message) =>
+      message.id === realtimeMessage.serverTailIdAtStart
+    );
+    if (tailIndex < 0) return false;
+    candidates = serverMessages.slice(tailIndex + 1);
+  } else {
+    let lastUserIndex = -1;
+    for (let index = serverMessages.length - 1; index >= 0; index -= 1) {
+      const message = serverMessages[index];
+      if (message.kind === 'text' && message.role === 'user') {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex >= 0) {
+      candidates = serverMessages.slice(lastUserIndex + 1);
+    }
+  }
+
+  return candidates.some((serverMessage) => {
+    if (serverMessage.kind !== realtimeMessage.kind) return false;
+    if (serverMessage.role !== realtimeMessage.role) return false;
+    return normalizeRealtimeText(serverMessage.content) === realtimeText;
+  });
+}
+
+function hasSameTurnServerFinalMessage(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  if (
+    realtimeMessage.isFinal !== true ||
+    (realtimeMessage.kind !== 'text' && realtimeMessage.kind !== 'thinking') ||
+    !realtimeMessage.serverTailIdAtStart
+  ) {
+    return false;
+  }
+
+  const tailIndex = serverMessages.findIndex((message) => (
+    message.id === realtimeMessage.serverTailIdAtStart
+  ));
+  if (tailIndex < 0) return false;
+  const realtimeTimestamp = parseTimestampMs(realtimeMessage.timestamp);
+  if (realtimeTimestamp == null) return false;
+  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
+  if (!realtimeText) return false;
+
+  return serverMessages.slice(tailIndex + 1).some((serverMessage) => {
+    if (serverMessage.kind !== realtimeMessage.kind) return false;
+    if (serverMessage.role !== realtimeMessage.role) return false;
+    if (realtimeMessage.runId != null && serverMessage.runId != null && serverMessage.runId !== realtimeMessage.runId) {
+      return false;
+    }
+    const serverTimestamp = parseTimestampMs(serverMessage.timestamp);
+    if (serverTimestamp == null) return false;
+    if (serverTimestamp < realtimeTimestamp) return false;
+    return normalizeRealtimeText(serverMessage.content) === realtimeText;
+  });
+}
+
+export function shouldKeepRealtimeAfterServerRefresh(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  if (realtimeMessage.id.startsWith('__streaming_')) {
+    return true;
+  }
+
+  if (
+    realtimeMessage.isFinal === true
+    && (realtimeMessage.kind === 'text' || realtimeMessage.kind === 'thinking')
+  ) {
+    if (hasSameTurnServerFinalMessage(realtimeMessage, serverMessages)) {
+      return false;
+    }
+    return !hasEquivalentServerMessage(realtimeMessage, serverMessages);
+  }
+
+  return false;
+}
+
+export function pruneRealtimeMessagesAfterServerRefresh(
+  realtimeMessages: NormalizedMessage[],
+  serverMessages: NormalizedMessage[],
+  options: {
+    fetchStartedAt?: number;
+  } = {},
+): NormalizedMessage[] {
+  if (realtimeMessages.length === 0 || serverMessages.length === 0) {
+    return realtimeMessages;
+  }
+
+  if (options.fetchStartedAt === undefined) {
+    return realtimeMessages.filter((message) =>
+      shouldKeepRealtimeAfterServerRefresh(message, serverMessages)
+    );
+  }
+
+  const latestServerTimestamp = serverMessages.reduce(
+    (max, message) => Math.max(max, parseTimestampMs(message.timestamp) ?? 0),
+    0,
+  );
+  const watermark = Math.max(options.fetchStartedAt, latestServerTimestamp);
+  const serverIds = new Set(serverMessages.map((message) => message.id));
+  const serverToolIds = new Set(
+    serverMessages
+      .filter((message) => message.kind === 'tool_use' && message.toolId)
+      .map((message) => message.toolId!),
+  );
+
+  return realtimeMessages.filter((message) => {
+    if (shouldKeepRealtimeAfterServerRefresh(message, serverMessages)) return true;
+    if (serverIds.has(message.id)) return false;
+    if (message.kind === 'tool_use' && message.toolId && serverToolIds.has(message.toolId)) return false;
+    return (parseTimestampMs(message.timestamp) || 0) > watermark;
+  });
+}
+
 /**
  * Compute merged messages: server + realtime, deduped by id.
  * Server messages take priority (they're the persisted source of truth).
@@ -801,6 +928,7 @@ export function useSessionStore() {
     const slot = getSlot(sessionId);
     slot.status = 'loading';
     notify(sessionId);
+    const fetchStartedAt = Date.now();
 
     try {
       const params = new URLSearchParams();
@@ -841,6 +969,12 @@ export function useSessionStore() {
       slot.fetchedAt = Date.now();
       slot.status = 'idle';
       slot.lastError = null;
+
+      slot.realtimeMessages = pruneRealtimeMessagesAfterServerRefresh(
+        slot.realtimeMessages,
+        messages,
+        { fetchStartedAt },
+      );
 
       recomputeMergedIfNeeded(slot);
       if (data.tokenUsage) {
@@ -1210,6 +1344,14 @@ export function useSessionStore() {
       slot.total = data.total ?? slot.serverMessages.length;
       slot.hasMore = Boolean(data.hasMore);
       slot.fetchedAt = Date.now();
+
+      if (slot.realtimeMessages.length > 0 && incomingMessages.length > 0) {
+        slot.realtimeMessages = pruneRealtimeMessagesAfterServerRefresh(
+          slot.realtimeMessages,
+          incomingMessages,
+        );
+      }
+
       recomputeMergedIfNeeded(slot);
       notify(sessionId);
     } catch (error) {

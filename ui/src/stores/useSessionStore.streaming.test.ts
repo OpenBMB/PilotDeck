@@ -12,6 +12,7 @@ import {
   finalizeStreamingRealtimeMessages,
   getFinalizedSubagentThinkingId,
   patchMergedStreamingMessage,
+  pruneRealtimeMessagesAfterServerRefresh,
   upsertRealtimeMessages,
   useSessionStore,
   type NormalizedMessage,
@@ -268,6 +269,41 @@ describe('finalizeStreamingRealtimeMessages', () => {
     });
 
     expect(updated.map((message) => message.id)).toEqual(['final-block-a', 'final-block-b']);
+  });
+});
+
+describe('pruneRealtimeMessagesAfterServerRefresh', () => {
+  it('drops finalized live thinking/text once the server has the same turn content', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
+      thinkingMessage('server-thinking', 'Inspect the flow', '2026-05-28T00:00:04.000Z'),
+      textMessage('server-text', 'Final answer', '2026-05-28T00:00:05.000Z'),
+    ];
+    const realtime = [
+      thinkingMessage('thinking-final', 'Inspect the flow', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+        thinkingBlockId: 'block-a',
+        thinkingBlockSeq: 1,
+      }),
+      textMessage('text-final', 'Final answer', '2026-05-28T00:00:02.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-b', 'Still streaming', '2026-05-28T00:00:03.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-b',
+        thinkingBlockSeq: 2,
+      }),
+    ];
+
+    const pruned = pruneRealtimeMessagesAfterServerRefresh(realtime, server);
+
+    expect(pruned.map((message) => message.id)).toEqual([
+      '__streaming_thinking_web:s_test_run-1_id_block-b',
+    ]);
   });
 });
 

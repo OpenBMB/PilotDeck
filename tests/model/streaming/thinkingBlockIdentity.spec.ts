@@ -71,6 +71,22 @@ test("openai think-tag stream reuses identity within a block and advances after 
   assert.notEqual(deltas[1]?.thinkingBlockSeq, deltas[2]?.thinkingBlockSeq);
 });
 
+test("openai think-tag stream keeps repeated-prefix raw deltas", () => {
+  const state = createOpenAIStreamState();
+  const deltas = thinkingDeltas([
+    ...normalizeOpenAIStreamEvent({
+      choices: [{ index: 0, delta: { content: "<think>ha" } }],
+    }, state),
+    ...normalizeOpenAIStreamEvent({
+      choices: [{ index: 0, delta: { content: "ha</think>" } }],
+    }, state),
+  ]);
+
+  assert.deepEqual(deltas.map((event) => event.text), ["ha", "ha"]);
+  assert.equal(new Set(deltas.map((event) => event.thinkingBlockId)).size, 1);
+  assert.equal(new Set(deltas.map((event) => event.thinkingBlockSeq)).size, 1);
+});
+
 test("openai reasoning_content snapshots emit only the new delta for one block", () => {
   const state = createOpenAIStreamState();
   const deltas = thinkingDeltas([
