@@ -47,7 +47,13 @@ type WebGatewayEventMetadata = {
 export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "turn_started"; runId: string }
   | { type: "assistant_text_delta"; text: string }
-  | { type: "assistant_thinking_delta"; text: string }
+  | {
+      type: "assistant_thinking_delta";
+      text: string;
+      reasoningContent?: string;
+      thinkingBlockId?: string;
+      thinkingBlockSeq?: number;
+    }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | {
       type: "tool_call_started";

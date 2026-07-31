@@ -6,6 +6,27 @@ import {
 } from './pilotdeck-bridge.js';
 
 describe('gatewayEventToFrames agent status errors', () => {
+    it('preserves thinking block identity on live thinking frames', () => {
+        const frames = gatewayEventToFrames({
+            type: 'assistant_thinking_delta',
+            text: 'Inspect',
+            reasoningContent: 'native Inspect',
+            thinkingBlockId: 'block-1',
+            thinkingBlockSeq: 7,
+            runId: 'run-1',
+        }, 'web:s_test', 'pilotdeck');
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({
+            kind: 'thinking',
+            content: 'Inspect',
+            reasoningContent: 'native Inspect',
+            thinkingBlockId: 'block-1',
+            thinkingBlockSeq: 7,
+            runId: 'run-1',
+        });
+    });
+
     it('maps tool result detail availability to a mergeable tool_result frame', () => {
         const frames = gatewayEventToFrames({
             type: 'tool_result_detail_available',

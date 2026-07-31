@@ -450,6 +450,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'thinking',
                     content: event.text,
+                    ...(event.reasoningContent !== undefined
+                        ? { reasoningContent: event.reasoningContent }
+                        : {}),
+                    ...(event.thinkingBlockId !== undefined
+                        ? { thinkingBlockId: event.thinkingBlockId }
+                        : {}),
+                    ...(event.thinkingBlockSeq !== undefined
+                        ? { thinkingBlockSeq: event.thinkingBlockSeq }
+                        : {}),
                 }),
             ];
         case 'file_artifacts':
@@ -890,6 +899,15 @@ function createSubagentDetailFrames(event, base, detail) {
                 id: `subagent_detail_thinking_${sanitizeMessageId(detailSessionId)}_${Date.now()}`,
                 kind: 'thinking',
                 content: detail.text || '',
+                ...(detail.reasoningContent !== undefined
+                    ? { reasoningContent: detail.reasoningContent }
+                    : {}),
+                ...(detail.thinkingBlockId !== undefined
+                    ? { thinkingBlockId: detail.thinkingBlockId }
+                    : {}),
+                ...(detail.thinkingBlockSeq !== undefined
+                    ? { thinkingBlockSeq: detail.thinkingBlockSeq }
+                    : {}),
             })];
         case 'subagent_tool_call_started': {
             const toolCallId = String(detail.toolCallId || randomUUID());

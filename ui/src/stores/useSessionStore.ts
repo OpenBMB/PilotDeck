@@ -53,6 +53,9 @@ export interface NormalizedMessage {
   // kind-specific fields (flat for simplicity)
   role?: 'user' | 'assistant';
   content?: string;
+  reasoningContent?: string;
+  thinkingBlockId?: string;
+  thinkingBlockSeq?: number;
   contentI18n?: { key: string; params?: Record<string, unknown> };
   userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: string[];
@@ -217,6 +220,31 @@ function normalizeRealtimeText(value?: string): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
+function getMessageComparisonText(message: Pick<NormalizedMessage, 'content' | 'reasoningContent'>): string {
+  const contentText = normalizeRealtimeText(message.content);
+  return contentText || normalizeRealtimeText(message.reasoningContent);
+}
+
+function getThinkingBlockKey(message: Pick<NormalizedMessage, 'thinkingBlockId' | 'thinkingBlockSeq'>): string | undefined {
+  if (typeof message.thinkingBlockId === 'string' && message.thinkingBlockId.trim().length > 0) {
+    return `id:${message.thinkingBlockId.trim()}`;
+  }
+  if (typeof message.thinkingBlockSeq === 'number' && Number.isFinite(message.thinkingBlockSeq)) {
+    return `seq:${message.thinkingBlockSeq}`;
+  }
+  return undefined;
+}
+
+function getRealtimeTurnStartIndex(messages: NormalizedMessage[], beforeIndex: number): number {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.kind === 'text' && message.role === 'user') {
+      return index + 1;
+    }
+  }
+  return 0;
+}
+
 function parseTimestampMs(value?: string): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -264,7 +292,6 @@ function isConfirmedUserMessageDuplicate(
 
 /**
  * The backend pushes a synthetic `interrupted` notice the moment abort fires
-
  * "[Request interrupted by user]" entry into the JSONL during the next user
  * turn. Once that JSONL entry is replayed via the server, drop the locally
  * pushed one to avoid stacking two dividers in the conversation.
@@ -293,101 +320,6 @@ function isLocalInterruptDuplicate(
   });
 }
 
-// NOTE: isLocalFinalizedDuplicate was removed because it prematurely filtered
-// finalized thinking/text messages when ANY server data existed (even from
-// prior turns). The refreshFromServer cleanup already removes non-streaming
-// realtime messages once the server commits the current turn's data.
-
-function hasEquivalentServerMessage(
-  realtimeMessage: NormalizedMessage,
-  serverMessages: NormalizedMessage[],
-): boolean {
-  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
-  if (!realtimeText) return false;
-
-  let candidates = serverMessages;
-  if (realtimeMessage.serverTailIdAtStart) {
-    const tailIndex = serverMessages.findIndex((message) =>
-      message.id === realtimeMessage.serverTailIdAtStart
-    );
-    if (tailIndex < 0) return false;
-    candidates = serverMessages.slice(tailIndex + 1);
-  } else {
-    let lastUserIndex = -1;
-    for (let index = serverMessages.length - 1; index >= 0; index -= 1) {
-      const message = serverMessages[index];
-      if (message.kind === 'text' && message.role === 'user') {
-        lastUserIndex = index;
-        break;
-      }
-    }
-    if (lastUserIndex >= 0) {
-      candidates = serverMessages.slice(lastUserIndex + 1);
-    }
-  }
-
-  return candidates.some((serverMessage) => {
-    if (serverMessage.kind !== realtimeMessage.kind) return false;
-    if (serverMessage.role !== realtimeMessage.role) return false;
-    return normalizeRealtimeText(serverMessage.content) === realtimeText;
-  });
-}
-
-function hasSameTurnServerFinalMessage(
-  realtimeMessage: NormalizedMessage,
-  serverMessages: NormalizedMessage[],
-): boolean {
-  if (
-    realtimeMessage.isFinal !== true ||
-    (realtimeMessage.kind !== 'text' && realtimeMessage.kind !== 'thinking') ||
-    !realtimeMessage.serverTailIdAtStart
-  ) {
-    return false;
-  }
-
-  const tailIndex = serverMessages.findIndex((message) => (
-    message.id === realtimeMessage.serverTailIdAtStart
-  ));
-  if (tailIndex < 0) return false;
-  const realtimeTimestamp = parseTimestampMs(realtimeMessage.timestamp);
-  if (realtimeTimestamp == null) return false;
-  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
-  if (!realtimeText) return false;
-
-  return serverMessages.slice(tailIndex + 1).some((serverMessage) => {
-    if (serverMessage.kind !== realtimeMessage.kind) return false;
-    if (serverMessage.role !== realtimeMessage.role) return false;
-    if (realtimeMessage.runId != null && serverMessage.runId != null && serverMessage.runId !== realtimeMessage.runId) {
-      return false;
-    }
-    const serverTimestamp = parseTimestampMs(serverMessage.timestamp);
-    if (serverTimestamp == null) return false;
-    if (serverTimestamp < realtimeTimestamp) return false;
-    return normalizeRealtimeText(serverMessage.content) === realtimeText;
-  });
-}
-
-export function shouldKeepRealtimeAfterServerRefresh(
-  realtimeMessage: NormalizedMessage,
-  serverMessages: NormalizedMessage[],
-): boolean {
-  if (realtimeMessage.id.startsWith('__streaming_')) {
-    return true;
-  }
-
-  if (
-    realtimeMessage.isFinal === true
-    && (realtimeMessage.kind === 'text' || realtimeMessage.kind === 'thinking')
-  ) {
-    if (hasSameTurnServerFinalMessage(realtimeMessage, serverMessages)) {
-      return false;
-    }
-    return !hasEquivalentServerMessage(realtimeMessage, serverMessages);
-  }
-
-  return false;
-}
-
 /**
  * Compute merged messages: server + realtime, deduped by id.
  * Server messages take priority (they're the persisted source of truth).
@@ -406,7 +338,6 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
     if (serverIds.has(message.id)) return false;
     if (isConfirmedUserMessageDuplicate(message, server)) return false;
     if (isLocalInterruptDuplicate(message, server)) return false;
-    if (hasSameTurnServerFinalMessage(message, server)) return false;
     // Dedup tool_use by toolId (invocation ID) — the message envelope ID
     // may differ between WebSocket replay and server-persisted copy, but
     // the underlying tool invocation is the same.
@@ -452,9 +383,28 @@ function getUpsertKey(message: NormalizedMessage): string {
   return message.id;
 }
 
+function isAssistantRealtimeContentKind(message: NormalizedMessage): boolean {
+  if (message.kind === 'thinking') return true;
+  return message.kind === 'text' && message.role === 'assistant';
+}
+
+function isActiveRealtimeContentStream(message: NormalizedMessage, kind: MessageKind): boolean {
+  const id = String(message.id || '');
+  if (kind === 'text') {
+    return message.kind === 'stream_delta' && id.startsWith('__streaming_');
+  }
+  if (kind === 'thinking') {
+    return message.kind === 'thinking' && id.startsWith('__streaming_thinking_');
+  }
+  return false;
+}
+
 function isCompatibleRealtimeTextRun(a: NormalizedMessage, b: NormalizedMessage): boolean {
   if (a.runId != null && b.runId != null) return a.runId === b.runId;
-  const hasActiveStream = a.kind === 'stream_delta' || b.kind === 'stream_delta';
+  const hasActiveStream = (
+    isActiveRealtimeContentStream(a, b.kind) ||
+    isActiveRealtimeContentStream(b, a.kind)
+  );
   if (!hasActiveStream) return false;
   const aTime = parseTimestampMs(a.timestamp);
   const bTime = parseTimestampMs(b.timestamp);
@@ -462,25 +412,163 @@ function isCompatibleRealtimeTextRun(a: NormalizedMessage, b: NormalizedMessage)
   return Math.abs(aTime - bTime) <= 10_000;
 }
 
+type RealtimeContentDuplicate = {
+  index: number;
+  keepExisting: boolean;
+};
+
 function findDuplicateAssistantRealtimeTextIndex(
   messages: NormalizedMessage[],
   incoming: NormalizedMessage,
-): number {
-  if (incoming.kind !== 'text' || incoming.role !== 'assistant') return -1;
-  const incomingText = normalizeRealtimeText(incoming.content);
-  if (!incomingText) return -1;
+): RealtimeContentDuplicate | null {
+  if (!isAssistantRealtimeContentKind(incoming)) return null;
+  const incomingText = getMessageComparisonText(incoming);
+  if (!incomingText) return null;
+  const incomingBlockKey = incoming.kind === 'thinking' ? getThinkingBlockKey(incoming) : undefined;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const existing = messages[index];
-    const isAssistantText = existing.kind === 'text' && existing.role === 'assistant';
-    const isActiveAssistantStream = existing.kind === 'stream_delta' && String(existing.id || '').startsWith('__streaming_');
-    if (!isAssistantText && !isActiveAssistantStream) continue;
+    const isAssistantContent = existing.kind === incoming.kind && isAssistantRealtimeContentKind(existing);
+    const isActiveAssistantStream = isActiveRealtimeContentStream(existing, incoming.kind);
+    if (!isAssistantContent && !isActiveAssistantStream) continue;
     if (!isCompatibleRealtimeTextRun(existing, incoming)) continue;
-    if (normalizeRealtimeText(existing.content) !== incomingText) continue;
-    return index;
+    const existingText = getMessageComparisonText(existing);
+    if (!existingText) continue;
+    if (incoming.kind === 'thinking') {
+      const existingBlockKey = getThinkingBlockKey(existing);
+      if (incomingBlockKey && existingBlockKey && incomingBlockKey !== existingBlockKey) {
+        continue;
+      }
+      if (existingText === incomingText || incomingText.startsWith(existingText)) {
+        return { index, keepExisting: false };
+      }
+      if (existingText.startsWith(incomingText)) {
+        return { index, keepExisting: true };
+      }
+      continue;
+    }
+    if (existingText !== incomingText) continue;
+    return { index, keepExisting: false };
   }
 
-  return -1;
+  return null;
+}
+
+type FinalizeStreamingKind = 'text' | 'thinking';
+
+function getStreamingMessageId(
+  sessionId: string,
+  runId: string | undefined,
+  kind: FinalizeStreamingKind,
+  blockKey?: string,
+): string {
+  const prefix = kind === 'thinking' ? '__streaming_thinking_' : '__streaming_';
+  const streamBase = streamingKey(sessionId, runId);
+  return kind === 'thinking' && blockKey
+    ? `${prefix}${streamBase}_${blockKey.replace(/[^A-Za-z0-9_-]+/g, '_')}`
+    : `${prefix}${streamBase}`;
+}
+
+function findRealtimeFinalizationOverlap(
+  messages: NormalizedMessage[],
+  currentIndex: number,
+  stream: NormalizedMessage,
+  kind: FinalizeStreamingKind,
+): { index: number; replaceExisting: boolean } | null {
+  const streamText = getMessageComparisonText(stream);
+  if (!streamText) return null;
+  const streamBlockKey = kind === 'thinking' ? getThinkingBlockKey(stream) : undefined;
+
+  const startIndex = getRealtimeTurnStartIndex(messages, currentIndex);
+  for (let index = messages.length - 1; index >= startIndex; index -= 1) {
+    if (index === currentIndex) continue;
+    const existing = messages[index];
+    if (!existing || String(existing.id || '').startsWith('__streaming_')) continue;
+    if (kind === 'text') {
+      if (existing.kind !== 'text' || existing.role !== 'assistant') continue;
+    } else if (existing.kind !== 'thinking') {
+      continue;
+    }
+    if (stream.runId != null && existing.runId != null && stream.runId !== existing.runId) {
+      continue;
+    }
+    if (kind === 'thinking') {
+      const existingBlockKey = getThinkingBlockKey(existing);
+      if (streamBlockKey && existingBlockKey && streamBlockKey !== existingBlockKey) {
+        continue;
+      }
+    }
+    const existingText = getMessageComparisonText(existing);
+    if (!existingText) continue;
+    if (kind === 'thinking') {
+      if (existingText === streamText || existingText.startsWith(streamText)) {
+        return { index, replaceExisting: false };
+      }
+      if (streamText.startsWith(existingText)) {
+        return { index, replaceExisting: true };
+      }
+      continue;
+    }
+    if (existingText === streamText) {
+      return { index, replaceExisting: false };
+    }
+  }
+  return null;
+}
+
+export function finalizeStreamingRealtimeMessages(
+  realtimeMessages: NormalizedMessage[],
+  params: {
+    sessionId: string;
+    runId?: string;
+    kind: FinalizeStreamingKind;
+    newId: string;
+    thinkingBlockId?: string;
+    thinkingBlockSeq?: number;
+  },
+): NormalizedMessage[] {
+  const streamId = getStreamingMessageId(
+    params.sessionId,
+    params.runId,
+    params.kind,
+    getThinkingBlockKey({
+      thinkingBlockId: params.thinkingBlockId,
+      thinkingBlockSeq: params.thinkingBlockSeq,
+    }),
+  );
+  const idx = realtimeMessages.findIndex(m => m.id === streamId);
+  if (idx < 0) return realtimeMessages;
+
+  const stream = {
+    ...realtimeMessages[idx],
+    runId: realtimeMessages[idx].runId ?? params.runId,
+  };
+  const role = 'assistant';
+  const overlap = findRealtimeFinalizationOverlap(realtimeMessages, idx, stream, params.kind);
+  const updated = [...realtimeMessages];
+
+  if (overlap) {
+    if (overlap.replaceExisting) {
+      updated[overlap.index] = {
+        ...stream,
+        id: updated[overlap.index].id,
+        kind: params.kind,
+        role,
+        isFinal: true,
+      };
+    }
+    updated.splice(idx, 1);
+    return updated;
+  }
+
+  updated[idx] = {
+    ...stream,
+    id: params.newId,
+    kind: params.kind,
+    role,
+    isFinal: true,
+  };
+  return updated;
 }
 
 export function upsertRealtimeMessages(
@@ -501,15 +589,18 @@ export function upsertRealtimeMessages(
         continue;
       }
     }
-    const duplicateAssistantTextIndex = findDuplicateAssistantRealtimeTextIndex(updated, message);
-    if (duplicateAssistantTextIndex >= 0) {
-      const previousKey = getUpsertKey(updated[duplicateAssistantTextIndex]);
-      updated[duplicateAssistantTextIndex] = {
+    const duplicateAssistantText = findDuplicateAssistantRealtimeTextIndex(updated, message);
+    if (duplicateAssistantText) {
+      if (duplicateAssistantText.keepExisting) {
+        continue;
+      }
+      const previousKey = getUpsertKey(updated[duplicateAssistantText.index]);
+      updated[duplicateAssistantText.index] = {
         ...message,
-        serverTailIdAtStart: message.serverTailIdAtStart ?? updated[duplicateAssistantTextIndex].serverTailIdAtStart,
+        serverTailIdAtStart: message.serverTailIdAtStart ?? updated[duplicateAssistantText.index].serverTailIdAtStart,
       };
       indexByKey.delete(previousKey);
-      indexByKey.set(getUpsertKey(message), duplicateAssistantTextIndex);
+      indexByKey.set(getUpsertKey(message), duplicateAssistantText.index);
       continue;
     }
     const key = getUpsertKey(message);
@@ -576,6 +667,7 @@ export function patchMergedStreamingMessage(
   streamId: string,
   content: string,
   msgProvider?: SessionProvider,
+  patch: Partial<Pick<NormalizedMessage, 'thinkingBlockId' | 'thinkingBlockSeq'>> = {},
 ): boolean {
   const mergedIdx = slot.merged.findIndex((message) => message.id === streamId);
   if (mergedIdx < 0) {
@@ -583,7 +675,14 @@ export function patchMergedStreamingMessage(
   }
 
   const existing = slot.merged[mergedIdx];
-  if (existing.content === content && (msgProvider == null || existing.provider === msgProvider)) {
+  const nextThinkingBlockId = patch.thinkingBlockId ?? existing.thinkingBlockId;
+  const nextThinkingBlockSeq = patch.thinkingBlockSeq ?? existing.thinkingBlockSeq;
+  if (
+    existing.content === content
+    && (msgProvider == null || existing.provider === msgProvider)
+    && existing.thinkingBlockId === nextThinkingBlockId
+    && existing.thinkingBlockSeq === nextThinkingBlockSeq
+  ) {
     return true;
   }
 
@@ -591,6 +690,8 @@ export function patchMergedStreamingMessage(
     ...existing,
     content,
     ...(msgProvider != null ? { provider: msgProvider } : {}),
+    ...(patch.thinkingBlockId !== undefined ? { thinkingBlockId: patch.thinkingBlockId } : {}),
+    ...(patch.thinkingBlockSeq !== undefined ? { thinkingBlockSeq: patch.thinkingBlockSeq } : {}),
   };
   slot.merged = slot.merged.slice();
   return true;
@@ -701,8 +802,6 @@ export function useSessionStore() {
     slot.status = 'loading';
     notify(sessionId);
 
-    const fetchStartedAt = Date.now();
-
     try {
       const params = new URLSearchParams();
       if (opts.provider) params.append('provider', opts.provider);
@@ -742,27 +841,6 @@ export function useSessionStore() {
       slot.fetchedAt = Date.now();
       slot.status = 'idle';
       slot.lastError = null;
-
-      // Prune realtime messages covered by server data.  Use the later of
-      // fetchStartedAt and the latest server message timestamp as watermark
-      // so that messages finalized DURING the fetch (race window) are also
-      // pruned when the server response already includes them.
-      if (slot.realtimeMessages.length > 0 && messages.length > 0) {
-        const latestServerTs = messages.reduce(
-          (max, m) => Math.max(max, Date.parse(m.timestamp) || 0), 0,
-        );
-        const watermark = Math.max(fetchStartedAt, latestServerTs);
-        const serverIds = new Set(messages.map(m => m.id));
-        const serverToolIds = new Set(
-          messages.filter(m => m.kind === 'tool_use' && m.toolId).map(m => m.toolId!)
-        );
-        slot.realtimeMessages = slot.realtimeMessages.filter(m => {
-          if (shouldKeepRealtimeAfterServerRefresh(m, messages)) return true;
-          if (serverIds.has(m.id)) return false;
-          if (m.kind === 'tool_use' && m.toolId && serverToolIds.has(m.toolId)) return false;
-          return (Date.parse(m.timestamp) || 0) > watermark;
-        });
-      }
 
       recomputeMergedIfNeeded(slot);
       if (data.tokenUsage) {
@@ -1132,16 +1210,6 @@ export function useSessionStore() {
       slot.total = data.total ?? slot.serverMessages.length;
       slot.hasMore = Boolean(data.hasMore);
       slot.fetchedAt = Date.now();
-      // Server is authoritative, but a post-complete refresh can race the
-      // transcript writer/read path and return a non-empty yet not-quite-final
-      // snapshot. Keep finalized local stream text until the server returns
-      // an equivalent assistant message; otherwise the UI can show "complete"
-      // while the model's visible answer disappears.
-      if (slot.realtimeMessages.length > 0 && incomingMessages.length > 0) {
-        slot.realtimeMessages = slot.realtimeMessages.filter((message) =>
-          shouldKeepRealtimeAfterServerRefresh(message, incomingMessages)
-        );
-      }
       recomputeMergedIfNeeded(slot);
       notify(sessionId);
     } catch (error) {
@@ -1225,45 +1293,64 @@ export function useSessionStore() {
   const finalizeStreaming = useCallback((sessionId: string, runId?: string) => {
     const slot = storeRef.current.get(sessionId);
     if (!slot) return;
-    const streamId = `__streaming_${streamingKey(sessionId, runId)}`;
-    const idx = slot.realtimeMessages.findIndex(m => m.id === streamId);
-    if (idx >= 0) {
-      const stream = slot.realtimeMessages[idx];
-      const newId = `text_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      slot.realtimeMessages = [...slot.realtimeMessages];
-      slot.realtimeMessages[idx] = {
-        ...stream,
-        id: newId,
-        kind: 'text',
-        role: 'assistant',
-        isFinal: true,
-      };
-      recomputeMergedIfNeeded(slot);
-      notify(sessionId);
-    }
+    const updated = finalizeStreamingRealtimeMessages(slot.realtimeMessages, {
+      sessionId,
+      runId,
+      kind: 'text',
+      newId: `text_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    });
+    if (updated === slot.realtimeMessages) return;
+    slot.realtimeMessages = updated;
+    recomputeMergedIfNeeded(slot);
+    notify(sessionId);
   }, [notify]);
 
   /**
    * Update or create a streaming thinking message (accumulated thinking so far).
    * Mirrors updateStreaming but uses kind='thinking' and a separate well-known ID.
    */
-  const updateStreamingThinking = useCallback((sessionId: string, accumulatedText: string, msgProvider: SessionProvider, runId?: string) => {
+  const updateStreamingThinking = useCallback((
+    sessionId: string,
+    accumulatedText: string,
+    msgProvider: SessionProvider,
+    runId?: string,
+    thinkingBlockId?: string,
+    thinkingBlockSeq?: number,
+  ) => {
     const slot = getSlot(sessionId);
-    const streamId = `__streaming_thinking_${streamingKey(sessionId, runId)}`;
+    const streamId = getStreamingMessageId(
+      sessionId,
+      runId,
+      'thinking',
+      getThinkingBlockKey({ thinkingBlockId, thinkingBlockSeq }),
+    );
     const idx = slot.realtimeMessages.findIndex(m => m.id === streamId);
     if (idx >= 0) {
       const existing = slot.realtimeMessages[idx];
-      if (existing.content === accumulatedText && existing.provider === msgProvider) {
+      if (
+        existing.content === accumulatedText
+        && existing.provider === msgProvider
+        && existing.thinkingBlockId === thinkingBlockId
+        && existing.thinkingBlockSeq === thinkingBlockSeq
+      ) {
         return;
       }
       // FIX: patch merged BEFORE mutating existing (same fix as updateStreaming)
-      if (!patchMergedStreamingMessage(slot, streamId, accumulatedText, msgProvider)) {
+      const blockPatch = {
+        ...(thinkingBlockId !== undefined ? { thinkingBlockId } : {}),
+        ...(thinkingBlockSeq !== undefined ? { thinkingBlockSeq } : {}),
+      };
+      if (!patchMergedStreamingMessage(slot, streamId, accumulatedText, msgProvider, blockPatch)) {
         existing.content = accumulatedText;
         existing.provider = msgProvider;
+        if (thinkingBlockId !== undefined) existing.thinkingBlockId = thinkingBlockId;
+        if (thinkingBlockSeq !== undefined) existing.thinkingBlockSeq = thinkingBlockSeq;
         forceRecomputeMerged(slot);
       } else {
         existing.content = accumulatedText;
         existing.provider = msgProvider;
+        if (thinkingBlockId !== undefined) existing.thinkingBlockId = thinkingBlockId;
+        if (thinkingBlockSeq !== undefined) existing.thinkingBlockSeq = thinkingBlockSeq;
       }
       notify(sessionId);
       return;
@@ -1277,8 +1364,11 @@ export function useSessionStore() {
         timestamp: new Date().toISOString(),
         provider: msgProvider,
         kind: 'thinking',
+        role: 'assistant',
         content: accumulatedText,
         runId,
+        ...(thinkingBlockId !== undefined ? { thinkingBlockId } : {}),
+        ...(thinkingBlockSeq !== undefined ? { thinkingBlockSeq } : {}),
         serverTailIdAtStart: serverTailId ?? undefined,
       };
       slot.realtimeMessages = [...slot.realtimeMessages, msg];
@@ -1291,23 +1381,26 @@ export function useSessionStore() {
    * Finalize streaming thinking: replace the well-known streaming thinking ID
    * with a unique ID so subsequent thinking blocks don't overwrite it.
    */
-  const finalizeStreamingThinking = useCallback((sessionId: string, runId?: string) => {
+  const finalizeStreamingThinking = useCallback((
+    sessionId: string,
+    runId?: string,
+    thinkingBlockId?: string,
+    thinkingBlockSeq?: number,
+  ) => {
     const slot = storeRef.current.get(sessionId);
     if (!slot) return;
-    const streamId = `__streaming_thinking_${streamingKey(sessionId, runId)}`;
-    const idx = slot.realtimeMessages.findIndex(m => m.id === streamId);
-    if (idx >= 0) {
-      const stream = slot.realtimeMessages[idx];
-      const newId = `thinking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      slot.realtimeMessages = [...slot.realtimeMessages];
-      slot.realtimeMessages[idx] = {
-        ...stream,
-        id: newId,
-        isFinal: true,
-      };
-      recomputeMergedIfNeeded(slot);
-      notify(sessionId);
-    }
+    const updated = finalizeStreamingRealtimeMessages(slot.realtimeMessages, {
+      sessionId,
+      runId,
+      kind: 'thinking',
+      newId: `thinking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ...(thinkingBlockId !== undefined ? { thinkingBlockId } : {}),
+      ...(thinkingBlockSeq !== undefined ? { thinkingBlockSeq } : {}),
+    });
+    if (updated === slot.realtimeMessages) return;
+    slot.realtimeMessages = updated;
+    recomputeMergedIfNeeded(slot);
+    notify(sessionId);
   }, [notify]);
 
   /**

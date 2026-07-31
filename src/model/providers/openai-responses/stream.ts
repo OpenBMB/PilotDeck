@@ -3,6 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
+import {
+  appendThinkingBlockText,
+  clearThinkingBlock,
+  clearThinkingBlocks,
+  createThinkingBlockTracker,
+  type ThinkingBlockTracker,
+} from "../../streaming/thinkingBlock.js";
 
 type ToolCallState = Partial<CanonicalToolCall> & {
   argumentsBuffer?: string;
@@ -18,6 +25,7 @@ export type OpenAIResponsesStreamState = {
   completedToolCallKeys: Set<string>;
   usedToolCallIds: Set<string>;
   sawToolCall: boolean;
+  thinkingBlocks: ThinkingBlockTracker;
 };
 
 export function createOpenAIResponsesStreamState(): OpenAIResponsesStreamState {
@@ -28,6 +36,7 @@ export function createOpenAIResponsesStreamState(): OpenAIResponsesStreamState {
     completedToolCallKeys: new Set(),
     usedToolCallIds: new Set(),
     sawToolCall: false,
+    thinkingBlocks: createThinkingBlockTracker(),
   };
 }
 
@@ -51,20 +60,23 @@ export function normalizeOpenAIResponsesStreamEvent(
 
   if (type === "response.output_text.delta" && typeof event.delta === "string" && event.delta.length > 0) {
     ensureStarted(events, state, raw);
+    clearThinkingBlocks(state.thinkingBlocks);
     events.push({ type: "text_delta", text: event.delta, raw });
   }
 
   if (isReasoningDelta(type) && typeof event.delta === "string" && event.delta.length > 0) {
     ensureStarted(events, state, raw);
-    events.push({ type: "thinking_delta", text: event.delta, raw });
+    events.push(...emitThinkingDelta(event, state, event.delta, raw));
   }
 
   if (type === "response.output_item.added") {
+    clearThinkingBlocks(state.thinkingBlocks);
     events.push(...handleOutputItemAdded(event, state, raw));
   }
 
   if (type === "response.function_call_arguments.delta" && typeof event.delta === "string") {
     ensureStarted(events, state, raw);
+    clearThinkingBlocks(state.thinkingBlocks);
     const toolCall = ensureToolCall(event, state);
     toolCall.argumentsBuffer = `${toolCall.argumentsBuffer ?? ""}${event.delta}`;
     events.push({ type: "tool_call_delta", id: toolCall.id ?? "", delta: event.delta, raw });
@@ -72,6 +84,7 @@ export function normalizeOpenAIResponsesStreamEvent(
 
   if (type === "response.function_call_arguments.done") {
     ensureStarted(events, state, raw);
+    clearThinkingBlocks(state.thinkingBlocks);
     if (isCompletedToolCall(event, state)) {
       return events;
     }
@@ -87,6 +100,7 @@ export function normalizeOpenAIResponsesStreamEvent(
     const item = asRecord(event.item);
     if (item.type === "function_call") {
       ensureStarted(events, state, raw);
+      clearThinkingBlocks(state.thinkingBlocks);
       if (isCompletedToolCall({ ...event, item }, state)) {
         return events;
       }
@@ -101,6 +115,7 @@ export function normalizeOpenAIResponsesStreamEvent(
 
   if (type === "response.completed") {
     ensureStarted(events, state, raw);
+    clearThinkingBlocks(state.thinkingBlocks);
     const usage = normalizeOpenAIUsage(response.usage);
     if (usage) {
       events.push({ type: "usage", usage, raw });
@@ -114,6 +129,7 @@ export function normalizeOpenAIResponsesStreamEvent(
 
   if (type === "response.incomplete") {
     ensureStarted(events, state, raw);
+    clearThinkingBlocks(state.thinkingBlocks);
     events.push({ type: "message_end", finishReason: "length", raw });
   }
 
@@ -121,6 +137,7 @@ export function normalizeOpenAIResponsesStreamEvent(
     if (type === "response.failed") {
       ensureStarted(events, state, raw);
     }
+    clearThinkingBlocks(state.thinkingBlocks);
     const responseError = asRecord(response.error);
     const eventError = asRecord(event.error);
     const error = Object.keys(responseError).length > 0 ? responseError : eventError;
@@ -271,6 +288,44 @@ function isReasoningDelta(type: string): boolean {
   return type === "response.reasoning_summary_text.delta"
     || type === "response.reasoning_text.delta"
     || type === "response.reasoning.delta";
+}
+
+function emitThinkingDelta(
+  event: Record<string, unknown>,
+  state: OpenAIResponsesStreamState,
+  text: string,
+  raw: unknown,
+): CanonicalModelEvent[] {
+  const key = thinkingBlockKey(event, state);
+  const identity = appendThinkingBlockText(
+    state.thinkingBlocks,
+    key,
+    text,
+    {
+      blockId: readNonEmptyString(event.item_id) ?? readNonEmptyString(asRecord(event.item).id),
+      blockSeq: readNumber(event.output_index) ?? readNumber(event.content_index) ?? readNumber(event.sequence_number),
+      idPrefix: "openai-responses-thinking",
+    },
+  ).identity;
+
+  return [{
+    type: "thinking_delta",
+    text,
+    thinkingBlockId: identity.thinkingBlockId,
+    thinkingBlockSeq: identity.thinkingBlockSeq,
+    raw,
+  }];
+}
+
+function thinkingBlockKey(event: Record<string, unknown>, state: OpenAIResponsesStreamState): string {
+  const item = asRecord(event.item);
+  const index = readNumber(event.output_index) ?? readNumber(event.content_index) ?? readNumber(event.sequence_number);
+  return readNonEmptyString(event.item_id)
+    ?? readNonEmptyString(item.id)
+    ?? readNonEmptyString(event.call_id)
+    ?? readNonEmptyString(item.call_id)
+    ?? (index !== undefined ? `index:${index}` : undefined)
+    ?? `response:${state.responseId ?? state.streamSyntheticId}`;
 }
 
 function chooseToolCallId(state: OpenAIResponsesStreamState, incomingId: string | undefined): string {

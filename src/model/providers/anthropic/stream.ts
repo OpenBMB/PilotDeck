@@ -3,6 +3,13 @@ import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/cano
 import { ModelProviderError, parseRetryAfterFromMessage } from "../../protocol/errors.js";
 import { normalizeAnthropicFinishReason } from "../../response/normalizeFinishReason.js";
 import { normalizeAnthropicUsage } from "../../response/normalizeUsage.js";
+import {
+  appendThinkingBlockText,
+  clearThinkingBlock,
+  createThinkingBlockTracker,
+  getThinkingBlockIdentity,
+  type ThinkingBlockTracker,
+} from "../../streaming/thinkingBlock.js";
 
 type FailedToolCall = {
   index: number;
@@ -15,12 +22,14 @@ type FailedToolCall = {
 export type AnthropicStreamState = {
   toolCalls: Map<number, Partial<CanonicalToolCall> & { inputBuffer?: string }>;
   failedToolCalls: FailedToolCall[];
+  thinkingBlocks: ThinkingBlockTracker;
 };
 
 export function createAnthropicStreamState(): AnthropicStreamState {
   return {
     toolCalls: new Map(),
     failedToolCalls: [],
+    thinkingBlocks: createThinkingBlockTracker(),
   };
 }
 
@@ -111,6 +120,14 @@ function contentBlockStartEvents(
     ];
   }
 
+  if (block.type === "thinking" && index !== undefined) {
+    getThinkingBlockIdentity(state.thinkingBlocks, thinkingBlockKey(index), {
+      blockId: readString(block.id),
+      blockSeq: index,
+      idPrefix: "anthropic-thinking",
+    });
+  }
+
   return [];
 }
 
@@ -122,14 +139,23 @@ function contentBlockDeltaEvents(
 ): CanonicalModelEvent[] {
   switch (delta.type) {
     case "text_delta":
+      if (index !== undefined) {
+        clearThinkingBlock(state.thinkingBlocks, thinkingBlockKey(index));
+      }
       return [{ type: "text_delta", text: readString(delta.text) ?? "", raw }];
     case "thinking_delta":
-      return [{ type: "thinking_delta", text: readString(delta.thinking) ?? "", raw }];
+      return thinkingDeltaEvent(state, index, readString(delta.thinking) ?? "", raw);
     case "signature_delta":
       // Anthropic extended-thinking signature; emitted as a thinking_delta with
       // an empty text and the signature payload so the assembler can attach it
       // to the active thinking block. Required for prompt-cache validity.
-      return [{ type: "thinking_delta", text: "", signature: readString(delta.signature) ?? "", raw }];
+      return thinkingDeltaEvent(
+        state,
+        index,
+        "",
+        raw,
+        readString(delta.signature) ?? undefined,
+      );
     case "input_json_delta":
       if (index !== undefined) {
         const current = state.toolCalls.get(index) ?? { id: String(index), name: "", inputBuffer: "" };
@@ -158,6 +184,8 @@ function contentBlockStopEvents(
   if (index === undefined) {
     return [];
   }
+
+  clearThinkingBlock(state.thinkingBlocks, thinkingBlockKey(index));
 
   const toolCall = state.toolCalls.get(index);
   if (!toolCall) {
@@ -261,6 +289,47 @@ function toolCallIdForIndex(index: number | undefined, state: AnthropicStreamSta
     return "";
   }
   return state.toolCalls.get(index)?.id ?? String(index);
+}
+
+function thinkingDeltaEvent(
+  state: AnthropicStreamState,
+  index: number | undefined,
+  text: string,
+  raw: unknown,
+  signature?: string,
+): CanonicalModelEvent[] {
+  if (index === undefined) {
+    return [{
+      type: "thinking_delta",
+      text,
+      ...(signature !== undefined ? { signature } : {}),
+      raw,
+    }];
+  }
+
+  const identity = appendThinkingBlockText(
+    state.thinkingBlocks,
+    thinkingBlockKey(index),
+    text,
+    {
+      blockId: undefined,
+      blockSeq: index,
+      idPrefix: "anthropic-thinking",
+    },
+  ).identity;
+
+  return [{
+    type: "thinking_delta",
+    text,
+    ...(signature !== undefined ? { signature } : {}),
+    thinkingBlockId: identity.thinkingBlockId,
+    thinkingBlockSeq: identity.thinkingBlockSeq,
+    raw,
+  }];
+}
+
+function thinkingBlockKey(index: number): string {
+  return `index:${index}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

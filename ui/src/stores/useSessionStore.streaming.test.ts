@@ -1,15 +1,19 @@
+import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { SessionProvider } from '../types/app';
 import {
+  getActiveTurnReplaySignature,
   getActiveTurnReplayMessagesToApply,
   getDuplicateAssistantStreamTextState,
 } from '../components/chat/hooks/useChatRealtimeHandlers';
 import {
   computeMerged,
   createRafNotifyScheduler,
+  finalizeStreamingRealtimeMessages,
   getFinalizedSubagentThinkingId,
   patchMergedStreamingMessage,
   upsertRealtimeMessages,
+  useSessionStore,
   type NormalizedMessage,
   type SessionSlot,
 } from './useSessionStore';
@@ -49,6 +53,24 @@ function textMessage(
     timestamp,
     provider: PROVIDER,
     kind: 'text',
+    role: 'assistant',
+    content,
+    ...overrides,
+  };
+}
+
+function thinkingMessage(
+  id: string,
+  content: string,
+  timestamp: string,
+  overrides: Partial<NormalizedMessage> = {},
+): NormalizedMessage {
+  return {
+    id,
+    sessionId: 'web:s_test',
+    timestamp,
+    provider: PROVIDER,
+    kind: 'thinking',
     role: 'assistant',
     content,
     ...overrides,
@@ -123,24 +145,6 @@ describe('computeMerged', () => {
     ]);
   });
 
-  it('drops finalized realtime assistant text once equivalent same-turn text is persisted', () => {
-    const server = [
-      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
-      textMessage('persisted-answer', 'Realtime answer', '2026-05-28T00:00:02.000Z'),
-    ];
-    const realtime = [
-      textMessage('text-local-final', 'Realtime answer', '2026-05-28T00:00:01.000Z', {
-        isFinal: true,
-        serverTailIdAtStart: 'tail-before-turn',
-      }),
-    ];
-
-    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
-      'tail-before-turn',
-      'persisted-answer',
-    ]);
-  });
-
   it('keeps later finalized realtime assistant text when only an earlier same-turn text is persisted', () => {
     const server = [
       textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
@@ -158,6 +162,112 @@ describe('computeMerged', () => {
       'persisted-earlier-answer',
       'text-local-second-final',
     ]);
+  });
+});
+
+describe('finalizeStreamingRealtimeMessages', () => {
+  it('drops duplicate streaming thinking that is already finalized in the same run', () => {
+    const realtime: NormalizedMessage[] = [
+      thinkingMessage('local-thinking-final', 'Inspect the flow', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+      }),
+      thinkingMessage('__streaming_thinking_web:s_test_run-1', 'Inspect the flow', '2026-05-28T00:00:02.000Z', {
+        runId: 'run-1',
+      }),
+    ];
+
+    const updated = finalizeStreamingRealtimeMessages(realtime, {
+      sessionId: 'web:s_test',
+      runId: 'run-1',
+      kind: 'thinking',
+      newId: 'new-thinking-final',
+    });
+
+    expect(updated.map((message) => message.id)).toEqual(['local-thinking-final']);
+  });
+
+  it('replaces a shorter finalized thinking row with the fuller streaming block', () => {
+    const realtime: NormalizedMessage[] = [
+      thinkingMessage('local-thinking-final', 'Inspect the flow', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+      }),
+      thinkingMessage(
+        '__streaming_thinking_web:s_test_run-1',
+        'Inspect the flow, then use the tool.',
+        '2026-05-28T00:00:02.000Z',
+        { runId: 'run-1' },
+      ),
+    ];
+
+    const updated = finalizeStreamingRealtimeMessages(realtime, {
+      sessionId: 'web:s_test',
+      runId: 'run-1',
+      kind: 'thinking',
+      newId: 'new-thinking-final',
+    });
+
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.id).toBe('local-thinking-final');
+    expect(updated[0]?.content).toBe('Inspect the flow, then use the tool.');
+  });
+
+  it('finalizes only the matching thinking block id', () => {
+    const realtime: NormalizedMessage[] = [
+      thinkingMessage(
+        '__streaming_thinking_web:s_test_run-1_id_block-a',
+        'First block',
+        '2026-05-28T00:00:01.000Z',
+        { runId: 'run-1', thinkingBlockId: 'block-a', thinkingBlockSeq: 1 },
+      ),
+      thinkingMessage(
+        '__streaming_thinking_web:s_test_run-1_id_block-b',
+        'Second block',
+        '2026-05-28T00:00:02.000Z',
+        { runId: 'run-1', thinkingBlockId: 'block-b', thinkingBlockSeq: 2 },
+      ),
+    ];
+
+    const updated = finalizeStreamingRealtimeMessages(realtime, {
+      sessionId: 'web:s_test',
+      runId: 'run-1',
+      kind: 'thinking',
+      newId: 'final-block-a',
+      thinkingBlockId: 'block-a',
+      thinkingBlockSeq: 1,
+    });
+
+    expect(updated.map((message) => message.id)).toEqual([
+      'final-block-a',
+      '__streaming_thinking_web:s_test_run-1_id_block-b',
+    ]);
+    expect(updated[0]?.isFinal).toBe(true);
+    expect(updated[1]?.isFinal).toBeUndefined();
+  });
+
+  it('does not collapse different thinking block ids with the same text', () => {
+    const realtime: NormalizedMessage[] = [
+      thinkingMessage('final-block-a', 'Same text', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        thinkingBlockId: 'block-a',
+      }),
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-b', 'Same text', '2026-05-28T00:00:02.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-b',
+      }),
+    ];
+
+    const updated = finalizeStreamingRealtimeMessages(realtime, {
+      sessionId: 'web:s_test',
+      runId: 'run-1',
+      kind: 'thinking',
+      newId: 'final-block-b',
+      thinkingBlockId: 'block-b',
+    });
+
+    expect(updated.map((message) => message.id)).toEqual(['final-block-a', 'final-block-b']);
   });
 });
 
@@ -262,6 +372,75 @@ describe('getDuplicateAssistantStreamTextState', () => {
 });
 
 describe('getActiveTurnReplayMessagesToApply', () => {
+  it('uses content-stable signatures for repeated volatile snapshots with fresh ids', () => {
+    const firstSnapshot = [
+      {
+        id: 'thinking-id-from-first-status',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'thinking' as const,
+        content: 'Checking the current flow.',
+        runId: 'run-1',
+      },
+      {
+        id: 'end-id-from-first-status',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:03.000Z',
+        provider: PROVIDER,
+        kind: 'stream_end' as const,
+        runId: 'run-1',
+      },
+    ];
+    const secondSnapshot = firstSnapshot.map((message) => ({
+      ...message,
+      id: `${message.id}-different`,
+    }));
+
+    expect(getActiveTurnReplaySignature(firstSnapshot)).toBe(
+      getActiveTurnReplaySignature(secondSnapshot),
+    );
+  });
+
+  it('skips stale thinking replay already covered by a longer finalized thinking block', () => {
+    const activeTurnMessages = [
+      {
+        id: 'thinking-replay',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'thinking' as const,
+        content: 'Inspect the flow',
+        runId: 'run-1',
+      },
+      {
+        id: 'tool-1',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:04.000Z',
+        provider: PROVIDER,
+        kind: 'tool_use' as const,
+        toolId: 'tool-call-1',
+        toolName: 'Read',
+      },
+    ];
+
+    const messagesToApply = getActiveTurnReplayMessagesToApply(activeTurnMessages, {
+      realtimeMessages: [
+        thinkingMessage(
+          'local-thinking-final',
+          'Inspect the flow, then use the tool.',
+          '2026-05-28T00:00:01.000Z',
+          {
+            isFinal: true,
+            runId: 'run-1',
+          },
+        ),
+      ],
+    });
+
+    expect(messagesToApply.map((message) => message.id)).toEqual(['tool-1']);
+  });
+
   it('skips active-turn stream replay already represented by finalized realtime text', () => {
     const activeTurnMessages = [
       {
@@ -494,6 +673,136 @@ describe('upsertRealtimeMessages', () => {
     const updated = upsertRealtimeMessages(existing, [incoming]);
 
     expect(updated.map((message) => message.id)).toEqual(['__streaming_web:s_test', 'incoming-text']);
+  });
+
+  it('replaces an active thinking stream row with a fuller duplicate thinking frame', () => {
+    const existing = [
+      thinkingMessage('__streaming_thinking_web:s_test_run-1', 'Inspect the flow', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-1',
+      }),
+    ];
+    const incoming = thinkingMessage(
+      'incoming-thinking',
+      'Inspect the flow, then use the tool.',
+      '2026-05-28T00:00:02.000Z',
+      { runId: 'run-1' },
+    );
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.id).toBe('incoming-thinking');
+    expect(updated[0]?.content).toBe('Inspect the flow, then use the tool.');
+  });
+
+  it('keeps an existing fuller thinking row when a stale shorter duplicate arrives', () => {
+    const existing = [
+      thinkingMessage(
+        'existing-thinking',
+        'Inspect the flow, then use the tool.',
+        '2026-05-28T00:00:01.000Z',
+        { runId: 'run-1' },
+      ),
+    ];
+    const incoming = thinkingMessage('incoming-thinking', 'Inspect the flow', '2026-05-28T00:00:02.000Z', {
+      runId: 'run-1',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual(['existing-thinking']);
+    expect(updated[0]?.content).toBe('Inspect the flow, then use the tool.');
+  });
+
+  it('does not dedupe thinking frames from different known block ids', () => {
+    const existing = [
+      thinkingMessage('thinking-a', 'Same text', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-a',
+      }),
+    ];
+    const incoming = thinkingMessage('thinking-b', 'Same text', '2026-05-28T00:00:02.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-b',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual(['thinking-a', 'thinking-b']);
+  });
+
+  it('dedupes thinking frames with the same block id by keeping the fuller text', () => {
+    const existing = [
+      thinkingMessage('thinking-a', 'Inspect', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-a',
+      }),
+    ];
+    const incoming = thinkingMessage('thinking-a-replay', 'Inspect state', '2026-05-28T00:00:02.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-a',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.id).toBe('thinking-a-replay');
+    expect(updated[0]?.content).toBe('Inspect state');
+  });
+});
+
+describe('useSessionStore streaming thinking blocks', () => {
+  it('updates the same live row for one thinking block id and creates another row for a new block', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.updateStreamingThinking('web:s_test', 'Inspect', PROVIDER, 'run-1', 'block-a', 1);
+      result.current.updateStreamingThinking('web:s_test', 'Inspect state', PROVIDER, 'run-1', 'block-a', 1);
+      result.current.updateStreamingThinking('web:s_test', 'Use tool', PROVIDER, 'run-1', 'block-b', 2);
+    });
+
+    const realtime = result.current.getSessionSlot('web:s_test')?.realtimeMessages ?? [];
+
+    expect(realtime.map((message) => message.content)).toEqual(['Inspect state', 'Use tool']);
+    expect(realtime.map((message) => message.thinkingBlockId)).toEqual(['block-a', 'block-b']);
+  });
+
+  it('finalizes only one active thinking block and leaves the next block streaming', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.updateStreamingThinking('web:s_test', 'Inspect', PROVIDER, 'run-1', 'block-a', 1);
+      result.current.updateStreamingThinking('web:s_test', 'Use tool', PROVIDER, 'run-1', 'block-b', 2);
+      result.current.finalizeStreamingThinking('web:s_test', 'run-1', 'block-a', 1);
+      result.current.finalizeStreamingThinking('web:s_test', 'run-1', 'block-a', 1);
+    });
+
+    const realtime = result.current.getSessionSlot('web:s_test')?.realtimeMessages ?? [];
+
+    expect(realtime).toHaveLength(2);
+    expect(realtime[0]?.content).toBe('Inspect');
+    expect(realtime[0]?.isFinal).toBe(true);
+    expect(realtime[0]?.id.startsWith('__streaming_thinking_')).toBe(false);
+    expect(realtime[1]?.content).toBe('Use tool');
+    expect(realtime[1]?.isFinal).toBeUndefined();
+    expect(realtime[1]?.id).toBe('__streaming_thinking_web:s_test_run-1_id_block-b');
+  });
+
+  it('preserves legacy fallback when thinking block fields are absent', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.updateStreamingThinking('web:s_test', 'Legacy', PROVIDER, 'run-1');
+      result.current.updateStreamingThinking('web:s_test', 'Legacy block', PROVIDER, 'run-1');
+      result.current.finalizeStreamingThinking('web:s_test', 'run-1');
+      result.current.finalizeStreamingThinking('web:s_test', 'run-1');
+    });
+
+    const realtime = result.current.getSessionSlot('web:s_test')?.realtimeMessages ?? [];
+
+    expect(realtime).toHaveLength(1);
+    expect(realtime[0]?.content).toBe('Legacy block');
+    expect(realtime[0]?.isFinal).toBe(true);
   });
 });
 

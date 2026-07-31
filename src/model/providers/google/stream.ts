@@ -3,6 +3,12 @@ import {
   normalizeGoogleFinishReason,
   normalizeGoogleUsage,
 } from "./response.js";
+import {
+  appendThinkingBlockText,
+  clearThinkingBlocks,
+  createThinkingBlockTracker,
+  type ThinkingBlockTracker,
+} from "../../streaming/thinkingBlock.js";
 
 type GoogleStreamToolCallState = {
   baseId: string;
@@ -13,6 +19,7 @@ export type GoogleStreamState = {
   started: boolean;
   ended: boolean;
   toolCalls: GoogleStreamToolCallState;
+  thinkingBlocks: ThinkingBlockTracker;
 };
 
 export function createGoogleStreamState(): GoogleStreamState {
@@ -23,6 +30,7 @@ export function createGoogleStreamState(): GoogleStreamState {
       baseId: "google_stream",
       usedIds: new Set(),
     },
+    thinkingBlocks: createThinkingBlockTracker(),
   };
 }
 
@@ -47,13 +55,17 @@ export function normalizeGoogleStreamEvent(
     events.push({ type: "usage", usage, raw });
   }
 
-  for (const candidate of readCandidates(chunk)) {
-    for (const part of readParts(candidate)) {
-      events.push(...partEvents(part, state, raw));
+  const candidates = readCandidates(chunk);
+  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+    const candidate = candidates[candidateIndex]!;
+    const parts = readParts(candidate);
+    for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+      events.push(...partEvents(parts[partIndex], state, raw, candidateIndex, partIndex));
     }
 
     if (candidate.finishReason) {
       state.ended = true;
+      clearThinkingBlocks(state.thinkingBlocks);
       events.push({
         type: "message_end",
         finishReason: normalizeGoogleFinishReason(candidate.finishReason),
@@ -65,18 +77,44 @@ export function normalizeGoogleStreamEvent(
   return events;
 }
 
-function partEvents(part: unknown, state: GoogleStreamState, raw: unknown): CanonicalModelEvent[] {
+function partEvents(
+  part: unknown,
+  state: GoogleStreamState,
+  raw: unknown,
+  candidateIndex: number,
+  partIndex: number,
+): CanonicalModelEvent[] {
   const record = asRecord(part);
   const text = readString(record.text);
   if (text !== undefined) {
     if (record.thought === true) {
-      return [{ type: "thinking_delta", text, signature: readString(record.thoughtSignature), raw }];
+      const identity = appendThinkingBlockText(
+        state.thinkingBlocks,
+        thinkingBlockKey(candidateIndex, partIndex),
+        text,
+        {
+          blockSeq: state.thinkingBlocks.nextThinkingBlockSeq + 1,
+          idPrefix: "google-thinking",
+        },
+      ).identity;
+      return [{
+        type: "thinking_delta",
+        text,
+        ...(readString(record.thoughtSignature)
+          ? { signature: readString(record.thoughtSignature) }
+          : {}),
+        thinkingBlockId: identity.thinkingBlockId,
+        thinkingBlockSeq: identity.thinkingBlockSeq,
+        raw,
+      }];
     }
+    clearThinkingBlocks(state.thinkingBlocks);
     return text.length > 0 ? [{ type: "text_delta", text, raw }] : [];
   }
 
   const functionCall = asRecord(record.functionCall);
   if (Object.keys(functionCall).length > 0) {
+    clearThinkingBlocks(state.thinkingBlocks);
     const toolCall = toToolCall(functionCall, state.toolCalls, raw);
     const args = JSON.stringify(toolCall.input ?? {});
     return [
@@ -87,6 +125,10 @@ function partEvents(part: unknown, state: GoogleStreamState, raw: unknown): Cano
   }
 
   return [];
+}
+
+function thinkingBlockKey(candidateIndex: number, partIndex: number): string {
+  return `candidate:${candidateIndex}:part:${partIndex}`;
 }
 
 function toToolCall(

@@ -44,6 +44,8 @@ type LatestChatMessage = {
   content?: string;
   text?: string;
   tokens?: number;
+  thinkingBlockId?: string;
+  thinkingBlockSeq?: number;
   canInterrupt?: boolean;
   tokenBudget?: unknown;
   newSessionId?: string;
@@ -55,10 +57,88 @@ function normalizeAssistantStreamText(value?: string): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
+function getReplayMessageRawText(message: { content?: unknown; reasoningContent?: unknown }): string {
+  if (typeof message.content === 'string') {
+    if (normalizeAssistantStreamText(message.content).length > 0) {
+      return message.content;
+    }
+    if (typeof message.reasoningContent !== 'string' || message.reasoningContent.length === 0) {
+      return message.content;
+    }
+  }
+  return typeof message.reasoningContent === 'string' ? message.reasoningContent : '';
+}
+
+function getReplayMessageText(message: { content?: unknown; reasoningContent?: unknown }): string {
+  return normalizeAssistantStreamText(getReplayMessageRawText(message));
+}
+
+function renderedTextCoversReplayBlock(renderedText: string, replayText: string): boolean {
+  return renderedText === replayText || renderedText.startsWith(replayText);
+}
+
 function getMessageRunId(message: { runId?: unknown }): string | undefined {
   return typeof message.runId === 'string' && message.runId.trim()
     ? message.runId.trim()
     : undefined;
+}
+
+function getThinkingBlockKey(message: { thinkingBlockId?: unknown; thinkingBlockSeq?: unknown }): string | undefined {
+  if (typeof message.thinkingBlockId === 'string' && message.thinkingBlockId.trim().length > 0) {
+    return `id:${message.thinkingBlockId.trim()}`;
+  }
+  if (typeof message.thinkingBlockSeq === 'number' && Number.isFinite(message.thinkingBlockSeq)) {
+    return `seq:${message.thinkingBlockSeq}`;
+  }
+  return undefined;
+}
+
+function getThinkingStreamState(message: {
+  runId?: unknown;
+  thinkingBlockId?: unknown;
+  thinkingBlockSeq?: unknown;
+}): {
+  runId?: string;
+  blockKey?: string;
+  thinkingBlockId?: string;
+  thinkingBlockSeq?: number;
+} {
+  return {
+    runId: getMessageRunId(message),
+    blockKey: getThinkingBlockKey(message),
+    thinkingBlockId: typeof message.thinkingBlockId === 'string' && message.thinkingBlockId.trim().length > 0
+      ? message.thinkingBlockId.trim()
+      : undefined,
+    thinkingBlockSeq: typeof message.thinkingBlockSeq === 'number' && Number.isFinite(message.thinkingBlockSeq)
+      ? message.thinkingBlockSeq
+      : undefined,
+  };
+}
+
+function getThinkingStreamMessageId(
+  sessionId: string,
+  identity: {
+    runId?: string;
+    blockKey?: string;
+  },
+): string {
+  const streamBase = identity.runId ? `${sessionId}_${identity.runId}` : sessionId;
+  return identity.blockKey
+    ? `__streaming_thinking_${streamBase}_${identity.blockKey.replace(/[^A-Za-z0-9_-]+/g, '_')}`
+    : `__streaming_thinking_${streamBase}`;
+}
+
+function isSameThinkingStream(
+  a: { runId?: string; blockKey?: string },
+  b: { runId?: string; blockKey?: string },
+): boolean {
+  if (a.runId != null && b.runId != null && a.runId !== b.runId) {
+    return false;
+  }
+  if (a.blockKey != null && b.blockKey != null) {
+    return a.blockKey === b.blockKey;
+  }
+  return true;
 }
 
 function parseAssistantStreamTimestamp(value?: string): number | null {
@@ -119,7 +199,24 @@ type VolatileReplayBlock = {
   messages: LatestChatMessage[];
   text: string;
   runId?: string;
+  blockKey?: string;
 };
+
+export function getActiveTurnReplaySignature(activeTurnMessages: LatestChatMessage[]): string {
+  if (!Array.isArray(activeTurnMessages) || activeTurnMessages.length === 0) {
+    return '';
+  }
+
+  return activeTurnMessages
+    .filter((message) => ['thinking', 'stream_delta', 'stream_end'].includes(String(message?.kind)))
+    .map((message) => {
+      const kind = String(message?.kind || '');
+      const runId = getMessageRunId(message) ?? '';
+      const blockKey = kind === 'thinking' ? (getThinkingBlockKey(message) ?? '') : '';
+      return `${kind}:${runId}:${blockKey}:${getReplayMessageText(message)}`;
+    })
+    .join('||');
+}
 
 function isRenderedVolatileBlockCandidate(
   block: VolatileReplayBlock,
@@ -141,7 +238,12 @@ function isRenderedVolatileBlockCandidate(
     return false;
   }
 
-  return normalizeAssistantStreamText(message.content) === blockText;
+  const messageBlockKey = message.kind === 'thinking' ? getThinkingBlockKey(message) : undefined;
+  if (block.kind === 'thinking' && block.blockKey && messageBlockKey && block.blockKey !== messageBlockKey) {
+    return false;
+  }
+
+  return renderedTextCoversReplayBlock(getReplayMessageText(message), blockText);
 }
 
 function hasRenderedVolatileReplayBlock(
@@ -181,17 +283,25 @@ export function getActiveTurnReplayMessagesToApply(
       if (block && block.kind !== kind) {
         flushBlock();
       }
+      const messageBlockKey = kind === 'thinking' ? getThinkingBlockKey(message) : undefined;
+      if (block && block.kind === 'thinking' && messageBlockKey && block.blockKey && block.blockKey !== messageBlockKey) {
+        flushBlock();
+      }
       if (!block) {
         block = {
           kind: kind as 'thinking' | 'stream_delta',
           messages: [],
           text: '',
           runId: getMessageRunId(message),
+          blockKey: messageBlockKey,
         };
       }
       block.messages.push(message);
-      block.text += typeof message.content === 'string' ? message.content : '';
+      block.text += getReplayMessageRawText(message);
       block.runId ??= getMessageRunId(message);
+      if (kind === 'thinking') {
+        block.blockKey ??= messageBlockKey;
+      }
       continue;
     }
 
@@ -296,10 +406,32 @@ export function useChatRealtimeHandlers({
 }: UseChatRealtimeHandlersArgs) {
   const { subscribe } = useWebSocket();
 
-  // Track which sessions have active thinking (just a boolean flag now)
-  const thinkingBySessionRef = useRef<Map<string, boolean>>(new Map());
+  // Track the active thinking block per session so live updates can follow block boundaries.
+  const thinkingBySessionRef = useRef<Map<string, {
+    runId?: string;
+    blockKey?: string;
+    thinkingBlockId?: string;
+    thinkingBlockSeq?: number;
+  }>>(new Map());
   // Dedup volatile active-turn replay chunks across reconnect/status polls.
   const activeTurnReplaySignatureRef = useRef<Map<string, string>>(new Map());
+
+  const finalizeThinkingForSession = useCallback((
+    sessionId: string,
+    thinking: {
+      runId?: string;
+      thinkingBlockId?: string;
+      thinkingBlockSeq?: number;
+    } | undefined,
+  ) => {
+    if (!thinking) return;
+    sessionStore.finalizeStreamingThinking(
+      sessionId,
+      thinking.runId,
+      thinking.thinkingBlockId,
+      thinking.thinkingBlockSeq,
+    );
+  }, [sessionStore]);
 
   const handleMessage = useCallback((latestMessage: LatestChatMessage, fallbackSessionId?: string | null) => {
     if (!latestMessage) return;
@@ -364,10 +496,7 @@ export function useChatRealtimeHandlers({
             );
             const hasReplayedCurrentTurnToolUse = activeTurnToolIds.size > 0
               && [...activeTurnToolIds].some((toolId) => replayedToolIds.has(toolId));
-            const volatileSignature = msg.activeTurnMessages
-              .filter((message) => ['thinking', 'stream_delta', 'stream_end'].includes(String(message?.kind)))
-              .map((message) => `${message.kind}:${message.id || ''}:${message.content || ''}`)
-              .join('||');
+            const volatileSignature = getActiveTurnReplaySignature(msg.activeTurnMessages);
             const previousVolatileSignature = activeTurnReplaySignatureRef.current.get(statusSessionId);
             const hasSeenSameVolatileReplay = Boolean(
               volatileSignature && previousVolatileSignature === volatileSignature,
@@ -476,7 +605,7 @@ export function useChatRealtimeHandlers({
     }
 
     if (msg.kind === 'text' && msg.role === 'user') {
-      if (thinkingBySessionRef.current.has(sid)) {
+      if (thinkingBySessionRef.current.get(sid)) {
         thinkingBySessionRef.current.delete(sid);
       }
     }
@@ -541,9 +670,10 @@ export function useChatRealtimeHandlers({
       const text = msg.content || '';
       if (!text) return;
       // Content starting means thinking is done
-      if (thinkingBySessionRef.current.has(sid)) {
+      const activeThinking = thinkingBySessionRef.current.get(sid);
+      if (activeThinking) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid, msgRunId);
+        finalizeThinkingForSession(sid, activeThinking);
       }
       const slot = sessionStore.getSessionSlot?.(sid);
       const streamId = `__streaming_${streamKey}`;
@@ -555,25 +685,37 @@ export function useChatRealtimeHandlers({
 
     // --- Thinking: direct accumulation (same as content) ---
     if (msg.kind === 'thinking') {
-      const text = msg.content || '';
+      const text = getReplayMessageRawText(msg);
       if (!text) return;
-      // Mark that thinking is active
-      thinkingBySessionRef.current.set(sid, true as any);
+      const nextThinking = getThinkingStreamState(msg);
+      const activeThinking = thinkingBySessionRef.current.get(sid);
+      if (activeThinking && !isSameThinkingStream(activeThinking, nextThinking)) {
+        finalizeThinkingForSession(sid, activeThinking);
+      }
+      thinkingBySessionRef.current.set(sid, nextThinking);
       // Read current thinking content and append delta
       const slot = sessionStore.getSessionSlot?.(sid);
-      const streamId = `__streaming_thinking_${streamKey}`;
+      const streamId = getThinkingStreamMessageId(sid, nextThinking);
       const existing = slot?.realtimeMessages.find((m: any) => m.id === streamId);
       const currentText = existing?.content || '';
-      sessionStore.updateStreamingThinking(sid, currentText + text, provider, msgRunId);
+      sessionStore.updateStreamingThinking(
+        sid,
+        currentText + text,
+        provider,
+        msgRunId,
+        nextThinking.thinkingBlockId,
+        nextThinking.thinkingBlockSeq,
+      );
       return;
     }
 
     // --- Stream end: finalize content stream ---
     if (msg.kind === 'stream_end') {
       // Finalize thinking if still active
-      if (thinkingBySessionRef.current.has(sid)) {
+      const activeThinking = thinkingBySessionRef.current.get(sid);
+      if (activeThinking) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid, msgRunId);
+        finalizeThinkingForSession(sid, activeThinking);
       }
       sessionStore.finalizeStreaming(sid, msgRunId);
       return;
@@ -585,18 +727,16 @@ export function useChatRealtimeHandlers({
     ]);
     if (flushKinds.has(msg.kind as string)) {
       // Finalize thinking if still active (model moved past thinking)
-      if (thinkingBySessionRef.current.has(sid)) {
+      const activeThinking = thinkingBySessionRef.current.get(sid);
+      if (activeThinking) {
         thinkingBySessionRef.current.delete(sid);
-        sessionStore.finalizeStreamingThinking(sid, msgRunId);
+        finalizeThinkingForSession(sid, activeThinking);
       }
       // Finalize content stream on tool_use / complete / error.
       // The gateway may not send stream_end, so tool_use is the
       // reliable signal that the text block has ended.
       if (msg.kind === 'tool_use' || msg.kind === 'complete' || msg.kind === 'error') {
         sessionStore.finalizeStreaming(sid, msgRunId);
-      }
-      if (msg.kind === 'complete' || msg.kind === 'error') {
-        sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
     }
 
@@ -663,11 +803,6 @@ export function useChatRealtimeHandlers({
       case 'complete': {
         if (sid) {
           activeTurnReplaySignatureRef.current.delete(sid);
-          // Finalize both thinking and content streams
-          if (thinkingBySessionRef.current.has(sid)) {
-            thinkingBySessionRef.current.delete(sid);
-          }
-          sessionStore.finalizeStreamingThinking(sid, msgRunId);
           sessionStore.finalizeStreaming(sid, msgRunId);
         }
 
@@ -848,6 +983,7 @@ export function useChatRealtimeHandlers({
     onWebSocketReconnect,
     selectedProject,
     sessionStore,
+    finalizeThinkingForSession,
   ]);
 
   useEffect(() => {

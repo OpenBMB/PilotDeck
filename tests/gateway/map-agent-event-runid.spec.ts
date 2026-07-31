@@ -37,3 +37,27 @@ test("mapAgentEvent propagates runId to streaming lifecycle boundaries", () => {
   assert.equal(failed[0]?.type, "error");
   assert.equal(failed[0]?.runId, runId);
 });
+
+test("mapAgentEvent forwards thinking block identity fields", () => {
+  const events = mapAgentEvent({
+    type: "model_event",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    event: {
+      type: "thinking_delta",
+      text: "inspect",
+      reasoningContent: "native inspect",
+      thinkingBlockId: "block-1",
+      thinkingBlockSeq: 7,
+    },
+  } as unknown as AgentEvent, "run-1");
+
+  assert.deepEqual(events[0], {
+    type: "assistant_thinking_delta",
+    text: "inspect",
+    reasoningContent: "native inspect",
+    thinkingBlockId: "block-1",
+    thinkingBlockSeq: 7,
+    runId: "run-1",
+  });
+});

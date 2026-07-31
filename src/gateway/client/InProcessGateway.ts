@@ -1748,7 +1748,14 @@ function mapModelEvent(event: CanonicalModelEvent, runId: string): GatewayEvent[
     case "text_delta":
       return [{ type: "assistant_text_delta", text: event.text, runId }];
     case "thinking_delta":
-      return [{ type: "assistant_thinking_delta", text: event.text, runId }];
+      return [{
+        type: "assistant_thinking_delta",
+        text: event.text,
+        ...(event.reasoningContent !== undefined ? { reasoningContent: event.reasoningContent } : {}),
+        ...(event.thinkingBlockId !== undefined ? { thinkingBlockId: event.thinkingBlockId } : {}),
+        ...(event.thinkingBlockSeq !== undefined ? { thinkingBlockSeq: event.thinkingBlockSeq } : {}),
+        runId,
+      }];
     case "error":
       // Model-level errors are internal control flow until AgentLoop decides
       // whether they are recoverable. Surfacing them here duplicates the final
@@ -1777,7 +1784,19 @@ function mapSubagentModelEvent(
       return [{
         type: "agent_status",
         event: "subagent_thinking_delta",
-        detail: { ...base, text: event.event.text },
+        detail: {
+          ...base,
+          text: event.event.text,
+          ...(event.event.reasoningContent !== undefined
+            ? { reasoningContent: event.event.reasoningContent }
+            : {}),
+          ...(event.event.thinkingBlockId !== undefined
+            ? { thinkingBlockId: event.event.thinkingBlockId }
+            : {}),
+          ...(event.event.thinkingBlockSeq !== undefined
+            ? { thinkingBlockSeq: event.event.thinkingBlockSeq }
+            : {}),
+        },
       }];
     case "error":
       return [{

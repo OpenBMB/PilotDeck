@@ -254,7 +254,15 @@ export type CanonicalModelEvent =
     }
   | { type: "message_start"; role: "assistant"; raw?: unknown }
   | { type: "text_delta"; text: string; raw?: unknown }
-  | { type: "thinking_delta"; text: string; signature?: string; reasoningContent?: string; raw?: unknown }
+  | {
+      type: "thinking_delta";
+      text: string;
+      signature?: string;
+      reasoningContent?: string;
+      thinkingBlockId?: string;
+      thinkingBlockSeq?: number;
+      raw?: unknown;
+    }
   | { type: "tool_call_start"; id: string; name: string; raw?: unknown }
   | { type: "tool_call_delta"; id: string; delta: string; raw?: unknown }
   | { type: "tool_call_end"; toolCall: CanonicalToolCall; wasRepaired?: boolean; raw?: unknown }

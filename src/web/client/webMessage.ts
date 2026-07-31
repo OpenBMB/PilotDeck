@@ -108,6 +108,9 @@ export type WebMessage = {
   requestId?: string;
   ok?: boolean;
   text?: string;
+  reasoningContent?: string;
+  thinkingBlockId?: string;
+  thinkingBlockSeq?: number;
   contentI18n?: { key: string; params?: Record<string, unknown> };
   userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: Array<{
@@ -149,6 +152,7 @@ export type WebMessageReducerState = {
   currentAssistantId?: string;
   /** Active assistant thinking id where thinking deltas are appended. */
   currentThinkingId?: string;
+  currentThinkingBlockKey?: string;
   /** Map toolCallId -> message id so we can flip to tool_result on finish. */
   toolMessageByCallId: Record<string, string>;
   /** True after this turn has already shown a visible failure status. */
@@ -189,6 +193,7 @@ export function applyWebGatewayEvent(
         ...state,
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
         hasVisibleFailureStatus: false,
       };
 
@@ -204,6 +209,8 @@ export function applyWebGatewayEvent(
               ? { ...m, text: `${m.text ?? ""}${event.text}` }
               : m,
           ),
+          currentThinkingId: undefined,
+          currentThinkingBlockKey: undefined,
         };
       }
       const id = newId();
@@ -222,21 +229,38 @@ export function applyWebGatewayEvent(
         ...state,
         messages: [...state.messages, message],
         currentAssistantId: id,
+        currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
 
     case "assistant_thinking_delta": {
-      if (!event.text) {
+      const deltaText = event.text || event.reasoningContent || "";
+      if (!deltaText) {
         return state;
       }
-      if (state.currentThinkingId) {
+      const nextBlockKey = getThinkingBlockKey(event);
+      const currentBlockKey = state.currentThinkingBlockKey;
+      const isSameThinkingBlock = state.currentThinkingId
+        && (currentBlockKey === undefined || nextBlockKey === undefined || currentBlockKey === nextBlockKey);
+      if (isSameThinkingBlock) {
         return {
           ...state,
           messages: state.messages.map((m) =>
             m.id === state.currentThinkingId
-              ? { ...m, text: `${m.text ?? ""}${event.text}` }
+              ? {
+                  ...m,
+                  text: `${m.text ?? ""}${deltaText}`,
+                  ...(event.reasoningContent !== undefined
+                    ? { reasoningContent: `${m.reasoningContent ?? ""}${event.reasoningContent}` }
+                    : {}),
+                  ...(event.thinkingBlockId !== undefined ? { thinkingBlockId: event.thinkingBlockId } : {}),
+                  ...(event.thinkingBlockSeq !== undefined ? { thinkingBlockSeq: event.thinkingBlockSeq } : {}),
+                }
               : m,
           ),
+          currentAssistantId: undefined,
+          currentThinkingBlockKey: currentBlockKey ?? nextBlockKey,
         };
       }
       const id = newId();
@@ -248,13 +272,18 @@ export function applyWebGatewayEvent(
         provider: "pilotdeck",
         role: "assistant",
         kind: "thinking",
-        text: event.text,
+        text: deltaText,
+        ...(event.reasoningContent !== undefined ? { reasoningContent: event.reasoningContent } : {}),
+        ...(event.thinkingBlockId !== undefined ? { thinkingBlockId: event.thinkingBlockId } : {}),
+        ...(event.thinkingBlockSeq !== undefined ? { thinkingBlockSeq: event.thinkingBlockSeq } : {}),
         source: "live",
       };
       return {
         ...state,
         messages: [...state.messages, message],
+        currentAssistantId: undefined,
         currentThinkingId: id,
+        currentThinkingBlockKey: nextBlockKey,
       };
     }
 
@@ -297,6 +326,8 @@ export function applyWebGatewayEvent(
           [event.toolCallId]: id,
         },
         currentAssistantId: undefined,
+        currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
 
@@ -386,6 +417,8 @@ export function applyWebGatewayEvent(
         ...state,
         messages: [...state.messages, message],
         currentAssistantId: undefined,
+        currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
 
@@ -413,6 +446,8 @@ export function applyWebGatewayEvent(
         ...state,
         messages: [...state.messages, message],
         currentAssistantId: undefined,
+        currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
 
@@ -477,6 +512,7 @@ export function applyWebGatewayEvent(
         messages: [...state.messages, message],
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
 
@@ -518,6 +554,7 @@ export function applyWebGatewayEvent(
         messages: [...state.messages, message],
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
         hasVisibleFailureStatus: state.hasVisibleFailureStatus
           || (kind === "error" && detail.visible !== false),
       };
@@ -529,6 +566,7 @@ export function applyWebGatewayEvent(
           ...state,
           currentAssistantId: undefined,
           currentThinkingId: undefined,
+          currentThinkingBlockKey: undefined,
         };
       }
       const id = newId();
@@ -553,6 +591,7 @@ export function applyWebGatewayEvent(
         messages: [...state.messages, message],
         currentAssistantId: undefined,
         currentThinkingId: undefined,
+        currentThinkingBlockKey: undefined,
       };
     }
   }
@@ -574,6 +613,23 @@ function isI18nDescriptor(value: unknown): value is { key: string; params?: Reco
   return typeof value === "object"
     && value !== null
     && typeof (value as { key?: unknown }).key === "string";
+}
+
+function getThinkingBlockKey(event: {
+  runId?: string;
+  thinkingBlockId?: string;
+  thinkingBlockSeq?: number;
+}): string | undefined {
+  const runId = typeof event.runId === "string" && event.runId.trim().length > 0
+    ? event.runId.trim()
+    : "";
+  if (typeof event.thinkingBlockId === "string" && event.thinkingBlockId.trim().length > 0) {
+    return `${runId}|id:${event.thinkingBlockId.trim()}`;
+  }
+  if (typeof event.thinkingBlockSeq === "number" && Number.isFinite(event.thinkingBlockSeq)) {
+    return `${runId}|seq:${event.thinkingBlockSeq}`;
+  }
+  return runId || undefined;
 }
 
 function isErrorAgentStatusEvent(event: WebGatewayEvent & { type: "agent_status" }): boolean {

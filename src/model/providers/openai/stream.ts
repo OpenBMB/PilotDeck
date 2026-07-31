@@ -4,6 +4,12 @@ import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/cano
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIFinishReason } from "../../response/normalizeFinishReason.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
+import {
+  appendThinkingBlockText,
+  clearThinkingBlock,
+  createThinkingBlockTracker,
+  type ThinkingBlockTracker,
+} from "../../streaming/thinkingBlock.js";
 
 export type ThinkFsmMode = "NORMAL" | "THINKING";
 
@@ -22,7 +28,7 @@ export type OpenAIStreamState = {
   toolCallBaseId?: string;
   thinkFsm: ThinkFsmMode;
   tagBuffer: string;
-  reasoningSnapshot: string;
+  thinkingBlocks: ThinkingBlockTracker;
 };
 
 export function createOpenAIStreamState(): OpenAIStreamState {
@@ -33,7 +39,7 @@ export function createOpenAIStreamState(): OpenAIStreamState {
     streamSyntheticId: `stream_${randomUUID().slice(0, 12)}`,
     thinkFsm: "NORMAL",
     tagBuffer: "",
-    reasoningSnapshot: "",
+    thinkingBlocks: createThinkingBlockTracker(),
   };
 }
 
@@ -50,11 +56,13 @@ const THINK_CLOSE = "</think>";
 export function splitThinkContent(
   content: string,
   state: OpenAIStreamState,
+  choiceIndex: number,
   raw: unknown,
 ): CanonicalModelEvent[] {
   const events: CanonicalModelEvent[] = [];
   let current = state.tagBuffer + content;
   state.tagBuffer = "";
+  const thinkingKey = choiceThinkingKey(choiceIndex);
 
   while (current.length > 0) {
     if (state.thinkFsm === "NORMAL") {
@@ -62,6 +70,7 @@ export function splitThinkContent(
       if (idx !== -1) {
         const before = current.substring(0, idx);
         if (before.length > 0) {
+          clearThinkingBlock(state.thinkingBlocks, thinkingKey);
           events.push({ type: "text_delta", text: before, raw });
         }
         current = current.substring(idx + THINK_OPEN.length);
@@ -73,9 +82,11 @@ export function splitThinkContent(
           state.tagBuffer = current.substring(current.length - buffered);
           const safe = current.substring(0, current.length - buffered);
           if (safe.length > 0) {
+            clearThinkingBlock(state.thinkingBlocks, thinkingKey);
             events.push({ type: "text_delta", text: safe, raw });
           }
         } else {
+          clearThinkingBlock(state.thinkingBlocks, thinkingKey);
           events.push({ type: "text_delta", text: current, raw });
         }
         current = "";
@@ -86,10 +97,11 @@ export function splitThinkContent(
       if (idx !== -1) {
         const before = current.substring(0, idx);
         if (before.length > 0) {
-          events.push({ type: "thinking_delta", text: before, raw });
+          events.push(...emitThinkingDelta(state, thinkingKey, before, raw));
         }
         current = current.substring(idx + THINK_CLOSE.length);
         state.thinkFsm = "NORMAL";
+        clearThinkingBlock(state.thinkingBlocks, thinkingKey);
       } else {
         // Check if the tail could be a partial `</think>` close tag
         const buffered = bufferPartialTag(current, THINK_CLOSE);
@@ -97,10 +109,10 @@ export function splitThinkContent(
           state.tagBuffer = current.substring(current.length - buffered);
           const safe = current.substring(0, current.length - buffered);
           if (safe.length > 0) {
-            events.push({ type: "thinking_delta", text: safe, raw });
+            events.push(...emitThinkingDelta(state, thinkingKey, safe, raw));
           }
         } else {
-          events.push({ type: "thinking_delta", text: current, raw });
+          events.push(...emitThinkingDelta(state, thinkingKey, current, raw));
         }
         current = "";
       }
@@ -122,6 +134,42 @@ function bufferPartialTag(text: string, tag: string): number {
     }
   }
   return 0;
+}
+
+function emitThinkingDelta(
+  state: OpenAIStreamState,
+  key: string,
+  text: string,
+  raw: unknown,
+  extra: {
+    reasoningContent?: string;
+  } = {},
+): CanonicalModelEvent[] {
+  if (text.length === 0 && extra.reasoningContent === undefined) {
+    return [];
+  }
+
+  const result = appendThinkingBlockText(
+    state.thinkingBlocks,
+    key,
+    text,
+    {
+      blockId: undefined,
+      idPrefix: "openai-thinking",
+    },
+  );
+  if (result.delta.length === 0) {
+    return [];
+  }
+
+  return [{
+    type: "thinking_delta",
+    text: result.delta,
+    ...(extra.reasoningContent !== undefined ? { reasoningContent: result.delta } : {}),
+    thinkingBlockId: result.identity.thinkingBlockId,
+    thinkingBlockSeq: result.identity.thinkingBlockSeq,
+    raw,
+  }];
 }
 
 export function normalizeOpenAIStreamEvent(
@@ -168,31 +216,27 @@ export function normalizeOpenAIStreamEvent(
     const delta = asRecord(choiceRecord.delta);
 
     if (typeof delta.content === "string" && delta.content.length > 0) {
-      events.push(...splitThinkContent(delta.content, state, raw));
+      events.push(...splitThinkContent(delta.content, state, choiceIndex, raw));
     }
 
     const reasoning = delta.reasoning_content ?? delta.reasoning;
     if (typeof reasoning === "string" && reasoning.length > 0) {
-      const prev = state.reasoningSnapshot;
-      let emit: string;
-      if (reasoning.startsWith(prev)) {
-        emit = reasoning.slice(prev.length);
-        state.reasoningSnapshot = reasoning;
-      } else {
-        emit = reasoning;
-        state.reasoningSnapshot = prev + reasoning;
-      }
-      if (emit.length > 0) {
-        events.push({ type: "thinking_delta", text: emit, reasoningContent: emit, raw });
+      const emitted = emitThinkingDelta(state, choiceThinkingKey(choiceIndex), reasoning, raw, {
+        reasoningContent: reasoning,
+      });
+      if (emitted.length > 0) {
+        events.push(...emitted);
       }
     }
 
     if (Array.isArray(delta.tool_calls)) {
+      clearThinkingBlock(state.thinkingBlocks, choiceThinkingKey(choiceIndex));
       events.push(...toolCallEvents(delta.tool_calls, state, raw, choiceIndex));
     }
 
     if (choiceRecord.finish_reason) {
       const fr = normalizeOpenAIFinishReason(choiceRecord.finish_reason);
+      clearThinkingBlock(state.thinkingBlocks, choiceThinkingKey(choiceIndex));
       events.push(...finishToolCalls(state, raw, fr, choiceIndex));
       events.push({ type: "message_end", finishReason: fr, raw });
     }
@@ -350,6 +394,10 @@ function readNonEmptyString(value: unknown): string | undefined {
 
 function streamToolCallKey(choiceIndex: number, toolIndex: number): string {
   return `${choiceIndex}:${toolIndex}`;
+}
+
+function choiceThinkingKey(choiceIndex: number): string {
+  return `choice:${choiceIndex}`;
 }
 
 function chooseStreamToolCallId(
