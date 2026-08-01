@@ -15,6 +15,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Folder,
+  BellOff,
   MessageSquarePlus,
   PanelLeftClose,
   Pencil,
@@ -22,9 +23,11 @@ import {
   GitBranch,
   Settings as SettingsIcon,
   Trash2,
+  UsersRound,
 } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
+import type { AgentGroup } from '../../types/group';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
@@ -238,8 +241,11 @@ function SessionStatusIndicator({
 
 export type SidebarV2Props = {
   projects: Project[];
+  groups?: AgentGroup[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
+  selectedGroupId?: string | null;
+  groupsActive?: boolean;
   activeTab: AppTab;
   isLoading: boolean;
   processingSessions?: Set<string>;
@@ -248,6 +254,9 @@ export type SidebarV2Props = {
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project | null) => void;
   onCreateProject: () => void;
+  onSelectGroup?: (groupId: string) => void;
+  onCreateGroup?: () => void;
+  onOpenGroups?: () => void;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
   onShowSettings: () => void;
@@ -288,8 +297,11 @@ const contextMenuPosition = (event: MouseEvent) => {
 
 export default function SidebarV2({
   projects,
+  groups = [],
   selectedProject,
   selectedSession,
+  selectedGroupId,
+  groupsActive,
   activeTab,
   isLoading,
   processingSessions,
@@ -298,6 +310,9 @@ export default function SidebarV2({
   onSelectSession,
   onStartNewSession,
   onCreateProject,
+  onSelectGroup,
+  onCreateGroup,
+  onOpenGroups,
   onRequestDeleteProject,
   onRequestDeleteSession,
   onShowSettings,
@@ -324,7 +339,7 @@ export default function SidebarV2({
   // Segmented toggle between the Projects list and the General workspace.
   // A fresh shell always starts on Projects; explicit project/session routing
   // is synchronized below and still moves the toggle to General when needed.
-  type SidebarSection = 'projects' | 'general';
+  type SidebarSection = 'projects' | 'general' | 'groups';
   const [activeSection, setActiveSection] = useState<SidebarSection>('projects');
 
   // Resizable sidebar width — clamped to a sensible range and persisted across
@@ -437,6 +452,10 @@ export default function SidebarV2({
   // never fight them mid-session.
   const previousSelectedProjectNameRef = useRef<string | null>(null);
   useEffect(() => {
+    if (selectedGroupId || groupsActive) {
+      setActiveSection('groups');
+      return;
+    }
     const currentName = selectedProject?.name ?? null;
     const previousName = previousSelectedProjectNameRef.current;
     previousSelectedProjectNameRef.current = currentName;
@@ -446,7 +465,7 @@ export default function SidebarV2({
     const nextSection: SidebarSection =
       generalProject && currentName === generalProject.name ? 'general' : 'projects';
     setActiveSection((current) => (current === nextSection ? current : nextSection));
-  }, [selectedProject?.name, generalProject]);
+  }, [selectedProject?.name, selectedGroupId, groupsActive, generalProject]);
 
   const projectSortOrder = useProjectSortOrder();
   const otherProjects = useMemo(() => {
@@ -491,6 +510,11 @@ export default function SidebarV2({
     }
     setActiveSection('projects');
   }, [generalProject, onResetProjectSessionPreview]);
+
+  const handleGroupsSectionClick = useCallback(() => {
+    setActiveSection('groups');
+    onOpenGroups?.();
+  }, [onOpenGroups]);
 
   const toggleProjectExpanded = useCallback((project: Project) => {
     setExpandedGroups((previous) => {
@@ -1090,6 +1114,21 @@ export default function SidebarV2({
           >
             {t('sidebar:general.title', { defaultValue: 'General' })}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'groups'}
+            onClick={handleGroupsSectionClick}
+            className={cn(
+              'flex-1 rounded text-[12px] font-medium transition-colors',
+              'h-7 leading-none',
+              activeSection === 'groups'
+                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
+                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+            )}
+          >
+            {t('sidebar:groups.title', { defaultValue: 'Groups' })}
+          </button>
         </div>
       </div>
 
@@ -1147,7 +1186,7 @@ export default function SidebarV2({
               </div>
             )}
           </section>
-        ) : (
+        ) : activeSection === 'general' ? (
           <section className="pt-2">
             {generalProject ? (
               <>
@@ -1173,6 +1212,72 @@ export default function SidebarV2({
               <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
                 {t('sidebar:general.missing', {
                   defaultValue: 'No general workspace found',
+                })}
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="pt-2">
+            <div className="flex items-center px-3 pb-1">
+              <span className="flex-1 text-[11px] font-medium uppercase tracking-[0.04em] text-neutral-500/90 dark:text-neutral-400/80">
+                {t('sidebar:groups.title', { defaultValue: 'Groups' })}
+              </span>
+              <button
+                type="button"
+                onClick={onCreateGroup}
+                aria-label={t('sidebar:groups.newGroup', { defaultValue: 'New Group' }) as string}
+                title={t('sidebar:groups.newGroup', { defaultValue: 'New Group' }) as string}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </button>
+            </div>
+            {groups.length === 0 ? (
+              <div className="mx-1 mt-2 rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center dark:border-neutral-700">
+                <UsersRound className="mx-auto h-7 w-7 text-neutral-300 dark:text-neutral-600" strokeWidth={1.5} />
+                <div className="mt-2 text-xs font-medium text-neutral-600 dark:text-neutral-300">暂无群组</div>
+                <button type="button" onClick={onCreateGroup} className="mt-2 text-[11px] text-blue-600 hover:underline dark:text-blue-300">创建第一个智能体群组</button>
+              </div>
+            ) : (
+              <div className="space-y-0.5 px-1">
+                {groups.map((group) => {
+                  const isSelected = selectedGroupId === group.id;
+                  const visibleMembers = group.members.slice(0, 3);
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => onSelectGroup?.(group.id)}
+                      className={cn(
+                        'group/group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors',
+                        isSelected
+                          ? 'bg-neutral-200/70 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+                          : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                      )}
+                    >
+                      <div className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
+                        <UsersRound className="h-4 w-4" strokeWidth={1.8} />
+                        {group.unreadCount > 0 && !group.muted ? (
+                          <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-semibold text-white ring-2 ring-neutral-50 dark:ring-neutral-900">
+                            {group.unreadCount > 9 ? '9+' : group.unreadCount}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate text-[12.5px] font-medium">{group.title}</span>
+                          {group.muted ? <BellOff className="h-3 w-3 shrink-0 text-neutral-400" /> : null}
+                        </div>
+                        <div className="mt-0.5 truncate text-[10.5px] text-neutral-500 dark:text-neutral-400">
+                          {visibleMembers.map((member) => member.name).join('、')}
+                          {group.members.length > visibleMembers.length ? ` 等 ${group.members.length} 位` : ''}
+                        </div>
+                        <div className="mt-0.5 truncate text-[10.5px] text-neutral-400 dark:text-neutral-500">
+                          {group.lastMessagePreview || (group.triggerMode === 'auto' ? '自动轮询' : '仅 @ 触发')}
+                        </div>
+                      </div>
+                    </button>
+                  );
                 })}
               </div>
             )}

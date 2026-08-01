@@ -26,6 +26,10 @@
     "name": "通用",
     "missing": "未找到通用工作区"
   },
+  "groups": {
+    "title": "群组",
+    "newGroup": "新建群组"
+  },
   "sectionToggle": {
     "label": "侧边栏分区"
   },

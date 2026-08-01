@@ -104,8 +104,9 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
 
   const sessionId = event.notification.data?.sessionId;
+  const groupId = event.notification.data?.groupId;
   const provider = event.notification.data?.provider || null;
-  const urlPath = sessionId ? `/session/${sessionId}` : '/';
+  const urlPath = groupId ? `/groups/${groupId}` : sessionId ? `/session/${sessionId}` : '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async clientList => {
@@ -115,6 +116,7 @@ self.addEventListener('notificationclick', event => {
           client.postMessage({
             type: 'notification:navigate',
             sessionId: sessionId || null,
+            groupId: groupId || null,
             provider,
             urlPath
           });

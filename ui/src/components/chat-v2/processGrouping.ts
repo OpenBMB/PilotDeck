@@ -99,6 +99,8 @@ const USER_VISIBLE_TOOL_NAMES = new Set([
   'AskUserQuestion',
   'ExitPlanMode',
   'ExitPlanModeV2',
+  'GroupChat',
+  'group_chat',
   'exit_plan_mode',
 ]);
 

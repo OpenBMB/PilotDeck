@@ -11,6 +11,7 @@ import {
   Radio,
   Search,
   Sparkles,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -37,6 +38,7 @@ import {
 } from '../../lib/customNames';
 import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
+import GroupChatView from '../group-chat/GroupChatView';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
@@ -80,6 +82,11 @@ type MainAreaV2Props = MainContentProps & {
   activeTab: AppTab;
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
+  selectedGroupId?: string | null;
+  groupsActive?: boolean;
+  onGroupsChanged?: () => void;
+  onGroupArchived?: () => void;
+  onCreateGroup?: () => void;
 };
 
 function MainAreaV2Content(props: MainAreaV2Props) {
@@ -458,6 +465,33 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
+  if (props.selectedGroupId) {
+    return (
+      <GroupChatView
+        groupId={props.selectedGroupId}
+        isSidebarCollapsed={props.isSidebarCollapsed}
+        onOpenSidebar={props.onOpenSidebar}
+        onGroupsChanged={props.onGroupsChanged || (() => undefined)}
+        onArchived={props.onGroupArchived || (() => undefined)}
+      />
+    );
+  }
+  if (props.groupsActive) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-white p-8 text-center text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
+          <UsersRound className="h-8 w-8" strokeWidth={1.6} />
+        </div>
+        <h1 className="mt-5 text-xl font-semibold">智能体群组</h1>
+        <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+          创建一个绑定项目的群组，邀请 PilotDeck 智能体和 StaffDeck 员工进行顺序协作。
+        </p>
+        <button type="button" onClick={props.onCreateGroup} className="mt-5 rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+          创建群组
+        </button>
+      </div>
+    );
+  }
   return (
     <ChatHistorySearchControllerProvider>
       <MainAreaV2Content {...props} />

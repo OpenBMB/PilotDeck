@@ -174,6 +174,43 @@ export const api = {
   // Protected endpoints
   // config endpoint removed - no longer needed (frontend uses window.location)
   projects: () => authenticatedFetch('/api/projects'),
+  groups: () => authenticatedFetch('/api/groups'),
+  createGroup: (payload) => authenticatedFetch('/api/groups', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  group: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}`),
+  updateGroup: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  archiveGroup: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+    method: 'DELETE',
+  }),
+  groupMessages: (groupId, limit = 100, before = '') => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (before) params.set('before', before);
+    return authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/messages?${params.toString()}`);
+  },
+  sendGroupMessage: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  markGroupRead: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/read`, {
+    method: 'POST',
+  }),
+  availableGroupMembers: () => authenticatedFetch('/api/groups/available-members'),
+  addGroupMember: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  removeGroupMember: (groupId, memberId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}`, {
+    method: 'DELETE',
+  }),
+  reorderGroupMembers: (groupId, memberIds) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/member-order`, {
+    method: 'PUT',
+    body: JSON.stringify({ memberIds }),
+  }),
   alwaysOnDashboardEvents: (limit = 200, since) =>
     authenticatedFetch(`/api/always-on/events?limit=${encodeURIComponent(limit)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
   allCronJobs: () =>

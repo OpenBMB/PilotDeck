@@ -7,6 +7,7 @@ import { useWebSocket } from '../../contexts/WebSocketContext';
 import { useDeviceSettings } from '../../hooks/useDeviceSettings';
 import { useSessionProtection } from '../../hooks/useSessionProtection';
 import { useProjectsState } from '../../hooks/useProjectsState';
+import { useAgentGroups } from '../../hooks/useAgentGroups';
 import Settings from '../settings/Settings';
 import ProjectCreationWizard from '../project-creation-wizard';
 import { normalizeProjectForSettings, type SettingsProject } from '../../lib/projectSettings';
@@ -20,15 +21,15 @@ import {
   type AppTab,
   type Project,
   type ProjectSession,
-  type SessionProvider,
 } from '../../types/app';
 import { api } from '../../utils/api';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
+import GroupCreateDialog from '../group-chat/GroupCreateDialog';
 import type { SessionNavigationOptions } from '../main-content/types/types';
+import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
 import { chooseDefaultProject } from './appShellSelection';
-import { ConnectionBanner } from '../ui/ConnectionBanner';
 
 type TypedSettingsProps = {
   isOpen: boolean;
@@ -97,6 +98,10 @@ export default function AppShellV2() {
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
   const matchProject = useMatch('/p/:projectName');
   const matchLegacySession = useMatch('/session/:sessionId');
+  const matchGroup = useMatch('/groups/:groupId');
+  const matchGroupsLanding = useMatch('/groups');
+  const selectedGroupId = matchGroup?.params.groupId ?? null;
+  const groupsActive = Boolean(matchGroup || matchGroupsLanding);
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
@@ -108,6 +113,12 @@ export default function AppShellV2() {
   const { ws, sendMessage, latestMessage, isConnected, subscribe } = useWebSocket();
   const wasConnectedRef = useRef(false);
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => new Set());
+  const {
+    groups,
+    isLoadingGroups,
+    refreshGroups,
+    createGroup,
+  } = useAgentGroups();
 
   const {
     activeSessions,
@@ -206,7 +217,7 @@ export default function AppShellV2() {
       didDefaultProjectRef.current = true;
       return;
     }
-    if (projectNameParam || sessionId) {
+    if (projectNameParam || sessionId || groupsActive) {
       didDefaultProjectRef.current = true;
       return;
     }
@@ -220,6 +231,7 @@ export default function AppShellV2() {
     selectedProject,
     projectNameParam,
     sessionId,
+    groupsActive,
     sidebarSharedProps.projects,
     handleProjectSelect,
     navigate,
@@ -332,6 +344,12 @@ export default function AppShellV2() {
       setSidebarOpen(false);
       void refreshProjectsSilently();
 
+      if (typeof message.groupId === 'string' && message.groupId) {
+        void refreshGroups();
+        navigate(`/groups/${encodeURIComponent(message.groupId)}`);
+        return;
+      }
+
       if (typeof message.sessionId === 'string' && message.sessionId) {
         navigate(`/session/${message.sessionId}`);
         return;
@@ -343,7 +361,7 @@ export default function AppShellV2() {
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
     };
-  }, [navigate, refreshProjectsSilently, setActiveTab, setSidebarOpen]);
+  }, [navigate, refreshGroups, refreshProjectsSilently, setActiveTab, setSidebarOpen]);
 
   useEffect(() => {
     const isReconnect = isConnected && !wasConnectedRef.current;
@@ -384,8 +402,11 @@ export default function AppShellV2() {
   // Project creation wizard (local existing / new local / github clone). The
   // sidebar's Projects-section "+" opens this; row-level "+" is for new sessions.
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const handleOpenNewProject = useCallback(() => setShowNewProject(true), []);
   const handleCloseNewProject = useCallback(() => setShowNewProject(false), []);
+  const handleOpenCreateGroup = useCallback(() => setShowCreateGroup(true), []);
+  const handleCloseCreateGroup = useCallback(() => setShowCreateGroup(false), []);
   const handleProjectCreated = useCallback((project?: Record<string, unknown>) => {
     setShowNewProject(false);
     void refreshProjectsSilently();
@@ -403,6 +424,35 @@ export default function AppShellV2() {
     navigate(`/p/${encodeURIComponent(projectName)}`);
     setActiveTab('chat');
   }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
+
+  const handleSelectGroup = useCallback((groupId: string) => {
+    navigate(`/groups/${encodeURIComponent(groupId)}`);
+    setActiveTab('chat');
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile, navigate, setActiveTab, setSidebarOpen]);
+
+  const handleOpenGroups = useCallback(() => {
+    if (selectedGroupId) return;
+    navigate(groups[0] ? `/groups/${encodeURIComponent(groups[0].id)}` : '/groups');
+  }, [groups, navigate, selectedGroupId]);
+
+  const handleCreateGroup = useCallback(async (input: {
+    title: string;
+    projectName: string;
+    triggerMode: 'auto' | 'mentions';
+    muted: boolean;
+  }) => {
+    const group = await createGroup(input);
+    setShowCreateGroup(false);
+    navigate(`/groups/${encodeURIComponent(group.id)}`);
+    setActiveTab('chat');
+    return group;
+  }, [createGroup, navigate, setActiveTab]);
+
+  const handleGroupArchived = useCallback(() => {
+    void refreshGroups();
+    navigate('/groups');
+  }, [navigate, refreshGroups]);
 
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
@@ -592,16 +642,22 @@ export default function AppShellV2() {
   const sidebar = (
     <SidebarV2
       projects={sidebarSharedProps.projects}
+      groups={groups}
       selectedProject={selectedProject}
       selectedSession={selectedSession}
+      selectedGroupId={selectedGroupId}
+      groupsActive={groupsActive}
       activeTab={activeTab}
-      isLoading={isLoadingProjects}
+      isLoading={isLoadingProjects || isLoadingGroups}
       processingSessions={processingSessions}
       unreadSessionIds={unreadSessionIds}
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
 	      onStartNewSession={handleStartNewSession}
 	      onCreateProject={handleOpenNewProject}
+	      onSelectGroup={handleSelectGroup}
+	      onCreateGroup={handleOpenCreateGroup}
+	      onOpenGroups={handleOpenGroups}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
 	      onShowSettings={onShowSettings}
@@ -647,6 +703,8 @@ export default function AppShellV2() {
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
+          selectedGroupId={selectedGroupId}
+          groupsActive={groupsActive}
           activeTab={activeTab}
           setActiveTab={handleSelectTab}
           ws={ws}
@@ -682,6 +740,9 @@ export default function AppShellV2() {
           }}
           isSidebarCollapsed={!isMobile && !desktopSidebarOpen}
           onOpenSidebar={onOpenDesktopSidebar}
+          onGroupsChanged={() => void refreshGroups()}
+          onGroupArchived={handleGroupArchived}
+          onCreateGroup={handleOpenCreateGroup}
           externalMessageUpdate={externalMessageUpdate}
           misroutedFileFromUrl={misroutedFileFromUrl}
           onMisroutedFileUrlHandled={handleMisroutedFileUrlHandled}
@@ -705,6 +766,18 @@ export default function AppShellV2() {
             <ProjectCreationWizard
               onClose={handleCloseNewProject}
               onProjectCreated={handleProjectCreated}
+            />,
+            document.body,
+          )
+        : null}
+
+      {showCreateGroup
+        ? ReactDOM.createPortal(
+            <GroupCreateDialog
+              projects={sidebarSharedProps.projects}
+              initialProjectName={selectedProject?.name}
+              onClose={handleCloseCreateGroup}
+              onCreate={handleCreateGroup}
             />,
             document.body,
           )

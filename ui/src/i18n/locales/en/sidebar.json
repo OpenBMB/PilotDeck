@@ -26,6 +26,10 @@
     "name": "General",
     "missing": "No general workspace found"
   },
+  "groups": {
+    "title": "Groups",
+    "newGroup": "New Group"
+  },
   "sectionToggle": {
     "label": "Sidebar section"
   },

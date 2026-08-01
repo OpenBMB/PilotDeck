@@ -1,4 +1,5 @@
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
+import type { GroupChatRuntime } from "../../collaboration/index.js";
 import { createAgentTool, type CreateAgentToolOptions } from "../builtin/agent.js";
 import { createAskUserQuestionTool } from "../builtin/askUserQuestion.js";
 import { createBashTool, type CreateBashToolOptions } from "../builtin/bash.js";
@@ -8,6 +9,7 @@ import { createExecuteCodeTool } from "../builtin/executeCode.js";
 import { createGlobTool } from "../builtin/glob.js";
 import { createGrepTool } from "../builtin/grep.js";
 import { createGetCurrentTimeTool } from "../builtin/getCurrentTime.js";
+import { createGroupChatTool } from "../builtin/groupChat.js";
 import { createReadFileTool } from "../builtin/readFile.js";
 import { createSendAttachmentTool } from "../builtin/sendAttachment.js";
 import { createEnterPlanModeTool, createExitPlanModeTool } from "../builtin/planMode.js";
@@ -60,6 +62,11 @@ export type CreateBuiltinRegistryOptions = {
    */
   backgroundTasks?: { runtime: BackgroundTaskRuntime } | false;
   /**
+   * Session-scoped multi-participant collaboration. Opt-in because the room
+   * runtime must be shared by every agent session in the same project.
+   */
+  groupChat?: { runtime: GroupChatRuntime; fetchImpl?: typeof fetch } | false;
+  /**
    * `structured_output` builtin (A3). Registered by default — the tool is
    * inert without a model client requesting it via `tool_choice`, but the
    * registry must contain it so non-interactive hosts can opt in. Pass
@@ -111,6 +118,9 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   if (options?.agent !== false) {
     const agentOpts = options?.agent === true || options?.agent === undefined ? undefined : options.agent;
     registry.register(createAgentTool(agentOpts));
+  }
+  if (options?.groupChat) {
+    registry.register(createGroupChatTool(options.groupChat));
   }
   if (options?.backgroundTasks) {
     const runtime = options.backgroundTasks.runtime;

@@ -1,6 +1,6 @@
 /**
  * Centralized tool configuration registry
- * Defines display behavior for all tool types 
+ * Defines display behavior for all tool types
  */
 
 export interface ToolDisplayConfig {
@@ -654,6 +654,48 @@ export const TOOL_CONFIGS: Record<string, ToolDisplayConfig> = {
   },
 
   // ============================================================================
+  // GROUP COLLABORATION TOOL
+  // ============================================================================
+
+  GroupChat: {
+    input: {
+      type: 'collapsible',
+      title: (input) => {
+        const action = String(input.action || 'collaborate').replaceAll('_', ' ');
+        const subject = input.title || input.message || input.roomId || '';
+        const compact = String(subject).length > 72 ? `${String(subject).slice(0, 69)}...` : subject;
+        return compact ? `Group chat / ${action}: ${compact}` : `Group chat / ${action}`;
+      },
+      defaultOpen: false,
+      contentType: 'text',
+      getContentProps: (input) => ({
+        content: JSON.stringify(input, null, 2),
+        format: 'code'
+      }),
+      colorScheme: {
+        border: 'border-cyan-500 dark:border-cyan-400',
+        icon: 'text-cyan-500 dark:text-cyan-400'
+      }
+    },
+    result: {
+      type: 'collapsible',
+      title: (result) => {
+        const data = result?.toolUseResult?.data || result?.toolUseResult || {};
+        const replies = Array.isArray(data.replies) ? data.replies : [];
+        const successful = replies.filter((reply: any) => reply?.ok).length;
+        return replies.length > 0
+          ? `Group replies ${successful}/${replies.length}`
+          : 'Group chat state';
+      },
+      defaultOpen: true,
+      contentType: 'markdown',
+      getContentProps: (result) => ({
+        content: String(result?.content || '')
+      })
+    }
+  },
+
+  // ============================================================================
   // INTERACTIVE TOOLS
   // ============================================================================
 
@@ -761,6 +803,7 @@ const TOOL_NAME_ALIASES: Record<string, string> = {
   edit_file: 'Edit',
   glob: 'Glob',
   grep: 'Grep',
+  group_chat: 'GroupChat',
   read_file: 'Read',
   write_file: 'Write',
 };

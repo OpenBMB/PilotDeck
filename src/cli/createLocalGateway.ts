@@ -72,6 +72,7 @@ import { readWebSessionMessages, readSubagentWebMessages } from "../web/server/r
 import { forkWebSession } from "../web/server/forkSession.js";
 import { describeWebProject, listWebProjects } from "../web/server/listProjects.js";
 import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
+import { GroupChatRuntime } from "../collaboration/index.js";
 import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
 import type {
   PilotDeckElicitationChannel,
@@ -459,6 +460,8 @@ type ProjectRuntime = {
   projectStorage: GatewayProjectStorageOptions;
   /** Per-project background task runtime (shared across sessions). C5. */
   backgroundTasks: BackgroundTaskRuntime;
+  /** In-memory collaboration rooms shared by sessions in this project runtime. */
+  groupChat: GroupChatRuntime;
   /** Memory provider, undefined when memory is disabled in PilotConfig. */
   memory?: EdgeClawMemoryProvider;
   /** Backing memory service for maintenance / introspection. */
@@ -710,9 +713,11 @@ class ProjectRuntimeRegistry {
       now: this.options.now,
       onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
     });
+    const groupChat = new GroupChatRuntime({ now: this.options.now });
     const webSearchConfig = snapshot.config.tools?.webSearch;
     const tools = createBuiltinRegistry({
       backgroundTasks: { runtime: backgroundTasks },
+      groupChat: { runtime: groupChat },
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),
         lister: () => pluginRuntime.getAllSkills(),
@@ -755,6 +760,7 @@ class ProjectRuntimeRegistry {
       pluginRuntime,
       tools,
       backgroundTasks,
+      groupChat,
       memory: memory?.provider,
       memoryService: memory?.service,
       projectStorage: {

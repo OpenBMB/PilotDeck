@@ -72,6 +72,14 @@ export {
   type AgentToolOutput,
   type CreateAgentToolOptions,
 } from "./builtin/agent.js";
+export {
+  createGroupChatTool,
+  type CreateGroupChatToolOptions,
+  type GroupChatAction,
+  type GroupChatInput,
+  type GroupChatOutput,
+  type GroupChatParticipantInput,
+} from "./builtin/groupChat.js";
 export { createReadFileTool, type ReadFileInput } from "./builtin/readFile.js";
 export { createReadSkillTool, type ReadSkillDeps, type ReadSkillInput } from "./builtin/readSkill.js";
 export { createGlobTool, extractGlobBaseDirectory, type GlobInput } from "./builtin/glob.js";

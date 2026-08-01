@@ -97,3 +97,68 @@ CREATE TABLE IF NOT EXISTS app_config (
     value TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Persistent agent group chats. Group-backed PilotDeck sessions are kept in
+-- a hidden gateway project; these tables own the product-facing room state.
+CREATE TABLE IF NOT EXISTS group_rooms (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    project_name TEXT NOT NULL,
+    project_path TEXT NOT NULL,
+    trigger_mode TEXT NOT NULL DEFAULT 'auto' CHECK (trigger_mode IN ('auto', 'mentions')),
+    muted BOOLEAN NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_rooms_user_activity
+    ON group_rooms(user_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_members (
+    id TEXT NOT NULL,
+    room_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('pilotdeck_main', 'pilotdeck_local', 'pilotdeck_remote', 'staffdeck', 'staffdeck_mock')),
+    name TEXT NOT NULL,
+    role TEXT,
+    description TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    is_active BOOLEAN NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, id),
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_members_room_position
+    ON group_members(room_id, is_active, position);
+
+CREATE TABLE IF NOT EXISTS group_messages (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    round_id TEXT,
+    sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'system')),
+    sender_member_id TEXT,
+    sender_name TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('queued', 'thinking', 'completed', 'failed')),
+    error TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_messages_room_created
+    ON group_messages(room_id, created_at, id);
+
+CREATE TABLE IF NOT EXISTS group_read_state (
+    user_id INTEGER NOT NULL,
+    room_id TEXT NOT NULL,
+    last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, room_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
+);

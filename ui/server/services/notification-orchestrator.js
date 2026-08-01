@@ -123,17 +123,21 @@ function buildPushBody(event) {
   };
   const providerLabel = PROVIDER_LABELS[event.provider] || 'Assistant';
   const sessionName = resolveSessionName(event);
+  const groupName = normalizeSessionName(event.meta?.groupName);
   const message = CODE_MAP[event.code] || 'You have a new notification';
 
   return {
-    title: sessionName || 'PilotDeck',
+    title: groupName || sessionName || 'PilotDeck',
     body: `${providerLabel}: ${message}`,
     data: {
       sessionId: event.sessionId || null,
+      groupId: event.meta?.groupId || null,
       code: event.code,
       provider: event.provider || null,
-      sessionName,
-      tag: `${event.provider || 'assistant'}:${event.sessionId || 'none'}:${event.code}`
+      sessionName: groupName || sessionName,
+      tag: event.meta?.groupId
+        ? `group:${event.meta.groupId}:${event.code}`
+        : `${event.provider || 'assistant'}:${event.sessionId || 'none'}:${event.code}`
     }
   };
 }

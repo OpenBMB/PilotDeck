@@ -139,6 +139,8 @@ async function getProjects(progressCallback = null) {
     const gateway = await getPilotDeckGateway();
     const { projects: webProjects } = await gateway.listProjects();
     const markedProjects = await readMarkedProjectPaths();
+    const hiddenGroupRuntimePath = path.resolve(resolvePilotHome(process.env), 'group-runtime');
+    const isHiddenGroupRuntime = (value) => Boolean(value) && path.resolve(value) === hiddenGroupRuntimePath;
     const markedProjectIdsByPath = new Map(
         [...markedProjects.entries()].map(([id, cwd]) => [path.resolve(cwd), id]),
     );
@@ -160,12 +162,14 @@ async function getProjects(progressCallback = null) {
     for (const project of webProjects) {
         const fullPath = project.fullPath || project.projectKey;
         if (!fullPath) continue;
+        if (isHiddenGroupRuntime(fullPath)) continue;
         const id = markedProjectIdsByPath.get(path.resolve(fullPath)) || createProjectId(fullPath);
         if (!byId.has(id)) {
             byId.set(id, { ...project, __projectId: id });
         }
     }
     for (const [id, markedCwd] of markedProjects) {
+        if (isHiddenGroupRuntime(markedCwd) || id === createProjectId(hiddenGroupRuntimePath)) continue;
         const existing = byId.get(id);
         if (existing) {
             existing.fullPath = markedCwd;
