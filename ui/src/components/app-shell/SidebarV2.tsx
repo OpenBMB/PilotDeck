@@ -257,6 +257,8 @@ export type SidebarV2Props = {
   onSelectGroup?: (groupId: string) => void;
   onCreateGroup?: () => void;
   onOpenGroups?: () => void;
+  onRenameGroup?: (group: AgentGroup, title: string) => void | Promise<void>;
+  onRequestDeleteGroup?: (group: AgentGroup) => void;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
   onShowSettings: () => void;
@@ -278,6 +280,12 @@ type SidebarContextMenu =
       kind: 'session';
       project: Project;
       session: ProjectSession;
+      x: number;
+      y: number;
+    }
+  | {
+      kind: 'group';
+      group: AgentGroup;
       x: number;
       y: number;
     };
@@ -313,6 +321,8 @@ export default function SidebarV2({
   onSelectGroup,
   onCreateGroup,
   onOpenGroups,
+  onRenameGroup,
+  onRequestDeleteGroup,
   onRequestDeleteProject,
   onRequestDeleteSession,
   onShowSettings,
@@ -329,6 +339,7 @@ export default function SidebarV2({
 
   const [renamingProject, setRenamingProject] = useState<string | null>(null);
   const [renamingSession, setRenamingSession] = useState<string | null>(null);
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<string>('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [contextMenu, setContextMenu] = useState<SidebarContextMenu | null>(null);
@@ -397,11 +408,11 @@ export default function SidebarV2({
   }, [sidebarWidth]);
 
   useEffect(() => {
-    if ((renamingProject || renamingSession) && renameInputRef.current) {
+    if ((renamingProject || renamingSession || renamingGroup) && renameInputRef.current) {
       renameInputRef.current.focus();
       renameInputRef.current.select();
     }
-  }, [renamingProject, renamingSession]);
+  }, [renamingGroup, renamingProject, renamingSession]);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -611,9 +622,21 @@ export default function SidebarV2({
     [renamingSession],
   );
 
+  const openGroupContextMenu = useCallback(
+    (event: MouseEvent, group: AgentGroup) => {
+      if (renamingGroup === group.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const position = contextMenuPosition(event);
+      setContextMenu({ kind: 'group', group, x: position.x, y: position.y });
+    },
+    [renamingGroup],
+  );
+
   const beginRenameProject = useCallback((project: Project) => {
     setContextMenu(null);
     setRenamingSession(null);
+    setRenamingGroup(null);
     setRenamingProject(project.name);
     setRenameDraft(projectDisplayName(project));
   }, []);
@@ -621,8 +644,17 @@ export default function SidebarV2({
   const beginRenameSession = useCallback((session: ProjectSession) => {
     setContextMenu(null);
     setRenamingProject(null);
+    setRenamingGroup(null);
     setRenamingSession(session.id);
     setRenameDraft(sessionDisplayTitle(session));
+  }, []);
+
+  const beginRenameGroup = useCallback((group: AgentGroup) => {
+    setContextMenu(null);
+    setRenamingProject(null);
+    setRenamingSession(null);
+    setRenamingGroup(group.id);
+    setRenameDraft(group.title);
   }, []);
 
   const requestDeleteProject = useCallback(
@@ -645,19 +677,24 @@ export default function SidebarV2({
     if (!contextMenu) return;
     if (contextMenu.kind === 'project') {
       beginRenameProject(contextMenu.project);
-    } else {
+    } else if (contextMenu.kind === 'session') {
       beginRenameSession(contextMenu.session);
+    } else {
+      beginRenameGroup(contextMenu.group);
     }
-  }, [beginRenameProject, beginRenameSession, contextMenu]);
+  }, [beginRenameGroup, beginRenameProject, beginRenameSession, contextMenu]);
 
   const handleContextDelete = useCallback(() => {
     if (!contextMenu) return;
     if (contextMenu.kind === 'project') {
       requestDeleteProject(contextMenu.project);
-    } else {
+    } else if (contextMenu.kind === 'session') {
       requestDeleteSession(contextMenu.project, contextMenu.session);
+    } else {
+      setContextMenu(null);
+      onRequestDeleteGroup?.(contextMenu.group);
     }
-  }, [contextMenu, requestDeleteProject, requestDeleteSession]);
+  }, [contextMenu, onRequestDeleteGroup, requestDeleteProject, requestDeleteSession]);
 
   const commitProjectRename = useCallback(() => {
     if (!renamingProject) return;
@@ -673,27 +710,38 @@ export default function SidebarV2({
     setRenameDraft('');
   }, [renamingSession, renameDraft]);
 
+  const commitGroupRename = useCallback(() => {
+    if (!renamingGroup) return;
+    const group = groups.find((candidate) => candidate.id === renamingGroup);
+    const title = renameDraft.trim();
+    if (group && title && title !== group.title) void onRenameGroup?.(group, title);
+    setRenamingGroup(null);
+    setRenameDraft('');
+  }, [groups, onRenameGroup, renameDraft, renamingGroup]);
+
   const cancelRename = useCallback(() => {
     setRenamingProject(null);
     setRenamingSession(null);
+    setRenamingGroup(null);
     setRenameDraft('');
   }, []);
 
   const handleRenameKey = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>, kind: 'project' | 'session') => {
+    (event: KeyboardEvent<HTMLInputElement>, kind: 'project' | 'session' | 'group') => {
       if (event.key === 'Enter') {
         if (isImeEnterEvent(event)) {
           return;
         }
         event.preventDefault();
         if (kind === 'project') commitProjectRename();
-        else commitSessionRename();
+        else if (kind === 'session') commitSessionRename();
+        else commitGroupRename();
       } else if (event.key === 'Escape') {
         event.preventDefault();
         cancelRename();
       }
     },
-    [cancelRename, commitProjectRename, commitSessionRename],
+    [cancelRename, commitGroupRename, commitProjectRename, commitSessionRename],
   );
 
   const renderSessionRows = (
@@ -1242,20 +1290,35 @@ export default function SidebarV2({
               <div className="space-y-0.5 px-1">
                 {groups.map((group) => {
                   const isSelected = selectedGroupId === group.id;
+                  const isRenaming = renamingGroup === group.id;
                   const visibleMembers = group.members.slice(0, 3);
                   return (
-                    <button
+                    <div
                       key={group.id}
-                      type="button"
-                      onClick={() => onSelectGroup?.(group.id)}
+                      onContextMenu={(event) => openGroupContextMenu(event, group)}
                       className={cn(
-                        'group/group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors',
+                        'group/group w-full rounded-lg transition-colors',
                         isSelected
                           ? 'bg-neutral-200/70 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                           : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
                       )}
                     >
-                      <div className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
+                      {isRenaming ? (
+                        <div className="px-2 py-2">
+                          <input
+                            ref={renameInputRef}
+                            aria-label="重命名群组"
+                            value={renameDraft}
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onBlur={commitGroupRename}
+                            onKeyDown={(event) => handleRenameKey(event, 'group')}
+                            onClick={(event) => event.stopPropagation()}
+                            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-[12.5px] text-neutral-900 outline-none focus:border-blue-400 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+                          />
+                        </div>
+                      ) : (
+                      <button type="button" onClick={() => onSelectGroup?.(group.id)} className="flex w-full items-start gap-2 px-2 py-2 text-left">
+                        <div className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
                         <UsersRound className="h-4 w-4" strokeWidth={1.8} />
                         {group.unreadCount > 0 && !group.muted ? (
                           <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-semibold text-white ring-2 ring-neutral-50 dark:ring-neutral-900">
@@ -1273,10 +1336,12 @@ export default function SidebarV2({
                           {group.members.length > visibleMembers.length ? ` 等 ${group.members.length} 位` : ''}
                         </div>
                         <div className="mt-0.5 truncate text-[10.5px] text-neutral-400 dark:text-neutral-500">
-                          {group.lastMessagePreview || (group.triggerMode === 'auto' ? '自动轮询' : '仅 @ 触发')}
+                          {group.lastMessagePreview || (group.triggerMode === 'auto' ? '智能协调' : '仅 @ 触发')}
                         </div>
-                      </div>
-                    </button>
+                        </div>
+                      </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

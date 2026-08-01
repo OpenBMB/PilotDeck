@@ -114,6 +114,22 @@ router.post('/:groupId/messages', (req, res) => {
   }
 });
 
+router.post('/:groupId/delegate', async (req, res) => {
+  try {
+    const ownerId = groupChatDb.getRoomOwnerId(req.params.groupId);
+    if (!ownerId) return fail(res, 404, '群组不存在。');
+    const result = await groupChatService.delegateMember(
+      ownerId,
+      req.params.groupId,
+      req.body || {},
+    );
+    if (!result) return fail(res, 404, '群组不存在。');
+    res.json(result);
+  } catch (error) {
+    fail(res, 400, error);
+  }
+});
+
 router.post('/:groupId/read', (req, res) => {
   try {
     const marked = groupChatDb.markRead(req.user.id, req.params.groupId);

@@ -36,6 +36,7 @@ test("builtin registry exposes group_chat when a shared project runtime is confi
 
   assert.equal(registry.has("group_chat"), true);
   assert.equal(registry.has("GroupChat"), true);
+  assert.equal(registry.has("group_member_delegate"), true);
 });
 
 test("group_chat runs local PilotDeck and mock StaffDeck participants only when send_message is called", async () => {

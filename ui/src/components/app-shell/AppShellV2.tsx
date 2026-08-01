@@ -25,6 +25,7 @@ import {
 import { api } from '../../utils/api';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import GroupCreateDialog from '../group-chat/GroupCreateDialog';
+import type { AgentGroup } from '../../types/group';
 import type { SessionNavigationOptions } from '../main-content/types/types';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
@@ -454,6 +455,54 @@ export default function AppShellV2() {
     navigate('/groups');
   }, [navigate, refreshGroups]);
 
+  const handleRenameGroup = useCallback(async (group: AgentGroup, title: string) => {
+    const response = await api.updateGroup(group.id, { title });
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      window.dispatchEvent(new CustomEvent('pilotdeck:toast', {
+        detail: { kind: 'error', message: payload.error || '重命名群组失败' },
+      }));
+      return;
+    }
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<AgentGroup | null>(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const [deleteGroupError, setDeleteGroupError] = useState<string | null>(null);
+  const handleRequestDeleteGroup = useCallback((group: AgentGroup) => {
+    setDeleteGroupError(null);
+    setDeleteGroupTarget(group);
+  }, []);
+  const handleCancelDeleteGroup = useCallback(() => {
+    if (isDeletingGroup) return;
+    setDeleteGroupTarget(null);
+    setDeleteGroupError(null);
+  }, [isDeletingGroup]);
+  const handleConfirmDeleteGroup = useCallback(async () => {
+    if (!deleteGroupTarget) return;
+    const target = deleteGroupTarget;
+    setIsDeletingGroup(true);
+    setDeleteGroupError(null);
+    try {
+      const response = await api.archiveGroup(target.id);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || '删除群组失败');
+      }
+      const nextGroup = groups.find((group) => group.id !== target.id);
+      await refreshGroups();
+      setDeleteGroupTarget(null);
+      if (selectedGroupId === target.id) {
+        navigate(nextGroup ? `/groups/${encodeURIComponent(nextGroup.id)}` : '/groups');
+      }
+    } catch (error) {
+      setDeleteGroupError(error instanceof Error ? error.message : '删除群组失败');
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  }, [deleteGroupTarget, groups, navigate, refreshGroups, selectedGroupId]);
+
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
   // from useProjectsState to clear selection + redirect when the deleted project
@@ -658,6 +707,8 @@ export default function AppShellV2() {
 	      onSelectGroup={handleSelectGroup}
 	      onCreateGroup={handleOpenCreateGroup}
 	      onOpenGroups={handleOpenGroups}
+	      onRenameGroup={handleRenameGroup}
+	      onRequestDeleteGroup={handleRequestDeleteGroup}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
 	      onShowSettings={onShowSettings}
@@ -742,6 +793,7 @@ export default function AppShellV2() {
           onOpenSidebar={onOpenDesktopSidebar}
           onGroupsChanged={() => void refreshGroups()}
           onGroupArchived={handleGroupArchived}
+          onRequestDeleteGroup={handleRequestDeleteGroup}
           onCreateGroup={handleOpenCreateGroup}
           externalMessageUpdate={externalMessageUpdate}
           misroutedFileFromUrl={misroutedFileFromUrl}
@@ -808,6 +860,19 @@ export default function AppShellV2() {
 	            document.body,
 	          )
 	        : null}
+
+        {deleteGroupTarget
+          ? ReactDOM.createPortal(
+              <DeleteGroupDialog
+                group={deleteGroupTarget}
+                isDeleting={isDeletingGroup}
+                error={deleteGroupError}
+                onCancel={handleCancelDeleteGroup}
+                onConfirm={handleConfirmDeleteGroup}
+              />,
+              document.body,
+            )
+          : null}
 	    </div>
 	    </div>
 	  );
@@ -956,6 +1021,47 @@ function DeleteSessionDialog({
           >
             {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
             {isDeleting ? 'Deleting…' : 'Delete conversation'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteGroupDialog({
+  group,
+  isDeleting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  group: AgentGroup;
+  isDeleting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card text-card-foreground shadow-xl">
+        <div className="flex items-start gap-3 border-b border-border p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+            <Trash2 className="h-5 w-5" strokeWidth={1.75} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold text-foreground">删除群组？</h3>
+            <p className="mt-1 truncate text-sm text-muted-foreground">{group.title}</p>
+          </div>
+        </div>
+        <div className="space-y-3 p-5">
+          <p className="text-sm text-foreground">群组将从侧边栏移除，现有消息和成员配置会以归档形式保留。</p>
+          {error ? <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+          <button type="button" onClick={onCancel} disabled={isDeleting} className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">取消</button>
+          <button type="button" onClick={onConfirm} disabled={isDeleting} className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60">
+            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
+            {isDeleting ? '删除中…' : '删除群组'}
           </button>
         </div>
       </div>

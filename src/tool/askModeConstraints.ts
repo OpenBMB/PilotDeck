@@ -17,6 +17,7 @@ export const ASK_MODE_ALLOWED_TOOLS = new Set([
   "read_skill",
   "structured_output",
   "agent",
+  "group_member_delegate",
   "execute_code",
   "bash",
   "task_list",

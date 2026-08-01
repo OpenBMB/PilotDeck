@@ -26,6 +26,7 @@ function member(id: string, name: string, kind: AgentGroupMember['kind'], positi
     id,
     roomId: 'group-1',
     kind,
+    category: kind === 'pilotdeck_main' ? 'pilotdeck_instance' : 'employee',
     name,
     position,
     config: {},
@@ -57,15 +58,15 @@ const group: AgentGroup = {
 const messages: AgentGroupMessage[] = [
   {
     id: 'm1', roomId: group.id, senderType: 'user', senderName: '你', content: '@所有人 请评审',
-    status: 'completed', createdAt: now, updatedAt: now,
+    sequence: 1, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
   },
   {
     id: 'm2', roomId: group.id, senderType: 'agent', senderMemberId: 'engineer',
-    senderName: 'Mock 工程师', content: '工程建议', status: 'completed', createdAt: now, updatedAt: now,
+    senderName: 'Mock 工程师', content: '工程建议', sequence: 2, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
   },
   {
     id: 'm3', roomId: group.id, senderType: 'agent', senderMemberId: 'main',
-    senderName: 'PilotDeck 主智能体', content: '综合结论', status: 'completed', createdAt: now, updatedAt: now,
+    senderName: 'PilotDeck 主智能体', content: '综合结论', sequence: 3, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
   },
 ];
 
@@ -113,17 +114,90 @@ describe('GroupChatView', () => {
 
   it('sends @所有人 as an explicit all-member mention', async () => {
     renderGroup();
-    const textarea = await screen.findByPlaceholderText(/@智能体 或 @所有人/);
-
-    fireEvent.change(textarea, { target: { value: '@所有人 请开始评审' } });
+    const editor = await screen.findByRole('textbox', { name: '群组消息' });
+    fireEvent.click(screen.getByRole('button', { name: /提及成员/ }));
+    fireEvent.keyDown(editor, { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
 
     await waitFor(() => {
       expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, {
-        content: '@所有人 请开始评审',
+        content: '@所有人',
         mentionedMemberIds: [],
         mentionAll: true,
       });
     });
+  });
+
+  it('selects a named mention with arrow keys and deletes it atomically', async () => {
+    renderGroup();
+    const editor = await screen.findByRole('textbox', { name: '群组消息' });
+    fireEvent.click(screen.getByRole('button', { name: /提及成员/ }));
+    fireEvent.keyDown(editor, { key: 'ArrowDown' });
+    fireEvent.keyDown(editor, { key: 'Enter' });
+
+    const chip = editor.querySelector<HTMLElement>('[data-mention-id="engineer"]');
+    expect(chip?.textContent).toBe('@Mock 工程师');
+    expect(chip?.contentEditable).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
+    await waitFor(() => {
+      expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, {
+        content: '@Mock 工程师',
+        mentionedMemberIds: ['engineer'],
+        mentionAll: false,
+      });
+    });
+
+    apiMock.sendGroupMessage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /提及成员/ }));
+    fireEvent.keyDown(editor, { key: 'ArrowDown' });
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(editor, editor.childNodes.length);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.keyDown(editor, { key: 'Backspace' });
+    expect(editor.querySelector('[data-mention-id="engineer"]')).toBeNull();
+  });
+
+  it('renders persisted reasoning and a real delegation before the member reply', async () => {
+    const collaboration: AgentGroupMessage[] = [
+      {
+        id: 'u1', roomId: group.id, roundId: 'r1', sequence: 1, kind: 'chat', senderType: 'user',
+        senderUserId: 1, senderName: '你', content: '帮我问问工程师', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'a1', roomId: group.id, roundId: 'r1', sequence: 2, kind: 'activity', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '需要工程师提供真实说明。',
+        metadata: { activityType: 'reasoning', state: 'completed' }, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'd1', roomId: group.id, roundId: 'r1', sequence: 3, kind: 'delegation', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '请介绍你的实现职责。',
+        metadata: { state: 'completed', targetMemberId: 'engineer', targetMemberName: 'Mock 工程师', responseMessageId: 'm1' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'm1', roomId: group.id, roundId: 'r1', sequence: 4, kind: 'chat', senderType: 'agent',
+        senderMemberId: 'engineer', senderName: 'Mock 工程师', replyToMessageId: 'd1', content: '我是工程实现成员。',
+        metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'm2', roomId: group.id, roundId: 'r1', sequence: 5, kind: 'chat', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '工程师已经完成介绍。',
+        metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+    ];
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages: collaboration }));
+    renderGroup();
+
+    expect(await screen.findByText('@Mock 工程师')).toBeTruthy();
+    expect(screen.getByText('已询问')).toBeTruthy();
+    expect(screen.getByText('我是工程实现成员。')).toBeTruthy();
+    expect(screen.getByText('工程师已经完成介绍。')).toBeTruthy();
+    fireEvent.click(screen.getByText(/已完成思考/));
+    expect(screen.getByText('需要工程师提供真实说明。')).toBeTruthy();
   });
 });

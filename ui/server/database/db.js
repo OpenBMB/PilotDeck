@@ -59,6 +59,14 @@ if (DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGAC
 // Create database connection
 const db = new Database(DB_PATH);
 
+const ensureColumn = (table, column, definition) => {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((entry) => entry.name === column)) {
+    console.log(`Running migration: Adding ${table}.${column}`);
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
 // app_config must exist before any other module imports (auth.js reads the JWT secret at load time).
 // runMigrations() also creates this table, but it runs too late for existing installations
 // where auth.js is imported before initializeDatabase() is called.
@@ -147,6 +155,77 @@ const runMigrations = () => {
       UNIQUE(session_id, provider)
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_session_names_lookup ON session_names(session_id, provider)');
+
+    // Group-chat v2 keeps human ownership, entry-agent selection, and every
+    // visible collaboration step durable. `init.sql` handles new installs;
+    // these guards upgrade rooms created by the first group-chat MVP.
+    ensureColumn('group_messages', 'sequence', 'INTEGER NOT NULL DEFAULT 0');
+    ensureColumn('group_messages', 'message_kind', "TEXT NOT NULL DEFAULT 'chat'");
+    ensureColumn('group_messages', 'sender_user_id', 'INTEGER');
+    ensureColumn('group_messages', 'reply_to_message_id', 'TEXT');
+    ensureColumn('group_messages', 'metadata_json', "TEXT NOT NULL DEFAULT '{}'");
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_participants (
+        room_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        display_name TEXT NOT NULL,
+        bound_member_id TEXT NOT NULL DEFAULT 'main',
+        role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (room_id, user_id),
+        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS group_turns (
+        id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        sender_user_id INTEGER NOT NULL,
+        entry_member_id TEXT NOT NULL,
+        trigger_source TEXT NOT NULL CHECK (trigger_source IN ('auto', 'mentions')),
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        error TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_turns_room_created
+        ON group_turns(room_id, created_at, id);
+      CREATE INDEX IF NOT EXISTS idx_group_messages_room_sequence
+        ON group_messages(room_id, sequence, id);
+    `);
+
+    db.exec(`
+      INSERT OR IGNORE INTO group_participants (
+        room_id, user_id, display_name, bound_member_id, role, status,
+        created_at, updated_at
+      )
+      SELECT r.id, r.user_id, COALESCE(u.username, '你'), 'main', 'owner', 'active',
+        r.created_at, r.updated_at
+      FROM group_rooms r
+      LEFT JOIN users u ON u.id = r.user_id
+    `);
+
+    const roomsNeedingSequence = db.prepare(`
+      SELECT DISTINCT room_id FROM group_messages WHERE sequence = 0
+    `).all();
+    if (roomsNeedingSequence.length > 0) {
+      const rowsForRoom = db.prepare(`
+        SELECT id FROM group_messages WHERE room_id = ?
+        ORDER BY created_at ASC, rowid ASC
+      `);
+      const setSequence = db.prepare('UPDATE group_messages SET sequence = ? WHERE id = ?');
+      db.transaction(() => {
+        for (const room of roomsNeedingSequence) {
+          rowsForRoom.all(room.room_id).forEach((message, index) => {
+            setSequence.run(index + 1, message.id);
+          });
+        }
+      })();
+    }
 
     console.log('Database migrations completed successfully');
   } catch (error) {

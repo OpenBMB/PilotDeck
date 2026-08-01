@@ -39,6 +39,7 @@ import {
 import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 import GroupChatView from '../group-chat/GroupChatView';
+import type { AgentGroup } from '../../types/group';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
@@ -86,6 +87,7 @@ type MainAreaV2Props = MainContentProps & {
   groupsActive?: boolean;
   onGroupsChanged?: () => void;
   onGroupArchived?: () => void;
+  onRequestDeleteGroup?: (group: AgentGroup) => void;
   onCreateGroup?: () => void;
 };
 
@@ -473,6 +475,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
         onOpenSidebar={props.onOpenSidebar}
         onGroupsChanged={props.onGroupsChanged || (() => undefined)}
         onArchived={props.onGroupArchived || (() => undefined)}
+        onRequestDelete={props.onRequestDeleteGroup}
       />
     );
   }
@@ -484,7 +487,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
         </div>
         <h1 className="mt-5 text-xl font-semibold">智能体群组</h1>
         <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500 dark:text-neutral-400">
-          创建一个绑定项目的群组，邀请 PilotDeck 智能体和 StaffDeck 员工进行顺序协作。
+          创建一个绑定项目的群组，由你的通用 PilotDeck 智能体按需邀请其他智能体和 StaffDeck 员工协作。
         </p>
         <button type="button" onClick={props.onCreateGroup} className="mt-5 rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
           创建群组

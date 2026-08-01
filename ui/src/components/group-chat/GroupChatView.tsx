@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowDown,
+  ArrowRight,
   ArrowUp,
-  AtSign,
   Bell,
   BellOff,
   Bot,
+  Brain,
+  CheckCircle2,
+  ChevronDown,
   Loader2,
   Menu,
   MessageCircleMore,
   MoreHorizontal,
   Plus,
-  Send,
   Settings2,
   ShieldCheck,
   Trash2,
   UserRound,
   UsersRound,
+  Wrench,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -31,6 +35,7 @@ import type {
 } from '../../types/group';
 import { api } from '../../utils/api';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
+import { MentionComposer, type MentionDraft } from './MentionComposer';
 
 type Props = {
   groupId: string;
@@ -38,16 +43,17 @@ type Props = {
   onOpenSidebar?: () => void;
   onGroupsChanged: () => void;
   onArchived: () => void;
+  onRequestDelete?: (group: AgentGroup) => void;
 };
 
 const POLL_MS = 1_200;
 
 const kindLabel: Record<GroupMemberKind, string> = {
-  pilotdeck_main: '主智能体',
-  pilotdeck_local: 'PilotDeck',
-  pilotdeck_remote: '远程 PilotDeck',
-  staffdeck: 'StaffDeck 员工',
-  staffdeck_mock: 'Mock 员工',
+  pilotdeck_main: 'PilotDeck 实例 · 主智能体',
+  pilotdeck_local: '智能体',
+  pilotdeck_remote: 'PilotDeck 实例',
+  staffdeck: '数字员工',
+  staffdeck_mock: 'Mock 数字员工',
 };
 
 const avatarTone: Record<GroupMemberKind, string> = {
@@ -104,24 +110,94 @@ function AgentAvatar({ member, size = 'normal' }: { member: AgentGroupMember; si
   );
 }
 
+function metadataString(message: AgentGroupMessage, key: string) {
+  const value = message.metadata?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function ActivityMessage({ message }: { message: AgentGroupMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const activityType = metadataString(message, 'activityType');
+  const toolName = metadataString(message, 'toolName');
+  const running = message.status === 'thinking' || message.status === 'queued';
+  const failed = message.status === 'failed';
+  const label = activityType === 'tool'
+    ? `${running ? '正在调用' : failed ? '调用失败' : '已调用'} ${toolName || '工具'}`
+    : running ? '正在思考' : failed ? '思考中断' : '已完成思考';
+  const Icon = activityType === 'tool' ? Wrench : Brain;
+
+  return (
+    <div className="ml-12 max-w-[82%] rounded-xl border border-neutral-200/80 bg-neutral-50/80 dark:border-neutral-800 dark:bg-neutral-900/70">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-neutral-600 dark:text-neutral-300"
+      >
+        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" /> : failed ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <Icon className="h-3.5 w-3.5 text-neutral-500" />}
+        <span className="flex-1 font-medium">{message.senderName} · {label}</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} />
+      </button>
+      {expanded ? (
+        <div className={cn(
+          'border-t border-neutral-200/70 px-3 py-2 text-xs leading-5 dark:border-neutral-800',
+          failed ? 'text-red-600 dark:text-red-300' : 'whitespace-pre-wrap break-words text-neutral-600 dark:text-neutral-300',
+        )}>
+          {failed ? message.error || message.content || '执行失败' : message.content || '暂无详细信息'}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DelegationMessage({ message, memberMap }: { message: AgentGroupMessage; memberMap: Map<string, AgentGroupMember> }) {
+  const targetId = metadataString(message, 'targetMemberId');
+  const targetName = metadataString(message, 'targetMemberName') || memberMap.get(targetId)?.name || targetId;
+  const waiting = message.status === 'thinking' || message.status === 'queued';
+  const failed = message.status === 'failed';
+  const source = message.senderMemberId ? memberMap.get(message.senderMemberId) : undefined;
+  return (
+    <div className="flex gap-3">
+      {source ? <AgentAvatar member={source} /> : <div className="h-9 w-9" />}
+      <div className="min-w-0 max-w-[82%] flex-1">
+        <div className="mb-1 flex items-center gap-2 text-[11px] text-neutral-500">
+          <span className="font-medium text-neutral-700 dark:text-neutral-300">{message.senderName}</span>
+          <span>{formatTime(message.createdAt)}</span>
+        </div>
+        <div className={cn(
+          'rounded-2xl rounded-tl-md border px-4 py-3 text-sm shadow-sm',
+          failed
+            ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30'
+            : 'border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/25',
+        )}>
+          <div className="flex items-center gap-2">
+            {waiting ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : failed ? <AlertCircle className="h-4 w-4 text-red-500" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+            <span className="font-medium">{waiting ? '正在询问' : failed ? '询问失败' : '已询问'}</span>
+            <ArrowRight className="h-3.5 w-3.5 text-neutral-400" />
+            <span className="rounded-md bg-white/80 px-2 py-0.5 font-medium text-blue-700 dark:bg-blue-950/70 dark:text-blue-200">@{targetName}</span>
+          </div>
+          {message.content ? <div className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-neutral-600 dark:text-neutral-300">{message.content}</div> : null}
+          {failed && message.error ? <div className="mt-2 text-xs text-red-600 dark:text-red-300">{message.error}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GroupChatView({
   groupId,
   isSidebarCollapsed,
   onOpenSidebar,
   onGroupsChanged,
   onArchived,
+  onRequestDelete,
 }: Props) {
   const [group, setGroup] = useState<AgentGroup | null>(null);
   const [messages, setMessages] = useState<AgentGroupMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const lastMessageSignatureRef = useRef('');
 
@@ -182,60 +258,20 @@ export default function GroupChatView({
   );
   const roundInProgress = messages.some((message) => message.status === 'thinking' || message.status === 'queued');
 
-  const mentionCandidates = useMemo(() => {
-    if (!group) return [];
-    const query = mentionQuery.toLowerCase();
-    return group.members.filter((member) =>
-      !query || member.id.toLowerCase().includes(query) || member.name.toLowerCase().includes(query),
-    );
-  }, [group, mentionQuery]);
-
-  const updateMentionState = (next: string, cursor = next.length) => {
-    const prefix = next.slice(0, cursor);
-    const match = prefix.match(/(?:^|[^a-zA-Z0-9_@])@([^\s@]*)$/u);
-    setMentionOpen(Boolean(match));
-    setMentionQuery(match?.[1] || '');
-  };
-
-  const insertMention = (id: string) => {
-    const textarea = textareaRef.current;
-    const cursor = textarea?.selectionStart ?? input.length;
-    const prefix = input.slice(0, cursor);
-    const match = prefix.match(/(?:^|[^a-zA-Z0-9_@])@([^\s@]*)$/u);
-    const start = match ? cursor - match[1].length - 1 : cursor;
-    const token = id === 'all' ? '@所有人 ' : `@${id} `;
-    const next = `${input.slice(0, start)}${token}${input.slice(cursor)}`;
-    setInput(next);
-    setMentionOpen(false);
-    requestAnimationFrame(() => {
-      const position = start + token.length;
-      textarea?.focus();
-      textarea?.setSelectionRange(position, position);
-    });
-  };
-
-  const send = async () => {
-    if (!group || !input.trim() || sending || roundInProgress) return;
-    const content = input.trim();
-    const mentionAll = /(?:^|[^a-zA-Z0-9_@])@(所有人|all)(?=\s|$|[,.!?;:，。！？；：、])/iu.test(content);
-    const mentionedMemberIds = group.members
-      .filter((member) => new RegExp(
-        `(?:^|[^a-zA-Z0-9_@])@${member.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$|[,.!?;:，。！？；：、])`,
-        'iu',
-      ).test(content))
-      .map((member) => member.id);
+  const send = async (draft: MentionDraft) => {
+    if (!group || sending || roundInProgress) return false;
     setSending(true);
     setError('');
     try {
-      const response = await api.sendGroupMessage(group.id, { content, mentionedMemberIds, mentionAll });
+      const response = await api.sendGroupMessage(group.id, draft);
       const payload = await json<{ error?: string }>(response);
       if (!response.ok) throw new Error(readError(payload, '发送失败'));
-      setInput('');
-      setMentionOpen(false);
       await refresh(true);
       onGroupsChanged();
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+      return false;
     } finally {
       setSending(false);
     }
@@ -274,7 +310,7 @@ export default function GroupChatView({
           <div className="flex items-center gap-2 text-[11px] text-neutral-500">
             <span>{projectLabel(group)}</span>
             <span>·</span>
-            <span>{group.triggerMode === 'auto' ? '自动顺序轮询' : '仅 @ 触发'}</span>
+            <span>{group.triggerMode === 'auto' ? '智能协调' : '仅 @ 触发'}</span>
           </div>
         </div>
         <div className="hidden items-center -space-x-1.5 sm:flex">
@@ -296,7 +332,7 @@ export default function GroupChatView({
             <div className="flex items-center gap-2 font-medium"><MessageCircleMore className="h-4 w-4" />群组协作已开启</div>
             <p className="mt-1 text-blue-700/80 dark:text-blue-300/80">
               {group.triggerMode === 'auto'
-                ? '未指定成员时全员按顺序回复、主智能体最后综合；@具体成员时只触发被提及成员，@所有人触发全体。'
+                ? '消息先交给你的通用 PilotDeck 智能体；它会自主回答或真实邀请合适成员协作，显式 @ 的成员必须被邀请。'
                 : '消息只有在 @成员 或 @所有人 时才调用智能体；未 @ 的消息仍会保存在时间线中。'}
             </p>
           </div>
@@ -310,6 +346,12 @@ export default function GroupChatView({
           ) : null}
 
           {messages.map((message) => {
+            if (message.kind === 'activity') {
+              return <ActivityMessage key={message.id} message={message} />;
+            }
+            if (message.kind === 'delegation') {
+              return <DelegationMessage key={message.id} message={message} memberMap={memberMap} />;
+            }
             if (message.senderType === 'system') {
               return (
                 <div key={message.id} className="flex justify-center">
@@ -358,61 +400,15 @@ export default function GroupChatView({
 
       <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-4 dark:border-neutral-900 dark:bg-neutral-950 sm:px-8">
         <div className="relative mx-auto max-w-3xl">
-          {mentionOpen ? (
-            <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
-              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention('all')} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950"><UsersRound className="h-3.5 w-3.5" /></div>
-                <div><div className="text-sm font-medium">@所有人</div><div className="text-[11px] text-neutral-500">按群组顺序触发全部成员</div></div>
-              </button>
-              {mentionCandidates.map((member) => (
-                <button key={member.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(member.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800">
-                  <AgentAvatar member={member} size="small" />
-                  <div className="min-w-0"><div className="truncate text-sm font-medium">{member.name}</div><div className="truncate text-[11px] text-neutral-500">@{member.id} · {kindLabel[member.kind]}</div></div>
-                </button>
-              ))}
-            </div>
-          ) : null}
           {error ? <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
-          <div className="rounded-2xl border border-neutral-200 bg-white p-2 shadow-sm focus-within:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(event) => {
-                setInput(event.target.value);
-                updateMentionState(event.target.value, event.target.selectionStart);
-              }}
-              onClick={(event) => updateMentionState(input, event.currentTarget.selectionStart)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && mentionOpen) {
-                  event.preventDefault();
-                  setMentionOpen(false);
-                  return;
-                }
-                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !mentionOpen) {
-                  event.preventDefault();
-                  void send();
-                }
-              }}
-              rows={2}
-              placeholder={group.triggerMode === 'mentions' ? '输入消息，使用 @智能体 或 @所有人 触发回复…' : '向群组发送消息，所有成员将依次回复…'}
-              className="max-h-40 min-h-[52px] w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 outline-none placeholder:text-neutral-400"
-            />
-            <div className="flex items-center gap-2 px-1 pt-1">
-              <button type="button" onClick={() => { setMentionOpen(true); setMentionQuery(''); textareaRef.current?.focus(); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200">
-                <AtSign className="h-4 w-4" /> 提及成员
-              </button>
-              {roundInProgress ? <span className="text-xs text-amber-600 dark:text-amber-300">成员正在顺序回复，请等待本轮完成</span> : null}
-              <button
-                type="button"
-                aria-label="发送群组消息"
-                onClick={() => void send()}
-                disabled={!input.trim() || sending || roundInProgress}
-                className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white dark:text-neutral-900"
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
+          <MentionComposer
+            members={group.members}
+            placeholder={group.triggerMode === 'mentions' ? '输入消息，使用 @成员 或 @所有人 触发回复…' : '向群组发送消息，由你的通用智能体理解并协调…'}
+            disabled={roundInProgress}
+            sending={sending}
+            statusText={roundInProgress ? '智能体正在处理并协调本轮消息' : undefined}
+            onSubmit={send}
+          />
         </div>
       </div>
 
@@ -423,6 +419,7 @@ export default function GroupChatView({
           onInvite={() => setInviteOpen(true)}
           onChanged={async () => { await refresh(true); onGroupsChanged(); }}
           onArchived={onArchived}
+          onRequestDelete={onRequestDelete}
         />
       ) : null}
       {inviteOpen ? (
@@ -450,12 +447,14 @@ function GroupSettingsDrawer({
   onInvite,
   onChanged,
   onArchived,
+  onRequestDelete,
 }: {
   group: AgentGroup;
   onClose: () => void;
   onInvite: () => void;
   onChanged: () => Promise<void>;
   onArchived: () => void;
+  onRequestDelete?: (group: AgentGroup) => void;
 }) {
   const [title, setTitle] = useState(group.title);
   const [saving, setSaving] = useState(false);
@@ -530,11 +529,11 @@ function GroupSettingsDrawer({
           </div>
 
           <section className="space-y-2">
-            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">成员与轮询顺序</h3><button type="button" onClick={onInvite} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950"><Plus className="h-3.5 w-3.5" />邀请</button></div>
+            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">成员顺序</h3><button type="button" onClick={onInvite} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950"><Plus className="h-3.5 w-3.5" />邀请</button></div>
             {secondary.map((member, index) => (
               <div key={member.id} className="flex items-center gap-2 rounded-xl border border-neutral-100 p-2.5 dark:border-neutral-800">
                 <AgentAvatar member={member} size="small" />
-                <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{index + 1}. {member.name}</div><div className="truncate text-[11px] text-neutral-500">{kindLabel[member.kind]} · @{member.id}</div></div>
+                <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{index + 1}. {member.name}</div><div className="truncate text-[11px] text-neutral-500">{kindLabel[member.kind]} · @{member.name}</div></div>
                 <button type="button" disabled={index === 0 || saving} onClick={() => void reorder(index, -1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowUp className="h-3.5 w-3.5" /></button>
                 <button type="button" disabled={index === secondary.length - 1 || saving} onClick={() => void reorder(index, 1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowDown className="h-3.5 w-3.5" /></button>
               </div>
@@ -542,7 +541,7 @@ function GroupSettingsDrawer({
             {group.members.filter((member) => member.id === 'main').map((member) => (
               <div key={member.id} className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-2.5 dark:border-blue-900 dark:bg-blue-950/20">
                 <AgentAvatar member={member} size="small" />
-                <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">最后. {member.name}</div><div className="truncate text-[11px] text-neutral-500">固定在轮询末尾，负责综合总结</div></div>
+                <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">入口. {member.name}</div><div className="truncate text-[11px] text-neutral-500">智能协调模式下优先理解需求并决定是否邀请成员</div></div>
               </div>
             ))}
           </section>
@@ -552,6 +551,11 @@ function GroupSettingsDrawer({
           <button
             type="button"
             onClick={async () => {
+              if (onRequestDelete) {
+                onRequestDelete(group);
+                onClose();
+                return;
+              }
               if (!window.confirm(`归档群组“${group.title}”？`)) return;
               const response = await api.archiveGroup(group.id);
               if (response.ok) onArchived();
@@ -622,13 +626,13 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
   const sections: Array<{ title: string; items: AvailableGroupMember[]; note?: string }> = available ? [
     { title: '本地 PilotDeck 智能体', items: available.local },
     { title: 'StaffDeck 数字员工', items: available.staffdeck, note: available.staffdeckConfigured ? (available.staffdeckError || undefined) : '尚未配置 StaffDeck，下面仍可使用 Mock 员工调试。' },
-    { title: 'Mock 员工', items: available.mocks },
+    { title: 'Mock 数字员工', items: available.mocks },
   ] : [];
 
   return (
     <div data-modal-overlay className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-5 dark:border-neutral-800"><Plus className="h-5 w-5 text-blue-600" /><div className="flex-1"><h2 className="font-semibold">邀请智能体或员工</h2><p className="text-xs text-neutral-500">成员会按设置中的顺序依次发言，主智能体始终最后总结。</p></div><button type="button" aria-label="关闭邀请成员" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-5 dark:border-neutral-800"><Plus className="h-5 w-5 text-blue-600" /><div className="flex-1"><h2 className="font-semibold">邀请群组成员</h2><p className="text-xs text-neutral-500">成员可以是 PilotDeck 实例、智能体或数字员工。</p></div><button type="button" aria-label="关闭邀请成员" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-4 w-4" /></button></div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           {loading ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-neutral-400" /></div> : null}
           {sections.map((section) => (
@@ -640,7 +644,7 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
                 return (
                   <div key={`${candidate.kind}:${candidate.id}`} className="flex items-center gap-3 rounded-xl border border-neutral-100 p-3 dark:border-neutral-800">
                     <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-[10px] font-semibold', avatarTone[candidate.kind])}>{initials(candidate.name)}</div>
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{candidate.name}</div><div className="truncate text-[11px] text-neutral-500">{candidate.role || kindLabel[candidate.kind]} · @{candidate.id}</div>{candidate.description ? <div className="mt-0.5 line-clamp-2 text-[11px] text-neutral-400">{candidate.description}</div> : null}</div>
+                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{candidate.name}</div><div className="truncate text-[11px] text-neutral-500">{candidate.role || kindLabel[candidate.kind]} · @{candidate.name}</div>{candidate.description ? <div className="mt-0.5 line-clamp-2 text-[11px] text-neutral-400">{candidate.description}</div> : null}</div>
                     {isInvited && member ? <button type="button" disabled={addingId === candidate.id} onClick={() => void remove(member)} className="rounded-lg px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950">移除</button> : <button type="button" disabled={Boolean(addingId)} onClick={() => void add(candidate)} className="rounded-lg bg-neutral-900 px-2.5 py-1.5 text-xs text-white disabled:opacity-40 dark:bg-white dark:text-neutral-900">邀请</button>}
                   </div>
                 );

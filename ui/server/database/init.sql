@@ -136,21 +136,66 @@ CREATE TABLE IF NOT EXISTS group_members (
 CREATE INDEX IF NOT EXISTS idx_group_members_room_position
     ON group_members(room_id, is_active, position);
 
+-- Human participants are deliberately lightweight for the single-user MVP.
+-- The authenticated owner is inserted at room creation and bound to the
+-- room's main PilotDeck member. Future multi-user work can add invitations
+-- without changing message ownership or entry-agent resolution.
+CREATE TABLE IF NOT EXISTS group_participants (
+    room_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    bound_member_id TEXT NOT NULL DEFAULT 'main',
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, user_id),
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS group_turns (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    sender_user_id INTEGER NOT NULL,
+    entry_member_id TEXT NOT NULL,
+    trigger_source TEXT NOT NULL CHECK (trigger_source IN ('auto', 'mentions')),
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    error TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_turns_room_created
+    ON group_turns(room_id, created_at, id);
+
 CREATE TABLE IF NOT EXISTS group_messages (
     id TEXT PRIMARY KEY,
     room_id TEXT NOT NULL,
     round_id TEXT,
+    sequence INTEGER NOT NULL DEFAULT 0,
+    message_kind TEXT NOT NULL DEFAULT 'chat' CHECK (message_kind IN ('chat', 'delegation', 'activity')),
     sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'system')),
+    sender_user_id INTEGER,
     sender_member_id TEXT,
     sender_name TEXT NOT NULL,
+    reply_to_message_id TEXT,
     content TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('queued', 'thinking', 'completed', 'failed')),
     error TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (reply_to_message_id) REFERENCES group_messages(id) ON DELETE SET NULL
 );
 
+-- Keep the legacy timestamp index here so existing databases whose table has
+-- not gained `sequence` yet can still execute this bootstrap file. The
+-- sequence index is added by the idempotent JS migration immediately after.
 CREATE INDEX IF NOT EXISTS idx_group_messages_room_created
     ON group_messages(room_id, created_at, id);
 

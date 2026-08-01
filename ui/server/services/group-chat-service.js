@@ -1,14 +1,28 @@
 import crypto from 'node:crypto';
-import path from 'node:path';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
-import { resolvePilotHome } from '../utils/pilotPaths.js';
 import { createNotificationEvent, notifyUserIfEnabled } from './notification-orchestrator.js';
 import { groupChatDb } from './group-chat-db.js';
 
 const MAX_MESSAGE_CHARS = 20_000;
 const MAX_MEMBERS = 8;
 const MEMBER_TIMEOUT_MS = 5 * 60_000;
+const MAX_REQUIRED_DELEGATE_RETRIES = 1;
+const GROUP_MEMBER_DELEGATE_TOOL = 'group_member_delegate';
 const activeRooms = new Set();
+const activeMainTurns = new Map();
+
+function memberCategory(kind) {
+  if (kind === 'pilotdeck_main' || kind === 'pilotdeck_remote') return 'pilotdeck_instance';
+  if (kind === 'pilotdeck_local') return 'agent';
+  return 'employee';
+}
+
+function categoryLabel(kind) {
+  const category = memberCategory(kind);
+  if (category === 'pilotdeck_instance') return 'PilotDeck 实例';
+  if (category === 'agent') return '智能体';
+  return '数字员工';
+}
 
 export const MOCK_EMPLOYEES = [
   {
@@ -34,6 +48,8 @@ export const MOCK_EMPLOYEES = [
   },
 ];
 
+for (const employee of MOCK_EMPLOYEES) employee.category = memberCategory(employee.kind);
+
 const LOCAL_TEMPLATES = [
   {
     id: 'local-researcher',
@@ -57,6 +73,8 @@ const LOCAL_TEMPLATES = [
     description: '独立审查风险、遗漏和验收条件。',
   },
 ];
+
+for (const template of LOCAL_TEMPLATES) template.category = memberCategory(template.kind);
 
 function cleanText(value, field, max = 200) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -143,6 +161,7 @@ async function listStaffDeckEmployees() {
     return [{
       id,
       kind: 'staffdeck',
+      category: 'employee',
       name,
       role: 'StaffDeck 数字员工',
       description: typeof employee.description === 'string' ? employee.description : '',
@@ -154,7 +173,8 @@ async function listStaffDeckEmployees() {
 function formatTranscript(messages) {
   return messages
     .filter((message) =>
-      (message.status === 'completed' && message.content) || message.status === 'failed')
+      message.kind === 'chat' &&
+      ((message.status === 'completed' && message.content) || message.status === 'failed'))
     .slice(-30)
     .map((message) => message.status === 'failed'
       ? `[${message.senderName}]（回复失败：${message.error || '未知错误'}）`
@@ -162,31 +182,65 @@ function formatTranscript(messages) {
     .join('\n\n');
 }
 
-function buildMemberContext(room, member, transcript, isMain) {
+function buildMemberContext(room, member, transcript, isMain, requiredDelegateIds = []) {
+  const roster = room.members
+    .filter((candidate) => candidate.isActive !== false)
+    .map((candidate) => `- ${candidate.name}: id=${candidate.id}, 类型=${categoryLabel(candidate.kind)}, 角色=${candidate.role || '未设置'}`)
+    .join('\n');
   return [
     `你正在群组“${room.title}”中以“${member.name}”身份发言。`,
     member.role ? `你的角色：${member.role}。` : '',
     member.description ? `职责说明：${member.description}` : '',
     `群组绑定工作空间：${room.projectName}。`,
+    '当前群组成员名册（调用时必须使用这里的精确 id）：',
+    roster,
     isMain
-      ? '你是群组主智能体。其他成员已经依次发言；请结合他们的观点给用户一个清晰的综合结论，指出共识、分歧和下一步。'
+      ? [
+          '你是群组主智能体。请基于用户意图自主决定是否需要调用具体成员。',
+          '当用户要求你询问、咨询、介绍某个群成员，或该成员的专长确实必要时，必须调用 group_member_delegate 获取该成员的真实回答；不要替成员回答或编造其信息。',
+          requiredDelegateIds.length > 0
+            ? `本轮用户显式提及了以下成员，你必须按此顺序逐一调用 group_member_delegate，不能跳过：${requiredDelegateIds.join(' -> ')}。`
+            : '',
+          '界面会根据真实工具调用展示委派卡片，因此不要只在文字中声称“我去问”或伪造 @成员；请实际调用工具，并在拿到回复后继续回答。',
+          '如果其他成员已经在本轮发言，请结合他们的观点给用户清晰的综合结论；不要重复调用已经给出本轮回复的成员。',
+        ].join('\n')
       : '请从自己的专业角度直接回应用户。不要冒充其他成员，也不要描述内部调度或适配器机制。',
     '以下是群组最近的公开发言，供你理解上下文：',
     transcript || '（暂无历史发言）',
   ].filter(Boolean).join('\n');
 }
 
-async function invokeLocalPilotDeck(room, member, userMessage, transcript) {
+function boundedPreview(value, max = 4_000) {
+  return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+async function invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options = {}) {
   const gateway = await getPilotDeckGateway();
   const runId = crypto.randomUUID();
   const sessionKey = `group:${room.id}:${member.id}`;
-  const groupProjectKey = path.join(resolvePilotHome(process.env), 'group-runtime');
   let output = '';
   let failure = null;
-  for await (const event of gateway.submitTurn({
+  let sawDelegation = false;
+  let reasoning = '';
+  let reasoningMessage = null;
+  const toolMessages = new Map();
+  if (options.persistActivity) {
+    reasoningMessage = groupChatDb.createMessage(userId, room.id, {
+      roundId: options.roundId,
+      kind: 'activity',
+      senderType: 'agent',
+      senderMemberId: member.id,
+      senderName: member.name,
+      content: '正在理解问题并决定是否需要协调其他成员。',
+      metadata: { activityType: 'reasoning', state: 'running' },
+      status: 'thinking',
+    });
+  }
+  try {
+    for await (const event of gateway.submitTurn({
     sessionKey,
     channelKey: 'group',
-    projectKey: groupProjectKey,
+      projectKey: room.projectPath,
     workspaceCwd: room.projectPath,
     message: userMessage,
     runMode: 'ask',
@@ -196,20 +250,94 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript) {
     runId,
     syntheticMessages: [{
       purpose: 'group_chat_context',
-      text: buildMemberContext(room, member, transcript, member.id === 'main'),
+      text: buildMemberContext(
+        room,
+        member,
+        transcript,
+        member.id === 'main',
+        options.requiredDelegateIds || [],
+      ),
     }],
     telemetry: {
       ownerModule: 'session',
       executionKind: 'user_session',
       phase: 'group_chat',
     },
-  })) {
-    if (event.type === 'assistant_text_delta') output += event.text || '';
-    if (event.type === 'error') failure = event.message || event.code || 'PilotDeck 调用失败';
+    })) {
+      if (event.type === 'assistant_text_delta') output += event.text || '';
+      if (event.type === 'assistant_thinking_delta' && reasoningMessage) {
+        reasoning = boundedPreview(`${reasoning}${event.text || ''}`, MAX_MESSAGE_CHARS);
+        groupChatDb.updateMessage(reasoningMessage.id, {
+          content: reasoning || '正在思考…',
+          metadata: { activityType: 'reasoning', state: 'running' },
+          status: 'thinking',
+        });
+      }
+      if (event.type === 'tool_call_started') {
+        if (event.name === GROUP_MEMBER_DELEGATE_TOOL) {
+          sawDelegation = true;
+        } else if (options.persistActivity) {
+          const activity = groupChatDb.createMessage(userId, room.id, {
+            roundId: options.roundId,
+            kind: 'activity',
+            senderType: 'agent',
+            senderMemberId: member.id,
+            senderName: member.name,
+            content: boundedPreview(event.argsPreview),
+            metadata: {
+              activityType: 'tool',
+              state: 'running',
+              toolCallId: event.toolCallId,
+              toolName: event.name,
+            },
+            status: 'thinking',
+          });
+          if (activity) toolMessages.set(event.toolCallId, activity.id);
+        }
+      }
+      if (event.type === 'tool_call_finished' && options.persistActivity && event.toolName !== GROUP_MEMBER_DELEGATE_TOOL) {
+        const activityId = toolMessages.get(event.toolCallId);
+        if (activityId) {
+          groupChatDb.updateMessage(activityId, {
+            content: boundedPreview(event.resultPreview),
+            metadata: {
+              activityType: 'tool',
+              state: event.ok ? 'completed' : 'failed',
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              errorCode: event.errorCode || undefined,
+            },
+            status: event.ok ? 'completed' : 'failed',
+            error: event.ok ? null : (event.errorCode || '工具调用失败'),
+          });
+          toolMessages.delete(event.toolCallId);
+        }
+      }
+      if (event.type === 'error') failure = event.message || event.code || 'PilotDeck 调用失败';
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (reasoningMessage) {
+      groupChatDb.updateMessage(reasoningMessage.id, {
+        content: reasoning || (failure ? '本轮分析失败。' : '已完成本轮分析。'),
+        metadata: { activityType: 'reasoning', state: failure ? 'failed' : 'completed' },
+        status: failure ? 'failed' : 'completed',
+        error: failure,
+      });
+    }
+    if (failure) {
+      for (const [toolCallId, activityId] of toolMessages) {
+        groupChatDb.updateMessage(activityId, {
+          metadata: { activityType: 'tool', state: 'failed', toolCallId },
+          status: 'failed',
+          error: failure,
+        });
+      }
+    }
   }
   if (failure) throw new Error(failure);
-  if (!output.trim()) throw new Error('智能体没有返回可显示的内容。');
-  return output.trim();
+  return { content: output.trim(), sawDelegation };
 }
 
 async function invokeRemotePilotDeck(room, member, userMessage, transcript) {
@@ -241,9 +369,6 @@ async function invokeRemotePilotDeck(room, member, userMessage, transcript) {
 }
 
 async function invokeStaffDeck(room, member, userMessage, transcript, userId) {
-  if (member.kind === 'staffdeck_mock') {
-    return invokeLocalPilotDeck(room, member, userMessage, transcript);
-  }
   const baseUrl = process.env.STAFFDECK_BASE_URL?.trim().replace(/\/$/, '');
   const tenantId = process.env.STAFFDECK_TENANT_ID?.trim();
   if (!baseUrl || !tenantId) throw new Error('StaffDeck 尚未配置。');
@@ -272,94 +397,258 @@ async function invokeStaffDeck(room, member, userMessage, transcript, userId) {
   return payload.reply.trim();
 }
 
-async function invokeMember(room, member, userMessage, transcript, userId) {
+async function invokeMember(room, member, userMessage, transcript, userId, options = {}) {
   if (member.kind === 'pilotdeck_remote') {
-    return invokeRemotePilotDeck(room, member, userMessage, transcript);
+    return { content: await invokeRemotePilotDeck(room, member, userMessage, transcript), sawDelegation: false };
   }
   if (member.kind === 'staffdeck' || member.kind === 'staffdeck_mock') {
-    return invokeStaffDeck(room, member, userMessage, transcript, userId);
+    if (member.kind === 'staffdeck_mock') {
+      return invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options);
+    }
+    return { content: await invokeStaffDeck(room, member, userMessage, transcript, userId), sawDelegation: false };
   }
-  return invokeLocalPilotDeck(room, member, userMessage, transcript);
+  return invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options);
 }
 
-function resolveTargets(room, mentionedMemberIds, mentionAll) {
+function resolveMentionTargets(room, mentionedMemberIds, mentionAll) {
   const active = room.members.filter((member) => member.isActive !== false);
-  const secondary = active.filter((member) => member.id !== 'main');
-  const main = active.find((member) => member.id === 'main');
   if (mentionAll) {
+    const secondary = active.filter((member) => member.id !== 'main');
+    const main = active.find((member) => member.id === 'main');
     return [...secondary, ...(main ? [main] : [])];
   }
-  const mentions = new Set(mentionedMemberIds || []);
-  if (mentions.size > 0) {
-    return [
-      ...secondary.filter((member) => mentions.has(member.id)),
-      ...(main && mentions.has('main') ? [main] : []),
-    ];
-  }
-  return room.triggerMode === 'auto'
-    ? [...secondary, ...(main ? [main] : [])]
-    : [];
+  const membersById = new Map(active.map((member) => [member.id, member]));
+  return (mentionedMemberIds || []).flatMap((id) => membersById.get(id) || []);
+}
+
+function resolveEntryMember(room, participant) {
+  const active = room.members.filter((member) => member.isActive !== false);
+  const preferred = active.find((member) => member.id === participant?.boundMemberId);
+  if (preferred && memberCategory(preferred.kind) === 'pilotdeck_instance') return preferred;
+  return active.find((member) => member.id === 'main') || null;
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function extractMentions(room, content) {
+function containsMention(content, label) {
+  return new RegExp(
+    `(?:^|[^a-zA-Z0-9_@])@${escapeRegExp(label)}(?=\\s|$|[,.!?;:，。！？；：、])`,
+    'iu',
+  ).test(content);
+}
+
+function mentionPosition(content, label) {
+  const match = new RegExp(
+    `(?:^|[^a-zA-Z0-9_@])@${escapeRegExp(label)}(?=\\s|$|[,.!?;:，。！？；：、])`,
+    'iu',
+  ).exec(content);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const atOffset = match[0].lastIndexOf('@');
+  return match.index + Math.max(0, atOffset);
+}
+
+function extractMentions(room, content, hintedMemberIds = []) {
   const mentionAll = /(?:^|[^a-zA-Z0-9_@])@(所有人|all)(?=\s|$|[,.!?;:，。！？；：、])/iu.test(content);
-  const mentionedMemberIds = room.members
-    .filter((member) => new RegExp(
-      `(?:^|[^a-zA-Z0-9_@])@${escapeRegExp(member.id)}(?=\\s|$|[,.!?;:，。！？；：、])`,
-      'iu',
-    ).test(content))
-    .map((member) => member.id);
+  const hintedOrder = Array.isArray(hintedMemberIds)
+    ? [...new Set(hintedMemberIds.filter((id) => typeof id === 'string'))]
+    : [];
+  const hinted = new Set(hintedOrder);
+  const visible = room.members
+    .filter((member) => {
+      const visibleMention = containsMention(content, member.name) || containsMention(content, member.id);
+      if (!visibleMention) return false;
+      // Structured ids disambiguate equal display names, while plain text
+      // input remains backwards-compatible with both names and legacy ids.
+      const sameNameCount = room.members.filter((candidate) => candidate.name === member.name).length;
+      return sameNameCount <= 1 || hinted.size === 0 || hinted.has(member.id);
+    })
+    .map((member) => ({
+      id: member.id,
+      position: Math.min(
+        mentionPosition(content, member.name),
+        mentionPosition(content, member.id),
+      ),
+    }));
+  const visibleIds = new Set(visible.map((entry) => entry.id));
+  const hintedVisible = hintedOrder.filter((id) => visibleIds.has(id));
+  const hintedVisibleSet = new Set(hintedVisible);
+  const mentionedMemberIds = [
+    ...hintedVisible,
+    ...visible
+      .filter((entry) => !hintedVisibleSet.has(entry.id))
+      .sort((left, right) => left.position - right.position)
+      .map((entry) => entry.id),
+  ];
   return { mentionAll, mentionedMemberIds };
 }
 
-async function dispatchRound(userId, roomId, roundId, userMessage, targets) {
-  activeRooms.add(roomId);
-  try {
-    for (const target of targets) {
-      const room = groupChatDb.getRoom(userId, roomId);
-      if (!room || room.status !== 'active') break;
-      const placeholder = groupChatDb.createMessage(userId, roomId, {
+function notifyRoundCompleted(userId, roomId, roundId) {
+  const room = groupChatDb.getRoom(userId, roomId);
+  if (!room || room.muted) return;
+  notifyUserIfEnabled({
+    userId,
+    event: createNotificationEvent({
+      provider: 'pilotdeck',
+      kind: 'info',
+      code: 'agent.notification',
+      meta: {
+        message: `群组“${room.title}”已完成本轮回复`,
+        groupId: roomId,
+        groupName: room.title,
+      },
+      dedupeKey: `group:${roomId}:round:${roundId}`,
+    }),
+  });
+}
+
+async function runDirectMember(userId, roomId, roundId, userMessage, target) {
+  const room = groupChatDb.getRoom(userId, roomId);
+  if (!room || room.status !== 'active') return;
+  if (target.id === 'main') {
+    try {
+      await runEntryAgent(userId, room, roundId, userMessage, target, []);
+    } catch (error) {
+      groupChatDb.createMessage(userId, roomId, {
         roundId,
+        kind: 'chat',
         senderType: 'agent',
         senderMemberId: target.id,
         senderName: target.name,
         content: '',
-        status: 'thinking',
-      });
-      try {
-        const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
-        const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder.id));
-        const content = await invokeMember(room, target, userMessage, transcript, userId);
-        groupChatDb.updateMessage(placeholder.id, { content, status: 'completed', error: null });
-      } catch (error) {
-        groupChatDb.updateMessage(placeholder.id, {
-          content: '',
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-    const finalRoom = groupChatDb.getRoom(userId, roomId);
-    if (finalRoom && !finalRoom.muted) {
-      notifyUserIfEnabled({
-        userId,
-        event: createNotificationEvent({
-          provider: 'pilotdeck',
-          kind: 'info',
-          code: 'agent.notification',
-          meta: {
-            message: `群组“${finalRoom.title}”已完成本轮回复`,
-            groupId: roomId,
-            groupName: finalRoom.title,
-          },
-          dedupeKey: `group:${roomId}:round:${roundId}`,
-        }),
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
       });
     }
+    return;
+  }
+  const placeholder = groupChatDb.createMessage(userId, roomId, {
+    roundId,
+    kind: 'chat',
+    senderType: 'agent',
+    senderMemberId: target.id,
+    senderName: target.name,
+    content: '',
+    status: 'thinking',
+  });
+  try {
+    const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
+    const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder.id));
+    const result = await invokeMember(room, target, userMessage, transcript, userId);
+    if (!result.content) throw new Error('智能体没有返回可显示的内容。');
+    groupChatDb.updateMessage(placeholder.id, {
+      content: result.content,
+      status: 'completed',
+      error: null,
+    });
+  } catch (error) {
+    groupChatDb.updateMessage(placeholder.id, {
+      content: '',
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function runEntryAgent(userId, room, roundId, userMessage, entryMember, requiredDelegateIds) {
+  const sessionId = `group:${room.id}:${entryMember.id}`;
+  const turnContext = {
+    userId,
+    roomId: room.id,
+    roundId,
+    sessionId,
+    requiredDelegateIds: [...requiredDelegateIds],
+    attemptedDelegateIds: new Set(),
+  };
+  activeMainTurns.set(sessionId, turnContext);
+  let result = { content: '', sawDelegation: false };
+  try {
+    for (let attempt = 0; attempt <= MAX_REQUIRED_DELEGATE_RETRIES; attempt += 1) {
+      const currentRoom = groupChatDb.getRoom(userId, room.id);
+      if (!currentRoom || currentRoom.status !== 'active') throw new Error('群组已经归档。');
+      const missing = requiredDelegateIds.filter((id) => !turnContext.attemptedDelegateIds.has(id));
+      if (attempt > 0 && missing.length === 0) break;
+      const messages = groupChatDb.listMessages(userId, room.id, 100) || [];
+      const transcript = formatTranscript(messages);
+      const prompt = attempt === 0
+        ? userMessage
+        : [
+            '系统校验：你刚才没有完成用户显式要求的成员委派。',
+            `现在必须按顺序调用这些成员：${missing.join(' -> ')}。`,
+            '完成真实工具调用后，再给出最终答复；不要只用文字模拟委派。',
+          ].join('\n');
+      result = await invokeMember(currentRoom, entryMember, prompt, transcript, userId, {
+        roundId,
+        persistActivity: true,
+        requiredDelegateIds: missing,
+      });
+      if (requiredDelegateIds.every((id) => turnContext.attemptedDelegateIds.has(id))) break;
+    }
+
+    const missing = requiredDelegateIds.filter((id) => !turnContext.attemptedDelegateIds.has(id));
+    if (missing.length > 0) {
+      throw new Error(`主智能体未完成必选成员委派：${missing.join('、')}`);
+    }
+    if (result.content) {
+      groupChatDb.createMessage(userId, room.id, {
+        roundId,
+        kind: 'chat',
+        senderType: 'agent',
+        senderMemberId: entryMember.id,
+        senderName: entryMember.name,
+        content: result.content,
+        status: 'completed',
+      });
+    } else if (turnContext.attemptedDelegateIds.size === 0 && !result.sawDelegation) {
+      throw new Error('主智能体没有返回可显示的内容。');
+    }
+  } finally {
+    if (activeMainTurns.get(sessionId) === turnContext) activeMainTurns.delete(sessionId);
+  }
+}
+
+async function dispatchMentionRound(userId, roomId, roundId, userMessage, targets) {
+  activeRooms.add(roomId);
+  groupChatDb.updateTurn(roundId, { status: 'running', error: null });
+  try {
+    for (const target of targets) {
+      await runDirectMember(userId, roomId, roundId, userMessage, target);
+    }
+    groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
+    notifyRoundCompleted(userId, roomId, roundId);
+  } catch (error) {
+    groupChatDb.updateTurn(roundId, {
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    activeRooms.delete(roomId);
+  }
+}
+
+async function dispatchSmartRound(userId, roomId, roundId, userMessage, entryMember, requiredDelegateIds) {
+  activeRooms.add(roomId);
+  groupChatDb.updateTurn(roundId, { status: 'running', error: null });
+  try {
+    const room = groupChatDb.getRoom(userId, roomId);
+    if (!room || room.status !== 'active') throw new Error('群组已经归档。');
+    await runEntryAgent(userId, room, roundId, userMessage, entryMember, requiredDelegateIds);
+    groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
+    notifyRoundCompleted(userId, roomId, roundId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    groupChatDb.createMessage(userId, roomId, {
+      roundId,
+      kind: 'chat',
+      senderType: 'agent',
+      senderMemberId: entryMember.id,
+      senderName: entryMember.name,
+      content: '',
+      status: 'failed',
+      error: message,
+    });
+    groupChatDb.updateTurn(roundId, { status: 'failed', error: message });
   } finally {
     activeRooms.delete(roomId);
   }
@@ -392,6 +681,89 @@ export const groupChatService = {
     return groupChatDb.addMember(userId, roomId, member);
   },
 
+  async delegateMember(userId, roomId, input) {
+    const room = groupChatDb.getRoom(userId, roomId);
+    if (!room || room.status !== 'active') return null;
+    const expectedSessionId = `group:${roomId}:main`;
+    if (input.sourceSessionId !== expectedSessionId) {
+      throw new Error('只有当前群组的主智能体可以委派成员。');
+    }
+    const activeTurn = activeMainTurns.get(expectedSessionId);
+    if (!activeTurn || activeTurn.userId !== userId || activeTurn.roomId !== roomId) {
+      throw new Error('当前群组没有可接受委派的主智能体轮次。');
+    }
+    const memberId = cleanText(input.memberId, '成员 ID', 100);
+    if (memberId === 'main') throw new Error('主智能体不能委派给自己。');
+    const member = room.members.find((candidate) => candidate.id === memberId && candidate.isActive !== false);
+    if (!member) throw new Error('要调用的群成员不存在或已被移除。');
+    const message = cleanText(input.message, '委派消息', MAX_MESSAGE_CHARS);
+    const sourceTurnId = typeof input.sourceTurnId === 'string'
+      ? input.sourceTurnId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120)
+      : '';
+    const roundId = activeTurn.roundId;
+    activeTurn.attemptedDelegateIds.add(memberId);
+    const main = room.members.find((candidate) => candidate.id === 'main');
+    const delegation = groupChatDb.createMessage(userId, roomId, {
+      roundId,
+      kind: 'delegation',
+      senderType: 'agent',
+      senderMemberId: 'main',
+      senderName: main?.name || 'PilotDeck 主智能体',
+      content: message,
+      metadata: {
+        state: 'waiting',
+        targetMemberId: member.id,
+        targetMemberName: member.name,
+        sourceTurnId: sourceTurnId || undefined,
+      },
+      status: 'thinking',
+    });
+    const placeholder = groupChatDb.createMessage(userId, roomId, {
+      roundId,
+      kind: 'chat',
+      senderType: 'agent',
+      senderMemberId: member.id,
+      senderName: member.name,
+      replyToMessageId: delegation?.id,
+      content: '',
+      status: 'thinking',
+    });
+    try {
+      const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
+      const transcript = formatTranscript(messages.filter((candidate) => candidate.id !== placeholder.id));
+      const result = await invokeMember(room, member, message, transcript, userId);
+      if (!result.content) throw new Error('被委派成员没有返回可显示的内容。');
+      const completed = groupChatDb.updateMessage(placeholder.id, {
+        content: result.content,
+        status: 'completed',
+        error: null,
+      });
+      groupChatDb.updateMessage(delegation.id, {
+        metadata: {
+          ...delegation.metadata,
+          state: 'completed',
+          responseMessageId: completed.id,
+        },
+        status: 'completed',
+        error: null,
+      });
+      return { member, message: completed };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      groupChatDb.updateMessage(placeholder.id, {
+        content: '',
+        status: 'failed',
+        error: errorMessage,
+      });
+      groupChatDb.updateMessage(delegation.id, {
+        metadata: { ...delegation.metadata, state: 'failed' },
+        status: 'failed',
+        error: errorMessage,
+      });
+      throw error;
+    }
+  },
+
   sendMessage(userId, roomId, input) {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') return null;
@@ -399,27 +771,58 @@ export const groupChatService = {
     const content = cleanText(input.content, '消息', MAX_MESSAGE_CHARS);
     // Mentions are derived from the saved text so callers cannot trigger an
     // unmentioned member by sending a forged `mentionedMemberIds` payload.
-    const { mentionedMemberIds, mentionAll } = extractMentions(room, content);
-    const roundId = `round_${crypto.randomUUID()}`;
+    const { mentionedMemberIds, mentionAll } = extractMentions(room, content, input.mentionedMemberIds);
+    const participant = groupChatDb.getParticipant(userId, roomId);
+    if (!participant) throw new Error('当前用户不是该群组的有效参与者。');
+    const entryMember = resolveEntryMember(room, participant);
+    if (!entryMember) throw new Error('群组没有可用的入口 PilotDeck 实例。');
+    const directTargets = resolveMentionTargets(room, mentionedMemberIds, mentionAll);
+    const turn = groupChatDb.createTurn(userId, roomId, {
+      entryMemberId: room.triggerMode === 'auto' ? entryMember.id : (directTargets[0]?.id || entryMember.id),
+      triggerSource: room.triggerMode,
+      status: 'queued',
+    });
+    if (!turn) throw new Error('无法创建群组轮次。');
+    const roundId = turn.id;
     const message = groupChatDb.createMessage(userId, roomId, {
       roundId,
+      kind: 'chat',
       senderType: 'user',
+      senderUserId: userId,
       senderName: '你',
       content,
       status: 'completed',
     });
-    const targets = resolveTargets(room, mentionedMemberIds, mentionAll);
-    if (targets.length === 0) {
+    if (room.triggerMode === 'mentions' && directTargets.length === 0) {
       groupChatDb.createMessage(userId, roomId, {
         roundId,
+        kind: 'chat',
         senderType: 'system',
         senderName: '系统',
         content: '当前已开启“仅 @ 触发”。本条消息已保存，但没有调用任何智能体。',
         status: 'completed',
       });
+      groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
+    } else if (room.triggerMode === 'mentions') {
+      void dispatchMentionRound(userId, roomId, roundId, content, directTargets);
     } else {
-      void dispatchRound(userId, roomId, roundId, content, targets);
+      const requiredDelegateIds = mentionAll
+        ? room.members.filter((member) => member.id !== 'main' && member.isActive !== false).map((member) => member.id)
+        : mentionedMemberIds.filter((id) => id !== entryMember.id);
+      void dispatchSmartRound(userId, roomId, roundId, content, entryMember, requiredDelegateIds);
     }
-    return { message, roundId, targetMemberIds: targets.map((member) => member.id) };
+    return {
+      message,
+      roundId,
+      entryMemberId: entryMember.id,
+      targetMemberIds: room.triggerMode === 'auto'
+        ? [entryMember.id]
+        : directTargets.map((member) => member.id),
+      requiredDelegateIds: room.triggerMode === 'auto'
+        ? (mentionAll
+            ? room.members.filter((member) => member.id !== 'main' && member.isActive !== false).map((member) => member.id)
+            : mentionedMemberIds.filter((id) => id !== entryMember.id))
+        : [],
+    };
   },
 };

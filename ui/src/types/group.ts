@@ -1,5 +1,7 @@
 export type GroupTriggerMode = 'auto' | 'mentions';
 
+export type GroupMemberCategory = 'pilotdeck_instance' | 'agent' | 'employee';
+
 export type GroupMemberKind =
   | 'pilotdeck_main'
   | 'pilotdeck_local'
@@ -11,6 +13,7 @@ export interface AgentGroupMember {
   id: string;
   roomId: string;
   kind: GroupMemberKind;
+  category: GroupMemberCategory;
   name: string;
   role?: string;
   description?: string;
@@ -41,10 +44,15 @@ export interface AgentGroupMessage {
   id: string;
   roomId: string;
   roundId?: string;
+  sequence: number;
+  kind: 'chat' | 'delegation' | 'activity';
   senderType: 'user' | 'agent' | 'system';
+  senderUserId?: number;
   senderMemberId?: string;
   senderName: string;
+  replyToMessageId?: string;
   content: string;
+  metadata: Record<string, unknown>;
   status: 'queued' | 'thinking' | 'completed' | 'failed';
   error?: string;
   createdAt: string;
@@ -54,6 +62,7 @@ export interface AgentGroupMessage {
 export interface AvailableGroupMember {
   id: string;
   kind: Exclude<GroupMemberKind, 'pilotdeck_main'>;
+  category: GroupMemberCategory;
   name: string;
   role?: string;
   description?: string;

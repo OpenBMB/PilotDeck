@@ -1,4 +1,8 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { userDb, appConfigDb } from '../database/db.js';
 import { IS_PLATFORM, DISABLE_LOCAL_AUTH } from '../constants/config.js';
 
@@ -101,6 +105,32 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
+// The gateway process uses this narrow authentication path when a persistent
+// group's main agent delegates to another member. Reuse the local gateway
+// server token instead of requiring a browser JWT.
+const authenticateGroupDelegation = async (req, res, next) => {
+  const supplied = req.headers['x-pilotdeck-group-token'];
+  if (typeof supplied !== 'string' || !supplied) {
+    return res.status(401).json({ error: 'Missing group delegation token.' });
+  }
+  const tokenPath = process.env.PILOTDECK_GATEWAY_TOKEN_PATH
+    || path.join(process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck'), 'server-token');
+  let expected;
+  try {
+    expected = fs.readFileSync(tokenPath, 'utf8').trim();
+  } catch {
+    return res.status(503).json({ error: 'Group delegation authentication is unavailable.' });
+  }
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  if (suppliedBuffer.length !== expectedBuffer.length
+      || !crypto.timingSafeEqual(suppliedBuffer, expectedBuffer)) {
+    return res.status(403).json({ error: 'Invalid group delegation token.' });
+  }
+  req.groupDelegationAuthenticated = true;
+  return next();
+};
+
 // Generate JWT token
 const generateToken = (user) => {
   return jwt.sign(
@@ -150,6 +180,7 @@ const authenticateWebSocket = (token) => {
 
 export {
   validateApiKey,
+  authenticateGroupDelegation,
   authenticateToken,
   generateToken,
   authenticateWebSocket,

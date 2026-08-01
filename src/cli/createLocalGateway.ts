@@ -73,7 +73,12 @@ import { forkWebSession } from "../web/server/forkSession.js";
 import { describeWebProject, listWebProjects } from "../web/server/listProjects.js";
 import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
 import { GroupChatRuntime } from "../collaboration/index.js";
-import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
+import {
+  GROUP_MEMBER_DELEGATE_TOOL_NAME,
+  createBuiltinRegistry,
+  createPlanFileManager,
+  filterAvailableTools,
+} from "../tool/index.js";
 import type {
   PilotDeckElicitationChannel,
   PilotDeckToolDefinition,
@@ -997,6 +1002,24 @@ class ProjectRuntimeRegistry {
         for (const name of alwaysOnNames) {
           sessionTools.unregister(name);
         }
+      }
+    }
+
+    // Persistent group sessions use a dedicated delegation tool. Only the
+    // group's main agent may see it; secondary members must not recursively
+    // delegate. The older scratch-room group_chat tool is hidden from every
+    // persistent group session so the two collaboration models cannot mix.
+    const isPersistentGroupSession = context.sessionKey.startsWith("group:");
+    const isPersistentGroupMain = /^group:.+:main$/u.test(context.sessionKey);
+    if (isPersistentGroupSession || !isPersistentGroupMain) {
+      if (sessionTools === runtime.tools) {
+        sessionTools = runtime.tools.clone();
+      }
+      if (isPersistentGroupSession) {
+        sessionTools.unregister("group_chat");
+      }
+      if (!isPersistentGroupMain) {
+        sessionTools.unregister(GROUP_MEMBER_DELEGATE_TOOL_NAME);
       }
     }
 

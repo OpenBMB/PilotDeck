@@ -10,6 +10,7 @@ import { createGlobTool } from "../builtin/glob.js";
 import { createGrepTool } from "../builtin/grep.js";
 import { createGetCurrentTimeTool } from "../builtin/getCurrentTime.js";
 import { createGroupChatTool } from "../builtin/groupChat.js";
+import { createGroupMemberDelegateTool } from "../builtin/groupMemberDelegate.js";
 import { createReadFileTool } from "../builtin/readFile.js";
 import { createSendAttachmentTool } from "../builtin/sendAttachment.js";
 import { createEnterPlanModeTool, createExitPlanModeTool } from "../builtin/planMode.js";
@@ -122,6 +123,7 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   if (options?.groupChat) {
     registry.register(createGroupChatTool(options.groupChat));
   }
+  registry.register(createGroupMemberDelegateTool());
   if (options?.backgroundTasks) {
     const runtime = options.backgroundTasks.runtime;
     registry.register(createTaskCreateTool(runtime));

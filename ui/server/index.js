@@ -115,7 +115,7 @@ import { initializeDatabase, sessionNamesDb, applyCustomSessionNames, userDb } f
 import { configureWebPush } from './services/vapid-keys.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
-import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
+import { validateApiKey, authenticateGroupDelegation, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
@@ -512,7 +512,12 @@ app.use('/api/config', authenticateToken, configRoutes);
 app.use('/api/gateway', authenticateToken, gatewayRoutes);
 
 // Persistent multi-agent group chat routes (protected)
-app.use('/api/groups', authenticateToken, groupsRoutes);
+app.use('/api/groups', (req, res, next) => {
+    if (req.method === 'POST' && /^\/[^/]+\/delegate$/u.test(req.path)) {
+        return authenticateGroupDelegation(req, res, next);
+    }
+    return authenticateToken(req, res, next);
+}, groupsRoutes);
 
 // User API Routes (protected)
 app.use('/api/user', authenticateToken, userRoutes);

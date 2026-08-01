@@ -80,6 +80,13 @@ export {
   type GroupChatOutput,
   type GroupChatParticipantInput,
 } from "./builtin/groupChat.js";
+export {
+  GROUP_MEMBER_DELEGATE_TOOL_NAME,
+  createGroupMemberDelegateTool,
+  type CreateGroupMemberDelegateToolOptions,
+  type GroupMemberDelegateInput,
+  type GroupMemberDelegateOutput,
+} from "./builtin/groupMemberDelegate.js";
 export { createReadFileTool, type ReadFileInput } from "./builtin/readFile.js";
 export { createReadSkillTool, type ReadSkillDeps, type ReadSkillInput } from "./builtin/readSkill.js";
 export { createGlobTool, extractGlobBaseDirectory, type GlobInput } from "./builtin/glob.js";

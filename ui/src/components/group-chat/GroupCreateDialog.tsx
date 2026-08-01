@@ -55,7 +55,7 @@ export default function GroupCreateDialog({
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">创建智能体群组</h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">主智能体会常驻，并在轮询结束后综合其他成员观点。</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">主智能体会常驻，先理解需求，再自主决定是否邀请其他成员协作。</p>
           </div>
           <button type="button" aria-label="关闭创建群组" onClick={onClose} className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200">
             <X className="h-4 w-4" />
@@ -98,8 +98,8 @@ export default function GroupCreateDialog({
             <label className="flex cursor-pointer gap-3 rounded-xl border border-neutral-200 p-3 dark:border-neutral-700">
               <input type="radio" checked={triggerMode === 'auto'} onChange={() => setTriggerMode('auto')} />
               <span>
-                <span className="block text-sm font-medium">自动顺序轮询</span>
-                <span className="block text-xs text-neutral-500">未 @ 时全员依次发言；@具体成员时只触发被提及成员。</span>
+                <span className="block text-sm font-medium">智能协调</span>
+                <span className="block text-xs text-neutral-500">消息先由你的通用智能体处理；需要时再真实邀请合适成员。</span>
               </span>
             </label>
             <label className="flex cursor-pointer gap-3 rounded-xl border border-neutral-200 p-3 dark:border-neutral-700">

@@ -39,6 +39,7 @@ function group(overrides: Partial<AgentGroup>): AgentGroup {
       id: 'main',
       roomId: 'group-1',
       kind: 'pilotdeck_main',
+      category: 'pilotdeck_instance',
       name: 'PilotDeck Main',
       position: 10_000,
       config: {},
@@ -52,7 +53,11 @@ function group(overrides: Partial<AgentGroup>): AgentGroup {
   };
 }
 
-function renderSidebar(selectedProject: Project | null, groups: AgentGroup[] = []) {
+function renderSidebar(
+  selectedProject: Project | null,
+  groups: AgentGroup[] = [],
+  overrides: Partial<ComponentProps<typeof SidebarV2>> = {},
+) {
   const props: ComponentProps<typeof SidebarV2> = {
     projects: [general, project],
     groups,
@@ -67,9 +72,12 @@ function renderSidebar(selectedProject: Project | null, groups: AgentGroup[] = [
     onSelectGroup: vi.fn(),
     onCreateGroup: vi.fn(),
     onOpenGroups: vi.fn(),
+    onRenameGroup: vi.fn(),
+    onRequestDeleteGroup: vi.fn(),
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
+    ...overrides,
   };
 
   return {
@@ -122,5 +130,23 @@ describe('SidebarV2 default section', () => {
     expect(screen.getByText('Quiet review room')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.queryByText('7')).toBeNull();
+  });
+
+  it('renames and requests deletion from the group context menu', async () => {
+    const onRenameGroup = vi.fn();
+    const onRequestDeleteGroup = vi.fn();
+    renderSidebar(null, [group({})], { onRenameGroup, onRequestDeleteGroup });
+    fireEvent.click(screen.getByRole('tab', { name: 'Groups' }));
+
+    fireEvent.contextMenu(await screen.findByText('Architecture room'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: '重命名群组' });
+    fireEvent.change(input, { target: { value: 'Architecture council' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-1' }), 'Architecture council');
+
+    fireEvent.contextMenu(screen.getByText('Architecture room'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(onRequestDeleteGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-1' }));
   });
 });
