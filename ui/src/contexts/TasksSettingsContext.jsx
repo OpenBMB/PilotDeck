@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { useAuth } from '../components/auth/context/AuthContext';
 
 const TasksSettingsContext = createContext({
   tasksEnabled: true,
@@ -20,6 +21,7 @@ export const useTasksSettings = () => {
 };
 
 export const TasksSettingsProvider = ({ children }) => {
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [tasksEnabled, setTasksEnabled] = useState(() => {
     // Load from localStorage on initialization
     const saved = localStorage.getItem('tasks-enabled');
@@ -38,9 +40,15 @@ export const TasksSettingsProvider = ({ children }) => {
 
   // Check TaskMaster installation status asynchronously on component mount
   useEffect(() => {
+    // This provider is mounted before ProtectedRoute. Wait for an authenticated
+    // (or local-auth) user so the login screen does not issue a guaranteed 401.
+    if (isAuthLoading || !user) return undefined;
+
+    let cancelled = false;
     const checkInstallation = async () => {
       try {
         const response = await api.get('/taskmaster/installation-status');
+        if (cancelled) return;
         if (response.ok) {
           const data = await response.json();
           setInstallationStatus(data);
@@ -59,6 +67,7 @@ export const TasksSettingsProvider = ({ children }) => {
           setIsTaskMasterReady(false);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error checking TaskMaster installation:', error);
         setIsTaskMasterInstalled(false);
         setIsTaskMasterReady(false);
@@ -68,8 +77,12 @@ export const TasksSettingsProvider = ({ children }) => {
     };
 
     // Run check asynchronously without blocking initial render
-    setTimeout(checkInstallation, 0);
-  }, []);
+    const timer = setTimeout(checkInstallation, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isAuthLoading, user]);
 
   const toggleTasksEnabled = () => {
     setTasksEnabled(prev => !prev);

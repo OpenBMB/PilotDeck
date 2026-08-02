@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../components/auth/context/AuthContext';
-import { IS_PLATFORM } from '../constants/config';
 
 type WSSubscriber = (msg: any) => void;
 
@@ -36,16 +35,27 @@ export const useWebSocket = () => {
   return context;
 };
 
-const buildWebSocketUrl = (token: string | null) => {
+const buildWebSocketUrl = (_token: string | null) => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  if (IS_PLATFORM || !token) return `${protocol}//${window.location.host}/ws`;
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${protocol}//${window.location.host}/ws`;
 };
 
 const INITIAL_RECONNECT_MS = 1000;
 const MAX_RECONNECT_MS = 30000;
 const BACKOFF_FACTOR = 2;
 const MAX_QUEUED_MESSAGES = 100;
+
+export function shouldConnectWebSocket({
+  token,
+  hasUser,
+  isAuthLoading,
+}: {
+  token: string | null;
+  hasUser: boolean;
+  isAuthLoading: boolean;
+}): boolean {
+  return !isAuthLoading && hasUser && Boolean(token);
+}
 
 export function getQueuedMessageKey(message: any): string | null {
   if (message?.type === 'check-session-status' && typeof message.sessionId === 'string' && message.sessionId.trim()) {
@@ -91,7 +101,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const reconnectAttemptRef = useRef(0);
   const queuedMessagesRef = useRef<any[]>([]);
   const subscribersRef = useRef<Set<WSSubscriber>>(new Set());
-  const { token } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
 
   useEffect(() => {
     unmountedRef.current = false;
@@ -100,6 +110,18 @@ const useWebSocketProviderState = (): WebSocketContextType => {
 
   useEffect(() => {
     const id = ++connectIdRef.current;
+
+    // The provider is mounted outside ProtectedRoute so it also exists while
+    // the cookie session is being restored and on the login screen. Do not
+    // start an unauthenticated reconnect loop during either state.
+    if (!shouldConnectWebSocket({ token, hasUser: Boolean(user), isAuthLoading })) {
+      setIsConnected(false);
+      setReconnectInfo({ attempt: 0, nextRetryMs: 0, status: 'disconnected' });
+      return () => {
+        connectIdRef.current++;
+        clearDisconnectedQueue(queuedMessagesRef.current);
+      };
+    }
 
     const connect = () => {
       if (unmountedRef.current || connectIdRef.current !== id) return;
@@ -134,7 +156,9 @@ const useWebSocketProviderState = (): WebSocketContextType => {
             const subs = subscribersRef.current;
             if (subs.size > 0) {
               subs.forEach((sub) => {
-                try { sub(reconnectMsg); } catch {}
+                try { sub(reconnectMsg); } catch {
+                  // A subscriber failure must not interrupt reconnect fan-out.
+                }
               });
             }
             setLatestMessage(reconnectMsg);
@@ -206,7 +230,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
       }
       setIsConnected(false);
     };
-  }, [token]);
+  }, [isAuthLoading, token, user]);
 
   const sendMessage = useCallback((message: any) => {
     const socket = wsRef.current;
