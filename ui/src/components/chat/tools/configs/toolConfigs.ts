@@ -661,7 +661,7 @@ export const TOOL_CONFIGS: Record<string, ToolDisplayConfig> = {
     input: {
       type: 'collapsible',
       title: (input) => {
-        const action = String(input.action || 'collaborate').replaceAll('_', ' ');
+        const action = String(input.action || 'collaborate').replace(/_/g, ' ');
         const subject = input.title || input.message || input.roomId || '';
         const compact = String(subject).length > 72 ? `${String(subject).slice(0, 69)}...` : subject;
         return compact ? `Group chat / ${action}: ${compact}` : `Group chat / ${action}`;
