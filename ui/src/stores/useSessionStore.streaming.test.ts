@@ -90,6 +90,32 @@ function streamingMessage(sessionId: string, content: string): NormalizedMessage
   };
 }
 
+function streamingRunMessage(sessionId: string, runId: string, content: string): NormalizedMessage {
+  return {
+    id: `__streaming_${sessionId}_${runId}`,
+    sessionId,
+    timestamp: '2026-05-28T00:00:01.000Z',
+    provider: PROVIDER,
+    kind: 'stream_delta',
+    content,
+    runId,
+    serverTailIdAtStart: 'tail-before-turn',
+  };
+}
+
+function toolUseMessage(id: string, timestamp = '2026-05-28T00:00:02.000Z'): NormalizedMessage {
+  return {
+    id,
+    sessionId: 'web:s_test',
+    timestamp,
+    provider: PROVIDER,
+    kind: 'tool_use',
+    toolName: 'Read',
+    toolId: id,
+    toolInput: { file_path: '/repo/src/App.tsx' },
+  };
+}
+
 describe('patchMergedStreamingMessage', () => {
   it('updates merged content without recomputing from store inputs', () => {
     const sessionId = 'web:s_test';
@@ -858,6 +884,72 @@ describe('upsertRealtimeMessages', () => {
     expect(updated[0]?.id).toBe('thinking-a-replay');
     expect(updated[0]?.content).toBe('Inspect state');
   });
+
+  it('inserts late-arriving thinking before active assistant stream content in the same run', () => {
+    const existing = [
+      streamingRunMessage('web:s_test', 'run-1', 'Visible answer'),
+    ];
+    const incoming = thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-a', 'Plan first', '2026-05-28T00:00:02.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-a',
+      thinkingBlockSeq: 1,
+      serverTailIdAtStart: 'tail-before-turn',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual([
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
+      '__streaming_web:s_test_run-1',
+    ]);
+  });
+
+  it('inserts late-arriving thinking before assistant text that replaced a stream row', () => {
+    const existing = [
+      textMessage('standalone-text', 'Visible answer', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+    ];
+    const incoming = thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-a', 'Plan first', '2026-05-28T00:00:02.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-a',
+      thinkingBlockSeq: 1,
+      serverTailIdAtStart: 'tail-before-turn',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual([
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
+      'standalone-text',
+    ]);
+  });
+
+  it('does not move later thinking across tool process boundaries', () => {
+    const existing = [
+      textMessage('text-final', 'I inspected the file.', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+      toolUseMessage('tool-read-1'),
+    ];
+    const incoming = thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-a', 'Decide next tool', '2026-05-28T00:00:03.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-a',
+      thinkingBlockSeq: 1,
+      serverTailIdAtStart: 'tail-before-turn',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual([
+      'text-final',
+      'tool-read-1',
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
+    ]);
+  });
 });
 
 describe('useSessionStore streaming thinking blocks', () => {
@@ -874,6 +966,22 @@ describe('useSessionStore streaming thinking blocks', () => {
 
     expect(realtime.map((message) => message.content)).toEqual(['Inspect state', 'Use tool']);
     expect(realtime.map((message) => message.thinkingBlockId)).toEqual(['block-a', 'block-b']);
+  });
+
+  it('keeps late-arriving live thinking before active streamed assistant content', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.updateStreaming('web:s_test', 'Visible answer', PROVIDER, 'run-1');
+      result.current.updateStreamingThinking('web:s_test', 'Plan first', PROVIDER, 'run-1', 'block-a', 1);
+    });
+
+    const realtime = result.current.getSessionSlot('web:s_test')?.realtimeMessages ?? [];
+
+    expect(realtime.map((message) => message.kind)).toEqual(['thinking', 'stream_delta']);
+    expect(realtime.map((message) => message.content)).toEqual(['Plan first', 'Visible answer']);
+    expect(realtime[0]?.id).toBe('__streaming_thinking_web:s_test_run-1_id_block-a');
+    expect(realtime[1]?.id).toBe('__streaming_web:s_test_run-1');
   });
 
   it('finalizes only one active thinking block and leaves the next block streaming', () => {

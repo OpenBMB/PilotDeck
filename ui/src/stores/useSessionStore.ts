@@ -536,6 +536,73 @@ function isActiveRealtimeContentStream(message: NormalizedMessage, kind: Message
   return false;
 }
 
+function isStreamedAssistantContent(message: NormalizedMessage): boolean {
+  if (message.kind === 'stream_delta' && String(message.id || '').startsWith('__streaming_')) {
+    return true;
+  }
+  return (
+    message.kind === 'text' &&
+    message.role === 'assistant' &&
+    typeof message.serverTailIdAtStart === 'string'
+  );
+}
+
+function isRealtimeProcessBoundary(message: NormalizedMessage): boolean {
+  return (
+    message.kind === 'tool_use' ||
+    message.kind === 'tool_result' ||
+    message.kind === 'task_notification' ||
+    message.kind === 'compact_boundary' ||
+    message.kind === 'interactive_prompt' ||
+    message.kind === 'permission_request' ||
+    message.kind === 'error' ||
+    message.kind === 'interrupted'
+  );
+}
+
+function isSameRealtimeRunOrTurn(first: NormalizedMessage, second: NormalizedMessage): boolean {
+  if (first.runId != null && second.runId != null) {
+    return first.runId === second.runId;
+  }
+  if (first.serverTailIdAtStart != null && second.serverTailIdAtStart != null) {
+    return first.serverTailIdAtStart === second.serverTailIdAtStart;
+  }
+  return false;
+}
+
+function findLateThinkingInsertIndex(
+  messages: NormalizedMessage[],
+  incoming: NormalizedMessage,
+): number {
+  if (incoming.kind !== 'thinking') {
+    return -1;
+  }
+
+  const turnStart = getRealtimeTurnStartIndex(messages, messages.length);
+  for (let index = turnStart; index < messages.length; index += 1) {
+    const candidate = messages[index];
+    if (!isStreamedAssistantContent(candidate)) {
+      continue;
+    }
+    if (!isSameRealtimeRunOrTurn(candidate, incoming)) {
+      continue;
+    }
+    const crossesProcessBoundary = messages
+      .slice(index + 1)
+      .some(isRealtimeProcessBoundary);
+    if (crossesProcessBoundary) {
+      continue;
+    }
+    return index;
+  }
+
+  return -1;
+}
+
+function buildUpsertIndex(messages: NormalizedMessage[]): Map<string, number> {
+  return new Map(messages.map((message, index) => [getUpsertKey(message), index]));
+}
+
 function isCompatibleRealtimeTextRun(a: NormalizedMessage, b: NormalizedMessage): boolean {
   if (a.runId != null && b.runId != null) return a.runId === b.runId;
   const hasActiveStream = (
@@ -714,7 +781,7 @@ export function upsertRealtimeMessages(
 ): NormalizedMessage[] {
   if (incoming.length === 0) return existing;
   const updated = [...existing];
-  const indexByKey = new Map(updated.map((message, index) => [getUpsertKey(message), index]));
+  let indexByKey = buildUpsertIndex(updated);
   for (const message of incoming) {
     if (message.kind === 'tool_result' && message.toolId && message.resultPath) {
       const existingToolResultIndex = findLatestToolResultIndex(updated, message.toolId);
@@ -743,8 +810,14 @@ export function upsertRealtimeMessages(
     const key = getUpsertKey(message);
     const existingIndex = indexByKey.get(key);
     if (existingIndex === undefined) {
-      indexByKey.set(key, updated.length);
-      updated.push(message);
+      const insertIndex = findLateThinkingInsertIndex(updated, message);
+      if (insertIndex >= 0) {
+        updated.splice(insertIndex, 0, message);
+        indexByKey = buildUpsertIndex(updated);
+      } else {
+        indexByKey.set(key, updated.length);
+        updated.push(message);
+      }
     } else {
       updated[existingIndex] = message;
     }
@@ -1523,7 +1596,7 @@ export function useSessionStore() {
         ...(thinkingBlockSeq !== undefined ? { thinkingBlockSeq } : {}),
         serverTailIdAtStart: serverTailId ?? undefined,
       };
-      slot.realtimeMessages = [...slot.realtimeMessages, msg];
+      slot.realtimeMessages = upsertRealtimeMessages(slot.realtimeMessages, [msg]);
     }
     recomputeMergedIfNeeded(slot);
     notify(sessionId);
