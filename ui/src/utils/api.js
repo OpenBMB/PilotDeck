@@ -1,5 +1,3 @@
-import { IS_PLATFORM } from "../constants/config";
-
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
 
 const getProjectRelativePath = (filePath, projectRoot) => {
@@ -24,16 +22,20 @@ const encodePathSegments = (relativePath) =>
     .map((segment) => encodeURIComponent(segment))
     .join('/');
 
-const appendAuthToken = (url) => {
-  const token = localStorage.getItem('auth-token');
-  if (!token) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}token=${encodeURIComponent(token)}`;
+const CSRF_STORAGE_KEY = 'pilotdeck-csrf-token';
+
+export const setCsrfToken = (token) => {
+  if (token) sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+  else sessionStorage.removeItem(CSRF_STORAGE_KEY);
 };
+
+export const getCsrfToken = () => sessionStorage.getItem(CSRF_STORAGE_KEY);
+
+// Cookie credentials are attached to same-origin media/SSE URLs by the browser.
+const appendAuthToken = (url) => url;
 
 // Utility function for authenticated API calls
 export const authenticatedFetch = (url, options = {}) => {
-  const token = localStorage.getItem('auth-token');
   const {
     suppressServerErrorToast = false,
     ...fetchOptions
@@ -46,21 +48,20 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Content-Type'] = 'application/json';
   }
 
-  if (!IS_PLATFORM && token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`;
+  const method = String(fetchOptions.method || 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) defaultHeaders['X-CSRF-Token'] = csrfToken;
   }
 
   return fetch(url, {
     ...fetchOptions,
+    credentials: 'same-origin',
     headers: {
       ...defaultHeaders,
       ...fetchOptions.headers,
     },
   }).then((response) => {
-    const refreshedToken = response.headers.get('X-Refreshed-Token');
-    if (refreshedToken) {
-      localStorage.setItem('auth-token', refreshedToken);
-    }
     if (!suppressServerErrorToast && response.status >= 500) {
       window.dispatchEvent(new CustomEvent('pilotdeck:toast', {
         detail: { kind: 'error', message: `Server error (${response.status}): ${response.statusText || 'Internal Server Error'}` },
@@ -156,19 +157,91 @@ function defaultWebHttpUserHint(status) {
 export const api = {
   // Auth endpoints (no token required)
   auth: {
-    status: () => fetch('/api/auth/status'),
+    status: () => fetch('/api/auth/status', { credentials: 'same-origin' }),
     login: (username, password) => fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }),
     register: (username, password) => fetch('/api/auth/register', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }),
+    enable: (displayName, password) => fetch('/api/auth/enable', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName, password }),
+    }),
     user: () => authenticatedFetch('/api/auth/user'),
     logout: () => authenticatedFetch('/api/auth/logout', { method: 'POST' }),
+    changePassword: (currentPassword, newPassword) => authenticatedFetch('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  },
+
+  account: {
+    get: () => authenticatedFetch('/api/account'),
+    update: (payload) => authenticatedFetch('/api/account', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+    sessions: () => authenticatedFetch('/api/account/sessions'),
+    revokeSession: (sessionId) => authenticatedFetch(`/api/account/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    }),
+  },
+
+  admin: {
+    users: () => authenticatedFetch('/api/admin/users'),
+    createUser: (payload) => authenticatedFetch('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    updateUser: (userId, payload) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+    resetPassword: (userId) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+      method: 'POST',
+    }),
+    revokeUserSessions: (userId) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(userId)}/revoke-sessions`, {
+      method: 'POST',
+    }),
+    auditEvents: (limit = 100) => authenticatedFetch(`/api/admin/audit-events?limit=${encodeURIComponent(limit)}`),
+    instances: () => authenticatedFetch('/api/admin/instances'),
+    approveInstance: (instanceId) => authenticatedFetch(`/api/admin/instances/${encodeURIComponent(instanceId)}/test-and-approve`, {
+      method: 'POST',
+    }),
+    rejectInstance: (instanceId) => authenticatedFetch(`/api/admin/instances/${encodeURIComponent(instanceId)}/reject`, {
+      method: 'POST',
+    }),
+  },
+
+  instances: {
+    list: () => authenticatedFetch('/api/instances'),
+    create: (payload) => authenticatedFetch('/api/instances', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+    update: (instanceId, payload) => authenticatedFetch(`/api/instances/${encodeURIComponent(instanceId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+    remove: (instanceId) => authenticatedFetch(`/api/instances/${encodeURIComponent(instanceId)}`, {
+      method: 'DELETE',
+    }),
+    setDefault: (instanceId) => authenticatedFetch(`/api/instances/${encodeURIComponent(instanceId)}/default`, {
+      method: 'POST',
+    }),
+    setProjectMapping: (instanceId, payload) => authenticatedFetch(`/api/instances/${encodeURIComponent(instanceId)}/project-mappings`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   },
 
   // Protected endpoints
@@ -198,6 +271,23 @@ export const api = {
   }),
   markGroupRead: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/read`, {
     method: 'POST',
+  }),
+  groupParticipants: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participants`),
+  groupParticipantCandidates: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participant-candidates`),
+  addGroupParticipant: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participants`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateGroupParticipant: (groupId, userId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participants/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  removeGroupParticipant: (groupId, userId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participants/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  }),
+  updateMyGroupParticipation: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/my-participation`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   }),
   availableGroupMembers: () => authenticatedFetch('/api/groups/available-members'),
   addGroupMember: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/members`, {
@@ -249,6 +339,15 @@ export const api = {
     }),
   sessions: (projectName, limit = 5, offset = 0) =>
     authenticatedFetch(`/api/projects/${projectName}/sessions?limit=${limit}&offset=${offset}`),
+  projectMembers: (projectName) => authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/members`),
+  projectMemberCandidates: (projectName) => authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/member-candidates`),
+  setProjectMember: (projectName, userId, role) => authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/members/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  }),
+  removeProjectMember: (projectName, userId) => authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/members/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  }),
   // Unified endpoint — all providers through one URL
   unifiedSessionMessages: (sessionId, provider = 'claude', { projectName = '', projectPath = '', limit = null, offset = 0 } = {}) => {
     const params = new URLSearchParams();
@@ -292,9 +391,7 @@ export const api = {
       method: 'DELETE',
     }),
   searchConversationsUrl: (query, limit = 50) => {
-    const token = localStorage.getItem('auth-token');
     const params = new URLSearchParams({ q: query, limit: String(limit) });
-    if (token) params.set('token', token);
     return `/api/search/conversations?${params.toString()}`;
   },
   createProject: (path) =>

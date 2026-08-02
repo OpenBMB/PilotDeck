@@ -1,10 +1,14 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { userDb, appConfigDb } from '../database/db.js';
-import { IS_PLATFORM, DISABLE_LOCAL_AUTH } from '../constants/config.js';
+import { IS_PLATFORM } from '../constants/config.js';
+import {
+  isAuthEnabled,
+  sanitizeUser,
+  verifyCsrf,
+  verifyRequestSession,
+  verifyBrowserSessionToken,
+} from '../services/auth-service.js';
+import { verifyGroupDelegationGrant } from '../services/group-delegation-grants.js';
 
 // Use env var if set, otherwise auto-generate a unique secret per installation
 const JWT_SECRET = process.env.JWT_SECRET || appConfigDb.getOrCreateJwtSecret();
@@ -45,14 +49,16 @@ function extractDashboardRefererToken(req) {
 
 // JWT authentication middleware
 const authenticateToken = async (req, res, next) => {
-  // Platform mode:  use single database user
-  if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
+  // Platform mode and the default local mode keep the original single-user
+  // experience. The database flag can switch this path immediately at runtime.
+  if (IS_PLATFORM || !isAuthEnabled()) {
     try {
       const user = userDb.getFirstUser();
       if (!user) {
         return res.status(500).json({ error: 'No user found in database (restart server after DB init)' });
       }
-      req.user = user;
+      req.user = sanitizeUser(user);
+      req.authMethod = IS_PLATFORM ? 'platform' : 'local-bypass';
       return next();
     } catch (error) {
       console.error('Auth bypass mode error:', error);
@@ -60,74 +66,34 @@ const authenticateToken = async (req, res, next) => {
     }
   }
 
-  // Normal OSS JWT validation
-  const authHeader = req.headers['authorization'];
-  let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-  // Also check query param for SSE endpoints (EventSource can't set headers)
-  if (!token && req.query.token) {
-    token = req.query.token;
+  const verified = verifyRequestSession(req);
+  if (!verified) {
+    return res.status(401).json({ error: 'Authentication required.' });
   }
-  // Memory dashboard static assets inherit the iframe document URL as Referer,
-  // but do not inherit the query string onto app.js/app.css requests.
-  if (!token) {
-    token = extractDashboardRefererToken(req);
+  if (!verifyCsrf(req, verified.session)) {
+    return res.status(403).json({ error: 'Invalid or missing CSRF token.', code: 'CSRF_REQUIRED' });
   }
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Verify user still exists and is active
-    const user = userDb.getUserById(decoded.userId);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid token. User not found.' });
-    }
-
-    // Auto-refresh: if token is past halfway through its lifetime, issue a new one
-    if (decoded.exp && decoded.iat) {
-      const now = Math.floor(Date.now() / 1000);
-      const halfLife = (decoded.exp - decoded.iat) / 2;
-      if (now > decoded.iat + halfLife) {
-        const newToken = generateToken(user);
-        res.setHeader('X-Refreshed-Token', newToken);
-      }
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    console.error('Token verification error:', error);
-    return res.status(403).json({ error: 'Invalid token' });
-  }
+  req.user = verified.user;
+  req.authSession = verified.session;
+  req.authMethod = verified.authMethod;
+  return next();
 };
 
 // The gateway process uses this narrow authentication path when a persistent
 // group's main agent delegates to another member. Reuse the local gateway
 // server token instead of requiring a browser JWT.
 const authenticateGroupDelegation = async (req, res, next) => {
-  const supplied = req.headers['x-pilotdeck-group-token'];
+  const supplied = req.headers['x-pilotdeck-delegation-token'];
   if (typeof supplied !== 'string' || !supplied) {
     return res.status(401).json({ error: 'Missing group delegation token.' });
   }
-  const tokenPath = process.env.PILOTDECK_GATEWAY_TOKEN_PATH
-    || path.join(process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck'), 'server-token');
-  let expected;
-  try {
-    expected = fs.readFileSync(tokenPath, 'utf8').trim();
-  } catch {
-    return res.status(503).json({ error: 'Group delegation authentication is unavailable.' });
-  }
-  const suppliedBuffer = Buffer.from(supplied);
-  const expectedBuffer = Buffer.from(expected);
-  if (suppliedBuffer.length !== expectedBuffer.length
-      || !crypto.timingSafeEqual(suppliedBuffer, expectedBuffer)) {
+  const roomId = req.params.groupId || decodeURIComponent(String(req.path || '').split('/').filter(Boolean)[0] || '');
+  const grant = verifyGroupDelegationGrant(supplied, roomId);
+  if (!grant) {
     return res.status(403).json({ error: 'Invalid group delegation token.' });
   }
   req.groupDelegationAuthenticated = true;
+  req.groupDelegationGrant = grant;
   return next();
 };
 
@@ -144,9 +110,9 @@ const generateToken = (user) => {
 };
 
 // WebSocket authentication function
-const authenticateWebSocket = (token) => {
+const authenticateWebSocket = (requestOrToken) => {
   // Platform mode: bypass token validation, return first user
-  if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
+  if (IS_PLATFORM || !isAuthEnabled()) {
     try {
       const user = userDb.getFirstUser();
       if (user) {
@@ -159,23 +125,32 @@ const authenticateWebSocket = (token) => {
     }
   }
 
-  // Normal OSS JWT validation
-  if (!token) {
-    return null;
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    // Verify user actually exists in database (matches REST authenticateToken behavior)
-    const user = userDb.getUserById(decoded.userId);
-    if (!user) {
+  if (requestOrToken && typeof requestOrToken === 'object' && requestOrToken.headers) {
+    const origin = requestOrToken.headers.origin;
+    const host = requestOrToken.headers.host;
+    if (!origin || !host) return null;
+    try {
+      if (new URL(origin).host !== host) return null;
+    } catch {
       return null;
     }
-    return { userId: user.id, username: user.username };
-  } catch (error) {
-    console.error('WebSocket token verification error:', error);
-    return null;
+    const verified = verifyRequestSession(requestOrToken);
+    return verified
+      ? { ...verified.user, userId: verified.user.id, authSessionId: verified.session.id }
+      : null;
   }
+  // Kept only for callers passing an already extracted cookie value.
+  const verified = verifyBrowserSessionToken(requestOrToken);
+  return verified
+    ? { ...verified.user, userId: verified.user.id, authSessionId: verified.session.id }
+    : null;
+};
+
+const requireSystemRole = (...allowedRoles) => (req, res, next) => {
+  if (!req.user || !allowedRoles.includes(req.user.systemRole)) {
+    return res.status(403).json({ error: 'Insufficient system permissions.' });
+  }
+  return next();
 };
 
 export {
@@ -184,5 +159,6 @@ export {
   authenticateToken,
   generateToken,
   authenticateWebSocket,
+  requireSystemRole,
   JWT_SECRET
 };

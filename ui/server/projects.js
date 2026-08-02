@@ -135,12 +135,18 @@ async function readMarkedProjectPaths() {
     return result;
 }
 
-async function getProjects(progressCallback = null) {
+async function getProjects(progressCallback = null, options = {}) {
     const gateway = await getPilotDeckGateway();
     const { projects: webProjects } = await gateway.listProjects();
     const markedProjects = await readMarkedProjectPaths();
     const hiddenGroupRuntimePath = path.resolve(resolvePilotHome(process.env), 'group-runtime');
+    const userGeneralRoot = path.resolve(resolvePilotHome(process.env), 'users');
     const isHiddenGroupRuntime = (value) => Boolean(value) && path.resolve(value) === hiddenGroupRuntimePath;
+    const isUserGeneralWorkspace = (value) => {
+        if (!value) return false;
+        const relative = path.relative(userGeneralRoot, path.resolve(value));
+        return relative && !relative.startsWith('..') && relative.split(path.sep).length >= 2;
+    };
     const markedProjectIdsByPath = new Map(
         [...markedProjects.entries()].map(([id, cwd]) => [path.resolve(cwd), id]),
     );
@@ -162,14 +168,14 @@ async function getProjects(progressCallback = null) {
     for (const project of webProjects) {
         const fullPath = project.fullPath || project.projectKey;
         if (!fullPath) continue;
-        if (isHiddenGroupRuntime(fullPath)) continue;
+        if (isHiddenGroupRuntime(fullPath) || isUserGeneralWorkspace(fullPath)) continue;
         const id = markedProjectIdsByPath.get(path.resolve(fullPath)) || createProjectId(fullPath);
         if (!byId.has(id)) {
             byId.set(id, { ...project, __projectId: id });
         }
     }
     for (const [id, markedCwd] of markedProjects) {
-        if (isHiddenGroupRuntime(markedCwd) || id === createProjectId(hiddenGroupRuntimePath)) continue;
+        if (isHiddenGroupRuntime(markedCwd) || isUserGeneralWorkspace(markedCwd) || id === createProjectId(hiddenGroupRuntimePath)) continue;
         const existing = byId.get(id);
         if (existing) {
             existing.fullPath = markedCwd;
@@ -241,7 +247,10 @@ async function getProjects(progressCallback = null) {
     // real project directories, so we synthesize one here. New chats
     // started from the General section use this cwd; sessions are
     // sourced from the same backend as any other project.
-    const generalHome = resolvePilotHome(process.env);
+    const generalHome = options.userId == null
+        ? resolvePilotHome(process.env)
+        : path.join(resolvePilotHome(process.env), 'users', String(options.userId), 'general');
+    await fs.mkdir(generalHome, { recursive: true });
     let generalSessions = [];
     let generalTotal = 0;
     let generalLastActivity;
@@ -542,12 +551,12 @@ async function getProjectCronJobsOverview(projectName) {
     }
 }
 
-async function searchConversations(query, limit = 50, onProjectResult = null, signal = null) {
+async function searchConversations(query, limit = 50, onProjectResult = null, signal = null, projectsOverride = null) {
     const needle = (query || '').trim().toLowerCase();
     if (!needle) {
         return { totalMatches: 0 };
     }
-    const projects = await getProjects();
+    const projects = projectsOverride || await getProjects();
     let totalMatches = 0;
     for (let index = 0; index < projects.length; index += 1) {
         if (signal?.aborted) break;

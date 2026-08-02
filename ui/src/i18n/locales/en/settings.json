@@ -58,6 +58,7 @@
     "backToApp": "Back to app",
     "backToSettings": "Back to settings",
     "menu": {
+      "account": "Accounts & Members",
       "general": "General",
       "modelPool": "Model Pool",
       "agent": "Agents",
@@ -76,6 +77,7 @@
       "about": "About"
     },
     "titles": {
+      "account": "Accounts & Members",
       "general": "General",
       "modelPool": "Model Pool",
       "agent": "Agents",

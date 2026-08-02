@@ -52,7 +52,13 @@ import pty from 'node-pty';
 import fetch from 'node-fetch';
 import mime from 'mime-types';
 import JSZip from 'jszip';
-import { readPermissionSettings } from './services/permissionSettings.js';
+import {
+    DEFAULT_USER_PERMISSION_SETTINGS,
+    normalizePermissionEntry,
+    normalizePermissionSettings,
+    permissionSettingsToRuleSet,
+    readPermissionSettings,
+} from './services/permissionSettings.js';
 import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 
@@ -76,6 +82,10 @@ import {
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
+import accountRoutes from './routes/account.js';
+import adminUsersRoutes from './routes/admin-users.js';
+import instancesRoutes from './routes/instances.js';
+import adminInstancesRoutes from './routes/admin-instances.js';
 import mcpRoutes from './routes/mcp.js';
 import taskmasterRoutes from './routes/taskmaster.js';
 import memoryRoutes, { MEMORY_DASHBOARD_DIR } from './routes/memory.js';
@@ -105,21 +115,43 @@ import { getAlwaysOnDashboardEvents } from './services/always-on-events.js';
 import agentRoutes from './routes/agent.js';
 import updateRoutes from './routes/update.js';
 import projectsRoutes, { WORKSPACES_ROOT, validateWorkspacePath } from './routes/projects.js';
+import projectAccessRoutes from './routes/project-access.js';
 import userRoutes from './routes/user.js';
 import pluginsRoutes from './routes/plugins.js';
 import messagesRoutes from './routes/messages.js';
 import { closeMemoryServices, startMemoryScheduler, stopMemoryScheduler } from './services/memoryService.js';
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
-import { initializeDatabase, sessionNamesDb, applyCustomSessionNames, userDb } from './database/db.js';
+import {
+    initializeDatabase,
+    sessionNamesDb,
+    applyCustomSessionNames,
+    userDb,
+    instancesDb,
+    projectAccessDb,
+    sessionOwnersDb,
+    userToolPermissionsDb,
+} from './database/db.js';
 import { configureWebPush } from './services/vapid-keys.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
-import { validateApiKey, authenticateGroupDelegation, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
-import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
+import { validateApiKey, authenticateGroupDelegation, authenticateToken, authenticateWebSocket, requireSystemRole } from './middleware/auth.js';
+import { IS_PLATFORM } from './constants/config.js';
+import { isAuthEnabled, sanitizeUser } from './services/auth-service.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
+import { groupChatService } from './services/group-chat-service.js';
+import {
+    authorizeProjectRequest,
+    canonicalizeProjectPath,
+    createSessionOwnership,
+    filterProjectsForUser,
+    filterSessionsForUser,
+    getProjectRole,
+    getUserGeneralPath,
+    requireSessionOwner,
+} from './services/access-control.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
 // cursor-cli, openai-codex, gemini-cli) has been removed.
@@ -151,6 +183,7 @@ let projectsWatchers = [];
 let projectsWatcherDebounceTimer = null;
 const connectedClients = new Set();
 const sessionWatchRegistry = createSessionWatchRegistry();
+const interactiveRequestOwners = new Map();
 registerAlwaysOnNotificationForwarding(connectedClients);
 let isGetProjectsRunning = false; // Flag to prevent reentrant calls
 
@@ -164,6 +197,15 @@ function broadcastChatFrame(frame, originWs, userId) {
     const payload = JSON.stringify(frame);
     const delivered = new Set();
     const frameSessionId = normalizeSessionId(frame?.sessionId);
+    if (frame?.kind === 'permission_request' && typeof frame.requestId === 'string' && frameSessionId) {
+        interactiveRequestOwners.set(frame.requestId, {
+            userId: Number(userId),
+            sessionId: frameSessionId,
+            isElicitation: frame.isElicitation === true,
+        });
+    } else if (frame?.kind === 'permission_cancelled' && typeof frame.requestId === 'string') {
+        interactiveRequestOwners.delete(frame.requestId);
+    }
 
     if (frameSessionId) {
         const watchers = sessionWatchRegistry.getWatchers(frameSessionId);
@@ -204,14 +246,10 @@ function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) 
     });
 }
 
-// Broadcast progress to all connected WebSocket clients
-function broadcastProgress(progress) {
-    const message = JSON.stringify({
-        type: 'loading_progress',
-        ...progress
-    });
-    connectedClients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
+function broadcastProgressForUser(progress, userId) {
+    const message = JSON.stringify({ type: 'loading_progress', ...progress });
+    connectedClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && client.__pilotdeckUserId === Number(userId)) {
             client.send(message);
         }
     });
@@ -266,24 +304,29 @@ async function setupProjectsWatcher() {
                 // Clear project directory cache when files change
                 clearProjectDirectoryCache();
 
-                // Get updated projects list
-                const updatedProjects = await getProjects(broadcastProgress);
-
-                // Notify all connected clients about the project changes
-                const updateMessage = JSON.stringify({
-                    type: 'projects_updated',
-                    projects: updatedProjects,
-                    timestamp: new Date().toISOString(),
-                    changeType: eventType,
-                    changedFile: path.relative(rootPath, filePath),
-                    watchProvider: provider
-                });
-
-                connectedClients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(updateMessage);
+                // Project/session payloads are user scoped. Build one filtered
+                // snapshot per authenticated user instead of broadcasting the
+                // filesystem-wide project index to every browser.
+                const snapshots = new Map();
+                for (const client of connectedClients) {
+                    if (client.readyState !== WebSocket.OPEN) continue;
+                    const userId = Number(client.__pilotdeckUserId);
+                    if (!Number.isFinite(userId)) continue;
+                    if (!snapshots.has(userId)) {
+                        const user = userDb.getUserById(userId);
+                        if (!user) continue;
+                        const projects = filterProjectsForUser(await getProjects(null, { userId }), sanitizeUser(user));
+                        snapshots.set(userId, JSON.stringify({
+                            type: 'projects_updated',
+                            projects,
+                            timestamp: new Date().toISOString(),
+                            changeType: eventType,
+                            changedFile: path.basename(filePath),
+                            watchProvider: provider,
+                        }));
                     }
-                });
+                    client.send(snapshots.get(userId));
+                }
 
             } catch (error) {
                 console.error('[ERROR] Error handling project changes:', error);
@@ -412,26 +455,7 @@ const wss = new WebSocketServer({
     verifyClient: (info) => {
         console.log('WebSocket connection attempt to:', info.req.url);
 
-        // Platform / no-login mode: allow connection without token
-        if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
-            const user = authenticateWebSocket(null); // Returns first DB user
-            if (!user) {
-                console.log('[WARN] WebSocket auth bypass: No user found in database');
-                return false;
-            }
-            info.req.user = user;
-            console.log('[OK] WebSocket authenticated (bypass) for user:', user.username);
-            return true;
-        }
-
-        // Normal mode: verify token
-        // Extract token from query parameters or headers
-        const url = new URL(info.req.url, 'http://localhost');
-        const token = url.searchParams.get('token') ||
-            info.req.headers.authorization?.split(' ')[1];
-
-        // Verify token
-        const user = authenticateWebSocket(token);
+        const user = authenticateWebSocket(info.req);
         if (!user) {
             console.log('[WARN] WebSocket authentication failed');
             return false;
@@ -473,17 +497,30 @@ app.get('/health', (req, res) => {
 // Optional API key validation (if configured)
 app.use('/api', validateApiKey);
 
+const requireAdminForMutation = (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    return requireSystemRole('owner', 'admin')(req, res, next);
+};
+
 // Authentication routes (public)
 app.use('/api/auth', authRoutes);
 
-// Projects API Routes (protected)
-app.use('/api/projects', authenticateToken, projectsRoutes);
+app.use('/api/account', authenticateToken, accountRoutes);
+app.use('/api/admin', authenticateToken, requireSystemRole('owner', 'admin'), adminUsersRoutes);
+app.use('/api/admin', authenticateToken, requireSystemRole('owner', 'admin'), adminInstancesRoutes);
+app.use('/api/instances', authenticateToken, instancesRoutes);
+
+// Projects API Routes (protected and path-authorized). This prefix middleware
+// also covers the legacy direct project handlers declared later in this file.
+app.use('/api/projects', authenticateToken, authorizeProjectRequest);
+app.use('/api/projects', projectAccessRoutes);
+app.use('/api/projects', projectsRoutes);
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
 
 // MCP API Routes (protected)
-app.use('/api/mcp', authenticateToken, mcpRoutes);
+app.use('/api/mcp', authenticateToken, requireAdminForMutation, mcpRoutes);
 
 // TaskMaster API Routes (protected)
 app.use('/api/taskmaster', authenticateToken, taskmasterRoutes);
@@ -506,10 +543,10 @@ app.use('/api/skills', authenticateToken, skillsRoutes);
 app.use('/api/settings', authenticateToken, settingsRoutes);
 
 // PilotDeck unified YAML config routes (protected)
-app.use('/api/config', authenticateToken, configRoutes);
+app.use('/api/config', authenticateToken, requireAdminForMutation, configRoutes);
 
 // Gateway IM channel setup routes (protected)
-app.use('/api/gateway', authenticateToken, gatewayRoutes);
+app.use('/api/gateway', authenticateToken, requireAdminForMutation, gatewayRoutes);
 
 // Persistent multi-agent group chat routes (protected)
 app.use('/api/groups', (req, res, next) => {
@@ -523,7 +560,7 @@ app.use('/api/groups', (req, res, next) => {
 app.use('/api/user', authenticateToken, userRoutes);
 
 // Plugins API Routes (protected)
-app.use('/api/plugins', authenticateToken, pluginsRoutes);
+app.use('/api/plugins', authenticateToken, requireAdminForMutation, pluginsRoutes);
 
 // Unified session messages route (protected) — PilotDeck-only.
 app.use('/api/sessions', authenticateToken, messagesRoutes);
@@ -532,7 +569,7 @@ app.use('/api/sessions', authenticateToken, messagesRoutes);
 app.use('/api/agent', agentRoutes);
 
 // Self-update API Routes (protected)
-app.use('/api/update', authenticateToken, updateRoutes);
+app.use('/api/update', authenticateToken, requireAdminForMutation, updateRoutes);
 
 // Legacy four-provider config endpoints have been removed. The runtime
 // model is read from PilotDeck config; fall back to a static stub so any
@@ -565,7 +602,7 @@ for (const removedPrefix of PROVIDER_REMOVED_PATHS) {
 // frontend back-compat (Dashboard tab + useRouterSettings) but the data
 // now comes from `src/router/stats/TokenStatsCollector` via the
 
-app.get('/api/ccr/dashboard', authenticateToken, (_req, res) => {
+app.get('/api/ccr/dashboard', authenticateToken, requireSystemRole('owner', 'admin'), (_req, res) => {
     try {
         res.json(getRouterDashboardData());
     } catch (error) {
@@ -697,7 +734,7 @@ app.get('/api/ccr/config', authenticateToken, (_req, res) => {
     res.json(null);
 });
 
-app.get('/api/ccr/stats/summary', authenticateToken, (_req, res) => {
+app.get('/api/ccr/stats/summary', authenticateToken, requireSystemRole('owner', 'admin'), (_req, res) => {
     try {
         res.json(getRouterStatsSummary());
     } catch (error) {
@@ -707,17 +744,18 @@ app.get('/api/ccr/stats/summary', authenticateToken, (_req, res) => {
 
 app.get('/api/ccr/stats/sessions/:sessionId', authenticateToken, (req, res) => {
     try {
+        requireSessionOwner(req.params.sessionId, req.user);
         const stats = getRouterSessionStats(req.params.sessionId);
         if (!stats) {
             return res.status(404).json({ error: 'session_not_found' });
         }
         res.json(stats);
     } catch (error) {
-        res.status(500).json({ error: error?.message || 'router-stats-session failed' });
+        res.status(error?.statusCode || 500).json({ error: error?.statusCode === 404 ? 'session_not_found' : (error?.message || 'router-stats-session failed') });
     }
 });
 
-app.post('/api/ccr/stats/reset', authenticateToken, (_req, res) => {
+app.post('/api/ccr/stats/reset', authenticateToken, requireSystemRole('owner', 'admin'), (_req, res) => {
     // Reset would require reaching into per-project TokenStatsCollector
     // instances; that is not exposed today. Surface a clear hint instead
     // of silently no-oping.
@@ -727,14 +765,14 @@ app.post('/api/ccr/stats/reset', authenticateToken, (_req, res) => {
     });
 });
 
-app.put('/api/ccr/config', authenticateToken, (_req, res) => {
+app.put('/api/ccr/config', authenticateToken, requireSystemRole('owner', 'admin'), (_req, res) => {
     res.status(501).json({
         error: 'not_implemented',
         message: 'Routing configuration is owned by PilotDeck config (~/.pilotdeck/pilotdeck.yaml). Edit it directly via /api/config.',
     });
 });
 
-app.get('/memory-dashboard', authenticateToken, (req, res) => {
+app.get('/memory-dashboard', authenticateToken, requireSystemRole('owner', 'admin'), (req, res) => {
     const indexPath = path.join(MEMORY_DASHBOARD_DIR, 'index.html');
     if (!fs.existsSync(indexPath)) {
         res.status(404).type('text/plain').send('Memory dashboard assets not bundled.');
@@ -743,7 +781,7 @@ app.get('/memory-dashboard', authenticateToken, (req, res) => {
     res.sendFile(indexPath);
 });
 
-app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
+app.use('/memory-dashboard', authenticateToken, requireSystemRole('owner', 'admin'), express.static(MEMORY_DASHBOARD_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -789,8 +827,8 @@ app.use(express.static(path.join(__dirname, '../dist'), {
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
-        const projects = await getProjects(broadcastProgress);
-        res.json(projects);
+        const projects = await getProjects((progress) => broadcastProgressForUser(progress, req.user.id), { userId: req.user.id });
+        res.json(filterProjectsForUser(projects, req.user));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -799,7 +837,13 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
 app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, res) => {
     try {
         const { limit = 5, offset = 0 } = req.query;
-        const result = await getSessions(req.params.projectName, parseInt(limit), parseInt(offset));
+        const projectPath = req.projectPath || (req.params.projectName === 'general'
+            ? getUserGeneralPath(req.user.id)
+            : await extractProjectDirectory(req.params.projectName));
+        const result = await getSessions(projectPath, parseInt(limit), parseInt(offset));
+        result.sessions = filterSessionsForUser(result.sessions, projectPath, req.user);
+        result.total = result.sessions.length;
+        result.hasMore = false;
         applyCustomSessionNames(result.sessions, 'pilotdeck');
         res.json(result);
     } catch (error) {
@@ -822,6 +866,10 @@ app.put('/api/projects/:projectName/rename', authenticateToken, async (req, res)
 app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { projectName, sessionId } = req.params;
+        requireSessionOwner(sessionId, req.user, {
+            allowClaim: true,
+            projectPath: req.projectPath || await extractProjectDirectory(projectName),
+        });
         console.log(`[API] Deleting session: ${sessionId} from project: ${projectName}`);
         await deleteSession(projectName, sessionId, {
             sessionKind: req.query.sessionKind || null,
@@ -829,11 +877,12 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
             relativeTranscriptPath: req.query.relativeTranscriptPath || null,
         });
         sessionNamesDb.deleteName(sessionId, 'pilotdeck');
+        sessionOwnersDb.delete(sessionId, req.user.id);
         console.log(`[API] Session ${sessionId} deleted successfully`);
         res.json({ success: true });
     } catch (error) {
         console.error(`[API] Error deleting session ${req.params.sessionId}:`, error);
-        res.status(500).json({ error: error.message });
+        res.status(error?.statusCode || 500).json({ error: error?.statusCode === 404 ? 'Not found.' : error.message });
     }
 });
 
@@ -845,6 +894,7 @@ app.put('/api/sessions/:sessionId/rename', authenticateToken, async (req, res) =
         if (!safeSessionId || safeSessionId !== String(sessionId)) {
             return res.status(400).json({ error: 'Invalid sessionId' });
         }
+        requireSessionOwner(safeSessionId, req.user);
         const { summary, provider } = req.body;
         if (!summary || typeof summary !== 'string' || summary.trim() === '') {
             return res.status(400).json({ error: 'Summary is required' });
@@ -859,7 +909,7 @@ app.put('/api/sessions/:sessionId/rename', authenticateToken, async (req, res) =
         res.json({ success: true });
     } catch (error) {
         console.error(`[API] Error renaming session ${req.params.sessionId}:`, error);
-        res.status(500).json({ error: error.message });
+        res.status(error?.statusCode || 500).json({ error: error?.statusCode === 404 ? 'Not found.' : error.message });
     }
 });
 
@@ -876,7 +926,7 @@ app.delete('/api/projects/:projectName', authenticateToken, async (req, res) => 
 });
 
 // Create project endpoint
-app.post('/api/projects/create', authenticateToken, async (req, res) => {
+app.post('/api/projects/create', authenticateToken, requireSystemRole('owner', 'admin'), async (req, res) => {
     try {
         const { path: projectPath } = req.body;
 
@@ -885,6 +935,7 @@ app.post('/api/projects/create', authenticateToken, async (req, res) => {
         }
 
         const project = await addProjectManually(projectPath.trim());
+        projectAccessDb.ensureOwner(canonicalizeProjectPath(projectPath.trim()), req.user.id);
         res.json({ success: true, project });
     } catch (error) {
         console.error('Error creating project:', error);
@@ -914,6 +965,10 @@ app.get('/api/search/conversations', authenticateToken, async (req, res) => {
     req.on('close', () => { closed = true; abortController.abort(); });
 
     try {
+        const visibleProjects = filterProjectsForUser(
+            await getProjects(null, { userId: req.user.id }),
+            req.user,
+        );
         await searchConversations(query, limit, ({ projectResult, totalMatches, scannedProjects, totalProjects }) => {
             if (closed) return;
             if (projectResult) {
@@ -921,7 +976,7 @@ app.get('/api/search/conversations', authenticateToken, async (req, res) => {
             } else {
                 res.write(`event: progress\ndata: ${JSON.stringify({ totalMatches, scannedProjects, totalProjects })}\n\n`);
             }
-        }, abortController.signal);
+        }, abortController.signal, visibleProjects);
         if (!closed) {
             res.write(`event: done\ndata: {}\n\n`);
         }
@@ -1213,7 +1268,7 @@ function getSafeZipFilename(projectName) {
 }
 
 // Browse filesystem endpoint for project suggestions - uses existing getFileTree
-app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
+app.get('/api/browse-filesystem', authenticateToken, requireSystemRole('owner', 'admin'), async (req, res) => {
     try {
         const { path: dirPath } = req.query;
 
@@ -1302,7 +1357,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/create-folder', authenticateToken, async (req, res) => {
+app.post('/api/create-folder', authenticateToken, requireSystemRole('owner', 'admin'), async (req, res) => {
     try {
         const { path: folderPath } = req.body;
         if (!folderPath) {
@@ -1354,7 +1409,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) =
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1393,7 +1448,7 @@ app.get('/api/projects/:projectName/files/content', authenticateToken, async (re
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1467,7 +1522,7 @@ app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, offic
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1530,7 +1585,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authent
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1573,7 +1628,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticat
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1620,7 +1675,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authentica
             return res.status(400).json({ error: 'File path and worksheet index are required' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1668,7 +1723,7 @@ app.get('/api/projects/:projectName/preview/*', authenticateToken, async (req, r
         const { projectName } = req.params;
         const relativeFilePath = req.params[0] || 'index.html';
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1702,7 +1757,7 @@ app.get('/api/projects/:projectName/preview/*', authenticateToken, async (req, r
 app.get('/api/projects/:projectName/download', authenticateToken, async (req, res) => {
     try {
         const { projectName } = req.params;
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1757,7 +1812,7 @@ app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) =
             return res.status(400).json({ error: 'Content is required' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1799,7 +1854,7 @@ app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) 
         // Use extractProjectDirectory to get the actual project path
         let actualPath;
         try {
-            actualPath = await extractProjectDirectory(req.params.projectName);
+            actualPath = req.projectPath || await extractProjectDirectory(req.params.projectName);
         } catch (error) {
             console.error('Error extracting project directory:', error);
             // Fallback to simple dash replacement
@@ -1889,7 +1944,7 @@ app.post('/api/projects/:projectName/files/create', authenticateToken, async (re
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1962,7 +2017,7 @@ app.put('/api/projects/:projectName/files/rename', authenticateToken, async (req
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2034,7 +2089,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, async (req, re
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2152,7 +2207,7 @@ const uploadFilesHandler = async (req, res) => {
             }
 
             // Get project root
-            const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+            const projectRoot = req.projectPath || await extractProjectDirectory(projectName).catch(() => null);
             if (!projectRoot) {
                 return res.status(404).json({ error: 'Project not found' });
             }
@@ -2388,6 +2443,7 @@ function handleChatConnection(ws, request) {
 
             if (data.type === 'watch-session') {
                 if (requestSessionId) {
+                    requireSessionOwner(requestSessionId, request.user);
                     sessionWatchRegistry.watch(requestSessionId, ws);
                 }
                 return;
@@ -2395,6 +2451,7 @@ function handleChatConnection(ws, request) {
 
             if (data.type === 'unwatch-session') {
                 if (requestSessionId) {
+                    requireSessionOwner(requestSessionId, request.user);
                     sessionWatchRegistry.unwatch(requestSessionId, ws);
                 }
                 return;
@@ -2412,7 +2469,19 @@ function handleChatConnection(ws, request) {
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 const commandSessionId = normalizeSessionId(data.options?.sessionId || data.options?.sessionKey);
+                const requestedProjectPath = data.options?.projectPath || data.options?.cwd || getUserGeneralPath(userId);
+                const authorizedProjectPath = canonicalizeProjectPath(requestedProjectPath);
+                const projectRole = getProjectRole(authorizedProjectPath, request.user);
+                if (!projectRole) {
+                    const notFound = new Error('Project not found.');
+                    notFound.statusCode = 404;
+                    throw notFound;
+                }
                 if (commandSessionId) {
+                    requireSessionOwner(commandSessionId, request.user, {
+                        allowClaim: true,
+                        projectPath: authorizedProjectPath,
+                    });
                     sessionWatchRegistry.watch(commandSessionId, ws);
                     const userVisibleInput = typeof data.options?.userVisibleInput === 'string'
                         ? data.options.userVisibleInput.trim()
@@ -2448,22 +2517,72 @@ function handleChatConnection(ws, request) {
                     }
                 }
                 const providerHint = data.options?.providerHint || data.type.replace('-command', '');
-                await runChatViaGateway(data.command, data.options, streamWriter, providerHint);
+                const personalPermissionSettings = userToolPermissionsDb.get(userId) || DEFAULT_USER_PERMISSION_SETTINGS;
+                const personalPermissionRules = permissionSettingsToRuleSet(personalPermissionSettings);
+                const securedOptions = {
+                    ...(data.options || {}),
+                    projectPath: authorizedProjectPath,
+                    cwd: authorizedProjectPath,
+                    authenticatedUserId: userId,
+                    permissionSettings: personalPermissionSettings,
+                    permissionRules: personalPermissionRules,
+                    ...(projectRole === 'viewer'
+                        ? {
+                            runMode: 'ask',
+                            permissionMode: 'default',
+                            basePermissionMode: 'default',
+                            permissionSettings: { ...personalPermissionSettings, skipPermissions: false },
+                            canPrompt: false,
+                            permissionRules: {
+                                ...personalPermissionRules,
+                                deny: [...personalPermissionRules.deny, ...[
+                                    'bash', 'write_file', 'edit_file', 'edit_notebook', 'execute_code',
+                                    'agent', 'group_chat', 'task_create', 'task_stop', 'todo_write', 'mcp__*',
+                                ].map((toolName) => ({ source: 'policy', behavior: 'deny', toolName }))],
+                            },
+                        }
+                        : {}),
+                };
+                const result = await runChatViaGateway(data.command, securedOptions, streamWriter, providerHint);
+                if (result?.sessionKey) {
+                    createSessionOwnership(result.sessionKey, authorizedProjectPath, request.user);
+                }
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
+                requireSessionOwner(data.sessionId, request.user);
                 const provider = data.provider || 'pilotdeck';
                 const success = await abortViaGateway(data.sessionId, provider);
                 writer.send(createNormalizedMessage({ kind: 'complete', exitCode: success ? 0 : 1, aborted: true, success, sessionId: data.sessionId, provider }));
             } else if (data.type === 'permission-response') {
+                if (!data.sessionId) throw new Error('Session not found.');
+                requireSessionOwner(data.sessionId, request.user);
                 if (data.requestId) {
+                    const requestOwner = interactiveRequestOwners.get(data.requestId);
+                    if (!requestOwner || requestOwner.userId !== userId
+                        || requestOwner.sessionId !== normalizeSessionId(data.sessionId)
+                        || requestOwner.isElicitation) throw new Error('Permission request not found.');
                     await decidePermissionViaGateway(
                         data.requestId,
                         data.allow ? 'allow' : 'deny',
                         {
-                            remember: Boolean(data.rememberEntry),
+                            // Persistent rules belong to the authenticated
+                            // user, never the deployment-wide gateway file.
+                            remember: false,
                             reason: data.message,
                         },
                     );
+                    if (data.allow && typeof data.rememberEntry === 'string') {
+                        const remembered = normalizePermissionEntry(data.rememberEntry);
+                        if (remembered) {
+                            const current = userToolPermissionsDb.get(userId) || DEFAULT_USER_PERMISSION_SETTINGS;
+                            userToolPermissionsDb.set(userId, normalizePermissionSettings({
+                                ...current,
+                                allowedTools: [...(current.allowedTools || []), remembered],
+                                lastUpdated: new Date().toISOString(),
+                            }));
+                        }
+                    }
+                    interactiveRequestOwners.delete(data.requestId);
                     const resolvedSessionId = normalizeSessionId(data.sessionId);
                     if (resolvedSessionId) {
                         broadcastToSessionWatchers(
@@ -2479,6 +2598,7 @@ function handleChatConnection(ws, request) {
                     }
                 }
             } else if (data.type === 'session-permission-grant') {
+                requireSessionOwner(data.sessionId, request.user);
                 const result = await grantSessionPermissionViaGateway(data.sessionId, data.entry);
                 ws.send(JSON.stringify({
                     type: 'session-permission-grant-result',
@@ -2489,8 +2609,15 @@ function handleChatConnection(ws, request) {
                     ...(typeof result.entry === 'string' ? { grantedEntry: result.entry } : {}),
                 }));
             } else if (data.type === 'elicitation-response') {
+                if (!data.sessionId) throw new Error('Session not found.');
+                requireSessionOwner(data.sessionId, request.user);
                 if (data.requestId) {
+                    const requestOwner = interactiveRequestOwners.get(data.requestId);
+                    if (!requestOwner || requestOwner.userId !== userId
+                        || requestOwner.sessionId !== normalizeSessionId(data.sessionId)
+                        || !requestOwner.isElicitation) throw new Error('Elicitation request not found.');
                     await elicitationRespondViaGateway(data.requestId, data.answer);
+                    interactiveRequestOwners.delete(data.requestId);
                     const resolvedSessionId = normalizeSessionId(data.sessionId);
                     if (resolvedSessionId) {
                         broadcastToSessionWatchers(
@@ -2507,6 +2634,7 @@ function handleChatConnection(ws, request) {
                 }
             } else if (data.type === 'check-session-status') {
                 const sessionId = data.sessionId;
+                requireSessionOwner(sessionId, request.user);
                 if (normalizeSessionId(sessionId)) {
                     sessionWatchRegistry.watch(sessionId, ws);
                 }
@@ -2524,6 +2652,7 @@ function handleChatConnection(ws, request) {
                     tokenBudget: getSessionTokenBudget(sessionId),
                 });
             } else if (data.type === 'get-pending-permissions') {
+                if (data.sessionId) requireSessionOwner(data.sessionId, request.user);
                 // Pending-permission introspection is gateway-internal. The
                 // permission_request event already contains everything the
                 // UI needs, so the response is now an empty stub.
@@ -2533,7 +2662,7 @@ function handleChatConnection(ws, request) {
                     data: [],
                 });
             } else if (data.type === 'get-active-sessions') {
-                const ids = getActiveSessionIdsViaGateway();
+                const ids = getActiveSessionIdsViaGateway().filter((id) => sessionOwnersDb.isOwner(id, userId));
                 // Keep the four-provider keys so the legacy UI store does
                 // not need to change shape; everything routes through
                 // PilotDeck under the hood.
@@ -3041,7 +3170,7 @@ app.post('/api/projects/:projectName/upload-attachments', authenticateToken, asy
 
         let attachmentDir = null;
         try {
-            const projectRoot = await extractProjectDirectory(req.params.projectName);
+            const projectRoot = req.projectPath || await extractProjectDirectory(req.params.projectName);
             const targetDir = path.join(projectRoot, '.tmp', 'chat-attachments', `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`);
             const validation = validatePathInProject(projectRoot, targetDir);
             if (!validation.valid) {
@@ -3175,6 +3304,10 @@ app.post('/api/projects/:projectName/upload-images', authenticateToken, async (r
 app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authenticateToken, async (req, res) => {
     try {
         const { projectName, sessionId } = req.params;
+        requireSessionOwner(sessionId, req.user, {
+            allowClaim: true,
+            projectPath: req.projectPath || await extractProjectDirectory(projectName),
+        });
         const { provider = 'pilotdeck' } = req.query;
         const homeDir = os.homedir();
 
@@ -3286,7 +3419,7 @@ app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authentica
         // Extract actual project path
         let projectPath;
         try {
-            projectPath = await extractProjectDirectory(projectName);
+            projectPath = req.projectPath || await extractProjectDirectory(projectName);
         } catch (error) {
             console.error('Error extracting project directory:', error);
             return res.status(500).json({ error: 'Failed to determine project path' });
@@ -3358,7 +3491,7 @@ app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authentica
         });
     } catch (error) {
         console.error('Error reading session token usage:', error);
-        res.status(500).json({ error: 'Failed to read session token usage' });
+        res.status(error?.statusCode || 500).json({ error: error?.statusCode === 404 ? 'Not found.' : 'Failed to read session token usage' });
     }
 });
 
@@ -3527,12 +3660,13 @@ function listenWithPortFallback(srv, preferredPort, host) {
 }
 
 async function ensureLocalUserWhenAuthDisabled() {
-    if (!DISABLE_LOCAL_AUTH || userDb.hasUsers()) {
+    if (isAuthEnabled() || userDb.hasUsers()) {
         return;
     }
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
-    userDb.createUser('local', passwordHash);
-    console.log(`${c.info('[INFO]')} Web UI login is disabled (default). Using built-in user. Set PILOTDECK_DISABLE_LOCAL_AUTH=0 to require username/password.`);
+    const user = userDb.createUser('local', passwordHash, { displayName: 'Local User', systemRole: 'owner' });
+    instancesDb.ensureLocalForUser(user);
+    console.log(`${c.info('[INFO]')} Web UI login is disabled (default). Enable multi-user login from Settings when ready.`);
 }
 
 // Initialize database and start server
@@ -3545,6 +3679,11 @@ async function startServer() {
                     ensureLocalUserWhenAuthDisabledFn: ensureLocalUserWhenAuthDisabled,
                     configureWebPushFn: configureWebPush
                 });
+                const migratedOwner = userDb.getFirstUser();
+                if (migratedOwner && !userToolPermissionsDb.get(migratedOwner.id)) {
+                    userToolPermissionsDb.set(migratedOwner.id, readPermissionSettings());
+                }
+                groupChatService.recoverPendingTurns();
             },
             listenFn: async () => {
                 // Check if running in production mode (dist folder exists)

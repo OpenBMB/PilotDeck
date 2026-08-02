@@ -20,11 +20,26 @@ import { extractProjectDirectory } from '../projects.js';
 import { detectTaskMasterMCPServer } from '../utils/mcp-detector.js';
 import { broadcastTaskMasterProjectUpdate, broadcastTaskMasterTasksUpdate } from '../utils/taskmaster-websocket.js';
 import { prepareCliSpawn } from '../utils/processSpawn.js';
+import { requireProjectRole, resolveProjectNameForUser } from '../services/access-control.js';
+import { requireSystemRole } from '../middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const router = express.Router();
+
+router.param('projectName', async (req, res, next, projectName) => {
+    try {
+        const projectPath = await resolveProjectNameForUser(projectName, req.user);
+        const minimumRole = ['GET', 'HEAD'].includes(req.method) ? 'viewer' : 'editor';
+        const authorized = requireProjectRole(projectPath, req.user, minimumRole);
+        req.projectPath = authorized.projectPath;
+        req.projectRole = authorized.projectRole;
+        return next();
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ error: error.statusCode === 404 ? 'Not found.' : error.message });
+    }
+});
 
 function spawnCli(command, args, options = {}) {
     const prepared = prepareCliSpawn(command, args, options);
@@ -353,7 +368,7 @@ router.get('/detect/:projectName', async (req, res) => {
  * Detect TaskMaster configuration for all known projects
  * This endpoint works with the existing projects system
  */
-router.get('/detect-all', async (req, res) => {
+router.get('/detect-all', requireSystemRole('owner', 'admin'), async (req, res) => {
     try {
         // Import getProjects from the projects module
         const { getProjects } = await import('../projects.js');

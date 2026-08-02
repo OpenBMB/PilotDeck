@@ -1,10 +1,10 @@
 import express from 'express';
-import { apiKeysDb, credentialsDb, notificationPreferencesDb, pushSubscriptionsDb } from '../database/db.js';
+import { apiKeysDb, credentialsDb, notificationPreferencesDb, pushSubscriptionsDb, userToolPermissionsDb } from '../database/db.js';
 import { getPublicKey } from '../services/vapid-keys.js';
 import { createNotificationEvent, notifyUserIfEnabled } from '../services/notification-orchestrator.js';
 import {
-  readPermissionSettings,
-  writePermissionSettings,
+  DEFAULT_USER_PERMISSION_SETTINGS,
+  normalizePermissionSettings,
 } from '../services/permissionSettings.js';
 
 const router = express.Router();
@@ -13,9 +13,9 @@ const router = express.Router();
 // Tool Permission Settings
 // ===============================
 
-router.get('/permissions', async (_req, res) => {
+router.get('/permissions', async (req, res) => {
   try {
-    res.json({ success: true, permissions: readPermissionSettings() });
+    res.json({ success: true, permissions: userToolPermissionsDb.get(req.user.id) || DEFAULT_USER_PERMISSION_SETTINGS });
   } catch (error) {
     console.error('Error fetching permission settings:', error);
     res.status(500).json({ error: 'Failed to fetch permission settings' });
@@ -24,7 +24,13 @@ router.get('/permissions', async (_req, res) => {
 
 router.put('/permissions', async (req, res) => {
   try {
-    const permissions = writePermissionSettings(req.body || {});
+    const current = userToolPermissionsDb.get(req.user.id) || DEFAULT_USER_PERMISSION_SETTINGS;
+    const permissions = normalizePermissionSettings({
+      ...current,
+      ...(req.body || {}),
+      lastUpdated: new Date().toISOString(),
+    });
+    userToolPermissionsDb.set(req.user.id, permissions);
     res.json({ success: true, permissions });
   } catch (error) {
     console.error('Error saving permission settings:', error);
@@ -282,7 +288,8 @@ router.post('/push/unsubscribe', async (req, res) => {
     if (!endpoint) {
       return res.status(400).json({ error: 'Missing endpoint' });
     }
-    pushSubscriptionsDb.removeSubscription(endpoint);
+    const removed = pushSubscriptionsDb.removeSubscription(endpoint, req.user.id);
+    if (removed.changes === 0) return res.status(404).json({ error: 'Subscription not found' });
 
     // Disable webPush in preferences to match subscription state
     const currentPrefs = notificationPreferencesDb.getPreferences(req.user.id);

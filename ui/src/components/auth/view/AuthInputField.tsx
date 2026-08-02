@@ -3,7 +3,7 @@ type AuthInputFieldProps = {
   label: string;
   value: string;
   onChange: (nextValue: string) => void;
-  placeholder: string;
+  placeholder?: string;
   isDisabled: boolean;
   type?: 'text' | 'password' | 'email';
   name?: string;

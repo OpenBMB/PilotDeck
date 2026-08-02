@@ -13,6 +13,9 @@ import { resolvePilotHome } from '../utils/pilotPaths.js';
 import { executeTurnkeySlashCommand } from '../turnkey-slash.js';
 import { getRegisteredCommands } from '../../../src/adapters/channel/protocol/ChannelCommandRegistry.js';
 import { runChatSearchFormatted } from '../../../src/cli/commands/chatSearch.js';
+import { projectAccessDb } from '../database/db.js';
+import { canonicalizeProjectPath, getUserGeneralPath, requireProjectRole } from '../services/access-control.js';
+import { isAuthEnabled } from '../services/auth-service.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +23,32 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+function isPathInside(base, candidate) {
+  const relative = path.relative(path.resolve(base), path.resolve(candidate));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function authorizeCommandProject(projectPath, user) {
+  if (!projectPath) return null;
+  return requireProjectRole(canonicalizeProjectPath(projectPath), user, 'viewer').projectPath;
+}
+
+function isAuthorizedCommandFile(commandPath, user) {
+  const resolvedPath = path.resolve(commandPath);
+  const pilotHome = resolvePilotHome(process.env);
+  const sharedBases = [path.join(pilotHome, 'commands'), path.join(pilotHome, 'skills')];
+  if (sharedBases.some((base) => isPathInside(base, resolvedPath))) return true;
+  if (!isAuthEnabled()) return /[/\\]\.pilotdeck[/\\](commands|skills)[/\\]/u.test(resolvedPath);
+  const projectPaths = [
+    getUserGeneralPath(user.id),
+    ...projectAccessDb.listForUser(user.id).map((entry) => entry.project_path),
+  ];
+  return projectPaths.some((projectPath) => [
+    path.join(projectPath, '.pilotdeck', 'commands'),
+    path.join(projectPath, '.pilotdeck', 'skills'),
+  ].some((base) => isPathInside(base, resolvedPath)));
+}
 
 /**
  * Slash commands curated to always appear at the top of the menu in this exact
@@ -884,7 +913,7 @@ Custom commands can be created in:
  */
 router.post('/list', async (req, res) => {
   try {
-    const { projectPath } = req.body;
+    const projectPath = authorizeCommandProject(req.body?.projectPath, req.user);
     const pilotHome = resolvePilotHome(process.env);
 
     const customCommandSources = [];
@@ -953,8 +982,8 @@ router.post('/list', async (req, res) => {
     });
   } catch (error) {
     console.error('Error listing commands:', error);
-    res.status(500).json({
-      error: 'Failed to list commands',
+    res.status(error?.statusCode || 500).json({
+      error: error?.statusCode === 404 ? 'Not found.' : 'Failed to list commands',
       message: error.message,
     });
   }
@@ -974,14 +1003,13 @@ router.post('/load', async (req, res) => {
       });
     }
 
-    // Security: Prevent path traversal. Allow paths under any
+    // Command bodies may only be read from shared PilotDeck command folders or
+    // from a project the authenticated user can access.
     const resolvedPath = path.resolve(commandPath);
-    const inHome = resolvedPath.startsWith(path.resolve(os.homedir()));
-    const inPilotdeckSubdir = /\.pilotdeck\/(commands|skills)\//.test(resolvedPath);
-    if (!inHome && !inPilotdeckSubdir) {
-      return res.status(403).json({
-        error: 'Access denied',
-        message: 'Command must be in a .pilotdeck/commands or .pilotdeck/skills directory'
+    if (!isAuthorizedCommandFile(resolvedPath, req.user)) {
+      return res.status(404).json({
+        error: 'Command not found',
+        message: 'Command is not available to this account.'
       });
     }
 
@@ -1019,6 +1047,7 @@ router.post('/load', async (req, res) => {
 router.post('/execute', async (req, res) => {
   try {
     const { commandName, commandPath, args = [], rawArgs, rawInput, context = {} } = req.body;
+    if (context?.projectPath) context.projectPath = authorizeCommandProject(context.projectPath, req.user);
 
     if (!commandName) {
       return res.status(400).json({
@@ -1111,14 +1140,11 @@ router.post('/execute', async (req, res) => {
           path.resolve(path.join(context.projectPath, '.pilotdeck', 'skills')),
         );
       }
-      const isUnder = (base) => {
-        const rel = path.relative(base, resolvedPath);
-        return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-      };
-      if (!allowedBases.some(isUnder)) {
-        return res.status(403).json({
-          error: 'Access denied',
-          message: 'Command must be in a .pilotdeck/commands or .pilotdeck/skills directory'
+      if (!allowedBases.some((base) => isPathInside(base, resolvedPath))
+          || !isAuthorizedCommandFile(resolvedPath, req.user)) {
+        return res.status(404).json({
+          error: 'Command not found',
+          message: 'Command is not available to this account.'
         });
       }
     }
@@ -1154,8 +1180,8 @@ router.post('/execute', async (req, res) => {
     }
 
     console.error('Error executing command:', error);
-    res.status(500).json({
-      error: 'Failed to execute command',
+    res.status(error?.statusCode || 500).json({
+      error: error?.statusCode === 404 ? 'Not found.' : 'Failed to execute command',
       message: error.message
     });
   }

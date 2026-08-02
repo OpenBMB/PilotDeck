@@ -4,9 +4,26 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { extractProjectDirectory } from '../projects.js';
 import { runChatViaGateway } from '../pilotdeck-bridge.js';
+import { requireProjectRole, resolveProjectNameForUser } from '../services/access-control.js';
 
 const router = express.Router();
 const COMMIT_DIFF_CHARACTER_LIMIT = 500_000;
+
+router.use(async (req, res, next) => {
+  const projectName = req.query?.project || req.body?.project;
+  if (!projectName) return next();
+  try {
+    const projectPath = await resolveProjectNameForUser(String(projectName), req.user);
+    const readOnlyPost = req.path === '/generate-commit-message';
+    const minimumRole = ['GET', 'HEAD'].includes(req.method) || readOnlyPost ? 'viewer' : 'editor';
+    const authorized = requireProjectRole(projectPath, req.user, minimumRole);
+    req.projectPath = authorized.projectPath;
+    req.projectRole = authorized.projectRole;
+    return next();
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.statusCode === 404 ? 'Not found.' : error.message });
+  }
+});
 
 function spawnAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {

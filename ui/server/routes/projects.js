@@ -16,6 +16,9 @@ import {
   applyWorkCycle,
   archiveWorkCycle,
 } from '../discovery-plans.js';
+import { projectAccessDb } from '../database/db.js';
+import { canonicalizeProjectPath } from '../services/access-control.js';
+import { requireSystemRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -198,7 +201,7 @@ function getDiscoveryPlanErrorStatus(error) {
 
 export async function handleGetProjectDiscoveryPlans(req, res) {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     if (!projectName) {
       return res.status(400).json({ error: 'projectName is required' });
     }
@@ -212,7 +215,7 @@ export async function handleGetProjectDiscoveryPlans(req, res) {
 
 export async function handleGetProjectDiscoveryContext(req, res) {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     if (!projectName) {
       return res.status(400).json({ error: 'projectName is required' });
     }
@@ -226,7 +229,7 @@ export async function handleGetProjectDiscoveryContext(req, res) {
 
 export async function handleExecuteProjectDiscoveryPlan(req, res) {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     const planId = getTrimmedParam(req.params?.planId);
     if (!projectName) {
       return res.status(400).json({ error: 'projectName is required' });
@@ -250,7 +253,7 @@ router.post('/:projectName/discovery-plans/:planId/execute', handleExecuteProjec
 
 router.get('/:projectName/discovery-plans/:planId/report', async (req, res) => {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     const planId = getTrimmedParam(req.params?.planId);
     if (!projectName) return res.status(400).json({ error: 'projectName is required' });
     if (!planId) return res.status(400).json({ error: 'planId is required' });
@@ -266,7 +269,7 @@ router.get('/:projectName/discovery-plans/:planId/report', async (req, res) => {
 
 router.get('/:projectName/work-cycles', async (req, res) => {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     if (!projectName) return res.status(400).json({ error: 'projectName is required' });
 
     const result = await getProjectWorkCycles(projectName);
@@ -280,7 +283,7 @@ router.get('/:projectName/work-cycles', async (req, res) => {
 
 router.post('/:projectName/work-cycles/:cycleId/apply', async (req, res) => {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     const cycleId = getTrimmedParam(req.params?.cycleId);
     if (!projectName) return res.status(400).json({ error: 'projectName is required' });
     if (!cycleId) return res.status(400).json({ error: 'cycleId is required' });
@@ -296,7 +299,7 @@ router.post('/:projectName/work-cycles/:cycleId/apply', async (req, res) => {
 
 router.post('/:projectName/work-cycles/:cycleId/archive', async (req, res) => {
   try {
-    const projectName = getTrimmedParam(req.params?.projectName);
+    const projectName = getTrimmedParam(req.projectPath || req.params?.projectName);
     const cycleId = getTrimmedParam(req.params?.cycleId);
     if (!projectName) return res.status(400).json({ error: 'projectName is required' });
     if (!cycleId) return res.status(400).json({ error: 'cycleId is required' });
@@ -321,7 +324,7 @@ router.post('/:projectName/work-cycles/:cycleId/archive', async (req, res) => {
  * - githubTokenId?: number (optional, ID of stored token)
  * - newGithubToken?: string (optional, one-time token)
  */
-router.post('/create-workspace', async (req, res) => {
+router.post('/create-workspace', requireSystemRole('owner', 'admin'), async (req, res) => {
   try {
     const { workspaceType, path: workspacePath, githubUrl, githubTokenId, newGithubToken } = req.body;
 
@@ -364,6 +367,7 @@ router.post('/create-workspace', async (req, res) => {
 
       // Add the existing workspace to the project list
       const project = await addProjectManually(absolutePath);
+      projectAccessDb.ensureOwner(canonicalizeProjectPath(absolutePath), req.user.id);
 
       return res.json({
         success: true,
@@ -429,6 +433,7 @@ router.post('/create-workspace', async (req, res) => {
 
         // Add the cloned repo path to the project list
         const project = await addProjectManually(clonePath);
+        projectAccessDb.ensureOwner(canonicalizeProjectPath(clonePath), req.user.id);
 
         return res.json({
           success: true,
@@ -439,6 +444,7 @@ router.post('/create-workspace', async (req, res) => {
 
       // Add the new workspace to the project list (no clone)
       const project = await addProjectManually(absolutePath);
+      projectAccessDb.ensureOwner(canonicalizeProjectPath(absolutePath), req.user.id);
 
       return res.json({
         success: true,
@@ -481,7 +487,7 @@ async function getGithubTokenById(tokenId, userId) {
  * Clone repository with progress streaming (SSE)
  * GET /api/projects/clone-progress
  */
-router.get('/clone-progress', async (req, res) => {
+router.get('/clone-progress', requireSystemRole('owner', 'admin'), async (req, res) => {
   const { path: workspacePath, githubUrl, githubTokenId, newGithubToken } = req.query;
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -583,6 +589,7 @@ router.get('/clone-progress', async (req, res) => {
       if (code === 0) {
         try {
           const project = await addProjectManually(clonePath);
+          projectAccessDb.ensureOwner(canonicalizeProjectPath(clonePath), req.user.id);
           sendEvent('complete', { project, message: 'Repository cloned successfully' });
         } catch (error) {
           sendEvent('error', { message: `Clone succeeded but failed to add project: ${error.message}` });

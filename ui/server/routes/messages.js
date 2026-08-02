@@ -17,6 +17,12 @@
 import express from 'express';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import { createNormalizedMessage } from '../pilotdeck-message.js';
+import {
+  canonicalizeProjectPath,
+  createSessionOwnership,
+  requireProjectRole,
+  requireSessionOwner,
+} from '../services/access-control.js';
 
 const router = express.Router();
 const REPO_ROOT = process.cwd();
@@ -30,6 +36,9 @@ router.get('/:sessionId/messages', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const projectPath = String(req.query.projectPath || req.query.projectName || REPO_ROOT);
+    const canonicalProjectPath = canonicalizeProjectPath(projectPath);
+    requireProjectRole(canonicalProjectPath, req.user, 'viewer');
+    requireSessionOwner(sessionId, req.user, { allowClaim: true, projectPath: canonicalProjectPath });
     const limitParam = req.query.limit;
     const limit = limitParam !== undefined && limitParam !== null && limitParam !== ''
       ? parseInt(limitParam, 10)
@@ -39,7 +48,7 @@ router.get('/:sessionId/messages', async (req, res) => {
     const gateway = await getPilotDeckGateway();
     const result = await gateway.readSessionMessages({
       sessionKey: sessionId,
-      projectKey: projectPath,
+      projectKey: canonicalProjectPath,
       limit: limit ?? undefined,
       cursor: offset > 0 ? String(offset) : undefined,
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
@@ -67,6 +76,7 @@ router.get('/:sessionId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_session_messages failed:', error);
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: 'Not found.' });
     return res.json({ messages: [], total: 0, hasMore: false, offset: 0, limit: null });
   }
 });
@@ -75,6 +85,9 @@ router.post('/:sessionId/fork', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const projectPath = String(req.body?.projectPath || req.body?.projectName || req.query.projectPath || REPO_ROOT);
+    const canonicalProjectPath = canonicalizeProjectPath(projectPath);
+    requireProjectRole(canonicalProjectPath, req.user, 'viewer');
+    requireSessionOwner(sessionId, req.user, { allowClaim: true, projectPath: canonicalProjectPath });
     const fromEntryId = String(req.body?.fromEntryId || '');
     if (!fromEntryId) {
       return res.status(400).json({ error: 'fromEntryId is required' });
@@ -83,10 +96,11 @@ router.post('/:sessionId/fork', async (req, res) => {
     const gateway = await getPilotDeckGateway();
     const result = await gateway.forkSession({
       sessionKey: sessionId,
-      projectKey: projectPath,
+      projectKey: canonicalProjectPath,
       fromEntryId,
     });
 
+    createSessionOwnership(result.newSessionKey, canonicalProjectPath, req.user);
     return res.json({
       newSessionId: result.newSessionKey,
       prefillText: result.prefillText,
@@ -95,6 +109,7 @@ router.post('/:sessionId/fork', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] fork_session failed:', error);
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: 'Not found.' });
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
     if (code.startsWith('fork_')) {
       return res.status(400).json({
@@ -112,12 +127,15 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
   try {
     const { sessionId, subagentId } = req.params;
     const projectPath = String(req.query.projectPath || req.query.projectName || REPO_ROOT);
+    const canonicalProjectPath = canonicalizeProjectPath(projectPath);
+    requireProjectRole(canonicalProjectPath, req.user, 'viewer');
+    requireSessionOwner(sessionId, req.user, { allowClaim: true, projectPath: canonicalProjectPath });
 
     const gateway = await getPilotDeckGateway();
     const result = await gateway.readSubagentMessages({
       sessionKey: sessionId,
       subagentId,
-      projectKey: projectPath,
+      projectKey: canonicalProjectPath,
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
         ? { sessionKind: req.query.sessionKind }
         : {}),
@@ -140,6 +158,7 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_subagent_messages failed:', error);
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: 'Not found.' });
     return res.json({ messages: [], total: 0, hasMore: false });
   }
 });

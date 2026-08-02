@@ -20,6 +20,7 @@
     "server": "npm run check:runtime && tsx src/cli/pilotdeck.ts server",
     "server:built": "npm run check:runtime && node dist/src/cli/pilotdeck.js server",
     "skills:migrate": "tsx src/cli/pilotdeck.ts skills migrate",
+    "auth:cli": "node ui/server/scripts/auth-cli.js",
     "predev": "npm run check:runtime && node scripts/bootstrap-pilotdeck-config.mjs",
     "dev": "node scripts/dev-launcher.mjs",
     "test": "npm run build && node --test --test-force-exit --test-timeout 60000 \"dist/tests/**/*.test.js\" \"dist/tests/**/*.spec.js\"",

@@ -1,7 +1,8 @@
 -- Initialize authentication database
 PRAGMA foreign_keys = ON;
 
--- Users table (single user system)
+-- Users remain available while authentication is disabled. Once multi-user
+-- login is enabled, the first migrated user becomes the immutable owner.
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
@@ -11,7 +12,11 @@ CREATE TABLE IF NOT EXISTS users (
     is_active BOOLEAN DEFAULT 1,
     git_name TEXT,
     git_email TEXT,
-    has_completed_onboarding BOOLEAN DEFAULT 0
+    has_completed_onboarding BOOLEAN DEFAULT 0,
+    display_name TEXT,
+    system_role TEXT NOT NULL DEFAULT 'member' CHECK (system_role IN ('owner', 'admin', 'member')),
+    must_change_password BOOLEAN NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for performance
@@ -98,6 +103,113 @@ CREATE TABLE IF NOT EXISTS app_config (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Revocable browser sessions. Only a SHA-256 digest is persisted; the random
+-- bearer value itself lives in an HttpOnly cookie.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT UNIQUE NOT NULL,
+    csrf_hash TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    idle_expires_at DATETIME NOT NULL,
+    absolute_expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    user_agent TEXT,
+    ip_hash TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active
+    ON auth_sessions(user_id, revoked_at, idle_expires_at);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER,
+    event_type TEXT NOT NULL,
+    target_type TEXT,
+    target_id TEXT,
+    outcome TEXT NOT NULL DEFAULT 'success',
+    ip_hash TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created
+    ON audit_events(created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS project_access (
+    project_path TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+    granted_by INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_path, user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_owners (
+    session_key TEXT PRIMARY KEY,
+    project_path TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_owners_user_project
+    ON session_owners(user_id, project_path);
+
+CREATE TABLE IF NOT EXISTS user_tool_permissions (
+    user_id INTEGER PRIMARY KEY,
+    settings_json TEXT NOT NULL DEFAULT '{"version":1,"allowedTools":[],"disallowedTools":[],"skipPermissions":false}',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS pilotdeck_instances (
+    id TEXT PRIMARY KEY,
+    owner_user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('local', 'remote')),
+    endpoint TEXT,
+    status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('pending', 'approved', 'rejected', 'disabled')),
+    is_default BOOLEAN NOT NULL DEFAULT 0,
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    approved_by INTEGER,
+    approved_at DATETIME,
+    last_checked_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pilotdeck_instances_owner
+    ON pilotdeck_instances(owner_user_id, status, is_default);
+
+CREATE TABLE IF NOT EXISTS pilotdeck_instance_secrets (
+    instance_id TEXT PRIMARY KEY,
+    encrypted_value TEXT NOT NULL,
+    iv TEXT NOT NULL,
+    auth_tag TEXT NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES pilotdeck_instances(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS pilotdeck_instance_projects (
+    instance_id TEXT NOT NULL,
+    project_path TEXT NOT NULL,
+    workspace_key TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (instance_id, project_path),
+    FOREIGN KEY (instance_id) REFERENCES pilotdeck_instances(id) ON DELETE CASCADE
+);
+
 -- Persistent agent group chats. Group-backed PilotDeck sessions are kept in
 -- a hidden gateway project; these tables own the product-facing room state.
 CREATE TABLE IF NOT EXISTS group_rooms (
@@ -110,6 +222,8 @@ CREATE TABLE IF NOT EXISTS group_rooms (
     muted BOOLEAN NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    owner_user_id INTEGER,
+    coordinator_instance_id TEXT,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -128,6 +242,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     config_json TEXT NOT NULL DEFAULT '{}',
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    instance_id TEXT,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (room_id, id),
     FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
@@ -136,16 +251,14 @@ CREATE TABLE IF NOT EXISTS group_members (
 CREATE INDEX IF NOT EXISTS idx_group_members_room_position
     ON group_members(room_id, is_active, position);
 
--- Human participants are deliberately lightweight for the single-user MVP.
--- The authenticated owner is inserted at room creation and bound to the
--- room's main PilotDeck member. Future multi-user work can add invitations
--- without changing message ownership or entry-agent resolution.
 CREATE TABLE IF NOT EXISTS group_participants (
     room_id TEXT NOT NULL,
     user_id INTEGER NOT NULL,
     display_name TEXT NOT NULL,
     bound_member_id TEXT NOT NULL DEFAULT 'main',
-    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+    bound_instance_id TEXT,
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'moderator', 'member')),
+    muted BOOLEAN NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -161,6 +274,9 @@ CREATE TABLE IF NOT EXISTS group_turns (
     entry_member_id TEXT NOT NULL,
     trigger_source TEXT NOT NULL CHECK (trigger_source IN ('auto', 'mentions')),
     status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    message_sequence INTEGER,
+    idempotency_key TEXT,
+    required_delegates_json TEXT NOT NULL DEFAULT '[]',
     error TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -170,6 +286,23 @@ CREATE TABLE IF NOT EXISTS group_turns (
 
 CREATE INDEX IF NOT EXISTS idx_group_turns_room_created
     ON group_turns(room_id, created_at, id);
+
+-- Existing databases may already have `group_turns` without
+-- `idempotency_key`. The JS migration adds that column first and only then
+-- creates the unique index, so it must not be created in this bootstrap file.
+
+CREATE TABLE IF NOT EXISTS group_delegation_grants (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT UNIQUE NOT NULL,
+    room_id TEXT NOT NULL,
+    turn_id TEXT NOT NULL,
+    entry_instance_id TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (turn_id) REFERENCES group_turns(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS group_messages (
     id TEXT PRIMARY KEY,

@@ -3,13 +3,16 @@ import type { ReactNode } from 'react';
 export type AuthUser = {
   id?: number | string;
   username: string;
+  displayName?: string;
+  systemRole?: 'owner' | 'admin' | 'member';
+  mustChangePassword?: boolean;
   [key: string]: unknown;
 };
 
 export type AuthActionResult = { success: true } | { success: false; error: string };
 
 export type AuthSessionPayload = {
-  token?: string;
+  csrfToken?: string;
   user?: AuthUser;
   error?: string;
   message?: string;
@@ -18,10 +21,13 @@ export type AuthSessionPayload = {
 export type AuthStatusPayload = {
   needsSetup?: boolean;
   authDisabled?: boolean;
+  authEnabled?: boolean;
+  localUser?: AuthUser | null;
 };
 
 export type AuthUserPayload = {
   user?: AuthUser;
+  csrfToken?: string;
 };
 
 export type OnboardingStatusPayload = {

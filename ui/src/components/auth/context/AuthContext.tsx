@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { IS_PLATFORM, DISABLE_LOCAL_AUTH } from '../../../constants/config';
-import { api } from '../../../utils/api';
+import { api, setCsrfToken } from '../../../utils/api';
 import { AUTH_ERROR_MESSAGES, AUTH_TOKEN_STORAGE_KEY } from '../constants';
 import type {
   AuthContextValue,
@@ -15,14 +14,9 @@ import { parseJsonSafely, resolveApiErrorMessage } from '../utils';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const readStoredToken = (): string | null => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-
-const persistToken = (token: string) => {
-  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-};
-
 const clearStoredToken = () => {
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  setCsrfToken(null);
 };
 
 export function useAuth(): AuthContextValue {
@@ -36,16 +30,18 @@ export function useAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(() => readStoredToken());
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const setSession = useCallback((nextUser: AuthUser, nextToken: string) => {
+  const setSession = useCallback((nextUser: AuthUser, csrfToken?: string | null) => {
     setUser(nextUser);
-    setToken(nextToken);
-    persistToken(nextToken);
+    setToken('cookie-session');
+    setCsrfToken(csrfToken || null);
+    // Remove the obsolete browser-readable JWT when an installation upgrades.
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   }, []);
 
   const clearSession = useCallback(() => {
@@ -83,7 +79,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const statusPayload = await parseJsonSafely<AuthStatusPayload>(statusResponse);
 
       if (statusPayload?.authDisabled) {
-        setUser({ username: 'local' });
+        setUser(statusPayload.localUser || { username: 'local' });
+        setToken('local-session');
         setNeedsSetup(false);
         await checkOnboardingStatus();
         return;
@@ -95,10 +92,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       setNeedsSetup(false);
-
-      if (!token) {
-        return;
-      }
 
       const userResponse = await api.auth.user();
       if (!userResponse.ok) {
@@ -112,7 +105,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
-      setUser(userPayload.user);
+      setSession(userPayload.user, userPayload.csrfToken);
       await checkOnboardingStatus();
     } catch (caughtError) {
       console.error('[Auth] Auth status check failed:', caughtError);
@@ -120,19 +113,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [checkOnboardingStatus, clearSession, token]);
+  }, [checkOnboardingStatus, clearSession, setSession]);
 
   useEffect(() => {
-    if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
-      setUser({ username: DISABLE_LOCAL_AUTH ? 'local-user' : 'platform-user' });
-      setNeedsSetup(false);
-      setIsLoading(true);
-      checkOnboardingStatus().finally(() => setIsLoading(false));
-      return;
-    }
-
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     void checkAuthStatus();
-  }, [checkAuthStatus, checkOnboardingStatus]);
+  }, [checkAuthStatus]);
 
   const login = useCallback<AuthContextValue['login']>(
     async (username, password) => {
@@ -141,13 +127,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await api.auth.login(username, password);
         const payload = await parseJsonSafely<AuthSessionPayload>(response);
 
-        if (!response.ok || !payload?.token || !payload.user) {
+        if (!response.ok || !payload?.user) {
           const message = resolveApiErrorMessage(payload, AUTH_ERROR_MESSAGES.loginFailed);
           setError(message);
           return { success: false, error: message };
         }
 
-        setSession(payload.user, payload.token);
+        setSession(payload.user, payload.csrfToken);
         setNeedsSetup(false);
         await checkOnboardingStatus();
         return { success: true };
@@ -167,13 +153,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await api.auth.register(username, password);
         const payload = await parseJsonSafely<AuthSessionPayload>(response);
 
-        if (!response.ok || !payload?.token || !payload.user) {
+        if (!response.ok || !payload?.user) {
           const message = resolveApiErrorMessage(payload, AUTH_ERROR_MESSAGES.registrationFailed);
           setError(message);
           return { success: false, error: message };
         }
 
-        setSession(payload.user, payload.token);
+        setSession(payload.user, payload.csrfToken);
         setNeedsSetup(false);
         await checkOnboardingStatus();
         return { success: true };
@@ -187,14 +173,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 
   const logout = useCallback(() => {
-    const tokenToInvalidate = token;
-    clearSession();
-
-    if (tokenToInvalidate) {
+    if (token) {
       void api.auth.logout().catch((caughtError: unknown) => {
         console.error('Logout endpoint error:', caughtError);
-      });
+      }).finally(clearSession);
+      return;
     }
+    clearSession();
   }, [clearSession, token]);
 
   const contextValue = useMemo<AuthContextValue>(

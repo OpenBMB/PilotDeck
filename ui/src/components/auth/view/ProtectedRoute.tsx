@@ -4,6 +4,7 @@ import Onboarding from '../../onboarding/view/Onboarding';
 import AuthLoadingScreen from './AuthLoadingScreen';
 import LoginForm from './LoginForm';
 import SetupForm from './SetupForm';
+import FirstPasswordChange from './FirstPasswordChange';
 
 type ProtectedRouteProps = {
   children: ReactNode;
@@ -22,6 +23,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!user) {
     return <LoginForm />;
+  }
+
+  if (user.mustChangePassword) {
+    return <FirstPasswordChange />;
   }
 
   if (!hasCompletedOnboarding) {

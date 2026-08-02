@@ -9,6 +9,13 @@ const DEFAULT_SETTINGS = {
   skipPermissions: true,
 };
 
+export const DEFAULT_USER_PERMISSION_SETTINGS = Object.freeze({
+  version: 1,
+  allowedTools: [],
+  disallowedTools: [],
+  skipPermissions: false,
+});
+
 const TOOL_NAME_ALIASES = new Map([
   ['Read', 'read_file'],
   ['Write', 'write_file'],
@@ -74,6 +81,24 @@ export function writePermissionSettings(updates, env = process.env) {
     throw err;
   }
   return next;
+}
+
+export function permissionSettingsToRuleSet(settings) {
+  const normalized = normalizePermissionSettings(settings);
+  const makeRule = (entry, behavior) => {
+    const [toolName, ...patternParts] = String(entry).split(':');
+    return {
+      source: 'user',
+      behavior,
+      toolName,
+      ...(patternParts.length > 0 ? { pattern: patternParts.join(':') } : {}),
+    };
+  };
+  return {
+    allow: normalized.allowedTools.map((entry) => makeRule(entry, 'allow')),
+    deny: normalized.disallowedTools.map((entry) => makeRule(entry, 'deny')),
+    ask: [],
+  };
 }
 
 function normalizeStringArray(value) {

@@ -11,6 +11,7 @@ type SettingsMenuItemI18n = {
 };
 
 const MENU_ITEMS: SettingsMenuItemI18n[] = [
+  { key: "account", labelKey: "settingsPage.menu.account" },
   { key: "general", labelKey: "settingsPage.menu.general" },
   { key: "modelPool", labelKey: "settingsPage.menu.modelPool" },
   {

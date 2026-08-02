@@ -11,6 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.resetModules();
   delete process.env.PILOT_HOME;
+  delete process.env.DATABASE_PATH;
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -21,6 +22,7 @@ describe('commands routes', () => {
     const pilotHome = mkdtempSync(join(tmpdir(), 'pilotdeck-commands-route-'));
     tempDirs.push(pilotHome);
     process.env.PILOT_HOME = pilotHome;
+    process.env.DATABASE_PATH = join(pilotHome, 'commands-test.db');
 
     const commandsDir = join(pilotHome, 'commands');
     mkdirSync(commandsDir, { recursive: true });
@@ -44,7 +46,7 @@ describe('commands routes', () => {
       command: '/hello',
       content: 'Hello PilotDeck',
     });
-  });
+  }, 15_000);
 });
 
 async function createCommandsApp() {
@@ -56,10 +58,15 @@ async function createCommandsApp() {
     getClaudeRuntimeModelConfig: vi.fn(() => ({})),
     getClaudeRuntimeModelValues: vi.fn(() => []),
   }));
-  vi.doMock('../services/pilotdeckConfig.js', () => ({
-    readPilotDeckConfigFile: vi.fn(() => ({ config: {} })),
-    resolveModel: vi.fn((model) => model),
-  }));
+  vi.doMock('../services/pilotdeckConfig.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+      ...actual,
+      applyConfigToProcessEnv: vi.fn(),
+      readPilotDeckConfigFile: vi.fn(() => ({ config: {} })),
+      resolveModel: vi.fn((model) => model),
+    };
+  });
   vi.doMock('../turnkey-slash.js', () => ({
     executeTurnkeySlashCommand: vi.fn(async () => ({})),
   }));

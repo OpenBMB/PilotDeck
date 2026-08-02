@@ -400,7 +400,7 @@ function resolvePermissionMode(options) {
     // win over it. Genuine non-default picks (plan / bypassPermissions)
     // still take precedence — they're a deliberate per-turn decision.
     if (explicit && explicit !== 'default') return explicit;
-    const persisted = readPermissionSettings();
+    const persisted = options?.permissionSettings || readPermissionSettings();
     if (persisted.skipPermissions === true) {
         return 'bypassPermissions';
     }
@@ -1112,6 +1112,8 @@ export async function runChatViaGateway(
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
             ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),
+            ...(options.permissionRules ? { permissionRules: options.permissionRules } : {}),
+            ...(options.canPrompt !== undefined ? { canPrompt: Boolean(options.canPrompt) } : {}),
         });
 
         let sawTurnCompleted = false;
@@ -1228,6 +1230,7 @@ export async function runChatViaGateway(
     } finally {
         clearActiveRunIfCurrent(state, runId);
     }
+    return { sessionKey, isNewSession, projectKey };
 }
 
 async function recordGatewayStatusMessage(gateway, { sessionKey, turnId, projectKey, event, text, detail }) {

@@ -8,13 +8,11 @@ import AuthInputField from './AuthInputField';
 import AuthScreenLayout from './AuthScreenLayout';
 
 type SetupFormState = {
-  username: string;
   password: string;
   confirmPassword: string;
 };
 
 const initialState: SetupFormState = {
-  username: '',
   password: '',
   confirmPassword: '',
 };
@@ -25,16 +23,12 @@ const initialState: SetupFormState = {
  *   form is valid.
  */
 function validateSetupForm(formState: SetupFormState): string | null {
-  if (!formState.username.trim() || !formState.password || !formState.confirmPassword) {
+  if (!formState.password || !formState.confirmPassword) {
     return 'Please fill in all fields.';
   }
 
-  if (formState.username.trim().length < 3) {
-    return 'Username must be at least 3 characters long.';
-  }
-
-  if (formState.password.length < 6) {
-    return 'Password must be at least 6 characters long.';
+  if (formState.password.length < 10) {
+    return 'Password must be at least 10 characters long.';
   }
 
   if (formState.password !== formState.confirmPassword) {
@@ -73,7 +67,7 @@ export default function SetupForm() {
       }
 
       setIsSubmitting(true);
-      const result = await register(formState.username.trim(), formState.password);
+      const result = await register('owner', formState.password);
       if (!result.success) {
         setErrorMessage(result.error);
       }
@@ -86,7 +80,7 @@ export default function SetupForm() {
     <AuthScreenLayout
       title="Welcome to PilotDeck"
       description="Set up your account to get started"
-      footerText="This is a single-user system. Only one account can be created."
+      footerText="This creates the immutable owner account for this installation."
       logo={
         <div className="flex items-center justify-center gap-2">
           <img
@@ -105,16 +99,9 @@ export default function SetupForm() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <AuthInputField
-          id="username"
-          name="username"
-          label="Username"
-          value={formState.username}
-          onChange={(value) => updateField('username', value)}
-          placeholder="Enter your username"
-          isDisabled={isSubmitting}
-          autoComplete="username"
-        />
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800">
+          Owner username: <span className="font-mono font-medium">owner</span>
+        </div>
 
         <AuthInputField
           id="password"

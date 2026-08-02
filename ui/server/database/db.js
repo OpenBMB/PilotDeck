@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -42,7 +43,12 @@ if (process.env.DATABASE_PATH) {
 
 // As part of 1.19.2 we are introducing a new location for auth.db. The below handles exisitng moving legacy database from install directory to new location
 const LEGACY_DB_PATH = path.join(__dirname, 'auth.db');
-if (DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+const DEFAULT_PILOT_HOME_DB_PATH = path.join(
+  process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck'),
+  'auth.db',
+);
+const shouldMigrateLegacyDatabase = path.resolve(DB_PATH) === path.resolve(DEFAULT_PILOT_HOME_DB_PATH);
+if (shouldMigrateLegacyDatabase && DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
   try {
     fs.copyFileSync(LEGACY_DB_PATH, DB_PATH);
     console.log(`[MIGRATION] Copied database from ${LEGACY_DB_PATH} to ${DB_PATH}`);
@@ -108,6 +114,21 @@ const runMigrations = () => {
       db.exec('ALTER TABLE users ADD COLUMN has_completed_onboarding BOOLEAN DEFAULT 0');
     }
 
+    ensureColumn('users', 'display_name', 'TEXT');
+    ensureColumn('users', 'system_role', "TEXT NOT NULL DEFAULT 'member'");
+    ensureColumn('users', 'must_change_password', 'BOOLEAN NOT NULL DEFAULT 0');
+    ensureColumn('users', 'updated_at', 'DATETIME');
+
+    db.exec(`
+      UPDATE users SET display_name = COALESCE(NULLIF(display_name, ''), username);
+      UPDATE users SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP);
+      UPDATE users SET system_role = 'member'
+        WHERE system_role IS NULL OR system_role NOT IN ('owner', 'admin', 'member');
+      UPDATE users SET system_role = 'owner'
+        WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1)
+          AND NOT EXISTS (SELECT 1 FROM users WHERE system_role = 'owner');
+    `);
+
     db.exec(`
       CREATE TABLE IF NOT EXISTS user_notification_preferences (
         user_id INTEGER PRIMARY KEY,
@@ -156,6 +177,102 @@ const runMigrations = () => {
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_session_names_lookup ON session_names(session_id, provider)');
 
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        csrf_hash TEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        idle_expires_at DATETIME NOT NULL,
+        absolute_expires_at DATETIME NOT NULL,
+        revoked_at DATETIME,
+        user_agent TEXT,
+        ip_hash TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active
+        ON auth_sessions(user_id, revoked_at, idle_expires_at);
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_user_id INTEGER,
+        event_type TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        outcome TEXT NOT NULL DEFAULT 'success',
+        ip_hash TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_events_created
+        ON audit_events(created_at DESC, id DESC);
+      CREATE TABLE IF NOT EXISTS project_access (
+        project_path TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+        granted_by INTEGER,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (project_path, user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE TABLE IF NOT EXISTS session_owners (
+        session_key TEXT PRIMARY KEY,
+        project_path TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS user_tool_permissions (
+        user_id INTEGER PRIMARY KEY,
+        settings_json TEXT NOT NULL DEFAULT '{"version":1,"allowedTools":[],"disallowedTools":[],"skipPermissions":false}',
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_owners_user_project
+        ON session_owners(user_id, project_path);
+      CREATE TABLE IF NOT EXISTS pilotdeck_instances (
+        id TEXT PRIMARY KEY,
+        owner_user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('local', 'remote')),
+        endpoint TEXT,
+        status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('pending', 'approved', 'rejected', 'disabled')),
+        is_default BOOLEAN NOT NULL DEFAULT 0,
+        capabilities_json TEXT NOT NULL DEFAULT '{}',
+        approved_by INTEGER,
+        approved_at DATETIME,
+        last_checked_at DATETIME,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pilotdeck_instances_owner
+        ON pilotdeck_instances(owner_user_id, status, is_default);
+      CREATE TABLE IF NOT EXISTS pilotdeck_instance_secrets (
+        instance_id TEXT PRIMARY KEY,
+        encrypted_value TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (instance_id) REFERENCES pilotdeck_instances(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS pilotdeck_instance_projects (
+        instance_id TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        workspace_key TEXT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (instance_id, project_path),
+        FOREIGN KEY (instance_id) REFERENCES pilotdeck_instances(id) ON DELETE CASCADE
+      );
+    `);
+
     // Group-chat v2 keeps human ownership, entry-agent selection, and every
     // visible collaboration step durable. `init.sql` handles new installs;
     // these guards upgrade rooms created by the first group-chat MVP.
@@ -164,21 +281,14 @@ const runMigrations = () => {
     ensureColumn('group_messages', 'sender_user_id', 'INTEGER');
     ensureColumn('group_messages', 'reply_to_message_id', 'TEXT');
     ensureColumn('group_messages', 'metadata_json', "TEXT NOT NULL DEFAULT '{}'");
+    ensureColumn('group_rooms', 'owner_user_id', 'INTEGER');
+    ensureColumn('group_rooms', 'coordinator_instance_id', 'TEXT');
+    ensureColumn('group_members', 'instance_id', 'TEXT');
+    ensureColumn('group_turns', 'message_sequence', 'INTEGER');
+    ensureColumn('group_turns', 'idempotency_key', 'TEXT');
+    ensureColumn('group_turns', 'required_delegates_json', "TEXT NOT NULL DEFAULT '[]'");
 
     db.exec(`
-      CREATE TABLE IF NOT EXISTS group_participants (
-        room_id TEXT NOT NULL,
-        user_id INTEGER NOT NULL,
-        display_name TEXT NOT NULL,
-        bound_member_id TEXT NOT NULL DEFAULT 'main',
-        role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
-        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (room_id, user_id),
-        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      );
       CREATE TABLE IF NOT EXISTS group_turns (
         id TEXT PRIMARY KEY,
         room_id TEXT NOT NULL,
@@ -196,6 +306,82 @@ const runMigrations = () => {
         ON group_turns(room_id, created_at, id);
       CREATE INDEX IF NOT EXISTS idx_group_messages_room_sequence
         ON group_messages(room_id, sequence, id);
+    `);
+
+    const participantSql = db.prepare(`
+      SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'group_participants'
+    `).get()?.sql || '';
+    if (!participantSql.includes("'moderator'") || !participantSql.includes('bound_instance_id')) {
+      console.log('Running migration: Upgrading group_participants for multi-user roles');
+      db.exec(`
+        CREATE TABLE group_participants_v3 (
+          room_id TEXT NOT NULL,
+          user_id INTEGER NOT NULL,
+          display_name TEXT NOT NULL,
+          bound_member_id TEXT NOT NULL DEFAULT 'main',
+          bound_instance_id TEXT,
+          role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'moderator', 'member')),
+          muted BOOLEAN NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'removed')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (room_id, user_id),
+          FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        INSERT INTO group_participants_v3 (
+          room_id, user_id, display_name, bound_member_id, role, status, created_at, updated_at
+        )
+        SELECT room_id, user_id, display_name, bound_member_id, role, status, created_at, updated_at
+        FROM group_participants;
+        DROP TABLE group_participants;
+        ALTER TABLE group_participants_v3 RENAME TO group_participants;
+      `);
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_delegation_grants (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT UNIQUE NOT NULL,
+        room_id TEXT NOT NULL,
+        turn_id TEXT NOT NULL,
+        entry_instance_id TEXT NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (turn_id) REFERENCES group_turns(id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_group_turns_room_idempotency
+        ON group_turns(room_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+      UPDATE group_rooms SET owner_user_id = COALESCE(owner_user_id, user_id);
+      INSERT OR IGNORE INTO pilotdeck_instances (
+        id, owner_user_id, name, kind, status, is_default, capabilities_json, approved_by, approved_at
+      )
+      SELECT 'local-user-' || id, id, COALESCE(NULLIF(display_name, ''), username) || ' 的 PilotDeck',
+        'local', 'approved', 1, '{"groupTurn":true,"delegation":true}', id, CURRENT_TIMESTAMP
+      FROM users;
+      UPDATE group_participants
+      SET bound_instance_id = COALESCE(bound_instance_id, 'local-user-' || user_id);
+      UPDATE group_rooms
+      SET coordinator_instance_id = COALESCE(
+        coordinator_instance_id,
+        'local-user-' || COALESCE(owner_user_id, user_id)
+      );
+      UPDATE group_members
+      SET instance_id = COALESCE(
+        instance_id,
+        (SELECT p.bound_instance_id FROM group_participants p
+          WHERE p.room_id = group_members.room_id
+            AND p.bound_member_id = group_members.id
+            AND p.status = 'active'
+          LIMIT 1)
+      )
+      WHERE kind IN ('pilotdeck_main', 'pilotdeck_local', 'pilotdeck_remote');
+      UPDATE group_members
+      SET kind = 'pilotdeck_remote'
+      WHERE id = 'main'
+        AND instance_id IN (SELECT id FROM pilotdeck_instances WHERE kind = 'remote');
     `);
 
     db.exec(`
@@ -260,11 +446,18 @@ const userDb = {
   },
 
   // Create a new user
-  createUser: (username, passwordHash) => {
+  createUser: (username, passwordHash, options = {}) => {
     try {
-      const stmt = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
-      const result = stmt.run(username, passwordHash);
-      return { id: result.lastInsertRowid, username };
+      const displayName = options.displayName || username;
+      const systemRole = options.systemRole || 'member';
+      const mustChangePassword = options.mustChangePassword ? 1 : 0;
+      const stmt = db.prepare(`
+        INSERT INTO users (
+          username, password_hash, display_name, system_role, must_change_password, updated_at
+        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
+      const result = stmt.run(username, passwordHash, displayName, systemRole, mustChangePassword);
+      return userDb.getUserById(result.lastInsertRowid, { includeInactive: true });
     } catch (err) {
       throw err;
     }
@@ -290,9 +483,14 @@ const userDb = {
   },
 
   // Get user by ID
-  getUserById: (userId) => {
+  getUserById: (userId, options = {}) => {
     try {
-      const row = db.prepare('SELECT id, username, created_at, last_login FROM users WHERE id = ? AND is_active = 1').get(userId);
+      const activeClause = options.includeInactive ? '' : 'AND is_active = 1';
+      const row = db.prepare(`
+        SELECT id, username, display_name, system_role, must_change_password,
+          created_at, updated_at, last_login, is_active
+        FROM users WHERE id = ? ${activeClause}
+      `).get(userId);
       return row;
     } catch (err) {
       throw err;
@@ -301,7 +499,11 @@ const userDb = {
 
   getFirstUser: () => {
     try {
-      const row = db.prepare('SELECT id, username, created_at, last_login FROM users WHERE is_active = 1 LIMIT 1').get();
+      const row = db.prepare(`
+        SELECT id, username, display_name, system_role, must_change_password,
+          created_at, updated_at, last_login, is_active
+        FROM users WHERE is_active = 1 ORDER BY id ASC LIMIT 1
+      `).get();
       return row;
     } catch (err) {
       throw err;
@@ -342,7 +544,52 @@ const userDb = {
     } catch (err) {
       throw err;
     }
-  }
+  },
+
+  listUsers: () => db.prepare(`
+    SELECT id, username, display_name, system_role, must_change_password,
+      created_at, updated_at, last_login, is_active
+    FROM users ORDER BY id ASC
+  `).all(),
+
+  updateProfile: (userId, { displayName }) => {
+    db.prepare(`
+      UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(displayName, userId);
+    return userDb.getUserById(userId, { includeInactive: true });
+  },
+
+  updatePassword: (userId, passwordHash, mustChangePassword = false) => {
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(passwordHash, mustChangePassword ? 1 : 0, userId);
+  },
+
+  updateRole: (userId, systemRole) => {
+    db.prepare(`
+      UPDATE users SET system_role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(systemRole, userId);
+    return userDb.getUserById(userId, { includeInactive: true });
+  },
+
+  setActive: (userId, isActive) => {
+    db.prepare(`
+      UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(isActive ? 1 : 0, userId);
+    return userDb.getUserById(userId, { includeInactive: true });
+  },
+
+  setUsernameAndOwnerProfile: (userId, { displayName, passwordHash }) => {
+    db.prepare(`
+      UPDATE users
+      SET username = 'owner', display_name = ?, password_hash = ?, system_role = 'owner',
+        must_change_password = 0, is_active = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(displayName || 'Owner', passwordHash, userId);
+    return userDb.getUserById(userId, { includeInactive: true });
+  },
 };
 
 // API Keys database operations
@@ -577,9 +824,11 @@ const pushSubscriptionsDb = {
     }
   },
 
-  removeSubscription: (endpoint) => {
+  removeSubscription: (endpoint, userId = null) => {
     try {
-      db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+      return userId == null
+        ? db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint)
+        : db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId);
     } catch (err) {
       throw err;
     }
@@ -675,6 +924,243 @@ const appConfigDb = {
   }
 };
 
+const authSessionsDb = {
+  create: ({ id, userId, tokenHash, csrfHash, idleExpiresAt, absoluteExpiresAt, userAgent, ipHash }) => {
+    db.prepare(`
+      INSERT INTO auth_sessions (
+        id, user_id, token_hash, csrf_hash, idle_expires_at, absolute_expires_at,
+        user_agent, ip_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, tokenHash, csrfHash, idleExpiresAt, absoluteExpiresAt, userAgent, ipHash);
+    return authSessionsDb.getById(id);
+  },
+  getById: (id) => db.prepare('SELECT * FROM auth_sessions WHERE id = ?').get(id) || null,
+  getByTokenHash: (tokenHash) => db.prepare(`
+    SELECT s.*, u.username, u.display_name, u.system_role, u.must_change_password, u.is_active
+    FROM auth_sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.token_hash = ?
+  `).get(tokenHash) || null,
+  touch: (id, idleExpiresAt) => db.prepare(`
+    UPDATE auth_sessions
+    SET last_seen_at = CURRENT_TIMESTAMP, idle_expires_at = ?
+    WHERE id = ? AND revoked_at IS NULL
+  `).run(idleExpiresAt, id),
+  updateCsrf: (id, csrfHash) => db.prepare(`
+    UPDATE auth_sessions SET csrf_hash = ? WHERE id = ? AND revoked_at IS NULL
+  `).run(csrfHash, id),
+  revoke: (id) => db.prepare(`
+    UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE id = ?
+  `).run(id),
+  revokeForUser: (userId, exceptId = null) => {
+    if (exceptId) {
+      return db.prepare(`
+        UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
+        WHERE user_id = ? AND id <> ?
+      `).run(userId, exceptId);
+    }
+    return db.prepare(`
+      UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
+      WHERE user_id = ?
+    `).run(userId);
+  },
+  listForUser: (userId) => db.prepare(`
+    SELECT id, created_at, last_seen_at, idle_expires_at, absolute_expires_at,
+      revoked_at, user_agent
+    FROM auth_sessions WHERE user_id = ?
+    ORDER BY last_seen_at DESC, created_at DESC
+  `).all(userId),
+  deleteExpired: () => db.prepare(`
+    DELETE FROM auth_sessions
+    WHERE absolute_expires_at <= CURRENT_TIMESTAMP
+       OR (revoked_at IS NOT NULL AND revoked_at <= datetime('now', '-30 days'))
+  `).run(),
+};
+
+const auditEventsDb = {
+  create: ({ actorUserId = null, eventType, targetType = null, targetId = null, outcome = 'success', ipHash = null, metadata = {} }) => {
+    const result = db.prepare(`
+      INSERT INTO audit_events (
+        actor_user_id, event_type, target_type, target_id, outcome, ip_hash, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(actorUserId, eventType, targetType, targetId == null ? null : String(targetId), outcome, ipHash, JSON.stringify(metadata || {}));
+    return result.lastInsertRowid;
+  },
+  list: ({ limit = 100, offset = 0 } = {}) => db.prepare(`
+    SELECT e.*, u.username AS actor_username, u.display_name AS actor_display_name
+    FROM audit_events e LEFT JOIN users u ON u.id = e.actor_user_id
+    ORDER BY e.created_at DESC, e.id DESC LIMIT ? OFFSET ?
+  `).all(Math.max(1, Math.min(Number(limit) || 100, 500)), Math.max(0, Number(offset) || 0)),
+};
+
+const projectAccessDb = {
+  getRole: (projectPath, userId) => db.prepare(`
+    SELECT role FROM project_access WHERE project_path = ? AND user_id = ?
+  `).get(projectPath, userId)?.role || null,
+  listForUser: (userId) => db.prepare(`
+    SELECT project_path, role, created_at, updated_at FROM project_access WHERE user_id = ?
+  `).all(userId),
+  listMembers: (projectPath) => db.prepare(`
+    SELECT a.project_path, a.user_id, a.role, a.created_at, a.updated_at,
+      u.username, u.display_name, u.system_role, u.is_active
+    FROM project_access a JOIN users u ON u.id = a.user_id
+    WHERE a.project_path = ? ORDER BY a.created_at ASC, a.user_id ASC
+  `).all(projectPath),
+  setRole: (projectPath, userId, role, grantedBy = null) => db.prepare(`
+    INSERT INTO project_access (project_path, user_id, role, granted_by)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(project_path, user_id) DO UPDATE SET
+      role = excluded.role,
+      granted_by = excluded.granted_by,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(projectPath, userId, role, grantedBy),
+  remove: (projectPath, userId) => db.prepare(`
+    DELETE FROM project_access WHERE project_path = ? AND user_id = ?
+  `).run(projectPath, userId),
+  ensureOwner: (projectPath, userId) => projectAccessDb.setRole(projectPath, userId, 'owner', userId),
+};
+
+const sessionOwnersDb = {
+  get: (sessionKey) => db.prepare(`
+    SELECT session_key, project_path, user_id, created_at, updated_at
+    FROM session_owners WHERE session_key = ?
+  `).get(sessionKey) || null,
+  create: (sessionKey, projectPath, userId) => db.prepare(`
+    INSERT INTO session_owners (session_key, project_path, user_id)
+    VALUES (?, ?, ?)
+    ON CONFLICT(session_key) DO NOTHING
+  `).run(sessionKey, projectPath, userId),
+  isOwner: (sessionKey, userId) => Boolean(db.prepare(`
+    SELECT 1 FROM session_owners WHERE session_key = ? AND user_id = ?
+  `).get(sessionKey, userId)),
+  listForUser: (userId, projectPath = null) => projectPath
+    ? db.prepare(`SELECT * FROM session_owners WHERE user_id = ? AND project_path = ?`).all(userId, projectPath)
+    : db.prepare(`SELECT * FROM session_owners WHERE user_id = ?`).all(userId),
+  delete: (sessionKey, userId) => db.prepare(`
+    DELETE FROM session_owners WHERE session_key = ? AND user_id = ?
+  `).run(sessionKey, userId),
+};
+
+const userToolPermissionsDb = {
+  get: (userId) => {
+    const row = db.prepare('SELECT settings_json FROM user_tool_permissions WHERE user_id = ?').get(userId);
+    if (!row) return null;
+    try { return JSON.parse(row.settings_json); } catch { return null; }
+  },
+  set: (userId, settings) => {
+    db.prepare(`
+      INSERT INTO user_tool_permissions (user_id, settings_json)
+      VALUES (?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = CURRENT_TIMESTAMP
+    `).run(userId, JSON.stringify(settings || {}));
+    return userToolPermissionsDb.get(userId);
+  },
+};
+
+const instancesDb = {
+  ensureLocalForUser: (user) => {
+    const id = `local-user-${user.id}`;
+    db.prepare(`
+      INSERT OR IGNORE INTO pilotdeck_instances (
+        id, owner_user_id, name, kind, status, is_default, capabilities_json,
+        approved_by, approved_at
+      ) VALUES (?, ?, ?, 'local', 'approved', 1, ?, ?, CURRENT_TIMESTAMP)
+    `).run(id, user.id, `${user.display_name || user.username} 的 PilotDeck`, JSON.stringify({ groupTurn: true, delegation: true }), user.id);
+    return instancesDb.get(id);
+  },
+  get: (id) => db.prepare(`SELECT * FROM pilotdeck_instances WHERE id = ?`).get(id) || null,
+  listForUser: (userId) => db.prepare(`
+    SELECT * FROM pilotdeck_instances WHERE owner_user_id = ? ORDER BY is_default DESC, created_at ASC
+  `).all(userId),
+  listRemote: () => db.prepare(`
+    SELECT i.*, u.username AS owner_username, u.display_name AS owner_display_name
+    FROM pilotdeck_instances i JOIN users u ON u.id = i.owner_user_id
+    WHERE i.kind = 'remote' ORDER BY i.status = 'pending' DESC, i.updated_at DESC
+  `).all(),
+  getDefault: (userId, approvedOnly = true) => db.prepare(`
+    SELECT * FROM pilotdeck_instances
+    WHERE owner_user_id = ? ${approvedOnly ? "AND status = 'approved'" : ''}
+    ORDER BY is_default DESC, kind = 'local' DESC, created_at ASC LIMIT 1
+  `).get(userId) || null,
+  createRemote: ({ id, ownerUserId, name, endpoint }) => {
+    db.prepare(`
+      INSERT INTO pilotdeck_instances (id, owner_user_id, name, kind, endpoint, status, is_default)
+      VALUES (?, ?, ?, 'remote', ?, 'pending', 0)
+    `).run(id, ownerUserId, name, endpoint);
+    return instancesDb.get(id);
+  },
+  updateRemote: (id, ownerUserId, { name, endpoint }) => {
+    db.prepare(`
+      UPDATE pilotdeck_instances SET
+        name = COALESCE(?, name), endpoint = COALESCE(?, endpoint),
+        status = CASE WHEN ? IS NOT NULL THEN 'pending' ELSE status END,
+        approved_by = CASE WHEN ? IS NOT NULL THEN NULL ELSE approved_by END,
+        approved_at = CASE WHEN ? IS NOT NULL THEN NULL ELSE approved_at END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND owner_user_id = ? AND kind = 'remote'
+    `).run(name ?? null, endpoint ?? null, endpoint ?? null, endpoint ?? null, endpoint ?? null, id, ownerUserId);
+    return instancesDb.get(id);
+  },
+  setApproval: (id, status, approvedBy, capabilities = {}) => {
+    db.prepare(`
+      UPDATE pilotdeck_instances SET status = ?, capabilities_json = ?, approved_by = ?,
+        approved_at = CASE WHEN ? = 'approved' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND kind = 'remote'
+    `).run(status, JSON.stringify(capabilities || {}), approvedBy, status, id);
+    return instancesDb.get(id);
+  },
+  setDefault: (id, ownerUserId) => db.transaction(() => {
+    const instance = db.prepare(`
+      SELECT * FROM pilotdeck_instances WHERE id = ? AND owner_user_id = ? AND status = 'approved'
+    `).get(id, ownerUserId);
+    if (!instance) return null;
+    db.prepare('UPDATE pilotdeck_instances SET is_default = 0 WHERE owner_user_id = ?').run(ownerUserId);
+    db.prepare('UPDATE pilotdeck_instances SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+    return instancesDb.get(id);
+  })(),
+  remove: (id, ownerUserId) => db.prepare(`
+    DELETE FROM pilotdeck_instances
+    WHERE id = ? AND owner_user_id = ? AND kind = 'remote' AND is_default = 0
+  `).run(id, ownerUserId),
+  listProjectBindings: (instanceId) => db.prepare(`
+    SELECT project_path, workspace_key, created_at, updated_at
+    FROM pilotdeck_instance_projects WHERE instance_id = ? ORDER BY project_path
+  `).all(instanceId),
+  setSecret: (instanceId, { encryptedValue, iv, authTag }) => db.prepare(`
+    INSERT INTO pilotdeck_instance_secrets (instance_id, encrypted_value, iv, auth_tag)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(instance_id) DO UPDATE SET encrypted_value = excluded.encrypted_value,
+      iv = excluded.iv, auth_tag = excluded.auth_tag, updated_at = CURRENT_TIMESTAMP
+  `).run(instanceId, encryptedValue, iv, authTag),
+  getSecret: (instanceId) => db.prepare(`SELECT * FROM pilotdeck_instance_secrets WHERE instance_id = ?`).get(instanceId) || null,
+  setProjectBinding: (instanceId, projectPath, workspaceKey) => db.prepare(`
+    INSERT INTO pilotdeck_instance_projects (instance_id, project_path, workspace_key)
+    VALUES (?, ?, ?)
+    ON CONFLICT(instance_id, project_path) DO UPDATE SET
+      workspace_key = excluded.workspace_key, updated_at = CURRENT_TIMESTAMP
+  `).run(instanceId, projectPath, workspaceKey),
+  getProjectBinding: (instanceId, projectPath) => db.prepare(`
+    SELECT * FROM pilotdeck_instance_projects WHERE instance_id = ? AND project_path = ?
+  `).get(instanceId, projectPath) || null,
+};
+
+const groupDelegationGrantsDb = {
+  create: ({ id, tokenHash, roomId, turnId, entryInstanceId, expiresAt }) => db.prepare(`
+    INSERT INTO group_delegation_grants (
+      id, token_hash, room_id, turn_id, entry_instance_id, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, tokenHash, roomId, turnId, entryInstanceId, expiresAt),
+  getByTokenHash: (tokenHash) => db.prepare(`
+    SELECT * FROM group_delegation_grants WHERE token_hash = ?
+  `).get(tokenHash) || null,
+  markUsed: (id) => db.prepare(`
+    UPDATE group_delegation_grants SET used_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(id),
+  revokeForTurn: (turnId) => db.prepare(`DELETE FROM group_delegation_grants WHERE turn_id = ?`).run(turnId),
+  deleteExpired: () => db.prepare(`DELETE FROM group_delegation_grants WHERE expires_at <= CURRENT_TIMESTAMP`).run(),
+};
+
 // Backward compatibility - keep old names pointing to new system
 const githubTokensDb = {
   createGithubToken: (userId, tokenName, githubToken, description = null) => {
@@ -705,5 +1191,12 @@ export {
   sessionNamesDb,
   applyCustomSessionNames,
   appConfigDb,
+  authSessionsDb,
+  auditEventsDb,
+  projectAccessDb,
+  sessionOwnersDb,
+  userToolPermissionsDb,
+  instancesDb,
+  groupDelegationGrantsDb,
   githubTokensDb // Backward compatibility
 };
