@@ -30,6 +30,7 @@ function mapMember(row) {
     description: row.description || undefined,
     position: row.position,
     config: parseJson(row.config_json),
+    instanceId: row.instance_id || undefined,
     isActive: row.is_active === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -71,7 +72,9 @@ function mapParticipant(row) {
     userId: row.user_id,
     displayName: row.display_name,
     boundMemberId: row.bound_member_id,
+    boundInstanceId: row.bound_instance_id || undefined,
     role: row.role,
+    muted: row.muted === 1,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -86,6 +89,11 @@ function mapTurn(row) {
     senderUserId: row.sender_user_id,
     entryMemberId: row.entry_member_id,
     triggerSource: row.trigger_source,
+    messageSequence: row.message_sequence == null ? undefined : Number(row.message_sequence),
+    idempotencyKey: row.idempotency_key || undefined,
+    requiredDelegates: Array.isArray(parseJson(row.required_delegates_json))
+      ? parseJson(row.required_delegates_json)
+      : [],
     status: row.status,
     error: row.error || undefined,
     createdAt: row.created_at,
@@ -100,13 +108,16 @@ function mapRoom(row, members = []) {
     title: row.title,
     projectName: row.project_name,
     projectPath: row.project_path,
+    ownerUserId: row.owner_user_id || row.user_id,
+    coordinatorInstanceId: row.coordinator_instance_id || undefined,
+    participantRole: row.participant_role || undefined,
     triggerMode: row.trigger_mode,
-    muted: row.muted === 1,
+    muted: Number(row.participant_muted ?? row.muted) === 1,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    unreadCount: row.muted === 1 ? 0 : Number(row.unread_count || 0),
-    hasSilentUnread: row.muted === 1 && Number(row.raw_unread_count || 0) > 0,
+    unreadCount: Number(row.participant_muted ?? row.muted) === 1 ? 0 : Number(row.unread_count || 0),
+    hasSilentUnread: Number(row.participant_muted ?? row.muted) === 1 && Number(row.raw_unread_count || 0) > 0,
     lastMessagePreview: row.last_message_preview || '',
     members,
   };
@@ -115,14 +126,20 @@ function mapRoom(row, members = []) {
 const createRoomTransaction = db.transaction((userId, input) => {
   const id = newId('group');
   const timestamp = nowIso();
+  const coordinator = input.coordinatorInstanceId
+    ? db.prepare('SELECT kind FROM pilotdeck_instances WHERE id = ?').get(input.coordinatorInstanceId)
+    : null;
+  const coordinatorMemberKind = coordinator?.kind === 'remote' ? 'pilotdeck_remote' : 'pilotdeck_main';
   db.prepare(`
     INSERT INTO group_rooms (
-      id, user_id, title, project_name, project_path, trigger_mode, muted,
-      status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+      id, user_id, owner_user_id, coordinator_instance_id, title, project_name,
+      project_path, trigger_mode, muted, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
   `).run(
     id,
     userId,
+    userId,
+    input.coordinatorInstanceId || null,
     input.title,
     input.projectName,
     input.projectPath,
@@ -134,17 +151,17 @@ const createRoomTransaction = db.transaction((userId, input) => {
   db.prepare(`
     INSERT INTO group_members (
       id, room_id, kind, name, role, description, position, config_json,
-      is_active, created_at, updated_at
-    ) VALUES ('main', ?, 'pilotdeck_main', 'PilotDeck 主智能体', '群主与协调者',
-      '负责理解用户目标，并在其他成员发言后给出综合结论。', 10000, '{}', 1, ?, ?)
-  `).run(id, timestamp, timestamp);
-  const user = db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
+      instance_id, is_active, created_at, updated_at
+    ) VALUES ('main', ?, ?, 'PilotDeck 主智能体', '群主与协调者',
+      '负责理解用户目标，并在其他成员发言后给出综合结论。', 10000, '{}', ?, 1, ?, ?)
+  `).run(id, coordinatorMemberKind, input.coordinatorInstanceId || null, timestamp, timestamp);
+  const user = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId);
   db.prepare(`
     INSERT INTO group_participants (
-      room_id, user_id, display_name, bound_member_id, role, status,
+      room_id, user_id, display_name, bound_member_id, bound_instance_id, role, muted, status,
       created_at, updated_at
-    ) VALUES (?, ?, ?, 'main', 'owner', 'active', ?, ?)
-  `).run(id, userId, user?.username || '你', timestamp, timestamp);
+    ) VALUES (?, ?, ?, 'main', ?, 'owner', 0, 'active', ?, ?)
+  `).run(id, userId, user?.display_name || user?.username || '你', input.coordinatorInstanceId || null, timestamp, timestamp);
   db.prepare(`
     INSERT INTO group_read_state (user_id, room_id, last_read_at)
     VALUES (?, ?, ?)
@@ -154,8 +171,8 @@ const createRoomTransaction = db.transaction((userId, input) => {
 
 export const groupChatDb = {
   getRoomOwnerId(roomId) {
-    const row = db.prepare('SELECT user_id FROM group_rooms WHERE id = ?').get(roomId);
-    return row?.user_id || null;
+    const row = db.prepare('SELECT COALESCE(owner_user_id, user_id) AS owner_user_id FROM group_rooms WHERE id = ?').get(roomId);
+    return row?.owner_user_id || null;
   },
 
   createRoom(userId, input) {
@@ -166,6 +183,8 @@ export const groupChatDb = {
   listRooms(userId) {
     const rows = db.prepare(`
       SELECT r.*,
+        p.role AS participant_role,
+        p.muted AS participant_muted,
         (SELECT content FROM group_messages gm
           WHERE gm.room_id = r.id AND gm.message_kind = 'chat'
             AND gm.status IN ('completed', 'failed')
@@ -175,7 +194,7 @@ export const groupChatDb = {
             AND gm.sender_type = 'agent'
             AND gm.message_kind = 'chat'
             AND gm.created_at > COALESCE(rs.last_read_at, r.created_at)) AS raw_unread_count,
-        CASE WHEN r.muted = 1 THEN 0 ELSE
+        CASE WHEN p.muted = 1 THEN 0 ELSE
           (SELECT COUNT(*) FROM group_messages gm
             WHERE gm.room_id = r.id
               AND gm.sender_type = 'agent'
@@ -183,8 +202,9 @@ export const groupChatDb = {
               AND gm.created_at > COALESCE(rs.last_read_at, r.created_at))
         END AS unread_count
       FROM group_rooms r
-      LEFT JOIN group_read_state rs ON rs.room_id = r.id AND rs.user_id = r.user_id
-      WHERE r.user_id = ? AND r.status = 'active'
+      JOIN group_participants p ON p.room_id = r.id AND p.user_id = ? AND p.status = 'active'
+      LEFT JOIN group_read_state rs ON rs.room_id = r.id AND rs.user_id = p.user_id
+      WHERE r.status = 'active'
       ORDER BY r.updated_at DESC
     `).all(userId);
     const memberStmt = db.prepare(`
@@ -197,21 +217,24 @@ export const groupChatDb = {
   getRoom(userId, roomId) {
     const row = db.prepare(`
       SELECT r.*,
+        p.role AS participant_role,
+        p.muted AS participant_muted,
         (SELECT content FROM group_messages gm WHERE gm.room_id = r.id
           AND gm.message_kind = 'chat'
           ORDER BY gm.sequence DESC, gm.rowid DESC LIMIT 1) AS last_message_preview,
         (SELECT COUNT(*) FROM group_messages gm
           WHERE gm.room_id = r.id AND gm.sender_type = 'agent' AND gm.message_kind = 'chat'
             AND gm.created_at > COALESCE(rs.last_read_at, r.created_at)) AS raw_unread_count,
-        CASE WHEN r.muted = 1 THEN 0 ELSE
+        CASE WHEN p.muted = 1 THEN 0 ELSE
           (SELECT COUNT(*) FROM group_messages gm
             WHERE gm.room_id = r.id AND gm.sender_type = 'agent' AND gm.message_kind = 'chat'
               AND gm.created_at > COALESCE(rs.last_read_at, r.created_at))
         END AS unread_count
       FROM group_rooms r
+      JOIN group_participants p ON p.room_id = r.id AND p.user_id = ? AND p.status = 'active'
       LEFT JOIN group_read_state rs ON rs.room_id = r.id AND rs.user_id = ?
-      WHERE r.id = ? AND r.user_id = ?
-    `).get(userId, roomId, userId);
+      WHERE r.id = ?
+    `).get(userId, userId, roomId);
     if (!row) return null;
     const members = this.listMembers(userId, roomId);
     return mapRoom(row, members);
@@ -219,15 +242,14 @@ export const groupChatDb = {
 
   updateRoom(userId, roomId, patch) {
     const current = this.getRoom(userId, roomId);
-    if (!current) return null;
+    if (!current || current.participantRole !== 'owner') return null;
     const timestamp = nowIso();
     db.prepare(`
-      UPDATE group_rooms SET title = ?, trigger_mode = ?, muted = ?, updated_at = ?
-      WHERE id = ? AND user_id = ?
+      UPDATE group_rooms SET title = ?, trigger_mode = ?, updated_at = ?
+      WHERE id = ? AND COALESCE(owner_user_id, user_id) = ?
     `).run(
       patch.title ?? current.title,
       patch.triggerMode ?? current.triggerMode,
-      patch.muted === undefined ? (current.muted ? 1 : 0) : (patch.muted ? 1 : 0),
       timestamp,
       roomId,
       userId,
@@ -238,7 +260,7 @@ export const groupChatDb = {
   archiveRoom(userId, roomId) {
     return db.prepare(`
       UPDATE group_rooms SET status = 'archived', updated_at = ?
-      WHERE id = ? AND user_id = ?
+      WHERE id = ? AND COALESCE(owner_user_id, user_id) = ?
     `).run(nowIso(), roomId, userId).changes > 0;
   },
 
@@ -249,16 +271,145 @@ export const groupChatDb = {
     `).get(roomId, userId));
   },
 
+  listParticipants(userId, roomId) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    return db.prepare(`
+      SELECT p.*, u.username, u.system_role, u.is_active,
+        i.name AS instance_name, i.kind AS instance_kind, i.status AS instance_status
+      FROM group_participants p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN pilotdeck_instances i ON i.id = p.bound_instance_id
+      WHERE p.room_id = ? AND p.status = 'active'
+      ORDER BY CASE p.role WHEN 'owner' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END,
+        p.created_at ASC, p.user_id ASC
+    `).all(roomId).map((row) => ({
+      ...mapParticipant(row),
+      username: row.username,
+      systemRole: row.system_role,
+      isActive: row.is_active === 1,
+      instanceName: row.instance_name || undefined,
+      instanceKind: row.instance_kind || undefined,
+      instanceStatus: row.instance_status || undefined,
+    }));
+  },
+
+  setParticipantMuted(userId, roomId, muted) {
+    const result = db.prepare(`
+      UPDATE group_participants SET muted = ?, updated_at = ?
+      WHERE room_id = ? AND user_id = ? AND status = 'active'
+    `).run(muted ? 1 : 0, nowIso(), roomId, userId);
+    return result.changes > 0 ? this.getParticipant(userId, roomId) : null;
+  },
+
+  addParticipant(actorUserId, roomId, input) {
+    const actor = this.getParticipant(actorUserId, roomId);
+    if (!actor || !['owner', 'moderator'].includes(actor.role)) return null;
+    if (actor.role === 'moderator' && input.role !== 'member') return null;
+    const timestamp = nowIso();
+    const memberId = input.memberId || `user-${input.userId}`;
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO group_participants (
+          room_id, user_id, display_name, bound_member_id, bound_instance_id,
+          role, muted, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)
+        ON CONFLICT(room_id, user_id) DO UPDATE SET
+          display_name = excluded.display_name,
+          bound_member_id = excluded.bound_member_id,
+          bound_instance_id = excluded.bound_instance_id,
+          role = excluded.role, status = 'active', updated_at = excluded.updated_at
+      `).run(roomId, input.userId, input.displayName, memberId, input.instanceId, input.role || 'member', timestamp, timestamp);
+      db.prepare(`
+        INSERT INTO group_members (
+          id, room_id, kind, name, role, description, position, config_json,
+          instance_id, is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, '参与者绑定实例', ?, ?, '{}', ?, 1, ?, ?)
+        ON CONFLICT(room_id, id) DO UPDATE SET
+          kind = excluded.kind, name = excluded.name, description = excluded.description,
+          instance_id = excluded.instance_id, is_active = 1, updated_at = excluded.updated_at
+      `).run(
+        memberId, roomId, input.instanceKind === 'remote' ? 'pilotdeck_remote' : 'pilotdeck_main',
+        input.instanceName, `${input.displayName} 的默认 PilotDeck 实例`, input.position ?? 9000,
+        input.instanceId, timestamp, timestamp,
+      );
+      db.prepare(`
+        INSERT INTO group_read_state (user_id, room_id, last_read_at) VALUES (?, ?, ?)
+        ON CONFLICT(user_id, room_id) DO UPDATE SET last_read_at = excluded.last_read_at
+      `).run(input.userId, roomId, timestamp);
+      db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
+    })();
+    return this.getParticipant(input.userId, roomId);
+  },
+
+  updateParticipantRole(actorUserId, roomId, targetUserId, role) {
+    const actor = this.getParticipant(actorUserId, roomId);
+    const target = this.getParticipant(targetUserId, roomId);
+    if (!actor || !target || actor.role !== 'owner' || target.role === 'owner') return null;
+    const result = db.prepare(`
+      UPDATE group_participants SET role = ?, updated_at = ?
+      WHERE room_id = ? AND user_id = ? AND status = 'active'
+    `).run(role, nowIso(), roomId, targetUserId);
+    return result.changes > 0 ? this.getParticipant(targetUserId, roomId) : null;
+  },
+
+  removeParticipant(actorUserId, roomId, targetUserId) {
+    const actor = this.getParticipant(actorUserId, roomId);
+    const target = this.getParticipant(targetUserId, roomId);
+    if (!actor || !target || target.role === 'owner') return false;
+    if (actor.role !== 'owner' && !(actor.role === 'moderator' && target.role === 'member')) return false;
+    const timestamp = nowIso();
+    return db.transaction(() => {
+      const result = db.prepare(`
+        UPDATE group_participants SET status = 'removed', updated_at = ?
+        WHERE room_id = ? AND user_id = ?
+      `).run(timestamp, roomId, targetUserId);
+      if (result.changes > 0) {
+        db.prepare(`UPDATE group_members SET is_active = 0, updated_at = ? WHERE room_id = ? AND id = ?`)
+          .run(timestamp, roomId, target.boundMemberId);
+        db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
+      }
+      return result.changes > 0;
+    })();
+  },
+
+  switchParticipantInstance(userId, roomId, input) {
+    const participant = this.getParticipant(userId, roomId);
+    if (!participant) return null;
+    const timestamp = nowIso();
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE group_participants SET bound_instance_id = ?, updated_at = ?
+        WHERE room_id = ? AND user_id = ? AND status = 'active'
+      `).run(input.instanceId, timestamp, roomId, userId);
+      db.prepare(`
+        UPDATE group_members SET instance_id = ?, kind = ?, name = ?, updated_at = ?
+        WHERE room_id = ? AND id = ?
+      `).run(input.instanceId, input.instanceKind === 'remote' ? 'pilotdeck_remote' : 'pilotdeck_main', input.instanceName, timestamp, roomId, participant.boundMemberId);
+      if (participant.role === 'owner') {
+        db.prepare('UPDATE group_rooms SET coordinator_instance_id = ?, updated_at = ? WHERE id = ?')
+          .run(input.instanceId, timestamp, roomId);
+      }
+    })();
+    return this.getParticipant(userId, roomId);
+  },
+
   createTurn(userId, roomId, input) {
     const participant = this.getParticipant(userId, roomId);
     if (!participant) return null;
     const id = input.id || newId('round');
     const timestamp = nowIso();
+    if (input.idempotencyKey) {
+      const existing = db.prepare(`
+        SELECT * FROM group_turns WHERE room_id = ? AND idempotency_key = ?
+      `).get(roomId, input.idempotencyKey);
+      if (existing) return mapTurn(existing);
+    }
     db.prepare(`
       INSERT INTO group_turns (
         id, room_id, sender_user_id, entry_member_id, trigger_source,
-        status, error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        status, message_sequence, idempotency_key, required_delegates_json,
+        error, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
     `).run(
       id,
       roomId,
@@ -266,6 +417,9 @@ export const groupChatDb = {
       input.entryMemberId,
       input.triggerSource,
       input.status || 'queued',
+      input.messageSequence ?? null,
+      input.idempotencyKey || null,
+      JSON.stringify(input.requiredDelegates || []),
       timestamp,
       timestamp,
     );
@@ -287,6 +441,52 @@ export const groupChatDb = {
     return mapTurn(db.prepare('SELECT * FROM group_turns WHERE id = ?').get(turnId));
   },
 
+  setTurnMessageSequence(turnId, sequence) {
+    db.prepare(`UPDATE group_turns SET message_sequence = ?, updated_at = ? WHERE id = ?`)
+      .run(sequence, nowIso(), turnId);
+    return mapTurn(db.prepare('SELECT * FROM group_turns WHERE id = ?').get(turnId));
+  },
+
+  getTurnById(turnId) {
+    return mapTurn(db.prepare('SELECT * FROM group_turns WHERE id = ?').get(turnId));
+  },
+
+  getNextQueuedTurn(roomId) {
+    return mapTurn(db.prepare(`
+      SELECT * FROM group_turns WHERE room_id = ? AND status = 'queued'
+      ORDER BY COALESCE(message_sequence, 9223372036854775807) ASC, created_at ASC, rowid ASC
+      LIMIT 1
+    `).get(roomId));
+  },
+
+  claimQueuedTurn(turnId) {
+    const result = db.prepare(`
+      UPDATE group_turns SET status = 'running', error = NULL, updated_at = ?
+      WHERE id = ? AND status = 'queued'
+    `).run(nowIso(), turnId);
+    return result.changes > 0 ? this.getTurnById(turnId) : null;
+  },
+
+  listPendingRoomIds() {
+    return db.prepare(`
+      SELECT DISTINCT room_id FROM group_turns WHERE status IN ('queued', 'running')
+    `).all().map((row) => row.room_id);
+  },
+
+  requeueInterruptedTurns() {
+    return db.prepare(`
+      UPDATE group_turns SET status = 'queued', error = NULL, updated_at = ? WHERE status = 'running'
+    `).run(nowIso()).changes;
+  },
+
+  getUserMessageForTurn(turnId) {
+    return mapMessage(db.prepare(`
+      SELECT * FROM group_messages
+      WHERE round_id = ? AND sender_type = 'user' AND message_kind = 'chat'
+      ORDER BY sequence ASC, rowid ASC LIMIT 1
+    `).get(turnId));
+  },
+
   getTurn(userId, roomId, turnId) {
     return mapTurn(db.prepare(`
       SELECT * FROM group_turns
@@ -295,8 +495,7 @@ export const groupChatDb = {
   },
 
   listMembers(userId, roomId) {
-    const owned = db.prepare('SELECT 1 FROM group_rooms WHERE id = ? AND user_id = ?').get(roomId, userId);
-    if (!owned) return [];
+    if (!this.getParticipant(userId, roomId)) return [];
     return db.prepare(`
       SELECT * FROM group_members WHERE room_id = ? AND is_active = 1
       ORDER BY position ASC, created_at ASC
@@ -305,7 +504,7 @@ export const groupChatDb = {
 
   addMember(userId, roomId, input) {
     const room = this.getRoom(userId, roomId);
-    if (!room) return null;
+    if (!room || !['owner', 'moderator'].includes(room.participantRole)) return null;
     const timestamp = nowIso();
     const id = input.id || newId('member');
     const maxPosition = db.prepare(`
@@ -315,8 +514,8 @@ export const groupChatDb = {
     db.prepare(`
       INSERT INTO group_members (
         id, room_id, kind, name, role, description, position, config_json,
-        is_active, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        instance_id, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(room_id, id) DO UPDATE SET
         kind = excluded.kind,
         name = excluded.name,
@@ -324,6 +523,7 @@ export const groupChatDb = {
         description = excluded.description,
         position = excluded.position,
         config_json = excluded.config_json,
+        instance_id = excluded.instance_id,
         is_active = 1,
         updated_at = excluded.updated_at
     `).run(
@@ -335,6 +535,7 @@ export const groupChatDb = {
       input.description || null,
       Number(maxPosition) + 1,
       JSON.stringify(input.config || {}),
+      input.instanceId || null,
       timestamp,
       timestamp,
     );
@@ -345,7 +546,7 @@ export const groupChatDb = {
   removeMember(userId, roomId, memberId) {
     if (memberId === 'main') return false;
     const room = this.getRoom(userId, roomId);
-    if (!room) return false;
+    if (!room || !['owner', 'moderator'].includes(room.participantRole)) return false;
     const timestamp = nowIso();
     const result = db.prepare(`
       UPDATE group_members SET is_active = 0, updated_at = ?
@@ -359,7 +560,7 @@ export const groupChatDb = {
 
   reorderMembers(userId, roomId, memberIds) {
     const room = this.getRoom(userId, roomId);
-    if (!room) return null;
+    if (!room || !['owner', 'moderator'].includes(room.participantRole)) return null;
     const activeSecondaryIds = room.members.filter((member) => member.id !== 'main').map((member) => member.id);
     if (memberIds.length !== activeSecondaryIds.length ||
         new Set(memberIds).size !== memberIds.length ||
@@ -381,7 +582,7 @@ export const groupChatDb = {
 
   updateMemberConfig(userId, roomId, memberId, config) {
     const room = this.getRoom(userId, roomId);
-    if (!room) return null;
+    if (!room || !['owner', 'moderator'].includes(room.participantRole)) return null;
     const timestamp = nowIso();
     const result = db.prepare(`
       UPDATE group_members SET config_json = ?, updated_at = ?
@@ -392,8 +593,7 @@ export const groupChatDb = {
   },
 
   listMessages(userId, roomId, limit = 100, before = null) {
-    const owned = db.prepare('SELECT 1 FROM group_rooms WHERE id = ? AND user_id = ?').get(roomId, userId);
-    if (!owned) return null;
+    if (!this.getParticipant(userId, roomId)) return null;
     const safeLimit = Math.max(1, Math.min(200, Number(limit) || 100));
     const anchor = before
       ? db.prepare('SELECT sequence FROM group_messages WHERE room_id = ? AND id = ?').get(roomId, before)

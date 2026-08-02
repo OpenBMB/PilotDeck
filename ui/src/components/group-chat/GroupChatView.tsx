@@ -13,7 +13,6 @@ import {
   Loader2,
   Menu,
   MessageCircleMore,
-  MoreHorizontal,
   Plus,
   Settings2,
   ShieldCheck,
@@ -28,12 +27,14 @@ import type {
   AgentGroup,
   AgentGroupMember,
   AgentGroupMessage,
+  AgentGroupParticipant,
   AvailableGroupMember,
   AvailableGroupMembers,
   GroupMemberKind,
   GroupTriggerMode,
 } from '../../types/group';
 import { api } from '../../utils/api';
+import { useAuth } from '../auth/context/AuthContext';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { MentionComposer, type MentionDraft } from './MentionComposer';
 
@@ -256,6 +257,7 @@ export default function GroupChatView({
     () => new Map((group?.members || []).map((member) => [member.id, member])),
     [group?.members],
   );
+  const canManageMembers = group?.participantRole === 'owner' || group?.participantRole === 'moderator';
   const roundInProgress = messages.some((message) => message.status === 'thinking' || message.status === 'queued');
 
   const send = async (draft: MentionDraft) => {
@@ -317,10 +319,12 @@ export default function GroupChatView({
           {group.members.slice(0, 6).map((member) => <AgentAvatar key={member.id} member={member} size="small" />)}
           {group.members.length > 6 ? <span className="ml-2 text-xs text-neutral-500">+{group.members.length - 6}</span> : null}
         </div>
-        <button type="button" onClick={() => setInviteOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
-          <Plus className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">邀请</span>
-        </button>
+        {canManageMembers ? (
+          <button type="button" onClick={() => setInviteOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">邀请</span>
+          </button>
+        ) : null}
         <button type="button" onClick={() => setSettingsOpen(true)} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100" aria-label="群组设置">
           <Settings2 className="h-4 w-4" />
         </button>
@@ -422,7 +426,7 @@ export default function GroupChatView({
           onRequestDelete={onRequestDelete}
         />
       ) : null}
-      {inviteOpen ? (
+      {inviteOpen && canManageMembers ? (
         <InviteMembersDialog
           group={group}
           onClose={() => setInviteOpen(false)}
@@ -433,9 +437,9 @@ export default function GroupChatView({
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+function Toggle({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} className={cn('relative h-6 w-11 rounded-full transition', checked ? 'bg-blue-600' : 'bg-neutral-300 dark:bg-neutral-700')}>
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} className={cn('relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-45', checked ? 'bg-blue-600' : 'bg-neutral-300 dark:bg-neutral-700')}>
       <span className={cn('absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-all', checked ? 'left-6' : 'left-1')} />
     </button>
   );
@@ -456,9 +460,39 @@ function GroupSettingsDrawer({
   onArchived: () => void;
   onRequestDelete?: (group: AgentGroup) => void;
 }) {
+  const { user } = useAuth();
   const [title, setTitle] = useState(group.title);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [participants, setParticipants] = useState<AgentGroupParticipant[]>([]);
+  const [participantCandidates, setParticipantCandidates] = useState<Array<{ userId: number; displayName: string; projectRole: string; defaultInstance: { id: string; name: string; kind: string } | null }>>([]);
+  const [myInstances, setMyInstances] = useState<Array<{ id: string; name: string; status: string; isDefault: boolean }>>([]);
+  const [inviteUserId, setInviteUserId] = useState('');
+  const isOwner = group.participantRole === 'owner';
+  const canManageMembers = isOwner || group.participantRole === 'moderator';
+
+  const refreshParticipants = useCallback(async () => {
+    const [participantsResponse, instancesResponse] = await Promise.all([
+      api.groupParticipants(group.id),
+      api.instances.list(),
+    ]);
+    const participantsPayload = await json<{ participants?: AgentGroupParticipant[]; error?: string }>(participantsResponse);
+    const instancesPayload = await json<{ instances?: Array<{ id: string; name: string; status: string; isDefault: boolean }>; error?: string }>(instancesResponse);
+    if (!participantsResponse.ok) throw new Error(readError(participantsPayload, '加载群组参与者失败'));
+    if (!instancesResponse.ok) throw new Error(readError(instancesPayload, '加载实例失败'));
+    setParticipants(participantsPayload.participants || []);
+    setMyInstances((instancesPayload.instances || []).filter((instance) => instance.status === 'approved'));
+    if (group.participantRole === 'owner' || group.participantRole === 'moderator') {
+      const candidatesResponse = await api.groupParticipantCandidates(group.id);
+      const candidatesPayload = await json<{ candidates?: typeof participantCandidates; error?: string }>(candidatesResponse);
+      if (!candidatesResponse.ok) throw new Error(readError(candidatesPayload, '加载可邀请用户失败'));
+      setParticipantCandidates(candidatesPayload.candidates || []);
+    }
+  }, [group.id, group.participantRole]);
+
+  useEffect(() => {
+    void refreshParticipants().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [refreshParticipants]);
 
   const patchGroup = async (patch: Partial<{ title: string; triggerMode: GroupTriggerMode; muted: boolean }>) => {
     setSaving(true);
@@ -506,15 +540,15 @@ function GroupSettingsDrawer({
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">群组名称</span>
             <div className="flex gap-2">
-              <input value={title} onChange={(event) => setTitle(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-transparent px-3 text-sm outline-none focus:border-blue-400 dark:border-neutral-700" />
-              <button type="button" disabled={saving || !title.trim() || title.trim() === group.title} onClick={() => void patchGroup({ title: title.trim() })} className="rounded-lg bg-neutral-900 px-3 text-xs text-white disabled:opacity-35 dark:bg-white dark:text-neutral-900">保存</button>
+              <input value={title} disabled={!isOwner} onChange={(event) => setTitle(event.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-transparent px-3 text-sm outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700" />
+              {isOwner ? <button type="button" disabled={saving || !title.trim() || title.trim() === group.title} onClick={() => void patchGroup({ title: title.trim() })} className="rounded-lg bg-neutral-900 px-3 text-xs text-white disabled:opacity-35 dark:bg-white dark:text-neutral-900">保存</button> : null}
             </div>
           </label>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div><div className="text-sm font-medium">仅 @ 触发</div><div className="text-xs text-neutral-500">开启后，未提及成员的消息只保存。</div></div>
-              <Toggle checked={group.triggerMode === 'mentions'} onChange={(checked) => void patchGroup({ triggerMode: checked ? 'mentions' : 'auto' })} label="仅 @ 触发" />
+              <Toggle checked={group.triggerMode === 'mentions'} disabled={!isOwner} onChange={(checked) => void patchGroup({ triggerMode: checked ? 'mentions' : 'auto' })} label="仅 @ 触发" />
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-start gap-2">{group.muted ? <BellOff className="mt-0.5 h-4 w-4 text-neutral-500" /> : <Bell className="mt-0.5 h-4 w-4 text-neutral-500" />}<div><div className="text-sm font-medium">消息免打扰</div><div className="text-xs text-neutral-500">静默通知和醒目未读提示，继续执行回复。</div></div></div>
@@ -528,14 +562,45 @@ function GroupSettingsDrawer({
             <div className="mt-1 truncate font-mono text-[10px] text-neutral-400">{group.projectPath}</div>
           </div>
 
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">人类参与者与入口实例</h3>
+            {participants.map((participant) => (
+              <div key={participant.userId} className="rounded-xl border border-neutral-100 p-3 dark:border-neutral-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0"><div className="truncate text-sm font-medium">{participant.displayName}{participant.userId === user?.id ? '（你）' : ''}</div><div className="truncate text-[11px] text-neutral-500">{participant.role} · {participant.boundInstanceId || '未绑定实例'}</div></div>
+                  {(group.participantRole === 'owner' || group.participantRole === 'moderator') && participant.role !== 'owner' ? (
+                    <div className="flex gap-1">
+                      <button type="button" className="rounded-md px-2 py-1 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-800" onClick={async () => { const response = await api.updateGroupParticipant(group.id, participant.userId, { role: participant.role === 'moderator' ? 'member' : 'moderator' }); if (!response.ok) { const payload = await json<{ error?: string }>(response); throw new Error(readError(payload, '修改角色失败')); } await refreshParticipants(); }}>{participant.role === 'moderator' ? '设为成员' : '设为管理员'}</button>
+                      <button type="button" className="rounded-md px-2 py-1 text-[11px] text-red-600 hover:bg-red-50 dark:text-red-300" onClick={async () => { await api.removeGroupParticipant(group.id, participant.userId); await refreshParticipants(); }}>移除</button>
+                    </div>
+                  ) : null}
+                </div>
+                {participant.userId === user?.id && myInstances.length > 1 ? (
+                  <select className="mt-2 h-8 w-full rounded-lg border border-neutral-200 bg-transparent px-2 text-xs dark:border-neutral-700" value={participant.boundInstanceId || ''} onChange={async (event) => { const response = await api.updateMyGroupParticipation(group.id, { instanceId: event.target.value }); if (!response.ok) { const payload = await json<{ error?: string }>(response); setError(readError(payload, '切换实例失败')); return; } await refreshParticipants(); await onChanged(); }}>
+                    {myInstances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name}{instance.isDefault ? '（默认）' : ''}</option>)}
+                  </select>
+                ) : null}
+              </div>
+            ))}
+            {canManageMembers && participantCandidates.length > 0 ? (
+              <div className="flex gap-2">
+                <select className="h-9 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-transparent px-2 text-xs dark:border-neutral-700" value={inviteUserId} onChange={(event) => setInviteUserId(event.target.value)}>
+                  <option value="">选择项目成员</option>
+                  {participantCandidates.map((candidate) => <option key={candidate.userId} value={candidate.userId} disabled={!candidate.defaultInstance}>{candidate.displayName} · {candidate.projectRole}{candidate.defaultInstance ? ` · ${candidate.defaultInstance.name}` : ' · 无可用实例'}</option>)}
+                </select>
+                <button type="button" disabled={!inviteUserId || saving} className="rounded-lg bg-neutral-900 px-3 text-xs text-white disabled:opacity-35 dark:bg-white dark:text-neutral-900" onClick={async () => { setSaving(true); try { const response = await api.addGroupParticipant(group.id, { userId: Number(inviteUserId), role: 'member' }); const payload = await json<{ error?: string }>(response); if (!response.ok) throw new Error(readError(payload, '邀请用户失败')); setInviteUserId(''); await refreshParticipants(); await onChanged(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setSaving(false); } }}>加入群组</button>
+              </div>
+            ) : null}
+          </section>
+
           <section className="space-y-2">
-            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">成员顺序</h3><button type="button" onClick={onInvite} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950"><Plus className="h-3.5 w-3.5" />邀请</button></div>
+            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">成员顺序</h3>{canManageMembers ? <button type="button" onClick={onInvite} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950"><Plus className="h-3.5 w-3.5" />邀请</button> : null}</div>
             {secondary.map((member, index) => (
               <div key={member.id} className="flex items-center gap-2 rounded-xl border border-neutral-100 p-2.5 dark:border-neutral-800">
                 <AgentAvatar member={member} size="small" />
                 <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{index + 1}. {member.name}</div><div className="truncate text-[11px] text-neutral-500">{kindLabel[member.kind]} · @{member.name}</div></div>
-                <button type="button" disabled={index === 0 || saving} onClick={() => void reorder(index, -1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowUp className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={index === secondary.length - 1 || saving} onClick={() => void reorder(index, 1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowDown className="h-3.5 w-3.5" /></button>
+                {canManageMembers ? <button type="button" disabled={index === 0 || saving} onClick={() => void reorder(index, -1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowUp className="h-3.5 w-3.5" /></button> : null}
+                {canManageMembers ? <button type="button" disabled={index === secondary.length - 1 || saving} onClick={() => void reorder(index, 1)} className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20 dark:hover:bg-neutral-800"><ArrowDown className="h-3.5 w-3.5" /></button> : null}
               </div>
             ))}
             {group.members.filter((member) => member.id === 'main').map((member) => (
@@ -548,7 +613,7 @@ function GroupSettingsDrawer({
 
           {error ? <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
 
-          <button
+          {isOwner ? <button
             type="button"
             onClick={async () => {
               if (onRequestDelete) {
@@ -563,7 +628,7 @@ function GroupSettingsDrawer({
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30"
           >
             <Trash2 className="h-4 w-4" />归档群组
-          </button>
+          </button> : null}
         </div>
       </aside>
     </div>
@@ -575,8 +640,6 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [addingId, setAddingId] = useState('');
-  const [remoteOpen, setRemoteOpen] = useState(false);
-  const [remote, setRemote] = useState({ name: '', role: '', endpoint: '', tokenEnv: '' });
 
   useEffect(() => {
     void api.availableGroupMembers().then(async (response: Response) => {
@@ -586,7 +649,7 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setLoading(false));
   }, []);
 
-  const add = async (candidate: AvailableGroupMember | { id?: string; kind: 'pilotdeck_remote'; name: string; role: string; endpoint: string; tokenEnv?: string }) => {
+  const add = async (candidate: AvailableGroupMember) => {
     const marker = candidate.id || candidate.name;
     setAddingId(marker);
     setError('');
@@ -598,7 +661,6 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
       const payload = await json<{ error?: string }>(response);
       if (!response.ok) throw new Error(readError(payload, '邀请成员失败'));
       await onChanged();
-      if (candidate.kind === 'pilotdeck_remote') setRemote({ name: '', role: '', endpoint: '', tokenEnv: '' });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -653,17 +715,8 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
             </section>
           ))}
 
-          <section className="space-y-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
-            <button type="button" onClick={() => setRemoteOpen((open) => !open)} className="flex w-full items-center justify-between text-sm font-semibold"><span>远程 PilotDeck 实例</span><MoreHorizontal className="h-4 w-4 text-neutral-400" /></button>
-            {remoteOpen ? (
-              <div className="space-y-2 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800/50">
-                <input value={remote.name} onChange={(event) => setRemote({ ...remote, name: event.target.value })} placeholder="显示名称" className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-900" />
-                <input value={remote.role} onChange={(event) => setRemote({ ...remote, role: event.target.value })} placeholder="角色，例如：远程架构师" className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none dark:border-neutral-700 dark:bg-neutral-900" />
-                <input value={remote.endpoint} onChange={(event) => setRemote({ ...remote, endpoint: event.target.value })} placeholder="http://127.0.0.1:8642" className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 font-mono text-xs outline-none dark:border-neutral-700 dark:bg-neutral-900" />
-                <input value={remote.tokenEnv} onChange={(event) => setRemote({ ...remote, tokenEnv: event.target.value })} placeholder="可选：PILOTDECK_GROUP_REMOTE_TOKEN" className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 font-mono text-xs outline-none dark:border-neutral-700 dark:bg-neutral-900" />
-                <button type="button" disabled={!remote.name.trim() || !remote.endpoint.trim() || Boolean(addingId)} onClick={() => void add({ kind: 'pilotdeck_remote', name: remote.name.trim(), role: remote.role.trim(), endpoint: remote.endpoint.trim(), tokenEnv: remote.tokenEnv.trim() || undefined })} className="h-9 w-full rounded-lg bg-neutral-900 text-sm text-white disabled:opacity-35 dark:bg-white dark:text-neutral-900">邀请远程实例</button>
-              </div>
-            ) : null}
+          <section className="rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-800/50">
+            远程 PilotDeck 需先在“设置 → 账号与成员”登记，并由管理员测试批准；它会作为对应人类参与者的绑定入口加入群组，不再接受群聊内直接填写任意地址。
           </section>
 
           {error ? <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}

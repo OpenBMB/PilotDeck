@@ -113,6 +113,7 @@ export type AgentLoopInput = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  metadata?: Record<string, unknown>;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
@@ -1955,6 +1956,7 @@ export class AgentLoop {
       toolAliases: this.config.toolAliases,
       runMode: this.config.runMode ?? "agent",
       permissionMode: this.config.permissionMode,
+      metadata: input.metadata ?? this.config.metadata,
       permissionContext,
       auditRecorder: this.dependencies.auditRecorder,
       now: this.now,

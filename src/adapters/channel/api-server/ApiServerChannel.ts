@@ -1,5 +1,9 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { Gateway, GatewayChannelKey, GatewayEvent } from "../../../gateway/index.js";
 import type { ChannelAdapter, ChannelHandle, ChannelLogger, ChannelStartDeps } from "../protocol/ChannelAdapter.js";
 import { ApiServerSessionMapper } from "./ApiServerSessionMapper.js";
@@ -14,6 +18,10 @@ const DEFAULT_PORT = 8642;
 const MAX_REQUEST_BYTES = 1_000_000;
 const DEFAULT_MODEL_NAME = "pilotdeck-gateway";
 const REQUEST_TIMEOUT_MS = 300_000;
+const GROUP_READ_ONLY_DENY_RULES = [
+  "bash", "write_file", "edit_file", "edit_notebook", "execute_code",
+  "agent", "group_chat", "task_create", "task_stop", "todo_write", "mcp__*",
+].map((toolName) => ({ source: "policy" as const, behavior: "deny" as const, toolName }));
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS, DELETE",
@@ -28,6 +36,7 @@ export type ApiServerChannelOptions = {
   modelName?: string;
   corsOrigins?: string | string[];
   mapper?: ApiServerSessionMapper;
+  workspaceMappings?: Record<string, string>;
 };
 
 export class ApiServerChannel implements ChannelAdapter {
@@ -39,6 +48,7 @@ export class ApiServerChannel implements ChannelAdapter {
   private readonly apiKey: string;
   private readonly modelName: string;
   private readonly corsOrigins: string[];
+  private readonly workspaceMappings: Record<string, string>;
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -52,6 +62,7 @@ export class ApiServerChannel implements ChannelAdapter {
     this.apiKey = options.apiKey ?? process.env.API_SERVER_KEY ?? "";
     this.modelName = options.modelName ?? process.env.API_SERVER_MODEL_NAME ?? DEFAULT_MODEL_NAME;
     this.corsOrigins = parseCorsOrigins(options.corsOrigins ?? process.env.API_SERVER_CORS_ORIGINS ?? "");
+    this.workspaceMappings = options.workspaceMappings ?? parseWorkspaceMappings(process.env.PILOTDECK_WORKSPACE_MAPPINGS);
   }
 
   async start(deps: ChannelStartDeps): Promise<ChannelHandle> {
@@ -148,13 +159,26 @@ export class ApiServerChannel implements ChannelAdapter {
     this.applyCors(res, cors);
 
     if (url.pathname === "/health") {
-      sendJson(res, 200, { status: "ok", platform: "api-server" });
+      sendJson(res, 200, {
+        status: "ok",
+        platform: "api-server",
+        version: 1,
+        capabilities: { groupTurn: Boolean(this.apiKey), delegation: Boolean(this.apiKey) },
+      });
       return;
     }
 
     if (url.pathname === "/v1/models") {
+      const auth = this.checkAuth(req);
+      if (!auth.ok) {
+        sendJson(res, auth.status, auth.body);
+        return;
+      }
       sendJson(res, 200, {
         object: "list",
+        version: 1,
+        capabilities: { groupTurn: Boolean(this.apiKey), delegation: Boolean(this.apiKey) },
+        workspaceKeys: Object.keys(this.workspaceMappings).sort(),
         data: [
           {
             id: this.modelName,
@@ -177,8 +201,122 @@ export class ApiServerChannel implements ChannelAdapter {
       return;
     }
 
+    if (url.pathname === "/v1/group/turn" && req.method === "POST") {
+      if (!this.apiKey) {
+        sendJson(res, 503, { error: "Group-turn API requires API_SERVER_KEY to be configured." });
+        return;
+      }
+      const auth = this.checkAuth(req);
+      if (!auth.ok) {
+        sendJson(res, auth.status, auth.body);
+        return;
+      }
+      await this.handleGroupTurn(req, res);
+      return;
+    }
+
     res.statusCode = 404;
     res.end("Not Found");
+  }
+
+  private async handleGroupTurn(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.gateway) {
+      sendJson(res, 503, { error: "Gateway not ready." });
+      return;
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(await readRequestBody(req, MAX_REQUEST_BYTES)) as Record<string, unknown>;
+    } catch (error) {
+      sendJson(res, 400, { error: `Invalid group-turn request: ${String(error)}` });
+      return;
+    }
+    if (body.version !== 1) {
+      sendJson(res, 400, { error: "Unsupported group-turn version." });
+      return;
+    }
+    const roomId = safeStableId(body.roomId);
+    const roundId = safeStableId(body.roundId);
+    const entryMemberId = safeStableId(body.entryMemberId);
+    const workspaceKey = typeof body.workspaceKey === "string" ? body.workspaceKey.trim() : "";
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    if (!roomId || !roundId || !entryMemberId || !workspaceKey || !message) {
+      sendJson(res, 400, { error: "roomId, roundId, entryMemberId, workspaceKey and message are required." });
+      return;
+    }
+    const workspace = this.workspaceMappings[workspaceKey];
+    if (!workspace) {
+      sendJson(res, 404, { error: "Workspace mapping not found." });
+      return;
+    }
+    const projectKey = resolve(workspace);
+    const idempotencyKey = `${roomId}:${roundId}:${entryMemberId}`;
+    const cached = await readGroupTurnCache(idempotencyKey);
+    if (cached) {
+      writeNdjsonEvents(res, cached, true);
+      return;
+    }
+    if (this.activeChats.has(idempotencyKey)) {
+      sendJson(res, 409, { error: "This group turn is already running.", code: "turn_in_progress" });
+      return;
+    }
+    const rosterContext = typeof body.rosterContext === "string" ? body.rosterContext.slice(0, 100_000) : "";
+    const requiredDelegates = Array.isArray(body.requiredDelegates)
+      ? body.requiredDelegates.filter((value): value is string => typeof value === "string").slice(0, 32)
+      : [];
+    const collaborationBody = body.collaboration && typeof body.collaboration === "object"
+      ? body.collaboration as Record<string, unknown>
+      : {};
+    const collaboration = {
+      version: 1 as const,
+      kind: "group_turn" as const,
+      roomId,
+      turnId: roundId,
+      entryMemberId,
+      canDelegate: collaborationBody.canDelegate === true,
+      ...(typeof collaborationBody.coordinatorUrl === "string" ? { coordinatorUrl: collaborationBody.coordinatorUrl } : {}),
+      ...(typeof collaborationBody.delegationToken === "string" ? { delegationToken: collaborationBody.delegationToken } : {}),
+    };
+    const sessionKey = `group:${roomId}:${entryMemberId}`;
+    const events: GatewayEvent[] = [];
+    this.activeChats.add(idempotencyKey);
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Cache-Control", "no-store");
+    res.flushHeaders?.();
+    try {
+      for await (const event of this.gateway.submitTurn({
+        sessionKey,
+        channelKey: "api_server",
+        projectKey,
+        workspaceCwd: projectKey,
+        message,
+        runMode: "ask",
+        mode: "default",
+        canPrompt: false,
+        permissionRules: { deny: GROUP_READ_ONLY_DENY_RULES },
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        collaboration,
+        syntheticMessages: rosterContext ? [{ purpose: "group_chat_context", text: [
+          rosterContext,
+          requiredDelegates.length > 0
+            ? `You must delegate to these member ids in order: ${requiredDelegates.join(" -> ")}.`
+            : "",
+        ].filter(Boolean).join("\n") }] : undefined,
+      })) {
+        events.push(event);
+        res.write(`${JSON.stringify(event)}\n`);
+      }
+      await writeGroupTurnCache(idempotencyKey, events);
+      res.write(`${JSON.stringify({ type: "group_turn_stream_end", cached: false })}\n`);
+    } catch (error) {
+      const failure = { type: "error", code: "group_turn_failed", message: String(error), recoverable: false };
+      events.push(failure as GatewayEvent);
+      res.write(`${JSON.stringify(failure)}\n`);
+    } finally {
+      this.activeChats.delete(idempotencyKey);
+      res.end();
+    }
   }
 
   private async handleChatCompletions(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -404,6 +542,56 @@ export class ApiServerChannel implements ChannelAdapter {
     res.setHeader("X-Hermes-Session-Id", chatId);
     sendJson(res, 200, buildChatCompletion(this.modelName, replyText.trim()));
   }
+}
+
+function parseWorkspaceMappings(value: string | undefined): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, mappedPath]) =>
+      typeof mappedPath === "string" && key.trim() && mappedPath.trim()
+        ? [[key.trim(), resolve(mappedPath)]]
+        : []));
+  } catch {
+    return {};
+  }
+}
+
+function safeStableId(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return /^[a-zA-Z0-9._-]{1,200}$/u.test(normalized) ? normalized : "";
+}
+
+function groupTurnCachePath(idempotencyKey: string): string {
+  const pilotHome = process.env.PILOT_HOME || join(homedir(), ".pilotdeck");
+  const digest = createHash("sha256").update(idempotencyKey).digest("hex");
+  return join(pilotHome, "group-turn-idempotency", `${digest}.json`);
+}
+
+async function readGroupTurnCache(idempotencyKey: string): Promise<GatewayEvent[] | null> {
+  try {
+    const parsed = JSON.parse(await readFile(groupTurnCachePath(idempotencyKey), "utf8")) as unknown;
+    return Array.isArray(parsed) ? parsed as GatewayEvent[] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeGroupTurnCache(idempotencyKey: string, events: GatewayEvent[]): Promise<void> {
+  const target = groupTurnCachePath(idempotencyKey);
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temporary, JSON.stringify(events), { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, target);
+}
+
+function writeNdjsonEvents(res: ServerResponse, events: GatewayEvent[], cached: boolean): void {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-store");
+  for (const event of events) res.write(`${JSON.stringify(event)}\n`);
+  res.end(`${JSON.stringify({ type: "group_turn_stream_end", cached })}\n`);
 }
 
 function readRequestBody(req: IncomingMessage, max: number): Promise<string> {

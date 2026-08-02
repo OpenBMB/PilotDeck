@@ -1,14 +1,27 @@
 import crypto from 'node:crypto';
+import { instancesDb, userDb } from '../database/db.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import { createNotificationEvent, notifyUserIfEnabled } from './notification-orchestrator.js';
 import { groupChatDb } from './group-chat-db.js';
+import {
+  createGroupDelegationGrant,
+  revokeGroupDelegationGrants,
+} from './group-delegation-grants.js';
+import { assertApprovedRemoteInstance } from './instance-service.js';
 
 const MAX_MESSAGE_CHARS = 20_000;
 const MAX_MEMBERS = 8;
-const MEMBER_TIMEOUT_MS = 5 * 60_000;
+const configuredMemberTimeout = Number(process.env.PILOTDECK_GROUP_MEMBER_TIMEOUT_MS);
+const MEMBER_TIMEOUT_MS = Number.isFinite(configuredMemberTimeout) && configuredMemberTimeout >= 100
+  ? configuredMemberTimeout
+  : 5 * 60_000;
 const MAX_REQUIRED_DELEGATE_RETRIES = 1;
 const GROUP_MEMBER_DELEGATE_TOOL = 'group_member_delegate';
-const activeRooms = new Set();
+const GROUP_READ_ONLY_DENY_RULES = [
+  'bash', 'write_file', 'edit_file', 'edit_notebook', 'execute_code',
+  'agent', 'group_chat', 'task_create', 'task_stop', 'todo_write', 'mcp__*',
+].map((toolName) => ({ source: 'policy', behavior: 'deny', toolName }));
+const dispatchingRooms = new Set();
 const activeMainTurns = new Map();
 
 function memberCategory(kind) {
@@ -94,14 +107,7 @@ function normalizeMemberInput(input) {
     config.employeeId = cleanText(input.employeeId || config.employeeId || id, '员工 ID', 200);
   }
   if (input.kind === 'pilotdeck_remote') {
-    config.endpoint = normalizeRemoteEndpoint(input.endpoint || config.endpoint);
-    if (input.tokenEnv || config.tokenEnv) {
-      const tokenEnv = cleanText(input.tokenEnv || config.tokenEnv, '令牌环境变量', 100);
-      if (!/^PILOTDECK_GROUP_[A-Z0-9_]+$/.test(tokenEnv)) {
-        throw new Error('远程令牌变量必须以 PILOTDECK_GROUP_ 开头。');
-      }
-      config.tokenEnv = tokenEnv;
-    }
+    config.instanceId = cleanText(input.instanceId || config.instanceId, '已批准实例 ID', 200);
   }
   return {
     id,
@@ -110,6 +116,7 @@ function normalizeMemberInput(input) {
     role: typeof input.role === 'string' ? input.role.trim().slice(0, 160) : '',
     description: typeof input.description === 'string' ? input.description.trim().slice(0, 500) : '',
     config,
+    instanceId: input.kind === 'pilotdeck_remote' ? config.instanceId : undefined,
   };
 }
 
@@ -246,6 +253,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
     runMode: 'ask',
     mode: 'default',
     canPrompt: false,
+    permissionRules: { deny: GROUP_READ_ONLY_DENY_RULES },
     timeoutMs: MEMBER_TIMEOUT_MS,
     runId,
     syntheticMessages: [{
@@ -254,7 +262,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
         room,
         member,
         transcript,
-        member.id === 'main',
+        options.collaboration?.canDelegate === true,
         options.requiredDelegateIds || [],
       ),
     }],
@@ -263,6 +271,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
       executionKind: 'user_session',
       phase: 'group_chat',
     },
+    ...(options.collaboration ? { collaboration: options.collaboration } : {}),
     })) {
       if (event.type === 'assistant_text_delta') output += event.text || '';
       if (event.type === 'assistant_thinking_delta' && reasoningMessage) {
@@ -340,32 +349,129 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
   return { content: output.trim(), sawDelegation };
 }
 
-async function invokeRemotePilotDeck(room, member, userMessage, transcript) {
-  const endpoint = member.config?.endpoint;
-  if (!endpoint) throw new Error('远程 PilotDeck 成员缺少 endpoint。');
-  const token = member.config?.tokenEnv ? process.env[member.config.tokenEnv] : undefined;
-  const target = endpoint.endsWith('/v1/chat/completions')
-    ? endpoint
-    : `${endpoint.replace(/\/$/, '')}/v1/chat/completions`;
-  const payload = await fetchJson(target, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Hermes-Session-Id': encodeURIComponent(`group:${room.id}:${member.id}`).slice(0, 240),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      model: 'pilotdeck-gateway',
-      stream: false,
-      messages: [{
-        role: 'user',
-        content: `${buildMemberContext(room, member, transcript, false)}\n\n当前用户消息：\n${userMessage}`,
-      }],
-    }),
-  }, MEMBER_TIMEOUT_MS);
-  const content = payload?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('远程 PilotDeck 返回了空内容。');
-  return content.trim();
+async function invokeRemoteGroupTurn(room, member, userMessage, transcript, userId, options = {}) {
+  if (!member.instanceId) {
+    throw new Error('远程 PilotDeck 必须引用经过管理员批准的实例。');
+  }
+  const { instance, binding, token } = await assertApprovedRemoteInstance(member.instanceId, room.projectPath);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error('远程 PilotDeck group-turn 调用超时。')), MEMBER_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${instance.endpoint.replace(/\/$/u, '')}/v1/group/turn`, {
+      method: 'POST',
+      redirect: 'error',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        version: 1,
+        roomId: room.id,
+        roundId: options.roundId,
+        entryMemberId: member.id,
+        workspaceKey: binding.workspace_key,
+        message: userMessage,
+        rosterContext: buildMemberContext(room, member, transcript, true, options.requiredDelegateIds || []),
+        requiredDelegates: options.requiredDelegateIds || [],
+        collaboration: options.collaboration || { canDelegate: false },
+      }),
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    throw new Error(controller.signal.aborted
+      ? '远程 PilotDeck group-turn 调用超时。'
+      : (error instanceof Error ? error.message : String(error)));
+  }
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => ({}));
+    clearTimeout(timeout);
+    throw new Error(payload.error || `远程 PilotDeck group-turn 请求失败（HTTP ${response.status}）。`);
+  }
+  let output = '';
+  let failure = null;
+  let sawDelegation = false;
+  let buffer = '';
+  let reasoning = '';
+  const toolMessages = new Map();
+  const reasoningMessage = options.persistActivity
+    ? groupChatDb.createMessage(userId, room.id, {
+        roundId: options.roundId,
+        kind: 'activity',
+        senderType: 'agent',
+        senderMemberId: member.id,
+        senderName: member.name,
+        content: '远程实例正在理解问题并决定是否需要协调其他成员。',
+        metadata: { activityType: 'reasoning', state: 'running', remote: true },
+        status: 'thinking',
+      })
+    : null;
+  const consumeEvent = (event) => {
+    if (!event || typeof event !== 'object') return;
+    if (event.type === 'assistant_text_delta') output += event.text || '';
+    if (event.type === 'assistant_thinking_delta' && reasoningMessage) {
+      reasoning = boundedPreview(`${reasoning}${event.text || ''}`, MAX_MESSAGE_CHARS);
+      groupChatDb.updateMessage(reasoningMessage.id, {
+        content: reasoning || '正在思考…',
+        metadata: { activityType: 'reasoning', state: 'running', remote: true },
+        status: 'thinking',
+      });
+    }
+    if (event.type === 'tool_call_started') {
+      if (event.name === GROUP_MEMBER_DELEGATE_TOOL) sawDelegation = true;
+      else if (options.persistActivity) {
+        const activity = groupChatDb.createMessage(userId, room.id, {
+          roundId: options.roundId,
+          kind: 'activity', senderType: 'agent', senderMemberId: member.id, senderName: member.name,
+          content: boundedPreview(event.argsPreview),
+          metadata: { activityType: 'tool', state: 'running', toolCallId: event.toolCallId, toolName: event.name, remote: true },
+          status: 'thinking',
+        });
+        if (activity) toolMessages.set(event.toolCallId, activity.id);
+      }
+    }
+    if (event.type === 'tool_call_finished' && event.toolName !== GROUP_MEMBER_DELEGATE_TOOL) {
+      const activityId = toolMessages.get(event.toolCallId);
+      if (activityId) {
+        groupChatDb.updateMessage(activityId, {
+          content: boundedPreview(event.resultPreview),
+          metadata: { activityType: 'tool', state: event.ok ? 'completed' : 'failed', toolCallId: event.toolCallId, toolName: event.toolName, remote: true },
+          status: event.ok ? 'completed' : 'failed',
+          error: event.ok ? null : (event.errorCode || '远程工具调用失败'),
+        });
+        toolMessages.delete(event.toolCallId);
+      }
+    }
+    if (event.type === 'error') failure = event.message || event.code || '远程 PilotDeck 调用失败';
+  };
+  try {
+    for await (const chunk of response.body) {
+      buffer += Buffer.from(chunk).toString('utf8');
+      let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        consumeEvent(JSON.parse(line));
+      }
+    }
+    if (buffer.trim()) consumeEvent(JSON.parse(buffer));
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  } finally {
+    clearTimeout(timeout);
+    if (reasoningMessage) {
+      groupChatDb.updateMessage(reasoningMessage.id, {
+        content: reasoning || (failure ? '远程分析失败。' : '远程分析完成。'),
+        metadata: { activityType: 'reasoning', state: failure ? 'failed' : 'completed', remote: true },
+        status: failure ? 'failed' : 'completed',
+        error: failure,
+      });
+    }
+  }
+  if (failure) throw new Error(failure);
+  return { content: output.trim(), sawDelegation };
 }
 
 async function invokeStaffDeck(room, member, userMessage, transcript, userId) {
@@ -398,8 +504,13 @@ async function invokeStaffDeck(room, member, userMessage, transcript, userId) {
 }
 
 async function invokeMember(room, member, userMessage, transcript, userId, options = {}) {
+  const participant = groupChatDb.listParticipants(userId, room.id)
+    ?.find((candidate) => candidate.boundMemberId === member.id);
+  if (participant && !participant.isActive) {
+    throw new Error(`成员“${member.name}”的账号已停用。`);
+  }
   if (member.kind === 'pilotdeck_remote') {
-    return { content: await invokeRemotePilotDeck(room, member, userMessage, transcript), sawDelegation: false };
+    return invokeRemoteGroupTurn(room, member, userMessage, transcript, userId, options);
   }
   if (member.kind === 'staffdeck' || member.kind === 'staffdeck_mock') {
     if (member.kind === 'staffdeck_mock') {
@@ -471,36 +582,33 @@ function extractMentions(room, content, hintedMemberIds = []) {
         mentionPosition(content, member.id),
       ),
     }));
-  const visibleIds = new Set(visible.map((entry) => entry.id));
-  const hintedVisible = hintedOrder.filter((id) => visibleIds.has(id));
-  const hintedVisibleSet = new Set(hintedVisible);
-  const mentionedMemberIds = [
-    ...hintedVisible,
-    ...visible
-      .filter((entry) => !hintedVisibleSet.has(entry.id))
-      .sort((left, right) => left.position - right.position)
-      .map((entry) => entry.id),
-  ];
+  const hintedIndex = new Map(hintedOrder.map((id, index) => [id, index]));
+  const mentionedMemberIds = visible
+    .sort((left, right) => left.position - right.position
+      || (hintedIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (hintedIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER))
+    .map((entry) => entry.id);
   return { mentionAll, mentionedMemberIds };
 }
 
 function notifyRoundCompleted(userId, roomId, roundId) {
-  const room = groupChatDb.getRoom(userId, roomId);
-  if (!room || room.muted) return;
-  notifyUserIfEnabled({
-    userId,
-    event: createNotificationEvent({
-      provider: 'pilotdeck',
-      kind: 'info',
-      code: 'agent.notification',
-      meta: {
-        message: `群组“${room.title}”已完成本轮回复`,
-        groupId: roomId,
-        groupName: room.title,
-      },
-      dedupeKey: `group:${roomId}:round:${roundId}`,
-    }),
-  });
+  const participants = groupChatDb.listParticipants(userId, roomId) || [];
+  for (const participant of participants) {
+    if (participant.muted || !participant.isActive) continue;
+    notifyUserIfEnabled({
+      userId: participant.userId,
+      event: createNotificationEvent({
+        provider: 'pilotdeck',
+        kind: 'info',
+        code: 'agent.notification',
+        meta: {
+          message: `群组“${groupChatDb.getRoom(participant.userId, roomId)?.title || '群组'}”已完成本轮回复`,
+          groupId: roomId,
+          groupName: groupChatDb.getRoom(participant.userId, roomId)?.title || '',
+        },
+        dedupeKey: `group:${roomId}:round:${roundId}:user:${participant.userId}`,
+      }),
+    });
+  }
 }
 
 async function runDirectMember(userId, roomId, roundId, userMessage, target) {
@@ -535,7 +643,11 @@ async function runDirectMember(userId, roomId, roundId, userMessage, target) {
   try {
     const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
     const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder.id));
-    const result = await invokeMember(room, target, userMessage, transcript, userId);
+    const result = await invokeMember(room, target, userMessage, transcript, userId, {
+      roundId,
+      requiredDelegateIds: [],
+      collaboration: { canDelegate: false },
+    });
     if (!result.content) throw new Error('智能体没有返回可显示的内容。');
     groupChatDb.updateMessage(placeholder.id, {
       content: result.content,
@@ -558,10 +670,26 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
     roomId: room.id,
     roundId,
     sessionId,
+    entryMemberId: entryMember.id,
     requiredDelegateIds: [...requiredDelegateIds],
     attemptedDelegateIds: new Set(),
   };
   activeMainTurns.set(sessionId, turnContext);
+  const grant = createGroupDelegationGrant({
+    roomId: room.id,
+    turnId: roundId,
+    entryInstanceId: entryMember.instanceId || room.coordinatorInstanceId || entryMember.id,
+  });
+  const collaboration = {
+    version: 1,
+    kind: 'group_turn',
+    roomId: room.id,
+    turnId: roundId,
+    entryMemberId: entryMember.id,
+    canDelegate: true,
+    coordinatorUrl: (process.env.PILOTDECK_PUBLIC_URL || process.env.PILOTDECK_GROUP_API_URL || `http://127.0.0.1:${process.env.SERVER_PORT || '3001'}`).replace(/\/$/u, ''),
+    delegationToken: grant.token,
+  };
   let result = { content: '', sawDelegation: false };
   try {
     for (let attempt = 0; attempt <= MAX_REQUIRED_DELEGATE_RETRIES; attempt += 1) {
@@ -582,6 +710,7 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
         roundId,
         persistActivity: true,
         requiredDelegateIds: missing,
+        collaboration,
       });
       if (requiredDelegateIds.every((id) => turnContext.attemptedDelegateIds.has(id))) break;
     }
@@ -605,12 +734,11 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
     }
   } finally {
     if (activeMainTurns.get(sessionId) === turnContext) activeMainTurns.delete(sessionId);
+    revokeGroupDelegationGrants(roundId);
   }
 }
 
 async function dispatchMentionRound(userId, roomId, roundId, userMessage, targets) {
-  activeRooms.add(roomId);
-  groupChatDb.updateTurn(roundId, { status: 'running', error: null });
   try {
     for (const target of targets) {
       await runDirectMember(userId, roomId, roundId, userMessage, target);
@@ -622,14 +750,10 @@ async function dispatchMentionRound(userId, roomId, roundId, userMessage, target
       status: 'failed',
       error: error instanceof Error ? error.message : String(error),
     });
-  } finally {
-    activeRooms.delete(roomId);
   }
 }
 
 async function dispatchSmartRound(userId, roomId, roundId, userMessage, entryMember, requiredDelegateIds) {
-  activeRooms.add(roomId);
-  groupChatDb.updateTurn(roundId, { status: 'running', error: null });
   try {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') throw new Error('群组已经归档。');
@@ -649,9 +773,63 @@ async function dispatchSmartRound(userId, roomId, roundId, userMessage, entryMem
       error: message,
     });
     groupChatDb.updateTurn(roundId, { status: 'failed', error: message });
-  } finally {
-    activeRooms.delete(roomId);
   }
+}
+
+async function executeQueuedTurn(turn) {
+  if (!userDb.getUserById(turn.senderUserId)) {
+    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '消息发送者账号已停用。' });
+    return;
+  }
+  const message = groupChatDb.getUserMessageForTurn(turn.id);
+  if (!message) {
+    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组轮次缺少用户消息。' });
+    return;
+  }
+  const room = groupChatDb.getRoom(turn.senderUserId, turn.roomId);
+  if (!room || room.status !== 'active') {
+    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组不存在或已经归档。' });
+    return;
+  }
+  const targetIds = turn.requiredDelegates || [];
+  if (turn.triggerSource === 'mentions') {
+    const targetsById = new Map(room.members.map((member) => [member.id, member]));
+    const targets = targetIds.flatMap((id) => targetsById.get(id) || []);
+    await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.id, message.content, targets);
+    return;
+  }
+  const entryMember = room.members.find((member) => member.id === turn.entryMemberId && member.isActive !== false);
+  if (!entryMember) {
+    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '入口 PilotDeck 实例不可用。' });
+    return;
+  }
+  await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.id, message.content, entryMember, targetIds);
+}
+
+function scheduleRoom(roomId) {
+  if (dispatchingRooms.has(roomId)) return;
+  dispatchingRooms.add(roomId);
+  queueMicrotask(async () => {
+    try {
+      while (true) {
+        const queued = groupChatDb.getNextQueuedTurn(roomId);
+        if (!queued) break;
+        const claimed = groupChatDb.claimQueuedTurn(queued.id);
+        if (!claimed) continue;
+        try {
+          await executeQueuedTurn(claimed);
+        } catch (error) {
+          groupChatDb.updateTurn(claimed.id, {
+            status: 'failed',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    } finally {
+      dispatchingRooms.delete(roomId);
+      if (groupChatDb.getNextQueuedTurn(roomId)) scheduleRoom(roomId);
+    }
+  });
 }
 
 export const groupChatService = {
@@ -677,6 +855,16 @@ export const groupChatService = {
     if (!room) return null;
     if (room.members.length >= MAX_MEMBERS + 1) throw new Error(`每个群组最多邀请 ${MAX_MEMBERS} 个成员。`);
     const member = normalizeMemberInput(input);
+    if (member.kind === 'pilotdeck_remote') {
+      const instance = instancesDb.get(member.instanceId);
+      if (!instance || instance.kind !== 'remote' || instance.status !== 'approved') {
+        throw new Error('远程 PilotDeck 实例尚未通过管理员批准。');
+      }
+      if (!instancesDb.getProjectBinding(instance.id, room.projectPath)) {
+        throw new Error('远程 PilotDeck 实例没有绑定当前项目工作区。');
+      }
+      member.name = input.name?.trim() || instance.name;
+    }
     if (room.members.some((existing) => existing.id === member.id)) throw new Error('该成员已经在群组中。');
     return groupChatDb.addMember(userId, roomId, member);
   },
@@ -684,31 +872,32 @@ export const groupChatService = {
   async delegateMember(userId, roomId, input) {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') return null;
-    const expectedSessionId = `group:${roomId}:main`;
-    if (input.sourceSessionId !== expectedSessionId) {
-      throw new Error('只有当前群组的主智能体可以委派成员。');
-    }
-    const activeTurn = activeMainTurns.get(expectedSessionId);
+    const sourceSessionId = typeof input.sourceSessionId === 'string' ? input.sourceSessionId : '';
+    const activeTurn = activeMainTurns.get(sourceSessionId);
     if (!activeTurn || activeTurn.userId !== userId || activeTurn.roomId !== roomId) {
-      throw new Error('当前群组没有可接受委派的主智能体轮次。');
+      throw new Error('当前群组没有可接受委派的入口智能体轮次。');
     }
     const memberId = cleanText(input.memberId, '成员 ID', 100);
     if (memberId === 'main') throw new Error('主智能体不能委派给自己。');
     const member = room.members.find((candidate) => candidate.id === memberId && candidate.isActive !== false);
     if (!member) throw new Error('要调用的群成员不存在或已被移除。');
+    const nextRequired = activeTurn.requiredDelegateIds.find((id) => !activeTurn.attemptedDelegateIds.has(id));
+    if (nextRequired && memberId !== nextRequired) {
+      throw new Error(`必须先按用户提及顺序委派 ${nextRequired}，然后才能调用 ${memberId}。`);
+    }
     const message = cleanText(input.message, '委派消息', MAX_MESSAGE_CHARS);
     const sourceTurnId = typeof input.sourceTurnId === 'string'
       ? input.sourceTurnId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120)
       : '';
     const roundId = activeTurn.roundId;
     activeTurn.attemptedDelegateIds.add(memberId);
-    const main = room.members.find((candidate) => candidate.id === 'main');
+    const entry = room.members.find((candidate) => candidate.id === activeTurn.entryMemberId);
     const delegation = groupChatDb.createMessage(userId, roomId, {
       roundId,
       kind: 'delegation',
       senderType: 'agent',
-      senderMemberId: 'main',
-      senderName: main?.name || 'PilotDeck 主智能体',
+      senderMemberId: entry?.id || activeTurn.entryMemberId,
+      senderName: entry?.name || 'PilotDeck 协调智能体',
       content: message,
       metadata: {
         state: 'waiting',
@@ -731,7 +920,11 @@ export const groupChatService = {
     try {
       const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
       const transcript = formatTranscript(messages.filter((candidate) => candidate.id !== placeholder.id));
-      const result = await invokeMember(room, member, message, transcript, userId);
+      const result = await invokeMember(room, member, message, transcript, userId, {
+        roundId,
+        requiredDelegateIds: [],
+        collaboration: { canDelegate: false },
+      });
       if (!result.content) throw new Error('被委派成员没有返回可显示的内容。');
       const completed = groupChatDb.updateMessage(placeholder.id, {
         content: result.content,
@@ -767,32 +960,57 @@ export const groupChatService = {
   sendMessage(userId, roomId, input) {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') return null;
-    if (activeRooms.has(roomId)) throw new Error('当前群组仍在处理上一轮消息，请等待回复完成。');
     const content = cleanText(input.content, '消息', MAX_MESSAGE_CHARS);
     // Mentions are derived from the saved text so callers cannot trigger an
     // unmentioned member by sending a forged `mentionedMemberIds` payload.
     const { mentionedMemberIds, mentionAll } = extractMentions(room, content, input.mentionedMemberIds);
     const participant = groupChatDb.getParticipant(userId, roomId);
     if (!participant) throw new Error('当前用户不是该群组的有效参与者。');
-    const entryMember = resolveEntryMember(room, participant);
+    let entryMember = resolveEntryMember(room, participant);
     if (!entryMember) throw new Error('群组没有可用的入口 PilotDeck 实例。');
     const directTargets = resolveMentionTargets(room, mentionedMemberIds, mentionAll);
+    if (room.triggerMode === 'auto' && mentionAll) {
+      entryMember = room.members.find((member) => member.id === 'main' && member.isActive !== false) || entryMember;
+    }
+    const requiredDelegateIds = room.triggerMode === 'mentions'
+      ? directTargets.map((member) => member.id)
+      : mentionAll
+        ? room.members.filter((member) => member.id !== entryMember.id && member.isActive !== false).map((member) => member.id)
+        : mentionedMemberIds.filter((id) => id !== entryMember.id);
+    const idempotencyKey = typeof input.clientMessageId === 'string' && input.clientMessageId.trim()
+      ? `${userId}:${input.clientMessageId.trim().slice(0, 140)}`
+      : null;
     const turn = groupChatDb.createTurn(userId, roomId, {
       entryMemberId: room.triggerMode === 'auto' ? entryMember.id : (directTargets[0]?.id || entryMember.id),
       triggerSource: room.triggerMode,
       status: 'queued',
+      idempotencyKey,
+      requiredDelegates: requiredDelegateIds,
     });
     if (!turn) throw new Error('无法创建群组轮次。');
     const roundId = turn.id;
+    const existingMessage = groupChatDb.getUserMessageForTurn(roundId);
+    if (existingMessage) {
+      if (turn.status === 'queued') scheduleRoom(roomId);
+      return {
+        message: existingMessage,
+        roundId,
+        entryMemberId: turn.entryMemberId,
+        targetMemberIds: turn.requiredDelegates,
+        requiredDelegateIds: room.triggerMode === 'auto' ? turn.requiredDelegates : [],
+        deduplicated: true,
+      };
+    }
     const message = groupChatDb.createMessage(userId, roomId, {
       roundId,
       kind: 'chat',
       senderType: 'user',
       senderUserId: userId,
-      senderName: '你',
+      senderName: participant.displayName || '你',
       content,
       status: 'completed',
     });
+    groupChatDb.setTurnMessageSequence(roundId, message.sequence);
     if (room.triggerMode === 'mentions' && directTargets.length === 0) {
       groupChatDb.createMessage(userId, roomId, {
         roundId,
@@ -803,13 +1021,8 @@ export const groupChatService = {
         status: 'completed',
       });
       groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
-    } else if (room.triggerMode === 'mentions') {
-      void dispatchMentionRound(userId, roomId, roundId, content, directTargets);
     } else {
-      const requiredDelegateIds = mentionAll
-        ? room.members.filter((member) => member.id !== 'main' && member.isActive !== false).map((member) => member.id)
-        : mentionedMemberIds.filter((id) => id !== entryMember.id);
-      void dispatchSmartRound(userId, roomId, roundId, content, entryMember, requiredDelegateIds);
+      scheduleRoom(roomId);
     }
     return {
       message,
@@ -819,10 +1032,13 @@ export const groupChatService = {
         ? [entryMember.id]
         : directTargets.map((member) => member.id),
       requiredDelegateIds: room.triggerMode === 'auto'
-        ? (mentionAll
-            ? room.members.filter((member) => member.id !== 'main' && member.isActive !== false).map((member) => member.id)
-            : mentionedMemberIds.filter((id) => id !== entryMember.id))
+        ? requiredDelegateIds
         : [],
     };
+  },
+
+  recoverPendingTurns() {
+    groupChatDb.requeueInterruptedTurns();
+    for (const roomId of groupChatDb.listPendingRoomIds()) scheduleRoom(roomId);
   },
 };

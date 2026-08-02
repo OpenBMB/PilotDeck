@@ -30,7 +30,7 @@ async function setup() {
   await database.initializeDatabase();
   const user = database.userDb.createUser('group-test', 'not-a-real-password-hash');
   const { groupChatDb } = await import('./group-chat-db.js');
-  return { user, groupChatDb };
+  return { user, groupChatDb, database };
 }
 
 describe('group chat persistence', () => {
@@ -68,13 +68,25 @@ describe('group chat persistence', () => {
     });
     expect(groupChatDb.listRooms(user.id)[0].unreadCount).toBe(1);
 
-    groupChatDb.updateRoom(user.id, room.id, { muted: true });
+    groupChatDb.setParticipantMuted(user.id, room.id, true);
     const muted = groupChatDb.listRooms(user.id)[0];
     expect(muted.unreadCount).toBe(0);
     expect(muted.hasSilentUnread).toBe(true);
 
     groupChatDb.markRead(user.id, room.id);
     expect(groupChatDb.listRooms(user.id)[0].hasSilentUnread).toBe(false);
+  });
+
+  it('routes the main member through a remote coordinator instance when one is bound', async () => {
+    const { user, groupChatDb, database } = await setup();
+    const remote = database.instancesDb.createRemote({
+      id: 'remote-main', ownerUserId: user.id, name: 'Remote main', endpoint: 'http://127.0.0.1:8642',
+    });
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Remote coordinator', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', coordinatorInstanceId: remote.id,
+    });
+    expect(room.members[0]).toMatchObject({ id: 'main', kind: 'pilotdeck_remote', instanceId: remote.id });
   });
 
   it('upgrades first-generation group messages without losing history', async () => {
@@ -131,6 +143,48 @@ describe('group chat persistence', () => {
 });
 
 describe('group chat dispatch semantics', () => {
+  it('persists concurrent human messages and executes them in FIFO order with each sender entry instance', async () => {
+    const { user, groupChatDb, database } = await setup();
+    const alice = database.userDb.createUser('alice-fifo', 'hash', { displayName: 'Alice' });
+    const ownerInstance = database.instancesDb.ensureLocalForUser(user);
+    const aliceInstance = database.instancesDb.ensureLocalForUser(alice);
+    const gatewayCalls = [];
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        submitTurn: async function* (input) {
+          gatewayCalls.push({ sessionKey: input.sessionKey, message: input.message });
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          yield { type: 'assistant_text_delta', text: `reply:${input.message}` };
+          yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'FIFO group', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', coordinatorInstanceId: ownerInstance.id,
+    });
+    groupChatDb.addParticipant(user.id, room.id, {
+      userId: alice.id, displayName: 'Alice', role: 'member',
+      instanceId: aliceInstance.id, instanceKind: 'local', instanceName: 'Alice PilotDeck',
+    });
+
+    const first = groupChatService.sendMessage(alice.id, room.id, { content: 'alice-first', clientMessageId: 'm-1' });
+    const second = groupChatService.sendMessage(user.id, room.id, { content: 'owner-second', clientMessageId: 'm-2' });
+    expect(first.roundId).toBeTruthy();
+    expect(second.roundId).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(groupChatDb.getTurn(alice.id, room.id, first.roundId).status).toBe('completed');
+      expect(groupChatDb.getTurn(user.id, room.id, second.roundId).status).toBe('completed');
+    });
+    expect(gatewayCalls).toEqual([
+      { sessionKey: `group:${room.id}:user-${alice.id}`, message: 'alice-first' },
+      { sessionKey: `group:${room.id}:main`, message: 'owner-second' },
+    ]);
+    const userMessages = groupChatDb.listMessages(user.id, room.id, 50).filter((message) => message.senderType === 'user');
+    expect(userMessages.map((message) => message.content)).toEqual(['alice-first', 'owner-second']);
+  });
+
   it('saves unmentioned manual-mode messages without invoking a member', async () => {
     const { user, groupChatDb } = await setup();
     const gatewayCalls = [];

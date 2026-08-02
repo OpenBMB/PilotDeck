@@ -455,9 +455,11 @@ export class InProcessGateway implements Gateway {
             canPrompt: input.canPrompt,
             allowedReadFiles,
             permissionRules: {
-              ...persistedRules,
-              allow: [...sessionAllowRules, ...persistedRules.allow],
+              allow: [...sessionAllowRules, ...persistedRules.allow, ...(input.permissionRules?.allow ?? [])],
+              deny: [...persistedRules.deny, ...(input.permissionRules?.deny ?? [])],
+              ask: [...persistedRules.ask, ...(input.permissionRules?.ask ?? [])],
             },
+            ...(input.collaboration ? { metadata: { collaboration: input.collaboration } } : {}),
             ...(syntheticMessages.length > 0 ? { syntheticMessages } : {}),
           },
         )) {

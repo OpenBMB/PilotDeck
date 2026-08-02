@@ -84,6 +84,7 @@ export class AgentSession {
       allowPlanModeTools: submitOptions.allowPlanModeTools,
       canPrompt: submitOptions.canPrompt,
       permissionRules: submitOptions.permissionRules,
+      metadata: submitOptions.metadata,
       syntheticMessages: submitOptions.syntheticMessages,
       abortSignal: this.state.abortController.signal,
     });

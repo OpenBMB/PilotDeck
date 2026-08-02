@@ -30,6 +30,7 @@ export type TurnRunnerOptions = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  metadata?: Record<string, unknown>;
   abortSignal?: AbortSignal;
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
   syntheticMessages?: CanonicalMessage[];
@@ -200,6 +201,7 @@ export class TurnRunner {
         allowPlanModeTools: options.allowPlanModeTools,
         canPrompt: options.canPrompt,
         permissionRules: options.permissionRules,
+        metadata: options.metadata,
         abortSignal: options.abortSignal,
         onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
         onAgentStatusMessage: async (status) => {

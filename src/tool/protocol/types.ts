@@ -233,6 +233,8 @@ export type PilotDeckPlanTodoStateHandle = {
 export type PilotDeckToolRuntimeContext = {
   sessionId: string;
   turnId: string;
+  /** Opaque turn-scoped host metadata such as constrained group collaboration authority. */
+  metadata?: Record<string, unknown>;
   cwd: string;
   abortSignal?: AbortSignal;
   subagentTimeoutMs?: number;

@@ -15,9 +15,13 @@ const apiMock = vi.hoisted(() => ({
   availableGroupMembers: vi.fn(),
   addGroupMember: vi.fn(),
   removeGroupMember: vi.fn(),
+  groupParticipants: vi.fn(),
+  groupParticipantCandidates: vi.fn(),
+  instances: { list: vi.fn() },
 }));
 
 vi.mock('../../utils/api', () => ({ api: apiMock }));
+vi.mock('../auth/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 1, username: 'owner' } }) }));
 
 const now = '2026-08-01T12:00:00.000Z';
 
@@ -44,6 +48,7 @@ const group: AgentGroup = {
   triggerMode: 'mentions',
   muted: false,
   status: 'active',
+  participantRole: 'owner',
   unreadCount: 0,
   hasSilentUnread: false,
   lastMessagePreview: '综合结论',
@@ -92,6 +97,9 @@ beforeEach(() => {
   apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages }));
   apiMock.markGroupRead.mockResolvedValue(new Response(null, { status: 204 }));
   apiMock.sendGroupMessage.mockResolvedValue(jsonResponse({ roundId: 'round-1' }, 202));
+  apiMock.groupParticipants.mockResolvedValue(jsonResponse({ participants: [] }));
+  apiMock.groupParticipantCandidates.mockResolvedValue(jsonResponse({ candidates: [] }));
+  apiMock.instances.list.mockResolvedValue(jsonResponse({ instances: [] }));
 });
 
 afterEach(() => {
@@ -199,5 +207,20 @@ describe('GroupChatView', () => {
     expect(screen.getByText('工程师已经完成介绍。')).toBeTruthy();
     fireEvent.click(screen.getByText(/已完成思考/));
     expect(screen.getByText('需要工程师提供真实说明。')).toBeTruthy();
+  });
+
+  it('hides group management actions from regular members', async () => {
+    apiMock.group.mockResolvedValue(jsonResponse({ group: { ...group, participantRole: 'member' } }));
+    renderGroup();
+
+    expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '邀请' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '群组设置' }));
+    expect(await screen.findByRole('heading', { name: '群组设置' })).toBeTruthy();
+    expect(screen.getByDisplayValue(group.title).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('switch', { name: '仅 @ 触发' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: '归档群组' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '邀请' })).toBeNull();
   });
 });

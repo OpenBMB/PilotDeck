@@ -19,6 +19,7 @@ export interface AgentGroupMember {
   description?: string;
   position: number;
   config: Record<string, unknown>;
+  instanceId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -31,11 +32,27 @@ export interface AgentGroup {
   projectPath: string;
   triggerMode: GroupTriggerMode;
   muted: boolean;
+  ownerUserId?: number;
+  coordinatorInstanceId?: string;
+  participantRole?: 'owner' | 'moderator' | 'member';
   status: 'active' | 'archived';
   unreadCount: number;
   hasSilentUnread: boolean;
   lastMessagePreview: string;
   members: AgentGroupMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentGroupParticipant {
+  roomId: string;
+  userId: number;
+  displayName: string;
+  boundMemberId: string;
+  boundInstanceId?: string;
+  role: 'owner' | 'moderator' | 'member';
+  muted: boolean;
+  status: 'active' | 'removed';
   createdAt: string;
   updatedAt: string;
 }

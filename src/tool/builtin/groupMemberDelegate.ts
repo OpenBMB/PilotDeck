@@ -1,6 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { readFile } from "node:fs/promises";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 
@@ -57,14 +54,24 @@ export function createGroupMemberDelegateTool(
     isDestructive: () => false,
     isOpenWorld: () => false,
     execute: async (input, context) => {
-      const match = /^group:(.+):main$/u.exec(context.sessionId);
-      if (!match) {
+      const collaboration = context.metadata?.collaboration as {
+        kind?: string;
+        version?: number;
+        roomId?: string;
+        canDelegate?: boolean;
+        coordinatorUrl?: string;
+        delegationToken?: string;
+      } | undefined;
+      if (collaboration?.kind !== "group_turn" || collaboration.version !== 1 || collaboration.canDelegate !== true) {
         throw new PilotDeckToolRuntimeError(
           "unsupported_tool",
-          "This tool is only available to the main agent of a persistent group.",
+          "This tool is only available to the current entry agent of a persistent group turn.",
         );
       }
-      const roomId = match[1];
+      const roomId = collaboration.roomId?.trim();
+      if (!roomId) {
+        throw new PilotDeckToolRuntimeError("unsupported_tool", "The group collaboration context is incomplete.");
+      }
       const memberId = input.memberId?.trim();
       const message = input.message?.trim();
       if (!memberId || !message) {
@@ -81,19 +88,15 @@ export function createGroupMemberDelegateTool(
       }
 
       const env = context.env ?? process.env;
-      const baseUrl = (options.baseUrl
+      const baseUrl = (collaboration.coordinatorUrl
+        ?? options.baseUrl
         ?? env.PILOTDECK_GROUP_API_URL
         ?? `http://127.0.0.1:${env.SERVER_PORT || "3001"}`).replace(/\/$/u, "");
-      const tokenPath = env.PILOTDECK_GATEWAY_TOKEN_PATH
-        ?? join(env.PILOT_HOME || join(homedir(), ".pilotdeck"), "server-token");
-      let token: string;
-      try {
-        token = (await readFile(tokenPath, "utf8")).trim();
-      } catch (error) {
+      const token = collaboration.delegationToken?.trim();
+      if (!token) {
         throw new PilotDeckToolRuntimeError(
           "tool_execution_failed",
-          "Unable to read the local group delegation token.",
-          { cause: error instanceof Error ? error.message : String(error) },
+          "The coordinator did not provide a scoped delegation token.",
         );
       }
 
@@ -106,7 +109,7 @@ export function createGroupMemberDelegateTool(
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-PilotDeck-Group-Token": token,
+              "X-PilotDeck-Delegation-Token": token,
               ...(env.API_KEY ? { "X-API-Key": env.API_KEY } : {}),
             },
             body: JSON.stringify({

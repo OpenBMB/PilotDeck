@@ -1,6 +1,7 @@
 import type { AgentTurnResult } from "../../agent/index.js";
 import type { AgentStatusMessageInput } from "../../session/transcript/TranscriptWriter.js";
 import type { AgentRunMode } from "../../agent/protocol/input.js";
+import type { PermissionRuleSet } from "../../permission/index.js";
 import type {
   CronCreateInput,
   CronCreateResult,
@@ -83,6 +84,17 @@ export type GatewayOutboundAttachment = {
 
 export type TurnUsage = CanonicalUsage;
 
+export type GatewayGroupCollaborationContext = {
+  version: 1;
+  kind: "group_turn";
+  roomId: string;
+  turnId: string;
+  entryMemberId: string;
+  canDelegate: boolean;
+  coordinatorUrl?: string;
+  delegationToken?: string;
+};
+
 export type GatewaySubmitTurnInput = {
   sessionKey: string;
   channelKey: GatewayChannelKey;
@@ -118,6 +130,10 @@ export type GatewaySubmitTurnInput = {
    * so they are visible to the model but hidden from the Web UI.
    */
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
+  /** Turn-scoped group collaboration authority. Never persisted as a long-lived credential. */
+  collaboration?: GatewayGroupCollaborationContext;
+  /** Host-enforced turn rules, used for immutable ACL ceilings such as viewer mode. */
+  permissionRules?: Partial<PermissionRuleSet>;
 };
 
 export type GatewayRecordAgentStatusMessageInput = {
