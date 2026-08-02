@@ -220,9 +220,19 @@ function normalizeRealtimeText(value?: string): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
-function getMessageComparisonText(message: Pick<NormalizedMessage, 'content' | 'reasoningContent'>): string {
+function getMessageComparisonText(message: Pick<NormalizedMessage, 'content' | 'text' | 'reasoningContent'>): string {
   const contentText = normalizeRealtimeText(message.content);
-  return contentText || normalizeRealtimeText(message.reasoningContent);
+  return contentText || normalizeRealtimeText(message.text) || normalizeRealtimeText(message.reasoningContent);
+}
+
+function areComparableMessageRoles(
+  first: Pick<NormalizedMessage, 'kind' | 'role'>,
+  second: Pick<NormalizedMessage, 'kind' | 'role'>,
+): boolean {
+  if (first.kind === 'thinking' && second.kind === 'thinking') {
+    return (first.role ?? 'assistant') === (second.role ?? 'assistant');
+  }
+  return first.role === second.role;
 }
 
 function getThinkingBlockKey(message: Pick<NormalizedMessage, 'thinkingBlockId' | 'thinkingBlockSeq'>): string | undefined {
@@ -263,7 +273,7 @@ function isConfirmedUserMessageDuplicate(
     return false;
   }
 
-  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
+  const realtimeText = getMessageComparisonText(realtimeMessage);
   if (!realtimeText) return false;
 
   const realtimeTimestamp = parseTimestampMs(realtimeMessage.timestamp);
@@ -350,8 +360,8 @@ function hasEquivalentServerMessage(
 
   return candidates.some((serverMessage) => {
     if (serverMessage.kind !== realtimeMessage.kind) return false;
-    if (serverMessage.role !== realtimeMessage.role) return false;
-    return normalizeRealtimeText(serverMessage.content) === realtimeText;
+    if (!areComparableMessageRoles(serverMessage, realtimeMessage)) return false;
+    return getMessageComparisonText(serverMessage) === realtimeText;
   });
 }
 
@@ -373,19 +383,19 @@ function hasSameTurnServerFinalMessage(
   if (tailIndex < 0) return false;
   const realtimeTimestamp = parseTimestampMs(realtimeMessage.timestamp);
   if (realtimeTimestamp == null) return false;
-  const realtimeText = normalizeRealtimeText(realtimeMessage.content);
+  const realtimeText = getMessageComparisonText(realtimeMessage);
   if (!realtimeText) return false;
 
   return serverMessages.slice(tailIndex + 1).some((serverMessage) => {
     if (serverMessage.kind !== realtimeMessage.kind) return false;
-    if (serverMessage.role !== realtimeMessage.role) return false;
+    if (!areComparableMessageRoles(serverMessage, realtimeMessage)) return false;
     if (realtimeMessage.runId != null && serverMessage.runId != null && serverMessage.runId !== realtimeMessage.runId) {
       return false;
     }
     const serverTimestamp = parseTimestampMs(serverMessage.timestamp);
     if (serverTimestamp == null) return false;
     if (serverTimestamp < realtimeTimestamp) return false;
-    return normalizeRealtimeText(serverMessage.content) === realtimeText;
+    return getMessageComparisonText(serverMessage) === realtimeText;
   });
 }
 

@@ -305,6 +305,32 @@ describe('pruneRealtimeMessagesAfterServerRefresh', () => {
       '__streaming_thinking_web:s_test_run-1_id_block-b',
     ]);
   });
+
+  it('drops finalized live thinking when the server history has text without role', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
+      {
+        id: 'server-thinking',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:04.000Z',
+        provider: PROVIDER,
+        kind: 'thinking' as const,
+        text: 'The user is just saying "hello".',
+      },
+      textMessage('server-text', 'Hello there', '2026-05-28T00:00:05.000Z'),
+    ];
+    const realtime = [
+      thinkingMessage('thinking-final', 'The user is just saying "hello".', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+    ];
+
+    const pruned = pruneRealtimeMessagesAfterServerRefresh(realtime, server);
+
+    expect(pruned).toEqual([]);
+  });
 });
 
 describe('getDuplicateAssistantStreamTextState', () => {
