@@ -116,6 +116,23 @@ function toolUseMessage(id: string, timestamp = '2026-05-28T00:00:02.000Z'): Nor
   };
 }
 
+function toolResultMessage(
+  id: string,
+  toolId = 'tool-read-1',
+  timestamp = '2026-05-28T00:00:04.000Z',
+): NormalizedMessage {
+  return {
+    id,
+    sessionId: 'web:s_test',
+    timestamp,
+    provider: PROVIDER,
+    kind: 'tool_result',
+    toolName: 'Read',
+    toolId,
+    toolResult: { content: 'ok', isError: false },
+  };
+}
+
 describe('patchMergedStreamingMessage', () => {
   it('updates merged content without recomputing from store inputs', () => {
     const sessionId = 'web:s_test';
@@ -150,6 +167,30 @@ describe('patchMergedStreamingMessage', () => {
     patchMergedStreamingMessage(slot, streamId, 'same', PROVIDER);
 
     expect(slot.merged[0]).toBe(rowBefore);
+  });
+});
+
+describe('useSessionStore compact boundaries', () => {
+  it('recomputes merged messages immediately for realtime compact boundaries', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.appendRealtime('web:s_test', {
+        id: 'compact-1',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'compact_boundary',
+        text: 'Context compacted',
+        preTokens: 120,
+      });
+    });
+
+    const messages = result.current.getMessages('web:s_test');
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.kind).toBe('compact_boundary');
+    expect(result.current.getSessionSlot('web:s_test')?.realtimeMessages).toHaveLength(1);
   });
 });
 
@@ -926,7 +967,7 @@ describe('upsertRealtimeMessages', () => {
     ]);
   });
 
-  it('does not move later thinking across tool process boundaries', () => {
+  it('keeps late thinking before assistant content even after the matching tool use is shown', () => {
     const existing = [
       textMessage('text-final', 'I inspected the file.', '2026-05-28T00:00:01.000Z', {
         isFinal: true,
@@ -945,9 +986,36 @@ describe('upsertRealtimeMessages', () => {
     const updated = upsertRealtimeMessages(existing, [incoming]);
 
     expect(updated.map((message) => message.id)).toEqual([
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
       'text-final',
       'tool-read-1',
-      '__streaming_thinking_web:s_test_run-1_id_block-a',
+    ]);
+  });
+
+  it('does not move later thinking across tool result boundaries', () => {
+    const existing = [
+      textMessage('text-final', 'I inspected the file.', '2026-05-28T00:00:01.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+      toolUseMessage('tool-read-1'),
+      toolResultMessage('tool-result-1'),
+    ];
+    const incoming = thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-b', 'Decide next step', '2026-05-28T00:00:05.000Z', {
+      runId: 'run-1',
+      thinkingBlockId: 'block-b',
+      thinkingBlockSeq: 2,
+      serverTailIdAtStart: 'tail-before-turn',
+    });
+
+    const updated = upsertRealtimeMessages(existing, [incoming]);
+
+    expect(updated.map((message) => message.id)).toEqual([
+      'text-final',
+      'tool-read-1',
+      'tool-result-1',
+      '__streaming_thinking_web:s_test_run-1_id_block-b',
     ]);
   });
 });
@@ -982,6 +1050,22 @@ describe('useSessionStore streaming thinking blocks', () => {
     expect(realtime.map((message) => message.content)).toEqual(['Plan first', 'Visible answer']);
     expect(realtime[0]?.id).toBe('__streaming_thinking_web:s_test_run-1_id_block-a');
     expect(realtime[1]?.id).toBe('__streaming_web:s_test_run-1');
+  });
+
+  it('keeps late-arriving live thinking before finalized content after tool use appears', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.updateStreaming('web:s_test', 'Visible answer', PROVIDER, 'run-1');
+      result.current.finalizeStreaming('web:s_test', 'run-1');
+      result.current.appendRealtime('web:s_test', toolUseMessage('tool-read-1'));
+      result.current.updateStreamingThinking('web:s_test', 'Plan first', PROVIDER, 'run-1', 'block-a', 1);
+    });
+
+    const realtime = result.current.getSessionSlot('web:s_test')?.realtimeMessages ?? [];
+
+    expect(realtime.map((message) => message.kind)).toEqual(['thinking', 'text', 'tool_use']);
+    expect(realtime.map((message) => message.content)).toEqual(['Plan first', 'Visible answer', undefined]);
   });
 
   it('finalizes only one active thinking block and leaves the next block streaming', () => {

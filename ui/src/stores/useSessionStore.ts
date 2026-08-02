@@ -130,6 +130,8 @@ export interface NormalizedMessage {
   taskResult?: string;
   trigger?: string;
   preTokens?: number;
+  postTokens?: number;
+  messagesSummarized?: number;
   compactLevel?: number;
   compactStage?: string;
   compactStageLabel?: string;
@@ -543,21 +545,34 @@ function isStreamedAssistantContent(message: NormalizedMessage): boolean {
   return (
     message.kind === 'text' &&
     message.role === 'assistant' &&
-    typeof message.serverTailIdAtStart === 'string'
+    (
+      typeof message.serverTailIdAtStart === 'string' ||
+      (message.isFinal === true && typeof message.runId === 'string' && message.runId.trim().length > 0)
+    )
   );
 }
 
-function isRealtimeProcessBoundary(message: NormalizedMessage): boolean {
+function isRealtimeAssistantSegmentBoundary(message: NormalizedMessage): boolean {
+  if (message.kind === 'text' && message.role === 'user') {
+    return true;
+  }
   return (
-    message.kind === 'tool_use' ||
     message.kind === 'tool_result' ||
-    message.kind === 'task_notification' ||
     message.kind === 'compact_boundary' ||
-    message.kind === 'interactive_prompt' ||
-    message.kind === 'permission_request' ||
+    message.kind === 'interrupted' ||
     message.kind === 'error' ||
-    message.kind === 'interrupted'
+    message.kind === 'complete'
   );
+}
+
+function getRealtimeAssistantSegmentStartIndex(messages: NormalizedMessage[], beforeIndex: number): number {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message && isRealtimeAssistantSegmentBoundary(message)) {
+      return index + 1;
+    }
+  }
+  return 0;
 }
 
 function isSameRealtimeRunOrTurn(first: NormalizedMessage, second: NormalizedMessage): boolean {
@@ -578,19 +593,13 @@ function findLateThinkingInsertIndex(
     return -1;
   }
 
-  const turnStart = getRealtimeTurnStartIndex(messages, messages.length);
-  for (let index = turnStart; index < messages.length; index += 1) {
+  const segmentStart = getRealtimeAssistantSegmentStartIndex(messages, messages.length);
+  for (let index = segmentStart; index < messages.length; index += 1) {
     const candidate = messages[index];
     if (!isStreamedAssistantContent(candidate)) {
       continue;
     }
     if (!isSameRealtimeRunOrTurn(candidate, incoming)) {
-      continue;
-    }
-    const crossesProcessBoundary = messages
-      .slice(index + 1)
-      .some(isRealtimeProcessBoundary);
-    if (crossesProcessBoundary) {
       continue;
     }
     return index;
@@ -1059,11 +1068,11 @@ export function useSessionStore() {
         { fetchStartedAt },
       );
 
-      recomputeMergedIfNeeded(slot);
       if (data.tokenUsage) {
         slot.tokenUsage = data.tokenUsage;
       }
 
+      recomputeMergedIfNeeded(slot);
       notify(sessionId);
       return slot;
     } catch (error) {
@@ -1150,7 +1159,7 @@ export function useSessionStore() {
     // Skip expensive merged recomputation and React re-render for message
     // kinds that are invisible in the UI (they return null from conversion).
     // The next visible message will trigger the recompute anyway.
-    const INVISIBLE_KINDS = new Set(['status', 'session_created', 'permission_cancelled', 'compact_boundary']);
+    const INVISIBLE_KINDS = new Set(['status', 'session_created', 'permission_cancelled']);
     if (!INVISIBLE_KINDS.has(msg.kind)) {
       recomputeMergedIfNeeded(slot);
       notify(sessionId);
@@ -1427,6 +1436,9 @@ export function useSessionStore() {
       slot.total = data.total ?? slot.serverMessages.length;
       slot.hasMore = Boolean(data.hasMore);
       slot.fetchedAt = Date.now();
+      if (data.tokenUsage) {
+        slot.tokenUsage = data.tokenUsage;
+      }
 
       if (slot.realtimeMessages.length > 0 && incomingMessages.length > 0) {
         slot.realtimeMessages = pruneRealtimeMessagesAfterServerRefresh(
