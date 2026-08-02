@@ -5,6 +5,7 @@ import {
   getActiveTurnReplaySignature,
   getActiveTurnReplayMessagesToApply,
   getDuplicateAssistantStreamTextState,
+  isThinkingReplayAlreadyRendered,
 } from '../components/chat/hooks/useChatRealtimeHandlers';
 import {
   computeMerged,
@@ -652,6 +653,52 @@ describe('getActiveTurnReplayMessagesToApply', () => {
     });
 
     expect(messagesToApply.map((message) => message.id)).toEqual(['delta-1']);
+  });
+});
+
+describe('isThinkingReplayAlreadyRendered', () => {
+  it('detects a thinking replay already covered by finalized realtime thinking', () => {
+    const replay = {
+      id: 'thinking-replay',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'thinking' as const,
+      text: 'The user is just saying "hello".',
+      runId: 'run-1',
+    };
+
+    expect(isThinkingReplayAlreadyRendered(replay, {
+      realtimeMessages: [
+        thinkingMessage(
+          'thinking-final',
+          'The user is just saying "hello".',
+          '2026-05-28T00:00:01.000Z',
+          { isFinal: true, runId: 'run-1' },
+        ),
+      ],
+    })).toBe(true);
+  });
+
+  it('does not treat a longer thinking replay as already rendered', () => {
+    const replay = {
+      id: 'thinking-replay',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'thinking' as const,
+      content: 'Inspect the flow, then use a tool.',
+      runId: 'run-1',
+    };
+
+    expect(isThinkingReplayAlreadyRendered(replay, {
+      realtimeMessages: [
+        thinkingMessage('thinking-final', 'Inspect the flow', '2026-05-28T00:00:01.000Z', {
+          isFinal: true,
+          runId: 'run-1',
+        }),
+      ],
+    })).toBe(false);
   });
 });
 

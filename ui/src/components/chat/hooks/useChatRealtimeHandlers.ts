@@ -57,7 +57,7 @@ function normalizeAssistantStreamText(value?: string): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
-function getReplayMessageRawText(message: { content?: unknown; reasoningContent?: unknown }): string {
+function getReplayMessageRawText(message: { content?: unknown; text?: unknown; reasoningContent?: unknown }): string {
   if (typeof message.content === 'string') {
     if (normalizeAssistantStreamText(message.content).length > 0) {
       return message.content;
@@ -66,10 +66,13 @@ function getReplayMessageRawText(message: { content?: unknown; reasoningContent?
       return message.content;
     }
   }
+  if (typeof message.text === 'string' && normalizeAssistantStreamText(message.text).length > 0) {
+    return message.text;
+  }
   return typeof message.reasoningContent === 'string' ? message.reasoningContent : '';
 }
 
-function getReplayMessageText(message: { content?: unknown; reasoningContent?: unknown }): string {
+function getReplayMessageText(message: { content?: unknown; text?: unknown; reasoningContent?: unknown }): string {
   return normalizeAssistantStreamText(getReplayMessageRawText(message));
 }
 
@@ -255,6 +258,28 @@ function hasRenderedVolatileReplayBlock(
     ...(state.serverMessages || []),
   ];
   return messages.some((message) => isRenderedVolatileBlockCandidate(block, message));
+}
+
+export function isThinkingReplayAlreadyRendered(
+  message: LatestChatMessage,
+  state: ActiveTurnReplayState = {},
+): boolean {
+  if (String(message?.kind || '') !== 'thinking') {
+    return false;
+  }
+  const text = getReplayMessageRawText(message);
+  if (!normalizeAssistantStreamText(text)) {
+    return false;
+  }
+  return hasRenderedVolatileReplayBlock({
+    kind: 'thinking',
+    messages: [message],
+    text,
+    runId: getMessageRunId(message),
+    blockKey: getThinkingBlockKey(message),
+  }, {
+    realtimeMessages: state.realtimeMessages,
+  });
 }
 
 export function getActiveTurnReplayMessagesToApply(
@@ -689,12 +714,17 @@ export function useChatRealtimeHandlers({
       if (!text) return;
       const nextThinking = getThinkingStreamState(msg);
       const activeThinking = thinkingBySessionRef.current.get(sid);
+      const slot = sessionStore.getSessionSlot?.(sid);
+      if (isThinkingReplayAlreadyRendered(msg, {
+        realtimeMessages: slot?.realtimeMessages || [],
+      })) {
+        return;
+      }
       if (activeThinking && !isSameThinkingStream(activeThinking, nextThinking)) {
         finalizeThinkingForSession(sid, activeThinking);
       }
       thinkingBySessionRef.current.set(sid, nextThinking);
       // Read current thinking content and append delta
-      const slot = sessionStore.getSessionSlot?.(sid);
       const streamId = getThinkingStreamMessageId(sid, nextThinking);
       const existing = slot?.realtimeMessages.find((m: any) => m.id === streamId);
       const currentText = existing?.content || '';
