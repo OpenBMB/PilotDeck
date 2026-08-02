@@ -364,6 +364,28 @@ function isExpandableProcessMessage(message: ChatMessage): boolean {
   return true;
 }
 
+function mergeThinkingDetailMessages(messages: ChatMessage[]): ChatMessage[] {
+  const merged: ChatMessage[] = [];
+
+  for (const message of messages) {
+    const previous = merged[merged.length - 1];
+    if (message.isThinking && previous?.isThinking) {
+      const previousContent = String(previous.content || '').trim();
+      const nextContent = String(message.content || '').trim();
+      merged[merged.length - 1] = {
+        ...previous,
+        id: `${previous.id || 'thinking'}+${message.id || 'thinking'}`,
+        content: [previousContent, nextContent].filter(Boolean).join('\n\n'),
+        timestamp: message.timestamp || previous.timestamp,
+      };
+      continue;
+    }
+    merged.push(message);
+  }
+
+  return merged;
+}
+
 function canHostProcessSummary(message: ChatMessage): boolean {
   return (
     message.type === 'assistant' &&
@@ -655,7 +677,7 @@ function collectCompletedProcessSegments(messages: ChatMessage[], turn: MessageT
       startIndex: segmentStartIndex,
       endIndex,
       messages: segmentMessages,
-      detailMessages: segmentMessages.filter(isExpandableProcessMessage),
+      detailMessages: mergeThinkingDetailMessages(segmentMessages.filter(isExpandableProcessMessage)),
       previousHostIndex,
       nextHostIndex,
     });
@@ -920,7 +942,7 @@ export function getLiveProcessGroups(
     }
 
     const first = groupMessages[0];
-    const detail = groupMessages.filter(isExpandableProcessMessage);
+    const detail = mergeThinkingDetailMessages(groupMessages.filter(isExpandableProcessMessage));
     const gid = getStableProcessSegmentId(messages, liveTurn, first, groupStartIndex);
     groups.push({
       id: gid,

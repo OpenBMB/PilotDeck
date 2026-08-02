@@ -268,6 +268,26 @@ describe('processGrouping', () => {
     expect(processAttachments(thirdAssistant)).toHaveLength(0);
   });
 
+  it('merges consecutive thinking details inside a completed process row', () => {
+    const messages = [
+      user('u1'),
+      thinking('think-1', 'Inspect the first path.', 100),
+      thinking('think-2', 'Inspect the second path.', 200),
+      thinking('think-3', 'Summarize the reads.', 300),
+      assistant('a1', 'Ready.', 400),
+    ];
+
+    const items = buildRenderableMessageItems(messages);
+    const attachment = processAttachments(items.find((item) => item.message.id === 'a1'))[0];
+
+    expect(attachment?.processDetailMessages).toHaveLength(1);
+    expect(attachment?.processDetailMessages[0]?.id).toBe('think-1+think-2+think-3');
+    expect(attachment?.processDetailMessages[0]?.content).toBe(
+      'Inspect the first path.\n\nInspect the second path.\n\nSummarize the reads.',
+    );
+    expect(attachment?.processSummary.thinkingCount).toBe(3);
+  });
+
   it('attaches completed run duration after the user turn finishes', () => {
     const messages: ChatMessage[] = [
       user('u1'),
@@ -491,6 +511,27 @@ describe('processGrouping', () => {
 
     expect(split.beforeStatusMessages).toEqual([]);
     expect(split.statusDetailMessages.map((message) => message.id)).toEqual(['think-1', 'edit-1']);
+  });
+
+  it('merges consecutive thinking details inside a live process group', () => {
+    const messages = [
+      user('u1'),
+      assistant('a1', 'Starting work.', 100),
+      thinking('think-1', 'Inspect the first path.', 200),
+      thinking('think-2', 'Inspect the second path.', 300),
+      tool('read-1', 'Read', { file_path: '/repo/src/App.tsx' }, 400, null),
+    ];
+
+    const groups = getLiveProcessGroups(messages, { isAssistantWorking: true });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].detailMessages.map((message) => message.id)).toEqual([
+      'think-1+think-2',
+      'read-1',
+    ]);
+    expect(groups[0].detailMessages[0]?.content).toBe(
+      'Inspect the first path.\n\nInspect the second path.',
+    );
   });
 
   it('keeps normalized empty assistant shells available as process separators', () => {
