@@ -349,3 +349,37 @@ Passed.
 ## Result
 
 **passed** — no open P0, P1, or P2 visual/interaction issues in the requested desktop state.
+
+---
+
+# Group process-row visual QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/h7/3cs397r516s2pvg0g1gwxjdm0000gn/T/codex-clipboard-2b4458aa-8b2f-4a75-b838-ee67e3f2505f.png`
+- Regression reference: `/var/folders/h7/3cs397r516s2pvg0g1gwxjdm0000gn/T/codex-clipboard-600a15ac-e3df-4242-8506-82cf1c21e584.png`
+- Implementation screenshot: `/Users/hx/Workspace/PilotDeck/design-qa-group-process.png`
+- Combined comparison: `/Users/hx/Workspace/PilotDeck/design-qa-group-process-comparison.png`
+- Source size: 1732 × 1186 px
+- Implementation viewport: 1280 × 720 CSS px, standard density
+- State: group `grp_01`, one completed thinking row and two completed `glob` tool rows in their neutral collapsed state
+
+## Findings
+
+- Typography and hierarchy now come from the shared `ProcessLiveStatus` primitive: 14 px neutral process text, a semantic icon, and a compact chevron.
+- Thinking and tool activity render as inline rows aligned with the agent content instead of independent surfaces with borders, rounded corners, backgrounds, or shadows.
+- Sender identity and the thinking/tool state remain visible; clicking a row still reveals its preserved detail content.
+- Existing neutral color tokens and shared Lucide icons are reused, so there are no new assets or one-off group-only styles.
+- The focused comparison uses the process region because the reference and implementation contain different conversation content and viewport scales.
+- Live-browser interaction confirmed collapsed and expanded states, including the retained thinking detail.
+- No open P0, P1, or P2 visual or interaction findings remain for the requested state.
+
+## Comparison history
+
+1. The regression reference showed each process event inside a large rounded bordered card.
+2. The local activity-card implementation was replaced with the shared chat process-row primitive.
+3. The post-fix comparison was regenerated without keyboard focus styling and confirms the neutral inline treatment.
+
+## Result
+
+final result: passed

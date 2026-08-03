@@ -7,9 +7,7 @@ import {
   Bell,
   BellOff,
   Bot,
-  Brain,
   CheckCircle2,
-  ChevronDown,
   Folder,
   Loader2,
   MessageCircleMore,
@@ -21,7 +19,6 @@ import {
   ShieldCheck,
   Trash2,
   UsersRound,
-  Wrench,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -38,6 +35,7 @@ import type {
 import { api } from '../../utils/api';
 import { useAuth } from '../auth/context/AuthContext';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
+import { ProcessLiveStatus, type ProcessTraceStep } from '../chat-v2/ProcessTrace';
 import { MentionComposer, type MentionDraft } from './MentionComposer';
 
 type Props = {
@@ -120,7 +118,6 @@ function metadataString(message: AgentGroupMessage, key: string) {
 }
 
 function ActivityMessage({ message }: { message: AgentGroupMessage }) {
-  const [expanded, setExpanded] = useState(false);
   const activityType = metadataString(message, 'activityType');
   const toolName = metadataString(message, 'toolName');
   const running = message.status === 'thinking' || message.status === 'queued';
@@ -128,28 +125,25 @@ function ActivityMessage({ message }: { message: AgentGroupMessage }) {
   const label = activityType === 'tool'
     ? `${running ? '正在调用' : failed ? '调用失败' : '已调用'} ${toolName || '工具'}`
     : running ? '正在思考' : failed ? '思考中断' : '已完成思考';
-  const Icon = activityType === 'tool' ? Wrench : Brain;
+  const step: ProcessTraceStep = {
+    id: message.id,
+    title: `${message.senderName} · ${label}`,
+    phase: activityType === 'tool' ? 'tool' : 'thinking',
+    toolName: activityType === 'tool' ? toolName : undefined,
+    state: failed ? 'failed' : running ? 'running' : 'completed',
+  };
 
   return (
-    <div className="ml-12 max-w-[82%] rounded-xl border border-neutral-200/80 bg-neutral-50/80 dark:border-neutral-800 dark:bg-neutral-900/70">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-neutral-600 dark:text-neutral-300"
+    <ProcessLiveStatus step={step} compact className="ml-12 max-w-[calc(100%-3rem)]">
+      <div
+        className={cn(
+          'max-w-3xl whitespace-pre-wrap break-words text-[13px] leading-6',
+          failed ? 'text-red-600 dark:text-red-300' : 'text-neutral-600 dark:text-neutral-300',
+        )}
       >
-        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" /> : failed ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <Icon className="h-3.5 w-3.5 text-neutral-500" />}
-        <span className="flex-1 font-medium">{message.senderName} · {label}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} />
-      </button>
-      {expanded ? (
-        <div className={cn(
-          'border-t border-neutral-200/70 px-3 py-2 text-xs leading-5 dark:border-neutral-800',
-          failed ? 'text-red-600 dark:text-red-300' : 'whitespace-pre-wrap break-words text-neutral-600 dark:text-neutral-300',
-        )}>
-          {failed ? message.error || message.content || '执行失败' : message.content || '暂无详细信息'}
-        </div>
-      ) : null}
-    </div>
+        {failed ? message.error || message.content || '执行失败' : message.content || '暂无详细信息'}
+      </div>
+    </ProcessLiveStatus>
   );
 }
 

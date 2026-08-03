@@ -221,7 +221,12 @@ describe('GroupChatView', () => {
     expect(screen.getByText('已询问')).toBeTruthy();
     expect(screen.getByText('我是工程实现成员。')).toBeTruthy();
     expect(screen.getByText('工程师已经完成介绍。')).toBeTruthy();
-    fireEvent.click(screen.getByText(/已完成思考/));
+    const thinkingButton = screen.getByRole('button', { name: /PilotDeck 主智能体 · 已完成思考/ });
+    const thinkingRow = thinkingButton.closest('.process-live-status');
+    expect(thinkingRow).toBeTruthy();
+    expect(thinkingRow?.className).not.toContain('border');
+    expect(thinkingRow?.className).not.toContain('rounded');
+    fireEvent.click(thinkingButton);
     expect(screen.getByText('需要工程师提供真实说明。')).toBeTruthy();
   });
 
