@@ -22,6 +22,30 @@ export type PilotDeckHookSpecificOutput = {
   decision?: PilotDeckPermissionHookDecision;
   retry?: boolean;
   worktreePath?: string;
+  /** Restricted PreModelRequest patch; messages and tools cannot be replaced. */
+  modelRequestPatch?: {
+    provider?: string;
+    model?: string;
+    maxOutputTokens?: number;
+    temperature?: number;
+    metadata?: Record<string, unknown>;
+  };
+  artifactContracts?: Array<{
+    id: string;
+    path: string;
+    required?: boolean;
+    validatorIds?: string[];
+    expectedExtensions?: string[];
+    options?: Record<string, unknown>;
+    domainId?: string;
+  }>;
+  /** Session-scoped context consumed by the next model request. */
+  dynamicContext?: Array<{
+    id: string;
+    content: string;
+    priority?: "critical" | "high" | "normal" | "low";
+    ttlMs?: number;
+  }>;
 };
 
 export type PilotDeckHookSyncOutput = {

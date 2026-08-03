@@ -107,7 +107,11 @@ function classifyNetworkError(error: unknown, message: string): CanonicalModelEr
   }
   const text = message.toLowerCase();
   if (text.includes("enotfound") || text.includes("eai_again") || text.includes("dns")) return "dns_error";
-  if (text.includes("econnreset") || text.includes("socket hang up")) return "connection_reset";
+  if (
+    text.includes("econnreset")
+    || text.includes("socket hang up")
+    || /^(?:connection |stream )?terminated[.!]?$/u.test(text)
+  ) return "connection_reset";
   if (text.includes("econnrefused")) return "connection_refused";
   if (text.includes("certificate") || text.includes("tls") || text.includes("ssl")) return "tls_error";
   if (text.includes("proxy connect") || text.includes("proxy error") || text.includes("tunnel") || text.includes("econnrefused proxy")) return "proxy_error";

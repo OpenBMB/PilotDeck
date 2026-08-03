@@ -88,12 +88,13 @@ export class GatewayWsConnection {
   private async handleRequest(frame: WsRequestFrame): Promise<void> {
     try {
       if (frame.method === "submit_turn") {
-        const sessionKey = (frame.params as { sessionKey?: string } | undefined)?.sessionKey;
+        const publicParams = sanitizePublicSubmitTurnParams(frame.params);
+        const sessionKey = publicParams.sessionKey;
         if (sessionKey) this.inFlightSessions.add(sessionKey);
         let seq = 0;
         let lastCompleted: GatewayEvent | undefined;
         try {
-          for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
+          for await (const event of this.options.gateway.submitTurn(publicParams as never)) {
             if (event.type === "turn_completed") {
               lastCompleted = event;
             }
@@ -315,4 +316,12 @@ function isRequestFrame(value: unknown): value is WsRequestFrame {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+export function sanitizePublicSubmitTurnParams(params: unknown): Record<string, unknown> & { sessionKey?: string } {
+  if (!isRecord(params) || Array.isArray(params)) return {};
+  const publicParams = { ...params };
+  delete publicParams.origin;
+  delete publicParams.signal;
+  return publicParams;
 }

@@ -35,6 +35,11 @@ export { AsyncHookRegistry, type AsyncHookResponse, type PendingAsyncHook } from
 export { HookExecutionEventBus, type PilotDeckHookExecutionEvent } from "./hooks/events/HookExecutionEventBus.js";
 
 export type { PilotDeckPluginManifest } from "./plugins/protocol/manifest.js";
+export type { DomainActivation, DomainPlugin, DomainTaskInput } from "./domain/DomainPlugin.js";
+export {
+  DomainPluginRuntime,
+  type DomainPluginActivationResult,
+} from "./domain/DomainPluginRuntime.js";
 export type { PilotDeckMarketplaceReference } from "./plugins/protocol/manifest.js";
 export type { PilotDeckLoadedPlugin, PilotDeckPluginSourceKind } from "./plugins/protocol/plugin.js";
 export { resolveMarketplaceReference, type PilotDeckMarketplaceResolution, type PilotDeckPluginMarketplaceStatus } from "./plugins/protocol/marketplace.js";

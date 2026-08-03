@@ -216,6 +216,15 @@ function effectsFromHookOutput(output: PilotDeckHookOutput, hookName: string): P
     if (specific.retry) {
       effects.push({ type: "retry_permission_denied" });
     }
+    if (specific.modelRequestPatch) {
+      effects.push({ type: "model_request_patch", patch: specific.modelRequestPatch });
+    }
+    if (specific.artifactContracts?.length) {
+      effects.push({ type: "artifact_contracts", sourcePluginId: hookName, contracts: specific.artifactContracts });
+    }
+    for (const context of specific.dynamicContext ?? []) {
+      effects.push({ type: "additional_context", source: hookName, ...context });
+    }
   }
 
   return effects;

@@ -20,6 +20,7 @@ import {
   ContextOverflowRecovery,
   DefaultContextRuntime,
   DEFAULT_PROTECTED_TOOL_RESULT_NAMES,
+  DynamicContextStore,
   InstructionDiscovery,
   MicroCompactionEngine,
   PluginRuntimeExtensionResolver,
@@ -32,7 +33,12 @@ import {
 import { FileHistoryStore } from "../session/filesystem/FileHistoryStore.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
-import { HookRuntime, PluginRuntime } from "../extension/index.js";
+import {
+  DomainPluginRuntime,
+  HookRuntime,
+  PluginRuntime,
+  type DomainPlugin,
+} from "../extension/index.js";
 import { LifecycleRuntime } from "../lifecycle/index.js";
 import {
   GatewayElicitationChannel,
@@ -87,6 +93,7 @@ import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlug
 import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
+import { ArtifactContractStore, ArtifactValidationRuntime, FileExistsValidator } from "../artifact/index.js";
 
 export type CreateLocalGatewayOptions = {
   projectRoot?: string;
@@ -128,6 +135,8 @@ export type CreateLocalGatewayOptions = {
    */
   autoElicitation?: boolean;
   telemetry?: TelemetryClient;
+  /** Native domain plugins. Project file plugins should use skills + lifecycle hook outputs. */
+  domainPlugins?: readonly DomainPlugin[];
 };
 
 export type SubsystemUpdate = {
@@ -210,6 +219,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     modelFactory: options.__testModelFactory,
     autoElicitation: options.autoElicitation,
     telemetry,
+    domainPlugins: options.domainPlugins,
     onProjectActivated: (activeProjectRoot) => extensionWatchManager.watchProject(activeProjectRoot),
   });
   const defaultRuntime = registry.resolve();
@@ -392,6 +402,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     configStore,
     registry,
     dispose: () => {
+      gateway.dispose();
       registry.invalidate();
       router?.shutdown();
       stopConfigWatching();
@@ -444,6 +455,7 @@ type ProjectRuntimeRegistryOptions = {
   modelFactory?: (snapshot: PilotConfigSnapshot) => ModelRuntime;
   autoElicitation?: boolean;
   telemetry: TelemetryClient;
+  domainPlugins?: readonly DomainPlugin[];
   onProjectActivated?: (projectRoot: string) => void;
 };
 
@@ -1039,7 +1051,14 @@ class ProjectRuntimeRegistry {
         }),
       );
     }
-    const lifecycle = new LifecycleRuntime(hookRuntime);
+    const dynamicContext = new DynamicContextStore();
+    const artifactContracts = new ArtifactContractStore();
+    const domainPlugins = new DomainPluginRuntime({
+      plugins: this.options.domainPlugins ?? [],
+      dynamicContext,
+      artifactContracts,
+    });
+    const lifecycle = new LifecycleRuntime(hookRuntime, dynamicContext, artifactContracts, domainPlugins);
     const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
@@ -1050,6 +1069,10 @@ class ProjectRuntimeRegistry {
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
+      artifactValidation: new ArtifactValidationRuntime(
+        artifactContracts,
+        [new FileExistsValidator(), ...domainPlugins.validators()],
+      ),
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
@@ -1152,6 +1175,7 @@ class ProjectRuntimeRegistry {
         overflowRecovery,
         maxContextTokens: runtime.snapshot.config.agent.maxContextTokens ?? caps.maxContextTokens,
         now,
+        dynamicContext,
       });
       const fileHistory = new FileHistoryStore({
         backupDir: storage.fileHistoryDir,

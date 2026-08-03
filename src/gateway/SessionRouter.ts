@@ -54,6 +54,7 @@ export class SessionRouter {
   private readonly now: () => Date;
   private readonly idleSweepTimer?: ReturnType<typeof setInterval>;
   private isShutdown = false;
+  private readonly idleWaiters = new Map<string, Set<() => void>>();
 
   constructor(private readonly options: SessionRouterOptions) {
     this.idleSessionTimeoutMs = options.idleSessionTimeoutMs ?? DEFAULT_IDLE_SESSION_TIMEOUT_MS;
@@ -106,6 +107,48 @@ export class SessionRouter {
     if (record) {
       record.lastUsedAt = this.nowMs();
     }
+    if (!this.inFlightTurns.has(sessionKey)) this.resolveIdleWaiters(sessionKey);
+  }
+
+  isTurnInFlight(sessionKey: string): boolean {
+    return this.inFlightTurns.has(sessionKey);
+  }
+
+  async waitForIdle(
+    sessionKey: string,
+    options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<void> {
+    if (!this.inFlightTurns.has(sessionKey)) return;
+    if (options.signal?.aborted) throw abortError(options.signal.reason);
+
+    await new Promise<void>((resolve, reject) => {
+      const waiters = this.idleWaiters.get(sessionKey) ?? new Set<() => void>();
+      let timeout: NodeJS.Timeout | undefined;
+      const cleanup = () => {
+        waiters.delete(onIdle);
+        if (waiters.size === 0) this.idleWaiters.delete(sessionKey);
+        options.signal?.removeEventListener("abort", onAbort);
+        if (timeout) clearTimeout(timeout);
+      };
+      const onIdle = () => {
+        cleanup();
+        resolve();
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(abortError(options.signal?.reason));
+      };
+      waiters.add(onIdle);
+      this.idleWaiters.set(sessionKey, waiters);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.timeoutMs !== undefined) {
+        timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error(`Timed out waiting for session ${sessionKey} to become idle.`));
+        }, options.timeoutMs);
+      }
+      if (!this.inFlightTurns.has(sessionKey)) onIdle();
+    });
   }
 
   async abort(sessionKey: string, reason?: string): Promise<void> {
@@ -189,6 +232,14 @@ export class SessionRouter {
     }
     this.sessions.clear();
     this.inFlightTurns.clear();
+    for (const sessionKey of this.idleWaiters.keys()) this.resolveIdleWaiters(sessionKey);
+  }
+
+  private resolveIdleWaiters(sessionKey: string): void {
+    const waiters = this.idleWaiters.get(sessionKey);
+    if (!waiters) return;
+    this.idleWaiters.delete(sessionKey);
+    for (const resolve of [...waiters]) resolve();
   }
 
   /**
@@ -234,6 +285,12 @@ export class SessionRouter {
   private nowMs(): number {
     return this.now().getTime();
   }
+}
+
+function abortError(reason: unknown): Error {
+  const error = new Error(typeof reason === "string" ? reason : "Operation aborted.");
+  error.name = "AbortError";
+  return error;
 }
 
 function snapshotEvictedSession(sessionKey: string, record: SessionRecord): SessionEvictionSnapshot {

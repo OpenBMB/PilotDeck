@@ -1,0 +1,60 @@
+{
+  "date": "2026-07-23",
+  "surface": "production createLocalGateway with isolated home and project",
+  "source": {
+    "fileCount": 62,
+    "extensions": {
+      "docx": 37,
+      "pdf": 16,
+      "xlsx": 5,
+      "png": 3,
+      "pptx": 1
+    }
+  },
+  "architectureBoundary": {
+    "genericHarnessInRepository": true,
+    "legalPolicyInTemporaryDomainPluginAndSkill": true,
+    "privateLegalContentCommitted": false
+  },
+  "primaryRun": {
+    "finishReason": "completed",
+    "runtimeError": null,
+    "durationMs": 911132,
+    "streamRequestCount": 40,
+    "everyStreamRequestPatched": true,
+    "modelRequestsObserved": 36,
+    "toolCallsStarted": 41,
+    "toolCallsFinished": 41,
+    "emittedFileArtifacts": 1,
+    "totalTokens": 2704059,
+    "initialArtifactBytes": 59347
+  },
+  "recoveryRun": {
+    "reason": "complete manually detected quality artifacts after the primary session became compaction-heavy",
+    "finishReason": "completed",
+    "runtimeError": null,
+    "durationMs": 153799,
+    "streamRequestCount": 14,
+    "everyStreamRequestPatched": true,
+    "modelRequestsObserved": 14,
+    "toolCallsStarted": 18,
+    "toolCallsFinished": 18,
+    "totalTokens": 779466
+  },
+  "finalArtifact": {
+    "bytes": 61313,
+    "sha256": "fb8e30384b89faa0e975db0cf92aa8463b77d04ffe8da88302a9b8d16609b68a",
+    "runtimeContractPassed": true,
+    "independentHardVerifierPassed": true
+  },
+  "workflowFindings": {
+    "stateDrivenPromptSurvivedCompaction": true,
+    "uninspectedPptxDetected": true,
+    "pptxSlidesExtracted": 9,
+    "pptxSlidesWithNonEmptyText": 9,
+    "ledgerEntries": 62,
+    "machineReadableInspected": 45,
+    "scanOnlyClassified": 17,
+    "singleObservableActionPerMilestoneRequired": true
+  }
+}

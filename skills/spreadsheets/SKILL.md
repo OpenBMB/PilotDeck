@@ -115,6 +115,12 @@ bash "$SHEET" scaffold \
   --requirements-out "$WORKSPACE/tmp/requirements.json"
 ```
 
+The scaffold command creates an existing file. Immediately call PilotDeck's
+`read_file` tool with that exact builder path before changing it with
+`write_file` or `edit_file`. Shell output such as `cat` does not establish the
+file snapshot required by PilotDeck's write-safety guard and is not a
+substitute for `read_file`.
+
 Write `$WORKSPACE/tmp/requirements.json` from the user's requested sheets, formulas, native charts, validations, conditional formatting, expected cells/ranges, and print-page constraints. A sheet list plus a formula count is not sufficient coverage.
 
 For a task based on input files:

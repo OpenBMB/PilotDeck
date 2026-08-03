@@ -5,4 +5,3 @@ export type {
   FileArtifactSource,
   FileArtifactStatus,
 } from "./FileArtifact.js";
-

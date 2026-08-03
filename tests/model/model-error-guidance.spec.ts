@@ -60,6 +60,13 @@ test("stream idle timeout is classified as timeout with network and timeoutMs gu
   assert.match(action.userHint, /network|proxy|provider status/i);
 });
 
+test("provider terminated stream is classified as a retryable connection reset", () => {
+  const error = normalizeModelError("llmcenter", "anthropic", new Error("terminated"));
+
+  assert.equal(error.code, "connection_reset");
+  assert.equal(error.retryable, true);
+});
+
 test("billing and rate limit guidance distinguish provider-side fixes", () => {
   const billing = normalizeModelError(
     "modelbest-openai",

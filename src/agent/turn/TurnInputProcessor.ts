@@ -15,6 +15,7 @@ export class TurnInputProcessor {
           {
             role: "user",
             content: [{ type: "text", text: input.text }],
+            metadata: input.isMeta ? { synthetic: true, purpose: "internal_prompt" } : undefined,
           },
         ],
       };
@@ -26,6 +27,7 @@ export class TurnInputProcessor {
         {
           role: "user",
           content: input.content,
+          metadata: input.isMeta ? { synthetic: true, purpose: "internal_prompt" } : undefined,
         },
       ],
     };

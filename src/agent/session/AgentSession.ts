@@ -46,69 +46,92 @@ export class AgentSession {
     this.state.status = "running";
     this.state.currentTurnId = turnId;
     this.state.abortController = new AbortController();
-    yield { type: "session_started", sessionId: this.state.sessionId };
-    await this.options.lifecycle?.dispatch({
-      event: "SessionStart",
-      baseInput: {
-        sessionId: this.state.sessionId,
-        transcriptPath: this.options.transcriptPath ?? "",
-        cwd: this.options.cwd ?? process.cwd(),
-      },
-      payload: { source: "startup" },
-      matchQuery: "SessionStart",
-      signal: this.state.abortController.signal,
-    });
-    await this.options.lifecycle?.dispatch({
-      event: "Setup",
-      baseInput: {
-        sessionId: this.state.sessionId,
-        transcriptPath: this.options.transcriptPath ?? "",
-        cwd: this.options.cwd ?? process.cwd(),
-      },
-      payload: {},
-      matchQuery: "Setup",
-      signal: this.state.abortController.signal,
-    });
-    yield { type: "setup_completed", sessionId: this.state.sessionId };
+    let sessionEndAttempted = false;
+    try {
+      yield { type: "session_started", sessionId: this.state.sessionId };
+      await this.options.lifecycle?.dispatch({
+        event: "SessionStart",
+        baseInput: {
+          sessionId: this.state.sessionId,
+          transcriptPath: this.options.transcriptPath ?? "",
+          cwd: this.options.cwd ?? process.cwd(),
+        },
+        payload: { source: "startup" },
+        matchQuery: "SessionStart",
+        signal: this.state.abortController.signal,
+      });
+      await this.options.lifecycle?.dispatch({
+        event: "Setup",
+        baseInput: {
+          sessionId: this.state.sessionId,
+          transcriptPath: this.options.transcriptPath ?? "",
+          cwd: this.options.cwd ?? process.cwd(),
+        },
+        payload: {},
+        matchQuery: "Setup",
+        signal: this.state.abortController.signal,
+      });
+      yield { type: "setup_completed", sessionId: this.state.sessionId };
 
-    const runResult = yield* this.options.turnRunner.run({
-      sessionId: this.state.sessionId,
-      turnId,
-      messages: this.state.messages,
-      input,
-      maxTurns: submitOptions.maxTurns,
-      runMode: submitOptions.runMode,
-      permissionMode: submitOptions.permissionMode,
-      allowedReadFiles: submitOptions.allowedReadFiles,
-      basePermissionMode: submitOptions.basePermissionMode,
-      allowPlanModeTools: submitOptions.allowPlanModeTools,
-      canPrompt: submitOptions.canPrompt,
-      permissionRules: submitOptions.permissionRules,
-      syntheticMessages: submitOptions.syntheticMessages,
-      abortSignal: this.state.abortController.signal,
-    });
-
-    this.state.messages = runResult.messages;
-    this.state.usage = mergeSessionUsage(this.state.usage, runResult.result.usage);
-    this.state.permissionDenials = appendPermissionDenials(
-      this.state.permissionDenials,
-      runResult.result.permissionDenials,
-    );
-    this.state.status = runResult.result.type === "aborted" ? "aborted" : runResult.result.type === "error" ? "failed" : "idle";
-    this.state.currentTurnId = undefined;
-    const sessionEndReason = this.state.status === "aborted" ? "other" : "prompt_input_exit";
-    await this.options.lifecycle?.dispatch({
-      event: "SessionEnd",
-      baseInput: {
+      const runResult = yield* this.options.turnRunner.run({
         sessionId: this.state.sessionId,
-        transcriptPath: this.options.transcriptPath ?? "",
-        cwd: this.options.cwd ?? process.cwd(),
-      },
-      payload: { reason: sessionEndReason },
-      matchQuery: "SessionEnd",
-      signal: this.state.abortController.signal,
-    });
-    yield { type: "session_ended", sessionId: this.state.sessionId, reason: sessionEndReason };
+        turnId,
+        messages: this.state.messages,
+        input,
+        maxTurns: submitOptions.maxTurns,
+        runMode: submitOptions.runMode,
+        permissionMode: submitOptions.permissionMode,
+        allowedReadFiles: submitOptions.allowedReadFiles,
+        basePermissionMode: submitOptions.basePermissionMode,
+        allowPlanModeTools: submitOptions.allowPlanModeTools,
+        canPrompt: submitOptions.canPrompt,
+        permissionRules: submitOptions.permissionRules,
+        syntheticMessages: submitOptions.syntheticMessages,
+        abortSignal: this.state.abortController.signal,
+      });
+
+      this.state.messages = runResult.messages;
+      this.state.usage = mergeSessionUsage(this.state.usage, runResult.result.usage);
+      this.state.permissionDenials = appendPermissionDenials(
+        this.state.permissionDenials,
+        runResult.result.permissionDenials,
+      );
+      this.state.status = runResult.result.type === "aborted" ? "aborted" : runResult.result.type === "error" ? "failed" : "idle";
+      this.state.currentTurnId = undefined;
+      const sessionEndReason = this.state.status === "aborted" ? "other" : "prompt_input_exit";
+      sessionEndAttempted = true;
+      await this.options.lifecycle?.dispatch({
+        event: "SessionEnd",
+        baseInput: {
+          sessionId: this.state.sessionId,
+          transcriptPath: this.options.transcriptPath ?? "",
+          cwd: this.options.cwd ?? process.cwd(),
+        },
+        payload: { reason: sessionEndReason },
+        matchQuery: "SessionEnd",
+        signal: this.state.abortController.signal,
+      });
+      yield { type: "session_ended", sessionId: this.state.sessionId, reason: sessionEndReason };
+    } finally {
+      if (this.state.currentTurnId === turnId) {
+        this.state.status = this.state.abortController.signal.aborted ? "aborted" : "failed";
+        this.state.currentTurnId = undefined;
+      }
+      if (!sessionEndAttempted) {
+        const reason = this.state.status === "aborted" ? "other" : "prompt_input_exit";
+        await this.options.lifecycle?.dispatch({
+          event: "SessionEnd",
+          baseInput: {
+            sessionId: this.state.sessionId,
+            transcriptPath: this.options.transcriptPath ?? "",
+            cwd: this.options.cwd ?? process.cwd(),
+          },
+          payload: { reason },
+          matchQuery: "SessionEnd",
+          signal: this.state.abortController.signal,
+        }).catch(() => undefined);
+      }
+    }
   }
 
   abort(reason?: string): void {
