@@ -20,7 +20,7 @@ import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 export type OpenAIRequestBody = {
   model: string;
   messages: OpenAIMessage[];
-  max_tokens: number;
+  max_tokens?: number;
   tools?: OpenAITool[];
   tool_choice?: unknown;
   temperature?: number;
@@ -77,10 +77,12 @@ export function buildOpenAIRequest(
     messages.unshift({ role: "system", content: request.systemPrompt });
   }
 
+  const providerUsesCatalogDefaults = provider?.catalog !== false;
+  const maxTokens = request.maxOutputTokens ?? (providerUsesCatalogDefaults ? model.capabilities.maxOutputTokens : undefined);
+
   const body: OpenAIRequestBody = {
     model: request.model,
     messages,
-    max_tokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
     tools: request.tools?.map((tool) => toOpenAITool(tool, googleOpenAICompatible)),
     tool_choice: toOpenAIToolChoice(request.toolChoice),
     temperature: thinkingPlan.omitTemperature ? undefined : request.temperature,
@@ -91,6 +93,9 @@ export function buildOpenAIRequest(
         )
       : undefined,
   };
+  if (maxTokens !== undefined) {
+    body.max_tokens = maxTokens;
+  }
 
   if (request.outputSchema) {
     body.response_format = {

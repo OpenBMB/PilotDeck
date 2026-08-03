@@ -16,6 +16,7 @@ import type {
   CanonicalToolResultContentBlock,
   CanonicalToolSchema,
   ModelDefinition,
+  ProviderConfig,
 } from "../../protocol/canonical.js";
 import { flattenToolResultBlockText } from "../../protocol/toolResultContent.js";
 import { messageContent } from "../../protocol/clone.js";
@@ -29,10 +30,13 @@ export type GoogleRequestBody = GenerateContentParameters;
 export function buildGoogleRequest(
   request: CanonicalModelRequest,
   model: ModelDefinition,
+  provider?: ProviderConfig,
 ): GoogleRequestBody {
   const tools = request.tools?.map(toGoogleFunctionDeclaration) ?? [];
+  const providerUsesCatalogDefaults = provider?.catalog !== false;
+  const maxOutputTokens = request.maxOutputTokens ?? (providerUsesCatalogDefaults ? model.capabilities.maxOutputTokens : undefined);
   const config: GenerateContentConfig = {
-    maxOutputTokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     temperature: request.temperature,
     systemInstruction: request.systemPrompt ? { text: request.systemPrompt } : undefined,
     automaticFunctionCalling: { disable: true },

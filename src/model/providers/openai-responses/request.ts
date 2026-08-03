@@ -17,7 +17,7 @@ export type OpenAIResponsesRequestBody = {
   model: string;
   input: OpenAIResponsesInputItem[];
   instructions?: string;
-  max_output_tokens: number;
+  max_output_tokens?: number;
   stream?: boolean;
   temperature?: number;
   metadata?: Record<string, unknown>;
@@ -68,15 +68,16 @@ type OpenAIResponsesTool = {
 export function buildOpenAIResponsesRequest(
   request: CanonicalModelRequest,
   model: ModelDefinition,
-  _provider?: ProviderConfig,
+  provider?: ProviderConfig,
 ): OpenAIResponsesRequestBody {
-  const thinkingPlan = resolveThinkingPlan(request.thinking, _provider ?? { id: "openai", protocol: "openai-responses", url: "", apiKey: "", headers: {}, models: {} }, model);
+  const thinkingPlan = resolveThinkingPlan(request.thinking, provider ?? { id: "openai", protocol: "openai-responses", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
+  const providerUsesCatalogDefaults = provider?.catalog !== false;
+  const maxOutputTokens = request.maxOutputTokens ?? (providerUsesCatalogDefaults ? model.capabilities.maxOutputTokens : undefined);
   const body: OpenAIResponsesRequestBody = {
     model: request.model,
     input: request.messages.flatMap(toResponsesInputItems),
     instructions: request.systemPrompt,
-    max_output_tokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
     tools: request.tools?.map(toResponsesTool),
     tool_choice: toResponsesToolChoice(request.toolChoice),
     temperature: request.temperature,
@@ -88,6 +89,9 @@ export function buildOpenAIResponsesRequest(
       : undefined,
     store: false,
   };
+  if (maxOutputTokens !== undefined) {
+    body.max_output_tokens = maxOutputTokens;
+  }
 
   if (thinkingPlan.useOpenAIReasoning && thinkingPlan.effort) {
     body.reasoning = { effort: thinkingPlan.effort };

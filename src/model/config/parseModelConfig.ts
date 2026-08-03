@@ -105,6 +105,7 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     protocol,
     url: rawUrl,
     apiKey: resolveProviderApiKey(providerId, provider.apiKey, env, catalogProvider?.apiKeyEnvVar),
+    catalog: Boolean(catalogProvider),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
     extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
