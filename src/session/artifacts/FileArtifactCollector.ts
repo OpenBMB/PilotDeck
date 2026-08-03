@@ -126,6 +126,7 @@ export class FileArtifactCollector {
   private readonly baseline = new Map<string, FileFingerprint>();
   private readonly explicitCandidates = new Map<string, ArtifactCandidate>();
   private readonly allowedInputPaths: Set<string>;
+  private sawWorkspaceMutationCandidate = false;
 
   private constructor(options: FileArtifactCollectorOptions) {
     this.cwd = path.resolve(options.cwd);
@@ -151,6 +152,9 @@ export class FileArtifactCollector {
   }
 
   observeToolResult(result: PilotDeckToolResult): void {
+    if (canToolMutateWorkspace(result.toolName)) {
+      this.sawWorkspaceMutationCandidate = true;
+    }
     if (result.type !== "success") return;
 
     for (const item of result.content) {
@@ -167,31 +171,35 @@ export class FileArtifactCollector {
   async finish(status: FileArtifactStatus): Promise<FileArtifact[]> {
     const candidates = new Map<string, ArtifactCandidate>(this.explicitCandidates);
     const finalFingerprints = new Map<string, FileFingerprint>();
-    for (const file of await this.scanWorkspace(this.baseline)) {
-      finalFingerprints.set(file.absolutePath, file.fingerprint);
-      const before = this.baseline.get(file.absolutePath);
-      if (!before || before.sha256 !== file.fingerprint.sha256) {
-        candidates.set(file.absolutePath, {
-          absolutePath: file.absolutePath,
-          source: candidates.get(file.absolutePath)?.source ?? "workspace_diff",
-          fingerprint: file.fingerprint,
-        });
+    if (this.sawWorkspaceMutationCandidate) {
+      for (const file of await this.scanWorkspace(this.baseline)) {
+        finalFingerprints.set(file.absolutePath, file.fingerprint);
+        const before = this.baseline.get(file.absolutePath);
+        if (!before || before.sha256 !== file.fingerprint.sha256) {
+          candidates.set(file.absolutePath, {
+            absolutePath: file.absolutePath,
+            source: candidates.get(file.absolutePath)?.source ?? "workspace_diff",
+            fingerprint: file.fingerprint,
+          });
+        }
       }
-    }
-    const allowedInputFinal = new Map<string, FileFingerprint>();
-    await this.captureAllowedInputFingerprints(allowedInputFinal, this.baseline);
-    for (const [absolutePath, fingerprint] of allowedInputFinal) {
-      finalFingerprints.set(absolutePath, fingerprint);
-      const before = this.baseline.get(absolutePath);
-      if (!before || before.sha256 !== fingerprint.sha256) {
-        candidates.set(absolutePath, {
-          absolutePath,
-          source: candidates.get(absolutePath)?.source ?? "workspace_diff",
-          fingerprint,
-        });
+      const allowedInputFinal = new Map<string, FileFingerprint>();
+      await this.captureAllowedInputFingerprints(allowedInputFinal, this.baseline);
+      for (const [absolutePath, fingerprint] of allowedInputFinal) {
+        finalFingerprints.set(absolutePath, fingerprint);
+        const before = this.baseline.get(absolutePath);
+        if (!before || before.sha256 !== fingerprint.sha256) {
+          candidates.set(absolutePath, {
+            absolutePath,
+            source: candidates.get(absolutePath)?.source ?? "workspace_diff",
+            fingerprint,
+          });
+        }
       }
+      cacheWorkspaceFingerprints(this.cwd, finalFingerprints);
+    } else {
+      cacheWorkspaceFingerprints(this.cwd, this.baseline);
     }
-    cacheWorkspaceFingerprints(this.cwd, finalFingerprints);
 
     const artifacts: FileArtifact[] = [];
     for (const candidate of candidates.values()) {
@@ -326,6 +334,32 @@ function readCachedWorkspaceFingerprints(cwd: string): ReadonlyMap<string, FileF
   workspaceFingerprintCache.delete(cwd);
   workspaceFingerprintCache.set(cwd, cached);
   return cached;
+}
+
+const READ_ONLY_TOOL_NAMES = new Set([
+  "ask_user_question",
+  "enter_plan_mode",
+  "exit_plan_mode",
+  "get_current_time",
+  "glob",
+  "grep",
+  "list_mcp_resources",
+  "read_file",
+  "read_mcp_resource",
+  "read_skill",
+  "send_attachment",
+  "structured_output",
+  "task_list",
+  "task_output",
+  "task_stop",
+  "task_wait",
+  "todo_write",
+  "web_fetch",
+  "web_search",
+]);
+
+function canToolMutateWorkspace(toolName: string): boolean {
+  return !READ_ONLY_TOOL_NAMES.has(toolName.toLowerCase());
 }
 
 function cacheWorkspaceFingerprints(cwd: string, fingerprints: ReadonlyMap<string, FileFingerprint>): void {
