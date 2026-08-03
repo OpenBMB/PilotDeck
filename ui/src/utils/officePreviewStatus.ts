@@ -1,6 +1,6 @@
 import { api } from './api';
 
-export type OfficePreviewService = 'none' | 'libreoffice';
+export type OfficePreviewService = 'builtin' | 'libreoffice';
 
 export type OfficePreviewStatus = {
   service: OfficePreviewService;
@@ -20,7 +20,7 @@ export type OfficePreviewStatus = {
 };
 
 export function normalizeOfficePreviewService(value: unknown): OfficePreviewService {
-  return String(value || '').trim().toLowerCase() === 'libreoffice' ? 'libreoffice' : 'none';
+  return String(value || '').trim().toLowerCase() === 'libreoffice' ? 'libreoffice' : 'builtin';
 }
 
 async function readJsonBody(response: Response): Promise<any> {

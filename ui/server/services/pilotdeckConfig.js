@@ -91,7 +91,7 @@ export function buildDefaultPilotDeckConfig() {
         workspacesRoot: os.homedir(),
       },
       officePreview: {
-        service: 'none',
+        service: 'builtin',
         binaryPath: '',
       },
     },
@@ -101,10 +101,38 @@ export function buildDefaultPilotDeckConfig() {
   };
 }
 
-// `normalize` here means "fill in missing top-level sections with defaults"
-// — it never reshapes. Idempotent.
+// Fill in missing sections and migrate legacy Office preview settings into the
+// current schema. The migration is idempotent.
 export function normalizePilotDeckConfig(input) {
-  return deepMerge(buildDefaultPilotDeckConfig(), isRecord(input) ? input : {});
+  const source = isRecord(input) ? input : {};
+  const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  const sourceOfficePreview = isRecord(source.webui?.officePreview)
+    ? source.webui.officePreview
+    : {};
+  const legacySpreadsheetMode = normalizeString(
+    sourceOfficePreview.spreadsheetMode,
+  ).toLowerCase();
+  const configuredService = normalizeString(sourceOfficePreview.service).toLowerCase();
+
+  // Before the built-in OOXML viewers existed, `service` only controlled
+  // LibreOffice conversion and Excel had a separate `spreadsheetMode`.
+  // Preserve the view users actually selected when migrating that shape:
+  // interactive/auto -> built-in, print -> LibreOffice.
+  if (legacySpreadsheetMode) {
+    normalized.webui.officePreview.service =
+      legacySpreadsheetMode === 'print' && configuredService === 'libreoffice'
+        ? 'libreoffice'
+        : 'builtin';
+  } else if (!configuredService || configuredService === 'none') {
+    normalized.webui.officePreview.service = 'builtin';
+  } else {
+    // Keep unknown values intact so validation can reject typos instead of
+    // silently changing a user's explicit choice.
+    normalized.webui.officePreview.service = configuredService;
+  }
+  delete normalized.webui.officePreview.spreadsheetMode;
+
+  return normalized;
 }
 
 // Strip surrounding whitespace from provider apiKey + url before they
@@ -286,15 +314,14 @@ export function validatePilotDeckConfig(config) {
   const officePreviewService = normalized.webui?.officePreview?.service;
   if (
     officePreviewService !== undefined
-    && !['none', 'libreoffice'].includes(normalizeString(officePreviewService).toLowerCase())
+    && !['builtin', 'libreoffice'].includes(normalizeString(officePreviewService).toLowerCase())
   ) {
-    errors.push('webui.officePreview.service must be "none" or "libreoffice"');
+    errors.push('webui.officePreview.service must be "builtin" or "libreoffice"');
   }
   const libreOfficeBinaryPath = normalized.webui?.officePreview?.binaryPath;
   if (libreOfficeBinaryPath !== undefined && typeof libreOfficeBinaryPath !== 'string') {
     errors.push('webui.officePreview.binaryPath must be a string');
   }
-
   return { valid: errors.length === 0, errors, warnings, config: normalized };
 }
 

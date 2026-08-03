@@ -23,11 +23,14 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
+import type { DocumentSelectionSource } from '../../../../types/documentSelection';
 import {
-  createDocumentSelectionReference,
-  type DocumentSelectionReference,
-  type DocumentSelectionSource,
-} from '../../../../types/documentSelection';
+  createImageRegionContentReference,
+  createTextContentReference,
+  type ContentReference,
+  type ContentReferenceSelectionMode,
+  type ReferenceCapabilities,
+} from '../../../../types/contentReference';
 import type { PdfNavigationMode } from '../../utils/documentPreview';
 import { resolvePdfOutline, type PdfOutlineItem } from '../../utils/pdfOutline';
 import {
@@ -35,6 +38,9 @@ import {
   renderPdfSearchHighlights,
   type PdfSearchMatch,
 } from '../../utils/pdfSearch';
+import ContentReferenceMenu from './ContentReferenceMenu';
+import RegionSelectionOverlay, { type CapturedRegion } from './RegionSelectionOverlay';
+import { floatingSelectionSingleActionClassName } from './floatingSelectionAction';
 
 type PdfDocumentPreviewProps = {
   blob?: Blob;
@@ -59,7 +65,7 @@ type PdfDocumentPreviewProps = {
 type PdfSelectionAction = {
   top: number;
   left: number;
-  reference: DocumentSelectionReference;
+  reference: ContentReference;
 };
 
 type PageSize = {
@@ -751,6 +757,7 @@ export default function PdfDocumentPreview({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [viewerSize, setViewerSize] = useState<ViewerSize>({ width: 0, height: 0 });
   const [selectionAction, setSelectionAction] = useState<PdfSelectionAction | null>(null);
+  const [referenceMode, setReferenceMode] = useState<ContentReferenceSelectionMode | null>(null);
   const [forcedRenderPageNumbers, setForcedRenderPageNumbers] = useState<Set<number>>(() => new Set());
   const [zoomMode, setZoomMode] = useState<ZoomMode>('fitPage');
   const [customScale, setCustomScale] = useState(1);
@@ -1227,21 +1234,47 @@ export default function PdfDocumentPreview({
     const contextText = domPageText || cachedPageText || cachedDocumentText || selectedText;
     const surroundingText = buildSurroundingText(contextText, selectedText);
     const occurrenceIndex = getOccurrenceIndex(cachedDocumentText || contextText, selectedText);
-    const reference = createDocumentSelectionReference({
-      projectName,
-      fileName,
-      filePath,
-      source,
-      pageNumbers,
+    const firstPage = pageNumbers[0];
+    const pageElement = firstPage
+      ? viewer.querySelector<HTMLElement>(`[data-pdf-page-number="${firstPage}"]`)
+      : null;
+    const pageRect = pageElement?.getBoundingClientRect();
+    const normalizedRect = pageRect
+      ? {
+        x: (rect.left - pageRect.left) / Math.max(1, pageRect.width),
+        y: (rect.top - pageRect.top) / Math.max(1, pageRect.height),
+        width: rect.width / Math.max(1, pageRect.width),
+        height: rect.height / Math.max(1, pageRect.height),
+      }
+      : null;
+    const reference = createTextContentReference({
+      selectionMode: 'text',
+      source: {
+        projectName,
+        relativePath: filePath,
+        fileName,
+        ...(blob ? { revision: { size: blob.size } } : {}),
+      },
+      renderer: {
+        id: source,
+        backend: source === 'office-pdf' ? 'libreoffice' : 'builtin',
+        locatorQuality: source === 'office-pdf' ? 'approximate' : 'semantic',
+      },
+      locator: {
+        surface: 'page',
+        pageNumbers,
+        quote: { exact: selectedText },
+        occurrenceIndex,
+        ...(normalizedRect ? { rects: [normalizedRect] } : {}),
+      },
       selectedText,
       surroundingText,
-      occurrenceIndex,
     });
 
     const left = Math.max(12, Math.min(viewer.clientWidth - 190, rect.left - viewerRect.left + viewer.scrollLeft + rect.width / 2 - 80));
     const top = Math.max(12, rect.top - viewerRect.top + viewer.scrollTop - 42);
     setSelectionAction({ top, left, reference });
-  }, [fileName, filePath, projectName, source]);
+  }, [blob, fileName, filePath, projectName, source]);
 
   const cancelScheduledSelectionAction = useCallback(() => {
     if (selectionActionTimerRef.current !== null) {
@@ -1331,6 +1364,61 @@ export default function PdfDocumentPreview({
     }));
     window.getSelection()?.removeAllRanges();
     setSelectionAction(null);
+  };
+
+  const referenceCapabilities: ReferenceCapabilities = {
+    text: pdfDocument && firstPageSize
+      ? { state: 'available' }
+      : { state: 'loading', reason: 'SURFACE_NOT_READY' },
+    cells: { state: 'unavailable', reason: 'NO_CELL_MODEL' },
+    region: pdfDocument && firstPageSize
+      ? { state: 'available' }
+      : { state: 'loading', reason: 'SURFACE_NOT_READY' },
+    recommendedMode: 'text',
+  };
+
+  const handleReferenceMode = (mode: ContentReferenceSelectionMode) => {
+    if (mode === 'region') {
+      window.getSelection()?.removeAllRanges();
+      setSelectionAction(null);
+      setReferenceMode('region');
+      return;
+    }
+    setReferenceMode(null);
+  };
+
+  const handleRegionCommit = (capture: CapturedRegion) => {
+    const surfaceNumber = capture.pageNumber || currentPage;
+    const imageName = `reference-${fileName}-page-${surfaceNumber}-${Date.now()}.png`;
+    const reference = createImageRegionContentReference({
+      selectionMode: 'region',
+      source: {
+        projectName,
+        relativePath: filePath,
+        fileName,
+        ...(blob ? { revision: { size: blob.size } } : {}),
+      },
+      renderer: {
+        id: source,
+        backend: source === 'office-pdf' ? 'libreoffice' : 'builtin',
+        locatorQuality: 'visual',
+      },
+      locator: {
+        surface: 'page',
+        pageNumber: surfaceNumber,
+        rect: capture.rect,
+      },
+      image: {
+        name: imageName,
+        mimeType: 'image/png',
+        width: capture.width,
+        height: capture.height,
+        dataUrl: capture.dataUrl,
+      },
+      nearbyText: capture.nearbyText,
+    });
+    window.dispatchEvent(new CustomEvent('pilotdeck:add-chat-reference', { detail: reference }));
+    setReferenceMode(null);
   };
 
   const searchMatchesByPage = useMemo(() => {
@@ -1588,6 +1676,14 @@ export default function PdfDocumentPreview({
             </ToolbarButton>
           </div>
         ) : null}
+        <ToolbarSeparator />
+        <ContentReferenceMenu
+          capabilities={referenceCapabilities}
+          activeMode={referenceMode}
+          onSelectMode={handleReferenceMode}
+          onCancelMode={() => setReferenceMode(null)}
+          compact
+        />
         {(onRefresh || onToggleFullscreen || downloadUrl) ? <ToolbarSeparator /> : null}
         {onRefresh ? (
           <ToolbarButton
@@ -1741,12 +1837,29 @@ export default function PdfDocumentPreview({
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleAddReference}
-              className="absolute z-20 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[12px] font-medium text-neutral-900 shadow-lg transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900"
+              className={`absolute z-20 ${floatingSelectionSingleActionClassName}`}
               style={{ top: selectionAction.top, left: selectionAction.left }}
             >
               {t('selection.chatInPilotDeck')}
             </button>
           ) : null}
+          <RegionSelectionOverlay
+            active={referenceMode === 'region'}
+            hostRef={viewerRef}
+            resolveTarget={(element) => {
+              const page = element?.closest<HTMLElement>('[data-pdf-page-number]');
+              if (!page || !viewerRef.current?.contains(page)) return null;
+              const pageNumber = Number(page.dataset.pdfPageNumber || currentPage);
+              return {
+                element: page,
+                surface: 'page',
+                pageNumber,
+                nearbyText: pageTextRef.current.get(pageNumber),
+              };
+            }}
+            onCommit={handleRegionCommit}
+            onCancel={() => setReferenceMode(null)}
+          />
         </div>
       </div>
     </div>

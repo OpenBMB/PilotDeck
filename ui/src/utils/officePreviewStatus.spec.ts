@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeOfficePreviewService } from './officePreviewStatus';
+import {
+  normalizeOfficePreviewService,
+} from './officePreviewStatus';
 
 describe('normalizeOfficePreviewService', () => {
-  it('defaults missing and unknown values to disabled', () => {
-    expect(normalizeOfficePreviewService(undefined)).toBe('none');
-    expect(normalizeOfficePreviewService('unexpected')).toBe('none');
+  it('defaults missing and unknown values to built-in preview', () => {
+    expect(normalizeOfficePreviewService(undefined)).toBe('builtin');
+    expect(normalizeOfficePreviewService('unexpected')).toBe('builtin');
   });
 
   it('keeps an explicit LibreOffice selection', () => {

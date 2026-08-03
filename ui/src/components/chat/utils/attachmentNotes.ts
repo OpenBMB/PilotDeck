@@ -4,6 +4,11 @@ import {
   parseDocumentSelectionPromptBlock,
   type DocumentSelectionReference,
 } from '../../../types/documentSelection';
+import {
+  CONTENT_REFERENCE_ATTACHMENT_KIND,
+  parseContentReferencePromptBlock,
+  type ContentReference,
+} from '../../../types/contentReference';
 
 const ATTACHMENT_NOTE_MARKER = '[Files attached by user and available for reading in the project:]';
 
@@ -37,10 +42,14 @@ export function parseUserAttachmentNote(content: unknown): {
   content: string;
   attachments: ChatAttachment[];
 } {
-  const parsedSelections = parseDocumentSelectionPromptBlock(content);
+  const parsedContentReferences = parseContentReferencePromptBlock(content);
+  const parsedSelections = parseDocumentSelectionPromptBlock(parsedContentReferences.content);
   const text = parsedSelections.content;
   const markerIndex = text.indexOf(ATTACHMENT_NOTE_MARKER);
-  const selectionAttachments = parsedSelections.references.map(documentSelectionToAttachment);
+  const selectionAttachments = [
+    ...parsedSelections.references.map(documentSelectionToAttachment),
+    ...parsedContentReferences.references.map(contentReferenceToAttachment),
+  ];
   if (markerIndex < 0) {
     return { content: text, attachments: selectionAttachments };
   }
@@ -69,6 +78,19 @@ export function parseUserAttachmentNote(content: unknown): {
   }
 
   return { content: visibleContent, attachments: [...attachments, ...selectionAttachments] };
+}
+
+function contentReferenceToAttachment(reference: ContentReference): ChatAttachment {
+  return {
+    kind: CONTENT_REFERENCE_ATTACHMENT_KIND,
+    name: reference.source.fileName,
+    path: reference.source.relativePath,
+    fileName: reference.source.fileName,
+    filePath: reference.source.relativePath,
+    contentReference: reference,
+    createdAt: reference.createdAt,
+    mimeType: 'application/vnd.pilotdeck.content-reference+json',
+  };
 }
 
 function documentSelectionToAttachment(reference: DocumentSelectionReference): ChatAttachment {

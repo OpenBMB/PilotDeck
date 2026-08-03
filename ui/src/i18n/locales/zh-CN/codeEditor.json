@@ -61,19 +61,39 @@
     "refreshing": "文件已更新，正在刷新预览...",
     "refresh": "刷新预览",
     "configureService": "配置 Office 预览服务",
+    "loadingBuiltin": "正在加载内置预览...",
+    "unsupportedBuiltinTitle": "内置预览不支持此格式",
+    "unsupportedBuiltinMessage": "内置预览暂不支持 {{extension}} 格式。可在设置中启用 LibreOffice 兼容预览，或下载后使用系统应用打开。",
     "disabledTitle": "无法预览二进制文件",
     "disabledMessage": "当前未配置 Office 文件预览服务。请前往设置配置 Office 文件预览服务，或下载文件后在本地打开。",
     "libreOfficeUnavailableTitle": "LibreOffice 不可用",
-    "libreOfficeUnavailableMessage": "该格式需要 LibreOffice 才能预览。请安装 LibreOffice，或在设置中将 Office 文件预览服务切换为“无”。",
+    "libreOfficeUnavailableMessage": "当前选择了 LibreOffice 兼容预览，但没有检测到可用的 LibreOffice。请安装并配置 LibreOffice，或切换为“内置预览”。",
     "failedMessage": "未能生成 Office 文件预览。"
+  },
+  "builtinOfficePreview": {
+    "search": "在文件中搜索",
+    "searchPlaceholder": "在文件中搜索...",
+    "noMatches": "无匹配结果",
+    "closeSearch": "关闭搜索",
+    "previousItem": "上一页",
+    "nextItem": "下一页",
+    "loadingPresentation": "正在解析演示文稿..."
   },
   "spreadsheetPreview": {
     "readingWorkbook": "正在读取工作簿...",
     "renderingSheet": "正在生成工作表预览...",
     "failedMessage": "未能生成工作表预览。",
+    "printViewUnavailable": "打印布局需要启用 LibreOffice。",
+    "interactiveFailedMessage": "未能加载交互式表格预览。",
+    "loadingInteractive": "正在加载交互式表格...",
+    "fellBackToPrint": "交互式预览不可用，PilotDeck 已切换到打印布局。",
     "worksheets": "工作表",
     "previousWorksheets": "向前浏览工作表",
-    "nextWorksheets": "向后浏览工作表"
+    "nextWorksheets": "向后浏览工作表",
+    "warnings": {
+      "SPREADSHEET_IMAGES_NOT_RENDERED": "交互式预览暂不显示工作簿中的嵌入图片。",
+      "SPREADSHEET_MACROS_NOT_RENDERED": "交互式预览不会运行工作簿宏。"
+    }
   },
   "pdfToolbar": {
     "zoomOut": "缩小",
@@ -119,5 +139,53 @@
   "selection": {
     "chatInPilotDeck": "在 PilotDeck 中对话",
     "noSelectableText": "当前预览不包含可选择文本。"
+  },
+  "contentReference": {
+    "addToChat": "添加到对话",
+    "reference": "引用",
+    "activeModeTitle": "{{label}}（再次点击取消）",
+    "loading": "正在准备预览能力",
+    "recommended": "推荐",
+    "closeMenu": "关闭菜单",
+    "regionSummary": "框选区域",
+    "locations": {
+      "page": "第 {{numbers}} 页",
+      "slide": "第 {{numbers}} 张幻灯片"
+    },
+    "modes": {
+      "text": {
+        "label": "选择文字",
+        "description": "拖动选择可复制的文字"
+      },
+      "cells": {
+        "label": "选择单元格",
+        "description": "选择一个或多个连续区域"
+      },
+      "region": {
+        "label": "框选区域",
+        "description": "一次性框选并作为图片引用"
+      }
+    },
+    "reasons": {
+      "NO_TEXT_LAYER": "当前视图没有可选择的文字层",
+      "NO_CELL_MODEL": "当前视图没有单元格模型",
+      "SURFACE_NOT_READY": "预览仍在加载",
+      "CAPTURE_UNAVAILABLE": "当前视图无法截图",
+      "UNSUPPORTED_RENDERER": "当前预览器暂不支持"
+    },
+    "regionSelection": {
+      "ariaLabel": "框选要添加到对话的区域",
+      "invalidStart": "请在文件内容区域内开始框选",
+      "tooSmall": "框选范围太小，请重新选择",
+      "captureFailed": "区域截图失败",
+      "hint": "拖动框选区域 · Esc 取消",
+      "capturing": "正在截取…",
+      "selectAgain": "重新框选",
+      "cancel": "取消"
+    },
+    "spreadsheet": {
+      "currentCell": "当前单元格",
+      "cellValue": "单元格值或公式"
+    }
   }
 }

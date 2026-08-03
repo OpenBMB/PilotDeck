@@ -788,6 +788,23 @@ export function useChatRealtimeHandlers({
 
     // --- UI side effects for specific kinds ---
     switch (msg.kind) {
+      case 'file_artifacts': {
+        if (isForActiveView && selectedProject?.name && Array.isArray(msg.artifacts)) {
+          for (const artifact of msg.artifacts) {
+            if (!artifact || typeof artifact.path !== 'string' || !artifact.path.trim()) continue;
+            window.dispatchEvent(new CustomEvent('pilotdeck:file-updated', {
+              detail: {
+                sessionId: sid,
+                projectName: selectedProject.name,
+                filePath: artifact.path,
+                operation: artifact.operation,
+              },
+            }));
+          }
+        }
+        break;
+      }
+
       case 'session_created': {
         const newSessionId = msg.newSessionId;
         if (!newSessionId) break;

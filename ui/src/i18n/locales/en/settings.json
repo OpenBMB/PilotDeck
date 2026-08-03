@@ -763,11 +763,11 @@
       },
       "officePreview": {
         "title": "Office File Preview Service",
-        "description": "Configure how PilotDeck previews Word, Excel, and PowerPoint files. Selecting None disables Office conversion.",
+        "description": "Choose how Office files are previewed in read-only mode. PDF always uses PilotDeck's built-in viewer.",
         "fields": {
           "service": {
             "label": "Preview service",
-            "description": "Local service used when opening Office files for preview."
+            "description": "Built-in preview needs no installation and supports DOCX, XLSX, and PPTX. LibreOffice supports more legacy formats using print layout."
           },
           "binaryPath": {
             "label": "LibreOffice executable path",
@@ -780,8 +780,8 @@
           }
         },
         "options": {
-          "none": "None",
-          "libreOffice": "LibreOffice",
+          "builtin": "Built-in preview (recommended)",
+          "libreOffice": "LibreOffice compatibility preview",
           "libreOfficeUnavailable": "LibreOffice (unavailable)",
           "autoDetect": "Auto-detect (no fixed path)",
           "candidateAvailable": "{{path}} (available)",
@@ -805,8 +805,8 @@
           "path": "Path: {{path}}",
           "version": "Version: {{version}}"
         },
-        "disabledNote": "Office preview is disabled. Opening an Office file will show the binary-file prompt with a shortcut back to this setting.",
-        "unavailableWarning": "LibreOffice is selected, but no LibreOffice/soffice executable is available on this machine. Install LibreOffice or switch the preview service to None."
+        "builtinNote": "Built-in preview works out of the box: DOCX keeps document layout, XLSX supports worksheet tabs and cell selection, and PPTX supports slide browsing. Legacy DOC, XLS, and PPT files require LibreOffice.",
+        "unavailableWarning": "LibreOffice is selected, but no LibreOffice/soffice executable is available on this machine. Install LibreOffice or switch to Built-in preview."
       },
       "models": {
         "title": "Model Pool",

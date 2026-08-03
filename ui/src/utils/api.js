@@ -329,6 +329,17 @@ export const api = {
       { cache: 'no-store', signal: options.signal },
     );
   },
+  spreadsheetInteractivePreview: (projectName, filePath, options = {}) => {
+    const params = new URLSearchParams({ path: filePath });
+    if (options.force) params.set('force', '1');
+    if (options.cacheKey !== undefined && options.cacheKey !== null) {
+      params.set('_', String(options.cacheKey));
+    }
+    return authenticatedFetch(
+      `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/data?${params.toString()}`,
+      { cache: 'no-store', signal: options.signal },
+    );
+  },
   spreadsheetSheetPreviewUrl: (projectName, filePath, sheetIndex, options = {}) => {
     const params = new URLSearchParams({
       path: filePath,

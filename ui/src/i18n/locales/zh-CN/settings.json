@@ -763,11 +763,11 @@
       },
       "officePreview": {
         "title": "Office 文件预览服务",
-        "description": "配置 PilotDeck 如何预览 Word、Excel 和 PowerPoint 文件。选择“无”后不会执行 Office 转换。",
+        "description": "选择 Office 文件的只读预览方式。PDF 始终使用 PilotDeck 内置浏览器，不受此设置影响。",
         "fields": {
           "service": {
             "label": "预览服务",
-            "description": "Office 文件点击预览时使用的本机服务。"
+            "description": "内置预览无需安装，支持 DOCX、XLSX 和 PPTX；LibreOffice 兼容更多旧版格式并统一使用打印版式。"
           },
           "binaryPath": {
             "label": "LibreOffice 可执行文件路径",
@@ -780,8 +780,8 @@
           }
         },
         "options": {
-          "none": "无",
-          "libreOffice": "LibreOffice",
+          "builtin": "内置预览（推荐）",
+          "libreOffice": "LibreOffice 兼容预览",
           "libreOfficeUnavailable": "LibreOffice（不可用）",
           "autoDetect": "自动探测（不指定路径）",
           "candidateAvailable": "{{path}}（可用）",
@@ -805,8 +805,8 @@
           "path": "路径：{{path}}",
           "version": "版本：{{version}}"
         },
-        "disabledNote": "Office 预览服务已关闭。点击 Office 文件时将显示二进制文件提示，并提供设置入口。",
-        "unavailableWarning": "当前选择了 LibreOffice，但本机没有可用的 LibreOffice/soffice。请安装 LibreOffice，或将预览服务切换为“无”。"
+        "builtinNote": "内置预览开箱即用：DOCX 保留文档版式，XLSX 支持工作表切换和单元格选择，PPTX 支持幻灯片浏览。旧版 DOC、XLS、PPT 等格式需要 LibreOffice。",
+        "unavailableWarning": "当前选择了 LibreOffice，但本机没有可用的 LibreOffice/soffice。请安装 LibreOffice，或将预览服务切换为“内置预览”。"
       },
       "models": {
         "title": "模型池",

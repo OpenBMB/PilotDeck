@@ -126,9 +126,9 @@ function OfficePreviewSection({
                 }
                 options={[
                   {
-                    value: "none",
+                    value: "builtin",
                     label: t(
-                      "pilotDeckConfig.panels.officePreview.options.none",
+                      "pilotDeckConfig.panels.officePreview.options.builtin",
                     ),
                   },
                   {
@@ -358,10 +358,10 @@ function OfficePreviewSection({
               </div>
             )}
 
-            {service === "none" && (
+            {service === "builtin" && (
               <div className="rounded-md bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
                 {t(
-                  "pilotDeckConfig.panels.officePreview.disabledNote",
+                  "pilotDeckConfig.panels.officePreview.builtinNote",
                 )}
               </div>
             )}

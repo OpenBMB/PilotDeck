@@ -61,19 +61,39 @@
     "refreshing": "File updated. Refreshing preview...",
     "refresh": "Refresh preview",
     "configureService": "Configure Office preview",
+    "loadingBuiltin": "Loading built-in preview...",
+    "unsupportedBuiltinTitle": "This format is not supported by built-in preview",
+    "unsupportedBuiltinMessage": "Built-in preview does not support {{extension}} files. Enable LibreOffice compatibility preview in Settings, or download the file and open it with a system application.",
     "disabledTitle": "Cannot preview binary file",
     "disabledMessage": "No Office file preview service is configured. Configure the Office file preview service in Settings, or download the file and open it locally.",
     "libreOfficeUnavailableTitle": "LibreOffice is unavailable",
-    "libreOfficeUnavailableMessage": "This format requires LibreOffice for preview. Install LibreOffice, or switch the Office file preview service to None in Settings.",
+    "libreOfficeUnavailableMessage": "LibreOffice compatibility preview is selected, but no usable LibreOffice installation was found. Install and configure LibreOffice, or switch to Built-in preview.",
     "failedMessage": "Failed to generate Office file preview."
+  },
+  "builtinOfficePreview": {
+    "search": "Search in file",
+    "searchPlaceholder": "Search in file...",
+    "noMatches": "No matches",
+    "closeSearch": "Close search",
+    "previousItem": "Previous page",
+    "nextItem": "Next page",
+    "loadingPresentation": "Parsing presentation..."
   },
   "spreadsheetPreview": {
     "readingWorkbook": "Reading workbook...",
     "renderingSheet": "Rendering worksheet preview...",
     "failedMessage": "Failed to generate worksheet preview.",
+    "printViewUnavailable": "Print layout requires LibreOffice to be enabled.",
+    "interactiveFailedMessage": "Failed to load the interactive spreadsheet preview.",
+    "loadingInteractive": "Loading interactive spreadsheet...",
+    "fellBackToPrint": "Interactive preview was unavailable, so PilotDeck switched to print layout.",
     "worksheets": "Worksheets",
     "previousWorksheets": "Previous worksheets",
-    "nextWorksheets": "Next worksheets"
+    "nextWorksheets": "Next worksheets",
+    "warnings": {
+      "SPREADSHEET_IMAGES_NOT_RENDERED": "Embedded images are not shown in the interactive preview.",
+      "SPREADSHEET_MACROS_NOT_RENDERED": "Workbook macros are not run in the interactive preview."
+    }
   },
   "pdfToolbar": {
     "zoomOut": "Zoom out",
@@ -119,5 +139,53 @@
   "selection": {
     "chatInPilotDeck": "Chat in PilotDeck",
     "noSelectableText": "This preview does not contain selectable text."
+  },
+  "contentReference": {
+    "addToChat": "Add to chat",
+    "reference": "Reference",
+    "activeModeTitle": "{{label}} (click again to cancel)",
+    "loading": "Preparing preview capabilities",
+    "recommended": "Recommended",
+    "closeMenu": "Close menu",
+    "regionSummary": "Selected region",
+    "locations": {
+      "page": "Page {{numbers}}",
+      "slide": "Slide {{numbers}}"
+    },
+    "modes": {
+      "text": {
+        "label": "Select text",
+        "description": "Drag to select copyable text"
+      },
+      "cells": {
+        "label": "Select cells",
+        "description": "Select one or more contiguous ranges"
+      },
+      "region": {
+        "label": "Select region",
+        "description": "Capture an area as an image reference"
+      }
+    },
+    "reasons": {
+      "NO_TEXT_LAYER": "This view does not have selectable text",
+      "NO_CELL_MODEL": "This view does not have a cell model",
+      "SURFACE_NOT_READY": "The preview is still loading",
+      "CAPTURE_UNAVAILABLE": "This view cannot be captured",
+      "UNSUPPORTED_RENDERER": "The current preview does not support this action"
+    },
+    "regionSelection": {
+      "ariaLabel": "Select a region to add to the conversation",
+      "invalidStart": "Start the selection inside the file content",
+      "tooSmall": "The selected area is too small. Please try again.",
+      "captureFailed": "Could not capture the selected region",
+      "hint": "Drag to select a region · Esc to cancel",
+      "capturing": "Capturing…",
+      "selectAgain": "Select again",
+      "cancel": "Cancel"
+    },
+    "spreadsheet": {
+      "currentCell": "Current cell",
+      "cellValue": "Cell value or formula"
+    }
   }
 }

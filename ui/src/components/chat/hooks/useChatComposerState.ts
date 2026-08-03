@@ -22,11 +22,12 @@ import {
   startSessionCommand,
 } from '../utils/sessionLauncher';
 import {
-  DOCUMENT_SELECTION_ATTACHMENT_KIND,
-  formatDocumentSelectionPromptBlock,
-  isDocumentSelectionReference,
-  type DocumentSelectionReference,
-} from '../../../types/documentSelection';
+  CONTENT_REFERENCE_ATTACHMENT_KIND,
+  contentReferenceImage,
+  formatContentReferencePromptBlock,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../../types/contentReference';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -130,7 +131,7 @@ type UploadedAttachmentFile = {
 type QueuedBusySendSnapshot = {
   input: string;
   attachedImages: File[];
-  documentReferences: DocumentSelectionReference[];
+  documentReferences: ContentReference[];
   forceStart?: boolean;
 };
 
@@ -221,7 +222,7 @@ export function useChatComposerState({
     return '';
   });
   const [attachedImages, setAttachedImages] = useState<File[]>([]);
-  const [documentReferences, setDocumentReferences] = useState<DocumentSelectionReference[]>([]);
+  const [documentReferences, setDocumentReferences] = useState<ContentReference[]>([]);
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
@@ -265,10 +266,11 @@ export function useChatComposerState({
   useEffect(() => {
     const handleAddDocumentReference = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (!isDocumentSelectionReference(detail)) return;
+      const reference = normalizeContentReference(detail);
+      if (!reference) return;
       setDocumentReferences((previous) => {
-        if (previous.some((reference) => reference.id === detail.id)) return previous;
-        const next = [...previous, detail];
+        if (previous.some((item) => item.id === reference.id)) return previous;
+        const next = [...previous, reference];
         syncQueuedBusySendSnapshot({ documentReferences: next });
         return next;
       });
@@ -953,8 +955,12 @@ export function useChatComposerState({
         }
       }
 
-      const documentReferenceAttachments = submitDocumentReferences.map(documentReferenceToAttachment);
-      messageContent = `${messageContent}${buildAttachmentPathNote(uploadedFiles)}${formatDocumentSelectionPromptBlock(submitDocumentReferences)}`;
+      const referenceImages = submitDocumentReferences
+        .map(contentReferenceImage)
+        .filter((image): image is NonNullable<typeof image> => Boolean(image));
+      uploadedImages = [...uploadedImages, ...referenceImages];
+      const documentReferenceAttachments = submitDocumentReferences.map(contentReferenceToAttachment);
+      messageContent = `${messageContent}${buildAttachmentPathNote(uploadedFiles)}${formatContentReferencePromptBlock(submitDocumentReferences)}`;
 
       const effectiveSessionId = submitTargetSessionId;
       const sessionToActivate = effectiveSessionId || optimisticSessionId;
@@ -1537,20 +1543,20 @@ export function useChatComposerState({
   };
 }
 
-function documentReferenceToAttachment(reference: DocumentSelectionReference): ChatAttachment {
+function contentReferenceToAttachment(reference: ContentReference): ChatAttachment {
   return {
-    kind: DOCUMENT_SELECTION_ATTACHMENT_KIND,
-    name: reference.fileName,
-    path: reference.filePath,
-    fileName: reference.fileName,
-    filePath: reference.filePath,
-    source: reference.source,
-    pageNumbers: reference.pageNumbers,
-    selectedText: reference.selectedText,
-    surroundingText: reference.surroundingText,
-    occurrenceIndex: reference.occurrenceIndex,
+    kind: CONTENT_REFERENCE_ATTACHMENT_KIND,
+    name: reference.source.fileName,
+    path: reference.source.relativePath,
+    fileName: reference.source.fileName,
+    filePath: reference.source.relativePath,
+    contentReference: reference.selectionMode === 'region'
+      ? {
+        ...reference,
+        image: { ...reference.image, dataUrl: undefined },
+      }
+      : reference,
     createdAt: reference.createdAt,
-    truncated: reference.truncated,
-    mimeType: 'application/vnd.pilotdeck.document-selection',
+    mimeType: 'application/vnd.pilotdeck.content-reference+json',
   };
 }

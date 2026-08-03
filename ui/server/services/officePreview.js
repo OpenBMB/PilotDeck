@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 
 const officePreviewConversionLocks = new Map();
 
-export const OFFICE_PREVIEW_SERVICE_NONE = 'none';
+export const OFFICE_PREVIEW_SERVICE_BUILTIN = 'builtin';
 export const OFFICE_PREVIEW_SERVICE_LIBREOFFICE = 'libreoffice';
 export const OFFICE_PREVIEW_CACHE_DIR = path.join(os.tmpdir(), 'pilotdeck-office-preview-cache');
 export const LIBREOFFICE_TIMEOUT_MS = Number(process.env.PILOTDECK_LIBREOFFICE_TIMEOUT_MS || 120000);
@@ -25,10 +25,10 @@ export function getConfiguredOfficePreviewService() {
     const configured = String(record?.config?.webui?.officePreview?.service || '').trim().toLowerCase();
     return configured === OFFICE_PREVIEW_SERVICE_LIBREOFFICE
       ? OFFICE_PREVIEW_SERVICE_LIBREOFFICE
-      : OFFICE_PREVIEW_SERVICE_NONE;
+      : OFFICE_PREVIEW_SERVICE_BUILTIN;
   } catch (error) {
-    console.warn('Failed to read Office preview service config; defaulting to disabled:', error.message);
-    return OFFICE_PREVIEW_SERVICE_NONE;
+    console.warn('Failed to read Office preview service config; defaulting to built-in:', error.message);
+    return OFFICE_PREVIEW_SERVICE_BUILTIN;
   }
 }
 

@@ -30,8 +30,8 @@ import {
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import {
+  OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
-  OFFICE_PREVIEW_SERVICE_NONE,
   getLibreOfficeCandidateStatuses,
   getConfiguredOfficePreviewService,
   getLibreOfficeStatus,
@@ -408,7 +408,7 @@ router.get('/office-preview/status', async (req, res) => {
         candidates,
       },
       supportedServices: [
-        OFFICE_PREVIEW_SERVICE_NONE,
+        OFFICE_PREVIEW_SERVICE_BUILTIN,
         OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
       ],
     });

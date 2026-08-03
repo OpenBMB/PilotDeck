@@ -291,3 +291,30 @@ Verification:
 - Detached `screen` service restarted; `http://localhost:3001/` returns HTTP 200.
 
 final result: passed
+
+## Selection action bubbles — 2026-07-27
+
+### Scope
+
+- Excel cell and range selections
+- Word/PDF text selections
+- Rectangular region selections
+
+### References
+
+- Desired text-selection bubble: `/var/folders/xt/0thdvc4d0kb_165pd393wz1c0000gn/T/TemporaryItems/NSIRD_screencaptureui_aMkmrA/截屏2026-07-27 19.22.51.png`
+- Previous Excel action placement: `/var/folders/xt/0thdvc4d0kb_165pd393wz1c0000gn/T/TemporaryItems/NSIRD_screencaptureui_EfQcB0/截屏2026-07-27 19.22.23.png`
+- Region-selection reference: `/var/folders/xt/0thdvc4d0kb_165pd393wz1c0000gn/T/TemporaryItems/NSIRD_screencaptureui_tlPs2f/截屏2026-07-27 19.22.36.png`
+
+### Verification
+
+- Excel no longer renders a separate blue action in the formula bar.
+- Selecting a cell renders the shared “在 PilotDeck 中对话” pill next to the selection.
+- The action is clamped within the preview and moves below selections near the top edge.
+- Word and PDF text selections use the same shared pill styling.
+- Region selection uses the same floating surface while preserving its three actions.
+- Relevant unit tests, ESLint, the production build, and live browser verification pass.
+
+### Result
+
+Passed.

@@ -13,6 +13,11 @@ import {
   DOCUMENT_SELECTION_ATTACHMENT_KIND,
   type DocumentSelectionReference,
 } from '../../../../types/documentSelection';
+import {
+  CONTENT_REFERENCE_ATTACHMENT_KIND,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../../../types/contentReference';
 import { formatUsageLimitText } from '../../utils/chatFormatting';
 import { getPilotDeckPermissionSuggestion } from '../../utils/chatPermissions';
 import type { Project } from '../../../../types/app';
@@ -121,11 +126,13 @@ function getAttachmentAccent(name?: string, mimeType?: string): string {
   return 'bg-neutral-500 text-white';
 }
 
-function attachmentToDocumentReference(attachment: ChatAttachment): DocumentSelectionReference | null {
+function attachmentToDocumentReference(attachment: ChatAttachment): ContentReference | null {
+  const structured = normalizeContentReference(attachment.contentReference);
+  if (structured) return structured;
   if (attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND || !attachment.selectedText) return null;
   const filePath = attachment.filePath || attachment.path || '';
   if (!filePath) return null;
-  return {
+  return normalizeContentReference({
     kind: DOCUMENT_SELECTION_ATTACHMENT_KIND,
     id: `${filePath}-${attachment.createdAt || ''}-${attachment.occurrenceIndex ?? ''}`,
     fileName: attachment.fileName || attachment.name,
@@ -137,7 +144,7 @@ function attachmentToDocumentReference(attachment: ChatAttachment): DocumentSele
     occurrenceIndex: attachment.occurrenceIndex,
     createdAt: attachment.createdAt || new Date(0).toISOString(),
     truncated: attachment.truncated,
-  };
+  } satisfies DocumentSelectionReference);
 }
 
 const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showRawParameters, showThinking, selectedProject, provider, hideHeader = false }: MessageComponentProps) => {
@@ -154,16 +161,26 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   const rawMessageContent = stringifyMessageContent(message.content);
   const messageContent = translateDescriptor(t, message.contentI18n, rawMessageContent);
   const userHintContent = translateDescriptor(t, message.userHintI18n, stringifyMessageContent(message.userHint));
-  const messageImages = Array.isArray(message.images)
-    ? message.images.filter((image) => image && typeof image.data === 'string')
-    : [];
   const messageAttachments = Array.isArray(message.attachments)
     ? message.attachments.filter((attachment) => attachment && typeof attachment.name === 'string')
     : [];
   const documentReferenceAttachments = messageAttachments
     .map(attachmentToDocumentReference)
-    .filter((reference): reference is DocumentSelectionReference => Boolean(reference));
-  const fileAttachments = messageAttachments.filter((attachment) => attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND);
+    .filter((reference): reference is ContentReference => Boolean(reference));
+  const referenceImageNames = new Set(documentReferenceAttachments
+    .filter((reference) => reference.selectionMode === 'region')
+    .map((reference) => reference.image.name));
+  const messageImages = Array.isArray(message.images)
+    ? message.images.filter((image) => (
+      image
+      && typeof image.data === 'string'
+      && !referenceImageNames.has(image.name)
+    ))
+    : [];
+  const fileAttachments = messageAttachments.filter((attachment) => (
+    attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND
+    && attachment.kind !== CONTENT_REFERENCE_ATTACHMENT_KIND
+  ));
   const toolResultImages: LightboxImage[] = useMemo(
     () => {
       const list = (message.toolResult?.images ?? []) as Array<{ data?: unknown; name?: unknown; mimeType?: unknown }>;
@@ -249,6 +266,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                     reference={reference}
                     summaryLength={100}
                     className="bg-white/90 text-neutral-700"
+                    onOpen={onFileOpen
+                      ? () => onFileOpen(reference.source.relativePath)
+                      : undefined}
                   />
                 ))}
               </div>

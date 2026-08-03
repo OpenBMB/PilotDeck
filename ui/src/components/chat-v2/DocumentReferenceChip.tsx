@@ -1,9 +1,12 @@
-import { File, FileSpreadsheet, FileText, X, type LucideIcon } from 'lucide-react';
+import { File, FileSpreadsheet, FileText, Scan, X, type LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils.js';
 import {
-  getDocumentSelectionSummary,
-  type DocumentSelectionReference,
-} from '../../types/documentSelection';
+  getContentReferenceSummary,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../types/contentReference';
+import type { DocumentSelectionReference } from '../../types/documentSelection';
 
 type DocumentReferenceFileMeta = {
   label: string;
@@ -55,10 +58,12 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
 }
 
 type DocumentReferenceChipProps = {
-  reference: DocumentSelectionReference;
+  reference: ContentReference | DocumentSelectionReference;
   className?: string;
   summaryLength?: number;
   removeLabel?: string;
+  openLabel?: string;
+  onOpen?: () => void;
   onRemove?: () => void;
 };
 
@@ -67,43 +72,83 @@ export default function DocumentReferenceChip({
   className,
   summaryLength = 80,
   removeLabel,
+  openLabel,
+  onOpen,
   onRemove,
 }: DocumentReferenceChipProps) {
-  const meta = getDocumentReferenceFileMeta(reference.fileName);
+  const { t } = useTranslation('codeEditor');
+  const normalized = normalizeContentReference(reference);
+  if (!normalized) return null;
+  const meta = getDocumentReferenceFileMeta(normalized.source.fileName);
   const ReferenceIcon = meta.Icon;
-  const summary = getDocumentSelectionSummary(reference, summaryLength);
+  const summary = getContentReferenceSummary(
+    normalized,
+    summaryLength,
+    t('contentReference.regionSummary'),
+  );
+  const location = normalized.selectionMode === 'text'
+    ? normalized.locator.pageNumbers?.length
+      ? t('contentReference.locations.page', {
+        numbers: normalized.locator.pageNumbers.join(', '),
+      })
+      : normalized.locator.slideNumbers?.length
+        ? t('contentReference.locations.slide', {
+          numbers: normalized.locator.slideNumbers.join(', '),
+        })
+        : null
+    : normalized.selectionMode === 'cells'
+      ? normalized.locator.sheetName
+      : normalized.locator.pageNumber
+        ? t('contentReference.locations.page', {
+          numbers: normalized.locator.pageNumber,
+        })
+        : normalized.locator.slideNumber
+          ? t('contentReference.locations.slide', {
+            numbers: normalized.locator.slideNumber,
+          })
+          : normalized.locator.sheetName || null;
   const title = [
-    reference.fileName,
-    reference.pageNumbers.length ? `p. ${reference.pageNumbers.join(', ')}` : null,
+    normalized.source.fileName,
+    location,
     summary,
   ].filter(Boolean).join('\n');
 
   return (
     <div
       className={cn(
-        'flex h-8 min-w-0 max-w-full items-center gap-2 rounded-lg bg-neutral-100 px-2.5 text-left text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300',
+        'flex h-8 min-w-0 max-w-full items-center rounded-lg bg-neutral-100 text-left text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300',
         className,
       )}
       title={title}
-      aria-label={title}
     >
-      <span
-        className={cn(
-          'flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold leading-none',
-          meta.className,
-        )}
+      <button
+        type="button"
+        disabled={!onOpen}
+        onClick={onOpen}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-left disabled:cursor-default"
+        title={onOpen ? openLabel || title : title}
+        aria-label={onOpen ? openLabel || title : title}
       >
-        <ReferenceIcon className="h-3 w-3" strokeWidth={2} />
-        {meta.label}
-      </span>
-      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] leading-5">
-        &quot;{summary}&quot;
-      </span>
+        <span
+          className={cn(
+            'flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold leading-none',
+            meta.className,
+          )}
+        >
+          {normalized.selectionMode === 'region'
+            ? <Scan className="h-3 w-3" strokeWidth={2} />
+            : <ReferenceIcon className="h-3 w-3" strokeWidth={2} />}
+          {meta.label}
+        </span>
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] leading-5">
+          &quot;{summary}&quot;
+        </span>
+      </button>
       {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          className="mr-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
           title={removeLabel}
           aria-label={removeLabel}
         >

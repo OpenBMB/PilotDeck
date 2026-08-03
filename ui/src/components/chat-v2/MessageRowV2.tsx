@@ -9,6 +9,11 @@ import {
   DOCUMENT_SELECTION_ATTACHMENT_KIND,
   type DocumentSelectionReference,
 } from '../../types/documentSelection';
+import {
+  CONTENT_REFERENCE_ATTACHMENT_KIND,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../types/contentReference';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -29,11 +34,13 @@ import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards'
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
-function attachmentToDocumentReference(attachment: ChatAttachment): DocumentSelectionReference | null {
+function attachmentToDocumentReference(attachment: ChatAttachment): ContentReference | null {
+  const structured = normalizeContentReference(attachment.contentReference);
+  if (structured) return structured;
   if (attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND || !attachment.selectedText) return null;
   const filePath = attachment.filePath || attachment.path || '';
   if (!filePath) return null;
-  return {
+  return normalizeContentReference({
     kind: DOCUMENT_SELECTION_ATTACHMENT_KIND,
     id: `${filePath}-${attachment.createdAt || ''}-${attachment.occurrenceIndex ?? ''}`,
     fileName: attachment.fileName || attachment.name,
@@ -45,7 +52,7 @@ function attachmentToDocumentReference(attachment: ChatAttachment): DocumentSele
     occurrenceIndex: attachment.occurrenceIndex,
     createdAt: attachment.createdAt || new Date(0).toISOString(),
     truncated: attachment.truncated,
-  };
+  } satisfies DocumentSelectionReference);
 }
 
 type MessageRowV2Props = {
@@ -131,13 +138,6 @@ function MessageRowV2({
     () => (message.isStreaming ? contentDisplayText : linkifyFilePathsOutsideCode(contentDisplayText)),
     [contentDisplayText, message.isStreaming],
   );
-  const messageImages = useMemo(
-    () =>
-      Array.isArray(message.images)
-        ? message.images.filter((image) => image && typeof image.data === 'string')
-        : [],
-    [message.images],
-  );
   const messageAttachments = useMemo(
     () =>
       Array.isArray(message.attachments)
@@ -148,11 +148,31 @@ function MessageRowV2({
   const documentReferenceAttachments = useMemo(
     () => messageAttachments
       .map(attachmentToDocumentReference)
-      .filter((reference): reference is DocumentSelectionReference => Boolean(reference)),
+      .filter((reference): reference is ContentReference => Boolean(reference)),
     [messageAttachments],
   );
+  const referenceImageNames = useMemo(
+    () => new Set(documentReferenceAttachments
+      .filter((reference) => reference.selectionMode === 'region')
+      .map((reference) => reference.image.name)),
+    [documentReferenceAttachments],
+  );
+  const messageImages = useMemo(
+    () =>
+      Array.isArray(message.images)
+        ? message.images.filter((image) => (
+          image
+          && typeof image.data === 'string'
+          && !referenceImageNames.has(image.name)
+        ))
+        : [],
+    [message.images, referenceImageNames],
+  );
   const fileAttachments = useMemo(
-    () => messageAttachments.filter((attachment) => attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND),
+    () => messageAttachments.filter((attachment) => (
+      attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND
+      && attachment.kind !== CONTENT_REFERENCE_ATTACHMENT_KIND
+    )),
     [messageAttachments],
   );
   const [userImageLightbox, setUserImageLightbox] = useState<number | null>(null);
@@ -287,6 +307,9 @@ function MessageRowV2({
                       reference={reference}
                       summaryLength={100}
                       className="bg-white/80 dark:bg-neutral-900/55"
+                      onOpen={onFileOpen
+                        ? () => onFileOpen(reference.source.relativePath)
+                        : undefined}
                     />
                   ))}
                 </div>

@@ -34,9 +34,7 @@ import PermissionRequestsBanner from '../chat/view/subcomponents/PermissionReque
 import ImageAttachment from '../chat/view/subcomponents/ImageAttachment';
 import CommandMenu from '../chat/view/subcomponents/CommandMenu';
 import { cn } from '../../lib/utils.js';
-import {
-  type DocumentSelectionReference,
-} from '../../types/documentSelection';
+import type { ContentReference } from '../../types/contentReference';
 import DocumentReferenceChip from './DocumentReferenceChip';
 
 interface MentionableFile {
@@ -72,8 +70,9 @@ export type ComposerV2Props = {
   openImagePicker: () => void;
   attachedImages: File[];
   onRemoveImage: (index: number) => void;
-  documentReferences: DocumentSelectionReference[];
+  documentReferences: ContentReference[];
   onRemoveDocumentReference: (id: string) => void;
+  onOpenDocumentReference?: (filePath: string) => void;
   uploadingImages: Map<string, number>;
   imageErrors: Map<string, string>;
 
@@ -305,6 +304,7 @@ export default function ComposerV2({
   onRemoveImage,
   documentReferences,
   onRemoveDocumentReference,
+  onOpenDocumentReference,
   uploadingImages,
   imageErrors,
   showFileDropdown,
@@ -461,6 +461,12 @@ export default function ComposerV2({
                       reference={reference}
                       className="pd-composer-reference-chip sm:max-w-[520px]"
                       removeLabel={t('documentReferences.remove', { defaultValue: 'Remove reference' }) as string}
+                      openLabel={t('documentReferences.open', {
+                        defaultValue: `Open ${reference.source.fileName}`,
+                      }) as string}
+                      onOpen={onOpenDocumentReference
+                        ? () => onOpenDocumentReference(reference.source.relativePath)
+                        : undefined}
                       onRemove={() => onRemoveDocumentReference(reference.id)}
                     />
                   ))}

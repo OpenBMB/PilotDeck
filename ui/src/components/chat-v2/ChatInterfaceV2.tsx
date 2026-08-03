@@ -511,6 +511,7 @@ function ChatInterfaceV2({
       }
       documentReferences={documentReferences}
       onRemoveDocumentReference={removeDocumentReference}
+        onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
