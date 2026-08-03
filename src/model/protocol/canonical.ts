@@ -140,6 +140,8 @@ export type CanonicalMessageMetadata = {
   transient?: boolean;
   /** Stable id used by the agent loop to expire transient synthetic prompts. */
   transientId?: string;
+  /** True when this message is a persisted post-compact replay snapshot. */
+  compactReplacement?: boolean;
   purpose?: string;
   forkCarryover?: {
     sourceSessionId: string;
@@ -310,6 +312,8 @@ export type ProviderConfig = {
   protocol: ModelProtocol;
   url: string;
   apiKey: string;
+  /** True when the provider/model came from the built-in catalog. */
+  catalog?: boolean;
   timeoutMs?: number;
   headers: Record<string, string>;
   /** Arbitrary fields merged into every request body (e.g. OpenRouter provider preferences). */

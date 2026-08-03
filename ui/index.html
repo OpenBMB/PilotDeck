@@ -34,6 +34,23 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
+          const isLocalDev =
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.port === '5173';
+
+          if (isLocalDev) {
+            navigator.serviceWorker.getRegistrations()
+              .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+              .catch(error => console.log('SW unregister failed: ', error));
+            if ('caches' in window) {
+              caches.keys()
+                .then(keys => Promise.all(keys.map(key => caches.delete(key))))
+                .catch(error => console.log('SW cache cleanup failed: ', error));
+            }
+            return;
+          }
+
           navigator.serviceWorker.register('/sw.js')
             .then(registration => {
               console.log('SW registered: ', registration);

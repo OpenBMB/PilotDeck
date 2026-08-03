@@ -288,6 +288,32 @@ describe('computeMerged', () => {
       '__streaming_thinking_web:s_test_run-1_id_block-b',
     ]);
   });
+
+  it('places thinking before an assistant snapshot used as the live content anchor', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
+      textMessage('assistant-snapshot', 'Visible answer', '2026-05-28T00:00:02.000Z'),
+    ];
+    const realtime = [
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-a', 'Plan first', '2026-05-28T00:00:03.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-a',
+        thinkingBlockSeq: 1,
+        serverTailIdAtStart: 'assistant-snapshot',
+      }),
+      textMessage('text-final', 'Visible answer', '2026-05-28T00:00:04.000Z', {
+        isFinal: true,
+        runId: 'run-1',
+        serverTailIdAtStart: 'assistant-snapshot',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'tail-before-turn',
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
+      'assistant-snapshot',
+    ]);
+  });
 });
 
 describe('finalizeStreamingRealtimeMessages', () => {

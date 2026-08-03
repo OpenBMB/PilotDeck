@@ -26,6 +26,22 @@ function hasVersionSegment(baseUrl: string): boolean {
   return getPathSegments(baseUrl).some((segment) => VERSION_SEGMENT_PATTERN.test(segment));
 }
 
+function hostnameOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function prefersUnversionedOpenAIEndpoint(baseUrl: string): boolean {
+  return hostnameOf(baseUrl) === "api.deepseek.com";
+}
+
+function unversionedCandidatesFirst(candidates: string[]): string[] {
+  return [...candidates].sort((a, b) => Number(hasVersionSegment(a)) - Number(hasVersionSegment(b)));
+}
+
 function pathEndsWith(baseUrl: string, suffix: string[]): boolean {
   const segments = getPathSegments(baseUrl).map((segment) => segment.toLowerCase());
   const normalizedSuffix = suffix.map((segment) => segment.toLowerCase());
@@ -107,7 +123,8 @@ export function buildProviderChatEndpointCandidates(input: {
     const normalizedBase = input.baseUrl.trim().replace(/\/+$/, "") || "https://generativelanguage.googleapis.com";
     return buildEndpointCandidates(normalizedBase, "v1beta", `models/${model}:${method}`);
   }
-  return buildEndpointCandidates(input.baseUrl, "v1", "chat/completions");
+  const candidates = buildEndpointCandidates(input.baseUrl, "v1", "chat/completions");
+  return prefersUnversionedOpenAIEndpoint(input.baseUrl) ? unversionedCandidatesFirst(candidates) : candidates;
 }
 
 export function buildProviderModelsEndpoint(input: {
@@ -124,7 +141,8 @@ export function buildProviderModelsEndpointCandidates(input: {
   if (input.protocol === "google") {
     return buildEndpointCandidates(input.baseUrl, "v1beta", "models");
   }
-  return buildEndpointCandidates(input.baseUrl, "v1", "models");
+  const candidates = buildEndpointCandidates(input.baseUrl, "v1", "models");
+  return prefersUnversionedOpenAIEndpoint(input.baseUrl) ? unversionedCandidatesFirst(candidates) : candidates;
 }
 
 export function isExpectedProviderResponseShape(protocol: ProviderEndpointProtocol, body: unknown): boolean {

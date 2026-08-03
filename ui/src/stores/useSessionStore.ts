@@ -401,6 +401,24 @@ function hasSameTurnServerFinalMessage(
   });
 }
 
+function hasServerSnapshotAtRealtimeAnchor(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  if (
+    realtimeMessage.isFinal !== true
+    || (realtimeMessage.kind !== 'text' && realtimeMessage.kind !== 'thinking')
+    || !realtimeMessage.serverTailIdAtStart
+  ) {
+    return false;
+  }
+
+  const snapshot = serverMessages.find((message) => message.id === realtimeMessage.serverTailIdAtStart);
+  if (!snapshot || snapshot.kind !== realtimeMessage.kind) return false;
+  if (!areComparableMessageRoles(snapshot, realtimeMessage)) return false;
+  return getMessageComparisonText(snapshot) === getMessageComparisonText(realtimeMessage);
+}
+
 export function shouldKeepRealtimeAfterServerRefresh(
   realtimeMessage: NormalizedMessage,
   serverMessages: NormalizedMessage[],
@@ -477,6 +495,7 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
     if (serverIds.has(message.id)) return false;
     if (isConfirmedUserMessageDuplicate(message, server)) return false;
     if (isLocalInterruptDuplicate(message, server)) return false;
+    if (hasServerSnapshotAtRealtimeAnchor(message, server)) return false;
     // Dedup tool_use by toolId (invocation ID) — the message envelope ID
     // may differ between WebSocket replay and server-persisted copy, but
     // the underlying tool invocation is the same.
@@ -619,6 +638,20 @@ function findServerAnchorIndex(
   return -1;
 }
 
+function isAssistantTextMessage(message: NormalizedMessage): boolean {
+  return message.kind === 'text' && message.role === 'assistant';
+}
+
+function isSameLiveAssistantRun(
+  first: NormalizedMessage,
+  second: NormalizedMessage,
+): boolean {
+  if (first.runId != null && second.runId != null) {
+    return first.runId === second.runId;
+  }
+  return isSameRealtimeRunOrTurn(first, second);
+}
+
 function findLiveThinkingServerInsertIndex(
   server: NormalizedMessage[],
   realtime: NormalizedMessage[],
@@ -637,6 +670,24 @@ function findLiveThinkingServerInsertIndex(
       if (previous.kind !== 'tool_use' && previous.kind !== 'tool_result') continue;
       const anchorIndex = findServerAnchorIndex(server, previous);
       if (anchorIndex > tailIndex) return anchorIndex + 1;
+      break;
+    }
+
+    // A server refresh can expose the assistant snapshot that was created
+    // after this live run started. In that case the thinking block's own
+    // serverTailIdAtStart points at the snapshot, so looking only after that
+    // tail would incorrectly place thinking after assistant prose. A live
+    // content row that follows this thinking block carries the same snapshot
+    // anchor; use it to insert thinking before the snapshot instead.
+    for (let index = incomingIndex + 1; index < realtime.length; index += 1) {
+      const next = realtime[index];
+      if (!isAssistantTextMessage(next) && next.kind !== 'stream_delta') continue;
+      if (!isSameLiveAssistantRun(next, incoming)) continue;
+      if (!next.serverTailIdAtStart) continue;
+      const snapshotIndex = server.findIndex((message) => message.id === next.serverTailIdAtStart);
+      if (snapshotIndex >= 0 && isAssistantTextMessage(server[snapshotIndex])) {
+        return snapshotIndex;
+      }
       break;
     }
   }

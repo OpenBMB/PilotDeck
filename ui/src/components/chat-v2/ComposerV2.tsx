@@ -140,6 +140,8 @@ type ContextStatus = {
   displayTotal: number;
   percent: number;
   percentLabel: string;
+  budgetPercent: number;
+  budgetPercentLabel: string;
   usedLabel: string;
   totalLabel: string;
   state: 'ok' | 'warning' | 'blocking' | 'unknown';
@@ -252,6 +254,8 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
       displayTotal: 0,
       percent: 0,
       percentLabel: '0%',
+      budgetPercent: 0,
+      budgetPercentLabel: '0%',
       usedLabel: '--',
       totalLabel: '--',
       state: 'unknown',
@@ -259,7 +263,8 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
     };
   }
 
-  const percent = Math.max(0, Math.round((budgetUsed / displayTotal) * 100));
+  const percent = Math.max(0, Math.round((used / displayTotal) * 100));
+  const budgetPercent = Math.max(0, Math.round((budgetUsed / displayTotal) * 100));
   const snapshotState = typeof tokenBudget?.state === 'string' ? tokenBudget.state : null;
   const tone = snapshotState === 'blocking'
     ? 'red'
@@ -277,6 +282,8 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
     displayTotal,
     percent,
     percentLabel: formatContextPercentLabel(percent),
+    budgetPercent,
+    budgetPercentLabel: formatContextPercentLabel(budgetPercent),
     usedLabel: formatTokenCount(used),
     totalLabel: formatTokenCount(displayTotal),
     state: snapshotState === 'blocking' || snapshotState === 'warning' ? snapshotState : 'ok',
@@ -397,10 +404,11 @@ export default function ComposerV2({
     ? (contextStatus.state === 'blocking'
         ? (t('input.contextStatusBlocking', {
             percentLabel: contextStatus.percentLabel,
+            budgetPercentLabel: contextStatus.budgetPercentLabel,
             used: contextStatus.usedLabel,
             total: contextStatus.totalLabel,
             defaultValue:
-              `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact ran, but the context is still over the limit.`,
+              `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Safety-adjusted usage is ${contextStatus.budgetPercentLabel}; compaction ran, but the safety budget is still over the limit.`,
           }) as string)
         : (t('input.contextStatus', {
             percentLabel: contextStatus.percentLabel,
@@ -422,7 +430,8 @@ export default function ComposerV2({
     defaultValue: 'Auto compact runs when the conversation approaches the configured limit.',
   }) as string;
   const contextStatusBlockingBodyText = t('input.contextStatusBlockingBody', {
-    defaultValue: 'Compaction ran, but the context is still over the limit.',
+    budgetPercentLabel: contextStatus.budgetPercentLabel,
+    defaultValue: `Safety-adjusted usage is ${contextStatus.budgetPercentLabel}. Compaction ran, but the safety budget is still over the limit.`,
   }) as string;
   const contextStatusUnknownBodyText = t('input.contextStatusUnknownBody', {
     defaultValue: 'No token budget has been reported yet. It will appear after the next model response.',

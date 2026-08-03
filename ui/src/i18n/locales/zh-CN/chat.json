@@ -242,9 +242,9 @@
     "contextStatusTitle": "上下文窗口",
     "contextStatusUsed": "已用 {{used}} / {{total}} tokens。",
     "contextStatus": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。接近上限时会自动压缩上下文。",
-    "contextStatusBlocking": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。已执行压缩，但上下文仍然超出限制。",
+    "contextStatusBlocking": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。安全调整后的使用率为 {{budgetPercentLabel}}；已执行压缩，但安全预算仍然超出限制。",
     "contextStatusAutoCompact": "接近配置上限时会自动压缩上下文。",
-    "contextStatusBlockingBody": "已执行压缩，但上下文仍然超出限制。",
+    "contextStatusBlockingBody": "安全调整后的使用率为 {{budgetPercentLabel}}。已执行压缩，但安全预算仍然超出限制。",
     "contextStatusUnknown": "上下文用量未知，将在下次模型响应后显示。",
     "contextStatusUnknownBody": "尚未上报 token 用量，会在下一次模型响应后显示。",
     "permissions": {

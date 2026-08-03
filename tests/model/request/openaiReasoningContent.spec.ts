@@ -91,7 +91,7 @@ function modelConfig(): ModelConfig {
     maxContextTokens: 128_000,
     maxOutputTokens: 4_096,
   };
-  const deepseek = provider("deepseek", "https://api.deepseek.com/v1", "deepseek-chat", capabilities);
+  const deepseek = provider("deepseek", "https://api.deepseek.com", "deepseek-chat", capabilities);
   const local = provider("local", "https://example.invalid/v1", "local-chat", capabilities);
   return { providers: { deepseek, local } };
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../../scripts/check-node-runtime.mjs';
 // Load environment variables before other imports execute
 import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
