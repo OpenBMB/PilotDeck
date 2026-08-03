@@ -417,7 +417,7 @@ model:
   providers:
     deepseek:
       protocol: openai
-      url: https://api.deepseek.com/v1
+      url: https://api.deepseek.com
       apiKey: sk-your-api-key
 ```
 

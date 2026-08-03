@@ -57,7 +57,15 @@ export function getThinkingModeAvailability(context?: ThinkingModelContext | nul
   }
 
   if (/deepseek/.test(fingerprint)) return allowOnly(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
-  if (/kimi|moonshot/.test(fingerprint)) return allowOnly(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
+  if (/kimi|moonshot/.test(fingerprint)) {
+    if (/kimi-k3|kimi-k2\.7-code/.test(modelId)) {
+      return allowOnly(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
+    }
+    if (/moonshot-v1/.test(modelId)) {
+      return allowOnly(['off'], unsupportedReason);
+    }
+    return allowOnly(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
+  }
   if (/minimax/.test(fingerprint)) return allowOnly(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
   if (protocol === 'anthropic' || /anthropic|claude/.test(fingerprint)) return allowOnly(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
 

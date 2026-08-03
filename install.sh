@@ -115,7 +115,7 @@ print_getting_started_en() {
   echo -e "       ${DIM}  providers:${RESET}"
   echo -e "       ${DIM}    deepseek:${RESET}"
   echo -e "       ${DIM}      protocol: openai${RESET}"
-  echo -e "       ${DIM}      url: https://api.deepseek.com/v1${RESET}"
+  echo -e "       ${DIM}      url: https://api.deepseek.com${RESET}"
   echo -e "       ${DIM}      apiKey: sk-your-api-key${RESET}"
   echo ""
   echo -e "  ${BOLD}3. Manage PilotDeck from the CLI${RESET}"
@@ -152,7 +152,7 @@ print_getting_started_zh() {
   echo -e "       ${DIM}  providers:${RESET}"
   echo -e "       ${DIM}    deepseek:${RESET}"
   echo -e "       ${DIM}      protocol: openai${RESET}"
-  echo -e "       ${DIM}      url: https://api.deepseek.com/v1${RESET}"
+  echo -e "       ${DIM}      url: https://api.deepseek.com${RESET}"
   echo -e "       ${DIM}      apiKey: sk-your-api-key${RESET}"
   echo ""
   echo -e "  ${BOLD}3. 通过命令行管理 PilotDeck${RESET}"
@@ -260,9 +260,9 @@ run_onboarding() {
     1) pid=openai;    protocol=openai;    url=https://api.openai.com/v1;                          model=gpt-4o ;;
     2) pid=anthropic; protocol=anthropic; url=https://api.anthropic.com;                          model=claude-sonnet-4.6 ;;
     3) pid=google;    protocol=google;    url=https://generativelanguage.googleapis.com;          model=gemini-2.5-pro ;;
-    4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com/v1;                         model=deepseek-chat ;;
+    4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com;                            model=deepseek-v4-flash ;;
     5) pid=dashscope; protocol=openai;    url=https://dashscope.aliyuncs.com/compatible-mode/v1;   model=qwen-max ;;
-    6) pid=moonshot;  protocol=openai;    url=https://api.moonshot.cn/v1;                          model=kimi-k2 ;;
+    6) pid=moonshot;  protocol=openai;    url=https://api.moonshot.ai/v1;                          model=kimi-k2.6 ;;
     7) pid=minimax;   protocol=openai;    url=https://api.minimaxi.com/v1;                         model=MiniMax-M2.5 ;;
     8) pid=zhipu;     protocol=openai;    url=https://api.z.ai/api/paas/v4;                        model=glm-4.6 ;;
     9)

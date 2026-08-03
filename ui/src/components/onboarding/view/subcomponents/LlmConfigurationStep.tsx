@@ -35,7 +35,10 @@ const DEFAULT_PROVIDER = CATALOG_PROVIDERS.find((provider) => provider.id === 'o
 
 function defaultModelForProvider(provider: CatalogProvider | null) {
   if (!provider) return '';
-  return provider.models.find((model) => model.id === 'deepseek/deepseek-v4-flash')?.id
+  return provider.models.find((model) => model.id === 'deepseek-v4-flash')?.id
+    ?? provider.models.find((model) => model.id === 'deepseek/deepseek-v4-flash')?.id
+    ?? provider.models.find((model) => model.id === 'kimi-k2.6')?.id
+    ?? provider.models.find((model) => model.id === 'moonshotai/kimi-k2.6')?.id
     ?? provider.models[0]?.id
     ?? '';
 }

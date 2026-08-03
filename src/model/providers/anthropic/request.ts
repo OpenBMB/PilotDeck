@@ -6,6 +6,7 @@ import type {
   CanonicalToolChoice,
   CanonicalToolSchema,
   ModelDefinition,
+  ProviderConfig,
 } from "../../protocol/canonical.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { messageContent } from "../../protocol/clone.js";
@@ -13,7 +14,7 @@ import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 
 export type AnthropicRequestBody = {
   model: string;
-  max_tokens: number;
+  max_tokens?: number;
   messages: AnthropicMessage[];
   system?: string | unknown[];
   tools?: AnthropicTool[];
@@ -50,8 +51,9 @@ export const ANTHROPIC_STRUCTURED_OUTPUT_TOOL_NAME = "__output__";
 export function buildAnthropicRequest(
   request: CanonicalModelRequest,
   model: ModelDefinition,
+  provider?: ProviderConfig,
 ): AnthropicRequestBody {
-  const thinkingPlan = resolveThinkingPlan(request.thinking, { id: "anthropic", protocol: "anthropic", url: "", apiKey: "", headers: {}, models: {} }, model);
+  const thinkingPlan = resolveThinkingPlan(request.thinking, provider ?? { id: "anthropic", protocol: "anthropic", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   // A3: lower outputSchema → forced hidden tool. This goes BEFORE the
   // user-supplied tools so the dispatch order is stable, but Anthropic
@@ -70,27 +72,31 @@ export function buildAnthropicRequest(
   }
 
   const tools: AnthropicTool[] = outputTool ? [outputTool, ...baseTools] : baseTools;
+  const providerUsesCatalogDefaults = provider?.catalog !== false;
+  const maxTokens = request.maxOutputTokens ?? (providerUsesCatalogDefaults ? model.capabilities.maxOutputTokens : undefined);
 
   // Anthropic allows at most 4 cache_control blocks per request.
-  // Reserve 1 for the system prompt; keep the 3 most recent message breakpoints.
+  // When cacheBreakpoints is defined, the system prompt is cacheable even if
+  // the array is empty; when messages are marked, keep the 3 most recent.
   const MAX_MESSAGE_BREAKPOINTS = 3;
-  const trimmedBreakpoints = request.cacheBreakpoints
-    ? request.cacheBreakpoints.length > MAX_MESSAGE_BREAKPOINTS
-      ? request.cacheBreakpoints.slice(-MAX_MESSAGE_BREAKPOINTS)
-      : request.cacheBreakpoints
+  const cacheBreakpointInput = request.cacheBreakpoints;
+  const hasCacheBreakpoints = cacheBreakpointInput !== undefined;
+  const trimmedBreakpoints = hasCacheBreakpoints
+    ? cacheBreakpointInput.length > MAX_MESSAGE_BREAKPOINTS
+      ? cacheBreakpointInput.slice(-MAX_MESSAGE_BREAKPOINTS)
+      : cacheBreakpointInput
     : null;
   const cacheBreakpoints = trimmedBreakpoints
     ? new Set(trimmedBreakpoints)
     : null;
 
-  return {
+  const response: AnthropicRequestBody = {
     model: request.model,
-    max_tokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
     messages: request.messages.map((message, index) =>
       toAnthropicMessage(message, cacheBreakpoints?.has(index) ?? false),
     ),
     system: request.systemPrompt
-      ? cacheBreakpoints
+      ? hasCacheBreakpoints
         ? [{ type: "text", text: request.systemPrompt, cache_control: { type: "ephemeral" } }]
         : request.systemPrompt
       : undefined,
@@ -111,6 +117,10 @@ export function buildAnthropicRequest(
     stream: request.stream,
     metadata: toAnthropicMetadata(request.metadata),
   };
+  if (maxTokens !== undefined) {
+    response.max_tokens = maxTokens;
+  }
+  return response;
 }
 
 function toAnthropicStructuredOutputTool(

@@ -262,11 +262,72 @@ function deepSeekPlan(mode: ThinkingMode, modelId: string): ThinkingPlan {
   };
 }
 
-function kimiPlan(mode: ThinkingMode, _modelId: string): ThinkingPlan {
-  if (mode === "off") {
-    return { mode, enabled: false, thinkingType: "disabled", preserve: true, useOpenAICompatibleThinking: true, omitTemperature: true };
+function kimiPlan(mode: ThinkingMode, modelId: string): ThinkingPlan {
+  if (/moonshot-v1/.test(modelId)) {
+    if (mode === "off") return { mode, enabled: false };
+    return {
+      mode,
+      enabled: false,
+      unsupportedReason: `Moonshot model ${modelId} does not support thinking mode '${mode}'. Switch thinking strength back to Default.`,
+    };
   }
-  return { mode, enabled: mode !== "default", preserve: true, useOpenAICompatibleThinking: false, omitTemperature: true };
+
+  if (/kimi-k3/.test(modelId)) {
+    if (mode === "off") {
+      return {
+        mode,
+        enabled: false,
+        unsupportedReason: `Kimi K3 always uses thinking. Switch thinking strength back to Default or choose a non-off thinking mode.`,
+      };
+    }
+    return {
+      mode,
+      enabled: true,
+      effort: kimiK3Effort(mode),
+      bodyPatch: { reasoning_effort: kimiK3Effort(mode) },
+      preserve: true,
+      omitTemperature: true,
+    };
+  }
+
+  if (/kimi-k2\.7-code/.test(modelId)) {
+    if (mode === "off") {
+      return {
+        mode,
+        enabled: false,
+        unsupportedReason: `Kimi K2.7 Code always uses thinking. Switch thinking strength back to Default or choose a non-off thinking mode.`,
+      };
+    }
+    return {
+      mode,
+      enabled: true,
+      bodyPatch: { thinking: { type: "enabled", keep: "all" } },
+      preserve: true,
+      omitTemperature: true,
+    };
+  }
+
+  if (mode === "off") {
+    return {
+      mode,
+      enabled: false,
+      bodyPatch: { thinking: { type: "disabled" } },
+      preserve: true,
+      omitTemperature: true,
+    };
+  }
+
+  const thinking: Record<string, unknown> = { type: "enabled" };
+  if (/kimi-k2\.6/.test(modelId)) {
+    thinking.keep = "all";
+  }
+  return {
+    mode,
+    enabled: true,
+    bodyPatch: { thinking },
+    preserve: true,
+    omitTemperature: true,
+  };
 }
 
 function minimaxPlan(mode: ThinkingMode): ThinkingPlan {
@@ -301,6 +362,12 @@ function clampLevel(mode: ThinkingMode): "low" | "medium" | "high" {
   if (mode === "minimal" || mode === "low") return "low";
   if (mode === "high" || mode === "xhigh" || mode === "max") return "high";
   return "medium";
+}
+
+function kimiK3Effort(mode: ThinkingMode): "low" | "high" | "max" {
+  if (mode === "minimal" || mode === "low") return "low";
+  if (mode === "xhigh" || mode === "max") return "max";
+  return "high";
 }
 
 function effortBudget(mode: ThinkingMode): number {
