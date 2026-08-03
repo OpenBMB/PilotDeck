@@ -511,7 +511,23 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
     }
   }
 
-  const result = [...server, ...extra];
+  const result = [...server];
+  for (const message of extra) {
+    if (message.kind === 'thinking') {
+      const insertIndex = findLiveThinkingServerInsertIndex(server, realtime, message);
+      if (insertIndex >= 0) {
+        // Resolve the original server anchor after earlier live inserts so
+        // consecutive thinking blocks retain their realtime order.
+        const nextServerMessage = server[insertIndex];
+        const actualInsertIndex = nextServerMessage
+          ? result.findIndex((candidate) => candidate === nextServerMessage)
+          : result.findIndex((candidate) => candidate === server[server.length - 1]) + 1;
+        result.splice(actualInsertIndex >= 0 ? actualInsertIndex : result.length, 0, message);
+        continue;
+      }
+    }
+    result.push(message);
+  }
   return result;
 }
 
@@ -583,6 +599,53 @@ function isSameRealtimeRunOrTurn(first: NormalizedMessage, second: NormalizedMes
     return first.serverTailIdAtStart === second.serverTailIdAtStart;
   }
   return false;
+}
+
+function findServerAnchorIndex(
+  server: NormalizedMessage[],
+  message: NormalizedMessage,
+): number {
+  const directIndex = server.findIndex((candidate) => (
+    candidate.id === message.id && candidate.kind === message.kind
+  ));
+  if (directIndex >= 0) return directIndex;
+
+  if ((message.kind === 'tool_use' || message.kind === 'tool_result') && message.toolId) {
+    return server.findIndex((candidate) => (
+      candidate.kind === message.kind && candidate.toolId === message.toolId
+    ));
+  }
+
+  return -1;
+}
+
+function findLiveThinkingServerInsertIndex(
+  server: NormalizedMessage[],
+  realtime: NormalizedMessage[],
+  incoming: NormalizedMessage,
+): number {
+  if (incoming.kind !== 'thinking' || !incoming.serverTailIdAtStart) return -1;
+
+  const tailIndex = server.findIndex((message) => message.id === incoming.serverTailIdAtStart);
+  if (tailIndex < 0) return -1;
+
+  const incomingIndex = realtime.indexOf(incoming);
+  if (incomingIndex >= 0) {
+    // A later thinking block belongs after its preceding server-backed tool.
+    for (let index = incomingIndex - 1; index >= 0; index -= 1) {
+      const previous = realtime[index];
+      if (previous.kind !== 'tool_use' && previous.kind !== 'tool_result') continue;
+      const anchorIndex = findServerAnchorIndex(server, previous);
+      if (anchorIndex > tailIndex) return anchorIndex + 1;
+      break;
+    }
+  }
+
+  // The first live thinking block belongs before current-turn assistant text.
+  const firstCurrentTurnIndex = server.findIndex((message, index) => (
+    index > tailIndex && message.kind === 'text' && message.role === 'assistant'
+  ));
+  return firstCurrentTurnIndex >= 0 ? firstCurrentTurnIndex : tailIndex + 1;
 }
 
 function findLateThinkingInsertIndex(

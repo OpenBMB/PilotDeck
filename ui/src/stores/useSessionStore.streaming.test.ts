@@ -232,6 +232,62 @@ describe('computeMerged', () => {
       'text-local-second-final',
     ]);
   });
+
+  it('places live thinking before server-side assistant snapshots in the same turn', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
+      textMessage('persisted-answer', 'I inspected the file.', '2026-05-28T00:00:02.000Z'),
+      toolUseMessage('tool-read-1', '2026-05-28T00:00:03.000Z'),
+    ];
+    const realtime = [
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-a', 'Plan next step', '2026-05-28T00:00:04.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-a',
+        thinkingBlockSeq: 1,
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-b', 'Then inspect the result', '2026-05-28T00:00:05.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-b',
+        thinkingBlockSeq: 2,
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'tail-before-turn',
+      '__streaming_thinking_web:s_test_run-1_id_block-a',
+      '__streaming_thinking_web:s_test_run-1_id_block-b',
+      'persisted-answer',
+      'tool-read-1',
+    ]);
+  });
+
+  it('keeps a later live thinking block after its server-side tool result', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
+      textMessage('persisted-answer', 'I inspected the file.', '2026-05-28T00:00:02.000Z'),
+      toolUseMessage('tool-read-1', '2026-05-28T00:00:03.000Z'),
+      toolResultMessage('tool-result-1', 'tool-read-1', '2026-05-28T00:00:04.000Z'),
+    ];
+    const realtime = [
+      toolResultMessage('tool-result-1', 'tool-read-1', '2026-05-28T00:00:04.000Z'),
+      thinkingMessage('__streaming_thinking_web:s_test_run-1_id_block-b', 'Decide next step', '2026-05-28T00:00:05.000Z', {
+        runId: 'run-1',
+        thinkingBlockId: 'block-b',
+        thinkingBlockSeq: 2,
+        serverTailIdAtStart: 'tail-before-turn',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'tail-before-turn',
+      'persisted-answer',
+      'tool-read-1',
+      'tool-result-1',
+      '__streaming_thinking_web:s_test_run-1_id_block-b',
+    ]);
+  });
 });
 
 describe('finalizeStreamingRealtimeMessages', () => {
