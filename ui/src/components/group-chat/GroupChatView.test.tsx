@@ -82,12 +82,13 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function renderGroup() {
+function renderGroup(onOpenFiles = vi.fn()) {
   return render(
     <GroupChatView
       groupId={group.id}
       onGroupsChanged={vi.fn()}
       onArchived={vi.fn()}
+      onOpenFiles={onOpenFiles}
     />,
   );
 }
@@ -118,6 +119,21 @@ describe('GroupChatView', () => {
     expect(screen.getByText('工程建议')).toBeTruthy();
     expect(screen.getByText('综合结论')).toBeTruthy();
     expect(screen.getByText(/未 @ 的消息仍会保存在时间线中/)).toBeTruthy();
+  });
+
+  it('exposes the shared search and Files tools in the group header', async () => {
+    const onOpenFiles = vi.fn();
+    renderGroup(onOpenFiles);
+
+    expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '搜索当前群组' }));
+    const search = screen.getByRole('searchbox', { name: '搜索群组消息' });
+    fireEvent.change(search, { target: { value: '工程建议' } });
+    expect(screen.getByText('1/1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '文件' }));
+    expect(onOpenFiles).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('searchbox', { name: '搜索群组消息' })).toBeNull();
   });
 
   it('sends @所有人 as an explicit all-member mention', async () => {
@@ -216,7 +232,8 @@ describe('GroupChatView', () => {
     expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '邀请' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '群组设置' }));
+    fireEvent.click(screen.getByRole('button', { name: '更多群组操作' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '群组设置' }));
     expect(await screen.findByRole('heading', { name: '群组设置' })).toBeTruthy();
     expect(screen.getByDisplayValue(group.title).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('switch', { name: '仅 @ 触发' }).hasAttribute('disabled')).toBe(true);

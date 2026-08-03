@@ -61,6 +61,14 @@ vi.mock('../main-content/view/MainContent', async () => {
   };
 });
 
+vi.mock('../group-chat/GroupChatView', () => ({
+  default: ({ onOpenFiles }: { onOpenFiles?: () => void }) => (
+    <div data-testid="group-chat-view">
+      <button type="button" onClick={onOpenFiles}>群组文件</button>
+    </div>
+  ),
+}));
+
 vi.mock('../../utils/api', () => ({
   api: {
     alwaysOnDashboardEvents: vi.fn(async () => new Response(JSON.stringify({ events: [] }))),
@@ -76,9 +84,11 @@ const project: Project = {
 function Harness({
   initialTab = 'chat',
   withSession = false,
+  withGroup = false,
 }: {
   initialTab?: AppTab;
   withSession?: boolean;
+  withGroup?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const props = {
@@ -87,6 +97,8 @@ function Harness({
     selectedSession: withSession ? { id: 'session-1', title: 'Searchable chat' } : null,
     activeTab,
     setActiveTab,
+    selectedGroupId: withGroup ? 'group-1' : null,
+    groupsActive: withGroup,
   } as unknown as ComponentProps<typeof MainAreaV2>;
 
   return <MainAreaV2 {...props} />;
@@ -216,6 +228,20 @@ describe('MainAreaV2 dashboard switcher', () => {
     fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
     expect(filesButton.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('opens the shared Files workbench from a selected group and returns to the group', () => {
+    render(<Harness withGroup />);
+
+    expect(screen.getByTestId('group-chat-view')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '群组文件' }));
+
+    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
+    const filesButton = screen.getByRole('button', { name: 'tabs.files' });
+    expect(filesButton.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(filesButton);
+    expect(screen.getByTestId('group-chat-view')).toBeTruthy();
   });
 
   it('replaces the overflow button with the selected dashboard and restores it when closed', async () => {

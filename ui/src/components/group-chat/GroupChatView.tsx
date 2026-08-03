@@ -10,14 +10,16 @@ import {
   Brain,
   CheckCircle2,
   ChevronDown,
+  Folder,
   Loader2,
-  Menu,
   MessageCircleMore,
+  MoreHorizontal,
+  PanelLeftOpen,
   Plus,
+  Search,
   Settings2,
   ShieldCheck,
   Trash2,
-  UserRound,
   UsersRound,
   Wrench,
   X,
@@ -45,6 +47,7 @@ type Props = {
   onGroupsChanged: () => void;
   onArchived: () => void;
   onRequestDelete?: (group: AgentGroup) => void;
+  onOpenFiles?: () => void;
 };
 
 const POLL_MS = 1_200;
@@ -191,6 +194,7 @@ export default function GroupChatView({
   onGroupsChanged,
   onArchived,
   onRequestDelete,
+  onOpenFiles,
 }: Props) {
   const [group, setGroup] = useState<AgentGroup | null>(null);
   const [messages, setMessages] = useState<AgentGroupMessage[]>([]);
@@ -199,8 +203,15 @@ export default function GroupChatView({
   const [sending, setSending] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const lastMessageSignatureRef = useRef('');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -259,6 +270,57 @@ export default function GroupChatView({
   );
   const canManageMembers = group?.participantRole === 'owner' || group?.participantRole === 'moderator';
   const roundInProgress = messages.some((message) => message.status === 'thinking' || message.status === 'queued');
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('zh-CN');
+  const searchMatches = useMemo(
+    () => normalizedSearchQuery
+      ? messages.filter((message) => `${message.senderName}\n${message.content}`.toLocaleLowerCase('zh-CN').includes(normalizedSearchQuery))
+      : [],
+    [messages, normalizedSearchQuery],
+  );
+  const activeSearchMessageId = searchMatches[activeSearchIndex]?.id;
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setActiveSearchIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  const revealSearchMatch = (index: number) => {
+    if (searchMatches.length === 0) return;
+    const nextIndex = (index + searchMatches.length) % searchMatches.length;
+    setActiveSearchIndex(nextIndex);
+    document.getElementById(`group-message-${searchMatches[nextIndex].id}`)?.scrollIntoView?.({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setActiveSearchIndex(0);
+  };
 
   const send = async (draft: MentionDraft) => {
     if (!group || sending || roundInProgress) return false;
@@ -295,15 +357,12 @@ export default function GroupChatView({
 
   return (
     <div className="relative flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-4 dark:border-neutral-900 sm:px-6">
+      <header className="relative z-[80] flex h-14 shrink-0 items-center gap-3 overflow-visible border-b border-neutral-100 bg-white px-4 dark:border-neutral-900 dark:bg-neutral-950 sm:px-6">
         {isSidebarCollapsed ? (
-          <button type="button" onClick={onOpenSidebar} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">
-            <Menu className="h-4 w-4" />
+          <button type="button" onClick={onOpenSidebar} aria-label="显示侧边栏" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100">
+            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
           </button>
         ) : null}
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
-          <UsersRound className="h-5 w-5" />
-        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-[15px] font-semibold">{group.title}</h1>
@@ -325,9 +384,106 @@ export default function GroupChatView({
             <span className="hidden sm:inline">邀请</span>
           </button>
         ) : null}
-        <button type="button" onClick={() => setSettingsOpen(true)} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100" aria-label="群组设置">
-          <Settings2 className="h-4 w-4" />
-        </button>
+        <div className="hidden h-5 w-px bg-neutral-200 dark:bg-neutral-800 sm:block" aria-hidden="true" />
+        {searchOpen ? (
+          <div role="search" aria-label="搜索群组消息" className="flex h-8 w-[min(310px,34vw)] min-w-[220px] items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 text-neutral-500 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
+            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={searchQuery}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSearchQuery(value);
+                const normalizedValue = value.trim().toLocaleLowerCase('zh-CN');
+                const firstMatch = normalizedValue
+                  ? messages.find((message) => `${message.senderName}\n${message.content}`.toLocaleLowerCase('zh-CN').includes(normalizedValue))
+                  : undefined;
+                if (firstMatch) {
+                  requestAnimationFrame(() => {
+                    document.getElementById(`group-message-${firstMatch.id}`)?.scrollIntoView?.({
+                      behavior: 'smooth',
+                      block: 'center',
+                    });
+                  });
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') closeSearch();
+                if (event.key === 'Enter') revealSearchMatch(activeSearchIndex + (event.shiftKey ? -1 : 1));
+              }}
+              placeholder="搜索群组消息"
+              aria-label="搜索群组消息"
+              className="min-w-0 flex-1 bg-transparent text-xs text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
+            />
+            <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+              {searchMatches.length ? `${activeSearchIndex + 1}/${searchMatches.length}` : '0/0'}
+            </span>
+            <button type="button" onClick={() => revealSearchMatch(activeSearchIndex - 1)} disabled={!searchMatches.length} aria-label="上一个结果" className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"><ArrowUp className="h-3 w-3" /></button>
+            <button type="button" onClick={() => revealSearchMatch(activeSearchIndex + 1)} disabled={!searchMatches.length} aria-label="下一个结果" className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"><ArrowDown className="h-3 w-3" /></button>
+            <button type="button" onClick={closeSearch} aria-label="关闭搜索" className="rounded p-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-3 w-3" /></button>
+          </div>
+        ) : null}
+        <div className="flex h-9 shrink-0 items-center gap-1" aria-label="群组工具">
+          <button
+            type="button"
+            aria-label="搜索当前群组"
+            aria-pressed={searchOpen}
+            onClick={() => {
+              setMenuOpen(false);
+              if (searchOpen) closeSearch(); else setSearchOpen(true);
+            }}
+            className={cn(
+              'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors',
+              searchOpen
+                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950/70 dark:text-blue-200'
+                : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+            )}
+          >
+            <Search className="h-4 w-4" strokeWidth={1.9} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              closeSearch();
+              onOpenFiles?.();
+            }}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          >
+            <Folder className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <span>文件</span>
+          </button>
+          <div ref={menuRef} className="relative">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              aria-label="更多群组操作"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              <MoreHorizontal className="h-4 w-4" strokeWidth={1.9} />
+            </button>
+            {menuOpen ? (
+              <div role="menu" aria-label="群组操作" className="absolute right-0 top-10 z-[90] w-36 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-black/10 dark:border-neutral-700 dark:bg-neutral-900">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setSettingsOpen(true);
+                  }}
+                  className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200"
+                >
+                  <Settings2 className="h-4 w-4 text-neutral-400" strokeWidth={1.75} />
+                  <span>群组设置</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </header>
 
       <div ref={timelineRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
@@ -350,59 +506,68 @@ export default function GroupChatView({
           ) : null}
 
           {messages.map((message) => {
+            let messageContent;
             if (message.kind === 'activity') {
-              return <ActivityMessage key={message.id} message={message} />;
-            }
-            if (message.kind === 'delegation') {
-              return <DelegationMessage key={message.id} message={message} memberMap={memberMap} />;
-            }
-            if (message.senderType === 'system') {
-              return (
-                <div key={message.id} className="flex justify-center">
+              messageContent = <ActivityMessage message={message} />;
+            } else if (message.kind === 'delegation') {
+              messageContent = <DelegationMessage message={message} memberMap={memberMap} />;
+            } else if (message.senderType === 'system') {
+              messageContent = (
+                <div className="flex justify-center">
                   <div className="max-w-[80%] rounded-full bg-neutral-100 px-3 py-1.5 text-center text-[11px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">{message.content}</div>
                 </div>
               );
-            }
-            const isUser = message.senderType === 'user';
-            const member = message.senderMemberId ? memberMap.get(message.senderMemberId) : undefined;
-            return (
-              <div key={message.id} className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
-                {isUser ? (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"><UserRound className="h-4 w-4" /></div>
-                ) : member ? <AgentAvatar member={member} /> : (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 dark:bg-neutral-800"><Bot className="h-4 w-4" /></div>
-                )}
-                <div className={cn('min-w-0 max-w-[82%]', isUser && 'text-right')}>
-                  <div className={cn('mb-1 flex items-center gap-2 text-[11px] text-neutral-500', isUser && 'justify-end')}>
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">{message.senderName}</span>
-                    {!isUser && member ? <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] dark:bg-neutral-800">{kindLabel[member.kind]}</span> : null}
-                    <span>{formatTime(message.createdAt)}</span>
-                  </div>
-                  <div className={cn(
-                    'rounded-2xl px-4 py-3 text-left text-sm leading-6',
-                    isUser
-                      ? 'rounded-tr-md bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
-                      : 'rounded-tl-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900',
-                    message.status === 'failed' && 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30',
-                  )}>
-                    {message.status === 'thinking' ? (
-                      <div className="flex items-center gap-2 text-neutral-500"><Loader2 className="h-4 w-4 animate-spin" /><span>{message.senderName} 正在输入…</span></div>
-                    ) : message.status === 'failed' ? (
-                      <div className="text-red-700 dark:text-red-300">回复失败：{message.error || '未知错误'}</div>
-                    ) : isUser ? (
-                      <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                    ) : (
-                      <Markdown className="group-chat-markdown">{message.content}</Markdown>
-                    )}
+            } else {
+              const isUser = message.senderType === 'user';
+              const member = message.senderMemberId ? memberMap.get(message.senderMemberId) : undefined;
+              messageContent = (
+                <div className={cn('flex gap-3', isUser && 'justify-end')}>
+                  {!isUser && (member ? <AgentAvatar member={member} /> : (
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 dark:bg-neutral-800"><Bot className="h-4 w-4" /></div>
+                  ))}
+                  <div className={cn('min-w-0', isUser ? 'max-w-[78%]' : 'max-w-[calc(100%-3rem)] flex-1')}>
+                    <div className={cn('mb-1 flex items-center gap-2 text-[11px] text-neutral-500', isUser && 'justify-end')}>
+                      <span className="font-medium text-neutral-700 dark:text-neutral-300">{message.senderName}</span>
+                      {!isUser && member ? <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] dark:bg-neutral-800">{kindLabel[member.kind]}</span> : null}
+                      <span>{formatTime(message.createdAt)}</span>
+                    </div>
+                    <div className={cn(
+                      'text-left text-sm leading-6',
+                      isUser && 'rounded-[22px] bg-neutral-100 px-4 py-2.5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
+                      !isUser && 'py-1 text-neutral-800 dark:text-neutral-100',
+                      message.status === 'failed' && 'rounded-xl bg-red-50 px-4 py-3 text-red-700 dark:bg-red-950/30 dark:text-red-300',
+                    )}>
+                      {message.status === 'thinking' ? (
+                        <div className="flex items-center gap-2 text-neutral-500"><Loader2 className="h-4 w-4 animate-spin" /><span>{message.senderName} 正在输入…</span></div>
+                      ) : message.status === 'failed' ? (
+                        <div>回复失败：{message.error || '未知错误'}</div>
+                      ) : isUser ? (
+                        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                      ) : (
+                        <Markdown className="group-chat-markdown">{message.content}</Markdown>
+                      )}
+                    </div>
                   </div>
                 </div>
+              );
+            }
+            return (
+              <div
+                key={message.id}
+                id={`group-message-${message.id}`}
+                className={cn(
+                  'scroll-mt-20 rounded-xl transition-colors',
+                  activeSearchMessageId === message.id && 'bg-amber-50/80 ring-4 ring-amber-50/80 dark:bg-amber-950/20 dark:ring-amber-950/20',
+                )}
+              >
+                {messageContent}
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-4 dark:border-neutral-900 dark:bg-neutral-950 sm:px-8">
+      <div className="shrink-0 bg-white px-4 pb-5 pt-3 dark:bg-neutral-950 sm:px-8">
         <div className="relative mx-auto max-w-3xl">
           {error ? <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
           <MentionComposer

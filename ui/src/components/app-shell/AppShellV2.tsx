@@ -165,6 +165,32 @@ export default function AppShellV2() {
     activeSessions,
   });
 
+  const selectedGroupProject = useMemo<Project | null>(() => {
+    if (!selectedGroupId) return null;
+    const selectedGroup = groups.find((group) => group.id === selectedGroupId);
+    if (!selectedGroup) return null;
+    return sidebarSharedProps.projects.find((project) => (
+      project.name === selectedGroup.projectName
+      || project.fullPath === selectedGroup.projectPath
+      || project.path === selectedGroup.projectPath
+    )) ?? {
+      name: selectedGroup.projectName,
+      displayName: selectedGroup.projectName === 'general' ? 'General' : selectedGroup.projectName,
+      fullPath: selectedGroup.projectPath,
+      path: selectedGroup.projectPath,
+      sessions: [],
+    };
+  }, [groups, selectedGroupId, sidebarSharedProps.projects]);
+
+  useEffect(() => {
+    if (!selectedGroupProject) return;
+    const selectedPath = selectedProject?.fullPath || selectedProject?.path;
+    const groupPath = selectedGroupProject.fullPath || selectedGroupProject.path;
+    if (selectedProject?.name === selectedGroupProject.name && selectedPath === groupPath) return;
+    setSelectedProject(selectedGroupProject);
+    setSelectedSession(null);
+  }, [selectedGroupProject, selectedProject, setSelectedProject, setSelectedSession]);
+
   const misroutedFileFromUrl = useMemo(() => {
     if (!sessionId) return null;
     const filePath = resolveMarkdownFileHref(`/session/${sessionId}`);

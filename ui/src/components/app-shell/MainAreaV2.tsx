@@ -467,7 +467,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
-  if (props.selectedGroupId) {
+  if (props.selectedGroupId && props.activeTab !== 'files') {
     return (
       <GroupChatView
         groupId={props.selectedGroupId}
@@ -476,10 +476,11 @@ export default function MainAreaV2(props: MainAreaV2Props) {
         onGroupsChanged={props.onGroupsChanged || (() => undefined)}
         onArchived={props.onGroupArchived || (() => undefined)}
         onRequestDelete={props.onRequestDeleteGroup}
+        onOpenFiles={() => props.setActiveTab('files')}
       />
     );
   }
-  if (props.groupsActive) {
+  if (props.groupsActive && !props.selectedGroupId) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-white p-8 text-center text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">

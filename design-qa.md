@@ -318,3 +318,34 @@ final result: passed
 ### Result
 
 Passed.
+
+---
+
+# Group chat visual QA
+
+## Evidence
+
+- Reference — members and invite: `/var/folders/h7/3cs397r516s2pvg0g1gwxjdm0000gn/T/codex-clipboard-dd820021-81b3-4690-99fb-f2c4687e408b.png`
+- Reference — search, Files, overflow: `/var/folders/h7/3cs397r516s2pvg0g1gwxjdm0000gn/T/codex-clipboard-29766a8a-ef53-4262-bd45-386b64632bb7.png`
+- Implementation: `/Users/hx/Workspace/PilotDeck/design-qa-group-chat.png`
+- Combined comparison: `/Users/hx/Workspace/PilotDeck/design-qa-group-chat-comparison.png`
+- Viewport: 1280 × 720 desktop, standard density
+- State: Groups tab, `grp_01`, scrolled to the latest message
+
+## Review
+
+- Full-view evidence confirms the group route keeps the existing PilotDeck sidebar, header rhythm, reading width, and composer shell.
+- Focused header evidence confirms overlapping member avatars and Invite remain visible, followed by Search, Files, and the overflow trigger.
+- Group settings is no longer a standalone header control; it is available from the overflow menu.
+- User messages now use the existing right-aligned neutral bubble treatment. Agent replies render as a readable content stream with identity metadata instead of stacked bordered cards.
+- Search, Files round-trip, and overflow/settings interactions were exercised in the live browser.
+
+## Iteration history
+
+1. Initial implementation exposed Files but the Groups landing branch intercepted the workbench.
+2. Updated shell precedence so a selected group's Files state opens the shared workbench.
+3. Bound the group's project context before opening Files, then verified Files → group round-trip.
+
+## Result
+
+**passed** — no open P0, P1, or P2 visual/interaction issues in the requested desktop state.
