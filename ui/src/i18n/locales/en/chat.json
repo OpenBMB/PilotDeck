@@ -45,6 +45,7 @@
     "label": "Context compacted",
     "level": "Level {{level}}",
     "tokens": "{{tokens}} tokens before compact",
+    "tokensAfter": "{{before}} → {{after}} tokens",
     "stages": {
       "context_collapse": "Context collapse",
       "session_memory": "Session memory compaction",
@@ -255,8 +256,14 @@
     "showAllCommands": "Show all commands",
     "clearInput": "Clear input",
     "scrollToBottom": "Scroll to bottom",
-    "contextStatus": "{{percent}}% used. {{used}} tokens used out of {{total}}. Auto compact runs near the limit.",
+    "contextStatusTitle": "Context window",
+    "contextStatusUsed": "{{used}} tokens used out of {{total}}.",
+    "contextStatus": "{{percentLabel}} used. {{used}} tokens used out of {{total}}. Auto compact runs near the limit.",
+    "contextStatusBlocking": "{{percentLabel}} used. {{used}} tokens used out of {{total}}. Auto compact ran, but the context is still over the limit.",
+    "contextStatusAutoCompact": "Auto compact runs when the conversation approaches the configured limit.",
+    "contextStatusBlockingBody": "Compaction ran, but the context is still over the limit.",
     "contextStatusUnknown": "Context usage unknown. It will appear after the next model response.",
+    "contextStatusUnknownBody": "No token budget has been reported yet. It will appear after the next model response.",
     "permissions": {
       "default": "Default Permissions",
       "defaultDescription": "Ask before risky operations",

@@ -1045,6 +1045,7 @@ class ProjectRuntimeRegistry {
     const memoryResolver = runtime.memory;
     const now = this.options.now;
     const eventBuf = createAgentEventBuffer();
+    const providerUsesCatalogDefaults = (providerId: string): boolean => Boolean(runtime.snapshot.config.model.providers[providerId]?.catalog);
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
       router: runtime.router,
@@ -1063,7 +1064,7 @@ class ProjectRuntimeRegistry {
       }),
       getModelMaxOutputTokens: (provider, model) => {
         try {
-          return runtime.model.getCapabilities(provider, model).maxOutputTokens;
+          return providerUsesCatalogDefaults(provider) ? runtime.model.getCapabilities(provider, model).maxOutputTokens : undefined;
         } catch {
           return undefined;
         }
@@ -1071,7 +1072,20 @@ class ProjectRuntimeRegistry {
       getModelTokenLimits: (provider, model) => {
         try {
           const caps = runtime.model.getCapabilities(provider, model);
-          return { maxContextTokens: caps.maxContextTokens, maxOutputTokens: caps.maxOutputTokens };
+          return {
+            // Keep the explicit agent cap authoritative for the configured
+            // main model. Other callers use this combined lookup when
+            // computing routing and compaction budgets, so returning the
+            // catalog window here would bypass the Settings value.
+            maxContextTokens: resolveRoutedModelMaxContextTokens({
+              modelRuntime: runtime.model,
+              agentModel: runtime.snapshot.config.agent.model,
+              agentMaxContextTokens: runtime.snapshot.config.agent.maxContextTokens,
+              provider,
+              model,
+            }) ?? caps.maxContextTokens,
+            ...(providerUsesCatalogDefaults(provider) ? { maxOutputTokens: caps.maxOutputTokens } : {}),
+          };
         } catch {
           return undefined;
         }
@@ -1271,17 +1285,15 @@ class ProjectRuntimeRegistry {
       // Model or provider not found — fall back to text-only.
     }
     let maxContextTokens: number | undefined;
-    let maxOutputTokens: number | undefined;
-    try {
-      const caps = runtime.model.getCapabilities(agent.model.provider, agent.model.model);
-      maxContextTokens = agent.maxContextTokens ?? caps.maxContextTokens;
-      maxOutputTokens = caps.maxOutputTokens;
-    } catch {
-      maxContextTokens = agent.maxContextTokens;
-    }
-    maxOutputTokens = readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
-      ?? agent.maxOutputTokens
-      ?? maxOutputTokens;
+    maxContextTokens = resolveRoutedModelMaxContextTokens({
+      modelRuntime: runtime.model,
+      agentModel: agent.model,
+      agentMaxContextTokens: agent.maxContextTokens,
+      provider: agent.model.provider,
+      model: agent.model.model,
+    });
+    const maxOutputTokens = readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
+      ?? agent.maxOutputTokens;
     return {
       provider: agent.model.provider,
       model: agent.model.model,

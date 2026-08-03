@@ -971,7 +971,7 @@ function MessagesPaneV2({
   const searchIsRenderedByShell = useRegisterChatHistorySearchControls(chatHistorySearch);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       {chatHistorySearch.isOpen && !searchIsRenderedByShell ? (
         <ChatHistorySearchBar
           query={chatHistorySearch.query}

@@ -174,7 +174,7 @@ export class TokenAccountingRuntime {
   ): Promise<TokenCountResult> {
     const model = provider.models[request.model];
     if (!model) throw new Error(`Model ${request.model} does not exist in provider ${provider.id}.`);
-    const fullBody = buildAnthropicRequest({ ...request, stream: false }, model);
+    const fullBody = buildAnthropicRequest({ ...request, stream: false }, model, provider);
     const body = {
       model: fullBody.model,
       messages: fullBody.messages,
@@ -254,7 +254,7 @@ function toOpenAIResponsesTokenCountBody(
 ): Record<string, unknown> {
   const model = provider.models[request.model];
   if (!model) throw new Error(`Model ${request.model} does not exist in provider ${provider.id}.`);
-  const chatBody = buildOpenAIRequest({ ...request, stream: false }, model);
+  const chatBody = buildOpenAIRequest({ ...request, stream: false }, model, provider);
   return {
     model: chatBody.model,
     input: toOpenAIResponsesInput(chatBody.messages),

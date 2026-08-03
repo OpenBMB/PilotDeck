@@ -962,6 +962,9 @@ export function useChatRealtimeHandlers({
       case 'compact_boundary': {
         onSessionProcessing?.(sid);
         if (isForActiveView) {
+          if (msg.tokenBudget) {
+            setTokenBudget(msg.tokenBudget as Record<string, unknown>);
+          }
           setClaudeStatus(null);
           setPilotDeckStatus(null);
           setIsLoading(true);

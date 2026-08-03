@@ -59,6 +59,8 @@ export type AgentContextRuntime = {
    * context window after a routing decision.
    */
   tryAutoCompact?(input: {
+    sessionId?: string;
+    turnId?: string;
     messages: CanonicalMessage[];
     abortSignal?: AbortSignal;
     maxContextTokens?: number;

@@ -278,6 +278,8 @@ function mapWebMessageToNormalized(message, sessionId) {
         kind: 'compact_boundary',
         trigger: payload.trigger || 'auto',
         preTokens: payload.preTokens,
+        postTokens: payload.postTokens,
+        messagesSummarized: payload.messagesSummarized,
         compactLevel: payload.level,
         compactStage: payload.stage,
         compactStageLabel: payload.stageLabel || payload.stage,

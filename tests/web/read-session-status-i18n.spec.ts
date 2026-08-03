@@ -165,3 +165,61 @@ test("history token usage prefers persisted context budget snapshot", async () =
     await rm(pilotHome, { recursive: true, force: true });
   }
 });
+
+test("history token usage reflects the latest compact boundary after context budget", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-compact-token-budget-project-"));
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-compact-token-budget-home-"));
+  try {
+    const sessionKey = "web:s_compact_token_budget";
+    const storage = createAgentProjectSessionStorage({
+      projectRoot,
+      pilotHome,
+      sessionId: sessionKey,
+      now: () => new Date("2026-08-02T00:00:00.000Z"),
+    });
+    await storage.transcript.recordAgentStatusMessage(sessionKey, "turn-1", {
+      event: "context_budget",
+      kind: "status",
+      text: "context_budget",
+      detail: {
+        type: "context_budget",
+        used: 76000,
+        displayUsed: 74000,
+        budgetUsed: 76000,
+        total: 100000,
+        effectiveTotal: 90000,
+        reservedOutputTokens: 10000,
+        ratio: 0.844,
+        state: "warning",
+      },
+    });
+    await storage.transcript.recordControlBoundary?.(sessionKey, "turn-1", {
+      kind: "compact",
+      subtype: "compact_boundary",
+      compactMetadata: {
+        trigger: "auto",
+        preTokens: 76000,
+        postTokens: 12000,
+        messagesSummarized: 8,
+      },
+    });
+
+    const replay = await readWebSessionMessages(
+      { sessionKey },
+      { projectRoot, pilotHome, maxContextTokens: 100000, maxOutputTokens: 10000 },
+    );
+
+    assert.equal(replay.tokenUsage?.used, 12000);
+    assert.equal(replay.tokenUsage?.displayUsed, 12000);
+    assert.equal(replay.tokenUsage?.budgetUsed, 12000);
+    assert.equal(replay.tokenUsage?.total, 100000);
+    assert.equal(replay.tokenUsage?.effectiveTotal, 90000);
+    assert.equal(replay.tokenUsage?.state, "ok");
+    assert.equal(replay.tokenUsage?.source, "compact");
+    assert.equal(replay.tokenUsage?.compacted, true);
+    assert.equal(replay.tokenUsage?.preCompactUsed, 76000);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+  }
+});

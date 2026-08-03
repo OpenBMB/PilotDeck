@@ -210,18 +210,22 @@ function convertSingleMessage(
       };
     }
 
-    case 'thinking':
-      if (msg.content?.trim()) {
+    case 'thinking': {
+      const thinkingContent = msg.content?.trim()
+        ? msg.content
+        : msg.reasoningContent || '';
+      if (thinkingContent.trim()) {
         return {
           id: msg.id,
           type: 'assistant',
-          content: unescapeWithMathProtection(msg.content),
+          content: unescapeWithMathProtection(thinkingContent),
           timestamp: msg.timestamp,
           isThinking: true,
           isStreaming: msg.id.startsWith('__streaming_thinking_'),
         };
       }
       return null;
+    }
 
     case 'error':
       return {
@@ -274,6 +278,8 @@ function convertSingleMessage(
         isCompactBoundary: true,
         compactTrigger: msg.trigger,
         preTokens: msg.preTokens,
+        postTokens: msg.postTokens,
+        messagesSummarized: msg.messagesSummarized,
         compactLevel: msg.compactLevel,
         compactStage: msg.compactStage,
         compactStageLabel: msg.compactStageLabel,

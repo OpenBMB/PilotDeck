@@ -1550,13 +1550,18 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{
         type: "agent_status",
         event: "compact_completed",
-        detail: { status: event.status, preTokens: event.preTokens, postTokens: event.postTokens },
+        detail: {
+          status: event.status,
+          preTokens: event.preTokens,
+          postTokens: event.postTokens,
+          messagesSummarized: event.messagesSummarized,
+        },
       }];
     case "context_budget":
       const reservedOutputTokens = event.snapshot.reservedOutputTokens ?? event.snapshot.maxOutputTokens ?? 0;
       const totalContextTokens = event.snapshot.effectiveContextTokens !== undefined
-        ? event.snapshot.effectiveContextTokens + reservedOutputTokens
-        : event.snapshot.maxContextTokens + reservedOutputTokens;
+        ? event.snapshot.totalContextTokens ?? event.snapshot.effectiveContextTokens + reservedOutputTokens
+        : event.snapshot.totalContextTokens ?? event.snapshot.maxContextTokens + reservedOutputTokens;
       return [{
         type: "context_budget",
         used: event.snapshot.tokens,

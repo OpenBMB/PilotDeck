@@ -91,6 +91,10 @@ const DEFAULT_MAX_CONTEXT_TOKENS = 8192;
 const DEFAULT_TRUNCATE_FIRST_RATIO = 0.5;
 const DEFAULT_TRUNCATE_SECOND_RATIO = 0.25;
 const DEFAULT_MEMORY_RETRIEVAL_TIMEOUT_MS = 30_000;
+const RELAXED_FULL_COMPACTION_KEEP_TAIL_RATIO = 0.05;
+const FULL_COMPACTION_BLOCKING_COOLDOWN_MS = 30_000;
+const FULL_COMPACTION_MIN_EFFECTIVE_SAVINGS_RATIO = 0.1;
+const FULL_COMPACTION_INEFFECTIVE_LIMIT = 2;
 
 export class DefaultContextRuntime implements ContextRuntime {
   private readonly extension: ExtensionResolver;
@@ -113,6 +117,8 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly truncateSecondKeepRatio: number;
   private readonly memoryRetrievalTimeoutMs: number;
   private readonly now: () => Date;
+  private fullCompactionCooldownUntil = 0;
+  private consecutiveIneffectiveFullCompactions = 0;
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
     this.extension = options.extension ?? new NullExtensionResolver();
@@ -298,6 +304,8 @@ export class DefaultContextRuntime implements ContextRuntime {
   }
 
   async tryAutoCompact(input: {
+    sessionId?: string;
+    turnId?: string;
     messages: CanonicalMessage[];
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
@@ -305,8 +313,18 @@ export class DefaultContextRuntime implements ContextRuntime {
     lastUsage?: CanonicalUsage;
     budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult> {
+    const sessionId = input.sessionId ?? "";
+    const turnId = input.turnId ?? "";
+    const log = (stage: string, details: Record<string, unknown> = {}) => {
+      logAutoCompactEvent(stage, { sessionId, turnId }, details);
+    };
     const effectiveMaxContextTokens = input.maxContextTokens ?? this.maxContextTokens;
     if (!this.autoCompactionPolicy || !this.tokenBudget) {
+      log("disabled", {
+        hasAutoCompactionPolicy: Boolean(this.autoCompactionPolicy),
+        hasTokenBudget: Boolean(this.tokenBudget),
+        maxContextTokens: effectiveMaxContextTokens,
+      });
       return {
         type: "skipped",
         snapshot: {
@@ -332,8 +350,18 @@ export class DefaultContextRuntime implements ContextRuntime {
     const initialSnapshot = await evaluateBudget(messages, input.lastUsage);
     const decision = this.autoCompactionPolicy.evaluateSnapshot(initialSnapshot);
     if (decision.type !== "trigger") {
+      log("policy_skip", {
+        decisionType: decision.type,
+        snapshot: describeTokenBudgetSnapshot(decision.snapshot),
+      });
       return { type: "skipped", snapshot: decision.snapshot };
     }
+    log("policy_trigger", {
+      reason: decision.reason,
+      snapshot: describeTokenBudgetSnapshot(initialSnapshot),
+      messages: messages.length,
+      reservedOutputTokens: input.reservedOutputTokens,
+    });
 
     // Tier 1: MicroCompaction — truncate old tool_result content.
     if (this.microCompaction) {
@@ -341,7 +369,15 @@ export class DefaultContextRuntime implements ContextRuntime {
       if (r.rewritten > 0) {
         messages = r.messages;
         const snap = await evaluateBudget(messages);
-        if (snap.state !== "blocking") {
+        log("micro_compaction", {
+          rewritten: r.rewritten,
+          snapshot: describeTokenBudgetSnapshot(snap),
+          stopAfterPrePrune: shouldStopAfterPrePrune(decision.reason, snap),
+        });
+        if (shouldStopAfterPrePrune(decision.reason, snap)) {
+          log("micro_compaction_stop", {
+            snapshot: describeTokenBudgetSnapshot(snap),
+          });
           return {
             type: "compacted",
             messages: ensureTrailingUserMessage(messages),
@@ -349,10 +385,17 @@ export class DefaultContextRuntime implements ContextRuntime {
             snapshot: snap,
           };
         }
+      } else {
+        log("micro_compaction_noop", {
+          messages: messages.length,
+        });
       }
     }
 
     if (decision.reason === "warning_threshold") {
+      log("warning_threshold_skip", {
+        snapshot: describeTokenBudgetSnapshot(decision.snapshot),
+      });
       return { type: "skipped", snapshot: decision.snapshot };
     }
 
@@ -362,7 +405,14 @@ export class DefaultContextRuntime implements ContextRuntime {
       if (r.applied) {
         messages = r.messages;
         const snap = await evaluateBudget(messages);
-        if (snap.state !== "blocking") {
+        log("snip_compaction", {
+          snapshot: describeTokenBudgetSnapshot(snap),
+          stopAfterPrePrune: shouldStopAfterPrePrune(decision.reason, snap),
+        });
+        if (shouldStopAfterPrePrune(decision.reason, snap)) {
+          log("snip_compaction_stop", {
+            snapshot: describeTokenBudgetSnapshot(snap),
+          });
           return {
             type: "compacted",
             messages: ensureTrailingUserMessage(messages),
@@ -370,33 +420,128 @@ export class DefaultContextRuntime implements ContextRuntime {
             snapshot: snap,
           };
         }
+      } else {
+        log("snip_compaction_noop", {
+          messages: messages.length,
+        });
       }
     }
 
     // Tier 3: CompactionEngine — full summarization via model call.
     if (this.compactionEngine) {
+      const nowMs = this.now().getTime();
+      if (this.fullCompactionCooldownUntil > nowMs) {
+        log("full_compaction_skipped_cooldown", {
+          cooldownRemainingMs: this.fullCompactionCooldownUntil - nowMs,
+          consecutiveIneffectiveFullCompactions: this.consecutiveIneffectiveFullCompactions,
+          snapshot: describeTokenBudgetSnapshot(decision.snapshot),
+        });
+        return { type: "skipped", snapshot: decision.snapshot };
+      }
+      log("full_compaction_started", {
+        messages: messages.length,
+        snapshot: describeTokenBudgetSnapshot(decision.snapshot),
+      });
       const result = await this.compactionEngine.run({
         trigger: "auto",
         messages,
         signal: input.abortSignal,
+        sessionId,
+        turnId,
       });
-      if (result.error || !result.summaryMessage) {
+      if (!result.summaryMessage) {
+        log("full_compaction_no_summary", {
+          error: result.error,
+          preTokens: result.preTokens,
+        });
         return { type: "skipped", snapshot: decision.snapshot };
       }
-      const postCompactMessages = ensureTrailingUserMessage(buildPostCompactMessages(result));
-      const snapshot = await evaluateBudget(postCompactMessages);
+      let postCompactMessages = ensureTrailingUserMessage(buildPostCompactMessages(result));
+      let snapshot = await evaluateBudget(postCompactMessages);
+      let finalResult = result;
       if (snapshot.state === "blocking") {
-        return { type: "skipped", snapshot };
+        log("full_compaction_relaxed_retry", {
+          snapshot: describeTokenBudgetSnapshot(snapshot),
+          keepTailRatio: RELAXED_FULL_COMPACTION_KEEP_TAIL_RATIO,
+        });
+        const relaxedResult = await this.compactionEngine.run({
+          trigger: "auto",
+          messages,
+          signal: input.abortSignal,
+          keepTailRatio: RELAXED_FULL_COMPACTION_KEEP_TAIL_RATIO,
+          protectedToolNames: null,
+          sessionId,
+          turnId,
+        });
+        if (!relaxedResult.summaryMessage) {
+          log("full_compaction_relaxed_no_summary", {
+            error: relaxedResult.error,
+            preTokens: relaxedResult.preTokens,
+          });
+          return { type: "skipped", snapshot };
+        }
+        const relaxedMessages = ensureTrailingUserMessage(buildPostCompactMessages(relaxedResult));
+        const relaxedSnapshot = await evaluateBudget(relaxedMessages);
+        log("full_compaction_relaxed_result", {
+          previousSnapshot: describeTokenBudgetSnapshot(snapshot),
+          relaxedSnapshot: describeTokenBudgetSnapshot(relaxedSnapshot),
+        });
+        if (relaxedSnapshot.tokens <= snapshot.tokens) {
+          finalResult = relaxedResult;
+          postCompactMessages = relaxedMessages;
+          snapshot = relaxedSnapshot;
+        }
       }
+      if (snapshot.state === "blocking") {
+        // Best-effort compaction still helps later retries, so keep the most
+        // compact transcript we produced instead of discarding it.
+        this.fullCompactionCooldownUntil = nowMs + FULL_COMPACTION_BLOCKING_COOLDOWN_MS;
+        this.consecutiveIneffectiveFullCompactions = Math.max(this.consecutiveIneffectiveFullCompactions + 1, FULL_COMPACTION_INEFFECTIVE_LIMIT);
+        log("full_compaction_still_blocking", {
+          snapshot: describeTokenBudgetSnapshot(snapshot),
+          cooldownUntilMs: this.fullCompactionCooldownUntil,
+          consecutiveIneffectiveFullCompactions: this.consecutiveIneffectiveFullCompactions,
+        });
+      }
+      const initialTokens = Math.max(1, decision.snapshot.tokens);
+      const savingsRatio = Math.max(0, (initialTokens - snapshot.tokens) / initialTokens);
+      if (savingsRatio < FULL_COMPACTION_MIN_EFFECTIVE_SAVINGS_RATIO) {
+        this.consecutiveIneffectiveFullCompactions += 1;
+        log("full_compaction_ineffective", {
+          savingsRatio,
+          consecutiveIneffectiveFullCompactions: this.consecutiveIneffectiveFullCompactions,
+        });
+      } else {
+        this.consecutiveIneffectiveFullCompactions = 0;
+        log("full_compaction_effective", {
+          savingsRatio,
+        });
+      }
+      if (this.consecutiveIneffectiveFullCompactions >= FULL_COMPACTION_INEFFECTIVE_LIMIT) {
+        this.fullCompactionCooldownUntil = nowMs + FULL_COMPACTION_BLOCKING_COOLDOWN_MS;
+        log("full_compaction_cooldown_set", {
+          cooldownUntilMs: this.fullCompactionCooldownUntil,
+          consecutiveIneffectiveFullCompactions: this.consecutiveIneffectiveFullCompactions,
+        });
+      }
+      log("full_compaction_completed", {
+        snapshot: describeTokenBudgetSnapshot(snapshot),
+        summarySucceeded: finalResult.error === undefined,
+        preTokens: finalResult.preTokens,
+        postTokens: finalResult.postTokens,
+      });
       return {
         type: "compacted",
         messages: postCompactMessages,
         tier: "full",
         snapshot,
-        result,
+        result: finalResult,
       };
     }
 
+    log("full_compaction_unavailable", {
+      snapshot: describeTokenBudgetSnapshot(decision.snapshot),
+    });
     return { type: "skipped", snapshot: decision.snapshot };
   }
 
@@ -477,4 +622,52 @@ function extractRecentUserText(messages: CanonicalMessage[]): string | undefined
     }
   }
   return undefined;
+}
+
+function shouldStopAfterPrePrune(
+  triggerReason: "warning_threshold" | "blocking_threshold",
+  snapshot: TokenBudgetSnapshot,
+): boolean {
+  if (snapshot.state === "ok") {
+    return true;
+  }
+  return triggerReason === "warning_threshold" && snapshot.state !== "blocking";
+}
+
+function logAutoCompactEvent(
+  stage: string,
+  context: { sessionId?: string; turnId?: string },
+  details: Record<string, unknown>,
+): void {
+  const payload = {
+    sessionId: context.sessionId ?? "",
+    turnId: context.turnId ?? "",
+    ...details,
+  };
+  try {
+    console.warn(`[context:auto-compact] ${stage} ${JSON.stringify(payload)}`);
+  } catch {
+    console.warn(`[context:auto-compact] ${stage}`);
+  }
+}
+
+function describeTokenBudgetSnapshot(snapshot: TokenBudgetSnapshot): Record<string, unknown> {
+  return {
+    tokens: snapshot.tokens,
+    displayTokens: snapshot.displayTokens,
+    budgetTokens: snapshot.budgetTokens,
+    estimateSource: snapshot.estimateSource,
+    usageTokens: snapshot.usageTokens,
+    totalContextTokens: snapshot.totalContextTokens,
+    maxContextTokens: snapshot.maxContextTokens,
+    effectiveContextTokens: snapshot.effectiveContextTokens,
+    maxOutputTokens: snapshot.maxOutputTokens,
+    warningRatio: snapshot.warningRatio,
+    blockingRatio: snapshot.blockingRatio,
+    state: snapshot.state,
+    ratio: snapshot.ratio,
+    source: snapshot.source,
+    exact: snapshot.exact,
+    reservedOutputTokens: snapshot.reservedOutputTokens,
+  };
 }

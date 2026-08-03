@@ -45,6 +45,7 @@
     "label": "上下文已压缩",
     "level": "{{level}} 级",
     "tokens": "压缩前 {{tokens}} tokens",
+    "tokensAfter": "{{before}} → {{after}} tokens",
     "stages": {
       "context_collapse": "上下文折叠",
       "session_memory": "会话记忆压缩",
@@ -238,8 +239,14 @@
     "showAllCommands": "显示所有命令",
     "clearInput": "清空输入",
     "scrollToBottom": "滚动到底部",
-    "contextStatus": "已使用 {{percent}}%。已用 {{used}} / {{total}} tokens。接近上限时会自动压缩上下文。",
+    "contextStatusTitle": "上下文窗口",
+    "contextStatusUsed": "已用 {{used}} / {{total}} tokens。",
+    "contextStatus": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。接近上限时会自动压缩上下文。",
+    "contextStatusBlocking": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。已执行压缩，但上下文仍然超出限制。",
+    "contextStatusAutoCompact": "接近配置上限时会自动压缩上下文。",
+    "contextStatusBlockingBody": "已执行压缩，但上下文仍然超出限制。",
     "contextStatusUnknown": "上下文用量未知，将在下次模型响应后显示。",
+    "contextStatusUnknownBody": "尚未上报 token 用量，会在下一次模型响应后显示。",
     "permissions": {
       "default": "默认权限",
       "defaultDescription": "需要风险操作时先询问",

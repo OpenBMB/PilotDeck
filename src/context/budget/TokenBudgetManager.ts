@@ -15,6 +15,9 @@ export type TokenBudgetSnapshot = {
   budgetTokens?: number;
   estimateSource?: "estimator" | "usage";
   usageTokens?: number;
+  /** Original provider/model context window before subtracting output reserve. */
+  totalContextTokens?: number;
+  /** Prompt/input budget after subtracting any explicit output reserve. */
   maxContextTokens: number;
   effectiveContextTokens?: number;
   maxOutputTokens?: number;
@@ -112,8 +115,11 @@ export class TokenBudgetManager {
         // T1 leaf application.
         return this.estimateTextTokens(block.text);
       case "thinking":
-        // T5: text only; signature is provider-opaque metadata.
-        return this.estimateTextTokens(block.text);
+        // T5: count the provider-native replay payload when present. For
+        // OpenAI-compatible providers, `reasoningContent` is what enters the
+        // next request as `reasoning_content`; `text` is only the legacy
+        // fallback. Signature remains provider-opaque metadata.
+        return this.estimateTextTokens(block.reasoningContent ?? block.text);
       case "image":
         // T6.
         return this.multimediaTokens;
@@ -214,6 +220,7 @@ export class TokenBudgetManager {
   ): TokenBudgetSnapshot {
     const budgetTokens = options.budgetTokens !== undefined ? Math.max(options.budgetTokens, tokens) : tokens;
     const reserved = Math.max(0, Math.floor(options.reservedOutputTokens ?? 0));
+    const totalContextTokens = Math.max(1, Math.floor(maxContextTokens));
     const promptBudget = effectiveInputContextTokens(maxContextTokens, reserved);
     const ratio = promptBudget > 0 ? budgetTokens / promptBudget : 0;
     let state: TokenWarningState = "ok";
@@ -228,6 +235,7 @@ export class TokenBudgetManager {
       ...(budgetTokens !== tokens ? { budgetTokens } : {}),
       estimateSource: options.usageTokens !== undefined ? "usage" : "estimator",
       ...(options.usageTokens !== undefined ? { usageTokens: options.usageTokens } : {}),
+      totalContextTokens,
       maxContextTokens: promptBudget,
       effectiveContextTokens: promptBudget,
       maxOutputTokens: reserved,
