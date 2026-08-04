@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   Bell,
   BellOff,
+  Brain,
   Bot,
   CheckCircle2,
+  ChevronRight,
   Folder,
+  GitBranch,
   Loader2,
   MessageCircleMore,
   MoreHorizontal,
@@ -19,6 +21,7 @@ import {
   ShieldCheck,
   Trash2,
   UsersRound,
+  Wrench,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -117,66 +120,225 @@ function metadataString(message: AgentGroupMessage, key: string) {
   return typeof value === 'string' ? value : '';
 }
 
-function ActivityMessage({ message }: { message: AgentGroupMessage }) {
+type GroupProcessBundle = {
+  key: string;
+  roundId?: string;
+  anchorMessageId: string;
+  messages: AgentGroupMessage[];
+};
+
+function isGroupProcessMessage(message: AgentGroupMessage) {
+  return message.kind === 'activity' || message.kind === 'delegation';
+}
+
+function buildProcessBundles(messages: AgentGroupMessage[]): GroupProcessBundle[] {
+  const bundles = new Map<string, GroupProcessBundle>();
+  for (const message of messages) {
+    if (!isGroupProcessMessage(message)) continue;
+    const key = message.roundId ? `round:${message.roundId}` : `message:${message.id}`;
+    const existing = bundles.get(key);
+    if (existing) {
+      existing.messages.push(message);
+      continue;
+    }
+    bundles.set(key, {
+      key,
+      roundId: message.roundId,
+      anchorMessageId: message.id,
+      messages: [message],
+    });
+  }
+  return [...bundles.values()].map((bundle) => ({
+    ...bundle,
+    messages: [...bundle.messages].sort((left, right) => left.sequence - right.sequence),
+  }));
+}
+
+function isProcessRunning(message: AgentGroupMessage) {
+  return message.status === 'thinking' || message.status === 'queued';
+}
+
+function processTarget(message: AgentGroupMessage, memberMap: Map<string, AgentGroupMember>) {
+  const targetId = metadataString(message, 'targetMemberId');
+  const member = targetId ? memberMap.get(targetId) : undefined;
+  return {
+    id: targetId,
+    member,
+    name: metadataString(message, 'targetMemberName') || member?.name || targetId,
+    isStaffDeck: member?.kind === 'staffdeck' || member?.kind === 'staffdeck_mock',
+  };
+}
+
+function processStep(message: AgentGroupMessage, memberMap: Map<string, AgentGroupMember>): ProcessTraceStep {
   const activityType = metadataString(message, 'activityType');
   const toolName = metadataString(message, 'toolName');
-  const running = message.status === 'thinking' || message.status === 'queued';
+  const running = isProcessRunning(message);
   const failed = message.status === 'failed';
+  if (message.kind === 'delegation') {
+    const target = processTarget(message, memberMap);
+    const verb = running ? '正在邀请' : failed ? '邀请失败' : target.isStaffDeck ? '已调用' : '已邀请';
+    return {
+      id: message.id,
+      title: `${verb} ${target.name || '群组成员'}`,
+      detail: message.content || undefined,
+      phase: target.isStaffDeck ? 'staffdeck' : 'subtask',
+      toolName: target.isStaffDeck ? 'StaffDeck' : 'group_member_delegate',
+      state: failed ? 'failed' : running ? 'running' : 'completed',
+    };
+  }
   const label = activityType === 'tool'
     ? `${running ? '正在调用' : failed ? '调用失败' : '已调用'} ${toolName || '工具'}`
     : running ? '正在思考' : failed ? '思考中断' : '已完成思考';
-  const step: ProcessTraceStep = {
+  return {
     id: message.id,
-    title: `${message.senderName} · ${label}`,
+    title: label,
+    detail: message.content || undefined,
     phase: activityType === 'tool' ? 'tool' : 'thinking',
     toolName: activityType === 'tool' ? toolName : undefined,
     state: failed ? 'failed' : running ? 'running' : 'completed',
   };
+}
+
+function ProcessStateIcon({ message }: { message: AgentGroupMessage }) {
+  if (isProcessRunning(message)) return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+  if (message.status === 'failed') return <AlertCircle className="h-4 w-4 text-amber-500" />;
+  return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+}
+
+function GroupProcessSummary({
+  bundle,
+  memberMap,
+  onOpen,
+}: {
+  bundle: GroupProcessBundle;
+  memberMap: Map<string, AgentGroupMember>;
+  onOpen: () => void;
+}) {
+  const steps = bundle.messages.map((message) => processStep(message, memberMap));
+  const recentSteps = steps.slice(-3);
+  const running = bundle.messages.some(isProcessRunning);
+  const failed = bundle.messages.some((message) => message.status === 'failed');
+  const senderName = bundle.messages[0]?.senderName || 'PilotDeck 主智能体';
+  const stateLabel = running ? '正在协作' : failed ? '协作有异常' : `已完成 ${steps.length} 步`;
 
   return (
-    <ProcessLiveStatus step={step} compact className="ml-12 max-w-[calc(100%-3rem)]">
-      <div
-        className={cn(
-          'max-w-3xl whitespace-pre-wrap break-words text-[13px] leading-6',
-          failed ? 'text-red-600 dark:text-red-300' : 'text-neutral-600 dark:text-neutral-300',
-        )}
-      >
-        {failed ? message.error || message.content || '执行失败' : message.content || '暂无详细信息'}
+    <div className="ml-12 max-w-[calc(100%-3rem)] rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/60">
+      <div className="flex items-center gap-2">
+        <GitBranch className={cn('h-4 w-4 shrink-0', running ? 'text-blue-500' : failed ? 'text-amber-500' : 'text-emerald-500')} strokeWidth={1.9} />
+        <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
+          {senderName} · {stateLabel}
+        </div>
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`查看完整协作过程，共 ${steps.length} 步`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/60"
+        >
+          详细
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
-    </ProcessLiveStatus>
+      <div className="mt-2 space-y-1 border-l border-neutral-200 pl-3 dark:border-neutral-700">
+        <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">最近 {recentSteps.length} 步</div>
+        {recentSteps.map((step) => (
+          <ProcessLiveStatus key={step.id} step={{ ...step, detail: undefined }} compact />
+        ))}
+      </div>
+    </div>
   );
 }
 
-function DelegationMessage({ message, memberMap }: { message: AgentGroupMessage; memberMap: Map<string, AgentGroupMember> }) {
-  const targetId = metadataString(message, 'targetMemberId');
-  const targetName = metadataString(message, 'targetMemberName') || memberMap.get(targetId)?.name || targetId;
-  const waiting = message.status === 'thinking' || message.status === 'queued';
-  const failed = message.status === 'failed';
-  const source = message.senderMemberId ? memberMap.get(message.senderMemberId) : undefined;
+function GroupProcessDetailDrawer({
+  bundle,
+  messages,
+  memberMap,
+  onClose,
+}: {
+  bundle: GroupProcessBundle;
+  messages: AgentGroupMessage[];
+  memberMap: Map<string, AgentGroupMember>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const running = bundle.messages.some(isProcessRunning);
+  const failed = bundle.messages.some((message) => message.status === 'failed');
+  const responseFor = (message: AgentGroupMessage) => {
+    const responseId = metadataString(message, 'responseMessageId');
+    return messages.find((candidate) => candidate.id === responseId || candidate.replyToMessageId === message.id);
+  };
+
   return (
-    <div className="flex gap-3">
-      {source ? <AgentAvatar member={source} /> : <div className="h-9 w-9" />}
-      <div className="min-w-0 max-w-[82%] flex-1">
-        <div className="mb-1 flex items-center gap-2 text-[11px] text-neutral-500">
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{message.senderName}</span>
-          <span>{formatTime(message.createdAt)}</span>
-        </div>
-        <div className={cn(
-          'rounded-2xl rounded-tl-md border px-4 py-3 text-sm shadow-sm',
-          failed
-            ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30'
-            : 'border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/25',
-        )}>
-          <div className="flex items-center gap-2">
-            {waiting ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : failed ? <AlertCircle className="h-4 w-4 text-red-500" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-            <span className="font-medium">{waiting ? '正在询问' : failed ? '询问失败' : '已询问'}</span>
-            <ArrowRight className="h-3.5 w-3.5 text-neutral-400" />
-            <span className="rounded-md bg-white/80 px-2 py-0.5 font-medium text-blue-700 dark:bg-blue-950/70 dark:text-blue-200">@{targetName}</span>
+    <div data-modal-overlay className="absolute inset-0 z-[100] flex justify-end bg-black/20" onMouseDown={onClose}>
+      <aside
+        role="complementary"
+        aria-label="协作过程详情"
+        className="flex h-full w-full max-w-xl flex-col border-l border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-950"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-5 dark:border-neutral-800">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
+            <GitBranch className="h-4.5 w-4.5" />
           </div>
-          {message.content ? <div className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-neutral-600 dark:text-neutral-300">{message.content}</div> : null}
-          {failed && message.error ? <div className="mt-2 text-xs text-red-600 dark:text-red-300">{message.error}</div> : null}
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold">协作过程</h2>
+            <div className="mt-0.5 text-[11px] text-neutral-500">
+              {running ? '执行中' : failed ? '包含失败步骤' : '已完成'} · 共 {bundle.messages.length} 步
+            </div>
+          </div>
+          <button type="button" aria-label="关闭协作过程详情" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="relative space-y-4 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-neutral-200 dark:before:bg-neutral-800">
+            {bundle.messages.map((message, index) => {
+              const step = processStep(message, memberMap);
+              const target = message.kind === 'delegation' ? processTarget(message, memberMap) : null;
+              const response = message.kind === 'delegation' ? responseFor(message) : undefined;
+              const activityType = metadataString(message, 'activityType');
+              const StepIcon = message.kind === 'delegation' ? GitBranch : activityType === 'tool' ? Wrench : Brain;
+              return (
+                <section key={message.id} className="relative pl-8">
+                  <div className="absolute left-0 top-0.5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-950">
+                    {isProcessRunning(message) ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" /> : message.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5 text-amber-500" /> : <StepIcon className="h-3.5 w-3.5 text-neutral-500" />}
+                  </div>
+                  <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">
+                          <span>{index + 1}. {step.title}</span>
+                          {target?.isStaffDeck ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">StaffDeck</span> : null}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-neutral-500">{message.senderName} · {formatTime(message.createdAt)}</div>
+                      </div>
+                      <ProcessStateIcon message={message} />
+                    </div>
+                    {message.content ? (
+                      <div className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white px-3 py-2 text-xs leading-5 text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">{message.content}</div>
+                    ) : null}
+                    {message.error ? <div className="mt-2 text-xs text-amber-600 dark:text-amber-300">{message.error}</div> : null}
+                    {response ? (
+                      <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+                        <div className="mb-1.5 text-[11px] font-medium text-neutral-500">{response.senderName} 的回复</div>
+                        {response.status === 'failed'
+                          ? <div className="text-xs text-red-600 dark:text-red-300">{response.error || '成员回复失败'}</div>
+                          : <Markdown className="group-chat-markdown text-xs leading-5">{response.content}</Markdown>}
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -201,6 +363,7 @@ export default function GroupChatView({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedProcessKey, setSelectedProcessKey] = useState('');
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const lastMessageSignatureRef = useRef('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -262,6 +425,19 @@ export default function GroupChatView({
     () => new Map((group?.members || []).map((member) => [member.id, member])),
     [group?.members],
   );
+  const processBundles = useMemo(() => buildProcessBundles(messages), [messages]);
+  const processBundleByMessageId = useMemo(() => {
+    const byMessageId = new Map<string, GroupProcessBundle>();
+    for (const bundle of processBundles) {
+      for (const message of bundle.messages) byMessageId.set(message.id, bundle);
+    }
+    return byMessageId;
+  }, [processBundles]);
+  const processBundleByKey = useMemo(
+    () => new Map(processBundles.map((bundle) => [bundle.key, bundle])),
+    [processBundles],
+  );
+  const selectedProcessBundle = selectedProcessKey ? processBundleByKey.get(selectedProcessKey) : undefined;
   const canManageMembers = group?.participantRole === 'owner' || group?.participantRole === 'moderator';
   const roundInProgress = messages.some((message) => message.status === 'thinking' || message.status === 'queued');
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('zh-CN');
@@ -272,6 +448,17 @@ export default function GroupChatView({
     [messages, normalizedSearchQuery],
   );
   const activeSearchMessageId = searchMatches[activeSearchIndex]?.id;
+  const activeSearchAnchorId = activeSearchMessageId
+    ? processBundleByMessageId.get(activeSearchMessageId)?.anchorMessageId || activeSearchMessageId
+    : undefined;
+
+  useEffect(() => {
+    setSelectedProcessKey('');
+  }, [groupId]);
+
+  useEffect(() => {
+    if (selectedProcessKey && !selectedProcessBundle) setSelectedProcessKey('');
+  }, [selectedProcessBundle, selectedProcessKey]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -304,7 +491,9 @@ export default function GroupChatView({
     if (searchMatches.length === 0) return;
     const nextIndex = (index + searchMatches.length) % searchMatches.length;
     setActiveSearchIndex(nextIndex);
-    document.getElementById(`group-message-${searchMatches[nextIndex].id}`)?.scrollIntoView?.({
+    const match = searchMatches[nextIndex];
+    const anchorId = processBundleByMessageId.get(match.id)?.anchorMessageId || match.id;
+    document.getElementById(`group-message-${anchorId}`)?.scrollIntoView?.({
       behavior: 'smooth',
       block: 'center',
     });
@@ -395,7 +584,8 @@ export default function GroupChatView({
                   : undefined;
                 if (firstMatch) {
                   requestAnimationFrame(() => {
-                    document.getElementById(`group-message-${firstMatch.id}`)?.scrollIntoView?.({
+                    const anchorId = processBundleByMessageId.get(firstMatch.id)?.anchorMessageId || firstMatch.id;
+                    document.getElementById(`group-message-${anchorId}`)?.scrollIntoView?.({
                       behavior: 'smooth',
                       block: 'center',
                     });
@@ -501,10 +691,16 @@ export default function GroupChatView({
 
           {messages.map((message) => {
             let messageContent;
-            if (message.kind === 'activity') {
-              messageContent = <ActivityMessage message={message} />;
-            } else if (message.kind === 'delegation') {
-              messageContent = <DelegationMessage message={message} memberMap={memberMap} />;
+            const processBundle = isGroupProcessMessage(message) ? processBundleByMessageId.get(message.id) : undefined;
+            if (processBundle && processBundle.anchorMessageId !== message.id) return null;
+            if (processBundle) {
+              messageContent = (
+                <GroupProcessSummary
+                  bundle={processBundle}
+                  memberMap={memberMap}
+                  onOpen={() => setSelectedProcessKey(processBundle.key)}
+                />
+              );
             } else if (message.senderType === 'system') {
               messageContent = (
                 <div className="flex justify-center">
@@ -551,7 +747,7 @@ export default function GroupChatView({
                 id={`group-message-${message.id}`}
                 className={cn(
                   'scroll-mt-20 rounded-xl transition-colors',
-                  activeSearchMessageId === message.id && 'bg-amber-50/80 ring-4 ring-amber-50/80 dark:bg-amber-950/20 dark:ring-amber-950/20',
+                  activeSearchAnchorId === message.id && 'bg-amber-50/80 ring-4 ring-amber-50/80 dark:bg-amber-950/20 dark:ring-amber-950/20',
                 )}
               >
                 {messageContent}
@@ -590,6 +786,14 @@ export default function GroupChatView({
           group={group}
           onClose={() => setInviteOpen(false)}
           onChanged={async () => { await refresh(true); onGroupsChanged(); }}
+        />
+      ) : null}
+      {selectedProcessBundle ? (
+        <GroupProcessDetailDrawer
+          bundle={selectedProcessBundle}
+          messages={messages}
+          memberMap={memberMap}
+          onClose={() => setSelectedProcessKey('')}
         />
       ) : null}
     </div>

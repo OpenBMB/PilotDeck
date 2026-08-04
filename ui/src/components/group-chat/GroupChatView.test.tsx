@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentGroup, AgentGroupMessage, AgentGroupMember } from '../../types/group';
 import GroupChatView from './GroupChatView';
@@ -217,17 +217,75 @@ describe('GroupChatView', () => {
     apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages: collaboration }));
     renderGroup();
 
-    expect(await screen.findByText('@Mock 工程师')).toBeTruthy();
-    expect(screen.getByText('已询问')).toBeTruthy();
+    expect(await screen.findByText('PilotDeck 主智能体 · 已完成 2 步')).toBeTruthy();
+    expect(screen.getByText('最近 2 步')).toBeTruthy();
+    expect(screen.getByText('已调用 Mock 工程师')).toBeTruthy();
     expect(screen.getByText('我是工程实现成员。')).toBeTruthy();
     expect(screen.getByText('工程师已经完成介绍。')).toBeTruthy();
-    const thinkingButton = screen.getByRole('button', { name: /PilotDeck 主智能体 · 已完成思考/ });
-    const thinkingRow = thinkingButton.closest('.process-live-status');
-    expect(thinkingRow).toBeTruthy();
-    expect(thinkingRow?.className).not.toContain('border');
-    expect(thinkingRow?.className).not.toContain('rounded');
-    fireEvent.click(thinkingButton);
-    expect(screen.getByText('需要工程师提供真实说明。')).toBeTruthy();
+    expect(screen.queryByText('需要工程师提供真实说明。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整协作过程，共 2 步' }));
+    const detail = screen.getByRole('complementary', { name: '协作过程详情' });
+    expect(within(detail).getByText('需要工程师提供真实说明。')).toBeTruthy();
+    expect(within(detail).getByText('请介绍你的实现职责。')).toBeTruthy();
+    expect(within(detail).getByText('我是工程实现成员。')).toBeTruthy();
+  });
+
+  it('shows only the latest three process steps and includes StaffDeck delegation in the detail drawer', async () => {
+    const staffMember = member('staff-analyst', 'StaffDeck 分析师', 'staffdeck', 1);
+    const staffGroup = { ...group, members: [staffMember, ...group.members] };
+    const collaboration: AgentGroupMessage[] = [
+      {
+        id: 'u1', roomId: group.id, roundId: 'r2', sequence: 1, kind: 'chat', senderType: 'user',
+        senderUserId: 1, senderName: '你', content: '请让员工分析', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'a1', roomId: group.id, roundId: 'r2', sequence: 2, kind: 'activity', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '先理解需求和成员能力。',
+        metadata: { activityType: 'reasoning', state: 'completed' }, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'a2', roomId: group.id, roundId: 'r2', sequence: 3, kind: 'activity', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '找到项目资料。',
+        metadata: { activityType: 'tool', toolName: 'glob', state: 'completed' }, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'a3', roomId: group.id, roundId: 'r2', sequence: 4, kind: 'activity', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '读取了需求文档。',
+        metadata: { activityType: 'tool', toolName: 'read_file', state: 'completed' }, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'd1', roomId: group.id, roundId: 'r2', sequence: 5, kind: 'delegation', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '请基于资料给出分析。',
+        metadata: { state: 'completed', targetMemberId: staffMember.id, targetMemberName: staffMember.name, responseMessageId: 'm1' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'm1', roomId: group.id, roundId: 'r2', sequence: 6, kind: 'chat', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, replyToMessageId: 'd1', content: '分析完成。',
+        metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+    ];
+    apiMock.group.mockResolvedValue(jsonResponse({ group: staffGroup }));
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages: collaboration }));
+    renderGroup();
+
+    expect(await screen.findByText('PilotDeck 主智能体 · 已完成 4 步')).toBeTruthy();
+    expect(screen.getByText('最近 3 步')).toBeTruthy();
+    expect(screen.queryByText('已完成思考')).toBeNull();
+    expect(screen.getByText('已调用 glob')).toBeTruthy();
+    expect(screen.getByText('已调用 read_file')).toBeTruthy();
+    expect(screen.getByText('已调用 StaffDeck 分析师')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整协作过程，共 4 步' }));
+    const detail = screen.getByRole('complementary', { name: '协作过程详情' });
+    expect(within(detail).getByText('先理解需求和成员能力。')).toBeTruthy();
+    expect(within(detail).getByText('StaffDeck')).toBeTruthy();
+    expect(within(detail).getByText('请基于资料给出分析。')).toBeTruthy();
+    expect(within(detail).getByText('分析完成。')).toBeTruthy();
+
+    fireEvent.click(within(detail).getByRole('button', { name: '关闭协作过程详情' }));
+    expect(screen.queryByRole('complementary', { name: '协作过程详情' })).toBeNull();
   });
 
   it('hides group management actions from regular members', async () => {
