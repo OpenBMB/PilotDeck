@@ -32,6 +32,8 @@ export const COMPACTABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 export type CachedMicroCompactionInput = {
   messages: CanonicalMessage[];
+  /** Provider id; explicit cache breakpoints are currently Anthropic-only. */
+  provider?: string;
   /**
    * Max number of tool_results to keep "live" (i.e. unmarked) per turn. Older
    * results above this threshold are eligible for cache breakpoint marking.
@@ -94,6 +96,7 @@ export class CachedMicroCompactionEngine {
     };
 
     if (!this.enabled) return empty;
+    if (input.provider && !input.provider.toLowerCase().includes("anthropic")) return empty;
 
     const liveThreshold = input.liveThreshold ?? this.liveThreshold;
 

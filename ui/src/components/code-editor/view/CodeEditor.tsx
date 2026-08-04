@@ -1,22 +1,34 @@
 import { EditorView } from '@codemirror/view';
 import { unifiedMergeView } from '@codemirror/merge';
 import type { Extension } from '@codemirror/state';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { SearchQuery, setSearchQuery } from '@codemirror/search';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../../utils/api';
 import { useCodeEditorDocument } from '../hooks/useCodeEditorDocument';
 import { useCodeEditorSettings } from '../hooks/useCodeEditorSettings';
+import { useDomFileSearch } from '../hooks/useDomFileSearch';
+import { useFileSearchShortcut } from '../hooks/useFileSearchShortcut';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
 import type { CodeEditorFile } from '../types/types';
 import { createMinimapExtension, createScrollToFirstChunkExtension, getLanguageExtensions } from '../utils/editorExtensions';
 import { getEditorStyles } from '../utils/editorStyles';
 import { createEditorToolbarPanelExtension } from '../utils/editorToolbarPanel';
+import { findTextSearchMatches } from '../utils/fileSearch';
 import CodeEditorBinaryFile from './subcomponents/CodeEditorBinaryFile';
 import CodeEditorFooter from './subcomponents/CodeEditorFooter';
 import CodeEditorHeader from './subcomponents/CodeEditorHeader';
 import CodeEditorLoadError from './subcomponents/CodeEditorLoadError';
 import CodeEditorLoadingState from './subcomponents/CodeEditorLoadingState';
 import CodeEditorSurface from './subcomponents/CodeEditorSurface';
+import FloatingFileSearchControls from './subcomponents/FloatingFileSearchControls';
 
 type CodeEditorProps = {
   file: CodeEditorFile;
@@ -58,6 +70,12 @@ export default function CodeEditor({
   const [showDiff, setShowDiff] = useState(Boolean(file.diffInfo));
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [htmlPreview, setHtmlPreview] = useState(false);
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQueryState] = useState('');
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const markdownPreviewRootRef = useRef<HTMLDivElement | null>(null);
 
   const {
     isDarkMode,
@@ -107,12 +125,117 @@ export default function CodeEditor({
   useEffect(() => {
     setMarkdownPreview(false);
     setHtmlPreview(false);
+    setSearchOpen(false);
+    setSearchQueryState('');
+    setSearchMatchIndex(0);
   }, [file.path]);
 
   const htmlPreviewUrl = useMemo(() => {
     if (!isHtmlFile || !projectName) return null;
     return api.projectPreviewUrl(projectName, file.path, projectPath);
   }, [file.path, isHtmlFile, projectName, projectPath]);
+
+  const textSearchMatches = useMemo(
+    () => findTextSearchMatches(content, searchQuery),
+    [content, searchQuery],
+  );
+  const {
+    matchCount: markdownSearchMatchCount,
+    highlightStyles: markdownSearchHighlightStyles,
+  } = useDomFileSearch({
+    rootRef: markdownPreviewRootRef,
+    query: searchQuery,
+    activeIndex: searchMatchIndex,
+    onActiveIndexChange: setSearchMatchIndex,
+    enabled: markdownPreview && isMarkdownFile,
+    contentKey: content,
+  });
+  const searchMatchCount = markdownPreview && isMarkdownFile
+    ? markdownSearchMatchCount
+    : textSearchMatches.length;
+
+  useEffect(() => {
+    setSearchMatchIndex((current) => (
+      searchMatchCount > 0 ? Math.min(current, searchMatchCount - 1) : 0
+    ));
+  }, [searchMatchCount]);
+
+  const handleSearchQueryChange = useCallback((query: string) => {
+    setSearchQueryState(query);
+    setSearchMatchIndex(0);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQueryState('');
+    setSearchMatchIndex(0);
+  }, []);
+
+  const openSearch = useCallback(() => {
+    if (htmlPreview) {
+      setHtmlPreview(false);
+    }
+    setSearchOpen(true);
+  }, [htmlPreview]);
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      closeSearch();
+    } else {
+      openSearch();
+    }
+  }, [closeSearch, openSearch, searchOpen]);
+
+  const moveSearch = useCallback((direction: -1 | 1) => {
+    if (searchMatchCount === 0) return;
+    setSearchMatchIndex((current) => (
+      (current + direction + searchMatchCount) % searchMatchCount
+    ));
+  }, [searchMatchCount]);
+
+  const handleEditorViewChange = useCallback((view: EditorView | null) => {
+    setEditorView(view);
+  }, []);
+
+  useFileSearchShortcut({
+    containerRef: surfaceRef,
+    enabled: isActive,
+    onOpen: openSearch,
+  });
+
+  useEffect(() => {
+    if (!editorView || markdownPreview || htmlPreview) return;
+    editorView.dispatch({
+      effects: setSearchQuery.of(new SearchQuery({
+        search: searchQuery.trim(),
+        literal: true,
+      })),
+    });
+  }, [editorView, htmlPreview, markdownPreview, searchQuery]);
+
+  useEffect(() => {
+    if (
+      !editorView
+      || markdownPreview
+      || htmlPreview
+      || !searchQuery.trim()
+      || textSearchMatches.length === 0
+    ) {
+      return;
+    }
+    const match = textSearchMatches[Math.min(searchMatchIndex, textSearchMatches.length - 1)];
+    editorView.dispatch({
+      selection: { anchor: match.from, head: match.to },
+      effects: EditorView.scrollIntoView(match.from, { y: 'center' }),
+    });
+  }, [
+    editorView,
+    htmlPreview,
+    markdownPreview,
+    searchMatchIndex,
+    searchQuery,
+    textSearchMatches,
+  ]);
 
   const minimapExtension = useMemo(
     () => (
@@ -265,8 +388,13 @@ export default function CodeEditor({
   return (
     <>
       <style>{getEditorStyles(isDarkMode)}</style>
+      <style>{markdownSearchHighlightStyles}</style>
       <div className={outerContainerClassName}>
-        <div className={innerContainerClassName}>
+        <div
+          ref={surfaceRef}
+          data-file-search-surface
+          className={innerContainerClassName}
+        >
           <div className="relative flex-shrink-0">
             {headerPrefix}
             <CodeEditorHeader
@@ -286,11 +414,16 @@ export default function CodeEditor({
               onGoBack={onGoBack}
               onToggleMarkdownPreview={() => {
                 if (isHtmlFile) {
+                  if (!htmlPreview) {
+                    closeSearch();
+                  }
                   setHtmlPreview((previous) => !previous);
                 } else {
                   setMarkdownPreview((previous) => !previous);
                 }
               }}
+              searchOpen={searchOpen}
+              onToggleSearch={toggleSearch}
               onDownload={handleDownload}
               onSave={handleSave}
               onToggleFullscreen={() => setIsFullscreen((previous) => !previous)}
@@ -313,8 +446,26 @@ export default function CodeEditor({
                 collapse: t('actions.collapse', { defaultValue: 'Collapse to split view' }),
                 close: t('actions.close'),
                 goBack: t('actions.goBack'),
+                search: t('builtinOfficePreview.search'),
               }}
             />
+            {searchOpen ? (
+              <FloatingFileSearchControls
+                query={searchQuery}
+                onQueryChange={handleSearchQueryChange}
+                matchIndex={searchMatchIndex}
+                matchCount={searchMatchCount}
+                onPrevious={() => moveSearch(-1)}
+                onNext={() => moveSearch(1)}
+                onClose={closeSearch}
+                searchLabel={t('builtinOfficePreview.search')}
+                placeholder={t('builtinOfficePreview.searchPlaceholder')}
+                previousLabel={t('pdfToolbar.previousResult')}
+                nextLabel={t('pdfToolbar.nextResult')}
+                closeLabel={t('builtinOfficePreview.closeSearch')}
+                noMatchesLabel={t('builtinOfficePreview.noMatches')}
+              />
+            ) : null}
           </div>
 
           {saveError && (
@@ -339,6 +490,8 @@ export default function CodeEditor({
               extensions={extensions}
               baseFilePath={file.path}
               onFileOpen={onPreviewFileOpen}
+              previewRootRef={markdownPreviewRootRef}
+              onEditorViewChange={handleEditorViewChange}
             />
           </div>
 

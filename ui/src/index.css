@@ -57,6 +57,13 @@
     --nav-input-bg: 0 0% 96% / 0.6;
     --nav-input-focus-ring: 0 0% 30% / 0.18;
 
+    /* File search — light fill preserves the source document's text color. */
+    --file-search-highlight-bg: rgb(253 224 71 / 0.12);
+    --file-search-highlight-border: rgb(202 138 4 / 0.62);
+    --file-search-highlight-active-bg: rgb(251 191 36 / 0.18);
+    --file-search-highlight-active-border: rgb(217 119 6 / 0.88);
+    --file-search-highlight-active-ring: rgb(251 191 36 / 0.24);
+
     /* Safe area CSS variables */
     --safe-area-inset-top: env(safe-area-inset-top);
     --safe-area-inset-right: env(safe-area-inset-right);
@@ -119,6 +126,11 @@
     --nav-divider-color: 0 0% 15% / 0.7;
     --nav-input-bg: 0 0% 15% / 0.5;
     --nav-input-focus-ring: 0 0% 96% / 0.12;
+    --file-search-highlight-bg: rgb(253 224 71 / 0.1);
+    --file-search-highlight-border: rgb(253 224 71 / 0.68);
+    --file-search-highlight-active-bg: rgb(251 191 36 / 0.16);
+    --file-search-highlight-active-border: rgb(251 191 36 / 0.92);
+    --file-search-highlight-active-ring: rgb(253 224 71 / 0.22);
     color-scheme: dark;
   }
 }
@@ -1020,23 +1032,23 @@
   }
 
   .textLayer .pilotdeck-document-search-highlight {
-    --highlight-bg-color: rgb(254 240 138 / 0.78);
-    --highlight-selected-bg-color: rgb(250 204 21 / 0.96);
+    --highlight-bg-color: var(--file-search-highlight-bg);
+    --highlight-selected-bg-color: var(--file-search-highlight-active-bg);
   }
 
   .textLayer .pilotdeck-document-search-highlight-active {
-    outline: 1px solid rgb(180 83 9);
-    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.32);
+    outline: 1px solid var(--file-search-highlight-active-border);
+    box-shadow: 0 0 0 2px var(--file-search-highlight-active-ring);
   }
 
   .dark .textLayer .pilotdeck-document-search-highlight {
-    --highlight-bg-color: rgb(113 63 18 / 0.72);
-    --highlight-selected-bg-color: rgb(217 119 6 / 0.94);
+    --highlight-bg-color: var(--file-search-highlight-bg);
+    --highlight-selected-bg-color: var(--file-search-highlight-active-bg);
   }
 
   .dark .textLayer .pilotdeck-document-search-highlight-active {
-    outline-color: rgb(253 224 71);
-    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.28);
+    outline-color: var(--file-search-highlight-active-border);
+    box-shadow: 0 0 0 2px var(--file-search-highlight-active-ring);
   }
 }
 

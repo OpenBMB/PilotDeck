@@ -32,8 +32,8 @@ import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
+  getConfiguredOfficePreviewSettings,
   getLibreOfficeCandidateStatuses,
-  getConfiguredOfficePreviewService,
   getLibreOfficeStatus,
 } from '../services/officePreview.js';
 
@@ -396,13 +396,14 @@ router.post('/validate', (req, res) => {
 router.get('/office-preview/status', async (req, res) => {
   try {
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-    const [libreOffice, candidates, service] = await Promise.all([
+    const configuredPreview = getConfiguredOfficePreviewSettings();
+    const [libreOffice, candidates] = await Promise.all([
       getLibreOfficeStatus({ forceRefresh }),
       getLibreOfficeCandidateStatuses({ forceRefresh }),
-      Promise.resolve(getConfiguredOfficePreviewService()),
     ]);
     res.json({
-      service,
+      service: configuredPreview.service,
+      configuredBinaryPath: configuredPreview.binaryPath,
       libreOffice: {
         ...libreOffice,
         candidates,

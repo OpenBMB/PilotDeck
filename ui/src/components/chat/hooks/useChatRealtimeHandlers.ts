@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ClaudeWorkStatus, CompactProgress, PendingPermissionRequest, PilotDeckWorkStatus } from '../types/types';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
-import type { SessionStore, NormalizedMessage } from '../../../stores/useSessionStore';
+import {
+  getUnpersistedRealtimeTurnMessages,
+  type SessionStore,
+  type NormalizedMessage,
+} from '../../../stores/useSessionStore';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
 
 type PendingViewSession = {
@@ -231,6 +235,20 @@ function resolveSessionId(
   return null;
 }
 
+/**
+ * A selected conversation always takes precedence over the last loaded id.
+ * During a session switch React can render once with the new selection while
+ * `currentSessionId` still points at the previous conversation. Treating both
+ * ids as active lets a status frame from the previous conversation overwrite
+ * the status (including compaction progress) of the newly selected one.
+ */
+export function isSessionForActiveView(
+  sessionId: string,
+  activeViewSessionId: string | null,
+): boolean {
+  return sessionId === activeViewSessionId;
+}
+
 function warnDroppedFrame(msg: LatestChatMessage): void {
   console.warn('[chat] Dropped WS frame without sessionId', {
     kind: msg.kind,
@@ -341,8 +359,7 @@ export function useChatRealtimeHandlers({
         case 'session-status': {
           const statusSessionId = msg.sessionId;
           if (!statusSessionId) return;
-          const isCurrentSession =
-            statusSessionId === currentSessionId || (selectedSession && statusSessionId === selectedSession.id);
+          const isCurrentSession = isSessionForActiveView(statusSessionId, activeViewSessionId);
 
           const activeTurnMessages = Array.isArray(msg.activeTurnMessages)
             ? msg.activeTurnMessages as LatestChatMessage[]
@@ -469,10 +486,7 @@ export function useChatRealtimeHandlers({
       warnResolvedSessionId(msg, sid);
     }
 
-    const isForActiveView =
-      sid === currentSessionId ||
-      sid === selectedSession?.id ||
-      sid === activeViewSessionId;
+    const isForActiveView = isSessionForActiveView(sid, activeViewSessionId);
 
     // Ensure the store's activeSession matches so notify() triggers re-renders.
     // Without this, the RAF scheduler silently drops notifications for
@@ -700,18 +714,30 @@ export function useChatRealtimeHandlers({
           }));
 
           // Auto-refresh from server to align with canonical message order.
-          // During streaming, messages may arrive out of order (e.g. content
-          // stream created before tool_use). The server has the authoritative
-          // copy with correct ordering. Retry if server hasn't committed yet.
+          // `turn_completed` is delivered before the transcript generator has
+          // necessarily committed every current-turn entry. A non-empty history
+          // is therefore not proof that this turn is durable (long sessions are
+          // always non-empty). Retry while any renderable realtime row from this
+          // run is still absent from the server projection.
           const doRefresh = (attempt: number) => {
             sessionStore.refreshFromServer(sid, { provider, projectName: selectedProject?.name, projectPath: selectedProject?.fullPath || selectedProject?.path || '' }).then(() => {
               const slot = sessionStore.getSessionSlot?.(sid);
-              if (slot && slot.serverMessages.length === 0 && attempt < 5) {
-                setTimeout(() => doRefresh(attempt + 1), 1500 * attempt);
+              const pendingCurrentTurn = slot
+                ? getUnpersistedRealtimeTurnMessages(
+                    slot.realtimeMessages,
+                    slot.serverMessages,
+                    msgRunId,
+                  )
+                : [];
+              const needsRetry = msgRunId
+                ? pendingCurrentTurn.length > 0
+                : Boolean(slot && slot.serverMessages.length === 0);
+              if (needsRetry && attempt < 5) {
+                setTimeout(() => doRefresh(attempt + 1), 500 * attempt);
               }
             });
           };
-          doRefresh(1);
+          setTimeout(() => doRefresh(1), 150);
         }
 
         // Handle aborted case
@@ -821,6 +847,9 @@ export function useChatRealtimeHandlers({
       case 'compact_boundary': {
         onSessionProcessing?.(sid);
         if (isForActiveView) {
+          if (msg.tokenBudget) {
+            setTokenBudget(msg.tokenBudget as Record<string, unknown>);
+          }
           setClaudeStatus(null);
           setPilotDeckStatus(null);
           setIsLoading(true);

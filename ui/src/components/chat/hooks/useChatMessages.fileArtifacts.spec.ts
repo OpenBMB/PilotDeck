@@ -68,4 +68,53 @@ describe('file artifact message grouping', () => {
     expect(result).toHaveLength(1);
     expect(result[0].artifacts?.[0]?.status).toBe('incomplete');
   });
+
+  it('attaches an early realtime artifact frame to the final reply in the same turn', () => {
+    const messages: NormalizedMessage[] = [
+      {
+        ...base,
+        id: 'previous-assistant',
+        timestamp: '2026-07-21T09:59:00.000Z',
+        kind: 'text',
+        role: 'assistant',
+        content: 'Previous turn.',
+        runId: 'turn-previous',
+      },
+      {
+        ...base,
+        id: 'artifacts-current',
+        timestamp: '2026-07-21T10:00:01.000Z',
+        kind: 'file_artifacts',
+        runId: 'turn-current',
+        artifacts: [{
+          id: 'artifact-current',
+          name: 'report.xlsx',
+          path: 'report.xlsx',
+          operation: 'created',
+          source: 'workspace_diff',
+          status: 'complete',
+          size: 42,
+          sha256: 'c'.repeat(64),
+          createdAt: '2026-07-21T10:00:01.000Z',
+        }],
+      },
+      {
+        ...base,
+        id: 'final-current',
+        timestamp: '2026-07-21T10:00:02.000Z',
+        kind: 'text',
+        role: 'assistant',
+        content: 'Current turn finished.',
+        runId: 'turn-current',
+      },
+    ];
+
+    const result = normalizedToChatMessages(messages);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toBe('Previous turn.');
+    expect(result[0].artifacts).toBeUndefined();
+    expect(result[1].content).toBe('Current turn finished.');
+    expect(result[1].artifacts?.[0]?.path).toBe('report.xlsx');
+  });
 });

@@ -40,6 +40,7 @@ import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 import GroupChatView from '../group-chat/GroupChatView';
 import type { AgentGroup } from '../../types/group';
+import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
@@ -219,13 +220,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     activeTab !== 'always-on' &&
     latestAlwaysOnEventMarker !== lastViewedAlwaysOnEventMarker,
   );
-
-  useEffect(() => {
-    if (chatHistorySearch.isOpen && displayActiveTab !== 'chat') {
-      setDashboardMenuOpen(false);
-      setActiveTab('chat');
-    }
-  }, [chatHistorySearch.isOpen, displayActiveTab, setActiveTab]);
 
   useEffect(() => {
     setRenamingSessionId(null);
@@ -497,8 +491,10 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     );
   }
   return (
-    <ChatHistorySearchControllerProvider>
-      <MainAreaV2Content {...props} />
-    </ChatHistorySearchControllerProvider>
+    <FindShortcutProvider activeScope={props.activeTab === 'files' ? 'file' : 'chat'}>
+      <ChatHistorySearchControllerProvider>
+        <MainAreaV2Content {...props} />
+      </ChatHistorySearchControllerProvider>
+    </FindShortcutProvider>
   );
 }

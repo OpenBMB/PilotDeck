@@ -1,7 +1,6 @@
 import { createElement, useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Download,
@@ -16,7 +15,6 @@ import {
   RotateCw,
   Search,
   StretchHorizontal,
-  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -38,7 +36,9 @@ import {
   renderPdfSearchHighlights,
   type PdfSearchMatch,
 } from '../../utils/pdfSearch';
+import { useFileSearchShortcut } from '../../hooks/useFileSearchShortcut';
 import ContentReferenceMenu from './ContentReferenceMenu';
+import FloatingFileSearchControls from './FloatingFileSearchControls';
 import RegionSelectionOverlay, { type CapturedRegion } from './RegionSelectionOverlay';
 import { floatingSelectionSingleActionClassName } from './floatingSelectionAction';
 
@@ -740,6 +740,7 @@ export default function PdfDocumentPreview({
 }: PdfDocumentPreviewProps) {
   const { t } = useTranslation('codeEditor');
   const inputId = useId();
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const pageTextRef = useRef(new Map<number, string>());
   const pageTextItemsRef = useRef(new Map<number, string[]>());
@@ -1105,9 +1106,9 @@ export default function PdfDocumentPreview({
     jumpToPage(pageNumber);
   }, [jumpToPage, searchResults]);
 
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (submittedQuery = searchQuery) => {
     const document = pdfDocument;
-    const query = normalizeText(searchQuery);
+    const query = normalizeText(submittedQuery);
     const requestId = searchRequestIdRef.current + 1;
     searchRequestIdRef.current = requestId;
     setSearchCompleted(false);
@@ -1162,6 +1163,28 @@ export default function PdfDocumentPreview({
     setSearching(false);
     setSearchCompleted(false);
   }, []);
+
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+  }, []);
+
+  const handleSearchQueryChange = useCallback((query: string) => {
+    // Changing the query invalidates any in-flight search immediately.
+    // Otherwise a slow search for the previous query can repopulate stale
+    // results before the user submits the new value.
+    searchRequestIdRef.current += 1;
+    setSearchQuery(query);
+    setSearchResults([]);
+    setSearchResultIndex(-1);
+    setSearching(false);
+    setSearchCompleted(false);
+  }, []);
+
+  useFileSearchShortcut({
+    containerRef: surfaceRef,
+    enabled: Boolean(pdfDocument && firstPageSize),
+    onOpen: openSearch,
+  });
 
   const commitPageInput = useCallback(() => {
     const totalPages = pdfDocument?.numPages || 1;
@@ -1451,7 +1474,6 @@ export default function PdfDocumentPreview({
   const isLoaded = Boolean(readyDocument);
   const zoomInputId = `${inputId}-pdf-zoom`;
   const pageInputId = `${inputId}-pdf-page`;
-  const searchInputId = `${inputId}-pdf-search`;
   const navigationLabel = navigationMode === 'slides'
     ? t('pdfToolbar.slides')
     : t('pdfToolbar.pages');
@@ -1476,8 +1498,13 @@ export default function PdfDocumentPreview({
         : t('pdfToolbar.noResults')
       : '';
   return (
-    <div className="flex h-full w-full flex-col bg-neutral-100 dark:bg-neutral-900">
-      <div className="scrollbar-hide flex min-h-11 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-neutral-200 bg-white px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-950">
+    <div
+      ref={surfaceRef}
+      data-file-search-surface
+      className="flex h-full w-full flex-col bg-neutral-100 dark:bg-neutral-900"
+    >
+      <div className="relative z-20 min-w-0 shrink-0">
+        <div className="scrollbar-hide flex min-h-11 w-full min-w-0 items-center gap-1.5 overflow-x-auto border-b border-neutral-200 bg-white px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-950">
         {navigationMode !== 'none' ? (
           <>
             <ToolbarButton
@@ -1615,67 +1642,12 @@ export default function PdfDocumentPreview({
             if (searchOpen) {
               closeSearch();
             } else {
-              setSearchOpen(true);
-              window.requestAnimationFrame(() => {
-                document.getElementById(searchInputId)?.focus();
-              });
+              openSearch();
             }
           }}
         >
           {renderToolbarIcon(Search)}
         </ToolbarButton>
-        {searchOpen ? (
-          <div role="search" className="flex shrink-0 items-center gap-1 rounded-md border border-neutral-200 bg-white p-0.5 dark:border-neutral-800 dark:bg-neutral-950">
-            <label className="sr-only" htmlFor={searchInputId}>
-              {t('pdfToolbar.search')}
-            </label>
-            <input
-              id={searchInputId}
-              value={searchQuery}
-              placeholder={t('pdfToolbar.searchPlaceholder')}
-              onChange={(event) => {
-                // Changing the query invalidates any in-flight search immediately.
-                // Otherwise a slow search for the previous query can repopulate
-                // stale results before the user submits the new value.
-                searchRequestIdRef.current += 1;
-                setSearchQuery(event.target.value);
-                setSearchResults([]);
-                setSearchResultIndex(-1);
-                setSearching(false);
-                setSearchCompleted(false);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void runSearch();
-                } else if (event.key === 'Escape') {
-                  closeSearch();
-                }
-              }}
-              className="h-7 w-40 bg-transparent px-2 text-[12px] text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
-            />
-            <span className="min-w-12 whitespace-nowrap text-center text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
-              {searchStatus}
-            </span>
-            <ToolbarButton
-              title={t('pdfToolbar.previousResult')}
-              disabled={searchResults.length === 0}
-              onClick={() => goToSearchResult(searchResultIndex - 1)}
-            >
-              {renderToolbarIcon(ChevronLeft)}
-            </ToolbarButton>
-            <ToolbarButton
-              title={t('pdfToolbar.nextResult')}
-              disabled={searchResults.length === 0}
-              onClick={() => goToSearchResult(searchResultIndex + 1)}
-            >
-              {renderToolbarIcon(ChevronRight)}
-            </ToolbarButton>
-            <ToolbarButton title={t('pdfToolbar.closeSearch')} onClick={closeSearch}>
-              {renderToolbarIcon(X)}
-            </ToolbarButton>
-          </div>
-        ) : null}
         <ToolbarSeparator />
         <ContentReferenceMenu
           capabilities={referenceCapabilities}
@@ -1712,6 +1684,29 @@ export default function PdfDocumentPreview({
           >
             {renderToolbarIcon(Download)}
           </ToolbarLink>
+        ) : null}
+        </div>
+        {searchOpen ? (
+          <FloatingFileSearchControls
+            query={searchQuery}
+            onQueryChange={handleSearchQueryChange}
+            matchIndex={Math.max(0, searchResultIndex)}
+            matchCount={searchResults.length}
+            onPrevious={() => goToSearchResult(searchResultIndex - 1)}
+            onNext={() => goToSearchResult(searchResultIndex + 1)}
+            onClose={closeSearch}
+            onSubmit={(query) => {
+              void runSearch(query);
+            }}
+            statusText={searchStatus}
+            searching={searching}
+            searchLabel={t('pdfToolbar.search')}
+            placeholder={t('pdfToolbar.searchPlaceholder')}
+            previousLabel={t('pdfToolbar.previousResult')}
+            nextLabel={t('pdfToolbar.nextResult')}
+            closeLabel={t('pdfToolbar.closeSearch')}
+            noMatchesLabel={t('pdfToolbar.noResults')}
+          />
         ) : null}
       </div>
       <div className="flex min-h-0 flex-1">

@@ -3,6 +3,7 @@ import type {
   CanonicalToolResultBlock,
 } from "../../model/index.js";
 import { flattenToolResultBlockText } from "../../model/index.js";
+import { countTokens } from "../budget/tokenizer.js";
 import { COMPACTABLE_TOOL_NAMES } from "./CachedMicroCompactionEngine.js";
 import {
   collectToolNamesByCallId,
@@ -22,11 +23,18 @@ export type MicroCompactionInput = {
   idleMs?: number;
   /** Max bytes per tool_result allowed to remain after rewrite (legacy default ~512). */
   trimToBytes?: number;
+  /** Max tokens per bounded tool result. Takes precedence over trimToBytes. */
+  trimToTokens?: number;
+  /** Optional per-pass override for the number of newest results kept verbatim. */
+  keepLatest?: number;
+  /** Override protected tools for emergency projection; null disables protection. */
+  protectedToolNames?: Iterable<string> | null;
 };
 
 export type MicroCompactionEngineOptions = {
   keepLatest?: number;
   trimToBytes?: number;
+  trimToTokens?: number;
   protectedToolNames?: Iterable<string>;
 };
 
@@ -53,10 +61,17 @@ export class MicroCompactionEngine {
   }
 
   apply(input: MicroCompactionInput): MicroCompactionResult {
-    const trimToBytes = input.trimToBytes ?? this.options.trimToBytes ?? 1536;
-    const keepLatest = this.options.keepLatest ?? 1;
+    const trimToTokens = input.trimToTokens
+      ?? this.options.trimToTokens
+      ?? Math.max(256, Math.floor((input.trimToBytes ?? this.options.trimToBytes ?? 1536) / 2));
+    const keepLatest = input.keepLatest ?? this.options.keepLatest ?? 4;
 
     const toolNamesByCallId = collectToolNamesByCallId(input.messages);
+    const protectedToolNames = input.protectedToolNames === null
+      ? new Set<string>()
+      : input.protectedToolNames === undefined
+        ? this.protectedToolNames
+        : protectedToolNameSet(input.protectedToolNames);
     const compactableCallIds = this.collectCompactableToolCallIds(input.messages);
     const toolResultIndices = this.collectCompactableToolResultIndices(input.messages, compactableCallIds);
 
@@ -99,11 +114,31 @@ export class MicroCompactionEngine {
         if (!compactableCallIds.has(block.toolCallId)) {
           return block;
         }
-        if (isProtectedToolCallId(block.toolCallId, toolNamesByCallId, this.protectedToolNames)) {
+        const flattenedText = flattenToolResultBlockText(block as CanonicalToolResultBlock);
+        const existingPreview = extractCompactedPreview(flattenedText);
+        // Re-running the normal 768-token pass is idempotent. An emergency
+        // pass may intentionally request a smaller bound, in which case the
+        // bounded preview can be tightened without touching the durable copy.
+        const boundedContentBudget = Math.max(
+          64,
+          trimToTokens - countTokens(`${MICROCOMPACT_CLEARED}\n\nPreview:\n`) - 4,
+        );
+        // The preview's explicit `...[truncated]...` separator adds a few
+        // tokens outside the content budget. A small tolerance recognizes a
+        // preview produced by this same pass without weakening the emergency
+        // 768 -> 256 downgrade.
+        if (existingPreview !== undefined && (
+          countTokens(existingPreview) <= boundedContentBudget
+          || countTokens(flattenedText) <= trimToTokens + 32
+        )) {
+          return block;
+        }
+        if (isProtectedToolCallId(block.toolCallId, toolNamesByCallId, protectedToolNames)) {
           return block;
         }
         const size = this.estimateToolResultSize(block as CanonicalToolResultBlock);
-        if (size <= trimToBytes) {
+        const sourceText = existingPreview ?? flattenedText;
+        if (countTokens(sourceText) <= trimToTokens && existingPreview === undefined) {
           return block;
         }
         touched = true;
@@ -114,7 +149,7 @@ export class MicroCompactionEngine {
           content: [
             {
               type: "text" as const,
-              text: compactToolResultText(flattenToolResultBlockText(block as CanonicalToolResultBlock), trimToBytes),
+              text: compactToolResultText(sourceText, trimToTokens),
             },
           ],
         };
@@ -172,14 +207,51 @@ export class MicroCompactionEngine {
   }
 }
 
-function compactToolResultText(text: string, trimToBytes: number): string {
+function extractCompactedPreview(text: string): string | undefined {
+  const marker = `${MICROCOMPACT_CLEARED}\n\nPreview:\n`;
+  if (!text.trimStart().startsWith(MICROCOMPACT_CLEARED)) return undefined;
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex < 0) return "";
+  return text.slice(markerIndex + marker.length).trim();
+}
+
+function compactToolResultText(text: string, trimToTokens: number): string {
   const normalized = text.trim();
   if (normalized.length === 0) {
     return MICROCOMPACT_CLEARED;
   }
-  const previewBudget = Math.max(256, Math.min(trimToBytes, 4_000));
-  const preview = normalized.length > previewBudget
-    ? `${normalized.slice(0, previewBudget)}…`
-    : normalized;
+  const marker = `${MICROCOMPACT_CLEARED}\n\nPreview:\n`;
+  const contentBudget = Math.max(64, trimToTokens - countTokens(marker) - 4);
+  const headBudget = Math.max(32, Math.floor(contentBudget * 0.7));
+  const tailBudget = Math.max(16, contentBudget - headBudget);
+  const head = takeTokenPrefix(normalized, headBudget);
+  const tail = takeTokenSuffix(normalized, tailBudget);
+  const preview = countTokens(normalized) <= contentBudget
+    ? normalized
+    : `${head}\n...[truncated]...\n${tail}`;
   return `${MICROCOMPACT_CLEARED}\n\nPreview:\n${preview}`;
+}
+
+function takeTokenPrefix(text: string, budget: number): string {
+  if (countTokens(text) <= budget) return text;
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (countTokens(text.slice(0, mid)) <= budget) low = mid;
+    else high = mid - 1;
+  }
+  return text.slice(0, low).trimEnd();
+}
+
+function takeTokenSuffix(text: string, budget: number): string {
+  if (countTokens(text) <= budget) return text;
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (countTokens(text.slice(text.length - mid)) <= budget) low = mid;
+    else high = mid - 1;
+  }
+  return text.slice(text.length - low).trimStart();
 }

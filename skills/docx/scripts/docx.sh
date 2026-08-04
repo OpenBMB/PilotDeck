@@ -38,13 +38,13 @@ find_python() {
 }
 
 find_soffice() {
-  if command -v soffice >/dev/null 2>&1; then
-    command -v soffice
-    return 0
-  fi
   local mac_path="/Applications/LibreOffice.app/Contents/MacOS/soffice"
   if [[ -x "$mac_path" ]]; then
     printf '%s\n' "$mac_path"
+    return 0
+  fi
+  if command -v soffice >/dev/null 2>&1; then
+    command -v soffice
     return 0
   fi
   local windows_path="/c/Program Files/LibreOffice/program/soffice.exe"
@@ -69,8 +69,9 @@ cmd_check() {
   if ! soffice_path="$(find_soffice)"; then
     soffice_path=""
   fi
-  printf '{"status":"%s","python":%s,"python_path":"%s","dependencies":%s,"venv":"%s","libreoffice":%s,"libreoffice_path":"%s","render_available":%s}\n' \
-    "$([[ "$py_ok" == true && "$deps_ok" == true ]] && printf ok || printf missing_dependencies)" \
+  printf '{"status":"%s","code":"%s","python":%s,"python_path":"%s","dependencies":%s,"venv":"%s","libreoffice":%s,"libreoffice_path":"%s","render_available":%s}\n' \
+    "$([[ "$py_ok" == true && "$deps_ok" == true ]] && printf ok || printf error)" \
+    "$([[ "$py_ok" == true && "$deps_ok" == true ]] && printf dependencies-ready || printf missing-dependencies)" \
     "$py_ok" "$py" "$deps_ok" "$VENV_DIR" \
     "$([[ -n "$soffice_path" ]] && printf true || printf false)" "$soffice_path" \
     "$([[ -n "$soffice_path" && "$deps_ok" == true ]] && printf true || printf false)"
@@ -84,14 +85,14 @@ cmd_fix() {
   elif command -v python >/dev/null 2>&1; then
     bootstrap="$(command -v python)"
   else
-    printf '{"status":"error","error":"Python 3 was not found"}\n' >&2
+    printf '{"status":"error","code":"python-not-found","error":"Python 3 was not found"}\n' >&2
     exit 2
   fi
   mkdir -p "$CACHE_ROOT"
   "$bootstrap" -m venv "$VENV_DIR"
   local venv_py=""
   if ! venv_py="$(venv_python)"; then
-    printf '{"status":"error","error":"Virtual environment was created without a usable Python executable"}\n' >&2
+    printf '{"status":"error","code":"venv-python-not-found","error":"Virtual environment was created without a usable Python executable"}\n' >&2
     exit 2
   fi
   "$venv_py" -m pip install --disable-pip-version-check --upgrade pip
@@ -109,19 +110,29 @@ case "${1:-}" in
     cmd_fix "$@"
     ;;
   ""|-h|--help|help)
-    py="$(find_python || true)"
+    py=""
+    if ! py="$(find_python)"; then
+      py=""
+    fi
     if [[ -n "$py" ]]; then
       exec "$py" "$SCRIPT_DIR/docx_cli.py" --help
     fi
-    printf 'Usage: docx.sh <check|fix|inspect|create|edit|review|finalize|compare|sanitize|render|validate|audit|self-test> [options]\n'
+    printf 'Usage: docx.sh <check|fix|capabilities|schema|prepare|inspect|create|edit|review|finalize|compare|sanitize|render|refresh-toc|validate|audit|fallback-patch|fallback-create|preflight|qa-init|qa-record|qa-finalize|deliver|resolve-latest|self-test> [options]\n'
     ;;
   *)
-    py="$(find_python || true)"
+    py=""
+    if ! py="$(find_python)"; then
+      py=""
+    fi
     if [[ -z "$py" ]] || ! "$py" -c 'import docx, lxml, PIL, fitz' >/dev/null 2>&1; then
-      printf '{"status":"error","error":"DOCX dependencies are missing","hint":"Run: bash %s fix"}\n' "$0" >&2
+      printf '{"status":"error","code":"missing-dependencies","error":"DOCX dependencies are missing","hint":"Run: bash %s fix"}\n' "$0" >&2
       exit 2
     fi
-    export DOCX_SKILL_SOFFICE="$(find_soffice || true)"
+    soffice_path=""
+    if ! soffice_path="$(find_soffice)"; then
+      soffice_path=""
+    fi
+    export DOCX_SKILL_SOFFICE="$soffice_path"
     exec "$py" "$SCRIPT_DIR/docx_cli.py" "$@"
     ;;
 esac

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   LocaleType,
   LogLevel,
@@ -37,6 +37,7 @@ import { UniverUIPlugin } from '@univerjs/ui';
 import '@univerjs/ui/facade';
 import UIEnUS from '@univerjs/ui/locale/en-US';
 import UIZhCN from '@univerjs/ui/locale/zh-CN';
+import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   createCellRangeContentReference,
@@ -45,11 +46,22 @@ import {
   type ContentReferenceSelectionMode,
   type ReferenceCapabilities,
 } from '../../../../types/contentReference';
+import { useFileSearchShortcut } from '../../hooks/useFileSearchShortcut';
 import ContentReferenceMenu from './ContentReferenceMenu';
+import FloatingFileSearchControls from './FloatingFileSearchControls';
 import RegionSelectionOverlay, { type CapturedRegion } from './RegionSelectionOverlay';
 import {
   floatingSelectionSingleActionClassName,
 } from './floatingSelectionAction';
+import {
+  createSpreadsheetContextSelectionIntent,
+  shouldShowSpreadsheetSelectionPopup,
+  type SpreadsheetSelectionOrigin,
+} from './spreadsheetContextSelectionIntent';
+import {
+  SPREADSHEET_UNIVER_SHEETS_UI_CONFIG,
+  SPREADSHEET_UNIVER_UI_CONFIG,
+} from './spreadsheetUniverConfig';
 
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -77,7 +89,9 @@ type UniverRuntime = {
   disposeSelectionListener?: () => void;
   disposeSelectionMoveStartListener?: () => void;
   disposeSelectionMoveEndListener?: () => void;
-  disposeCellClickListener?: () => void;
+  disposeCellPointerDownListener?: () => void;
+  disposeCellPointerUpListener?: () => void;
+  disposeContextSelectionIntent?: () => void;
   disposePopupComponent?: () => void;
   disposeSelectionPopup?: () => void;
 };
@@ -95,6 +109,13 @@ type SpreadsheetSelectionDraft = {
   cells: CellRangeSnapshot[];
   headers?: string[][];
   surroundingValues?: string[][];
+};
+
+type SpreadsheetSearchMatch = {
+  sheetId: string;
+  sheetIndex: number;
+  row: number;
+  column: number;
 };
 
 const MAX_REFERENCE_SNAPSHOT_ROWS = 100;
@@ -154,6 +175,7 @@ export default function SpreadsheetInteractivePreview({
   const univerLocale = i18n.resolvedLanguage?.toLowerCase().startsWith('zh')
     ? LocaleType.ZH_CN
     : LocaleType.EN_US;
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<UniverRuntime | null>(null);
   const [selectedCell, setSelectedCell] = useState<SelectedCell>({
@@ -162,11 +184,14 @@ export default function SpreadsheetInteractivePreview({
   });
   const [selectionDraft, setSelectionDraft] = useState<SpreadsheetSelectionDraft | null>(null);
   const [referenceMode, setReferenceMode] = useState<ContentReferenceSelectionMode | null>(null);
+  const [runtimeReady, setRuntimeReady] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatches, setSearchMatches] = useState<SpreadsheetSearchMatch[]>([]);
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const selectionDraftRef = useRef<SpreadsheetSelectionDraft | null>(null);
   const addCellReferenceRef = useRef<() => void>(() => undefined);
   const referenceModeRef = useRef<ContentReferenceSelectionMode | null>(referenceMode);
-  const selectionMovingRef = useRef(false);
-  const userInteractedRef = useRef(false);
   const onActiveSheetChangeRef = useRef(onActiveSheetChange);
   const onErrorRef = useRef(onError);
   const activeSheetIndexRef = useRef(activeSheetIndex);
@@ -176,11 +201,27 @@ export default function SpreadsheetInteractivePreview({
   activeSheetIndexRef.current = activeSheetIndex;
   zoomRef.current = zoom;
   referenceModeRef.current = referenceMode;
+  const openSearch = useCallback(() => {
+    runtimeRef.current?.disposeSelectionPopup?.();
+    setSearchOpen(true);
+  }, []);
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchMatches([]);
+    setSearchMatchIndex(0);
+  }, []);
+  useFileSearchShortcut({
+    containerRef: surfaceRef,
+    enabled: runtimeReady,
+    onOpen: openSearch,
+  });
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
     let disposed = false;
+    setRuntimeReady(false);
 
     try {
       const univer = new Univer({
@@ -195,23 +236,15 @@ export default function SpreadsheetInteractivePreview({
       univer.registerPlugin(UniverFormulaEnginePlugin);
       univer.registerPlugin(UniverUIPlugin, {
         container,
-        header: false,
-        toolbar: false,
-        footer: false,
-        contextMenu: false,
-        headerMenu: false,
-        disableAutoFocus: true,
+        ...SPREADSHEET_UNIVER_UI_CONFIG,
       });
       univer.registerPlugin(UniverDocsPlugin);
       univer.registerPlugin(UniverDocsUIPlugin);
       univer.registerPlugin(UniverSheetsPlugin);
-      univer.registerPlugin(UniverSheetsUIPlugin, {
-        formulaBar: false,
-        footer: false,
-        disableAutoFocus: true,
-        disableEdit: true,
-        protectedRangeShadow: false,
-      });
+      univer.registerPlugin(
+        UniverSheetsUIPlugin,
+        SPREADSHEET_UNIVER_SHEETS_UI_CONFIG,
+      );
       univer.registerPlugin(UniverSheetsFormulaPlugin);
       univer.registerPlugin(UniverSheetsFormulaUIPlugin);
       univer.registerPlugin(UniverSheetsNumfmtPlugin);
@@ -220,6 +253,9 @@ export default function SpreadsheetInteractivePreview({
       const api = FUniver.newAPI(univer);
       api.createWorkbook({ ...workbook, locale: univerLocale });
       const fWorkbook = api.getActiveWorkbook();
+      const contextSelectionIntent = createSpreadsheetContextSelectionIntent<
+        ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>
+      >();
       let selectionPopup: { dispose: () => void } | null = null;
       const disposeSelectionPopup = () => {
         selectionPopup?.dispose();
@@ -260,7 +296,7 @@ export default function SpreadsheetInteractivePreview({
           startColumn: number;
           endColumn: number;
         }>,
-        showPopup: boolean,
+        origin: SpreadsheetSelectionOrigin,
       ) => {
         const selection = selections[0];
         if (!selection) {
@@ -335,7 +371,10 @@ export default function SpreadsheetInteractivePreview({
         selectionDraftRef.current = nextDraft;
         setSelectionDraft(nextDraft);
 
-        if (!showPopup || referenceModeRef.current === 'region') return;
+        if (!shouldShowSpreadsheetSelectionPopup(
+          origin,
+          referenceModeRef.current === 'region',
+        )) return;
         disposeSelectionPopup();
         selectionPopup = worksheet.getRange(selection).attachRangePopup({
           componentKey: popupComponentKey,
@@ -345,14 +384,22 @@ export default function SpreadsheetInteractivePreview({
       };
       const syncCurrentSelection = (
         worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
-        showPopup: boolean,
+        origin: SpreadsheetSelectionOrigin,
       ) => {
         const selections = worksheet
           .getSelection()
           ?.getActiveRangeList()
           .map((range) => range.getRange()) || [];
-        syncSelection(worksheet, selections, showPopup);
+        syncSelection(worksheet, selections, origin);
       };
+      const handleSheetPointerDown = (event: PointerEvent) => {
+        contextSelectionIntent.recordPointerDown(event.button, event.ctrlKey);
+      };
+      const handleSheetContextMenu = (event: MouseEvent) => {
+        event.preventDefault();
+      };
+      container.addEventListener('pointerdown', handleSheetPointerDown, true);
+      container.addEventListener('contextmenu', handleSheetContextMenu);
       if (fWorkbook) {
         fWorkbook.setActiveSheet(`sheet-${activeSheetIndexRef.current}`);
         fWorkbook.getActiveSheet().zoom(zoomRef.current);
@@ -373,36 +420,39 @@ export default function SpreadsheetInteractivePreview({
       const selectionListener = api.addEvent(
         api.Event.SelectionChanged,
         ({ worksheet, selections }) => {
-          syncSelection(
-            worksheet,
-            selections,
-            userInteractedRef.current && !selectionMovingRef.current,
-          );
+          disposeSelectionPopup();
+          syncSelection(worksheet, selections, 'passive');
         },
       );
       const selectionMoveStartListener = api.addEvent(
         api.Event.SelectionMoveStart,
         () => {
-          userInteractedRef.current = true;
-          selectionMovingRef.current = true;
           disposeSelectionPopup();
         },
       );
       const selectionMoveEndListener = api.addEvent(
         api.Event.SelectionMoveEnd,
         ({ worksheet, selections }) => {
-          userInteractedRef.current = true;
-          selectionMovingRef.current = false;
-          syncSelection(worksheet, selections, true);
+          disposeSelectionPopup();
+          syncSelection(worksheet, selections, 'passive');
         },
       );
-      const cellClickListener = api.addEvent(
-        api.Event.CellClicked,
+      const cellPointerDownListener = api.addEvent(
+        api.Event.CellPointerDown,
         ({ worksheet }) => {
-          userInteractedRef.current = true;
+          if (contextSelectionIntent.recordCellPointerDown(worksheet)) {
+            disposeSelectionPopup();
+          }
+        },
+      );
+      const cellPointerUpListener = api.addEvent(
+        api.Event.CellPointerUp,
+        () => {
+          const worksheet = contextSelectionIntent.consumeContextAction();
+          if (!worksheet) return;
           window.requestAnimationFrame(() => {
             if (disposed) return;
-            syncCurrentSelection(worksheet, true);
+            syncCurrentSelection(worksheet, 'context-action');
           });
         },
       );
@@ -413,10 +463,17 @@ export default function SpreadsheetInteractivePreview({
         disposeSelectionListener: () => selectionListener.dispose(),
         disposeSelectionMoveStartListener: () => selectionMoveStartListener.dispose(),
         disposeSelectionMoveEndListener: () => selectionMoveEndListener.dispose(),
-        disposeCellClickListener: () => cellClickListener.dispose(),
+        disposeCellPointerDownListener: () => cellPointerDownListener.dispose(),
+        disposeCellPointerUpListener: () => cellPointerUpListener.dispose(),
+        disposeContextSelectionIntent: () => {
+          container.removeEventListener('pointerdown', handleSheetPointerDown, true);
+          container.removeEventListener('contextmenu', handleSheetContextMenu);
+          contextSelectionIntent.reset();
+        },
         disposePopupComponent: () => popupComponent.dispose(),
         disposeSelectionPopup,
       };
+      setRuntimeReady(true);
     } catch (error) {
       onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
     }
@@ -430,7 +487,9 @@ export default function SpreadsheetInteractivePreview({
       runtime?.disposeSelectionListener?.();
       runtime?.disposeSelectionMoveStartListener?.();
       runtime?.disposeSelectionMoveEndListener?.();
-      runtime?.disposeCellClickListener?.();
+      runtime?.disposeCellPointerDownListener?.();
+      runtime?.disposeCellPointerUpListener?.();
+      runtime?.disposeContextSelectionIntent?.();
       runtime?.disposePopupComponent?.();
       runtime?.univer.dispose();
     };
@@ -445,6 +504,58 @@ export default function SpreadsheetInteractivePreview({
     }
     fWorkbook.getActiveSheet().zoom(zoom);
   }, [activeSheetIndex, zoom]);
+
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+    const fWorkbook = runtimeRef.current?.api.getActiveWorkbook();
+    if (!runtimeReady || !normalizedQuery || !fWorkbook) {
+      setSearchMatches([]);
+      setSearchMatchIndex(0);
+      return;
+    }
+
+    const nextMatches: SpreadsheetSearchMatch[] = [];
+    workbook.sheetOrder.forEach((sheetId, sheetIndex) => {
+      const worksheet = fWorkbook.getSheetBySheetId(sheetId);
+      const sheetData = workbook.sheets[sheetId];
+      if (!worksheet || !sheetData?.cellData) return;
+
+      Object.entries(sheetData.cellData).forEach(([rowKey, rowData]) => {
+        const row = Number(rowKey);
+        if (!Number.isInteger(row) || !rowData) return;
+        Object.keys(rowData).forEach((columnKey) => {
+          const column = Number(columnKey);
+          if (!Number.isInteger(column)) return;
+          const displayValue = worksheet.getRange(row, column).getDisplayValue();
+          if (displayValue.toLocaleLowerCase().includes(normalizedQuery)) {
+            nextMatches.push({ sheetId, sheetIndex, row, column });
+          }
+        });
+      });
+    });
+
+    setSearchMatches(nextMatches);
+    setSearchMatchIndex(0);
+  }, [runtimeReady, searchQuery, workbook]);
+
+  useEffect(() => {
+    if (searchMatches.length === 0) return;
+    const match = searchMatches[Math.min(searchMatchIndex, searchMatches.length - 1)];
+    const fWorkbook = runtimeRef.current?.api.getActiveWorkbook();
+    const worksheet = fWorkbook?.getSheetBySheetId(match.sheetId);
+    if (!fWorkbook || !worksheet) return;
+    runtimeRef.current?.disposeSelectionPopup?.();
+    fWorkbook.setActiveSheet(worksheet);
+    worksheet.getRange(match.row, match.column).activate();
+    onActiveSheetChangeRef.current(match.sheetIndex);
+  }, [searchMatchIndex, searchMatches]);
+
+  const moveSearch = useCallback((direction: -1 | 1) => {
+    if (searchMatches.length === 0) return;
+    setSearchMatchIndex((current) => (
+      (current + direction + searchMatches.length) % searchMatches.length
+    ));
+  }, [searchMatches.length]);
 
   const capabilities: ReferenceCapabilities = {
     text: { state: 'unavailable', reason: 'NO_TEXT_LAYER' },
@@ -526,8 +637,12 @@ export default function SpreadsheetInteractivePreview({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white">
-      <div className="flex h-9 shrink-0 items-center border-b border-border bg-background text-sm">
+    <div
+      ref={surfaceRef}
+      data-file-search-surface
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white"
+    >
+      <div className="relative z-20 flex h-9 shrink-0 items-center border-b border-border bg-background text-sm">
         <div
           aria-label={t('contentReference.spreadsheet.currentCell')}
           className="w-20 shrink-0 border-r border-border px-3 font-medium text-foreground"
@@ -546,6 +661,23 @@ export default function SpreadsheetInteractivePreview({
           readOnly
           value={selectedCell.value}
         />
+        <button
+          type="button"
+          onClick={() => {
+            if (searchOpen) closeSearch();
+            else openSearch();
+          }}
+          title={t('builtinOfficePreview.search')}
+          aria-label={t('builtinOfficePreview.search')}
+          className={[
+            'mx-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors',
+            searchOpen
+              ? 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+              : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+          ].join(' ')}
+        >
+          <Search className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
         <ContentReferenceMenu
           capabilities={capabilities}
           activeMode={referenceMode}
@@ -553,6 +685,23 @@ export default function SpreadsheetInteractivePreview({
           onCancelMode={() => setReferenceMode(null)}
           compact
         />
+        {searchOpen ? (
+          <FloatingFileSearchControls
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            matchIndex={searchMatchIndex}
+            matchCount={searchMatches.length}
+            onPrevious={() => moveSearch(-1)}
+            onNext={() => moveSearch(1)}
+            onClose={closeSearch}
+            searchLabel={t('builtinOfficePreview.search')}
+            placeholder={t('builtinOfficePreview.searchPlaceholder')}
+            previousLabel={t('pdfToolbar.previousResult')}
+            nextLabel={t('pdfToolbar.nextResult')}
+            closeLabel={t('builtinOfficePreview.closeSearch')}
+            noMatchesLabel={t('builtinOfficePreview.noMatches')}
+          />
+        ) : null}
       </div>
       <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-white">
         <div

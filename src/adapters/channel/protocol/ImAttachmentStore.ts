@@ -1,5 +1,5 @@
 import { mkdir, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ChannelAttachment } from "../../../gateway/index.js";
 
 export type ImAttachmentStoreOptions = {
@@ -78,7 +78,7 @@ export class ImAttachmentStore {
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const filename = this.safeFilename(input.name, mimeType, input.type);
     const path = resolve(dir, filename);
-    if (!path.startsWith(`${dir}/`) && path !== dir) {
+    if (!isPathWithinDirectory(path, dir)) {
       throw new Error("Attachment path escaped target directory.");
     }
     await writeFile(path, buffer, { mode: 0o600 });
@@ -154,6 +154,15 @@ function replaceExtension(name: string, extension: string): string {
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "unknown";
+}
+
+export function isPathWithinDirectory(
+  candidate: string,
+  directory: string,
+  pathApi: Pick<typeof import("node:path"), "relative" | "isAbsolute"> = { relative, isAbsolute },
+): boolean {
+  const rel = pathApi.relative(directory, candidate);
+  return rel === "" || (!rel.startsWith("..") && !pathApi.isAbsolute(rel));
 }
 
 function extensionForMime(mimeType: string | undefined): string {

@@ -392,7 +392,7 @@ function MainContent({
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="relative flex h-full min-h-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <SplitBody
           projects={projects}

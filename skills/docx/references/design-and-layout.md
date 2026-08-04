@@ -5,7 +5,7 @@ Use this guide for new documents, major rewrites, restyling, template-based crea
 ## Contents
 
 1. Design sequence
-2. Supported presets
+2. Style sources and built-in template
 3. Page and typography system
 4. Content-form selection
 5. Tables
@@ -20,26 +20,41 @@ Design the document before drafting it.
 
 1. Identify the reader, decision, and document archetype.
 2. Estimate the page budget and content density.
-3. Choose one preset. Do not mix typography, spacing, colors, or table treatments from different presets.
-4. Define the title block, heading hierarchy, body rhythm, lists, tables, callouts, images, headers, and footers.
+3. Freeze one style source. Do not mix a user-provided system with the built-in template.
+4. Define the title block, heading hierarchy, body rhythm, lists, tables,
+   callouts, and images. Define headers, footers, or page numbers only when the
+   user explicitly requests them.
 5. Map every major content unit to the lightest form that helps the reader understand or act.
 6. Generate a working DOCX, render it, and refine the design from the pages rather than from assumptions.
 
 Prefer restraint for serious or operational documents. Achieve polish through typography, alignment, spacing, hierarchy, and consistency before adding decoration.
 
-## 2. Supported presets
+## 2. Style sources and built-in template
 
-The `create` command supports these presets:
+Every creation uses one of two paths:
 
-| Preset | Best fit | Default character |
-|---|---|---|
-| `business-report` | Reports, briefs, status documents | Arial, blue hierarchy, moderate density |
-| `formal-memo` | Formal memos, policy notes, executive decisions | Times New Roman, neutral hierarchy |
-| `proposal` | Persuasive proposals and longer narratives | Aptos, open spacing, blue accents |
-| `sop` | Procedures, checklists, operating guides | Arial, compact rhythm, green accents |
-| `simple-document` | General correspondence and minimal documents | Arial, black hierarchy, neutral tables |
+1. **User style:** follow a supplied reference template, concrete visual
+   instructions, or the style of an existing DOCX. Preserve that system
+   consistently and do not mix in the built-in template.
+2. **Built-in style:** use `neutral-document-v1` whenever the user did not
+   specify a visual system. This is the only built-in template currently
+   exposed. Document archetypes do not choose colors.
 
-Choose the preset that matches purpose, not personal preference. Preserve an existing document's visual system during targeted edits instead of applying a new preset.
+`neutral-document-v1` is intentionally restrained:
+
+- black titles and headings;
+- 10.5 pt Chinese serif body with Times New Roman for Latin text and numbers;
+- justified body paragraphs, an approximately 0.76 cm first-line indent, and
+  18 pt line spacing;
+- semantic Heading styles with black hierarchy;
+- white table cells, black text, neutral borders, and bold headers rather than
+  decorative color fills;
+- callouts expressed with spacing and a fine neutral border rather than a
+  colored panel.
+
+The architecture may add more built-in templates later, but no unavailable
+template may be invented or selected. A colorful design is possible only
+through the user-style path and concrete current-request evidence.
 
 ## 3. Page and typography system
 
@@ -118,6 +133,11 @@ Zoom into every rendered table and check:
 - a table pushed beyond the right margin;
 - body text placed too close below the table.
 
+For a formal or neutral document, also verify that tables are not dominated by
+blue, green, or another chromatic fill. The final audit warns when repeated
+Accent table styles or broad direct color fills appear; either correct the
+design or record why the user explicitly requested that treatment.
+
 ## 6. Lists, forms, and callouts
 
 Use real Word list styles for bullets and numbering. Never type bullet characters, hyphens, or number prefixes to simulate a list. Confirm that wrapped lines align with the item text rather than the marker.
@@ -140,9 +160,19 @@ Use local image paths only. Choose a width that remains inside the text area and
 
 - Place the caption immediately after the image.
 - Keep the image and caption together when possible.
-- Provide meaningful alternative text when accessibility is required. The current creation schema does not set image alt text, so treat an accessible audit warning as unresolved unless another trusted method supplies it.
+- Image paragraphs must use automatic line spacing. Exact body-text line
+  spacing clips inline drawings even when the embedded image is valid.
+- Provide meaningful alternative text when accessibility is required. Set `alt_text` on every meaningful image block; decorative images may use an empty description only when that choice is intentional and verified in the accessible audit.
 - Do not use images as a substitute for editable text when the user needs to revise the content.
 - Inspect image sharpness, scaling, wrapping, and page position after rendering.
+- When the request explicitly requires illustrations, freeze a minimum image
+  count during `prepare` and verify the final package contains those images.
+  Generating a PNG in tmp is not completion until it is embedded in the DOCX.
+- For formal reports, use the formal-report structure so the cover, TOC, and
+  body begin on separate pages. Do not imitate page separation with repeated
+  blank paragraphs.
+- A title's line box must be at least large enough for its largest glyph. Avoid
+  exact line spacing below roughly 110% of the maximum font size.
 
 ## 8. Template following
 
@@ -152,7 +182,7 @@ When an attached DOCX is a style template:
 2. Treat its page geometry, styles, hierarchy, headers, footers, tables, and recurring components as the visual authority.
 3. Preserve the template file and create a new output.
 4. Prefer targeted editing of a copy when the required structure already exists.
-5. Do not apply a generic preset on top of a template unless the user requests a redesign.
+5. Do not apply the built-in template on top of a user template unless the user requests a redesign.
 6. Compare the rendered output with the template's corresponding pages.
 
 Do not promise full template fidelity for macros, digital signatures, embedded objects, complex fields, or content controls without inspecting those parts.

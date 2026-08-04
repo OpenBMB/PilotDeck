@@ -103,11 +103,13 @@ export const zincDarkTheme: Extension = [
         borderTop: `1px solid ${zinc.border}`,
       },
       '.cm-searchMatch': {
-        backgroundColor: 'rgba(234,179,8,0.2)',
-        outline: '1px solid rgba(234,179,8,0.4)',
+        backgroundColor: 'var(--file-search-highlight-bg)',
+        outline: '1px solid var(--file-search-highlight-border)',
       },
       '.cm-searchMatch.cm-searchMatch-selected': {
-        backgroundColor: 'rgba(234,179,8,0.35)',
+        backgroundColor: 'var(--file-search-highlight-active-bg)',
+        outline: '1px solid var(--file-search-highlight-active-border)',
+        boxShadow: '0 0 0 2px var(--file-search-highlight-active-ring)',
       },
       '.cm-matchingBracket, .cm-nonmatchingBracket': {
         backgroundColor: zinc.selection,
@@ -236,11 +238,13 @@ export const zincLightTheme: Extension = [
         borderTop: `1px solid ${zincLight.border}`,
       },
       '.cm-searchMatch': {
-        backgroundColor: 'rgba(234,179,8,0.25)',
-        outline: '1px solid rgba(234,179,8,0.5)',
+        backgroundColor: 'var(--file-search-highlight-bg)',
+        outline: '1px solid var(--file-search-highlight-border)',
       },
       '.cm-searchMatch.cm-searchMatch-selected': {
-        backgroundColor: 'rgba(234,179,8,0.4)',
+        backgroundColor: 'var(--file-search-highlight-active-bg)',
+        outline: '1px solid var(--file-search-highlight-active-border)',
+        boxShadow: '0 0 0 2px var(--file-search-highlight-active-ring)',
       },
       '.cm-matchingBracket, .cm-nonmatchingBracket': {
         backgroundColor: zincLight.selection,

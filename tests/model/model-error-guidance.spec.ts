@@ -99,3 +99,17 @@ test("unknown provider errors still give actionable settings and provider checks
   assert.match(action.userHint, /timeoutMs/);
   assert.match(action.userHint, /provider API status\/logs/);
 });
+
+test("emergency compaction overflow points to context recovery, not provider settings", () => {
+  const action = modelFailureAction({
+    provider: "modelbest-openai",
+    protocol: "openai",
+    code: "context_overflow_after_emergency_compaction",
+    message: "context remains too large after emergency compaction",
+    retryable: false,
+    raw: {},
+  } satisfies CanonicalModelError);
+
+  assert.equal(action.fixTarget, "prompt");
+  assert.match(action.userHint, /compact|new session|larger-context/i);
+});

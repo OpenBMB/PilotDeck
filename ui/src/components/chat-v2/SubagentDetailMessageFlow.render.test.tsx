@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage } from '../chat/types/types';
 import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 
@@ -65,14 +66,16 @@ function tool(id: string, toolName: string, offsetMs = 300): ChatMessage {
 
 function renderFlow(messages: ChatMessage[], isRunning = true) {
   return render(
-    <SubagentDetailMessageFlow
-      messages={messages}
-      provider="pilotdeck"
-      selectedProject={null}
-      createDiff={() => []}
-      showThinking
-      isRunning={isRunning}
-    />,
+    <FindShortcutProvider activeScope="chat">
+      <SubagentDetailMessageFlow
+        messages={messages}
+        provider="pilotdeck"
+        selectedProject={null}
+        createDiff={() => []}
+        showThinking
+        isRunning={isRunning}
+      />
+    </FindShortcutProvider>,
   );
 }
 

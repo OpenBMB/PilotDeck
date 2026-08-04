@@ -8,6 +8,7 @@ import type { AgentEvent } from "../../src/agent/protocol/events.js";
 import type { AgentTurnResult } from "../../src/agent/protocol/result.js";
 import type { AgentLoop, AgentLoopInput, AgentLoopRunResult } from "../../src/agent/loop/AgentLoop.js";
 import { TurnRunner } from "../../src/agent/turn/TurnRunner.js";
+import { FileArtifactCollector } from "../../src/session/artifacts/FileArtifactCollector.js";
 import { InMemoryTranscriptWriter } from "../../src/session/transcript/InMemoryTranscriptWriter.js";
 
 test("TurnRunner emits and persists file artifacts before completing the turn", async () => {
@@ -34,6 +35,19 @@ test("TurnRunner emits and persists file artifacts before completing the turn", 
           join(projectRoot, ".pilotdeck", "work", input.sessionId, input.turnId, "builder.mjs"),
           "// internal\n",
         );
+        yield {
+          type: "tool_result",
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          result: {
+            type: "success",
+            toolCallId: "bash-1",
+            toolName: "bash",
+            content: [{ type: "text", text: "created files" }],
+            startedAt: "2026-07-21T10:00:00.000Z",
+            completedAt: "2026-07-21T10:00:00.500Z",
+          },
+        };
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages: input.messages };
       },
@@ -124,5 +138,71 @@ test("TurnRunner does not collect generated files when artifacts are disabled", 
     assert.equal(transcript.entries.some((entry) => entry.type === "file_artifacts"), false);
   } finally {
     await rm(generalRoot, { recursive: true, force: true });
+  }
+});
+
+test("TurnRunner unregisters its artifact collector when the event stream closes early", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-turn-artifact-cleanup-"));
+  try {
+    const result: AgentTurnResult = {
+      type: "success",
+      sessionId: "session-cleanup",
+      turnId: "turn-cleanup",
+      stopReason: "completed",
+      usage: {},
+      permissionDenials: [],
+      turns: 1,
+      startedAt: "2026-07-22T10:00:00.000Z",
+      completedAt: "2026-07-22T10:00:01.000Z",
+    };
+    const fakeLoop = {
+      async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages: input.messages };
+      },
+      snapshotFileState: () => ({}),
+    } as unknown as AgentLoop;
+    const runner = new TurnRunner(
+      fakeLoop,
+      new InMemoryTranscriptWriter(),
+      undefined,
+      () => new Date("2026-07-22T10:00:01.000Z"),
+      undefined,
+      { cwd: projectRoot, transcriptPath: "" },
+    );
+    const run = runner.run({
+      sessionId: "session-cleanup",
+      turnId: "turn-cleanup",
+      messages: [],
+      input: { type: "text", text: "Start and stop early" },
+    });
+
+    const started = await run.next();
+    assert.equal(started.done, false);
+    if (started.done) assert.fail("turn stream ended before turn_started");
+    assert.equal(started.value.type, "turn_started");
+
+    const accepted = await run.next();
+    assert.equal(accepted.done, false);
+    if (accepted.done) assert.fail("turn stream ended before input_accepted");
+    assert.equal(accepted.value.type, "input_accepted");
+    await run.return({ result, messages: [] });
+
+    const nextCollector = await FileArtifactCollector.start({ cwd: projectRoot });
+    await writeFile(join(projectRoot, "detected-after-close.txt"), "workspace diff remains enabled");
+    nextCollector.observeToolResult({
+      type: "success",
+      toolCallId: "bash-cleanup",
+      toolName: "bash",
+      content: [{ type: "text", text: "ok" }],
+      startedAt: "2026-07-22T10:00:01.000Z",
+      completedAt: "2026-07-22T10:00:01.100Z",
+    });
+    const artifacts = await nextCollector.finish("complete");
+
+    assert.deepEqual(artifacts.map((artifact) => artifact.path), ["detected-after-close.txt"]);
+    assert.equal(artifacts[0]?.source, "workspace_diff");
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
   }
 });

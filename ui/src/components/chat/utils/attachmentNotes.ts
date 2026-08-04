@@ -11,6 +11,39 @@ import {
 } from '../../../types/contentReference';
 
 const ATTACHMENT_NOTE_MARKER = '[Files attached by user and available for reading in the project:]';
+const ATTACHMENT_NOTE_END_MARKER = '[End files attached by user]';
+// Older transcripts have no end marker. Their next canonical text block may
+// be concatenated directly onto the final path during history projection.
+const LEGACY_ATTACHMENT_NOTE_TERMINATORS = [
+  ATTACHMENT_NOTE_END_MARKER,
+  '[Attachment diagnostics]',
+  '[Registered attachment files in this session:]',
+  '[PDF attachment:',
+  '<attachment ',
+];
+
+type AttachmentPathNoteFile = {
+  name: string;
+  path: string;
+};
+
+export function buildAttachmentPathNote(files: AttachmentPathNoteFile[]): string {
+  if (files.length === 0) return '';
+
+  const lines = files.map((file) => `- ${file.name}: ${file.path}`);
+  return `\n\n${ATTACHMENT_NOTE_MARKER}\n${lines.join('\n')}\n${ATTACHMENT_NOTE_END_MARKER}\n`;
+}
+
+function sliceBeforeFirstMarker(value: string, markers: string[]): string {
+  let endIndex = value.length;
+  for (const marker of markers) {
+    const markerIndex = value.indexOf(marker);
+    if (markerIndex >= 0 && markerIndex < endIndex) {
+      endIndex = markerIndex;
+    }
+  }
+  return value.slice(0, endIndex);
+}
 
 function inferAttachmentMimeType(name: string, filePath: string): string | undefined {
   const source = `${name} ${filePath}`.toLowerCase();
@@ -55,7 +88,10 @@ export function parseUserAttachmentNote(content: unknown): {
   }
 
   const visibleContent = text.slice(0, markerIndex).trimEnd();
-  const note = text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length);
+  const note = sliceBeforeFirstMarker(
+    text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length),
+    LEGACY_ATTACHMENT_NOTE_TERMINATORS,
+  );
   const attachments: ChatAttachment[] = [];
 
   for (const rawLine of note.split(/\r?\n/)) {
@@ -78,6 +114,48 @@ export function parseUserAttachmentNote(content: unknown): {
   }
 
   return { content: visibleContent, attachments: [...attachments, ...selectionAttachments] };
+}
+
+function attachmentIdentity(attachment: ChatAttachment): string {
+  const kind = attachment.kind || 'file';
+  const filePath = attachment.path || attachment.filePath || '';
+
+  if (kind === DOCUMENT_SELECTION_ATTACHMENT_KIND) {
+    return [
+      kind,
+      filePath,
+      attachment.createdAt || '',
+      attachment.occurrenceIndex ?? '',
+    ].join('\0');
+  }
+
+  if (kind === CONTENT_REFERENCE_ATTACHMENT_KIND) {
+    return [
+      kind,
+      attachment.contentReference?.id || '',
+      filePath,
+      attachment.createdAt || '',
+    ].join('\0');
+  }
+
+  return [kind, filePath || attachment.name].join('\0');
+}
+
+export function mergeUserAttachments(
+  preferred: ChatAttachment[],
+  fallback: ChatAttachment[],
+): ChatAttachment[] {
+  const merged: ChatAttachment[] = [];
+  const seen = new Set<string>();
+
+  for (const attachment of [...preferred, ...fallback]) {
+    const identity = attachmentIdentity(attachment);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    merged.push(attachment);
+  }
+
+  return merged;
 }
 
 function contentReferenceToAttachment(reference: ContentReference): ChatAttachment {

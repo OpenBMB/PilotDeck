@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { opendir, stat } from "node:fs/promises";
+import { opendir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PilotDeckToolResult } from "../../tool/index.js";
 import type {
@@ -126,9 +126,14 @@ export class FileArtifactCollector {
   private readonly baseline = new Map<string, FileFingerprint>();
   private readonly explicitCandidates = new Map<string, ArtifactCandidate>();
   private readonly allowedInputPaths: Set<string>;
+  private sawWorkspaceMutationCandidate = false;
+  private workspaceKey: string;
+  private registered = false;
+  private hadConcurrentOverlap = false;
 
   private constructor(options: FileArtifactCollectorOptions) {
     this.cwd = path.resolve(options.cwd);
+    this.workspaceKey = this.cwd;
     this.now = options.now ?? (() => new Date());
     this.hashFile = options.hashFile ?? sha256File;
     this.allowedInputPaths = new Set(
@@ -140,6 +145,7 @@ export class FileArtifactCollector {
 
   static async start(options: FileArtifactCollectorOptions): Promise<FileArtifactCollector> {
     const collector = new FileArtifactCollector(options);
+    collector.workspaceKey = await realpath(collector.cwd).catch(() => collector.cwd);
     collector.baseline.clear();
     const cachedFingerprints = readCachedWorkspaceFingerprints(collector.cwd);
     for (const file of await collector.scanWorkspace(cachedFingerprints)) {
@@ -147,10 +153,14 @@ export class FileArtifactCollector {
     }
     await collector.captureAllowedInputFingerprints(collector.baseline, cachedFingerprints);
     cacheWorkspaceFingerprints(collector.cwd, collector.baseline);
+    collector.register();
     return collector;
   }
 
   observeToolResult(result: PilotDeckToolResult): void {
+    if (canToolMutateWorkspace(result.toolName) && toolResultCouldHaveMutatedWorkspace(result)) {
+      this.sawWorkspaceMutationCandidate = true;
+    }
     if (result.type !== "success") return;
 
     for (const item of result.content) {
@@ -165,47 +175,92 @@ export class FileArtifactCollector {
   }
 
   async finish(status: FileArtifactStatus): Promise<FileArtifact[]> {
-    const candidates = new Map<string, ArtifactCandidate>(this.explicitCandidates);
-    const finalFingerprints = new Map<string, FileFingerprint>();
-    for (const file of await this.scanWorkspace(this.baseline)) {
-      finalFingerprints.set(file.absolutePath, file.fingerprint);
-      const before = this.baseline.get(file.absolutePath);
-      if (!before || before.sha256 !== file.fingerprint.sha256) {
-        candidates.set(file.absolutePath, {
-          absolutePath: file.absolutePath,
-          source: candidates.get(file.absolutePath)?.source ?? "workspace_diff",
-          fingerprint: file.fingerprint,
-        });
+    try {
+      const candidates = new Map<string, ArtifactCandidate>(this.explicitCandidates);
+      // A whole-workspace diff cannot identify which overlapping turn caused a
+      // change. Only enable it when this turn actually ran a potentially
+      // mutating tool and there was no overlapping turn in the same workspace.
+      // Otherwise keep only paths explicitly reported by this collector's own
+      // tool results.
+      const collectWorkspaceDiff =
+        this.sawWorkspaceMutationCandidate && !this.hadConcurrentOverlap;
+      const finalFingerprints = new Map<string, FileFingerprint>();
+      if (collectWorkspaceDiff) {
+        for (const file of await this.scanWorkspace(this.baseline)) {
+          finalFingerprints.set(file.absolutePath, file.fingerprint);
+          const before = this.baseline.get(file.absolutePath);
+          if (!before || before.sha256 !== file.fingerprint.sha256) {
+            candidates.set(file.absolutePath, {
+              absolutePath: file.absolutePath,
+              source: candidates.get(file.absolutePath)?.source ?? "workspace_diff",
+              fingerprint: file.fingerprint,
+            });
+          }
+        }
+        const allowedInputFinal = new Map<string, FileFingerprint>();
+        await this.captureAllowedInputFingerprints(allowedInputFinal, this.baseline);
+        for (const [absolutePath, fingerprint] of allowedInputFinal) {
+          finalFingerprints.set(absolutePath, fingerprint);
+          const before = this.baseline.get(absolutePath);
+          if (!before || before.sha256 !== fingerprint.sha256) {
+            candidates.set(absolutePath, {
+              absolutePath,
+              source: candidates.get(absolutePath)?.source ?? "workspace_diff",
+              fingerprint,
+            });
+          }
+        }
+        cacheWorkspaceFingerprints(this.cwd, finalFingerprints);
+      } else {
+        cacheWorkspaceFingerprints(this.cwd, this.baseline);
       }
-    }
-    const allowedInputFinal = new Map<string, FileFingerprint>();
-    await this.captureAllowedInputFingerprints(allowedInputFinal, this.baseline);
-    for (const [absolutePath, fingerprint] of allowedInputFinal) {
-      finalFingerprints.set(absolutePath, fingerprint);
-      const before = this.baseline.get(absolutePath);
-      if (!before || before.sha256 !== fingerprint.sha256) {
-        candidates.set(absolutePath, {
-          absolutePath,
-          source: candidates.get(absolutePath)?.source ?? "workspace_diff",
-          fingerprint,
-        });
+
+      const artifacts: FileArtifact[] = [];
+      for (const candidate of candidates.values()) {
+        const artifact = await this.materialize(candidate, status);
+        if (artifact) artifacts.push(artifact);
       }
-    }
-    cacheWorkspaceFingerprints(this.cwd, finalFingerprints);
 
-    const artifacts: FileArtifact[] = [];
-    for (const candidate of candidates.values()) {
-      const artifact = await this.materialize(candidate, status);
-      if (artifact) artifacts.push(artifact);
+      return artifacts.sort((left, right) => left.path.localeCompare(right.path));
+    } finally {
+      this.dispose();
     }
+  }
 
-    return artifacts.sort((left, right) => left.path.localeCompare(right.path));
+  dispose(): void {
+    if (!this.registered) return;
+    const active = activeWorkspaceCollectors.get(this.workspaceKey);
+    active?.delete(this);
+    if (active?.size === 0) {
+      activeWorkspaceCollectors.delete(this.workspaceKey);
+    }
+    this.registered = false;
   }
 
   private addExplicitPath(candidate: string): void {
     const absolutePath = path.resolve(this.cwd, candidate);
     if (!isWithin(this.cwd, absolutePath) || !this.isAllowedArtifactPath(absolutePath)) return;
     this.explicitCandidates.set(absolutePath, { absolutePath, source: "tool" });
+  }
+
+  private register(): void {
+    if (this.registered) return;
+    let active = activeWorkspaceCollectors.get(this.workspaceKey);
+    if (!active) {
+      active = new Set();
+      activeWorkspaceCollectors.set(this.workspaceKey, active);
+    }
+    if (active.size > 0) {
+      // Preserve the overlap on both sides even if one collector finishes
+      // before the other. Checking only the active count at finish time would
+      // re-enable ambiguous workspace diffs for the last collector.
+      this.hadConcurrentOverlap = true;
+      for (const collector of active) {
+        collector.hadConcurrentOverlap = true;
+      }
+    }
+    active.add(this);
+    this.registered = true;
   }
 
   private async scanWorkspace(
@@ -295,6 +350,9 @@ export class FileArtifactCollector {
   }
 }
 
+/** Active turn collectors, scoped by the canonical physical workspace root. */
+const activeWorkspaceCollectors = new Map<string, Set<FileArtifactCollector>>();
+
 async function fingerprintFile(
   filePath: string,
   reusableFingerprint: FileFingerprint | undefined,
@@ -326,6 +384,55 @@ function readCachedWorkspaceFingerprints(cwd: string): ReadonlyMap<string, FileF
   workspaceFingerprintCache.delete(cwd);
   workspaceFingerprintCache.set(cwd, cached);
   return cached;
+}
+
+const READ_ONLY_TOOL_NAMES = new Set([
+  "ask_user_question",
+  "enter_plan_mode",
+  "exit_plan_mode",
+  "get_current_time",
+  "glob",
+  "grep",
+  "list_mcp_resources",
+  "read_file",
+  "read_mcp_resource",
+  "read_skill",
+  "send_attachment",
+  "structured_output",
+  "task_list",
+  "task_output",
+  "task_stop",
+  "task_wait",
+  "todo_write",
+  "web_fetch",
+  "web_search",
+]);
+
+function canToolMutateWorkspace(toolName: string): boolean {
+  return !READ_ONLY_TOOL_NAMES.has(toolName.toLowerCase());
+}
+
+function toolResultCouldHaveMutatedWorkspace(result: PilotDeckToolResult): boolean {
+  if (result.type === "success") return true;
+
+  switch (result.error.code) {
+    case "tool_not_found":
+    case "invalid_tool_input":
+    case "permission_denied":
+    case "permission_cancelled":
+    case "permission_required":
+    case "path_not_allowed":
+    case "file_not_found":
+    case "file_conflict":
+    case "unsupported_tool":
+    case "setup_required":
+    case "plan_mode_violation":
+    case "ask_mode_violation":
+      return false;
+    default:
+      // Timeouts, aborts, and execution failures can occur after a tool writes files.
+      return true;
+  }
 }
 
 function cacheWorkspaceFingerprints(cwd: string, fingerprints: ReadonlyMap<string, FileFingerprint>): void {

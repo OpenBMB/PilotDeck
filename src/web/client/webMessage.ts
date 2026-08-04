@@ -103,6 +103,10 @@ export type WebMessage = {
   provider: "pilotdeck" | (string & {});
   role: WebMessageRole;
   kind: WebMessageKind;
+  /** Logical agent turn that owns this message. Stable across live/history projections. */
+  turnId?: string;
+  /** Transcript ordering sequence for deterministic history reconciliation. */
+  sequence?: number;
   toolCallId?: string;
   toolName?: string;
   requestId?: string;

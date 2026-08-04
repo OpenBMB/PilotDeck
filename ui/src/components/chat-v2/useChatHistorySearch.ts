@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { useRegisterFindShortcutTarget } from '../../contexts/FindShortcutContext';
 import {
   buildSearchableMessages,
   clearSearchHighlights,
@@ -144,26 +145,21 @@ export function useChatHistorySearch({
     closeSearch();
   }, [closeSearch, sessionId]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const isFindShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f';
-      if (isFindShortcut) {
-        if (!captureFindShortcutInModal && document.querySelector('[data-modal-overlay]')) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (isOpen) {
-          inputRef.current?.focus();
-          inputRef.current?.select();
-        } else {
-          openSearch();
-        }
-        return;
-      }
-    };
+  const openFromShortcut = useCallback(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      return;
+    }
+    openSearch();
+  }, [isOpen, openSearch]);
 
-    document.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [captureFindShortcutInModal, isOpen, openSearch]);
+  useRegisterFindShortcutTarget({
+    scope: 'chat',
+    containerRef: scrollContainerRef,
+    onOpen: openFromShortcut,
+    captureInModal: captureFindShortcutInModal,
+  });
 
   useEffect(() => {
     const container = scrollContainerRef.current;

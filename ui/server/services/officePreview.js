@@ -19,27 +19,28 @@ export const LIBREOFFICE_TIMEOUT_MS = Number(process.env.PILOTDECK_LIBREOFFICE_T
 const OFFICE_PREVIEW_LOCK_STALE_MS = LIBREOFFICE_TIMEOUT_MS + 30000;
 const OFFICE_PREVIEW_LOCK_RETRY_MS = 100;
 
-export function getConfiguredOfficePreviewService() {
+export function getConfiguredOfficePreviewSettings() {
   try {
     const record = readPilotDeckConfigFile();
     const configured = String(record?.config?.webui?.officePreview?.service || '').trim().toLowerCase();
-    return configured === OFFICE_PREVIEW_SERVICE_LIBREOFFICE
-      ? OFFICE_PREVIEW_SERVICE_LIBREOFFICE
-      : OFFICE_PREVIEW_SERVICE_BUILTIN;
+    return {
+      service: configured === OFFICE_PREVIEW_SERVICE_LIBREOFFICE
+        ? OFFICE_PREVIEW_SERVICE_LIBREOFFICE
+        : OFFICE_PREVIEW_SERVICE_BUILTIN,
+      binaryPath: String(record?.config?.webui?.officePreview?.binaryPath || '').trim(),
+    };
   } catch (error) {
-    console.warn('Failed to read Office preview service config; defaulting to built-in:', error.message);
-    return OFFICE_PREVIEW_SERVICE_BUILTIN;
+    console.warn('Failed to read Office preview config; defaulting to built-in:', error.message);
+    return { service: OFFICE_PREVIEW_SERVICE_BUILTIN, binaryPath: '' };
   }
 }
 
+export function getConfiguredOfficePreviewService() {
+  return getConfiguredOfficePreviewSettings().service;
+}
+
 function getConfiguredLibreOfficeBinaryPath() {
-  try {
-    const record = readPilotDeckConfigFile();
-    return String(record?.config?.webui?.officePreview?.binaryPath || '').trim();
-  } catch (error) {
-    console.warn('Failed to read LibreOffice binary path config; falling back to auto-detect:', error.message);
-    return '';
-  }
+  return getConfiguredOfficePreviewSettings().binaryPath;
 }
 
 function uniqueCandidates(candidates) {

@@ -1,5 +1,8 @@
 const minimumNodeVersion = [22, 13, 0];
 const minimumNodeVersionLabel = "22.13.0";
+const supportedNodeMajor = 22;
+const maximumNodeVersionLabel = "23";
+const nodeVersionRequirementLabel = `>=${minimumNodeVersionLabel} and <${maximumNodeVersionLabel}`;
 
 function parseNodeVersion(version) {
   return version
@@ -17,6 +20,14 @@ function isAtLeastMinimum(version) {
   return true;
 }
 
+function isSupportedMajor(version) {
+  return (parseNodeVersion(version)[0] ?? 0) === supportedNodeMajor;
+}
+
+function formatNodeVersion(version) {
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
 function fail(message) {
   console.error(`[pilotdeck] ${message}`);
   process.exit(1);
@@ -32,17 +43,25 @@ process.emitWarning = (warning, typeOrOptions, ...args) => {
   emitWarning(warning, typeOrOptions, ...args);
 };
 
-const nodeVersion = process.versions.node;
-if (!isAtLeastMinimum(nodeVersion)) {
+const testMode = process.env.PILOTDECK_RUNTIME_CHECK_TEST_MODE === "1";
+const nodeVersion =
+  testMode && process.env.PILOTDECK_TEST_NODE_VERSION
+    ? process.env.PILOTDECK_TEST_NODE_VERSION
+    : process.versions.node;
+const skipSqliteCheck = testMode && process.env.PILOTDECK_TEST_SKIP_SQLITE === "1";
+
+if (!isAtLeastMinimum(nodeVersion) || !isSupportedMajor(nodeVersion)) {
   fail(
-    `Node.js >=${minimumNodeVersionLabel} is required because PilotDeck uses node:sqlite. Current: v${nodeVersion}.`,
+    `Node.js ${nodeVersionRequirementLabel} is required because PilotDeck uses node:sqlite and native packages are built for Node.js ${supportedNodeMajor}. Current: ${formatNodeVersion(nodeVersion)}. Switch to Node.js ${supportedNodeMajor} and reinstall dependencies.`,
   );
 }
 
-try {
-  await import("node:sqlite");
-} catch {
-  fail(
-    `Current Node.js (v${nodeVersion}) does not provide node:sqlite. Switch to Node.js ${minimumNodeVersionLabel}+ and reinstall dependencies.`,
-  );
+if (!skipSqliteCheck) {
+  try {
+    await import("node:sqlite");
+  } catch {
+    fail(
+      `Current Node.js (${formatNodeVersion(nodeVersion)}) does not provide node:sqlite. Switch to Node.js ${minimumNodeVersionLabel}+ and reinstall dependencies.`,
+    );
+  }
 }

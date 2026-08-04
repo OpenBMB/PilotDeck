@@ -1,15 +1,28 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../../../utils/api';
 import CodeEditorBinaryFile from './CodeEditorBinaryFile';
 
 const readOfficePreviewStatusMock = vi.hoisted(() => vi.fn(async () => ({
   service: 'builtin',
+  configuredBinaryPath: '',
   libreOffice: {
     available: false,
   },
 })));
+const webSocketMock = vi.hoisted(() => ({
+  subscribers: new Set<(message: unknown) => void>(),
+}));
+
+vi.mock('../../../../contexts/WebSocketContext', () => ({
+  useWebSocket: () => ({
+    subscribe: (handler: (message: unknown) => void) => {
+      webSocketMock.subscribers.add(handler);
+      return () => webSocketMock.subscribers.delete(handler);
+    },
+  }),
+}));
 
 vi.mock('../../../../utils/officePreviewStatus', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../../../utils/officePreviewStatus')>();
@@ -76,7 +89,28 @@ const baseProps = {
   headerPrefix: <div>File tabs</div>,
 };
 
-afterEach(cleanup);
+function broadcastConfigReload(config: unknown) {
+  act(() => {
+    for (const subscriber of webSocketMock.subscribers) {
+      subscriber({ type: 'config:reloaded', config });
+    }
+  });
+}
+
+beforeEach(() => {
+  readOfficePreviewStatusMock.mockReset();
+  readOfficePreviewStatusMock.mockResolvedValue({
+    service: 'builtin',
+    configuredBinaryPath: '',
+    libreOffice: { available: false },
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  webSocketMock.subscribers.clear();
+  vi.restoreAllMocks();
+});
 
 describe('CodeEditorBinaryFile', () => {
   it('keeps file identity in the full preview header', () => {
@@ -111,6 +145,7 @@ describe('CodeEditorBinaryFile', () => {
     expect(preview.getAttribute('data-page-controls')).toBe('true');
     preview.click();
     expect(onToggleExpand).toHaveBeenCalledOnce();
+    expect(readOfficePreviewStatusMock).not.toHaveBeenCalled();
   });
 
   it('keeps the fullscreen action available for image previews outside the sidebar', () => {
@@ -193,6 +228,7 @@ describe('CodeEditorBinaryFile', () => {
   it('uses only the configured print renderer without showing a per-file view switch', async () => {
     readOfficePreviewStatusMock.mockResolvedValueOnce({
       service: 'libreoffice',
+      configuredBinaryPath: '',
       libreOffice: {
         available: true,
       },
@@ -233,9 +269,93 @@ describe('CodeEditorBinaryFile', () => {
     expect(screen.queryByTitle('pdfToolbar.zoomOut')).toBeNull();
   });
 
+  it('switches an open spreadsheet when the configured preview renderer changes', async () => {
+    readOfficePreviewStatusMock
+      .mockResolvedValueOnce({
+        service: 'builtin',
+        configuredBinaryPath: '',
+        libreOffice: { available: true },
+      })
+      .mockResolvedValueOnce({
+        service: 'libreoffice',
+        configuredBinaryPath: '/opt/soffice',
+        libreOffice: { available: true },
+      })
+      .mockResolvedValueOnce({
+        service: 'builtin',
+        configuredBinaryPath: '',
+        libreOffice: { available: true },
+      });
+    vi.spyOn(api, 'spreadsheetInteractivePreview').mockImplementation(async () => new Response(
+      JSON.stringify({
+        version: 1,
+        revision: 'interactive-revision',
+        activeSheetIndex: 0,
+        sheets: [{ index: 0, name: 'Sheet1' }],
+        warnings: [],
+        workbook: {
+          id: 'workbook-test',
+          name: 'report.xlsx',
+          appVersion: '0.25.1',
+          locale: 'zhCN',
+          styles: {},
+          sheetOrder: ['sheet-0'],
+          sheets: { 'sheet-0': { id: 'sheet-0', name: 'Sheet1' } },
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.spyOn(api, 'spreadsheetPreviewManifest').mockImplementation(async () => new Response(
+      JSON.stringify({
+        version: 1,
+        revision: 'print-revision',
+        activeSheetIndex: 0,
+        sheets: [{ index: 0, name: 'Sheet1' }],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.spyOn(api, 'preflightSpreadsheetSheetPreview').mockImplementation(async () => (
+      new Response(new Uint8Array([37, 80, 68, 70]), {
+        status: 206,
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+    ));
+
+    render(
+      <CodeEditorBinaryFile
+        {...baseProps}
+        file={{
+          name: 'report.xlsx',
+          path: '/workspace/hundouluo/report.xlsx',
+          diffInfo: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Active worksheet 0')).not.toBeNull();
+    expect(readOfficePreviewStatusMock).toHaveBeenCalledTimes(1);
+
+    broadcastConfigReload({ model: { providers: {} } });
+    await Promise.resolve();
+    expect(readOfficePreviewStatusMock).toHaveBeenCalledTimes(1);
+
+    broadcastConfigReload({
+      webui: { officePreview: { service: 'libreoffice', binaryPath: '/opt/soffice' } },
+    });
+    expect(await screen.findByRole('button', { name: 'PDF preview' })).not.toBeNull();
+    expect(readOfficePreviewStatusMock).toHaveBeenCalledTimes(2);
+    expect(readOfficePreviewStatusMock).toHaveBeenLastCalledWith({ refresh: true });
+
+    broadcastConfigReload({
+      webui: { officePreview: { service: 'builtin', binaryPath: '' } },
+    });
+    expect(await screen.findByText('Active worksheet 0')).not.toBeNull();
+    expect(readOfficePreviewStatusMock).toHaveBeenCalledTimes(3);
+  });
+
   it('uses the bundled DOCX renderer in built-in mode', async () => {
     const readFileBlob = vi.spyOn(api, 'readFileBlob').mockResolvedValue(
-      new Response(new Blob(['docx-data']), { status: 200 }),
+      new Response(new TextEncoder().encode('docx-data'), { status: 200 }),
     );
 
     render(
@@ -275,6 +395,57 @@ describe('CodeEditorBinaryFile', () => {
     await waitFor(() => {
       expect(readFileBlob).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('switches an open DOCX between built-in and LibreOffice preview', async () => {
+    readOfficePreviewStatusMock
+      .mockResolvedValueOnce({
+        service: 'builtin',
+        configuredBinaryPath: '',
+        libreOffice: { available: true },
+      })
+      .mockResolvedValueOnce({
+        service: 'libreoffice',
+        configuredBinaryPath: '/opt/soffice',
+        libreOffice: { available: true },
+      })
+      .mockResolvedValueOnce({
+        service: 'builtin',
+        configuredBinaryPath: '',
+        libreOffice: { available: true },
+      });
+    vi.spyOn(api, 'readFileBlob').mockImplementation(async () => (
+      new Response(new TextEncoder().encode('docx-data'), { status: 200 })
+    ));
+    vi.spyOn(api, 'preflightOfficePdfPreview').mockImplementation(async () => (
+      new Response(new Uint8Array([37, 80, 68, 70]), {
+        status: 206,
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+    ));
+
+    render(
+      <CodeEditorBinaryFile
+        {...baseProps}
+        file={{
+          name: 'report.docx',
+          path: '/workspace/hundouluo/report.docx',
+          diffInfo: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Built-in DOCX preview')).not.toBeNull();
+
+    broadcastConfigReload({
+      webui: { officePreview: { service: 'libreoffice', binaryPath: '/opt/soffice' } },
+    });
+    expect(await screen.findByRole('button', { name: 'PDF preview' })).not.toBeNull();
+
+    broadcastConfigReload({
+      webui: { officePreview: { service: 'builtin', binaryPath: '' } },
+    });
+    expect(await screen.findByText('Built-in DOCX preview')).not.toBeNull();
   });
 
   it('guides legacy Office formats to LibreOffice while built-in preview is selected', async () => {

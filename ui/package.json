@@ -6,7 +6,7 @@
   "type": "module",
   "main": "server/index.js",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.13.0 <23"
   },
   "scripts": {
     "check:runtime": "node ../scripts/check-node-runtime.mjs",
@@ -40,6 +40,7 @@
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/language": "^6.12.3",
     "@codemirror/merge": "^6.11.1",
+    "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.43.0",

@@ -30,7 +30,18 @@ export type AgentEvent =
   | { type: "stop_requested"; sessionId: string; turnId: string }
   | { type: "stop_failure"; sessionId: string; turnId: string; error: string }
   | { type: "compact_started"; sessionId: string; turnId: string; trigger: string; preTokens: number }
-  | { type: "compact_completed"; sessionId: string; turnId: string; status: string; preTokens: number; postTokens?: number }
+  | {
+      type: "compact_completed";
+      sessionId: string;
+      turnId: string;
+      status: string;
+      preTokens: number;
+      postTokens?: number;
+      messagesSummarized?: number;
+      cacheReset?: boolean;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+    }
   | { type: "context_budget"; sessionId: string; turnId: string; snapshot: TokenBudgetSnapshot }
   | { type: "warning"; sessionId: string; turnId: string; code: string; message: string; metadata?: Record<string, unknown> }
   | { type: "agent_status"; sessionId: string; turnId: string; event: string; detail?: Record<string, unknown> }

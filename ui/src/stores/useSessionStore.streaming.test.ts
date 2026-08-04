@@ -3,12 +3,16 @@ import type { SessionProvider } from '../types/app';
 import {
   getActiveTurnReplayMessagesToApply,
   getDuplicateAssistantStreamTextState,
+  isSessionForActiveView,
 } from '../components/chat/hooks/useChatRealtimeHandlers';
 import {
   computeMerged,
   createRafNotifyScheduler,
   getFinalizedSubagentThinkingId,
+  getUnpersistedRealtimeTurnMessages,
+  isRealtimeMessageRepresentedOnServer,
   patchMergedStreamingMessage,
+  shouldKeepRealtimeAfterServerRefresh,
   upsertRealtimeMessages,
   type NormalizedMessage,
   type SessionSlot,
@@ -33,6 +37,9 @@ function makeSlot(overrides: Partial<SessionSlot> = {}): SessionSlot {
     hasMore: false,
     offset: 0,
     tokenUsage: null,
+    _serverRequestGeneration: 0,
+    _serverAppliedGeneration: 0,
+    _serverLoadingGeneration: null,
     ...overrides,
   };
 }
@@ -65,6 +72,20 @@ function streamingMessage(sessionId: string, content: string): NormalizedMessage
     content,
   };
 }
+
+describe('isSessionForActiveView', () => {
+  it('does not accept the previously loaded session while a new session is selected', () => {
+    // On a session switch `currentSessionId` can still be A for one render,
+    // while the UI is already showing B. A status from A must not update B's
+    // live compaction progress.
+    expect(isSessionForActiveView('web:session-a', 'web:session-b')).toBe(false);
+    expect(isSessionForActiveView('web:session-b', 'web:session-b')).toBe(true);
+  });
+
+  it('accepts a pending new-session view when no saved session is selected', () => {
+    expect(isSessionForActiveView('web:new-session', 'web:new-session')).toBe(true);
+  });
+});
 
 describe('patchMergedStreamingMessage', () => {
   it('updates merged content without recomputing from store inputs', () => {
@@ -157,6 +178,142 @@ describe('computeMerged', () => {
       'tail-before-turn',
       'persisted-earlier-answer',
       'text-local-second-final',
+    ]);
+  });
+
+  it('keeps identical assistant text from different persisted turns', () => {
+    const server = [
+      textMessage('server-turn-1', 'Same answer', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-1',
+      }),
+    ];
+    const realtime = [
+      textMessage('realtime-turn-2', 'Same answer', '2026-05-28T00:00:02.000Z', {
+        runId: 'run-2',
+        isFinal: true,
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'server-turn-1',
+      'realtime-turn-2',
+    ]);
+  });
+});
+
+describe('turn-scoped server reconciliation', () => {
+  const artifact = {
+    id: 'artifact-1',
+    name: 'report.xlsx',
+    path: 'report.xlsx',
+    operation: 'created' as const,
+    source: 'workspace_diff' as const,
+    status: 'complete' as const,
+    size: 42,
+    sha256: 'a'.repeat(64),
+    createdAt: '2026-05-28T00:00:02.000Z',
+  };
+
+  it('keeps current-turn final text and artifacts when the first refresh is stale', () => {
+    const realtime = [
+      textMessage('local-final', 'Finished.', '2026-05-28T00:00:01.000Z', {
+        runId: 'run-current',
+        isFinal: true,
+      }),
+      {
+        id: 'local-artifacts',
+        sessionId: 'web:s_test',
+        timestamp: '2026-05-28T00:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'file_artifacts' as const,
+        runId: 'run-current',
+        artifacts: [artifact],
+      },
+    ];
+    const staleServer = [
+      textMessage('previous-answer', 'Previous.', '2026-05-27T23:59:00.000Z', {
+        runId: 'run-previous',
+      }),
+    ];
+
+    expect(getUnpersistedRealtimeTurnMessages(realtime, staleServer, 'run-current')).toHaveLength(2);
+    expect(computeMerged(staleServer, realtime).map((message) => message.id)).toEqual([
+      'previous-answer',
+      'local-final',
+      'local-artifacts',
+    ]);
+  });
+
+  it('recognizes persisted text and artifact frames by turn identity', () => {
+    const localText = textMessage('local-final', 'Finished.', '2026-05-28T00:00:01.000Z', {
+      runId: 'run-current',
+      isFinal: true,
+    });
+    const localArtifacts: NormalizedMessage = {
+      id: 'local-artifacts',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'file_artifacts',
+      runId: 'run-current',
+      artifacts: [artifact],
+    };
+    const server = [
+      textMessage('persisted-final', 'Finished.', '2026-05-28T00:00:03.000Z', {
+        turnId: 'run-current',
+        runId: 'run-current',
+      }),
+      {
+        ...localArtifacts,
+        id: 'persisted-artifacts',
+        turnId: 'run-current',
+      },
+    ];
+
+    expect(isRealtimeMessageRepresentedOnServer(localText, server)).toBe(true);
+    expect(isRealtimeMessageRepresentedOnServer(localArtifacts, server)).toBe(true);
+    expect(getUnpersistedRealtimeTurnMessages(
+      [localText, localArtifacts],
+      server,
+      'run-current',
+    )).toEqual([]);
+  });
+
+  it('keeps a live compact boundary until history persists it, then dedupes it', () => {
+    const liveBoundary: NormalizedMessage = {
+      id: 'live-compact',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'compact_boundary',
+      runId: 'run-current',
+      trigger: 'auto',
+      preTokens: 120,
+      postTokens: 40,
+      messagesSummarized: 2,
+      compactStage: 'summary',
+    };
+    const staleServer = [
+      textMessage('previous-answer', 'Previous.', '2026-05-28T00:00:00.000Z', {
+        runId: 'run-previous',
+      }),
+    ];
+    const persistedBoundary: NormalizedMessage = {
+      ...liveBoundary,
+      id: 'persisted-compact',
+      turnId: 'run-current',
+    };
+
+    expect(shouldKeepRealtimeAfterServerRefresh(liveBoundary, staleServer)).toBe(true);
+    expect(computeMerged(staleServer, [liveBoundary]).map((message) => message.id)).toEqual([
+      'previous-answer',
+      'live-compact',
+    ]);
+
+    expect(isRealtimeMessageRepresentedOnServer(liveBoundary, [persistedBoundary])).toBe(true);
+    expect(shouldKeepRealtimeAfterServerRefresh(liveBoundary, [persistedBoundary])).toBe(false);
+    expect(computeMerged([persistedBoundary], [liveBoundary]).map((message) => message.id)).toEqual([
+      'persisted-compact',
     ]);
   });
 });

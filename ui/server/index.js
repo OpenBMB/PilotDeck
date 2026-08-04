@@ -100,6 +100,7 @@ import {
     OFFICE_PREVIEW_SERVICE_BUILTIN,
     OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
     convertOfficeDocumentToPdf,
+    getConfiguredOfficePreviewSettings,
     getConfiguredOfficePreviewService,
     getLibreOfficeCandidateStatuses,
     getLibreOfficeStatus,
@@ -184,7 +185,13 @@ let projectsWatcherDebounceTimer = null;
 const connectedClients = new Set();
 const sessionWatchRegistry = createSessionWatchRegistry();
 const interactiveRequestOwners = new Map();
-registerAlwaysOnNotificationForwarding(connectedClients);
+registerAlwaysOnNotificationForwarding(connectedClients, (sessionId, frame) => {
+    // Always-On gateway notifications do not carry the originating UI socket.
+    // Delivering them to every tab caused unrelated sessions' live status
+    // (notably compaction progress) to race in the frontend. A tab explicitly
+    // watches its displayed session, so that registry is the routing authority.
+    broadcastToSessionWatchers(sessionId, frame, undefined);
+});
 let isGetProjectsRunning = false; // Flag to prevent reentrant calls
 
 function normalizeSessionId(value) {
@@ -241,7 +248,9 @@ function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) 
     watchers.forEach((client) => {
         if (client === excludeWs) return;
         if (client.readyState !== WebSocket.OPEN) return;
-        if ((client.__pilotdeckUserId ?? null) !== userId) return;
+        // `undefined` denotes a gateway-originated event with no submitting
+        // user. Its recipient set is already constrained by the session watch.
+        if (userId !== undefined && (client.__pilotdeckUserId ?? null) !== userId) return;
         client.send(payload);
     });
 }
@@ -1484,13 +1493,14 @@ app.get('/api/projects/:projectName/files/content', authenticateToken, async (re
 app.get('/api/office-preview/status', authenticateToken, officePreviewStatusRateLimiter, async (req, res) => {
     try {
         const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-        const [libreOffice, candidates, service] = await Promise.all([
+        const configuredPreview = getConfiguredOfficePreviewSettings();
+        const [libreOffice, candidates] = await Promise.all([
             getLibreOfficeStatus({ forceRefresh }),
             getLibreOfficeCandidateStatuses({ forceRefresh }),
-            Promise.resolve(getConfiguredOfficePreviewService()),
         ]);
         res.json({
-            service,
+            service: configuredPreview.service,
+            configuredBinaryPath: configuredPreview.binaryPath,
             libreOffice: {
                 ...libreOffice,
                 candidates,

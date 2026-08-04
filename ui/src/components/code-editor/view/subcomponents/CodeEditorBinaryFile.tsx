@@ -9,8 +9,11 @@ import {
 } from 'react';
 import type { IWorkbookData } from '@univerjs/core';
 import { useTranslation } from 'react-i18next';
+import { useWebSocket } from '../../../../contexts/WebSocketContext';
 import { api } from '../../../../utils/api';
 import {
+  officePreviewRendererSignature,
+  officePreviewRendererSignatureFromConfig,
   readOfficePreviewStatus,
   type OfficePreviewService,
   type OfficePreviewStatus,
@@ -602,20 +605,32 @@ function useOfficeAutoRefresh(
 }
 
 function useOfficePreviewService() {
+  const { subscribe } = useWebSocket();
   const [status, setStatus] = useState<OfficePreviewStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const rendererSignatureRef = useRef<string | null>(null);
+  const requestGenerationRef = useRef(0);
 
-  const reload = useCallback(() => {
+  const reload = useCallback((options: { refresh?: boolean } = {}) => {
+    const generation = ++requestGenerationRef.current;
     setLoading(true);
-    readOfficePreviewStatus()
+    readOfficePreviewStatus({ refresh: options.refresh })
       .then((nextStatus) => {
+        if (generation !== requestGenerationRef.current) return;
+        rendererSignatureRef.current = officePreviewRendererSignature(
+          nextStatus.service,
+          nextStatus.configuredBinaryPath,
+        );
         setStatus(nextStatus);
       })
       .catch(() => {
+        if (generation !== requestGenerationRef.current) return;
         setStatus(null);
       })
       .finally(() => {
-        setLoading(false);
+        if (generation === requestGenerationRef.current) {
+          setLoading(false);
+        }
       });
   }, []);
 
@@ -623,7 +638,22 @@ function useOfficePreviewService() {
     reload();
   }, [reload]);
 
-  return { status, loading, reload };
+  useEffect(() => subscribe((message: unknown) => {
+    if (!message || typeof message !== 'object') return;
+    const payload = message as { type?: unknown; config?: unknown };
+    if (payload.type !== 'config:reloaded') return;
+
+    const nextSignature = officePreviewRendererSignatureFromConfig(payload.config);
+    if (!nextSignature || nextSignature === rendererSignatureRef.current) return;
+    rendererSignatureRef.current = nextSignature;
+    reload({ refresh: true });
+  }), [reload, subscribe]);
+
+  useEffect(() => () => {
+    requestGenerationRef.current += 1;
+  }, []);
+
+  return { status, loading };
 }
 
 function PreviewSpinner({ label }: { label?: string }) {

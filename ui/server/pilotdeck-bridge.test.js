@@ -108,6 +108,39 @@ describe('gatewayEventToFrames agent status errors', () => {
         });
     });
 
+    it('carries post-compact token budget on compact boundary frames', () => {
+        const frames = gatewayEventToFrames({
+            type: 'agent_status',
+            event: 'compact_completed',
+            detail: {
+                preTokens: 76000,
+                postTokens: 12000,
+                messagesSummarized: 8,
+                tokenBudget: {
+                    used: 12000,
+                    displayUsed: 12000,
+                    budgetUsed: 12000,
+                    total: 100000,
+                    effectiveTotal: 90000,
+                    state: 'ok',
+                    source: 'compact',
+                },
+            },
+        }, 'web:s_test', 'pilotdeck');
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({
+            kind: 'compact_boundary',
+            postTokens: 12000,
+            tokenBudget: {
+                used: 12000,
+                total: 100000,
+                state: 'ok',
+                source: 'compact',
+            },
+        });
+    });
+
     it('renders gateway unavailable preflight status as an error frame', () => {
         const frames = gatewayEventToFrames({
             type: 'agent_status',

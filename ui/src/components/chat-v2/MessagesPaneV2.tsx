@@ -93,7 +93,11 @@ export type VirtualMessageWindow = {
   totalHeight: number;
 };
 
-const MESSAGE_VIRTUALIZATION_THRESHOLD = 60;
+// The default conversation window contains at most 100 messages. Rendering that
+// window directly is cheap and, more importantly, avoids handing the initial
+// session-scroll restoration to the virtualizer before both sides agree on the
+// new scroll position. Larger explicitly-loaded histories still virtualize.
+const MESSAGE_VIRTUALIZATION_THRESHOLD = 160;
 const MESSAGE_WINDOW_OVERSCAN = 12;
 const MESSAGE_GAP_PX = 16;
 
@@ -353,6 +357,7 @@ function MessagesPaneV2({
   }, []);
 
   const sessionId = selectedSession?.id ?? null;
+  const messageWindowScope = `${selectedProject?.fullPath || selectedProject?.name || 'no-project'}:${sessionId ?? 'new-session'}`;
   const projectPath = selectedProject?.fullPath || selectedProject?.path || undefined;
 
   const getMessageKey = useCallback((message: ChatMessage, index: number) => {
@@ -519,11 +524,14 @@ function MessagesPaneV2({
   const keyedMessageItems = useMemo<KeyedRenderableMessageItem[]>(
     () => renderableMessageItems.map((item, index) => ({
       ...item,
-      itemKey: getMessageKey(item.message, index),
+      // Message ids are only guaranteed to be unique inside one conversation.
+      // Namespacing prevents a height measured in the previous session from
+      // being reused by a same-id row in the next session.
+      itemKey: `${messageWindowScope}:${getMessageKey(item.message, index)}`,
       renderIndex: index,
       estimatedHeight: estimateMessageItemHeight(item),
     })),
-    [getMessageKey, renderableMessageItems],
+    [getMessageKey, messageWindowScope, renderableMessageItems],
   );
   const measuredItemHeights = useMemo(() => {
     void heightVersion;
@@ -671,6 +679,23 @@ function MessagesPaneV2({
     }
   }, []);
 
+  useLayoutEffect(() => {
+    // MessagesPane stays mounted while the selected conversation changes. Its
+    // virtual height/viewport caches must not survive that boundary: the DOM may
+    // clamp scrollTop while no scroll event is emitted, leaving React to render
+    // a window from the previous conversation behind a large top spacer.
+    messageKeyMapRef.current = new WeakMap();
+    generatedMessageKeyCounterRef.current = 0;
+    measuredHeightsRef.current.clear();
+    setHeightVersion((version) => version + 1);
+
+    const container = scrollContainerRef.current;
+    setScrollViewport({
+      scrollTop: container?.scrollTop ?? 0,
+      height: container?.clientHeight ?? 0,
+    });
+  }, [messageWindowScope, scrollContainerRef]);
+
   useEffect(() => {
     const validKeys = new Set(keyedMessageItems.map((item) => item.itemKey));
     let changed = false;
@@ -721,7 +746,22 @@ function MessagesPaneV2({
       container.removeEventListener('scroll', scheduleViewportUpdate);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef]);
+  }, [messageWindowScope, scrollContainerRef]);
+
+  useLayoutEffect(() => {
+    // Programmatic scroll restoration and browser scroll clamping do not
+    // consistently dispatch a scroll event. Re-read the actual element after
+    // the projected message list changes so the virtual window cannot drift.
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const nextScrollTop = container.scrollTop;
+    const nextHeight = container.clientHeight;
+    setScrollViewport((current) => (
+      current.scrollTop === nextScrollTop && current.height === nextHeight
+        ? current
+        : { scrollTop: nextScrollTop, height: nextHeight }
+    ));
+  }, [keyedMessageItems, messageWindowScope, scrollContainerRef]);
 
   const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => (
     detailMessages.map((message: ChatMessage, index: number) => (
@@ -971,7 +1011,7 @@ function MessagesPaneV2({
   const searchIsRenderedByShell = useRegisterChatHistorySearchControls(chatHistorySearch);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       {chatHistorySearch.isOpen && !searchIsRenderedByShell ? (
         <ChatHistorySearchBar
           query={chatHistorySearch.query}
@@ -986,6 +1026,7 @@ function MessagesPaneV2({
       ) : null}
       <div
         ref={scrollContainerRef}
+        data-chat-search-surface
         onWheel={onWheel}
         onTouchMove={onTouchMove}
         className="h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"

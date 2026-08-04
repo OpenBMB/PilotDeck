@@ -139,8 +139,10 @@ type ContextStatus = {
   total: number;
   displayTotal: number;
   percent: number;
+  percentLabel: string;
   usedLabel: string;
   totalLabel: string;
+  state: 'ok' | 'warning' | 'blocking' | 'unknown';
   tone: 'normal' | 'amber' | 'red' | 'unknown';
 };
 
@@ -226,7 +228,17 @@ function formatTokenCount(value: number): string {
   return value.toLocaleString();
 }
 
-function getContextStatus(tokenBudget?: Record<string, unknown> | null): ContextStatus {
+function formatContextPercentLabel(percent: number): string {
+  if (!Number.isFinite(percent) || percent <= 0) {
+    return '0%';
+  }
+  if (percent > 100) {
+    return '100%+';
+  }
+  return `${percent}%`;
+}
+
+export function getContextStatus(tokenBudget?: Record<string, unknown> | null): ContextStatus {
   const used = readNumber(tokenBudget?.displayUsed) ?? readNumber(tokenBudget?.used) ?? 0;
   const budgetUsed = readNumber(tokenBudget?.budgetUsed) ?? readNumber(tokenBudget?.used) ?? used;
   const total = readNumber(tokenBudget?.total) ?? 0;
@@ -239,13 +251,20 @@ function getContextStatus(tokenBudget?: Record<string, unknown> | null): Context
       total: 0,
       displayTotal: 0,
       percent: 0,
+      percentLabel: '0%',
       usedLabel: '--',
       totalLabel: '--',
+      state: 'unknown',
       tone: 'unknown',
     };
   }
 
-  const percent = Math.max(0, Math.min(999, Math.round((budgetUsed / displayTotal) * 100)));
+  // The visible count and percent must describe the same quantity. `budgetUsed`
+  // includes the conservative request padding used by the compaction policy;
+  // using it for the badge while showing `displayUsed` below produced confusing
+  // combinations such as “100%+” beside “11,928 / 12,000”. Policy state still
+  // uses the padded budget and can correctly remain blocking.
+  const percent = Math.max(0, Math.round((used / displayTotal) * 100));
   const snapshotState = typeof tokenBudget?.state === 'string' ? tokenBudget.state : null;
   const tone = snapshotState === 'blocking'
     ? 'red'
@@ -262,8 +281,10 @@ function getContextStatus(tokenBudget?: Record<string, unknown> | null): Context
     total,
     displayTotal,
     percent,
+    percentLabel: formatContextPercentLabel(percent),
     usedLabel: formatTokenCount(used),
     totalLabel: formatTokenCount(displayTotal),
+    state: snapshotState === 'blocking' || snapshotState === 'warning' ? snapshotState : 'ok',
     tone,
   };
 }
@@ -378,16 +399,39 @@ export default function ComposerV2({
     defaultValue: selectedPermissionOption.defaultLabel,
   }) as string;
   const contextStatusTitle = contextStatus.known
-    ? (t('input.contextStatus', {
-        percent: contextStatus.percent,
-        used: contextStatus.usedLabel,
-        total: contextStatus.totalLabel,
-        defaultValue:
-          `${contextStatus.percent}% used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact runs near the limit.`,
-      }) as string)
+    ? (contextStatus.state === 'blocking'
+        ? (t('input.contextStatusBlocking', {
+            percentLabel: contextStatus.percentLabel,
+            used: contextStatus.usedLabel,
+            total: contextStatus.totalLabel,
+            defaultValue:
+              `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact ran, but the context is still over the limit.`,
+          }) as string)
+        : (t('input.contextStatus', {
+            percentLabel: contextStatus.percentLabel,
+            used: contextStatus.usedLabel,
+            total: contextStatus.totalLabel,
+            defaultValue:
+              `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact runs near the limit.`,
+          }) as string))
     : (t('input.contextStatusUnknown', {
-        defaultValue: 'Context usage unknown. It will appear after the next model response.',
-      }) as string);
+      defaultValue: 'Context usage unknown. It will appear after the next model response.',
+    }) as string);
+  const contextWindowTitle = t('input.contextStatusTitle', { defaultValue: 'Context window' }) as string;
+  const contextStatusUsedText = t('input.contextStatusUsed', {
+    used: contextStatus.used.toLocaleString(),
+    total: contextStatus.displayTotal.toLocaleString(),
+    defaultValue: `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
+  }) as string;
+  const contextStatusAutoCompactText = t('input.contextStatusAutoCompact', {
+    defaultValue: 'Auto compact runs when the conversation approaches the configured limit.',
+  }) as string;
+  const contextStatusBlockingBodyText = t('input.contextStatusBlockingBody', {
+    defaultValue: 'Compaction ran, but the context is still over the limit.',
+  }) as string;
+  const contextStatusUnknownBodyText = t('input.contextStatusUnknownBody', {
+    defaultValue: 'No token budget has been reported yet. It will appear after the next model response.',
+  }) as string;
 
   return (
     <div
@@ -818,7 +862,7 @@ export default function ComposerV2({
                         aria-expanded={isContextPopoverOpen}
                       >
                         <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
-                        <span className="pd-composer-context-label">{contextStatus.known ? `${contextStatus.percent}%` : '--'}</span>
+                        <span className="pd-composer-context-label">{contextStatus.known ? contextStatus.percentLabel : '--'}</span>
                       </button>
                       {isContextPopoverOpen ? (
                         <div
@@ -827,7 +871,7 @@ export default function ComposerV2({
                         >
                           <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                              {t('input.contextStatusTitle', { defaultValue: 'Context window' })}
+                              {contextWindowTitle}
                             </span>
                             <span
                               className={cn(
@@ -841,32 +885,26 @@ export default function ComposerV2({
                                       : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
                               )}
                             >
-                              {contextStatus.known ? `${contextStatus.percent}%` : '--'}
+                              {contextStatus.known ? contextStatus.percentLabel : '--'}
                             </span>
                           </div>
                           {contextStatus.known ? (
                             <>
                               <div className="text-neutral-500 dark:text-neutral-400">
-                                {t('input.contextStatusUsed', {
-                                  used: contextStatus.used.toLocaleString(),
-                                  total: contextStatus.displayTotal.toLocaleString(),
-                                  defaultValue:
-                                    `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
-                                })}
+                                {contextStatusUsedText}
                               </div>
                               <div className="mt-2 text-neutral-500 dark:text-neutral-400">
-                                {t('input.contextStatusAutoCompact', {
-                                  defaultValue:
-                                    'Auto compact runs when the conversation approaches the configured limit.',
-                                })}
+                                {contextStatusAutoCompactText}
                               </div>
+                              {contextStatus.state === 'blocking' ? (
+                                <div className="mt-2 text-red-600 dark:text-red-300">
+                                  {contextStatusBlockingBodyText}
+                                </div>
+                              ) : null}
                             </>
                           ) : (
                             <div className="text-neutral-500 dark:text-neutral-400">
-                              {t('input.contextStatusUnknownBody', {
-                                defaultValue:
-                                  'No token budget has been reported yet. It will appear after the next model response.',
-                              })}
+                              {contextStatusUnknownBodyText}
                             </div>
                           )}
                         </div>

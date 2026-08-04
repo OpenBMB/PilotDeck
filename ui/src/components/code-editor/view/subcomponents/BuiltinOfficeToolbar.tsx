@@ -1,4 +1,3 @@
-import { useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,7 +7,6 @@ import {
   PanelLeft,
   RefreshCw,
   Search,
-  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -18,6 +16,7 @@ import type {
   ReferenceCapabilities,
 } from '../../../../types/contentReference';
 import ContentReferenceMenu from './ContentReferenceMenu';
+import FloatingFileSearchControls from './FloatingFileSearchControls';
 
 type BuiltinOfficeToolbarProps = {
   navigationVisible?: boolean;
@@ -33,6 +32,8 @@ type BuiltinOfficeToolbarProps = {
   onNextItem?: () => void;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
   searchMatchIndex: number;
   searchMatchCount: number;
   onPreviousMatch: () => void;
@@ -73,6 +74,8 @@ export default function BuiltinOfficeToolbar({
   onNextItem,
   searchQuery,
   onSearchQueryChange,
+  searchOpen,
+  onSearchOpenChange,
   searchMatchIndex,
   searchMatchCount,
   onPreviousMatch,
@@ -89,12 +92,11 @@ export default function BuiltinOfficeToolbar({
   onCancelReferenceMode,
 }: BuiltinOfficeToolbarProps) {
   const { t } = useTranslation('codeEditor');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const composingRef = useRef(false);
   const hasItemControls = Boolean(itemCount && itemCount > 0);
 
   return (
-    <div className="flex min-h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-950">
+    <div className="relative z-20 min-w-0 shrink-0">
+      <div className="flex min-h-12 w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-950">
       {navigationAvailable && onToggleNavigation ? (
         <>
           <button
@@ -169,61 +171,17 @@ export default function BuiltinOfficeToolbar({
         className={`${buttonClass} ${searchOpen ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : ''}`}
         title={t('builtinOfficePreview.search')}
         aria-label={t('builtinOfficePreview.search')}
-        onClick={() => setSearchOpen((value) => !value)}
+        onClick={() => {
+          if (searchOpen) {
+            onSearchOpenChange(false);
+            onSearchQueryChange('');
+          } else {
+            onSearchOpenChange(true);
+          }
+        }}
       >
         <Search className="h-4 w-4" strokeWidth={1.75} />
       </button>
-      {searchOpen ? (
-        <div className="flex h-8 min-w-56 max-w-sm flex-1 items-center rounded-md border border-neutral-200 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900">
-          <input
-            autoFocus
-            value={searchQuery}
-            onCompositionStart={() => {
-              composingRef.current = true;
-            }}
-            onCompositionEnd={(event) => {
-              composingRef.current = false;
-              onSearchQueryChange(event.currentTarget.value);
-            }}
-            onChange={(event) => {
-              if (!composingRef.current) onSearchQueryChange(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                if (event.shiftKey) onPreviousMatch();
-                else onNextMatch();
-              } else if (event.key === 'Escape') {
-                setSearchOpen(false);
-              }
-            }}
-            placeholder={t('builtinOfficePreview.searchPlaceholder')}
-            aria-label={t('builtinOfficePreview.search')}
-            className="min-w-0 flex-1 bg-transparent text-[12px] text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
-          />
-          <span className="ml-2 shrink-0 text-[11px] tabular-nums text-neutral-500">
-            {searchQuery
-              ? searchMatchCount > 0
-                ? `${searchMatchIndex + 1} / ${searchMatchCount}`
-                : t('builtinOfficePreview.noMatches')
-              : ''}
-          </span>
-          <button
-            type="button"
-            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            title={t('builtinOfficePreview.closeSearch')}
-            aria-label={t('builtinOfficePreview.closeSearch')}
-            onClick={() => {
-              setSearchOpen(false);
-              onSearchQueryChange('');
-            }}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : null}
-
       <span className="flex-1" />
       {referenceCapabilities && onSelectReferenceMode ? (
         <ContentReferenceMenu
@@ -269,6 +227,27 @@ export default function BuiltinOfficeToolbar({
         >
           <Download className="h-4 w-4" strokeWidth={1.75} />
         </a>
+      ) : null}
+      </div>
+      {searchOpen ? (
+        <FloatingFileSearchControls
+          query={searchQuery}
+          onQueryChange={onSearchQueryChange}
+          matchIndex={searchMatchIndex}
+          matchCount={searchMatchCount}
+          onPrevious={onPreviousMatch}
+          onNext={onNextMatch}
+          onClose={() => {
+            onSearchOpenChange(false);
+            onSearchQueryChange('');
+          }}
+          searchLabel={t('builtinOfficePreview.search')}
+          placeholder={t('builtinOfficePreview.searchPlaceholder')}
+          previousLabel={t('pdfToolbar.previousResult')}
+          nextLabel={t('pdfToolbar.nextResult')}
+          closeLabel={t('builtinOfficePreview.closeSearch')}
+          noMatchesLabel={t('builtinOfficePreview.noMatches')}
+        />
       ) : null}
     </div>
   );

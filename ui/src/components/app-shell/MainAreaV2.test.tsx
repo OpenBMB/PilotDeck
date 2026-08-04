@@ -44,6 +44,7 @@ vi.mock('../main-content/view/MainContent', async () => {
         data-search-query={query}
         data-search-index={activeMatchIndex}
       >
+        <button type="button" onClick={openSearch}>Open registered chat search</button>
       </div>
     );
   }
@@ -181,6 +182,15 @@ describe('MainAreaV2 dashboard switcher', () => {
     expect(
       (screen.getByRole('button', { name: 'Search current conversation' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it('does not leave Files when an embedded chat search opens', () => {
+    render(<Harness initialTab="files" withSession />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open registered chat search' }));
+
+    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
+    expect(screen.getByTestId('main-content').getAttribute('data-search-open')).toBe('true');
   });
 
   it('preserves Chinese IME composition through the header search controller', async () => {

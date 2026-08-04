@@ -59,11 +59,15 @@ export type AgentContextRuntime = {
    * context window after a routing decision.
    */
   tryAutoCompact?(input: {
+    sessionId?: string;
+    turnId?: string;
     messages: CanonicalMessage[];
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
     reservedOutputTokens?: number;
     lastUsage?: CanonicalUsage;
+    /** On reactive overflow, allow the deterministic checkpoint fallback. */
+    allowFallbackOnFailure?: boolean;
     budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult>;
 };

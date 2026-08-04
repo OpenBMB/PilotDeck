@@ -82,6 +82,8 @@ describe('PdfDocumentPreview search', () => {
     await waitFor(() => expect((openSearchButton as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(openSearchButton);
 
+    expect(screen.getByRole('search', { name: 'pdfToolbar.search' })
+      .closest('[data-file-search-overlay]')).not.toBeNull();
     const input = screen.getByPlaceholderText('pdfToolbar.searchPlaceholder');
     fireEvent.change(input, { target: { value: 'old query' } });
     fireEvent.keyDown(input, { key: 'Enter' });

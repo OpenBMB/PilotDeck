@@ -53,6 +53,8 @@ export interface NormalizedMessage {
   // kind-specific fields (flat for simplicity)
   role?: 'user' | 'assistant';
   content?: string;
+  /** Provider-native reasoning text when a thinking frame has no display content. */
+  reasoningContent?: string;
   userHint?: string;
   contentI18n?: { key: string; params?: Record<string, unknown> };
   userHintI18n?: { key: string; params?: Record<string, unknown> };
@@ -128,11 +130,15 @@ export interface NormalizedMessage {
   taskResult?: string;
   trigger?: string;
   preTokens?: number;
+  postTokens?: number;
+  messagesSummarized?: number;
   compactLevel?: number;
   compactStage?: string;
   compactStageLabel?: string;
   compactMetadata?: unknown;
   runId?: string;
+  /** Stable transcript turn identity; history maps this to runId as well. */
+  turnId?: string;
   activityId?: string;
   phase?: string;
   state?: string;
@@ -190,6 +196,12 @@ export interface SessionSlot {
   hasMore: boolean;
   offset: number;
   tokenUsage: unknown;
+  /** Monotonic id assigned when a server-history request starts. */
+  _serverRequestGeneration: number;
+  /** Latest server-history response that was successfully applied. */
+  _serverAppliedGeneration: number;
+  /** Explicit full-history load currently responsible for `status=loading`. */
+  _serverLoadingGeneration: number | null;
 }
 
 const EMPTY: NormalizedMessage[] = [];
@@ -211,6 +223,9 @@ function createEmptySlot(): SessionSlot {
     hasMore: false,
     offset: 0,
     tokenUsage: null,
+    _serverRequestGeneration: 0,
+    _serverAppliedGeneration: 0,
+    _serverLoadingGeneration: null,
   };
 }
 
@@ -222,6 +237,22 @@ function parseTimestampMs(value?: string): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getMessageTurnId(message: NormalizedMessage): string | null {
+  const value = message.turnId || message.runId;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function getSameTurnServerCandidates(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): NormalizedMessage[] {
+  const realtimeTurnId = getMessageTurnId(realtimeMessage);
+  if (!realtimeTurnId) {
+    return serverMessages.filter((message) => !getMessageTurnId(message));
+  }
+  return serverMessages.filter((message) => getMessageTurnId(message) === realtimeTurnId);
 }
 
 function isConfirmedUserMessageDuplicate(
@@ -368,6 +399,115 @@ function hasSameTurnServerFinalMessage(
   });
 }
 
+function areArtifactSetsEquivalent(
+  realtimeMessage: NormalizedMessage,
+  candidates: NormalizedMessage[],
+): boolean {
+  const realtimeArtifacts = realtimeMessage.artifacts ?? [];
+  if (realtimeArtifacts.length === 0) return false;
+  const serverArtifacts = candidates.flatMap((message) => message.artifacts ?? []);
+  return realtimeArtifacts.every((artifact) => serverArtifacts.some((candidate) => (
+    candidate.path === artifact.path
+    && candidate.operation === artifact.operation
+    && (!artifact.sha256 || !candidate.sha256 || candidate.sha256 === artifact.sha256)
+  )));
+}
+
+function hasEquivalentCompactBoundary(
+  realtimeMessage: NormalizedMessage,
+  candidates: NormalizedMessage[],
+): boolean {
+  return candidates.some((candidate) => (
+    candidate.kind === 'compact_boundary'
+    && candidate.trigger === realtimeMessage.trigger
+    && candidate.preTokens === realtimeMessage.preTokens
+    && candidate.postTokens === realtimeMessage.postTokens
+    && candidate.messagesSummarized === realtimeMessage.messagesSummarized
+  ));
+}
+
+/**
+ * Whether a live row is already represented by the persisted projection.
+ * Identity is scoped to a turn whenever available; this avoids both duplicate
+ * live/history rows and false cross-turn content deduplication.
+ */
+export function isRealtimeMessageRepresentedOnServer(
+  realtimeMessage: NormalizedMessage,
+  serverMessages: NormalizedMessage[],
+): boolean {
+  if (serverMessages.some((message) => message.id === realtimeMessage.id)) return true;
+  if (isConfirmedUserMessageDuplicate(realtimeMessage, serverMessages)) return true;
+  if (isLocalInterruptDuplicate(realtimeMessage, serverMessages)) return true;
+
+  const candidates = getSameTurnServerCandidates(realtimeMessage, serverMessages);
+  switch (realtimeMessage.kind) {
+    case 'text':
+    case 'thinking': {
+      const content = normalizeRealtimeText(realtimeMessage.content);
+      if (!content) return false;
+      if (candidates.some((message) => (
+        message.kind === realtimeMessage.kind
+        && message.role === realtimeMessage.role
+        && normalizeRealtimeText(message.content) === content
+      ))) return true;
+      // Once the live row has a turn identity, never fall back to global text
+      // equality: two consecutive turns may legitimately produce the same text.
+      if (getMessageTurnId(realtimeMessage)) return false;
+      return hasSameTurnServerFinalMessage(realtimeMessage, serverMessages)
+        || hasEquivalentServerMessage(realtimeMessage, serverMessages);
+    }
+    case 'tool_use':
+      return Boolean(realtimeMessage.toolId && candidates.some((message) => (
+        message.kind === 'tool_use' && message.toolId === realtimeMessage.toolId
+      )));
+    case 'tool_result':
+      return Boolean(realtimeMessage.toolId && candidates.some((message) => (
+        message.kind === 'tool_result' && message.toolId === realtimeMessage.toolId
+      )));
+    case 'file_artifacts':
+      return areArtifactSetsEquivalent(realtimeMessage, candidates);
+    case 'compact_boundary':
+      return hasEquivalentCompactBoundary(realtimeMessage, candidates);
+    case 'error':
+    case 'interrupted':
+    case 'interactive_prompt':
+    case 'task_notification':
+      return candidates.some((message) => (
+        message.kind === realtimeMessage.kind
+        && normalizeRealtimeText(message.content || message.summary) ===
+          normalizeRealtimeText(realtimeMessage.content || realtimeMessage.summary)
+      ));
+    default:
+      return false;
+  }
+}
+
+const PERSISTED_RENDERABLE_KINDS = new Set<MessageKind>([
+  'text',
+  'thinking',
+  'tool_use',
+  'tool_result',
+  'file_artifacts',
+  'compact_boundary',
+  'error',
+  'interrupted',
+  'interactive_prompt',
+  'task_notification',
+]);
+
+export function getUnpersistedRealtimeTurnMessages(
+  realtimeMessages: NormalizedMessage[],
+  serverMessages: NormalizedMessage[],
+  turnId?: string,
+): NormalizedMessage[] {
+  if (!turnId) return [];
+  return realtimeMessages.filter((message) => (
+    getMessageTurnId(message) === turnId
+    && PERSISTED_RENDERABLE_KINDS.has(message.kind)
+    && !isRealtimeMessageRepresentedOnServer(message, serverMessages)
+  ));
+}
+
 export function shouldKeepRealtimeAfterServerRefresh(
   realtimeMessage: NormalizedMessage,
   serverMessages: NormalizedMessage[],
@@ -375,18 +515,8 @@ export function shouldKeepRealtimeAfterServerRefresh(
   if (realtimeMessage.id.startsWith('__streaming_')) {
     return true;
   }
-
-  if (
-    realtimeMessage.isFinal === true
-    && (realtimeMessage.kind === 'text' || realtimeMessage.kind === 'thinking')
-  ) {
-    if (hasSameTurnServerFinalMessage(realtimeMessage, serverMessages)) {
-      return false;
-    }
-    return !hasEquivalentServerMessage(realtimeMessage, serverMessages);
-  }
-
-  return false;
+  if (!PERSISTED_RENDERABLE_KINDS.has(realtimeMessage.kind)) return false;
+  return !isRealtimeMessageRepresentedOnServer(realtimeMessage, serverMessages);
 }
 
 /**
@@ -399,20 +529,8 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
     return server;
   }
   if (server.length === 0) return realtime;
-  const serverIds = new Set(server.map(m => m.id));
-  const serverToolIds = new Set(
-    server.filter(m => m.kind === 'tool_use' && m.toolId).map(m => m.toolId!)
-  );
   const extra = realtime.filter((message) => {
-    if (serverIds.has(message.id)) return false;
-    if (isConfirmedUserMessageDuplicate(message, server)) return false;
-    if (isLocalInterruptDuplicate(message, server)) return false;
-    if (hasSameTurnServerFinalMessage(message, server)) return false;
-    // Dedup tool_use by toolId (invocation ID) — the message envelope ID
-    // may differ between WebSocket replay and server-persisted copy, but
-    // the underlying tool invocation is the same.
-    if (message.kind === 'tool_use' && message.toolId && serverToolIds.has(message.toolId)) return false;
-    return true;
+    return !isRealtimeMessageRepresentedOnServer(message, server);
   });
   if (extra.length === 0) return server;
 
@@ -699,6 +817,9 @@ export function useSessionStore() {
     } = {},
   ) => {
     const slot = getSlot(sessionId);
+    const requestGeneration = slot._serverRequestGeneration + 1;
+    slot._serverRequestGeneration = requestGeneration;
+    slot._serverLoadingGeneration = requestGeneration;
     slot.status = 'loading';
     notify(sessionId);
 
@@ -734,6 +855,8 @@ export function useSessionStore() {
       }
 
       const data = await response.json();
+      if (requestGeneration < slot._serverAppliedGeneration) return slot;
+      slot._serverAppliedGeneration = requestGeneration;
       const messages: NormalizedMessage[] = data.messages || [];
 
       slot.serverMessages = messages;
@@ -741,8 +864,16 @@ export function useSessionStore() {
       slot.hasMore = Boolean(data.hasMore);
       slot.offset = (opts.offset ?? 0) + messages.length;
       slot.fetchedAt = Date.now();
-      slot.status = 'idle';
-      slot.lastError = null;
+      if (slot._serverLoadingGeneration === requestGeneration) {
+        slot._serverLoadingGeneration = null;
+      }
+      if (
+        slot._serverLoadingGeneration === null
+        && (slot.status === 'loading' || slot.status === 'error')
+      ) {
+        slot.status = 'idle';
+        slot.lastError = null;
+      }
 
       // Prune realtime messages covered by server data.  Use the later of
       // fetchStartedAt and the latest server message timestamp as watermark
@@ -773,6 +904,8 @@ export function useSessionStore() {
       notify(sessionId);
       return slot;
     } catch (error) {
+      if (slot._serverLoadingGeneration !== requestGeneration) return slot;
+      slot._serverLoadingGeneration = null;
       console.error(`[SessionStore] fetch failed for ${sessionId}:`, error);
       slot.status = 'error';
       slot.lastError = error instanceof Error ? error.message : 'Unknown error';
@@ -856,7 +989,7 @@ export function useSessionStore() {
     // Skip expensive merged recomputation and React re-render for message
     // kinds that are invisible in the UI (they return null from conversion).
     // The next visible message will trigger the recompute anyway.
-    const INVISIBLE_KINDS = new Set(['status', 'session_created', 'permission_cancelled', 'compact_boundary']);
+    const INVISIBLE_KINDS = new Set(['status', 'session_created', 'permission_cancelled']);
     if (!INVISIBLE_KINDS.has(msg.kind)) {
       recomputeMergedIfNeeded(slot);
       notify(sessionId);
@@ -1098,6 +1231,8 @@ export function useSessionStore() {
     } = {},
   ) => {
     const slot = getSlot(sessionId);
+    const requestGeneration = slot._serverRequestGeneration + 1;
+    slot._serverRequestGeneration = requestGeneration;
     try {
       const params = new URLSearchParams();
       if (opts.provider) params.append('provider', opts.provider);
@@ -1123,8 +1258,20 @@ export function useSessionStore() {
         throw new Error(statusError.message);
       }
       const data = await response.json();
-
       const incomingMessages = data.messages || [];
+      if (requestGeneration < slot._serverAppliedGeneration) return;
+      // A just-opened session may still have its authoritative full-history
+      // request in flight. An empty background refresh is commonly the
+      // transcript-commit race described below, so it must not supersede that
+      // load merely because the refresh started later.
+      if (
+        incomingMessages.length === 0
+        && slot._serverLoadingGeneration !== null
+        && requestGeneration > slot._serverLoadingGeneration
+      ) {
+        return;
+      }
+      slot._serverAppliedGeneration = requestGeneration;
       // Don't overwrite existing server messages with empty response
       // (race condition: server hasn't committed yet after stop/complete).
       if (incomingMessages.length > 0 || slot.serverMessages.length === 0) {
@@ -1144,8 +1291,21 @@ export function useSessionStore() {
         );
       }
       recomputeMergedIfNeeded(slot);
+      const supersedesLoading = slot._serverLoadingGeneration !== null
+        && requestGeneration > slot._serverLoadingGeneration;
+      if (supersedesLoading) {
+        slot._serverLoadingGeneration = null;
+      }
+      if (
+        slot._serverLoadingGeneration === null
+        && (slot.status === 'loading' || slot.status === 'error')
+      ) {
+        slot.status = 'idle';
+        slot.lastError = null;
+      }
       notify(sessionId);
     } catch (error) {
+      if (requestGeneration < slot._serverAppliedGeneration) return;
       console.error(`[SessionStore] refresh failed for ${sessionId}:`, error);
     }
   }, [getSlot, notify]);

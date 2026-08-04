@@ -32,7 +32,7 @@ export class MessageProjector {
     let projected = input.messages;
     let droppedCount = 0;
 
-    if (input.maxMessages !== undefined && projected.length > input.maxMessages) {
+    if (input.maxMessages !== undefined && projected.length > input.maxMessages && !hasCompactionCheckpoint(projected)) {
       const result = toolPairSafeTruncate(projected, input.maxMessages);
       droppedCount = result.droppedCount;
       projected = result.messages;
@@ -48,6 +48,16 @@ export class MessageProjector {
 
     return { messages: projected, droppedCount, warnings };
   }
+}
+
+function hasCompactionCheckpoint(messages: CanonicalMessage[]): boolean {
+  if (messages.length < 2) return false;
+  const boundary = messages[0];
+  const summary = messages[1];
+  return boundary?.role === "user"
+    && boundary.content.some((block) => block.type === "text" && block.text.startsWith("<compact-boundary"))
+    && summary?.role === "assistant"
+    && summary.content.some((block) => block.type === "text" && block.text.startsWith("[CONTEXT COMPACTION - REFERENCE ONLY]"));
 }
 
 /**

@@ -6,7 +6,7 @@
 import type { NormalizedMessage } from '../../../stores/useSessionStore';
 import type { ChatMessage, SubagentChildTool } from '../types/types';
 import { decodeHtmlEntities, unescapeWithMathProtection, formatUsageLimitText } from '../utils/chatFormatting';
-import { parseUserAttachmentNote } from '../utils/attachmentNotes';
+import { mergeUserAttachments, parseUserAttachmentNote } from '../utils/attachmentNotes';
 
 // Per-message conversion cache keyed by NormalizedMessage reference.
 // When patchMergedStreamingMessage creates a new object for the streaming
@@ -79,6 +79,10 @@ function convertSingleMessage(
   subagentLinks?: Map<string, { subagentId: string; subagentType: string }>,
   options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
+  const turnIdentity = {
+    ...(msg.runId ? { runId: msg.runId } : {}),
+    ...(msg.turnId || msg.runId ? { turnId: msg.turnId || msg.runId } : {}),
+  };
   switch (msg.kind) {
     case 'text': {
       const parsedUserContent = msg.role === 'user'
@@ -88,10 +92,10 @@ function convertSingleMessage(
       const storedAttachments = Array.isArray(msg.attachments)
         ? msg.attachments.filter((attachment) => attachment && typeof attachment.name === 'string')
         : undefined;
-      const userAttachments = [
-        ...(storedAttachments || []),
-        ...parsedUserContent.attachments,
-      ];
+      const userAttachments = mergeUserAttachments(
+        storedAttachments || [],
+        parsedUserContent.attachments,
+      );
 
       if (msg.role === 'user') {
         const userImages = Array.isArray(msg.images)
@@ -106,6 +110,7 @@ function convertSingleMessage(
           type: 'user',
           content: unescapeWithMathProtection(decodeHtmlEntities(content)),
           timestamp: msg.timestamp,
+          ...turnIdentity,
           ...(msg.forkUnsupportedContent ? {
             forkUnsupportedContent: true,
             forkUnsupportedReason: msg.forkUnsupportedReason,
@@ -122,6 +127,7 @@ function convertSingleMessage(
           type: 'assistant',
           content: text,
           timestamp: msg.timestamp,
+          ...turnIdentity,
         };
       }
     }
@@ -135,6 +141,7 @@ function convertSingleMessage(
           content: '',
           artifacts: msg.artifacts,
           timestamp: msg.timestamp,
+          ...turnIdentity,
         };
       }
       return null;
@@ -210,18 +217,23 @@ function convertSingleMessage(
       };
     }
 
-    case 'thinking':
-      if (msg.content?.trim()) {
+    case 'thinking': {
+      const thinkingContent = msg.content?.trim()
+        ? msg.content
+        : msg.reasoningContent || '';
+      if (thinkingContent.trim()) {
         return {
           id: msg.id,
           type: 'assistant',
-          content: unescapeWithMathProtection(msg.content),
+          content: unescapeWithMathProtection(thinkingContent),
           timestamp: msg.timestamp,
+          ...turnIdentity,
           isThinking: true,
           isStreaming: msg.id.startsWith('__streaming_thinking_'),
         };
       }
       return null;
+    }
 
     case 'error':
       return {
@@ -271,9 +283,12 @@ function convertSingleMessage(
         type: 'system',
         content: 'Context compacted',
         timestamp: msg.timestamp,
+        ...turnIdentity,
         isCompactBoundary: true,
         compactTrigger: msg.trigger,
         preTokens: msg.preTokens,
+        postTokens: msg.postTokens,
+        messagesSummarized: msg.messagesSummarized,
         compactLevel: msg.compactLevel,
         compactStage: msg.compactStage,
         compactStageLabel: msg.compactStageLabel,
@@ -332,6 +347,7 @@ function convertSingleMessage(
           type: 'assistant',
           content: msg.content,
           timestamp: msg.timestamp,
+          ...turnIdentity,
           isStreaming: true,
         };
       }
@@ -401,45 +417,69 @@ function convertNormalizedMessages(
     if (result) converted.push(result);
   }
 
-  const grouped: ChatMessage[] = [];
-  for (const message of converted) {
-    if (!Array.isArray(message.artifacts) || message.artifacts.length === 0) {
-      grouped.push(message);
-      continue;
-    }
+  const isArtifactAnchor = (message: ChatMessage) => (
+    message.type === 'assistant'
+    && !message.isToolUse
+    && !message.isThinking
+    && !message.isAgentActivity
+    && !message.isAgentActivitySummary
+    && !message.isSubagentContainer
+    && !message.isTaskNotification
+    && typeof message.content === 'string'
+    && message.content.trim().length > 0
+  );
+  const turnKey = (message: ChatMessage) => message.turnId || message.runId || null;
 
-    let anchorIndex = -1;
-    for (let index = grouped.length - 1; index >= 0; index -= 1) {
-      const candidate = grouped[index];
-      if (candidate.type === 'user') break;
-      if (
-        candidate.type === 'assistant'
-        && !candidate.isToolUse
-        && !candidate.isThinking
-        && !candidate.isAgentActivity
-        && !candidate.isAgentActivitySummary
-        && !candidate.isSubagentContainer
-        && !candidate.isTaskNotification
-        && typeof candidate.content === 'string'
-        && candidate.content.trim().length > 0
-      ) {
-        anchorIndex = index;
-        break;
+  // Resolve artifact ownership in two passes. Realtime delivery can put the
+  // artifact frame before the final prose frame, while history puts it after;
+  // anchoring by adjacency therefore produces different UIs until refresh.
+  // The last assistant prose in the same turn is the deterministic turn footer.
+  const finalAssistantByTurn = new Map<string, number>();
+  converted.forEach((message, index) => {
+    const key = turnKey(message);
+    if (key && isArtifactAnchor(message)) {
+      finalAssistantByTurn.set(key, index);
+    }
+  });
+
+  const artifactsByAnchor = new Map<number, NonNullable<ChatMessage['artifacts']>>();
+  const anchoredArtifactIndexes = new Set<number>();
+  converted.forEach((message, messageIndex) => {
+    if (!Array.isArray(message.artifacts) || message.artifacts.length === 0) return;
+
+    const key = turnKey(message);
+    let anchorIndex = key ? (finalAssistantByTurn.get(key) ?? -1) : -1;
+
+    // Legacy transcripts may not have turn identity. Keep the old nearest-
+    // preceding behavior as a compatibility fallback, bounded by the user turn.
+    if (anchorIndex < 0 && !key) {
+      for (let index = messageIndex - 1; index >= 0; index -= 1) {
+        const candidate = converted[index];
+        if (candidate.type === 'user') break;
+        if (isArtifactAnchor(candidate)) {
+          anchorIndex = index;
+          break;
+        }
       }
     }
 
-    if (anchorIndex === -1) {
-      grouped.push(message);
-      continue;
-    }
-    const anchor = grouped[anchorIndex];
-    grouped[anchorIndex] = {
-      ...anchor,
-      artifacts: [...(anchor.artifacts ?? []), ...message.artifacts],
-    };
-  }
+    if (anchorIndex < 0 || anchorIndex === messageIndex) return;
+    anchoredArtifactIndexes.add(messageIndex);
+    artifactsByAnchor.set(anchorIndex, [
+      ...(artifactsByAnchor.get(anchorIndex) ?? []),
+      ...message.artifacts,
+    ]);
+  });
 
-  return grouped;
+  return converted.flatMap((message, index) => {
+    if (anchoredArtifactIndexes.has(index)) return [];
+    const attachedArtifacts = artifactsByAnchor.get(index);
+    if (!attachedArtifacts) return [message];
+    return [{
+      ...message,
+      artifacts: [...(message.artifacts ?? []), ...attachedArtifacts],
+    }];
+  });
 }
 
 /**

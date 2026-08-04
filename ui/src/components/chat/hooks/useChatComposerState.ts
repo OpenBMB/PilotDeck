@@ -15,6 +15,7 @@ import { isThinkingModeId, thinkingModeToConfig, type ThinkingModeId } from '../
 import { getEffectiveThinkingMode, type ThinkingModeAvailability } from '../constants/thinkingModeAvailability';
 import { grantPilotDeckToolPermission } from '../utils/chatPermissions';
 import { getDraftInputStorageKey, safeLocalStorage } from '../utils/chatStorage';
+import { buildAttachmentPathNote } from '../utils/attachmentNotes';
 import {
   createTemporarySessionId,
   getNotificationSessionSummary,
@@ -146,15 +147,6 @@ export function shouldCycleRunModeOnKeyDown(
   },
 ): boolean {
   return event.key === 'Tab' && event.shiftKey && !showFileDropdown && !showCommandMenu;
-}
-
-function buildAttachmentPathNote(files: UploadedAttachmentFile[]): string {
-  if (!files.length) {
-    return '';
-  }
-
-  const lines = files.map((file) => `- ${file.name}: ${file.path}`);
-  return `\n\n[Files attached by user and available for reading in the project:]\n${lines.join('\n')}`;
 }
 
 export type AttachmentAddResult = {

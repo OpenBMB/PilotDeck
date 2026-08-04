@@ -93,175 +93,185 @@ export class TurnRunner {
           allowedInputPaths: options.allowedReadFiles,
           now: this.now,
         }).catch(() => undefined);
-    let artifactsFinished = false;
-    const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
-      if (!artifactCollector || artifactsFinished) return [];
-      artifactsFinished = true;
-      const artifacts = await artifactCollector.finish(
-        result.type === "success" ? "complete" : "incomplete",
-      ).catch(() => []);
-      if (artifacts.length > 0) {
-        await Promise.resolve(
-          this.transcript.recordFileArtifacts?.(
-            options.sessionId,
-            options.turnId,
-            artifacts,
-          ),
-        ).catch(() => {});
-      }
-      return artifacts;
-    };
-    const accepted = this.inputProcessor.accept(options.input);
-    const allAcceptedMessages = [...accepted.messages, ...(options.syntheticMessages ?? [])];
-    const messages = [...options.messages, ...allAcceptedMessages];
-
     try {
-      await this.transcript.recordAcceptedInput(
-        options.sessionId,
-        options.turnId,
-        allAcceptedMessages,
-        acceptedInputMetadata(options),
-      );
-    } catch (error) {
-      const agentTranscriptError = agentError("agent_transcript_error", "Failed to record accepted input.", error);
-      const result = this.createErrorResult(options, agentTranscriptError);
-      const status = await this.recordTurnFailureStatus(options, agentTranscriptError);
-      yield this.toAgentStatusEvent(options, status);
-      yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: agentTranscriptError };
-      yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
-      return { result, messages: options.messages };
-    }
+      let artifactsFinished = false;
+      const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
+        if (!artifactCollector || artifactsFinished) return [];
+        artifactsFinished = true;
+        const artifacts = await artifactCollector.finish(
+          result.type === "success" ? "complete" : "incomplete",
+        ).catch(() => []);
+        if (artifacts.length > 0) {
+          await Promise.resolve(
+            this.transcript.recordFileArtifacts?.(
+              options.sessionId,
+              options.turnId,
+              artifacts,
+            ),
+          ).catch(() => {});
+        }
+        return artifacts;
+      };
+      const accepted = this.inputProcessor.accept(options.input);
+      const allAcceptedMessages = [...accepted.messages, ...(options.syntheticMessages ?? [])];
+      const messages = [...options.messages, ...allAcceptedMessages];
 
-    yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
-
-    const prompt = inputToPromptText(options.input);
-    const userPromptHooks = await this.lifecycle?.dispatch({
-      event: "UserPromptSubmit",
-      baseInput: {
-        sessionId: options.sessionId,
-        transcriptPath: this.runtimeContext.transcriptPath,
-        cwd: this.runtimeContext.cwd,
-      },
-      payload: { prompt },
-      matchQuery: "UserPromptSubmit",
-      signal: options.abortSignal,
-    });
-    yield { type: "user_prompt_submitted", sessionId: options.sessionId, turnId: options.turnId, prompt };
-    if (userPromptHooks?.effects.some((effect) => effect.type === "block")) {
-      const error = agentError("agent_unsupported_feature", "UserPromptSubmit hook blocked model execution.");
-      const result = this.createErrorResult(
-        options,
-        error,
-      );
-      await this.recordErrorResult(options, result);
-      const artifacts = await finishArtifacts(result);
-      if (artifacts.length > 0) {
-        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      try {
+        await this.transcript.recordAcceptedInput(
+          options.sessionId,
+          options.turnId,
+          allAcceptedMessages,
+          acceptedInputMetadata(options),
+        );
+      } catch (error) {
+        const agentTranscriptError = agentError("agent_transcript_error", "Failed to record accepted input.", error);
+        const result = this.createErrorResult(options, agentTranscriptError);
+        const status = await this.recordTurnFailureStatus(options, agentTranscriptError);
+        yield this.toAgentStatusEvent(options, status);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: agentTranscriptError };
+        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+        return { result, messages: options.messages };
       }
-      const status = await this.recordTurnFailureStatus(options, error);
-      yield this.toAgentStatusEvent(options, status);
-      yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
-      yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
-      return { result, messages };
-    }
-    messages.push(...(userPromptHooks?.messages ?? []));
 
-    const sessionTitle = this.maybeGenerateSessionTitle(options, accepted.messages);
+      yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
 
-    if (!accepted.shouldCallModel) {
-      const error = agentError("agent_unsupported_feature", "Input was accepted but model execution was not requested.");
-      const result = this.createErrorResult(
-        options,
-        error,
-      );
-      await this.recordErrorResult(options, result);
-      const artifacts = await finishArtifacts(result);
-      if (artifacts.length > 0) {
-        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
-      }
-      const status = await this.recordTurnFailureStatus(options, error);
-      yield this.toAgentStatusEvent(options, status);
-      await this.flushReadySessionTitle(options, sessionTitle);
-      yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
-      yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
-      return { result, messages };
-    }
-
-    try {
-      let hasRecordedVisibleFailureStatus = false;
-      const generator = this.loop.run({
-        sessionId: options.sessionId,
-        turnId: options.turnId,
-        messages,
-        maxTurns: options.maxTurns,
-        runMode: options.runMode,
-        permissionMode: options.permissionMode,
-        allowedReadFiles: options.allowedReadFiles,
-        basePermissionMode: options.basePermissionMode,
-        allowPlanModeTools: options.allowPlanModeTools,
-        canPrompt: options.canPrompt,
-        permissionRules: options.permissionRules,
-        metadata: options.metadata,
-        abortSignal: options.abortSignal,
-        onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
-        onAgentStatusMessage: async (status) => {
-          if (isVisibleFailureStatus(status)) {
-            hasRecordedVisibleFailureStatus = true;
-          }
-          await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, status);
+      const prompt = inputToPromptText(options.input);
+      const userPromptHooks = await this.lifecycle?.dispatch({
+        event: "UserPromptSubmit",
+        baseInput: {
+          sessionId: options.sessionId,
+          transcriptPath: this.runtimeContext.transcriptPath,
+          cwd: this.runtimeContext.cwd,
         },
+        payload: { prompt },
+        matchQuery: "UserPromptSubmit",
+        signal: options.abortSignal,
       });
-      let runResult: TurnRunnerResult | undefined;
-      let turnCompletedEvent: Extract<AgentEvent, { type: "turn_completed" }> | undefined;
-      while (true) {
-        const next = await generator.next();
-        if (next.done) {
-          runResult = next.value;
-          break;
+      yield { type: "user_prompt_submitted", sessionId: options.sessionId, turnId: options.turnId, prompt };
+      if (userPromptHooks?.effects.some((effect) => effect.type === "block")) {
+        const error = agentError("agent_unsupported_feature", "UserPromptSubmit hook blocked model execution.");
+        const result = this.createErrorResult(
+          options,
+          error,
+        );
+        await this.recordErrorResult(options, result);
+        const artifacts = await finishArtifacts(result);
+        if (artifacts.length > 0) {
+          yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
-        const event = next.value;
-        if (event.type === "tool_result") {
-          artifactCollector?.observeToolResult(event.result);
+        const status = await this.recordTurnFailureStatus(options, error);
+        yield this.toAgentStatusEvent(options, status);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
+        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+        return { result, messages };
+      }
+      messages.push(...(userPromptHooks?.messages ?? []));
+
+      const sessionTitle = this.maybeGenerateSessionTitle(options, accepted.messages);
+
+      if (!accepted.shouldCallModel) {
+        const error = agentError("agent_unsupported_feature", "Input was accepted but model execution was not requested.");
+        const result = this.createErrorResult(
+          options,
+          error,
+        );
+        await this.recordErrorResult(options, result);
+        const artifacts = await finishArtifacts(result);
+        if (artifacts.length > 0) {
+          yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
-        if (event.type === "file_artifacts") {
-          continue;
-        }
-        if (event.type === "turn_completed") {
-          turnCompletedEvent = event;
-          continue;
-        }
-        if (event.type === "turn_failed" && !hasRecordedVisibleFailureStatus) {
-          const status = await this.recordTurnFailureStatus(options, event.error);
-          hasRecordedVisibleFailureStatus = true;
-          yield this.toAgentStatusEvent(options, status);
-        }
-        yield event;
+        const status = await this.recordTurnFailureStatus(options, error);
+        yield this.toAgentStatusEvent(options, status);
+        await this.flushReadySessionTitle(options, sessionTitle);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
+        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+        return { result, messages };
       }
 
-      const artifacts = await finishArtifacts(runResult.result);
-      if (artifacts.length > 0) {
-        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+      try {
+        let hasRecordedVisibleFailureStatus = false;
+        const generator = this.loop.run({
+          sessionId: options.sessionId,
+          turnId: options.turnId,
+          messages,
+          maxTurns: options.maxTurns,
+          runMode: options.runMode,
+          permissionMode: options.permissionMode,
+          allowedReadFiles: options.allowedReadFiles,
+          basePermissionMode: options.basePermissionMode,
+          allowPlanModeTools: options.allowPlanModeTools,
+          canPrompt: options.canPrompt,
+          permissionRules: options.permissionRules,
+          metadata: options.metadata,
+          abortSignal: options.abortSignal,
+          onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
+          onAgentStatusMessage: async (status) => {
+            if (isVisibleFailureStatus(status)) {
+              hasRecordedVisibleFailureStatus = true;
+            }
+            await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, status);
+          },
+          onCompactPersisted: async ({ boundary, messages: compactMessages }) => {
+            await this.transcript.recordControlBoundary?.(options.sessionId, options.turnId, boundary);
+            for (const message of compactMessages) {
+              await this.transcript.recordDurableMessage(options.sessionId, options.turnId, message);
+            }
+          },
+        });
+        let runResult: TurnRunnerResult | undefined;
+        let turnCompletedEvent: Extract<AgentEvent, { type: "turn_completed" }> | undefined;
+        while (true) {
+          const next = await generator.next();
+          if (next.done) {
+            runResult = next.value;
+            break;
+          }
+          const event = next.value;
+          if (event.type === "tool_result") {
+            artifactCollector?.observeToolResult(event.result);
+          }
+          if (event.type === "file_artifacts") {
+            continue;
+          }
+          if (event.type === "turn_completed") {
+            turnCompletedEvent = event;
+            continue;
+          }
+          if (event.type === "turn_failed" && !hasRecordedVisibleFailureStatus) {
+            const status = await this.recordTurnFailureStatus(options, event.error);
+            hasRecordedVisibleFailureStatus = true;
+            yield this.toAgentStatusEvent(options, status);
+          }
+          yield event;
+        }
+
+        const artifacts = await finishArtifacts(runResult.result);
+        if (artifacts.length > 0) {
+          yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+        }
+        if (turnCompletedEvent) {
+          yield turnCompletedEvent;
+        }
+        await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
+        await this.flushReadySessionTitle(options, sessionTitle);
+        return runResult;
+      } catch (error) {
+        const normalized = normalizeAgentError(error);
+        const result = this.createErrorResult(options, normalized);
+        const artifacts = await finishArtifacts(result);
+        if (artifacts.length > 0) {
+          yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
+        }
+        await Promise.resolve(this.transcript.recordTurnResult(options.sessionId, options.turnId, result)).catch(() => {});
+        const status = await this.recordTurnFailureStatus(options, normalized);
+        yield this.toAgentStatusEvent(options, status);
+        await this.flushReadySessionTitle(options, sessionTitle);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
+        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+        return { result, messages };
       }
-      if (turnCompletedEvent) {
-        yield turnCompletedEvent;
-      }
-      await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
-      await this.flushReadySessionTitle(options, sessionTitle);
-      return runResult;
-    } catch (error) {
-      const normalized = normalizeAgentError(error);
-      const result = this.createErrorResult(options, normalized);
-      const artifacts = await finishArtifacts(result);
-      if (artifacts.length > 0) {
-        yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
-      }
-      await Promise.resolve(this.transcript.recordTurnResult(options.sessionId, options.turnId, result)).catch(() => {});
-      const status = await this.recordTurnFailureStatus(options, normalized);
-      yield this.toAgentStatusEvent(options, status);
-      await this.flushReadySessionTitle(options, sessionTitle);
-      yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
-      yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
-      return { result, messages };
+    } finally {
+      artifactCollector?.dispose();
     }
   }
 

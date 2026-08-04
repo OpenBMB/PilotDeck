@@ -46,6 +46,7 @@ import { NullContextRuntime } from "../../context/NullContextRuntime.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type { ContextRecoveryDecision, ContextSupplementalToolResultMessage, TokenBudgetSnapshot } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
+import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -67,7 +68,6 @@ import {
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
-const DEFAULT_RESERVED_OUTPUT_TOKENS = 4_096;
 const EMPTY_LENGTH_OUTPUT_RETRY_FLOOR = 4_096;
 const CIRCUIT_BREAKER_GRACE_PROMPT = [
   "Your last several tool calls all failed input validation with the same error.",
@@ -82,6 +82,17 @@ const PLAN_MODE_REMINDER_MESSAGE = [
   "Do not make implementation changes while planning.",
   "When the plan is ready for user review, call `exit_plan_mode` with the plan file path.",
 ].join("\n");
+
+function logAutoCompactFailure(
+  stage: string,
+  input: { sessionId: string; turnId: string },
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[agent:auto-compact] ${stage} failed sessionId=${input.sessionId} turnId=${input.turnId}: ${message}`,
+  );
+}
 
 type ActiveSubagentStatus = {
   subagentId: string;
@@ -117,6 +128,10 @@ export type AgentLoopInput = {
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
+  onCompactPersisted?: (input: {
+    boundary: AgentControlBoundaryTranscriptEntry["boundary"];
+    messages: CanonicalMessage[];
+  }) => void | Promise<void>;
 };
 
 export type AgentLoopRunResult = {
@@ -276,6 +291,34 @@ export class AgentLoop {
       permissionMode: this.config.permissionMode,
     });
 
+    const contextOverflowAfterEmergency = async (
+      compact: Extract<Awaited<ReturnType<NonNullable<AgentContextRuntime["tryAutoCompact"]>>>, { type: "compacted" }>,
+    ): Promise<{ error: ReturnType<typeof agentError>; result: AgentTurnResult }> => {
+      const error = agentError(
+        "agent_context_recovery_failed",
+        compact.error ?? "context_overflow_after_emergency_compaction",
+        {
+          code: compact.error,
+          snapshot: compact.snapshot,
+          diagnostics: compact.result?.diagnostics,
+        },
+        "The context is still too large after emergency compaction. Start a new session or reduce the request and retry.",
+      );
+      await this.dispatchLifecycle(input, "StopFailure", { error: error.message });
+      const result = this.createTurnResult(input, {
+        type: "error",
+        stopReason: "prompt_too_long",
+        usage,
+        permissionDenials,
+        turns: turnCount,
+        startedAt,
+        finalMessage,
+        structuredOutput,
+        errors: [error],
+      });
+      return { error, result };
+    };
+
     const stickyInfo = this.dependencies.router.invalidateSticky?.(input.sessionId);
     let previousTier: string | undefined = stickyInfo?.previousTier;
 
@@ -358,6 +401,8 @@ export class AgentLoop {
         try {
           const reservedOutputTokens = this.getReservedOutputTokens();
           const compact = await ctx.tryAutoCompact({
+            sessionId: input.sessionId,
+            turnId: input.turnId,
             messages,
             abortSignal: input.abortSignal,
             reservedOutputTokens,
@@ -368,16 +413,28 @@ export class AgentLoop {
             }),
           });
           if (compact.type === "compacted") {
+            const preCompactMessages = messages;
             messages = compact.messages;
+            await this.persistCompactSnapshot(input, compact, preCompactMessages);
             yield {
               type: "turn_continued",
               sessionId: input.sessionId,
               turnId: input.turnId,
               reason: "auto_compact",
             };
+            if (compact.error) {
+              const failure = await contextOverflowAfterEmergency(compact);
+              yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: failure.error.message };
+              yield await emitStatus(createModelRequestFailedStatus({ error: failure.error }));
+              yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: failure.error };
+              await captureTurn(true);
+              yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result: failure.result };
+              return { result: failure.result, messages };
+            }
           }
           pendingContextBudget = compact.snapshot;
-        } catch {
+        } catch (error: unknown) {
+          logAutoCompactFailure("pre-routing", input, error);
           // Auto-compaction must never block the model call — proceed with
           // the original messages if evaluation or summarization fails.
         }
@@ -435,12 +492,14 @@ export class AgentLoop {
 
       let emittedContextBudget = false;
       if (ctx?.tryAutoCompact) {
-        const routedMaxCtx = routedLimits?.maxContextTokens ?? this.dependencies.getModelMaxContextTokens?.(decision.provider, decision.model);
+        const routedMaxCtx = this.currentMaxContextTokens(decision.provider, decision.model);
         const currentBudgetMaxCtx = preRoutingMaxContextTokens;
         if (routedMaxCtx !== undefined && routedMaxCtx !== currentBudgetMaxCtx) {
           try {
             const reservedOutputTokens = this.getReservedOutputTokens(decision.provider, decision.model);
             const recompact = await ctx.tryAutoCompact({
+              sessionId: input.sessionId,
+              turnId: input.turnId,
               messages,
               abortSignal: input.abortSignal,
               maxContextTokens: routedMaxCtx,
@@ -454,15 +513,32 @@ export class AgentLoop {
               }),
             });
             if (recompact.type === "compacted") {
+              const preCompactMessages = messages;
               messages = recompact.messages;
               request = await this.createModelRequest(messages, input);
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
+              await this.persistCompactSnapshot(input, recompact, preCompactMessages);
               yield {
                 type: "turn_continued",
                 sessionId: input.sessionId,
                 turnId: input.turnId,
                 reason: "auto_compact",
               };
+              if (recompact.error) {
+                yield {
+                  type: "context_budget",
+                  sessionId: input.sessionId,
+                  turnId: input.turnId,
+                  snapshot: recompact.snapshot,
+                };
+                const failure = await contextOverflowAfterEmergency(recompact);
+                yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: failure.error.message };
+                yield await emitStatus(createModelRequestFailedStatus({ error: failure.error }));
+                yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: failure.error };
+                await captureTurn(true);
+                yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result: failure.result };
+                return { result: failure.result, messages };
+              }
             }
             yield {
               type: "context_budget",
@@ -471,7 +547,8 @@ export class AgentLoop {
               snapshot: recompact.snapshot,
             };
             emittedContextBudget = true;
-          } catch {
+          } catch (error: unknown) {
+            logAutoCompactFailure("post-routing", input, error);
             // Post-routing compaction must never block the model call.
           }
         }
@@ -994,18 +1071,33 @@ export class AgentLoop {
           if (ctx?.tryAutoCompact) {
             try {
               const compact = await ctx.tryAutoCompact({
+                sessionId: input.sessionId,
+                turnId: input.turnId,
                 messages,
                 abortSignal: input.abortSignal,
                 maxContextTokens: this.currentMaxContextTokens(target.provider, target.model),
                 reservedOutputTokens: this.getReservedOutputTokens(target.provider, target.model),
                 lastUsage: lastModelUsage,
+                allowFallbackOnFailure: true,
               });
               if (compact.type === "compacted") {
+                const preCompactMessages = messages;
                 messages = compact.messages;
+                await this.persistCompactSnapshot(input, compact, preCompactMessages);
+                if (compact.error) {
+                  const failure = await contextOverflowAfterEmergency(compact);
+                  yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: failure.error.message };
+                  yield await emitStatus(createModelRequestFailedStatus({ error: failure.error }));
+                  yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: failure.error };
+                  await captureTurn(true);
+                  yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result: failure.result };
+                  return { result: failure.result, messages };
+                }
               } else {
                 messages = truncateHeadKeepRatio(messages, 0.5);
               }
-            } catch {
+            } catch (error: unknown) {
+              logAutoCompactFailure("model-error-recovery", input, error);
               messages = truncateHeadKeepRatio(messages, 0.5);
             }
           } else {
@@ -1826,9 +1918,9 @@ export class AgentLoop {
 
   private getReservedOutputTokens(provider?: string, model?: string): number {
     if (provider && model) {
-      return this.currentMaxOutputTokens(provider, model) ?? DEFAULT_RESERVED_OUTPUT_TOKENS;
+      return this.currentMaxOutputTokens(provider, model) ?? 0;
     }
-    return this.currentMaxOutputTokens(this.config.provider, this.config.model) ?? DEFAULT_RESERVED_OUTPUT_TOKENS;
+    return this.currentMaxOutputTokens(this.config.provider, this.config.model) ?? 0;
   }
 
   private tokenCapKey(provider: string, model: string): string {
@@ -1846,15 +1938,22 @@ export class AgentLoop {
 
   private currentMaxContextTokens(provider: string, model: string): number {
     const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model))?.maxContextTokens;
-    return transient ?? this.getModelTokenLimits(provider, model)?.maxContextTokens ?? this.config.maxContextTokens ?? 1_000_000;
+    return transient
+      ?? this.config.maxContextTokens
+      ?? this.dependencies.getModelMaxContextTokens?.(provider, model)
+      ?? this.getModelTokenLimits(provider, model)?.maxContextTokens
+      ?? 1_000_000;
   }
 
   private currentMaxOutputTokens(provider: string, model: string): number | undefined {
     const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model));
     const modelMaxOutputTokens = this.getModelTokenLimits(provider, model)?.maxOutputTokens;
-    const requested = transient?.attemptMaxOutputTokens ?? transient?.requestedMaxOutputTokens ?? this.config.maxOutputTokens ?? modelMaxOutputTokens;
-    const candidates = [requested, modelMaxOutputTokens, transient?.hardMaxOutputTokens]
+    const requested = transient?.attemptMaxOutputTokens ?? transient?.requestedMaxOutputTokens ?? this.config.maxOutputTokens;
+    const candidates = [requested, transient?.hardMaxOutputTokens]
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+    if (candidates.length > 0 && typeof modelMaxOutputTokens === "number" && Number.isFinite(modelMaxOutputTokens) && modelMaxOutputTokens > 0) {
+      candidates.push(modelMaxOutputTokens);
+    }
     return candidates.length > 0 ? Math.min(...candidates.map((value) => Math.floor(value))) : undefined;
   }
 
@@ -1890,6 +1989,46 @@ export class AgentLoop {
         this.transientTokenCaps.set(key, sessionCaps);
       }
     }
+  }
+
+  private async persistCompactSnapshot(
+    input: AgentLoopInput,
+    compact: Extract<Awaited<ReturnType<NonNullable<AgentContextRuntime["tryAutoCompact"]>>>, { type: "compacted" }>,
+    preCompactMessages: CanonicalMessage[],
+  ): Promise<void> {
+    if (!input.onCompactPersisted || !compact.result) {
+      return;
+    }
+    const boundary: AgentControlBoundaryTranscriptEntry["boundary"] = {
+      kind: "compact",
+      subtype: "compact_boundary",
+      compactMetadata: {
+        trigger: compact.result.trigger,
+        preTokens: compact.result.preTokens,
+        ...(compact.result.postTokens !== undefined ? { postTokens: compact.result.postTokens } : {}),
+        messagesSummarized: Math.max(0, preCompactMessages.length - compact.result.messagesToKeep.length),
+        extra: {
+          tier: compact.tier,
+          summarySucceeded: compact.result.error === undefined,
+          ...(compact.result.cacheReset ? { cacheReset: true } : {}),
+          ...(compact.result.stablePrefix && compact.result.stablePrefix.length > 0
+            ? { checkpointVersion: Math.floor(compact.result.stablePrefix.length / 2) + 1 }
+            : {}),
+          ...(compact.error
+            ? {
+                finalBudgetTokens: compact.snapshot.maxContextTokens,
+                finalUsedTokens: compact.snapshot.tokens,
+                finalBudgetRatio: compact.snapshot.ratio,
+              }
+            : {}),
+          ...(compact.error ? { error: compact.error } : {}),
+        },
+      },
+    };
+    await Promise.resolve(input.onCompactPersisted({
+      boundary,
+      messages: markCompactReplacementMessages(compact.messages),
+    })).catch(() => {});
   }
 
   private applyTokenCapsToRequest(request: CanonicalModelRequest, provider: string, model: string): CanonicalModelRequest {
@@ -2948,7 +3087,11 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
     const hint = `Top up billing/quota on the provider API side, or switch to another provider/model in Settings.`;
     return modelFailureActionResult(hint, "provider", "billing");
   }
-  if (error.code === "prompt_too_long" || error.code === "context_overflow") {
+  if (
+    error.code === "prompt_too_long"
+    || error.code === "context_overflow"
+    || error.code === "context_overflow_after_emergency_compaction"
+  ) {
     const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
     return modelFailureActionResult(hint, "prompt", "contextOverflow");
   }
@@ -3302,6 +3445,16 @@ function tokensFromUsage(usage: CanonicalUsage | undefined): number | undefined 
     ? usage.outputTokens
     : 0;
   return Math.ceil(inputTokens + outputTokens);
+}
+
+function markCompactReplacementMessages(messages: CanonicalMessage[]): CanonicalMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    metadata: {
+      ...(message.metadata ?? {}),
+      compactReplacement: true,
+    },
+  }));
 }
 
 function modelErrorTarget(error: CanonicalModelError, fallbackProvider: string, fallbackModel: string): {

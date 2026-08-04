@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronsLeftRight, ChevronsRightLeft, Code2, Download, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronsLeftRight, ChevronsRightLeft, Code2, Download, Eye, Maximize2, Minimize2, Save, Search, X } from 'lucide-react';
 import type { CodeEditorFile } from '../../types/types';
 
 type CodeEditorHeaderProps = {
@@ -21,6 +21,8 @@ type CodeEditorHeaderProps = {
   isExpanded?: boolean;
   onToggleExpand?: (() => void) | null;
   onToggleMarkdownPreview: () => void;
+  searchOpen?: boolean;
+  onToggleSearch?: (() => void) | null;
   onDownload: () => void;
   onSave: () => void;
   onToggleFullscreen: () => void;
@@ -43,6 +45,7 @@ type CodeEditorHeaderProps = {
     collapse: string;
     close: string;
     goBack: string;
+    search?: string;
   };
 };
 
@@ -62,6 +65,8 @@ export default function CodeEditorHeader({
   parentFileName = null,
   onGoBack = null,
   onToggleMarkdownPreview,
+  searchOpen = false,
+  onToggleSearch = null,
   onDownload,
   onSave,
   onToggleFullscreen,
@@ -138,6 +143,22 @@ export default function CodeEditorHeader({
             )}
           </button>
         )}
+
+        {onToggleSearch ? (
+          <button
+            type="button"
+            onClick={onToggleSearch}
+            className={
+              searchOpen
+                ? 'flex h-7 w-7 items-center justify-center rounded-md bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+                : iconBtn
+            }
+            title={labels.search}
+            aria-label={labels.search}
+          >
+            <Search className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        ) : null}
 
         <button type="button" onClick={onDownload} className={iconBtn} title={labels.download} aria-label={labels.download}>
           <Download className="h-3.5 w-3.5" strokeWidth={1.75} />

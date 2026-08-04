@@ -54,6 +54,12 @@ mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/qa"
 
 Keep builders, converted inputs, source notes, inspections, candidates, renders, recalculation files, and QA reports in `WORKSPACE`. Put only requested deliverables in the project or user-selected output directory. Never create `.pilotdeck_build.mjs`, QA directories, or other intermediates beside the user's files.
 
+The CLI enforces this boundary whenever `PILOTDECK_WORK_DIR` is set:
+`scaffold`, `build`, `convert-legacy`, `recalculate`, JSON reports, and render
+outputs must stay under the work directory. Only `deliver --out` may create the
+project-visible final workbook. A boundary failure must be corrected by moving
+the intermediate path; do not bypass the command or copy the file manually.
+
 ## Route the request
 
 Choose one route:

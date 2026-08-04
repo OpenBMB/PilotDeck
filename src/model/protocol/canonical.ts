@@ -140,6 +140,8 @@ export type CanonicalMessageMetadata = {
   transient?: boolean;
   /** Stable id used by the agent loop to expire transient synthetic prompts. */
   transientId?: string;
+  /** Message replaces compacted history and is omitted from the visible transcript. */
+  compactReplacement?: boolean;
   purpose?: string;
   forkCarryover?: {
     sourceSessionId: string;

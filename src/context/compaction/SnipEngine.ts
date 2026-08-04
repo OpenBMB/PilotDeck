@@ -1,4 +1,5 @@
 import type { CanonicalMessage } from "../../model/index.js";
+import { TokenBudgetManager } from "../budget/TokenBudgetManager.js";
 import {
   collectToolCallIds,
   collectToolResultIds,
@@ -20,6 +21,8 @@ export type SnipEngineOptions = {
   enabled?: boolean;
   /** Tool names whose turns should be preserved verbatim. */
   protectedToolNames?: Iterable<string>;
+  /** Optional token target for the retained live tail. */
+  targetTokens?: number;
 };
 
 export type SnipResult = {
@@ -85,6 +88,7 @@ export class SnipEngine {
   private readonly keepTailTurns: number;
   private readonly enabled: boolean;
   private readonly protectedToolNames: ReadonlySet<string>;
+  private readonly tokenBudget = new TokenBudgetManager();
 
   constructor(options: SnipEngineOptions = {}) {
     this.keepHeadTurns = Math.max(0, options.keepHeadTurns ?? 2);
@@ -93,23 +97,40 @@ export class SnipEngine {
     this.protectedToolNames = protectedToolNameSet(options.protectedToolNames);
   }
 
-  snip(messages: CanonicalMessage[]): SnipResult {
+  snip(messages: CanonicalMessage[], options: Pick<SnipEngineOptions, "targetTokens"> = {}): SnipResult {
     if (!this.enabled) {
       return { messages, applied: false, turnsSnipped: 0, danglingToolCallIds: [] };
     }
-    const turns = splitIntoTurns(messages);
+    const prefixCount = checkpointPrefixMessageCount(messages);
+    const stablePrefix = messages.slice(0, prefixCount);
+    const turns = splitIntoTurns(messages.slice(prefixCount));
     if (turns.length <= this.keepHeadTurns + this.keepTailTurns) {
       return { messages, applied: false, turnsSnipped: 0, danglingToolCallIds: [] };
     }
 
     const keepIndexes = new Set<number>();
-    for (let index = 0; index < Math.min(this.keepHeadTurns, turns.length); index += 1) {
-      keepIndexes.add(index);
+    if (options.targetTokens === undefined) {
+      for (let index = 0; index < Math.min(this.keepHeadTurns, turns.length); index += 1) {
+        keepIndexes.add(index);
+      }
     }
-    for (let index = Math.max(this.keepHeadTurns, turns.length - this.keepTailTurns); index < turns.length; index += 1) {
+    let accumulatedTailTokens = 0;
+    const tailFloor = Math.min(this.keepTailTurns, turns.length);
+    for (let index = turns.length - 1; index >= 0; index -= 1) {
+      const tokens = this.tokenBudget.estimateMessagesTokens(turns[index]!);
+      const mustKeep = turns.length - index <= tailFloor;
+      if (!mustKeep && options.targetTokens !== undefined
+        && accumulatedTailTokens + tokens > Math.max(1, options.targetTokens)) {
+        break;
+      }
       keepIndexes.add(index);
+      accumulatedTailTokens += tokens;
     }
-    for (const index of collectProtectedTurnIndexes(messages, {
+    // Protected indexes are relative to the live turn list. Checkpoint
+    // messages are intentionally excluded from `turns`, so calculating these
+    // indexes against the full input would shift every protected turn after
+    // the checkpoint and could preserve the wrong middle turn.
+    for (const index of collectProtectedTurnIndexes(messages.slice(prefixCount), {
       protectedToolNames: this.protectedToolNames,
     })) {
       keepIndexes.add(index);
@@ -119,7 +140,10 @@ export class SnipEngine {
     }
 
     const turnsSnipped = turns.length - keepIndexes.size;
-    const projected = stitchKeptTurnsWithBoundaries(turns, keepIndexes, this.keepHeadTurns, this.keepTailTurns);
+    const projected = [
+      ...stablePrefix,
+      ...stitchKeptTurnsWithBoundaries(turns, keepIndexes, this.keepHeadTurns, this.keepTailTurns),
+    ];
 
     // S4: tool pair integrity.
     const toolResultIds = collectToolResultIds(projected);
@@ -137,6 +161,26 @@ export class SnipEngine {
       danglingToolCallIds: dangling,
     };
   }
+}
+
+function checkpointPrefixMessageCount(messages: CanonicalMessage[]): number {
+  let index = 0;
+  while (index + 1 < messages.length
+    && isCompactBoundary(messages[index]!)
+    && isSummaryMessage(messages[index + 1]!)) {
+    index += 2;
+  }
+  return index;
+}
+
+function isCompactBoundary(message: CanonicalMessage): boolean {
+  return message.role === "user"
+    && message.content.some((block) => block.type === "text" && block.text.startsWith("<compact-boundary"));
+}
+
+function isSummaryMessage(message: CanonicalMessage): boolean {
+  return message.role === "assistant"
+    && message.content.some((block) => block.type === "text" && block.text.startsWith("[CONTEXT COMPACTION - REFERENCE ONLY]"));
 }
 
 /**
