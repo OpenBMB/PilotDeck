@@ -112,6 +112,8 @@ export default function CodexAuthControl({
   }, [pending, publishStatus, t]);
 
   const startLogin = async () => {
+    const loginWindow = window.open("", "_blank");
+    if (loginWindow) loginWindow.opener = null;
     setBusy(true);
     setError("");
     try {
@@ -124,8 +126,9 @@ export default function CodexAuthControl({
       }
       const next = data as PendingDeviceLogin;
       setPending(next);
-      window.open(next.verificationUrl, "_blank", "noopener,noreferrer");
+      if (loginWindow) loginWindow.location.href = next.verificationUrl;
     } catch (loginError) {
+      loginWindow?.close();
       setError(loginError instanceof Error ? loginError.message : String(loginError));
     } finally {
       setBusy(false);
@@ -216,7 +219,7 @@ export default function CodexAuthControl({
       </div>
 
       {pending && (
-        <div className="mt-3 rounded-md border border-primary/30 bg-background p-3 text-xs">
+        <div aria-live="polite" className="mt-3 rounded-md border border-primary/30 bg-background p-3 text-xs">
           <div className="text-muted-foreground">
             {t("pilotDeckConfig.panels.models.codexAuth.enterCode")}
           </div>
@@ -250,7 +253,7 @@ export default function CodexAuthControl({
         {t("pilotDeckConfig.panels.models.codexAuth.storage")}
       </div>
       {error && (
-        <div className="mt-2 text-[11px] text-destructive">{error}</div>
+        <div role="alert" className="mt-2 text-[11px] text-destructive">{error}</div>
       )}
     </div>
   );

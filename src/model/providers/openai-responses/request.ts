@@ -13,6 +13,8 @@ import { normalizeOpenAISchema } from "../openai/schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
 import { isCodexSubscriptionProvider } from "../codex/client.js";
+import { normalizeCodexHistory } from "../codex/history.js";
+import { ModelProviderError } from "../../protocol/errors.js";
 
 export type OpenAIResponsesRequestBody = {
   model: string;
@@ -35,6 +37,7 @@ export type OpenAIResponsesRequestBody = {
     };
   };
   store?: boolean;
+  include?: Array<"reasoning.encrypted_content">;
   reasoning?: {
     effort?: string;
     summary?: "auto";
@@ -50,9 +53,16 @@ type OpenAIResponsesInputItem =
     }
   | {
       type: "function_call";
+      id?: string;
       call_id: string;
       name: string;
       arguments: string;
+    }
+  | {
+      type: "reasoning";
+      id: string;
+      encrypted_content: string;
+      summary: Array<{ type: "summary_text"; text: string }>;
     }
   | {
       type: "function_call_output";
@@ -76,10 +86,29 @@ export function buildOpenAIResponsesRequest(
   const thinkingPlan = resolveThinkingPlan(request.thinking, _provider ?? { id: "openai", protocol: "openai-responses", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   const isCodex = Boolean(_provider && isCodexSubscriptionProvider(_provider));
+  const messages = isCodex
+    ? normalizeCodexHistory(request.messages)
+    : request.messages;
   const responseTools = request.tools?.map((tool) => toResponsesTool(tool, !isCodex));
+  let input = messages.flatMap((message) => toResponsesInputItems(message, isCodex));
+  if (isCodex && input.length === 0) {
+    input = request.messages
+      .flatMap((message) => toResponsesInputItems(withoutToolBlocks(message), isCodex))
+      .slice(-1);
+    if (input.length === 0) {
+      throw new ModelProviderError({
+        provider: _provider!.id,
+        model: request.model,
+        protocol: _provider!.protocol,
+        code: "invalid_request",
+        message: "Codex request has no meaningful input after malformed tool history was removed.",
+        retryable: false,
+      });
+    }
+  }
   const body: OpenAIResponsesRequestBody = {
     model: request.model,
-    input: request.messages.flatMap(toResponsesInputItems),
+    input,
     instructions: isCodex
       ? request.systemPrompt?.trim() || "You are a helpful coding agent."
       : request.systemPrompt,
@@ -99,6 +128,7 @@ export function buildOpenAIResponsesRequest(
         )
       : undefined,
     store: false,
+    ...(isCodex ? { include: ["reasoning.encrypted_content"] } : {}),
   };
 
   if (thinkingPlan.useOpenAIReasoning && thinkingPlan.effort) {
@@ -130,7 +160,21 @@ export function buildOpenAIResponsesRequest(
   return body;
 }
 
-function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputItem[] {
+function withoutToolBlocks(message: CanonicalMessage): CanonicalMessage {
+  return {
+    ...message,
+    content: message.content.filter((block) =>
+      block.type !== "tool_call"
+      && block.type !== "tool_result"
+      && block.type !== "tool_result_reference"
+    ),
+  };
+}
+
+function toResponsesInputItems(
+  message: CanonicalMessage,
+  isCodex: boolean,
+): OpenAIResponsesInputItem[] {
   const items: OpenAIResponsesInputItem[] = [];
   const normalContent: CanonicalContentBlock[] = [];
   const content = messageContent(message);
@@ -138,7 +182,7 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
   const flushContent = () => {
     if (normalContent.length === 0) return;
     const content = normalContent.flatMap((block) =>
-      toResponsesContentPart(block, message.role)
+      toResponsesContentPart(block, message.role, isCodex)
     );
     if (content.length > 0) {
       items.push({ role: message.role, content });
@@ -147,10 +191,29 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
   };
 
   for (const block of content) {
+    if (
+      block.type === "thinking"
+      && isCodex
+      && block.responsesItemId
+      && block.encryptedReasoningContent
+    ) {
+      flushContent();
+      items.push({
+        type: "reasoning",
+        id: block.responsesItemId,
+        encrypted_content: block.encryptedReasoningContent,
+        summary: block.text
+          ? [{ type: "summary_text", text: block.text }]
+          : [],
+      });
+      continue;
+    }
+
     if (block.type === "tool_call") {
       flushContent();
       items.push({
         type: "function_call",
+        ...(isCodex && block.responsesItemId ? { id: block.responsesItemId } : {}),
         call_id: block.id,
         name: block.name,
         arguments: JSON.stringify(block.input ?? {}),
@@ -171,7 +234,7 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
           role: "user",
           content: [
             { type: "input_text", text: "[Visual content from tool result]" },
-            ...visualContent.flatMap((part) => toResponsesContentPart(part, "user")),
+            ...visualContent.flatMap((part) => toResponsesContentPart(part, "user", isCodex)),
           ],
         });
       }
@@ -198,22 +261,23 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
 function toResponsesContentPart(
   block: CanonicalContentBlock,
   role: CanonicalMessage["role"],
+  isCodex: boolean,
 ): Record<string, unknown>[] {
-  const textType = role === "assistant" ? "output_text" : "input_text";
+  const textType = isCodex && role === "assistant" ? "output_text" : "input_text";
   switch (block.type) {
     case "text":
       return [{ type: textType, text: block.text }];
     case "thinking":
       return [{ type: textType, text: block.text }];
     case "image":
-      if (role === "assistant") return [];
+      if (isCodex && role === "assistant") return [];
       return [{
         type: "input_image",
         image_url: block.source === "url" ? block.data : `data:${block.mimeType};base64,${block.data}`,
         detail: block.detail,
       }];
     case "pdf":
-      if (role === "assistant") return [];
+      if (isCodex && role === "assistant") return [];
       return [{
         type: "input_file",
         filename: "document.pdf",

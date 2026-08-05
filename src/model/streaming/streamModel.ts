@@ -5,11 +5,9 @@ import type { GoogleRequestBody } from "../providers/google/request.js";
 import { buildModelRequest } from "../request/buildModelRequest.js";
 import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
-  CanonicalContentBlock,
   CanonicalModelEvent,
   CanonicalModelRequest,
   CanonicalModelResponse,
-  CanonicalUsage,
   ModelConfig,
   ModelProtocol,
   ProviderConfig,
@@ -17,6 +15,11 @@ import type {
 import { ModelProviderError, parseRetryAfterHeader } from "../protocol/errors.js";
 import { parseModelResponse } from "../response/parseModelResponse.js";
 import { createStreamNormalizerState, normalizeStreamEvent } from "./normalizeStreamEvent.js";
+import {
+  applyModelEventToAssembler,
+  assembleAssistantMessage,
+  createModelMessageAssemblerState,
+} from "./assembleModelMessage.js";
 import { createGoogleStreamState, normalizeGoogleStreamEvent } from "../providers/google/stream.js";
 import { normalizeProviderBaseUrl } from "../normalizeProviderBaseUrl.js";
 import { buildProviderChatEndpointCandidates, isExpectedProviderResponseShape } from "../providerEndpoint.js";
@@ -24,7 +27,7 @@ import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 import {
-  buildCodexRequestHeaders,
+  buildCodexResponsesRequestHeaders,
   isCodexSubscriptionProvider,
 } from "../providers/codex/client.js";
 import {
@@ -238,7 +241,12 @@ export async function* streamModel(
     const streamGuard = createStreamGuard(provider);
 
     try {
-      for await (const sseEvent of readServerSentEvents(response.body, options.signal, streamIdleTimeoutMs)) {
+      for await (const sseEvent of readServerSentEvents(
+        response.body,
+        provider,
+        options.signal,
+        streamIdleTimeoutMs,
+      )) {
         streamGuard.checkDuration();
         if (sseEvent.type === "done") {
           sawCompletionSentinel = true;
@@ -616,7 +624,7 @@ async function sendProviderRequest(
     ? setTimeout(() => controller.abort(new NetworkFetchError("network_timeout", `Model request timed out after ${effectiveTimeoutMs}ms.`)), effectiveTimeoutMs)
     : undefined;
 
-  const finalBody = provider.extraBody
+  const finalBody = !isCodexSubscriptionProvider(provider) && provider.extraBody
     ? { ...(body as Record<string, unknown>), ...provider.extraBody }
     : body;
 
@@ -666,7 +674,11 @@ async function sendWithEndpointFallback(
   transport: ModelTransport,
   fetchOptions: RequestInit,
 ): Promise<Response> {
-  const endpoints = buildProviderChatEndpointCandidates({ protocol: provider.protocol, baseUrl: provider.url });
+  const endpoints = buildProviderChatEndpointCandidates({
+    protocol: provider.protocol,
+    baseUrl: provider.url,
+    providerId: provider.id,
+  });
   let lastResponse: Response | undefined;
   for (const endpoint of endpoints) {
     const response = await networkFetch(endpoint, fetchOptions, {
@@ -740,7 +752,7 @@ async function buildProviderRequestHeaders(
   );
   return {
     "content-type": "application/json",
-    ...buildCodexRequestHeaders(credentials.accessToken, provider.headers),
+    ...buildCodexResponsesRequestHeaders(credentials.accessToken, provider.headers),
   };
 }
 
@@ -749,45 +761,22 @@ async function completeCodexStreaming(
   config: ModelConfig,
   options: ModelRuntimeOptions,
 ): Promise<CanonicalModelResponse> {
-  const content: CanonicalContentBlock[] = [];
-  let usage: CanonicalUsage | undefined;
-  let finishReason: CanonicalModelResponse["finishReason"] = "unknown";
+  const assembler = createModelMessageAssemblerState();
 
   for await (const event of streamModel({ ...request, stream: true }, config, options)) {
-    if (event.type === "text_delta") {
-      appendTextBlock(content, "text", event.text);
-    } else if (event.type === "thinking_delta") {
-      appendTextBlock(content, "thinking", event.text);
-    } else if (event.type === "tool_call_end") {
-      content.push({ type: "tool_call", ...event.toolCall });
-    } else if (event.type === "usage") {
-      usage = event.usage;
-    } else if (event.type === "message_end") {
-      finishReason = event.finishReason;
-    } else if (event.type === "error") {
+    if (event.type === "error") {
       throw new ModelProviderError(event.error);
     }
+    applyModelEventToAssembler(assembler, event);
   }
 
+  const assembled = assembleAssistantMessage(assembler);
   return {
     role: "assistant",
-    content,
-    usage,
-    finishReason,
+    content: assembled.message.content,
+    usage: assembled.usage,
+    finishReason: assembled.finishReason,
   };
-}
-
-function appendTextBlock(
-  content: CanonicalContentBlock[],
-  type: "text" | "thinking",
-  text: string,
-): void {
-  const last = content.at(-1);
-  if (last?.type === type) {
-    last.text += text;
-  } else if (text) {
-    content.push({ type, text });
-  }
 }
 
 async function safeReadJson(response: Response): Promise<unknown> {
@@ -835,15 +824,47 @@ type ServerSentEvent =
 
 async function* readServerSentEvents(
   body: ReadableStream<Uint8Array>,
+  provider: ProviderConfig,
   signal?: AbortSignal,
   idleTimeoutMs?: number,
 ): AsyncIterable<ServerSentEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let dataLines: string[] = [];
   const effectiveIdleMs = idleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
   const cancelReader = () => {
     reader.cancel(signal?.reason).catch(() => undefined);
+  };
+  const dispatch = (): ServerSentEvent | undefined => {
+    if (dataLines.length === 0) return undefined;
+    const data = dataLines.join("\n");
+    dataLines = [];
+    if (data === "") return undefined;
+    if (data === "[DONE]") return { type: "done" };
+    try {
+      return { type: "data", data: JSON.parse(data) };
+    } catch {
+      throw new ModelProviderError({
+        provider: provider.id,
+        protocol: provider.protocol,
+        code: "provider_error",
+        message: "Provider stream contained malformed JSON in an SSE data event.",
+        retryable: false,
+        raw: data,
+      });
+    }
+  };
+  const processLine = (line: string): ServerSentEvent | undefined => {
+    if (line === "") return dispatch();
+    if (line.startsWith(":")) return undefined;
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    if (field !== "data") return undefined;
+    let value = separator === -1 ? "" : line.slice(separator + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+    dataLines.push(value);
+    return undefined;
   };
 
   if (signal?.aborted) {
@@ -864,40 +885,29 @@ async function* readServerSentEvents(
       }
 
       buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split(/\n\n/);
-      buffer = chunks.pop() ?? "";
-
-      for (const chunk of chunks) {
-        yield* parseServerSentEventChunk(chunk);
+      let lineStart = 0;
+      for (let index = 0; index < buffer.length; index += 1) {
+        const char = buffer[index];
+        if (char !== "\n" && char !== "\r") continue;
+        if (char === "\r" && index === buffer.length - 1) break;
+        const event = processLine(buffer.slice(lineStart, index));
+        if (event) yield event;
+        if (char === "\r" && buffer[index + 1] === "\n") index += 1;
+        lineStart = index + 1;
       }
+      buffer = buffer.slice(lineStart);
     }
 
-    if (buffer.trim().length > 0) {
-      for (const event of parseServerSentEventChunk(buffer)) {
-        yield event;
-      }
+    const trailingLines = buffer.split(/\r\n|\r|\n/);
+    for (const line of trailingLines) {
+      const event = processLine(line);
+      if (event) yield event;
     }
+    const trailingEvent = dispatch();
+    if (trailingEvent) yield trailingEvent;
   } finally {
     signal?.removeEventListener("abort", cancelReader);
     await reader.cancel().catch(() => undefined);
-  }
-}
-
-function* parseServerSentEventChunk(chunk: string): Iterable<ServerSentEvent> {
-  const dataLines = chunk
-    .split(/\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trim());
-
-  for (const data of dataLines) {
-    if (!data) {
-      continue;
-    }
-    if (data === "[DONE]") {
-      yield { type: "done" };
-      continue;
-    }
-    yield { type: "data", data: JSON.parse(data) };
   }
 }
 

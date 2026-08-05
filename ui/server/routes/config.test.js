@@ -333,6 +333,33 @@ describe('config test-connection route', () => {
     expect(probeCodexModel).toHaveBeenCalledWith('gpt-5.6-sol');
   });
 
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('rejects Codex connection tests with the %s without probing subscription credentials', async (_case, providerType, baseUrl) => {
+    const probeCodexModel = vi.fn();
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels: vi.fn(),
+      probeCodexModel,
+    }));
+
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType,
+        baseUrl,
+        apiKey: '',
+        model: 'gpt-5.6-sol',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(probeCodexModel).not.toHaveBeenCalled();
+  });
+
   it('loads the Codex subscription model catalog without an API key', async () => {
     const fetchCodexModels = vi.fn(async () => [{
       id: 'gpt-5.6-sol',
@@ -366,6 +393,32 @@ describe('config test-connection route', () => {
       }],
     });
     expect(fetchCodexModels).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('rejects Codex model listing with the %s without loading subscription credentials', async (_case, providerType, baseUrl) => {
+    const fetchCodexModels = vi.fn();
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels,
+      probeCodexModel: vi.fn(),
+    }));
+
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/models', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType,
+        baseUrl,
+        apiKey: '',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(fetchCodexModels).not.toHaveBeenCalled();
   });
 });
 

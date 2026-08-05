@@ -127,4 +127,19 @@ describe('LlmConfigurationStep', () => {
       });
     });
   });
+
+  it('keeps Codex authenticated when the selected provider is selected again', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    const codexButton = screen.getByRole('button', { name: /^Codex \(ChatGPT subscription\)$/ });
+    fireEvent.click(codexButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveProperty('disabled', false);
+    });
+
+    fireEvent.click(codexButton);
+
+    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveProperty('disabled', false);
+  });
 });

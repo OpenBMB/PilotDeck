@@ -11,9 +11,16 @@ const router = express.Router();
 // Sentinel api-key written by scripts/bootstrap-pilotdeck-config.mjs so the
 // engine can boot. Treated as "not configured" so the UI routes to onboarding.
 const PLACEHOLDER_API_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
+const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 
 function providerAllowsMissingApiKey(providerId) {
   return providerId === 'ollama';
+}
+
+function isCodexTransport(providerId, provider) {
+  return providerId === 'codex'
+    && String(provider?.protocol || '').trim().toLowerCase() === 'openai-responses'
+    && String(provider?.url || '').trim() === CODEX_BASE_URL;
 }
 
 async function hasUsablePilotDeckConfig() {
@@ -36,9 +43,12 @@ async function hasUsablePilotDeckConfig() {
   const hasUrl = typeof provider.url === 'string' && provider.url.trim();
   const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : '';
   let hasRequiredCredential;
-  if (providerId === 'codex') {
+  const usesCodexTransport = isCodexTransport(providerId, provider);
+  if (usesCodexTransport) {
     const status = await getCodexAuthStatus();
     hasRequiredCredential = status.authenticated;
+  } else if (providerId === 'codex') {
+    hasRequiredCredential = false;
   } else {
     hasRequiredCredential = providerAllowsMissingApiKey(providerId)
       ? apiKey !== PLACEHOLDER_API_KEY

@@ -13,6 +13,10 @@ import {
   requestCodexDeviceCode,
 } from "../../src/model/providers/codex/auth.js";
 import {
+  codexAccessTokenExpiresAt,
+  isCodexAccessTokenExpiring,
+} from "../../src/model/providers/codex/jwt.js";
+import {
   CODEX_DEVICE_CODE_URL,
   CODEX_DEVICE_REDIRECT_URI,
   CODEX_DEVICE_TOKEN_URL,
@@ -20,6 +24,18 @@ import {
   CODEX_OAUTH_CLIENT_ID,
   CODEX_OAUTH_TOKEN_URL,
 } from "../../src/model/providers/codex/constants.js";
+
+test("treats malformed and missing-exp Codex access tokens as expiring", () => {
+  const now = Date.now();
+  assert.equal(codexAccessTokenExpiresAt("not-a-jwt"), undefined);
+  assert.equal(isCodexAccessTokenExpiring("not-a-jwt", 0, now), true);
+  assert.equal(isCodexAccessTokenExpiring(jwt({}), 0, now), true);
+  assert.equal(isCodexAccessTokenExpiring(jwt({ exp: "later" }), 0, now), true);
+  assert.equal(
+    isCodexAccessTokenExpiring(jwt({ exp: Math.floor(now / 1000) + 3600 }), 0, now),
+    false,
+  );
+});
 
 test("imports Codex CLI credentials into PilotDeck's private auth store", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-codex-auth-"));
@@ -54,6 +70,34 @@ test("imports Codex CLI credentials into PilotDeck's private auth store", async 
   assert.equal(stored.providers.codex.tokens.access_token, accessToken);
   assert.equal(stored.providers.codex.tokens.refresh_token, "refresh-import");
   assert.equal((await stat(authPath)).mode & 0o777, 0o600);
+});
+
+test("only treats recognized or empty device polling errors as pending", async () => {
+  const device = { userCode: "ABCD-EFGH", deviceAuthId: "device-auth" };
+  for (const [status, payload] of [
+    [403, { error: "authorization_pending" }],
+    [404, {}],
+  ] as const) {
+    assert.deepEqual(await pollCodexDeviceCode(device, {
+      fetch: (async () => jsonResponse(payload, status)) as typeof fetch,
+    }), { status: "pending" });
+  }
+
+  for (const [status, payload, code] of [
+    [403, { error: "access_denied", error_description: "User denied access" }, "access_denied"],
+    [404, { error: { code: "expired_token", message: "Device code expired" } }, "expired_token"],
+  ] as const) {
+    await assert.rejects(
+      pollCodexDeviceCode(device, {
+        fetch: (async () => jsonResponse(payload, status)) as typeof fetch,
+      }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, code);
+        assert.match((error as Error).message, /denied|expired/i);
+        return true;
+      },
+    );
+  }
 });
 
 test("uses Hermes-compatible refresh and device authorization requests", async (t) => {

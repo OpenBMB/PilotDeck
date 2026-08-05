@@ -362,10 +362,13 @@ export async function pollCodexDeviceCode(
     }),
     signal: AbortSignal.timeout(CODEX_AUTH_REQUEST_TIMEOUT_MS),
   });
-  if (response.status === 403 || response.status === 404) {
+  const payload = await readJson(response);
+  if (
+    (response.status === 403 || response.status === 404)
+    && (Object.keys(payload).length === 0 || isDeviceCodePending(payload))
+  ) {
     return { status: "pending" };
   }
-  const payload = await readJson(response);
   if (!response.ok) {
     throw authEndpointError(response, payload, "Codex sign-in polling failed", "device_code_poll_failed");
   }
@@ -606,19 +609,34 @@ function tokenEndpointError(
   );
 }
 
+function isDeviceCodePending(payload: Record<string, unknown>): boolean {
+  const nested = isRecord(payload.error) ? payload.error : undefined;
+  const code = readString(nested?.code)
+    || readString(nested?.type)
+    || readString(payload.error)
+    || readString(payload.code);
+  return code === "authorization_pending" || code === "device_code_pending";
+}
+
 function authEndpointError(
   response: Response,
   payload: Record<string, unknown>,
   fallback: string,
   defaultCode: string,
 ): CodexAuthError {
+  const nested = isRecord(payload.error) ? payload.error : undefined;
   const detail = readString(payload.error_description)
     || readString(payload.message)
-    || readString(isRecord(payload.error) ? payload.error.message : undefined);
+    || readString(nested?.message);
+  const code = readString(nested?.code)
+    || readString(nested?.type)
+    || readString(payload.error)
+    || readString(payload.code)
+    || (response.status === 429 ? "codex_rate_limited" : defaultCode);
   return new CodexAuthError(
     detail ? `${fallback}: ${detail}` : `${fallback} with HTTP ${response.status}.`,
     {
-      code: response.status === 429 ? "codex_rate_limited" : defaultCode,
+      code,
       status: response.status,
     },
   );

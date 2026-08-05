@@ -52,6 +52,9 @@ const router = express.Router();
 let configWriteQueue = Promise.resolve();
 
 const MASKED_SECRET = '********';
+const CODEX_PROVIDER_ID = 'codex';
+const CODEX_PROTOCOL = 'openai-responses';
+const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
 const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
 
@@ -123,6 +126,12 @@ function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
 
 function isRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCodexTransport(providerId, protocol, baseUrl) {
+  return String(providerId || '').trim().toLowerCase() === CODEX_PROVIDER_ID
+    && String(protocol || '').trim().toLowerCase() === CODEX_PROTOCOL
+    && String(baseUrl || '').trim() === CODEX_BASE_URL;
 }
 
 function containsMaskedValue(value) {
@@ -657,7 +666,12 @@ router.post('/models', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'baseUrl is required' });
   }
 
-  if (normalizedProviderId === 'codex') {
+  const codexTransport = isCodexTransport(providerId, providerType, baseUrl);
+  if (normalizedProviderId === CODEX_PROVIDER_ID && !codexTransport) {
+    return res.status(400).json({ ok: false, error: 'Codex requires the openai-responses protocol and canonical Codex URL.' });
+  }
+
+  if (codexTransport) {
     try {
       const models = await fetchCodexModels();
       return res.json({
@@ -731,7 +745,11 @@ router.post('/test-connection', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey, model } = req.body || {};
   const normalizedProviderId = String(providerId || '').trim().toLowerCase();
   const effectiveApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-  const apiKeyRequired = normalizedProviderId !== 'ollama' && normalizedProviderId !== 'codex';
+  const codexTransport = isCodexTransport(providerId, providerType, baseUrl);
+  if (normalizedProviderId === CODEX_PROVIDER_ID && !codexTransport) {
+    return res.status(400).json({ ok: false, error: 'Codex requires the openai-responses protocol and canonical Codex URL.' });
+  }
+  const apiKeyRequired = normalizedProviderId !== 'ollama' && !codexTransport;
   if (!baseUrl || !model || (apiKeyRequired && !effectiveApiKey)) {
     return res.status(400).json({
       ok: false,
@@ -739,7 +757,7 @@ router.post('/test-connection', async (req, res) => {
     });
   }
 
-  if (normalizedProviderId === 'codex') {
+  if (codexTransport) {
     try {
       await probeCodexModel(String(model).trim());
       return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });

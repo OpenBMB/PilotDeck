@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
+import { classifyOpenAIResponsesTerminal } from "./terminal.js";
 
 type ToolCallState = Partial<CanonicalToolCall> & {
   argumentsBuffer?: string;
@@ -18,6 +19,7 @@ export type OpenAIResponsesStreamState = {
   completedToolCallKeys: Set<string>;
   usedToolCallIds: Set<string>;
   sawToolCall: boolean;
+  ended: boolean;
 };
 
 export function createOpenAIResponsesStreamState(): OpenAIResponsesStreamState {
@@ -28,6 +30,7 @@ export function createOpenAIResponsesStreamState(): OpenAIResponsesStreamState {
     completedToolCallKeys: new Set(),
     usedToolCallIds: new Set(),
     sawToolCall: false,
+    ended: false,
   };
 }
 
@@ -49,7 +52,11 @@ export function normalizeOpenAIResponsesStreamEvent(
     events.push({ type: "message_start", role: "assistant", raw });
   }
 
-  if (type === "response.output_text.delta" && typeof event.delta === "string" && event.delta.length > 0) {
+  if ((type === "response.output_text.delta"
+      || type === "response.output_refusal.delta"
+      || type === "response.refusal.delta")
+    && typeof event.delta === "string"
+    && event.delta.length > 0) {
     ensureStarted(events, state, raw);
     events.push({ type: "text_delta", text: event.delta, raw });
   }
@@ -85,7 +92,20 @@ export function normalizeOpenAIResponsesStreamEvent(
 
   if (type === "response.output_item.done") {
     const item = asRecord(event.item);
-    if (item.type === "function_call") {
+    if (item.type === "reasoning") {
+      const responsesItemId = readNonEmptyString(item.id);
+      const encryptedReasoningContent = readNonEmptyString(item.encrypted_content);
+      if (responsesItemId || encryptedReasoningContent) {
+        ensureStarted(events, state, raw);
+        events.push({
+          type: "thinking_delta",
+          text: "",
+          responsesItemId,
+          encryptedReasoningContent,
+          raw,
+        });
+      }
+    } else if (item.type === "function_call") {
       ensureStarted(events, state, raw);
       if (isCompletedToolCall({ ...event, item }, state)) {
         return events;
@@ -99,45 +119,24 @@ export function normalizeOpenAIResponsesStreamEvent(
     }
   }
 
-  if (type === "response.completed") {
+  if (isTerminalEvent(type) && !state.ended) {
     ensureStarted(events, state, raw);
     const usage = normalizeOpenAIUsage(response.usage);
     if (usage) {
       events.push({ type: "usage", usage, raw });
     }
-    for (const [key, toolCall] of state.toolCalls.entries()) {
-      events.push(finishToolCall(toolCall, raw));
-      state.toolCalls.delete(key);
+    const terminal = classifyOpenAIResponsesTerminal(raw, { sawToolCall: state.sawToolCall });
+    if (type === "response.completed") {
+      for (const [key, toolCall] of state.toolCalls.entries()) {
+        events.push(finishToolCall(toolCall, raw));
+        state.toolCalls.delete(key);
+      }
     }
-    events.push({ type: "message_end", finishReason: state.sawToolCall ? "tool_call" : "stop", raw });
-  }
-
-  if (type === "response.incomplete") {
-    ensureStarted(events, state, raw);
-    events.push({ type: "message_end", finishReason: "length", raw });
-  }
-
-  if (type === "response.failed" || type === "error") {
-    if (type === "response.failed") {
-      ensureStarted(events, state, raw);
+    if (terminal.error) {
+      events.push({ type: "error", error: terminal.error });
     }
-    const responseError = asRecord(response.error);
-    const eventError = asRecord(event.error);
-    const error = Object.keys(responseError).length > 0 ? responseError : eventError;
-    events.push({
-      type: "error",
-      error: {
-        provider: "openai-responses",
-        protocol: "openai-responses",
-        code: readNonEmptyString(error.code) ?? "provider_error",
-        message: readNonEmptyString(error.message) ?? "OpenAI Responses request failed.",
-        retryable: false,
-        raw,
-      },
-    });
-    if (type === "response.failed") {
-      events.push({ type: "message_end", finishReason: "error", raw });
-    }
+    events.push({ type: "message_end", finishReason: terminal.finishReason, raw });
+    state.ended = true;
   }
 
   return events;
@@ -228,6 +227,7 @@ function finishToolCall(toolCall: ToolCallState, raw: unknown): CanonicalModelEv
       id: toolCall.id ?? "call_missing",
       name: toolCall.name ?? "",
       input,
+      ...(toolCall.itemId ? { responsesItemId: toolCall.itemId } : {}),
       raw,
     },
     wasRepaired,
@@ -265,6 +265,14 @@ function ensureStarted(
   }
   state.started = true;
   events.push({ type: "message_start", role: "assistant", raw });
+}
+
+function isTerminalEvent(type: string): boolean {
+  return type === "response.completed"
+    || type === "response.incomplete"
+    || type === "response.failed"
+    || type === "response.cancelled"
+    || type === "error";
 }
 
 function isReasoningDelta(type: string): boolean {

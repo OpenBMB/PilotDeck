@@ -231,6 +231,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
       // provider re-save their Anthropic key under OpenAI).
       if (prev?.id !== provider.id) {
         setApiKey('');
+        setCodexAuthenticated(false);
       }
       return provider;
     });
@@ -242,7 +243,6 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     setCustomUrl('');
     setCustomProviderId('');
     setCustomProtocol('openai');
-    setCodexAuthenticated(false);
     setTestStatus('idle');
     setTestMessage('');
   }, []);

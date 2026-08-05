@@ -84,6 +84,52 @@ describe('user onboarding status route', () => {
       hasCompletedOnboarding: true,
     });
   });
+
+  it('does not complete onboarding for malformed Codex provider config', async () => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'codex/gpt-5.6-sol' },
+        model: { providers: { codex: { apiKey: '' } } },
+      },
+    }, { codexAuthenticated: true });
+
+    const data = await request('/api/user/onboarding-status');
+
+    expect(data).toMatchObject({
+      success: true,
+      hasCompletedOnboarding: false,
+    });
+  });
+
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('does not complete onboarding for a Codex provider with the %s', async (_case, protocol, url) => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'codex/gpt-5.6-sol' },
+        model: {
+          providers: {
+            codex: {
+              protocol,
+              url,
+              apiKey: '',
+              models: { 'gpt-5.6-sol': {} },
+            },
+          },
+        },
+      },
+    }, { codexAuthenticated: true });
+
+    const data = await request('/api/user/onboarding-status');
+
+    expect(data).toMatchObject({
+      success: true,
+      hasCompletedOnboarding: false,
+    });
+  });
 });
 
 async function createUserApp(record, { codexAuthenticated = false } = {}) {

@@ -1,4 +1,6 @@
-import type { ProviderConfig } from "../../protocol/canonical.js";
+export { isCodexSubscriptionProvider } from "../../providerEndpoint.js";
+import { randomUUID } from "node:crypto";
+
 import {
   resolveCodexRuntimeCredentials,
   type CodexAuthOptions,
@@ -8,7 +10,6 @@ import {
   CODEX_BASE_URL,
   CODEX_CATALOG_REQUEST_TIMEOUT_MS,
   CODEX_MODELS_URL,
-  CODEX_PROVIDER_ID,
 } from "./constants.js";
 import { extractChatGptAccountId } from "./jwt.js";
 
@@ -19,36 +20,6 @@ export type CodexModel = {
   maxOutputTokens?: number;
   priority: number;
 };
-
-export const FALLBACK_CODEX_MODELS: readonly CodexModel[] = [
-  codexModel("gpt-5.6-sol", "GPT-5.6 Sol"),
-  codexModel("gpt-5.6-sol-pro", "GPT-5.6 Sol Pro"),
-  codexModel("gpt-5.6-terra", "GPT-5.6 Terra"),
-  codexModel("gpt-5.6-terra-pro", "GPT-5.6 Terra Pro"),
-  codexModel("gpt-5.6-luna", "GPT-5.6 Luna"),
-  codexModel("gpt-5.6-luna-pro", "GPT-5.6 Luna Pro"),
-  codexModel("gpt-5.5", "GPT-5.5"),
-  codexModel("gpt-5.4-mini", "GPT-5.4 Mini"),
-  codexModel("gpt-5.4", "GPT-5.4"),
-  codexModel("gpt-5.3-codex", "GPT-5.3 Codex"),
-  codexModel("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", 128_000),
-];
-
-const FORWARD_COMPAT_CODEX_MODELS: ReadonlyArray<{
-  modelId: string;
-  templateIds: readonly string[];
-}> = [
-  { modelId: "gpt-5.6-sol", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.6-sol-pro", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.6-terra", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.6-terra-pro", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.6-luna", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.6-luna-pro", templateIds: ["gpt-5.5", "gpt-5.4"] },
-  { modelId: "gpt-5.5", templateIds: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"] },
-  { modelId: "gpt-5.4-mini", templateIds: ["gpt-5.3-codex"] },
-  { modelId: "gpt-5.4", templateIds: ["gpt-5.3-codex"] },
-  { modelId: "gpt-5.3-codex-spark", templateIds: ["gpt-5.3-codex"] },
-];
 
 export type CodexClientOptions = CodexAuthOptions & {
   credentials?: CodexRuntimeCredentials;
@@ -64,34 +35,46 @@ export class CodexApiError extends Error {
   }
 }
 
-export function isCodexSubscriptionProvider(
-  provider: Pick<ProviderConfig, "id" | "protocol" | "url">,
-): boolean {
-  if (provider.id.toLowerCase() !== CODEX_PROVIDER_ID) return false;
-  if (provider.protocol !== "openai-responses") return false;
-  try {
-    const url = new URL(provider.url);
-    return url.protocol === "https:"
-      && url.hostname.toLowerCase() === "chatgpt.com"
-      && url.pathname.replace(/\/+$/, "") === "/backend-api/codex";
-  } catch {
-    return false;
-  }
-}
-
 export function buildCodexRequestHeaders(
   accessToken: string,
   extraHeaders: Record<string, string> = {},
 ): Record<string, string> {
-  const headers: Record<string, string> = {
-    ...extraHeaders,
-    authorization: `Bearer ${accessToken.trim()}`,
-    originator: "codex_cli_rs",
-    "user-agent": "codex_cli_rs/0.0.0 (PilotDeck)",
-  };
+  const headers = copyAllowedHeaders(extraHeaders, new Set([
+    "authorization",
+    "chatgpt-account-id",
+    "originator",
+  ]));
+  headers.authorization = `Bearer ${accessToken.trim()}`;
+  headers.originator = "codex_cli_rs";
+  headers["user-agent"] ??= "codex_cli_rs/0.0.0 (PilotDeck)";
   const accountId = extractChatGptAccountId(accessToken);
   if (accountId) headers["ChatGPT-Account-Id"] = accountId;
   return headers;
+}
+
+export function buildCodexResponsesRequestHeaders(
+  accessToken: string,
+  extraHeaders: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    ...buildCodexRequestHeaders(accessToken, copyAllowedHeaders(extraHeaders, new Set([
+      "accept",
+      "openai-beta",
+      "x-client-request-id",
+    ]))),
+    accept: "text/event-stream",
+    "OpenAI-Beta": "responses=experimental",
+    "x-client-request-id": randomUUID(),
+  };
+}
+
+function copyAllowedHeaders(
+  headers: Record<string, string>,
+  excludedNames: ReadonlySet<string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !excludedNames.has(name.toLowerCase())),
+  );
 }
 
 export async function fetchCodexModels(
@@ -134,7 +117,7 @@ export async function fetchCodexModels(
     .map(parseCodexModel)
     .filter((model): model is CodexModel => Boolean(model))
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
-  return addForwardCompatibleModels(dedupeModels(models));
+  return dedupeModels(models);
 }
 
 export async function probeCodexModel(
@@ -148,7 +131,7 @@ export async function probeCodexModel(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...buildCodexRequestHeaders(credentials.accessToken),
+      ...buildCodexResponsesRequestHeaders(credentials.accessToken),
     },
     body: JSON.stringify({
       model,
@@ -184,7 +167,11 @@ function parseCodexModel(value: unknown): CodexModel | undefined {
   const id = readString(value.slug) || readString(value.id);
   if (!id) return undefined;
   const visibility = readString(value.visibility).toLowerCase();
-  if (visibility === "hide" || visibility === "hidden") return undefined;
+  if (
+    visibility === "hide"
+    || visibility === "hidden"
+    || value.supported_in_api === false
+  ) return undefined;
   return {
     id,
     displayName: readString(value.display_name)
@@ -203,33 +190,6 @@ function dedupeModels(models: CodexModel[]): CodexModel[] {
     seen.add(model.id);
     return true;
   });
-}
-
-function addForwardCompatibleModels(models: CodexModel[]): CodexModel[] {
-  const result = [...models];
-  const seen = new Set(result.map((model) => model.id));
-  const fallbacks = new Map(FALLBACK_CODEX_MODELS.map((model) => [model.id, model]));
-  for (const entry of FORWARD_COMPAT_CODEX_MODELS) {
-    if (
-      seen.has(entry.modelId)
-      || !entry.templateIds.some((templateId) => seen.has(templateId))
-    ) {
-      continue;
-    }
-    const model = fallbacks.get(entry.modelId);
-    if (!model) continue;
-    result.push(model);
-    seen.add(model.id);
-  }
-  return result;
-}
-
-function codexModel(
-  id: string,
-  displayName: string,
-  contextWindow = 272_000,
-): CodexModel {
-  return { id, displayName, contextWindow, maxOutputTokens: 128_000, priority: 10_000 };
 }
 
 function readString(value: unknown): string {

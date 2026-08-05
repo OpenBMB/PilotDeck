@@ -38,7 +38,7 @@ export function isCodexAccessTokenExpiring(
   now = Date.now(),
 ): boolean {
   const expiresAt = codexAccessTokenExpiresAt(token);
-  return expiresAt !== undefined && expiresAt <= now + Math.max(0, skewMs);
+  return expiresAt === undefined || expiresAt <= now + Math.max(0, skewMs);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

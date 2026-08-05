@@ -54,14 +54,13 @@ export default function ProviderCard({
   const [draftProvider, setDraftProvider] = useState<V2Provider>(provider);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const isCodexProvider = providerId === "codex";
   const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
-  const protocol = isCodexProvider
-    ? "openai-responses"
-    : draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
-  const effectiveUrl = isCodexProvider
-    ? catalogEntry?.defaultUrl || "https://chatgpt.com/backend-api/codex"
-    : draftProvider.url || catalogEntry?.defaultUrl || "";
+  const protocol = draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
+  const isCodexProvider =
+    catalogEntry?.id === "codex" &&
+    draftProvider.protocol === "openai-responses" &&
+    draftProvider.url === catalogEntry.defaultUrl;
+  const effectiveUrl = draftProvider.url || catalogEntry?.defaultUrl || "";
   const enabledModels = Object.keys(draftProvider.models ?? {});
   const [newModelId, setNewModelId] = useState("");
   const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
@@ -245,121 +244,121 @@ export default function ProviderCard({
         disabled={!editing || saving}
         className={cn(!editing && "opacity-95")}
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
-          <label className="text-xs text-muted-foreground">
-            <span className="mb-1 block">
-              {t("pilotDeckConfig.panels.models.protocol")}
-            </span>
-            <Select
-              value={protocol}
-              onChange={(v) => update({ protocol: v as CatalogProviderProtocol })}
-              disabled={isCodexProvider}
-              options={[
-                {
-                  value: "openai",
-                  label: t("pilotDeckConfig.panels.models.protocolOptions.openai"),
-                },
-                {
-                  value: "openai-responses",
-                  label: t(
-                    "pilotDeckConfig.panels.models.protocolOptions.openaiResponses",
-                  ),
-                },
-                {
-                  value: "anthropic",
-                  label: t(
-                    "pilotDeckConfig.panels.models.protocolOptions.anthropic",
-                  ),
-                },
-                {
-                  value: "google",
-                  label: t("pilotDeckConfig.panels.models.protocolOptions.google"),
-                },
-              ]}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
+        <label className="text-xs text-muted-foreground">
+          <span className="mb-1 block">
+            {t("pilotDeckConfig.panels.models.protocol")}
+          </span>
+          <Select
+            value={protocol}
+            onChange={(v) => update({ protocol: v as CatalogProviderProtocol })}
+            disabled={isCodexProvider}
+            options={[
+              {
+                value: "openai",
+                label: t("pilotDeckConfig.panels.models.protocolOptions.openai"),
+              },
+              {
+                value: "openai-responses",
+                label: t(
+                  "pilotDeckConfig.panels.models.protocolOptions.openaiResponses",
+                ),
+              },
+              {
+                value: "anthropic",
+                label: t(
+                  "pilotDeckConfig.panels.models.protocolOptions.anthropic",
+                ),
+              },
+              {
+                value: "google",
+                label: t("pilotDeckConfig.panels.models.protocolOptions.google"),
+              },
+            ]}
+          />
+        </label>
+        <label className="text-xs text-muted-foreground">
+          <span className="mb-1 block">
+            {t("pilotDeckConfig.panels.models.baseUrl")}
+          </span>
+          {isCodexProvider ? (
+            <div className="w-full rounded-md border border-border bg-muted/40 px-2 py-1.5 font-mono text-xs leading-5 text-muted-foreground">
+              {effectiveUrl}
+            </div>
+          ) : (
+            <TextInput
+              value={draftProvider.url}
+              placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
+              monospace
+              onChange={(v) => update({ url: v })}
             />
-          </label>
-          <label className="text-xs text-muted-foreground">
-            <span className="mb-1 block">
-              {t("pilotDeckConfig.panels.models.baseUrl")}
-            </span>
-            {isCodexProvider ? (
-              <div className="w-full rounded-md border border-border bg-muted/40 px-2 py-1.5 font-mono text-xs leading-5 text-muted-foreground">
-                {effectiveUrl}
-              </div>
-            ) : (
-              <TextInput
-                value={draftProvider.url}
-                placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
-                monospace
-                onChange={(v) => update({ url: v })}
-              />
-            )}
+          )}
+          <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
+            {isCodexProvider
+              ? t("pilotDeckConfig.panels.models.codexAuth.baseUrlHint")
+              : t("pilotDeckConfig.panels.models.baseUrlHint")}
+          </span>
+          {!draftProvider.url && catalogEntry && (
             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-              {isCodexProvider
-                ? t("pilotDeckConfig.panels.models.codexAuth.baseUrlHint")
-                : t("pilotDeckConfig.panels.models.baseUrlHint")}
+              {t("pilotDeckConfig.panels.models.defaultsTo")}{" "}
+              <code className="font-mono">{catalogEntry.defaultUrl}</code>{" "}
+              {t("pilotDeckConfig.panels.models.fromCatalog")}
             </span>
-            {!draftProvider.url && catalogEntry && (
-              <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-                {t("pilotDeckConfig.panels.models.defaultsTo")}{" "}
-                <code className="font-mono">{catalogEntry.defaultUrl}</code>{" "}
-                {t("pilotDeckConfig.panels.models.fromCatalog")}
-              </span>
-            )}
-            {effectiveUrl && draftProvider.url && (
-              <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-                {t("pilotDeckConfig.panels.models.effective")}{" "}
-                <code className="font-mono">{effectiveUrl}</code>
-              </span>
-            )}
-          </label>
-        </div>
+          )}
+          {effectiveUrl && draftProvider.url && (
+            <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
+              {t("pilotDeckConfig.panels.models.effective")}{" "}
+              <code className="font-mono">{effectiveUrl}</code>
+            </span>
+          )}
+        </label>
+      </div>
 
-        {!isCodexProvider && (
-          <label className="block text-xs text-muted-foreground">
-            <span className="mb-1 block">
-              {t("pilotDeckConfig.panels.models.apiKey")}
-              {!providerRequiresApiKey
-                ? ` (${t("pilotDeckConfig.panels.models.optional")})`
-                : ""}
+      {!isCodexProvider && (
+        <label className="block text-xs text-muted-foreground">
+          <span className="mb-1 block">
+            {t("pilotDeckConfig.panels.models.apiKey")}
+            {!providerRequiresApiKey
+              ? ` (${t("pilotDeckConfig.panels.models.optional")})`
+              : ""}
+          </span>
+          <SecretTextInput
+            value={draftProvider.apiKey}
+            emptyPlaceholder={providerRequiresApiKey ? "sk-..." : ""}
+            maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
+            onChange={(v) => update({ apiKey: v })}
+          />
+          {isMaskedKey && (
+            <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Info className="h-3 w-3" />
+              {t("pilotDeckConfig.panels.models.keyHidden")}
             </span>
-            <SecretTextInput
-              value={draftProvider.apiKey}
-              emptyPlaceholder={providerRequiresApiKey ? "sk-..." : ""}
-              maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
-              onChange={(v) => update({ apiKey: v })}
+          )}
+        </label>
+      )}
+
+      <div>
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <span>{t("pilotDeckConfig.panels.models.enabledModels")}</span>
+          <span className="text-[10px] text-muted-foreground/60">
+            · <ImageIcon className="inline h-2.5 w-2.5" />{" "}
+            {t("pilotDeckConfig.panels.models.supportsImageInput")}
+          </span>
+          <button
+            type="button"
+            onClick={refreshModels}
+            disabled={!canFetchModels || apiModelsStatus === "loading"}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={cn(
+                "h-2.5 w-2.5",
+                apiModelsStatus === "loading" && "animate-spin",
+              )}
             />
-            {isMaskedKey && (
-              <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Info className="h-3 w-3" />
-                {t("pilotDeckConfig.panels.models.keyHidden")}
-              </span>
-            )}
-          </label>
-        )}
-
-        <div>
-          <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span>{t("pilotDeckConfig.panels.models.enabledModels")}</span>
-            <span className="text-[10px] text-muted-foreground/60">
-              · <ImageIcon className="inline h-2.5 w-2.5" />{" "}
-              {t("pilotDeckConfig.panels.models.supportsImageInput")}
-            </span>
-            <button
-              type="button"
-              onClick={refreshModels}
-              disabled={!canFetchModels || apiModelsStatus === "loading"}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCw
-                className={cn(
-                  "h-2.5 w-2.5",
-                  apiModelsStatus === "loading" && "animate-spin",
-                )}
-              />
-              Fetch API models
-            </button>
-          </div>
+            Fetch API models
+          </button>
+        </div>
 
         {apiModelsStatus === "error" && apiModelsError && (
           <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1 text-[11px] text-destructive">
