@@ -5,11 +5,10 @@ import { GroupChatRuntime } from "../../../src/collaboration/index.js";
 import { createGroupChatTool } from "../../../src/tool/builtin/groupChat.js";
 import { createBuiltinRegistry } from "../../../src/tool/registry/createBuiltinRegistry.js";
 import type {
-  PilotDeckSubagentForkApi,
   PilotDeckToolRuntimeContext,
 } from "../../../src/tool/index.js";
 
-function context(fork?: PilotDeckSubagentForkApi): PilotDeckToolRuntimeContext {
+function context(): PilotDeckToolRuntimeContext {
   return {
     sessionId: "session-1",
     turnId: "turn-1",
@@ -24,7 +23,6 @@ function context(fork?: PilotDeckSubagentForkApi): PilotDeckToolRuntimeContext {
       bypassAvailable: true,
       rules: { allow: [], deny: [], ask: [] },
     },
-    subagent: fork,
   };
 }
 
@@ -39,51 +37,31 @@ test("builtin registry exposes group_chat when a shared project runtime is confi
   assert.equal(registry.has("group_member_delegate"), true);
 });
 
-test("group_chat runs local PilotDeck and mock StaffDeck participants only when send_message is called", async () => {
-  const directives: string[] = [];
-  const fork: PilotDeckSubagentForkApi = {
-    depth: 0,
-    maxSubagentDepth: 1,
-    listDefinitions: () => [{ id: "general-purpose", description: "general" }],
-    isAllowedDefinition: (id) => id === "general-purpose",
-    fork: async ({ directive }) => {
-      directives.push(directive);
-      const result = directive.includes("Mock Reviewer") ? "Mock review" : "Local plan";
-      return {
-        markdown: `Scope: group\nResult: ${result}\nKey files: none\nFiles changed: none\nIssues: none`,
-        parsed: { Scope: "group", Result: result, "Key files": "none", "Files changed": "none", Issues: "none" },
-        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-        turns: 1,
-        durationMs: 1,
-      };
-    },
-  };
+test("group_chat rejects legacy local and Mock participants", async () => {
   const tool = createGroupChatTool({ runtime: new GroupChatRuntime() });
-  const created = await tool.execute({
-    action: "create_room",
-    title: "Architecture review",
-    participants: [
-      { id: "architect", kind: "pilotdeck_local", name: "Architect", role: "design" },
-      { id: "reviewer", kind: "staffdeck_mock", name: "Mock Reviewer", employeeId: "mock-reviewer" },
-    ],
-  }, context(fork));
-
-  assert.equal(directives.length, 0);
-  const roomId = created.data?.room?.id;
-  assert.ok(roomId);
-  const sent = await tool.execute({
-    action: "send_message",
-    roomId,
-    message: "Propose and critique an MVP.",
-  }, context(fork));
-
-  assert.equal(directives.length, 2);
-  assert.equal(sent.data?.replies?.length, 2);
-  assert.deepEqual(sent.data?.replies?.map((reply) => reply.message?.content), ["Local plan", "Mock review"]);
-  assert.match(sent.content[0]?.type === "text" ? sent.content[0].text : "", /Group chat round completed/u);
+  await assert.rejects(
+    tool.execute({
+      action: "create_room",
+      title: "Architecture review",
+      participants: [
+        { id: "architect", kind: "pilotdeck_local", name: "Architect", role: "design" },
+      ],
+    }, context()),
+    /Only approved remote PilotDeck instances and real StaffDeck employees/u,
+  );
+  await assert.rejects(
+    tool.execute({
+      action: "create_room",
+      title: "Mock review",
+      participants: [
+        { id: "reviewer", kind: "staffdeck_mock", name: "Mock Reviewer", employeeId: "mock-reviewer" },
+      ],
+    }, context()),
+    /Only approved remote PilotDeck instances and real StaffDeck employees/u,
+  );
 });
 
-test("group_chat exposes mock employees without contacting StaffDeck when it is not configured", async () => {
+test("group_chat requires real StaffDeck configuration instead of exposing Mock employees", async () => {
   let fetched = false;
   const tool = createGroupChatTool({
     runtime: new GroupChatRuntime(),
@@ -93,13 +71,9 @@ test("group_chat exposes mock employees without contacting StaffDeck when it is 
     }) as typeof fetch,
   });
 
-  const result = await tool.execute({ action: "list_staffdeck_employees" }, context());
-
+  await assert.rejects(
+    tool.execute({ action: "list_staffdeck_employees" }, context()),
+    /StaffDeck access requires STAFFDECK_BASE_URL and STAFFDECK_API_KEY/u,
+  );
   assert.equal(fetched, false);
-  assert.equal(result.data?.employeeSource, "mock");
-  assert.deepEqual(result.data?.employees?.map((employee) => employee.id), [
-    "mock-researcher",
-    "mock-engineer",
-    "mock-reviewer",
-  ]);
 });

@@ -70,5 +70,15 @@ export type StaffDeckEmployeeSummary = {
   id: string;
   name: string;
   description?: string;
-  source: "staffdeck" | "mock";
+  source: "staffdeck";
+  access: "owned" | "public" | "accessible";
+  creatorUserId?: string;
+  creatorUsername?: string;
+  creatorDisplayName?: string;
+  publishedToGallery: boolean;
+  usedByCurrentUser?: boolean;
+  roleName?: string;
+  expertiseTags?: string[];
+  workStyles?: string[];
+  workModes?: string[];
 };

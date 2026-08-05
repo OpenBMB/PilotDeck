@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { StaffDeckClient } from '../../../src/collaboration/participants/StaffDeckClient.js';
 import { instancesDb, userDb } from '../database/db.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import { createNotificationEvent, notifyUserIfEnabled } from './notification-orchestrator.js';
@@ -15,7 +16,17 @@ const configuredMemberTimeout = Number(process.env.PILOTDECK_GROUP_MEMBER_TIMEOU
 const MEMBER_TIMEOUT_MS = Number.isFinite(configuredMemberTimeout) && configuredMemberTimeout >= 100
   ? configuredMemberTimeout
   : 5 * 60_000;
+const configuredStaffDeckPollInterval = Number(process.env.STAFFDECK_POLL_INTERVAL_MS);
+const STAFFDECK_POLL_INTERVAL_MS = Number.isFinite(configuredStaffDeckPollInterval) && configuredStaffDeckPollInterval >= 0
+  ? configuredStaffDeckPollInterval
+  : 1_000;
+const staffDeckClient = new StaffDeckClient({
+  timeoutMs: MEMBER_TIMEOUT_MS,
+  pollIntervalMs: STAFFDECK_POLL_INTERVAL_MS,
+});
 const MAX_REQUIRED_DELEGATE_RETRIES = 1;
+const MAX_DELEGATIONS_PER_TURN = MAX_MEMBERS + 2;
+const MAX_DELEGATIONS_PER_MEMBER_PER_TURN = 2;
 const GROUP_MEMBER_DELEGATE_TOOL = 'group_member_delegate';
 const GROUP_READ_ONLY_DENY_RULES = [
   'bash', 'write_file', 'edit_file', 'edit_notebook', 'execute_code',
@@ -37,58 +48,6 @@ function categoryLabel(kind) {
   return '数字员工';
 }
 
-export const MOCK_EMPLOYEES = [
-  {
-    id: 'mock-researcher',
-    kind: 'staffdeck_mock',
-    name: 'Mock 研究员',
-    role: '研究分析',
-    description: '收集证据、澄清假设并比较不同方案。',
-  },
-  {
-    id: 'mock-engineer',
-    kind: 'staffdeck_mock',
-    name: 'Mock 工程师',
-    role: '方案实现',
-    description: '将目标转换为实现方案，并指出集成约束。',
-  },
-  {
-    id: 'mock-reviewer',
-    kind: 'staffdeck_mock',
-    name: 'Mock 评审员',
-    role: '风险评审',
-    description: '挑战方案、识别失败模式并给出验证建议。',
-  },
-];
-
-for (const employee of MOCK_EMPLOYEES) employee.category = memberCategory(employee.kind);
-
-const LOCAL_TEMPLATES = [
-  {
-    id: 'local-researcher',
-    kind: 'pilotdeck_local',
-    name: 'PilotDeck 研究员',
-    role: '研究分析',
-    description: '只读调查、证据整理与方案比较。',
-  },
-  {
-    id: 'local-engineer',
-    kind: 'pilotdeck_local',
-    name: 'PilotDeck 工程师',
-    role: '技术实现',
-    description: '从工程角度给出架构和实现建议。',
-  },
-  {
-    id: 'local-reviewer',
-    kind: 'pilotdeck_local',
-    name: 'PilotDeck 评审员',
-    role: '独立评审',
-    description: '独立审查风险、遗漏和验收条件。',
-  },
-];
-
-for (const template of LOCAL_TEMPLATES) template.category = memberCategory(template.kind);
-
 function cleanText(value, field, max = 200) {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text) throw new Error(`${field} 不能为空。`);
@@ -97,14 +56,31 @@ function cleanText(value, field, max = 200) {
 }
 
 function normalizeMemberInput(input) {
-  const allowedKinds = new Set(['pilotdeck_local', 'pilotdeck_remote', 'staffdeck', 'staffdeck_mock']);
-  if (!allowedKinds.has(input?.kind)) throw new Error('不支持的智能体类型。');
+  const allowedKinds = new Set(['pilotdeck_remote', 'staffdeck']);
+  if (!allowedKinds.has(input?.kind)) throw new Error('仅支持已批准的远程 PilotDeck 实例和真实 StaffDeck 数字员工。');
   const id = cleanText(input.id || input.employeeId || `member-${crypto.randomUUID()}`, '成员 ID', 100)
     .replace(/[^a-zA-Z0-9_-]/g, '-');
   if (id === 'main') throw new Error('main 是主智能体的保留 ID。');
   const config = input.config && typeof input.config === 'object' ? { ...input.config } : {};
-  if (input.kind === 'staffdeck' || input.kind === 'staffdeck_mock') {
+  if (input.kind === 'staffdeck') {
     config.employeeId = cleanText(input.employeeId || config.employeeId || id, '员工 ID', 200);
+    config.staffdeckAccess = ['owned', 'public', 'accessible'].includes(input.staffdeckAccess)
+      ? input.staffdeckAccess
+      : ['owned', 'public', 'accessible'].includes(config.staffdeckAccess)
+        ? config.staffdeckAccess
+        : 'accessible';
+    for (const key of ['creatorUserId', 'creatorUsername', 'creatorDisplayName']) {
+      const value = typeof input[key] === 'string' ? input[key].trim() : '';
+      if (value) config[key] = value.slice(0, 200);
+    }
+    config.publishedToGallery = input.publishedToGallery === true;
+    if (typeof input.usedByCurrentUser === 'boolean') config.usedByCurrentUser = input.usedByCurrentUser;
+    for (const key of ['expertiseTags', 'workStyles', 'workModes']) {
+      const values = Array.isArray(input[key])
+        ? [...new Set(input[key].filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()))]
+        : [];
+      if (values.length > 0) config[key] = values.slice(0, 20);
+    }
   }
   if (input.kind === 'pilotdeck_remote') {
     config.instanceId = cleanText(input.instanceId || config.instanceId, '已批准实例 ID', 200);
@@ -151,30 +127,27 @@ async function fetchJson(url, options = {}, timeoutMs = 30_000) {
 }
 
 async function listStaffDeckEmployees() {
-  const baseUrl = process.env.STAFFDECK_BASE_URL?.trim().replace(/\/$/, '');
-  const tenantId = process.env.STAFFDECK_TENANT_ID?.trim();
-  if (!baseUrl || !tenantId) return [];
-  const url = new URL('/api/chat/agents', `${baseUrl}/`);
-  url.searchParams.set('tenant_id', tenantId);
-  const token = process.env.STAFFDECK_API_TOKEN?.trim();
-  const payload = await fetchJson(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!Array.isArray(payload)) return [];
-  return payload.flatMap((employee) => {
-    const id = typeof employee?.id === 'string' ? employee.id.trim() : '';
-    const name = typeof employee?.name === 'string' ? employee.name.trim() : '';
-    if (!id || !name) return [];
-    return [{
-      id,
-      kind: 'staffdeck',
-      category: 'employee',
-      name,
-      role: 'StaffDeck 数字员工',
-      description: typeof employee.description === 'string' ? employee.description : '',
-      employeeId: id,
-    }];
-  });
+  const connection = staffDeckClient.resolveConnection(process.env);
+  if (!connection) return [];
+  const employees = await staffDeckClient.listEmployees(connection);
+  return employees.map((employee) => ({
+    id: employee.id,
+    kind: 'staffdeck',
+    category: 'employee',
+    name: employee.name,
+    role: employee.roleName || 'StaffDeck 数字员工',
+    description: employee.description || '',
+    employeeId: employee.id,
+    staffdeckAccess: employee.access,
+    creatorUserId: employee.creatorUserId,
+    creatorUsername: employee.creatorUsername,
+    creatorDisplayName: employee.creatorDisplayName,
+    publishedToGallery: employee.publishedToGallery,
+    usedByCurrentUser: employee.usedByCurrentUser,
+    expertiseTags: employee.expertiseTags,
+    workStyles: employee.workStyles,
+    workModes: employee.workModes,
+  }));
 }
 
 function formatTranscript(messages) {
@@ -192,7 +165,19 @@ function formatTranscript(messages) {
 function buildMemberContext(room, member, transcript, isMain, requiredDelegateIds = []) {
   const roster = room.members
     .filter((candidate) => candidate.isActive !== false)
-    .map((candidate) => `- ${candidate.name}: id=${candidate.id}, 类型=${categoryLabel(candidate.kind)}, 角色=${candidate.role || '未设置'}`)
+    .map((candidate) => {
+      const details = [`id=${candidate.id}`, `类型=${categoryLabel(candidate.kind)}`, `角色=${candidate.role || '未设置'}`];
+      if (candidate.description) details.push(`职责=${candidate.description}`);
+      if (candidate.kind === 'staffdeck') {
+        const access = candidate.config?.staffdeckAccess;
+        details.push(`来源=${access === 'owned' ? '当前账号创建' : access === 'public' ? '公开员工' : '当前账号可访问'}`);
+        const creator = candidate.config?.creatorDisplayName || candidate.config?.creatorUsername;
+        if (creator) details.push(`创建者=${creator}`);
+        const expertise = Array.isArray(candidate.config?.expertiseTags) ? candidate.config.expertiseTags : [];
+        if (expertise.length > 0) details.push(`专长=${expertise.join('、')}`);
+      }
+      return `- ${candidate.name}: ${details.join(', ')}`;
+    })
     .join('\n');
   return [
     `你正在群组“${room.title}”中以“${member.name}”身份发言。`,
@@ -209,7 +194,8 @@ function buildMemberContext(room, member, transcript, isMain, requiredDelegateId
             ? `本轮用户显式提及了以下成员，你必须按此顺序逐一调用 group_member_delegate，不能跳过：${requiredDelegateIds.join(' -> ')}。`
             : '',
           '界面会根据真实工具调用展示委派卡片，因此不要只在文字中声称“我去问”或伪造 @成员；请实际调用工具，并在拿到回复后继续回答。',
-          '如果其他成员已经在本轮发言，请结合他们的观点给用户清晰的综合结论；不要重复调用已经给出本轮回复的成员。',
+          '每次成员回复都会作为阻塞工具结果回到你当前的同一轮推理。收到结果后请重新判断信息是否充分：必要时可以继续调用另一位合适成员，一次调用一位；信息充分后停止委派并给出综合结论。',
+          '不要机械轮询全部成员。只有确有必要时才再次追问同一成员，并避免重复问题或无休止委派。',
         ].join('\n')
       : '请从自己的专业角度直接回应用户。不要冒充其他成员，也不要描述内部调度或适配器机制。',
     '以下是群组最近的公开发言，供你理解上下文：',
@@ -474,33 +460,49 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
   return { content: output.trim(), sawDelegation };
 }
 
-async function invokeStaffDeck(room, member, userMessage, transcript, userId) {
-  const baseUrl = process.env.STAFFDECK_BASE_URL?.trim().replace(/\/$/, '');
-  const tenantId = process.env.STAFFDECK_TENANT_ID?.trim();
-  if (!baseUrl || !tenantId) throw new Error('StaffDeck 尚未配置。');
-  const token = process.env.STAFFDECK_API_TOKEN?.trim();
-  const payload = await fetchJson(new URL('/api/chat/turn', `${baseUrl}/`), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+async function invokeStaffDeck(room, member, userMessage, transcript, userId, options = {}) {
+  const connection = staffDeckClient.resolveConnection(process.env);
+  if (!connection) throw new Error('StaffDeck 尚未配置 API Key。');
+  const now = new Date().toISOString();
+  const employeeId = member.config?.employeeId || member.id;
+  const prompt = `${buildMemberContext(room, member, transcript, false)}\n\n当前用户消息：\n${userMessage}`;
+  return staffDeckClient.invoke({
+    room: {
+      id: room.id,
+      ownerSessionId: `user-${userId}`,
+      title: room.title,
+      status: 'active',
+      participants: [{
+        id: member.id,
+        kind: 'staffdeck',
+        name: member.name,
+        role: member.role,
+        description: member.description,
+        employeeId,
+      }],
+      messages: [],
+      createdAt: room.createdAt || now,
+      updatedAt: room.updatedAt || now,
     },
-    body: JSON.stringify({
-      tenant_id: tenantId,
-      agent_id: member.config?.employeeId || member.id,
-      ...(member.config?.staffdeckSessionId ? { session_id: member.config.staffdeckSessionId } : {}),
-      channel: 'pilotdeck_group_chat',
-      message: `${buildMemberContext(room, member, transcript, false)}\n\n当前用户消息：\n${userMessage}`,
-    }),
-  }, MEMBER_TIMEOUT_MS);
-  if (typeof payload?.session_id === 'string' && payload.session_id.trim()) {
-    groupChatDb.updateMemberConfig(userId, room.id, member.id, {
-      ...member.config,
-      staffdeckSessionId: payload.session_id.trim(),
-    });
-  }
-  if (typeof payload?.reply !== 'string' || !payload.reply.trim()) throw new Error('StaffDeck 员工返回了空内容。');
-  return payload.reply.trim();
+    participant: {
+      id: member.id,
+      kind: 'staffdeck',
+      name: member.name,
+      role: member.role,
+      description: member.description,
+      employeeId,
+    },
+    sourceMessage: {
+      id: options.roundId || `group-message-${crypto.randomUUID()}`,
+      roomId: room.id,
+      senderId: 'main',
+      senderName: 'PilotDeck 主智能体',
+      senderKind: 'pilotdeck_main',
+      content: userMessage,
+      createdAt: now,
+    },
+    transcript,
+  }, prompt, connection);
 }
 
 async function invokeMember(room, member, userMessage, transcript, userId, options = {}) {
@@ -509,15 +511,18 @@ async function invokeMember(room, member, userMessage, transcript, userId, optio
   if (participant && !participant.isActive) {
     throw new Error(`成员“${member.name}”的账号已停用。`);
   }
+  if (member.kind === 'pilotdeck_main') {
+    return invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options);
+  }
   if (member.kind === 'pilotdeck_remote') {
     return invokeRemoteGroupTurn(room, member, userMessage, transcript, userId, options);
   }
-  if (member.kind === 'staffdeck' || member.kind === 'staffdeck_mock') {
-    if (member.kind === 'staffdeck_mock') {
-      return invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options);
-    }
-    return { content: await invokeStaffDeck(room, member, userMessage, transcript, userId), sawDelegation: false };
+  if (member.kind === 'staffdeck') {
+    return { content: await invokeStaffDeck(room, member, userMessage, transcript, userId, options), sawDelegation: false };
   }
+  // Migration-only compatibility for an old round that was already queued before
+  // local/Mock members were removed. New additions reject both legacy kinds and
+  // the migration deactivates every persisted legacy member.
   return invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options);
 }
 
@@ -673,6 +678,8 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
     entryMemberId: entryMember.id,
     requiredDelegateIds: [...requiredDelegateIds],
     attemptedDelegateIds: new Set(),
+    delegationCallCounts: new Map(),
+    delegationSequence: [],
   };
   activeMainTurns.set(sessionId, turnContext);
   const grant = createGroupDelegationGrant({
@@ -842,10 +849,10 @@ export const groupChatService = {
       staffdeckError = error instanceof Error ? error.message : String(error);
     }
     return {
-      local: LOCAL_TEMPLATES,
+      local: [],
       staffdeck,
-      mocks: MOCK_EMPLOYEES,
-      staffdeckConfigured: Boolean(process.env.STAFFDECK_BASE_URL && process.env.STAFFDECK_TENANT_ID),
+      mocks: [],
+      staffdeckConfigured: Boolean(staffDeckClient.resolveConnection(process.env)),
       staffdeckError,
     };
   },
@@ -885,12 +892,23 @@ export const groupChatService = {
     if (nextRequired && memberId !== nextRequired) {
       throw new Error(`必须先按用户提及顺序委派 ${nextRequired}，然后才能调用 ${memberId}。`);
     }
+    if (activeTurn.delegationSequence.length >= MAX_DELEGATIONS_PER_TURN) {
+      throw new Error('本轮成员委派次数已达上限，请基于现有结果完成回答。');
+    }
+    const memberCallCount = activeTurn.delegationCallCounts.get(memberId) || 0;
+    if (memberCallCount >= MAX_DELEGATIONS_PER_MEMBER_PER_TURN) {
+      throw new Error(`本轮已多次调用 ${member.name}，请基于现有回复继续或改问其他成员。`);
+    }
     const message = cleanText(input.message, '委派消息', MAX_MESSAGE_CHARS);
     const sourceTurnId = typeof input.sourceTurnId === 'string'
       ? input.sourceTurnId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120)
       : '';
     const roundId = activeTurn.roundId;
+    const delegationIndex = activeTurn.delegationSequence.length + 1;
+    const delegationReason = activeTurn.requiredDelegateIds.includes(memberId) ? 'required' : 'agentic';
     activeTurn.attemptedDelegateIds.add(memberId);
+    activeTurn.delegationCallCounts.set(memberId, memberCallCount + 1);
+    activeTurn.delegationSequence.push(memberId);
     const entry = room.members.find((candidate) => candidate.id === activeTurn.entryMemberId);
     const delegation = groupChatDb.createMessage(userId, roomId, {
       roundId,
@@ -903,6 +921,8 @@ export const groupChatService = {
         state: 'waiting',
         targetMemberId: member.id,
         targetMemberName: member.name,
+        delegationIndex,
+        delegationReason,
         sourceTurnId: sourceTurnId || undefined,
       },
       status: 'thinking',

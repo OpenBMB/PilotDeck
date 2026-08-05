@@ -89,6 +89,20 @@ function projectLabel(group: AgentGroup) {
   return segments[segments.length - 1] || group.projectName;
 }
 
+function staffDeckAccessLabel(value: unknown) {
+  if (value === 'owned') return '我创建的';
+  if (value === 'public') return '公开员工';
+  return '可访问员工';
+}
+
+function staffDeckCreator(config: Record<string, unknown>) {
+  for (const key of ['creatorDisplayName', 'creatorUsername', 'creatorUserId']) {
+    const value = config[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 function readError(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string') {
     return (payload as { error: string }).error;
@@ -320,6 +334,22 @@ function GroupProcessDetailDrawer({
                       </div>
                       <ProcessStateIcon message={message} />
                     </div>
+                    {target?.isStaffDeck && target.member ? (
+                      <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 dark:border-emerald-900/70 dark:bg-emerald-950/30">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                          <span>{target.member.name}</span>
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300">
+                            {staffDeckAccessLabel(target.member.config.staffdeckAccess)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                          {target.member.role || 'StaffDeck 数字员工'} · 员工 ID：{target.id}
+                        </div>
+                        {staffDeckCreator(target.member.config) ? <div className="mt-0.5 text-[11px] text-emerald-700/80 dark:text-emerald-300/80">创建者：{staffDeckCreator(target.member.config)}</div> : null}
+                        {Array.isArray(target.member.config.expertiseTags) && target.member.config.expertiseTags.length > 0 ? <div className="mt-1 text-[11px] text-emerald-700/80 dark:text-emerald-300/80">专长：{target.member.config.expertiseTags.join(' · ')}</div> : null}
+                        {target.member.description ? <div className="mt-1 text-xs leading-5 text-neutral-600 dark:text-neutral-300">{target.member.description}</div> : null}
+                      </div>
+                    ) : null}
                     {message.content ? (
                       <div className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white px-3 py-2 text-xs leading-5 text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">{message.content}</div>
                     ) : null}
@@ -1049,15 +1079,25 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
 
   const invited = new Set(group.members.map((member) => member.id));
   const sections: Array<{ title: string; items: AvailableGroupMember[]; note?: string }> = available ? [
-    { title: '本地 PilotDeck 智能体', items: available.local },
-    { title: 'StaffDeck 数字员工', items: available.staffdeck, note: available.staffdeckConfigured ? (available.staffdeckError || undefined) : '尚未配置 StaffDeck，下面仍可使用 Mock 员工调试。' },
-    { title: 'Mock 数字员工', items: available.mocks },
-  ] : [];
+    {
+      title: '我创建的 StaffDeck 数字员工',
+      items: available.staffdeck.filter((employee) => employee.staffdeckAccess === 'owned'),
+      note: available.staffdeckConfigured ? (available.staffdeckError || undefined) : '尚未配置 StaffDeck，请先在运行配置中设置真实 StaffDeck 服务。',
+    },
+    {
+      title: '公开可用的 StaffDeck 数字员工',
+      items: available.staffdeck.filter((employee) => employee.staffdeckAccess === 'public'),
+    },
+    {
+      title: '其他可访问的 StaffDeck 数字员工',
+      items: available.staffdeck.filter((employee) => !['owned', 'public'].includes(employee.staffdeckAccess || '')),
+    },
+  ].filter((section) => section.items.length > 0 || Boolean(section.note)) : [];
 
   return (
     <div data-modal-overlay className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="flex max-h-[86vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-5 dark:border-neutral-800"><Plus className="h-5 w-5 text-blue-600" /><div className="flex-1"><h2 className="font-semibold">邀请群组成员</h2><p className="text-xs text-neutral-500">成员可以是 PilotDeck 实例、智能体或数字员工。</p></div><button type="button" aria-label="关闭邀请成员" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 px-5 dark:border-neutral-800"><Plus className="h-5 w-5 text-blue-600" /><div className="flex-1"><h2 className="font-semibold">邀请群组成员</h2><p className="text-xs text-neutral-500">邀请真实 StaffDeck 数字员工参与群组协作。</p></div><button type="button" aria-label="关闭邀请成员" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-4 w-4" /></button></div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           {loading ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-neutral-400" /></div> : null}
           {sections.map((section) => (
@@ -1069,7 +1109,16 @@ function InviteMembersDialog({ group, onClose, onChanged }: { group: AgentGroup;
                 return (
                   <div key={`${candidate.kind}:${candidate.id}`} className="flex items-center gap-3 rounded-xl border border-neutral-100 p-3 dark:border-neutral-800">
                     <div className={cn('flex h-9 w-9 items-center justify-center rounded-full text-[10px] font-semibold', avatarTone[candidate.kind])}>{initials(candidate.name)}</div>
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{candidate.name}</div><div className="truncate text-[11px] text-neutral-500">{candidate.role || kindLabel[candidate.kind]} · @{candidate.name}</div>{candidate.description ? <div className="mt-0.5 line-clamp-2 text-[11px] text-neutral-400">{candidate.description}</div> : null}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <div className="truncate text-sm font-medium">{candidate.name}</div>
+                        <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-300">{staffDeckAccessLabel(candidate.staffdeckAccess)}</span>
+                      </div>
+                      <div className="truncate text-[11px] text-neutral-500">{candidate.role || kindLabel[candidate.kind]} · @{candidate.name}</div>
+                      {candidate.creatorDisplayName || candidate.creatorUsername ? <div className="truncate text-[11px] text-neutral-400">创建者：{candidate.creatorDisplayName || candidate.creatorUsername}</div> : null}
+                      {candidate.expertiseTags?.length ? <div className="truncate text-[11px] text-neutral-400">专长：{candidate.expertiseTags.join(' · ')}</div> : null}
+                      {candidate.description ? <div className="mt-0.5 line-clamp-2 text-[11px] text-neutral-400">{candidate.description}</div> : null}
+                    </div>
                     {isInvited && member ? <button type="button" disabled={addingId === candidate.id} onClick={() => void remove(member)} className="rounded-lg px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950">移除</button> : <button type="button" disabled={Boolean(addingId)} onClick={() => void add(candidate)} className="rounded-lg bg-neutral-900 px-2.5 py-1.5 text-xs text-white disabled:opacity-40 dark:bg-white dark:text-neutral-900">邀请</button>}
                   </div>
                 );

@@ -22,6 +22,14 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('../../utils/api', () => ({ api: apiMock }));
 vi.mock('../auth/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 1, username: 'owner' } }) }));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const React = await import('react');
+  const Icon = React.forwardRef<SVGSVGElement, React.SVGProps<SVGSVGElement>>((props, ref) => (
+    <svg ref={ref} {...props} />
+  ));
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+});
 
 const now = '2026-08-01T12:00:00.000Z';
 
@@ -53,7 +61,7 @@ const group: AgentGroup = {
   hasSilentUnread: false,
   lastMessagePreview: '综合结论',
   members: [
-    member('engineer', 'Mock 工程师', 'staffdeck_mock', 0),
+    member('finance', '财务', 'staffdeck', 0),
     member('main', 'PilotDeck 主智能体', 'pilotdeck_main', 10_000),
   ],
   createdAt: now,
@@ -66,8 +74,8 @@ const messages: AgentGroupMessage[] = [
     sequence: 1, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
   },
   {
-    id: 'm2', roomId: group.id, senderType: 'agent', senderMemberId: 'engineer',
-    senderName: 'Mock 工程师', content: '工程建议', sequence: 2, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+    id: 'm2', roomId: group.id, senderType: 'agent', senderMemberId: 'finance',
+    senderName: '财务', content: '财务建议', sequence: 2, kind: 'chat', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
   },
   {
     id: 'm3', roomId: group.id, senderType: 'agent', senderMemberId: 'main',
@@ -114,9 +122,9 @@ describe('GroupChatView', () => {
 
     expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
     expect(screen.getByText('仅 @ 触发')).toBeTruthy();
-    expect(screen.getAllByText('Mock 工程师').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('财务').length).toBeGreaterThan(0);
     expect(screen.getAllByText('PilotDeck 主智能体').length).toBeGreaterThan(0);
-    expect(screen.getByText('工程建议')).toBeTruthy();
+    expect(screen.getByText('财务建议')).toBeTruthy();
     expect(screen.getByText('综合结论')).toBeTruthy();
     expect(screen.getByText(/未 @ 的消息仍会保存在时间线中/)).toBeTruthy();
   });
@@ -128,7 +136,7 @@ describe('GroupChatView', () => {
     expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '搜索当前群组' }));
     const search = screen.getByRole('searchbox', { name: '搜索群组消息' });
-    fireEvent.change(search, { target: { value: '工程建议' } });
+    fireEvent.change(search, { target: { value: '财务建议' } });
     expect(screen.getByText('1/1')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '文件' }));
@@ -159,15 +167,15 @@ describe('GroupChatView', () => {
     fireEvent.keyDown(editor, { key: 'ArrowDown' });
     fireEvent.keyDown(editor, { key: 'Enter' });
 
-    const chip = editor.querySelector<HTMLElement>('[data-mention-id="engineer"]');
-    expect(chip?.textContent).toBe('@Mock 工程师');
+    const chip = editor.querySelector<HTMLElement>('[data-mention-id="finance"]');
+    expect(chip?.textContent).toBe('@财务');
     expect(chip?.contentEditable).toBe('false');
 
     fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
     await waitFor(() => {
       expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, {
-        content: '@Mock 工程师',
-        mentionedMemberIds: ['engineer'],
+        content: '@财务',
+        mentionedMemberIds: ['finance'],
         mentionAll: false,
       });
     });
@@ -183,7 +191,7 @@ describe('GroupChatView', () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
     fireEvent.keyDown(editor, { key: 'Backspace' });
-    expect(editor.querySelector('[data-mention-id="engineer"]')).toBeNull();
+    expect(editor.querySelector('[data-mention-id="finance"]')).toBeNull();
   });
 
   it('renders persisted reasoning and a real delegation before the member reply', async () => {
@@ -200,12 +208,12 @@ describe('GroupChatView', () => {
       {
         id: 'd1', roomId: group.id, roundId: 'r1', sequence: 3, kind: 'delegation', senderType: 'agent',
         senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '请介绍你的实现职责。',
-        metadata: { state: 'completed', targetMemberId: 'engineer', targetMemberName: 'Mock 工程师', responseMessageId: 'm1' },
+        metadata: { state: 'completed', targetMemberId: 'finance', targetMemberName: '财务', responseMessageId: 'm1' },
         status: 'completed', createdAt: now, updatedAt: now,
       },
       {
         id: 'm1', roomId: group.id, roundId: 'r1', sequence: 4, kind: 'chat', senderType: 'agent',
-        senderMemberId: 'engineer', senderName: 'Mock 工程师', replyToMessageId: 'd1', content: '我是工程实现成员。',
+        senderMemberId: 'finance', senderName: '财务', replyToMessageId: 'd1', content: '我是财务数字员工。',
         metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
       },
       {
@@ -219,8 +227,8 @@ describe('GroupChatView', () => {
 
     expect(await screen.findByText('PilotDeck 主智能体 · 已完成 2 步')).toBeTruthy();
     expect(screen.getByText('最近 2 步')).toBeTruthy();
-    expect(screen.getByText('已调用 Mock 工程师')).toBeTruthy();
-    expect(screen.getByText('我是工程实现成员。')).toBeTruthy();
+    expect(screen.getByText('已调用 财务')).toBeTruthy();
+    expect(screen.getByText('我是财务数字员工。')).toBeTruthy();
     expect(screen.getByText('工程师已经完成介绍。')).toBeTruthy();
     expect(screen.queryByText('需要工程师提供真实说明。')).toBeNull();
 
@@ -228,11 +236,21 @@ describe('GroupChatView', () => {
     const detail = screen.getByRole('complementary', { name: '协作过程详情' });
     expect(within(detail).getByText('需要工程师提供真实说明。')).toBeTruthy();
     expect(within(detail).getByText('请介绍你的实现职责。')).toBeTruthy();
-    expect(within(detail).getByText('我是工程实现成员。')).toBeTruthy();
+    expect(within(detail).getByText('我是财务数字员工。')).toBeTruthy();
   });
 
   it('shows only the latest three process steps and includes StaffDeck delegation in the detail drawer', async () => {
-    const staffMember = member('staff-analyst', 'StaffDeck 分析师', 'staffdeck', 1);
+    const staffMember = {
+      ...member('staff-analyst', 'StaffDeck 分析师', 'staffdeck', 1),
+      role: '经营数据分析',
+      description: '分析经营数据并给出可执行的业务建议。',
+      config: {
+        employeeId: 'staff-analyst',
+        staffdeckAccess: 'public',
+        creatorDisplayName: 'StaffDeck 发布者',
+        expertiseTags: ['经营分析', '指标诊断'],
+      },
+    };
     const staffGroup = { ...group, members: [staffMember, ...group.members] };
     const collaboration: AgentGroupMessage[] = [
       {
@@ -281,11 +299,48 @@ describe('GroupChatView', () => {
     const detail = screen.getByRole('complementary', { name: '协作过程详情' });
     expect(within(detail).getByText('先理解需求和成员能力。')).toBeTruthy();
     expect(within(detail).getByText('StaffDeck')).toBeTruthy();
+    expect(within(detail).getByText('公开员工')).toBeTruthy();
+    expect(within(detail).getByText('经营数据分析 · 员工 ID：staff-analyst')).toBeTruthy();
+    expect(within(detail).getByText('创建者：StaffDeck 发布者')).toBeTruthy();
+    expect(within(detail).getByText('专长：经营分析 · 指标诊断')).toBeTruthy();
+    expect(within(detail).getByText('分析经营数据并给出可执行的业务建议。')).toBeTruthy();
     expect(within(detail).getByText('请基于资料给出分析。')).toBeTruthy();
     expect(within(detail).getByText('分析完成。')).toBeTruthy();
 
     fireEvent.click(within(detail).getByRole('button', { name: '关闭协作过程详情' }));
     expect(screen.queryByRole('complementary', { name: '协作过程详情' })).toBeNull();
+  });
+
+  it('groups StaffDeck discovery by owned and public metadata without a local allowlist', async () => {
+    apiMock.availableGroupMembers.mockResolvedValue(jsonResponse({
+      local: [],
+      mocks: [],
+      staffdeckConfigured: true,
+      staffdeckError: null,
+      staffdeck: [
+        {
+          id: 'owned-1', kind: 'staffdeck', category: 'employee', name: '我的员工', role: '研发',
+          employeeId: 'owned-1', staffdeckAccess: 'owned', creatorUsername: 'owner',
+          expertiseTags: ['TypeScript'], publishedToGallery: false,
+        },
+        {
+          id: 'public-1', kind: 'staffdeck', category: 'employee', name: '公开法务', role: '法务',
+          employeeId: 'public-1', staffdeckAccess: 'public', creatorDisplayName: '公开发布者',
+          publishedToGallery: true, usedByCurrentUser: false,
+        },
+      ],
+    }));
+    renderGroup();
+
+    fireEvent.click(await screen.findByRole('button', { name: '邀请' }));
+    expect(await screen.findByRole('heading', { name: '我创建的 StaffDeck 数字员工' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '公开可用的 StaffDeck 数字员工' })).toBeTruthy();
+    expect(screen.getByText('我的员工')).toBeTruthy();
+    expect(screen.getByText('公开法务')).toBeTruthy();
+    expect(screen.getByText('创建者：owner')).toBeTruthy();
+    expect(screen.getByText('创建者：公开发布者')).toBeTruthy();
+    expect(screen.getByText('专长：TypeScript')).toBeTruthy();
+    expect(screen.queryByText(/Mock/)).toBeNull();
   });
 
   it('hides group management actions from regular members', async () => {

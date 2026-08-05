@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { PermissionResult } from "../../permission/index.js";
 import {
   formatGroupChatTranscript,
@@ -11,11 +10,7 @@ import {
   type StaffDeckEmployeeSummary,
 } from "../../collaboration/index.js";
 import { RemotePilotDeckClient } from "../../collaboration/participants/RemotePilotDeckClient.js";
-import {
-  MOCK_STAFFDECK_EMPLOYEES,
-  StaffDeckClient,
-  getMockStaffDeckEmployee,
-} from "../../collaboration/participants/StaffDeckClient.js";
+import { StaffDeckClient } from "../../collaboration/participants/StaffDeckClient.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type { PilotDeckJsonSchema } from "../protocol/schema.js";
 import type {
@@ -59,7 +54,7 @@ export type GroupChatOutput = {
   rooms?: GroupChatRoom[];
   replies?: GroupChatParticipantReply[];
   employees?: StaffDeckEmployeeSummary[];
-  employeeSource?: "staffdeck" | "mock";
+  employeeSource?: "staffdeck";
 };
 
 export type CreateGroupChatToolOptions = {
@@ -80,7 +75,7 @@ const PARTICIPANT_SCHEMA: PilotDeckJsonSchema = {
     },
     kind: {
       type: "string",
-      enum: ["pilotdeck_local", "pilotdeck_remote", "staffdeck", "staffdeck_mock"],
+      enum: ["pilotdeck_remote", "staffdeck"],
       description: "Participant adapter kind.",
     },
     name: { type: "string", description: "Human-readable participant or employee name." },
@@ -96,7 +91,7 @@ const PARTICIPANT_SCHEMA: PilotDeckJsonSchema = {
     },
     employeeId: {
       type: "string",
-      description: "Required StaffDeck AgentProfile id for staffdeck or staffdeck_mock participants.",
+      description: "Required StaffDeck AgentProfile id for staffdeck participants.",
     },
   },
 };
@@ -119,9 +114,9 @@ export function createGroupChatTool(
     title: "Group Chat",
     description: [
       "Create and operate a session-scoped collaboration room led by the current PilotDeck main agent.",
-      "Invite local PilotDeck collaborators, remote PilotDeck instances, or real/mock StaffDeck employees, then send a message to selected participants and receive their replies in one shared transcript.",
+      "Invite approved remote PilotDeck instances or real StaffDeck employees, then send a message to selected participants and receive their replies in one shared transcript.",
       "Use this only when the user's request materially benefits from multiple specialties, explicit collaboration, or a StaffDeck employee. Do not create a room or call employees for simple questions or tasks the main agent can handle directly.",
-      "For a quick local demo, create a room with staffdeck_mock employees such as mock-researcher, mock-engineer, or mock-reviewer, then call send_message. Use list_staffdeck_employees to discover real employees when STAFFDECK_BASE_URL and STAFFDECK_TENANT_ID are configured; otherwise it returns mock employees.",
+      "Use list_staffdeck_employees to discover every employee visible to the configured StaffDeck account or API credential. The result identifies employees owned by the account versus public gallery employees; do not invent or hard-code employee ids.",
       "Remote PilotDeck participants use the existing OpenAI-compatible /v1/chat/completions API-server channel. Credentials are referenced by a dedicated PILOTDECK_GROUP_* tokenEnv and are never stored in room state.",
       "Rooms are kept in memory for the current PilotDeck project runtime in this MVP.",
     ].join("\n"),
@@ -230,10 +225,14 @@ export function createGroupChatTool(
         }
         case "list_staffdeck_employees": {
           const connection = staffDeckClient.resolveConnection(context.env ?? process.env);
-          const employees = connection
-            ? await staffDeckClient.listEmployees(connection, context.abortSignal)
-            : MOCK_STAFFDECK_EMPLOYEES.map((employee) => ({ ...employee }));
-          const employeeSource = connection ? "staffdeck" : "mock";
+          if (!connection) {
+            throw new PilotDeckToolRuntimeError(
+              "invalid_tool_input",
+              "StaffDeck access requires STAFFDECK_BASE_URL and STAFFDECK_API_KEY.",
+            );
+          }
+          const employees = await staffDeckClient.listEmployees(connection, context.abortSignal);
+          const employeeSource = "staffdeck" as const;
           const output: GroupChatOutput = { action: input.action, employees, employeeSource };
           return toolOutput(formatEmployeeList(employees, employeeSource), output);
         }
@@ -256,67 +255,21 @@ async function invokeParticipant(args: {
   const { invocation, context } = args;
   const prompt = buildParticipantPrompt(invocation);
   switch (invocation.participant.kind) {
-    case "pilotdeck_local":
-      return invokeLocalParticipant(invocation, prompt, context);
     case "pilotdeck_remote":
       return args.remoteClient.invoke(invocation, prompt, context.env ?? process.env, context.abortSignal);
     case "staffdeck": {
       const connection = args.staffDeckClient.resolveConnection(context.env ?? process.env);
       if (!connection) {
         throw new Error(
-          "Real StaffDeck access requires STAFFDECK_BASE_URL and STAFFDECK_TENANT_ID; configure STAFFDECK_API_TOKEN when authentication is enabled.",
+          "Real StaffDeck access requires STAFFDECK_BASE_URL and STAFFDECK_API_KEY.",
         );
       }
       return args.staffDeckClient.invoke(invocation, prompt, connection, context.abortSignal);
     }
-    case "staffdeck_mock": {
-      const employee = getMockStaffDeckEmployee(invocation.participant.employeeId ?? "");
-      if (!employee) {
-        throw new Error(
-          `Unknown mock StaffDeck employee ${JSON.stringify(invocation.participant.employeeId)}. ` +
-          `Available: ${MOCK_STAFFDECK_EMPLOYEES.map((item) => item.id).join(", ")}.`,
-        );
-      }
-      const mockInvocation = {
-        ...invocation,
-        participant: {
-          ...invocation.participant,
-          name: invocation.participant.name || employee.name,
-          description: invocation.participant.description || employee.description,
-        },
-      };
-      return invokeLocalParticipant(mockInvocation, buildParticipantPrompt(mockInvocation), context);
-    }
+    case "pilotdeck_local":
+    case "staffdeck_mock":
+      throw new Error("Local and Mock group participants are no longer supported.");
   }
-}
-
-async function invokeLocalParticipant(
-  invocation: GroupChatInvocation,
-  prompt: string,
-  context: PilotDeckToolRuntimeContext,
-): Promise<string> {
-  const fork = context.subagent;
-  if (!fork) {
-    throw new Error("Local group chat participants require PilotDeck subagent support.");
-  }
-  if (fork.depth >= fork.maxSubagentDepth) {
-    throw new Error(
-      `Local group chat participant cannot be launched at subagent depth ${fork.depth}; maximum depth is ${fork.maxSubagentDepth}.`,
-    );
-  }
-  const report = await fork.fork({
-    definitionId: "general-purpose",
-    directive: [
-      prompt,
-      "Return the standard structured subagent report. Put only the message you want to send to the group in the Result field; keep the other fields minimal.",
-    ].join("\n\n"),
-    subagentId: `group-${randomUUID()}`,
-    toolCallId: context.currentToolCallId,
-    abortSignal: context.abortSignal,
-    timeoutMs: context.subagentTimeoutMs,
-  });
-  const result = report.parsed?.Result ?? report.parsed?.result;
-  return result?.trim() || report.markdown.trim();
 }
 
 function buildParticipantPrompt(invocation: GroupChatInvocation): string {
@@ -390,6 +343,12 @@ function networkPermission(summary: string): PermissionResult {
 }
 
 function toParticipant(input: GroupChatParticipantInput): GroupChatParticipant {
+  if (input.kind !== "pilotdeck_remote" && input.kind !== "staffdeck") {
+    throw new PilotDeckToolRuntimeError(
+      "invalid_tool_input",
+      "Only approved remote PilotDeck instances and real StaffDeck employees can be invited.",
+    );
+  }
   return { ...input };
 }
 
@@ -453,11 +412,9 @@ function formatRoundResult(room: GroupChatRoom, replies: GroupChatParticipantRep
 
 function formatEmployeeList(
   employees: StaffDeckEmployeeSummary[],
-  source: "staffdeck" | "mock",
+  source: "staffdeck",
 ): string {
-  const header = source === "staffdeck"
-    ? `StaffDeck employees: ${employees.length}`
-    : `Mock StaffDeck employees: ${employees.length} (real StaffDeck is not configured)`;
+  const header = `StaffDeck employees: ${employees.length}`;
   return [
     header,
     ...employees.map((employee) => `- ${employee.name} employeeId=${employee.id}${employee.description ? ` — ${employee.description}` : ""}`),

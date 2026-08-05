@@ -382,6 +382,10 @@ const runMigrations = () => {
       SET kind = 'pilotdeck_remote'
       WHERE id = 'main'
         AND instance_id IN (SELECT id FROM pilotdeck_instances WHERE kind = 'remote');
+      UPDATE group_members
+      SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE kind IN ('pilotdeck_local', 'staffdeck_mock')
+        AND is_active = 1;
     `);
 
     db.exec(`

@@ -90,7 +90,7 @@ export default function GroupCreateDialog({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-neutral-500">群组中的本地 PilotDeck 智能体会在这个目录内读取项目上下文。</p>
+            <p className="text-xs text-neutral-500">群组主智能体会继承这个目录的项目上下文，并按需调用真实 StaffDeck 数字员工。</p>
           </label>
 
           <fieldset className="space-y-2">

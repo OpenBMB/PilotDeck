@@ -84,6 +84,15 @@ export interface AvailableGroupMember {
   role?: string;
   description?: string;
   employeeId?: string;
+  staffdeckAccess?: 'owned' | 'public' | 'accessible';
+  creatorUserId?: string;
+  creatorUsername?: string;
+  creatorDisplayName?: string;
+  publishedToGallery?: boolean;
+  usedByCurrentUser?: boolean;
+  expertiseTags?: string[];
+  workStyles?: string[];
+  workModes?: string[];
 }
 
 export interface AvailableGroupMembers {
