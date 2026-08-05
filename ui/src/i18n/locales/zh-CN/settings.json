@@ -58,7 +58,6 @@
     "backToApp": "返回应用",
     "backToSettings": "返回设置",
     "menu": {
-      "account": "账号与成员",
       "general": "通用",
       "modelPool": "模型池",
       "agent": "智能体",
@@ -77,7 +76,6 @@
       "about": "关于"
     },
     "titles": {
-      "account": "账号与成员",
       "general": "通用",
       "modelPool": "模型池",
       "agent": "智能体",

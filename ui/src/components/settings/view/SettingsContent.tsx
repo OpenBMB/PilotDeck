@@ -18,7 +18,6 @@ import ModelPoolSections from "./modelPool";
 import PrivacySections from "./privacy";
 import AboutSections from "./about";
 import OfficePreviewSections from "./officePreview";
-import AccountSections from "./account";
 
 type SettingsContentProps = {
   selectedKey: SettingsMenuKey;
@@ -30,7 +29,6 @@ type SettingsContentProps = {
 };
 
 const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
-  account: "settingsPage.titles.account",
   general: "settingsPage.titles.general",
   modelPool: "settingsPage.titles.modelPool",
   agent: "settingsPage.titles.agent",
@@ -77,9 +75,7 @@ export default function SettingsContent({
           <ChevronLeft className="h-4 w-4" />
           {t("settingsPage.backToSettings")}
         </button>
-        {selectedKey === "account" ? (
-          <AccountSections title={title} />
-        ) : isGeneral ? (
+        {isGeneral ? (
           <GeneralSections title={title} />
         ) : selectedKey === "agentModel" ? (
           <AgentModelSections title={title} />
