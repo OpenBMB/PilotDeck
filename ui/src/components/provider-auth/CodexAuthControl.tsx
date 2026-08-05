@@ -112,8 +112,6 @@ export default function CodexAuthControl({
   }, [pending, publishStatus, t]);
 
   const startLogin = async () => {
-    const loginWindow = window.open("", "_blank");
-    if (loginWindow) loginWindow.opener = null;
     setBusy(true);
     setError("");
     try {
@@ -124,11 +122,8 @@ export default function CodexAuthControl({
       if (!response.ok || data?.ok === false) {
         throw new Error(data?.error || t("pilotDeckConfig.panels.models.codexAuth.startError"));
       }
-      const next = data as PendingDeviceLogin;
-      setPending(next);
-      if (loginWindow) loginWindow.location.href = next.verificationUrl;
+      setPending(data as PendingDeviceLogin);
     } catch (loginError) {
-      loginWindow?.close();
       setError(loginError instanceof Error ? loginError.message : String(loginError));
     } finally {
       setBusy(false);
