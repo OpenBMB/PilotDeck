@@ -15,7 +15,9 @@ coordination**:
 
 The composer renders mentions as atomic chips. The popup supports Up/Down selection, Enter confirmation, and Escape dismissal. A mention displays the member name, carries its stable id as structured metadata, and is deleted as one unit with Backspace/Delete.
 
-The main session receives a private `group_member_delegate` tool plus the exact group roster. If the user naturally asks it to question or introduce a named member, it decides to call that member, saves a real delegation card and the member's response into the timeline, receives the response as a blocking tool result, and then continues the same agentic answer. The UI never treats model-written `@name` text as proof of a call.
+The main session receives a private `group_member_delegate` tool plus the exact group roster. Natural-language messages use the same persistent PilotDeck gateway session and agentic loop as ordinary project/general conversations: the model may answer directly, use its normal reasoning and tools, or decide that one or more group members are needed. Each member response returns as a blocking tool result to the same main-agent turn, so the main agent can reassess the evidence, call a different employee, ask a necessary follow-up, or stop and synthesize. The UI never treats model-written `@name` text as proof of a call.
+
+Delegation is deliberately main-agent-led rather than recursive. A delegated PilotDeck agent or StaffDeck employee cannot invoke another member; after its reply, control returns to the entry PilotDeck instance. A turn allows at most ten member calls and at most two calls to the same member, which preserves multi-employee planning while bounding accidental loops. Explicit mentions still take priority and must be completed in their visible order.
 
 Group messages use a stable room sequence rather than timestamp rewrites. Reasoning, ordinary tool activity, delegation state, member replies, and the final main answer therefore survive refresh in the same visible order. Human participant bindings and per-turn entry-agent ownership are stored now so future multi-user rooms can route each person's message to that person's configured PilotDeck instance without handing control to the last AI speaker.
 
@@ -49,39 +51,53 @@ Authenticated routes are mounted under `/api/groups`:
 - `GET /:groupId/messages` and `POST /:groupId/messages`: read the timeline or begin a round.
 - `POST /:groupId/delegate`: local gateway-only member delegation, authenticated with the existing gateway server token.
 - `POST /:groupId/read`: clear visible and silent unread state.
-- `GET /available-members`: discover local templates, StaffDeck employees, and mocks.
+- `GET /available-members`: discover every StaffDeck employee visible to the configured account or credential, including ownership/public metadata.
 - `POST /:groupId/members`, `DELETE /:groupId/members/:memberId`, and `PUT /:groupId/member-order`: manage membership and order.
 
 The server validates structured mention ids against the visible, name-based text and preserves the composer's mention order. Client-provided mention metadata cannot invoke a member that was not actually mentioned; it only disambiguates members that share a display name.
 
 ## Member categories and execution kinds
 
-The product exposes three stable categories: **PilotDeck instance**, **agent**, and **digital employee**. Adapter kinds remain more specific implementation details:
+The active product exposes **PilotDeck instances** and real **digital employees**. Historical local/Mock kinds remain readable in old timelines but cannot be invited or executed again:
 
 | Product category | Kind | Execution path | Notes |
 | --- | --- | --- | --- |
 | PilotDeck instance | `pilotdeck_main` | Local PilotDeck gateway | Created automatically, owner-bound smart-coordination entry, can delegate agentically |
-| Agent | `pilotdeck_local` | Local PilotDeck gateway | Stable session per group/member, bound project working directory |
 | PilotDeck instance | `pilotdeck_remote` | `/v1/chat/completions` | Stable `X-Hermes-Session-Id`; optional dedicated token environment variable |
-| Digital employee | `staffdeck` | StaffDeck `/api/chat/turn` | Selects one employee with `agent_id` and reuses its StaffDeck session |
-| Digital employee | `staffdeck_mock` | Local PilotDeck gateway | Debug-compatible employee persona without StaffDeck data |
-
-Local group participants run in PilotDeck `ask` mode in this MVP, so they can analyze the bound project without independently mutating it.
+| Digital employee | `staffdeck` | StaffDeck Open API v1 | Creates/reuses one employee session, starts an asynchronous Run, and waits for its result |
 
 ## Real StaffDeck configuration
 
+完整的配置项、凭据优先级、安全要求和验证方法见 [`staffdeck-integration.md`](./staffdeck-integration.md)。
+
 ```bash
-export STAFFDECK_BASE_URL=http://127.0.0.1:5173
-export STAFFDECK_TENANT_ID=your-tenant-id
-export STAFFDECK_API_TOKEN=your-bearer-token
+export STAFFDECK_BASE_URL=http://127.0.0.1:10087
+export STAFFDECK_API_KEY=sd_live_your_key
 ```
 
-`STAFFDECK_API_TOKEN` is optional only when the deployment permits unauthenticated access. PilotDeck uses:
+API-key discovery follows the employee boundary encoded by StaffDeck itself. PilotDeck does not maintain a second employee allowlist.
 
-- `GET /api/chat/agents?tenant_id=...` for employee discovery.
-- `POST /api/chat/turn` with `tenant_id`, `agent_id`, `message`, and `channel=pilotdeck_group_chat` for one employee turn.
+For a StaffDeck account that can already use the desired gallery employees, PilotDeck can authenticate through the regular account without granting it an administrator role:
 
-When StaffDeck is not configured, the invite dialog still exposes researcher, engineer, and reviewer mock employees.
+```bash
+export STAFFDECK_BASE_URL=http://127.0.0.1:10087
+export STAFFDECK_TENANT_ID=tenant_demo
+export STAFFDECK_USERNAME=your_username
+export STAFFDECK_PASSWORD=your_password
+```
+
+Account credentials take precedence over `STAFFDECK_API_KEY`, the access token is cached in memory until shortly before expiry, and neither the password nor token is written into group messages. Account discovery uses `GET /api/enterprise/agents`, so ordinary members see exactly the private employees they own plus all gallery employees currently published to them. PilotDeck preserves creator, ownership/public status, role and expertise metadata in the invite list and group member configuration. Before the first chat turn with a public employee, PilotDeck calls `POST /api/chat/agents/{agent_id}/use` automatically.
+
+`STAFFDECK_BASE_URL` may be either the service root or the complete `/api/v1` base. PilotDeck uses:
+
+- `GET /api/v1/agents` for employee discovery.
+- `POST /api/v1/agents/{agent_id}/sessions` for a stable group/employee session.
+- `POST /api/v1/agents/{agent_id}/runs` with idempotency keys for one employee turn.
+- `GET /api/v1/runs/{run_id}` and `/result` until the asynchronous Run completes.
+
+The API key is read only from the PilotDeck process environment and is never serialized into group members or chat messages. `STAFFDECK_POLL_INTERVAL_MS` can override the default one-second status polling interval. Existing deployments that still set `STAFFDECK_TENANT_ID` and `STAFFDECK_API_TOKEN` continue to use the account-compatible adapter during migration.
+
+When StaffDeck is not configured, the invite dialog reports the missing integration and does not synthesize local or Mock employees.
 
 ## Remote PilotDeck configuration
 
@@ -103,7 +119,7 @@ For safety, remote token variables must begin with `PILOTDECK_GROUP_`.
 
 The existing `group_chat` built-in tool remains available to the main model for optional, session-scoped collaboration inside a normal conversation. It supports local/remote PilotDeck participants and real/mock StaffDeck employees. These transient tool rooms are deliberately separate from user-managed sidebar groups; they are orchestration scratch space and are cleared with the runtime.
 
-Persistent group sessions never see that scratch-room tool. Only a persistent group's `main` session sees `group_member_delegate`; secondary member sessions and ordinary sessions do not, preventing recursive or cross-room dispatch.
+Persistent group sessions never see that scratch-room tool. Only a persistent group's entry PilotDeck session sees `group_member_delegate`; secondary member sessions and ordinary sessions do not, preventing recursive or cross-room dispatch. Because each result is returned to the entry session's normal tool loop, the entry agent may make another StaffDeck call based on the previous employee's answer without turning employees into uncontrolled orchestrators.
 
 ## Remaining integration work
 
