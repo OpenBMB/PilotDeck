@@ -49,6 +49,7 @@ Authenticated routes are mounted under `/api/groups`:
 - `GET /` and `POST /`: list or create groups.
 - `GET /:groupId`, `PATCH /:groupId`, and `DELETE /:groupId`: read, configure, or archive a group.
 - `GET /:groupId/messages` and `POST /:groupId/messages`: read the timeline or begin a round.
+- `POST /:groupId/conversations/:conversationId/stop`: stop the active round and clear queued rounds in one conversation. The server aborts the PilotDeck gateway turn and propagates cancellation to an active StaffDeck Run.
 - `POST /:groupId/delegate`: local gateway-only member delegation, authenticated with the existing gateway server token.
 - `POST /:groupId/read`: clear visible and silent unread state.
 - `GET /available-members`: discover every StaffDeck employee visible to the configured account or credential, including ownership/public metadata.
@@ -64,7 +65,7 @@ The active product exposes **PilotDeck instances** and real **digital employees*
 | --- | --- | --- | --- |
 | PilotDeck instance | `pilotdeck_main` | Local PilotDeck gateway | Created automatically, owner-bound smart-coordination entry, can delegate agentically |
 | PilotDeck instance | `pilotdeck_remote` | `/v1/chat/completions` | Stable `X-Hermes-Session-Id`; optional dedicated token environment variable |
-| Digital employee | `staffdeck` | StaffDeck Open API v1 | Creates/reuses one employee session, starts an asynchronous Run, and waits for its result |
+| Digital employee | `staffdeck` | StaffDeck Open API v1 | Creates/reuses one employee session, streams its public execution trace into the group timeline, and returns the durable Run result |
 
 ## Real StaffDeck configuration
 
@@ -86,16 +87,17 @@ export STAFFDECK_USERNAME=your_username
 export STAFFDECK_PASSWORD=your_password
 ```
 
-Account credentials take precedence over `STAFFDECK_API_KEY`, the access token is cached in memory until shortly before expiry, and neither the password nor token is written into group messages. Account discovery uses `GET /api/enterprise/agents`, so ordinary members see exactly the private employees they own plus all gallery employees currently published to them. PilotDeck preserves creator, ownership/public status, role and expertise metadata in the invite list and group member configuration. Before the first chat turn with a public employee, PilotDeck calls `POST /api/chat/agents/{agent_id}/use` automatically.
+When `STAFFDECK_API_KEY` is absent, account credentials select the legacy account adapter. Its access token is cached in memory until shortly before expiry, and neither the password nor token is written into group messages. Account discovery uses `GET /api/enterprise/agents`, so ordinary members see exactly the private employees they own plus all gallery employees currently published to them. PilotDeck preserves creator, ownership/public status, role and expertise metadata in the invite list and group member configuration. Before the first chat turn with a public employee, PilotDeck calls `POST /api/chat/agents/{agent_id}/use` automatically.
 
 `STAFFDECK_BASE_URL` may be either the service root or the complete `/api/v1` base. PilotDeck uses:
 
 - `GET /api/v1/agents` for employee discovery.
 - `POST /api/v1/agents/{agent_id}/sessions` for a stable group/employee session.
-- `POST /api/v1/agents/{agent_id}/runs` with idempotency keys for one employee turn.
-- `GET /api/v1/runs/{run_id}` and `/result` until the asynchronous Run completes.
+- `POST /api/v1/agents/{agent_id}/runs:stream` with idempotency keys for one employee turn, consuming public SSE planning, intent, task-frame, capability, knowledge, skill, loop, status, and output events while persisting every logical step into the group timeline.
+- `POST /api/v1/runs/{run_id}:cancel` when the user stops a running group round after PilotDeck has received the stream's `X-Run-ID` header.
+- `POST /api/v1/agents/{agent_id}/runs` plus `GET /api/v1/runs/{run_id}` and `/result` only as a compatibility fallback when the StaffDeck deployment does not expose streaming Runs.
 
-The API key is read only from the PilotDeck process environment and is never serialized into group members or chat messages. `STAFFDECK_POLL_INTERVAL_MS` can override the default one-second status polling interval. Existing deployments that still set `STAFFDECK_TENANT_ID` and `STAFFDECK_API_TOKEN` continue to use the account-compatible adapter during migration.
+The API key is read only from the PilotDeck process environment and is never serialized into group members or chat messages. `STAFFDECK_POLL_INTERVAL_MS` can override the default one-second status polling interval used only by the non-streaming fallback. Existing deployments that still set `STAFFDECK_TENANT_ID` and `STAFFDECK_API_TOKEN` continue to use the account-compatible adapter during migration.
 
 When StaffDeck is not configured, the invite dialog reports the missing integration and does not synthesize local or Mock employees.
 
@@ -123,7 +125,7 @@ Persistent group sessions never see that scratch-room tool. Only a persistent gr
 
 ## Remaining integration work
 
-1. Add token-level per-speaker streaming and cancellation for a running group round.
+1. Add token-level browser streaming for PilotDeck and member reply text (public process steps are already streamed and persisted).
 2. Define a versioned StaffDeck execution contract with capability metadata, service credentials, tracing, and idempotency.
 3. Let the PilotDeck planner propose or reuse persistent groups while retaining explicit user control over membership and permissions.
 4. Add cost/round budgets and richer autonomous convergence policies.

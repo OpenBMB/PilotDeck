@@ -17,6 +17,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.resetModules();
   delete process.env.DATABASE_PATH;
+  delete process.env.PILOTDECK_GROUP_MEMBER_TIMEOUT_MS;
+  delete process.env.PILOTDECK_GROUP_TURN_TIMEOUT_MS;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -198,6 +200,106 @@ describe('group chat persistence', () => {
 });
 
 describe('group chat dispatch semantics', () => {
+  it('records an entry timeout in the process timeline without a failed assistant reply', async () => {
+    const { user, groupChatDb } = await setup();
+    const abortTurn = vi.fn(async () => undefined);
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        abortTurn,
+        submitTurn: async function* () {
+          yield { type: 'assistant_thinking_delta', text: '正在等待数字员工。' };
+          yield {
+            type: 'error', code: 'turn_timeout',
+            message: 'Turn exceeded the 300000ms timeout.', recoverable: false,
+          };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Timeout group', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: true,
+    });
+    const conversationId = room.conversations[0].id;
+    const sent = groupChatService.sendMessage(user.id, room.id, {
+      content: 'ask a slow employee', clientMessageId: 'timeout-1',
+    });
+
+    await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, sent.roundId).status).toBe('failed'));
+    const messages = groupChatDb.listMessages(user.id, room.id, conversationId, 50);
+    expect(messages.filter((message) => message.senderMemberId === 'main' && message.kind === 'chat' && message.status === 'failed'))
+      .toHaveLength(0);
+    const mainActivities = messages.filter((message) => message.senderMemberId === 'main' && message.kind === 'activity');
+    expect(mainActivities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: 'completed', metadata: expect.objectContaining({ activityType: 'reasoning' }),
+      }),
+      expect.objectContaining({
+        status: 'failed', metadata: expect.objectContaining({ activityType: 'execution' }),
+        error: 'Turn exceeded the 300000ms timeout.',
+      }),
+    ]));
+    expect(mainActivities.find((message) => message.metadata?.activityType === 'execution').sequence)
+      .toBeGreaterThan(mainActivities.find((message) => message.metadata?.activityType === 'reasoning').sequence);
+    expect(messages.filter((message) => ['thinking', 'queued'].includes(message.status))).toHaveLength(0);
+    expect(abortTurn).toHaveBeenCalledWith(expect.objectContaining({ reason: 'system:group_timeout' }));
+  });
+
+  it('stops the active group turn, clears queued turns, and allows the conversation to recover', async () => {
+    const { user, groupChatDb } = await setup();
+    let releaseFirst;
+    let callCount = 0;
+    const abortTurn = vi.fn(async () => releaseFirst?.());
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        abortTurn,
+        submitTurn: async function* () {
+          callCount += 1;
+          if (callCount === 1) {
+            yield { type: 'assistant_thinking_delta', text: '正在执行一个较长任务。' };
+            await new Promise((resolve) => { releaseFirst = resolve; });
+            yield { type: 'error', code: 'aborted', message: '本轮执行已由用户停止。' };
+            return;
+          }
+          yield { type: 'assistant_text_delta', text: '停止后已恢复。' };
+          yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Stop group', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: true,
+    });
+    const conversationId = room.conversations[0].id;
+    const first = groupChatService.sendMessage(user.id, room.id, { content: 'long-running', clientMessageId: 'stop-1' });
+    const queued = groupChatService.sendMessage(user.id, room.id, { content: 'queued-after-first', clientMessageId: 'stop-2' });
+    await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, first.roundId).status).toBe('running'));
+
+    const stopped = await groupChatService.stopConversation(user.id, room.id, conversationId);
+    expect(stopped).toMatchObject({ stopped: true });
+    expect(stopped.turnIds).toEqual([first.roundId, queued.roundId]);
+    expect(abortTurn).toHaveBeenCalledWith(expect.objectContaining({ reason: 'user:group_stop' }));
+    await vi.waitFor(() => {
+      expect(groupChatDb.getTurn(user.id, room.id, first.roundId)).toMatchObject({ status: 'failed', error: '本轮执行已由用户停止。' });
+      expect(groupChatDb.getTurn(user.id, room.id, queued.roundId)).toMatchObject({ status: 'failed', error: '本轮执行已由用户停止。' });
+    });
+    const stoppedMessages = groupChatDb.listMessages(user.id, room.id, conversationId, 50);
+    expect(stoppedMessages
+      .filter((message) => message.status === 'thinking' || message.status === 'queued')).toHaveLength(0);
+    expect(stoppedMessages
+      .filter((message) => message.error === '本轮执行已由用户停止。'))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ metadata: expect.objectContaining({ stoppedByUser: true }) }),
+      ]));
+
+    const recovered = groupChatService.sendMessage(user.id, room.id, { content: 'recover', clientMessageId: 'stop-3' });
+    await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, recovered.roundId).status).toBe('completed'));
+    expect(groupChatDb.listMessages(user.id, room.id, conversationId, 50).at(-1)).toMatchObject({
+      senderMemberId: 'main', content: '停止后已恢复。', status: 'completed',
+    });
+  });
+
   it('persists concurrent human messages and executes them in FIFO order with each sender entry instance', async () => {
     const { user, groupChatDb, database } = await setup();
     const alice = database.userDb.createUser('alice-fifo', 'hash', { displayName: 'Alice' });
@@ -553,7 +655,8 @@ describe('group chat dispatch semantics', () => {
     await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, result.roundId).status).toBe('completed'));
     const timeline = groupChatDb.listMessages(user.id, room.id, 30);
     expect(timeline.map((message) => message.sequence)).toEqual([...timeline.map((message) => message.sequence)].sort((a, b) => a - b));
-    expect(timeline.find((message) => message.kind === 'activity').content).toContain('评审员本人');
+    expect(timeline.find((message) => message.kind === 'activity' && message.metadata.activityType === 'reasoning').content)
+      .toContain('评审员本人');
     expect(timeline.find((message) => message.kind === 'delegation').metadata).toMatchObject({
       state: 'completed', targetMemberId: 'reviewer',
     });
@@ -632,10 +735,14 @@ describe('group chat dispatch semantics', () => {
     const result = groupChatService.sendMessage(user.id, room.id, { content: '检查项目。' });
     await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, result.roundId).status).toBe('failed'));
     const timeline = groupChatDb.listMessages(user.id, room.id, 20);
-    const activities = timeline.filter((message) => message.kind === 'activity');
+    const activities = timeline.filter((message) => message.kind === 'activity' && message.metadata.activityType !== 'queue');
 
-    expect(activities).toHaveLength(2);
-    expect(activities.every((message) => message.status === 'failed')).toBe(true);
+    expect(activities).toHaveLength(3);
+    expect(activities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'completed', metadata: expect.objectContaining({ activityType: 'reasoning' }) }),
+      expect.objectContaining({ status: 'failed', metadata: expect.objectContaining({ activityType: 'tool' }) }),
+      expect.objectContaining({ status: 'failed', metadata: expect.objectContaining({ activityType: 'execution' }) }),
+    ]));
     expect(timeline.some((message) => message.status === 'thinking')).toBe(false);
     expect(timeline.at(-1)).toMatchObject({ senderMemberId: 'main', status: 'failed' });
   });

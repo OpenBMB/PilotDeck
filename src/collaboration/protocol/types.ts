@@ -25,6 +25,7 @@ export type GroupChatMessageSenderKind =
 export type GroupChatMessage = {
   id: string;
   roomId: string;
+  conversationId?: string;
   senderId: string;
   senderName: string;
   senderKind: GroupChatMessageSenderKind;

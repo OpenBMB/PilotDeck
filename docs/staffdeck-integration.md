@@ -68,9 +68,12 @@ API Key 模式的行为：
 - StaffDeck 根据 Key 自身的 Credential scope 决定可访问员工，PilotDeck 不维护第二套员工白名单。
 - 通过 `GET /api/v1/agents` 获取 Key 可访问的员工。
 - 通过 `POST /api/v1/agents/{agent_id}/sessions` 创建或恢复持续会话。
-- 通过 `POST /api/v1/agents/{agent_id}/runs` 启动员工任务。
-- 轮询 `GET /api/v1/runs/{run_id}`，完成后读取 `/result`。
+- 优先通过 `POST /api/v1/agents/{agent_id}/runs:stream` 启动员工任务并消费 SSE 公开过程事件。
+- PilotDeck 将 StaffDeck 的 Public Trace 规范化为可持久化的群组步骤，包括 `run.plan`、`run.intent`、`run.task_frame.*`、`run.capability.*`、`run.citation`、`run.tool.completed`、`run.sop.*`、`run.skill.*`、`run.loop.*`、`run.status` 以及 `run.output.delta/replace/completed`；Run ID 从 `X-Run-ID` 响应头读取。
+- Public Trace 是 StaffDeck 主动发布的可审计执行摘要，不包含原始思维链。能力调用结果会作为结构化步骤详情保存，主时间线默认折叠，右侧协作详情默认展开。
+- 旧版 StaffDeck 不支持流接口时，自动回退到 `POST /runs`，轮询 `GET /runs/{run_id}` 并在完成后读取 `/result`。
 - PilotDeck 为会话和 Run 发送幂等键，避免重试产生重复执行。
+- 用户点击群组输入框中的停止按钮时，PilotDeck 会中止入口 Gateway 轮次、清理同一会话尚未执行的队列，并在已获得 `X-Run-ID` 时调用 `POST /api/v1/runs/{run_id}:cancel` 终止远端数字员工任务。
 
 `STAFFDECK_BASE_URL` 可以填写 StaffDeck 服务根地址，也可以填写完整的 `/api/v1` 地址；API Key 模式会自动规范化为 Open API v1 Base URL。
 
@@ -78,11 +81,11 @@ API Key 模式的行为：
 
 连接选择遵循以下顺序：
 
-1. 同时存在 `STAFFDECK_TENANT_ID`、`STAFFDECK_USERNAME` 和 `STAFFDECK_PASSWORD` 时，使用账号认证。
-2. 否则，存在 `STAFFDECK_API_KEY` 时，使用 Open API v1。
+1. 存在 `STAFFDECK_API_KEY` 时，使用 Open API v1；这是对流式 Run 协议的显式选择。
+2. 未配置 API Key，且同时存在 `STAFFDECK_TENANT_ID`、`STAFFDECK_USERNAME` 和 `STAFFDECK_PASSWORD` 时，使用账号认证。
 3. `STAFFDECK_API_TOKEN` 仅用于兼容旧部署，不建议作为新接入方案。
 
-因此，同时配置完整账号信息和 API Key 时，**账号认证优先**。API Key 会保留为备用配置，但不会改变账号可见的员工边界。
+因此，同时保留完整账号信息和 API Key 时，**API Key 优先**，确保 `runs:stream` 及 Public Trace 不会被旧账号聊天协议绕过。需要切回账号模式时，应删除或留空 `STAFFDECK_API_KEY`。
 
 ## 配置项一览
 
@@ -93,7 +96,9 @@ API Key 模式的行为：
 | `STAFFDECK_TENANT_ID` | 账号模式必需 | StaffDeck 租户 ID |
 | `STAFFDECK_USERNAME` | 账号模式必需 | 用于登录和判断“当前账号创建”的员工 |
 | `STAFFDECK_PASSWORD` | 账号模式必需 | StaffDeck 账号密码，仅用于换取访问令牌 |
-| `STAFFDECK_POLL_INTERVAL_MS` | 可选 | Open API Run 状态轮询间隔，默认 `1000` 毫秒；测试环境可以设为 `0` |
+| `STAFFDECK_POLL_INTERVAL_MS` | 可选 | 仅在旧服务不支持 SSE、回退到 Run 状态轮询时使用；默认 `1000` 毫秒，测试环境可以设为 `0` |
+| `PILOTDECK_GROUP_MEMBER_TIMEOUT_MS` | 可选 | 单次群组成员或 StaffDeck Run 的最长执行时间；默认 `300000` 毫秒。超时后 PilotDeck 会取消已取得 Run ID 的远端任务，并把错误记录在委派/协作过程内 |
+| `PILOTDECK_GROUP_TURN_TIMEOUT_MS` | 可选 | 群组入口 PilotDeck 整轮的最长执行时间；默认比成员超时多 `60000` 毫秒，让成员失败或取消结果能先返回入口智能体完成解释和收口 |
 | `STAFFDECK_API_TOKEN` | 仅兼容旧部署 | 旧版账号兼容 Token，新部署不建议使用 |
 
 ## 员工发现与权限边界
@@ -137,7 +142,7 @@ curl -sS http://127.0.0.1:3001/api/groups/available-members \
 - `employees` 只包含 StaffDeck 允许当前账号或 Key 访问的员工。
 - 自建员工的 `access` 为 `owned`，员工广场公开员工为 `public`。
 
-还应在 PilotDeck 群组中完成一次真实验证：邀请一个 StaffDeck 员工，发送明确任务，确认时间线中依次出现委派步骤、员工回复和 PilotDeck 主智能体的后续总结。
+还应在 PilotDeck 群组中完成一次真实验证：邀请一个 StaffDeck 员工，发送明确任务，确认时间线中依次出现委派步骤、StaffDeck 实时阶段、员工回复和 PilotDeck 主智能体的后续总结。主时间线的最近步骤默认折叠，右侧详情中的全部步骤默认展开。
 
 ## 安全要求
 
@@ -155,7 +160,7 @@ curl -sS http://127.0.0.1:3001/api/groups/available-members \
 
 ### 账号下员工数量与 API Key 不一致
 
-这是预期行为。账号权限和 API Key Credential scope 是两套独立的 StaffDeck 权限边界；当完整账号凭据存在时，PilotDeck 优先使用账号模式。
+这是预期行为。账号权限和 API Key Credential scope 是两套独立的 StaffDeck 权限边界；配置 `STAFFDECK_API_KEY` 时 PilotDeck 使用 Key 的范围，删除 Key 后才会使用完整账号凭据。
 
 ### 修改 Key 后仍然调用失败
 

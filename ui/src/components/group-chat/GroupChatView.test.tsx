@@ -13,6 +13,7 @@ const apiMock = vi.hoisted(() => ({
   )),
   markGroupRead: vi.fn(),
   sendGroupMessage: vi.fn(),
+  stopGroupConversation: vi.fn(),
   uploadProjectAttachments: vi.fn(),
   updateGroup: vi.fn(),
   reorderGroupMembers: vi.fn(),
@@ -125,6 +126,7 @@ beforeEach(() => {
   apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages }));
   apiMock.markGroupRead.mockResolvedValue(new Response(null, { status: 204 }));
   apiMock.sendGroupMessage.mockResolvedValue(jsonResponse({ roundId: 'round-1' }, 202));
+  apiMock.stopGroupConversation.mockResolvedValue(jsonResponse({ stopped: true, turnIds: ['round-1'] }));
   apiMock.uploadProjectAttachments.mockResolvedValue(jsonResponse({ images: [], files: [] }));
   apiMock.groupParticipants.mockResolvedValue(jsonResponse({ participants: [] }));
   apiMock.groupParticipantCandidates.mockResolvedValue(jsonResponse({ candidates: [] }));
@@ -139,6 +141,120 @@ afterEach(() => {
 });
 
 describe('GroupChatView', () => {
+  it('shows a real stop control for the latest running round and calls the group stop API', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [
+        { ...messages[0], roundId: 'round-running' },
+        {
+          id: 'queue-running', roomId: group.id, roundId: 'round-running', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '正在处理', sequence: 2, kind: 'activity',
+          metadata: { activityType: 'queue', state: 'running' }, status: 'thinking', createdAt: now, updatedAt: now,
+        },
+      ],
+    }));
+    renderGroup();
+
+    const stopButton = await screen.findByRole('button', { name: '停止群组执行' });
+    expect(screen.queryByRole('button', { name: '发送群组消息' })).toBeNull();
+    fireEvent.click(stopButton);
+    await waitFor(() => {
+      expect(apiMock.stopGroupConversation).toHaveBeenCalledWith(group.id, 'conversation-1');
+    });
+  });
+
+  it('does not let a stale historical thinking message lock a completed latest round', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [
+        { ...messages[0], id: 'old-user', roundId: 'round-old', sequence: 1 },
+        {
+          id: 'old-thinking', roomId: group.id, roundId: 'round-old', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '旧过程', sequence: 2, kind: 'activity', metadata: {},
+          status: 'thinking', createdAt: now, updatedAt: now,
+        },
+        { ...messages[0], id: 'latest-user', roundId: 'round-latest', sequence: 3, content: '最新问题' },
+        { ...messages[2], id: 'latest-reply', roundId: 'round-latest', sequence: 4, content: '最新回复' },
+      ],
+    }));
+    renderGroup();
+
+    expect(await screen.findByRole('button', { name: '发送群组消息' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '停止群组执行' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: '群组消息' }).getAttribute('contenteditable')).toBe('true');
+  });
+
+  it('renders a user-stopped round as stopped instead of a collaboration failure', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [
+        { ...messages[0], id: 'stopped-user', roundId: 'round-stopped', sequence: 1, content: '执行一个较长任务' },
+        {
+          id: 'stopped-reasoning', roomId: group.id, roundId: 'round-stopped', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '正在执行一个较长任务。', sequence: 2, kind: 'activity',
+          metadata: { activityType: 'reasoning', state: 'failed', stoppedByUser: true }, status: 'failed',
+          error: '本轮执行已由用户停止。', createdAt: now, updatedAt: now,
+        },
+        {
+          id: 'stopped-reply', roomId: group.id, roundId: 'round-stopped', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '', sequence: 3, kind: 'chat', metadata: { stoppedByUser: true },
+          status: 'failed', error: '本轮执行已由用户停止。', createdAt: now, updatedAt: now,
+        },
+        {
+          id: 'late-staffdeck-event', roomId: group.id, roundId: 'round-stopped', senderType: 'agent', senderMemberId: 'finance',
+          senderName: '财务', content: '停止后迟到的远端事件', sequence: 4, kind: 'activity',
+          metadata: { activityType: 'staffdeck', state: 'running', staffDeckLabel: '开始执行任务' },
+          status: 'thinking', createdAt: now, updatedAt: now,
+        },
+      ],
+    }));
+    renderGroup();
+
+    expect(await screen.findByText('PilotDeck 主智能体 · 已停止')).toBeTruthy();
+    expect(screen.getByText('已停止思考')).toBeTruthy();
+    expect(screen.getByText('已停止：本轮执行已由用户停止。')).toBeTruthy();
+    expect(screen.queryByText(/协作有异常/)).toBeNull();
+    expect(screen.queryByText(/回复失败/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '停止群组执行' })).toBeNull();
+    expect(screen.getByRole('button', { name: '发送群组消息' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整协作过程，共 2 步' }));
+    const detail = screen.getByRole('complementary', { name: '协作过程详情' });
+    expect(within(detail).getByText('已由用户停止 · 共 2 步')).toBeTruthy();
+  });
+
+  it('keeps a historical entry timeout in the process timeline instead of a failed reply bubble', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [
+        { ...messages[0], id: 'timeout-user', roundId: 'round-timeout', sequence: 1, content: '人事有哪些可用的知识库？' },
+        {
+          id: 'timeout-reasoning', roomId: group.id, roundId: 'round-timeout', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '正在等待人事数字员工返回。', sequence: 2, kind: 'activity',
+          metadata: { activityType: 'reasoning', state: 'failed' }, status: 'failed',
+          error: 'Turn exceeded the 300000ms timeout.', createdAt: now, updatedAt: now,
+        },
+        {
+          id: 'staffdeck-step', roomId: group.id, roundId: 'round-timeout', senderType: 'agent', senderMemberId: 'finance',
+          senderName: '财务', content: '能力检索已完成。', sequence: 3, kind: 'activity',
+          metadata: { activityType: 'staffdeck', state: 'completed', staffDeckLabel: '能力调用完成 capability_search' },
+          status: 'completed', createdAt: now, updatedAt: now,
+        },
+        {
+          id: 'timeout-reply', roomId: group.id, roundId: 'round-timeout', senderType: 'agent', senderMemberId: 'main',
+          senderName: 'PilotDeck 主智能体', content: '', sequence: 4, kind: 'chat', metadata: {}, status: 'failed',
+          error: 'Turn exceeded the 300000ms timeout.', createdAt: now, updatedAt: now,
+        },
+      ],
+    }));
+    renderGroup();
+
+    expect(await screen.findByText('PilotDeck 主智能体 · 协作有异常')).toBeTruthy();
+    expect(screen.queryByText('回复失败：Turn exceeded the 300000ms timeout.')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整协作过程，共 2 步' }));
+    const detail = screen.getByRole('complementary', { name: '协作过程详情' });
+    expect(within(detail).getByRole('button', { name: '1. 能力调用完成 capability_search' })).toBeTruthy();
+    expect(within(detail).getByRole('button', { name: '2. 执行超时' })).toBeTruthy();
+    expect(within(detail).getByText('Turn exceeded the 300000ms timeout.')).toBeTruthy();
+  });
+
   it('renders a dedicated speaker timeline and the mention-only rule', async () => {
     renderGroup();
 
@@ -457,6 +573,89 @@ describe('GroupChatView', () => {
 
     fireEvent.click(within(detail).getByRole('button', { name: '关闭协作过程详情' }));
     expect(screen.queryByRole('complementary', { name: '协作过程详情' })).toBeNull();
+  });
+
+  it('collapses StaffDeck stream steps in the timeline and expands every step in the detail drawer', async () => {
+    const staffMember = {
+      ...member('finance-stream', '财务', 'staffdeck', 1),
+      role: '财务数字员工',
+      config: { employeeId: 'finance-stream', staffdeckAccess: 'owned' },
+    };
+    const staffGroup = { ...group, members: [staffMember, member('main', 'PilotDeck 主智能体', 'pilotdeck_main', 10_000)] };
+    const collaboration: AgentGroupMessage[] = [
+      {
+        id: 'u-stream', roomId: group.id, roundId: 'r-stream', sequence: 1, kind: 'chat', senderType: 'user',
+        senderUserId: 1, senderName: '你', content: '请让财务分析', metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'a-main', roomId: group.id, roundId: 'r-stream', sequence: 2, kind: 'activity', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '需要财务员工提供专业意见。',
+        metadata: { activityType: 'reasoning', state: 'completed' }, status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'd-stream', roomId: group.id, roundId: 'r-stream', sequence: 3, kind: 'delegation', senderType: 'agent',
+        senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '请评估预算。',
+        metadata: { state: 'completed', targetMemberId: staffMember.id, targetMemberName: staffMember.name, responseMessageId: 'm-stream' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'sd-queued', roomId: group.id, roundId: 'r-stream', sequence: 4, kind: 'activity', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, content: 'Run 已进入执行队列。',
+        metadata: { activityType: 'staffdeck', state: 'completed', staffDeckEventType: 'job.queued', staffDeckRunId: 'apijob-1', staffDeckLabel: '等待 StaffDeck 调度' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'sd-planning', roomId: group.id, roundId: 'r-stream', sequence: 5, kind: 'activity', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, content: '阶段：planning',
+        metadata: { activityType: 'staffdeck', state: 'completed', staffDeckEventType: 'run.status', staffDeckPhase: 'planning', staffDeckRunId: 'apijob-1', staffDeckLabel: '正在规划本轮任务' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'sd-output', roomId: group.id, roundId: 'r-stream', sequence: 6, kind: 'activity', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, content: '第 2 个动作',
+        metadata: {
+          activityType: 'staffdeck', state: 'completed', staffDeckEventType: 'run.capability.completed',
+          staffDeckRunId: 'apijob-1', staffDeckLabel: '能力调用完成 knowledge_search',
+          staffDeckStepKind: 'tool', staffDeckToolName: 'knowledge_search',
+          staffDeckOutputTitle: '能力调用结果', staffDeckOutput: '{\n  "match_count": 3,\n  "title": "报销政策"\n}',
+        },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'sd-final-output', roomId: group.id, roundId: 'r-stream', sequence: 7, kind: 'activity', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, content: '预算充足，可以执行。',
+        metadata: { activityType: 'staffdeck', state: 'completed', staffDeckEventType: 'run.output.completed', staffDeckRunId: 'apijob-1', staffDeckLabel: '数字员工已生成回复' },
+        status: 'completed', createdAt: now, updatedAt: now,
+      },
+      {
+        id: 'm-stream', roomId: group.id, roundId: 'r-stream', sequence: 8, kind: 'chat', senderType: 'agent',
+        senderMemberId: staffMember.id, senderName: staffMember.name, replyToMessageId: 'd-stream', content: '预算充足，可以执行。',
+        metadata: {}, status: 'completed', createdAt: now, updatedAt: now,
+      },
+    ];
+    apiMock.group.mockResolvedValue(jsonResponse({ group: staffGroup }));
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages: collaboration }));
+    renderGroup();
+
+    expect(await screen.findByText('PilotDeck 主智能体 · 已完成 6 步')).toBeTruthy();
+    expect(screen.getByText('最近 3 步')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '能力调用完成 knowledge_search' }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Run 已进入执行队列。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '能力调用完成 knowledge_search' }));
+    expect(screen.getByText('能力调用结果')).toBeTruthy();
+    expect(screen.getByText(/报销政策/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整协作过程，共 6 步' }));
+    const detail = screen.getByRole('complementary', { name: '协作过程详情' });
+    expect(within(detail).getByText('Run 已进入执行队列。')).toBeTruthy();
+    expect(within(detail).getAllByText('阶段：planning')).toHaveLength(2);
+    expect(within(detail).getByText('能力：knowledge_search')).toBeTruthy();
+    expect(within(detail).getByText('能力调用结果')).toBeTruthy();
+    expect(within(detail).getByText('事件：run.output.completed')).toBeTruthy();
+    expect(within(detail).getAllByText('Run：apijob-1')).toHaveLength(4);
+    expect(within(detail).getByRole('button', { name: '3. 等待 StaffDeck 调度' }).getAttribute('aria-expanded')).toBe('true');
+    expect(within(detail).getByRole('button', { name: '5. 能力调用完成 knowledge_search' }).getAttribute('aria-expanded')).toBe('true');
+    expect(within(detail).getByRole('button', { name: '6. 数字员工已生成回复' }).getAttribute('aria-expanded')).toBe('true');
   });
 
   it('groups StaffDeck discovery by owned and public metadata without a local allowlist', async () => {

@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { AtSign, Loader2, Paperclip, Send, UsersRound } from 'lucide-react';
+import { AtSign, Loader2, Paperclip, Send, Square, UsersRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type {
   AgentGroupFileAttachment,
@@ -37,8 +37,11 @@ type Props = {
   placeholder: string;
   disabled?: boolean;
   sending?: boolean;
+  stopping?: boolean;
+  showStopButton?: boolean;
   statusText?: string;
   onSubmit: (draft: MentionDraft) => boolean | Promise<boolean>;
+  onStop?: () => void | Promise<void>;
 };
 
 type UploadedAttachments = {
@@ -135,8 +138,11 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
   placeholder,
   disabled = false,
   sending = false,
+  stopping = false,
+  showStopButton = false,
   statusText,
   onSubmit,
+  onStop,
 }, ref) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const mentionRangeRef = useRef<Range | null>(null);
@@ -474,15 +480,30 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
               <span className="ml-1 truncate text-xs text-amber-600 dark:text-amber-300">{statusText}</span>
             ) : null}
           </div>
-          <button
-            type="button"
-            aria-label="发送群组消息"
-            onClick={() => void submit()}
-            disabled={!canSubmit || disabled || sending || uploading}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white dark:text-neutral-900"
-          >
-            {sending || uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
+          {showStopButton ? (
+            <button
+              type="button"
+              aria-label="停止群组执行"
+              title={stopping ? '正在停止…' : '停止'}
+              onClick={() => void onStop?.()}
+              disabled={stopping}
+              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600 disabled:cursor-wait disabled:opacity-70"
+            >
+              {stopping
+                ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+                : <Square className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />}
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label="发送群组消息"
+              onClick={() => void submit()}
+              disabled={!canSubmit || disabled || sending || uploading}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white dark:text-neutral-900"
+            >
+              {sending || uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -232,6 +232,174 @@ test("StaffDeck Open API v1 client exposes an awaiting-input prompt and structur
   );
 });
 
+test("StaffDeck client rejects Harness conflict replies and rotates the affected session", async () => {
+  let sessionCount = 0;
+  let runCount = 0;
+  const externalSessionIds: string[] = [];
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    if (url.pathname.endsWith("/sessions") && method === "POST") {
+      sessionCount += 1;
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      externalSessionIds.push(String(body.external_session_id));
+      return new Response(JSON.stringify({ id: `session-${sessionCount}` }), { status: 201 });
+    }
+    if (url.pathname.endsWith("/runs:stream") && method === "POST") {
+      return new Response("not supported", { status: 404 });
+    }
+    if (url.pathname.endsWith("/runs") && method === "POST") {
+      runCount += 1;
+      return new Response(JSON.stringify({ id: `run-${runCount}`, status: "succeeded" }), { status: 202 });
+    }
+    if (url.pathname.endsWith("/result")) {
+      return new Response(JSON.stringify(runCount === 1 ? {
+        reply: "Harness 并发或重复请求已阻止（HARNESS_TURN_CONFLICT）。",
+        session_id: "session-1",
+      } : {
+        reply: "fresh session reply",
+        session_id: "session-2",
+      }), { status: 200 });
+    }
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const client = new StaffDeckClient({ fetchImpl, pollIntervalMs: 0 });
+  const connection = client.resolveConnection({
+    STAFFDECK_BASE_URL: "http://staffdeck.local/api/v1",
+    STAFFDECK_API_KEY: "test-key",
+  });
+  assert.ok(connection);
+  const invocation = sampleInvocation({
+    id: "it",
+    kind: "staffdeck",
+    name: "IT",
+    employeeId: "it-1",
+  });
+
+  await assert.rejects(
+    client.invoke(invocation, "list knowledge", connection),
+    /HARNESS_TURN_CONFLICT/u,
+  );
+  assert.equal(await client.invoke({
+    ...invocation,
+    sourceMessage: { ...invocation.sourceMessage, id: "message-2" },
+  }, "list knowledge", connection), "fresh session reply");
+  assert.equal(sessionCount, 2);
+  assert.notEqual(externalSessionIds[0], externalSessionIds[1]);
+});
+
+test("StaffDeck streaming invocation cancels the remote run when the caller aborts", async () => {
+  const requestPaths: string[] = [];
+  const streamEvents: string[] = [];
+  let streamStarted!: () => void;
+  const started = new Promise<void>((resolve) => { streamStarted = resolve; });
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    requestPaths.push(`${method} ${url.pathname}`);
+    if (url.pathname.endsWith("/sessions") && method === "POST") {
+      return new Response(JSON.stringify({ id: "session-cancel" }), { status: 201 });
+    }
+    if (url.pathname.endsWith("/runs:stream") && method === "POST") {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: run.status\ndata: {\"phase\":\"executing\"}\n\n"));
+          init?.signal?.addEventListener("abort", () => {
+            controller.enqueue(new TextEncoder().encode("event: run.plan\ndata: {\"decision\":\"late-event\"}\n\n"));
+            controller.close();
+          }, { once: true });
+          streamStarted();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "x-run-id": "run-cancel" },
+      });
+    }
+    if (url.pathname.endsWith("/runs/run-cancel:cancel") && method === "POST") {
+      return new Response(JSON.stringify({ id: "run-cancel", status: "cancelled" }), { status: 202 });
+    }
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const client = new StaffDeckClient({ fetchImpl, timeoutMs: 5_000 });
+  const connection = client.resolveConnection({
+    STAFFDECK_BASE_URL: "http://staffdeck.local/api/v1",
+    STAFFDECK_API_KEY: "test-key",
+  });
+  assert.ok(connection);
+  const abortController = new AbortController();
+  const invocation = sampleInvocation({
+    id: "it",
+    kind: "staffdeck",
+    name: "IT",
+    employeeId: "it-1",
+  });
+  const pending = client.invoke(invocation, "long task", connection, abortController.signal, (event) => {
+    streamEvents.push(event.type);
+  });
+  await started;
+  abortController.abort(new Error("本轮执行已由用户停止。"));
+
+  await assert.rejects(pending, /本轮执行已由用户停止/u);
+  assert.ok(requestPaths.includes("POST /api/v1/runs/run-cancel:cancel"));
+  assert.ok(!streamEvents.includes("run.plan"));
+});
+
+test("StaffDeck streaming invocation cancels a stalled remote run on its own timeout", async () => {
+  const requestPaths: string[] = [];
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    requestPaths.push(`${method} ${url.pathname}`);
+    if (url.pathname.endsWith("/sessions") && method === "POST") {
+      return new Response(JSON.stringify({ id: "session-timeout" }), { status: 201 });
+    }
+    if (url.pathname.endsWith("/runs:stream") && method === "POST") {
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: run.status\ndata: {\"phase\":\"executing\"}\n\n"));
+          init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+          // Custom fetch streams do not automatically inherit Undici's abort
+          // plumbing, so provide a bounded close as a test-only escape hatch.
+          setTimeout(() => {
+            try { controller.close(); } catch { /* already closed by abort */ }
+          }, 75);
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "x-run-id": "run-timeout" },
+      });
+    }
+    if (url.pathname.endsWith("/runs/run-timeout:cancel") && method === "POST") {
+      return new Response(JSON.stringify({ id: "run-timeout", status: "cancelled" }), { status: 202 });
+    }
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const client = new StaffDeckClient({ fetchImpl, timeoutMs: 25 });
+  const connection = client.resolveConnection({
+    STAFFDECK_BASE_URL: "http://staffdeck.local/api/v1",
+    STAFFDECK_API_KEY: "test-key",
+  });
+  assert.ok(connection);
+
+  const keepEventLoopAlive = setInterval(() => undefined, 5);
+  try {
+    await assert.rejects(
+      client.invoke(sampleInvocation({
+        id: "hr",
+        kind: "staffdeck",
+        name: "HR",
+        employeeId: "hr-1",
+      }), "long task", connection),
+      /StaffDeck run timed out after 25ms\./u,
+    );
+  } finally {
+    clearInterval(keepEventLoopAlive);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(requestPaths.includes("POST /api/v1/runs/run-timeout:cancel"));
+});
+
 test("StaffDeck client keeps the legacy tenant chat adapter during migration", async () => {
   const postedBodies: Array<Record<string, unknown>> = [];
   const requestPaths: string[] = [];
@@ -349,7 +517,6 @@ test("StaffDeck account login discovers owned and public employees without a Pil
     STAFFDECK_TENANT_ID: "tenant-demo",
     STAFFDECK_USERNAME: "member-user",
     STAFFDECK_PASSWORD: "test-password",
-    STAFFDECK_API_KEY: "single-agent-key-is-not-selected",
   });
   assert.ok(connection);
   assert.equal(connection.protocol, "legacy_chat");

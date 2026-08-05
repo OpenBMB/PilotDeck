@@ -7,7 +7,6 @@ import {
   BellOff,
   Brain,
   Bot,
-  CheckCircle2,
   ChevronRight,
   FileText,
   Folder,
@@ -226,6 +225,13 @@ function isGroupProcessMessage(message: AgentGroupMessage) {
   return message.kind === 'activity' || message.kind === 'delegation';
 }
 
+function isLegacyTerminalProcessFailure(message: AgentGroupMessage) {
+  return message.kind === 'activity'
+    && message.status === 'failed'
+    && metadataString(message, 'activityType') === 'reasoning'
+    && /^Turn exceeded the \d+ms timeout\.$/u.test(message.error || '');
+}
+
 function buildProcessBundles(messages: AgentGroupMessage[]): GroupProcessBundle[] {
   const bundles = new Map<string, GroupProcessBundle>();
   for (const message of messages) {
@@ -245,12 +251,25 @@ function buildProcessBundles(messages: AgentGroupMessage[]): GroupProcessBundle[
   }
   return [...bundles.values()].map((bundle) => ({
     ...bundle,
-    messages: [...bundle.messages].sort((left, right) => left.sequence - right.sequence),
+    messages: [...bundle.messages].sort((left, right) => {
+      // Before terminal execution events were introduced, a late gateway
+      // timeout was written back onto the reasoning record created near the
+      // start of the round. Present that legacy terminal update after the
+      // delegated trace while preserving sequence order for every real event.
+      const terminalRank = Number(isLegacyTerminalProcessFailure(left)) - Number(isLegacyTerminalProcessFailure(right));
+      return terminalRank || left.sequence - right.sequence;
+    }),
   }));
 }
 
 function isProcessRunning(message: AgentGroupMessage) {
   return message.status === 'thinking' || message.status === 'queued';
+}
+
+const USER_STOPPED_ERROR = '本轮执行已由用户停止。';
+
+function isStoppedByUser(message: AgentGroupMessage) {
+  return message.metadata?.stoppedByUser === true || message.error === USER_STOPPED_ERROR;
 }
 
 function processTarget(message: AgentGroupMessage, memberMap: Map<string, AgentGroupMember>) {
@@ -269,35 +288,90 @@ function processStep(message: AgentGroupMessage, memberMap: Map<string, AgentGro
   const toolName = metadataString(message, 'toolName');
   const running = isProcessRunning(message);
   const failed = message.status === 'failed';
+  const stopped = isStoppedByUser(message);
   if (message.kind === 'delegation') {
     const target = processTarget(message, memberMap);
-    const verb = running ? '正在邀请' : failed ? '邀请失败' : target.isStaffDeck ? '已调用' : '已邀请';
+    const verb = running ? '正在邀请' : stopped ? '已停止邀请' : failed ? '邀请失败' : target.isStaffDeck ? '已调用' : '已邀请';
     return {
       id: message.id,
       title: `${verb} ${target.name || '群组成员'}`,
       detail: message.content || undefined,
       phase: target.isStaffDeck ? 'staffdeck' : 'subtask',
       toolName: target.isStaffDeck ? 'StaffDeck' : 'group_member_delegate',
-      state: failed ? 'failed' : running ? 'running' : 'completed',
+      state: stopped ? 'cancelled' : failed ? 'failed' : running ? 'running' : 'completed',
+    };
+  }
+  if (activityType === 'staffdeck') {
+    const label = metadataString(message, 'staffDeckLabel')
+      || (running ? '数字员工正在执行' : stopped ? '数字员工执行已停止' : failed ? '数字员工执行失败' : '数字员工已完成步骤');
+    const stepKind = metadataString(message, 'staffDeckStepKind');
+    const staffDeckToolName = metadataString(message, 'staffDeckToolName');
+    return {
+      id: message.id,
+      title: label,
+      detail: message.content || undefined,
+      phase: stepKind === 'knowledge' ? 'rag'
+        : stepKind === 'tool' ? 'tool'
+          : ['task', 'skill', 'handoff'].includes(stepKind) ? 'subtask'
+            : 'staffdeck',
+      toolName: staffDeckToolName || (stepKind === 'tool' ? 'StaffDeck' : undefined),
+      state: stopped ? 'cancelled' : failed ? 'failed' : running ? 'running' : 'completed',
+    };
+  }
+  if (activityType === 'queue') {
+    return {
+      id: message.id,
+      title: running ? '等待当前会话处理' : stopped ? '已停止处理' : failed ? '排队失败' : '已进入处理流程',
+      detail: message.content || undefined,
+      phase: 'thinking',
+      state: stopped ? 'cancelled' : failed ? 'failed' : running ? 'running' : 'completed',
+    };
+  }
+  if (activityType === 'execution') {
+    return {
+      id: message.id,
+      title: running ? '正在执行' : stopped ? '执行已停止' : failed ? '执行失败' : '执行完成',
+      detail: message.content || undefined,
+      phase: 'thinking',
+      state: stopped ? 'cancelled' : failed ? 'failed' : running ? 'running' : 'completed',
+    };
+  }
+  if (isLegacyTerminalProcessFailure(message)) {
+    return {
+      id: message.id,
+      title: '执行超时',
+      detail: message.content || undefined,
+      phase: 'thinking',
+      state: 'failed',
     };
   }
   const label = activityType === 'tool'
-    ? `${running ? '正在调用' : failed ? '调用失败' : '已调用'} ${toolName || '工具'}`
-    : running ? '正在思考' : failed ? '思考中断' : '已完成思考';
+    ? `${running ? '正在调用' : stopped ? '已停止调用' : failed ? '调用失败' : '已调用'} ${toolName || '工具'}`
+    : running ? '正在思考' : stopped ? '已停止思考' : failed ? '思考中断' : '已完成思考';
   return {
     id: message.id,
     title: label,
     detail: message.content || undefined,
     phase: activityType === 'tool' ? 'tool' : 'thinking',
     toolName: activityType === 'tool' ? toolName : undefined,
-    state: failed ? 'failed' : running ? 'running' : 'completed',
+    state: stopped ? 'cancelled' : failed ? 'failed' : running ? 'running' : 'completed',
   };
 }
 
-function ProcessStateIcon({ message }: { message: AgentGroupMessage }) {
-  if (isProcessRunning(message)) return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
-  if (message.status === 'failed') return <AlertCircle className="h-4 w-4 text-amber-500" />;
-  return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+function StaffDeckActivityOutput({ message }: { message: AgentGroupMessage }) {
+  const output = metadataString(message, 'staffDeckOutput');
+  if (!output) return null;
+  const title = metadataString(message, 'staffDeckOutputTitle') || '执行结果';
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-emerald-100 bg-emerald-50/60 dark:border-emerald-900/70 dark:bg-emerald-950/20">
+      <div className="border-b border-emerald-100 px-3 py-1.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:text-emerald-300">
+        {title}
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-[11px] leading-5 text-neutral-600 dark:text-neutral-300">
+        {output}
+      </pre>
+    </div>
+  );
 }
 
 function GroupProcessSummary({
@@ -309,17 +383,23 @@ function GroupProcessSummary({
   memberMap: Map<string, AgentGroupMember>;
   onOpen: () => void;
 }) {
-  const steps = bundle.messages.map((message) => processStep(message, memberMap));
+  const steps = bundle.messages.map((message) => ({
+    message,
+    step: processStep(message, memberMap),
+  }));
   const recentSteps = steps.slice(-3);
-  const running = bundle.messages.some(isProcessRunning);
+  const stopped = bundle.messages.some(isStoppedByUser);
+  const running = !stopped && bundle.messages.some(isProcessRunning);
   const failed = bundle.messages.some((message) => message.status === 'failed');
-  const senderName = bundle.messages[0]?.senderName || 'PilotDeck 主智能体';
-  const stateLabel = running ? '正在协作' : failed ? '协作有异常' : `已完成 ${steps.length} 步`;
+  const senderName = bundle.messages.find((message) => message.senderMemberId === 'main')?.senderName
+    || bundle.messages[0]?.senderName
+    || 'PilotDeck 主智能体';
+  const stateLabel = running ? '正在协作' : stopped ? '已停止' : failed ? '协作有异常' : `已完成 ${steps.length} 步`;
 
   return (
     <div className="ml-12 max-w-[calc(100%-3rem)] rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/60">
       <div className="flex items-center gap-2">
-        <GitBranch className={cn('h-4 w-4 shrink-0', running ? 'text-blue-500' : failed ? 'text-amber-500' : 'text-emerald-500')} strokeWidth={1.9} />
+        <GitBranch className={cn('h-4 w-4 shrink-0', running ? 'text-blue-500' : stopped || failed ? 'text-amber-500' : 'text-emerald-500')} strokeWidth={1.9} />
         <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
           {senderName} · {stateLabel}
         </div>
@@ -336,7 +416,14 @@ function GroupProcessSummary({
       <div className="mt-2 space-y-1 border-l border-neutral-200 pl-3 dark:border-neutral-700">
         <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">最近 {recentSteps.length} 步</div>
         {recentSteps.map((step) => (
-          <ProcessLiveStatus key={step.id} step={{ ...step, detail: undefined }} compact />
+          <ProcessLiveStatus key={step.message.id} step={{ ...step.step, detail: undefined }} compact>
+            <div className="max-w-2xl whitespace-pre-wrap break-words rounded-md bg-white/80 px-2.5 py-2 text-xs leading-5 text-neutral-600 dark:bg-neutral-950/80 dark:text-neutral-300">
+              {step.message.content || '暂无步骤详情。'}
+              {metadataString(step.message, 'activityType') === 'staffdeck'
+                ? <StaffDeckActivityOutput message={step.message} />
+                : null}
+            </div>
+          </ProcessLiveStatus>
         ))}
       </div>
     </div>
@@ -362,7 +449,8 @@ function GroupProcessDetailDrawer({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const running = bundle.messages.some(isProcessRunning);
+  const stopped = bundle.messages.some(isStoppedByUser);
+  const running = !stopped && bundle.messages.some(isProcessRunning);
   const failed = bundle.messages.some((message) => message.status === 'failed');
   const responseFor = (message: AgentGroupMessage) => {
     const responseId = metadataString(message, 'responseMessageId');
@@ -384,7 +472,7 @@ function GroupProcessDetailDrawer({
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold">协作过程</h2>
             <div className="mt-0.5 text-[11px] text-neutral-500">
-              {running ? '执行中' : failed ? '包含失败步骤' : '已完成'} · 共 {bundle.messages.length} 步
+              {running ? '执行中' : stopped ? '已由用户停止' : failed ? '包含失败步骤' : '已完成'} · 共 {bundle.messages.length} 步
             </div>
           </div>
           <button type="button" aria-label="关闭协作过程详情" onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800">
@@ -398,27 +486,41 @@ function GroupProcessDetailDrawer({
               const target = message.kind === 'delegation' ? processTarget(message, memberMap) : null;
               const response = message.kind === 'delegation' ? responseFor(message) : undefined;
               const activityType = metadataString(message, 'activityType');
-              const StepIcon = message.kind === 'delegation' ? GitBranch : activityType === 'tool' ? Wrench : Brain;
+              const staffDeckStepKind = metadataString(message, 'staffDeckStepKind');
+              const StepIcon = message.kind === 'delegation'
+                ? GitBranch
+                : activityType === 'tool' || (activityType === 'staffdeck' && staffDeckStepKind === 'tool')
+                  ? Wrench
+                  : activityType === 'staffdeck' && staffDeckStepKind === 'knowledge'
+                    ? Search
+                    : activityType === 'staffdeck'
+                      ? Bot
+                      : Brain;
               return (
                 <section key={message.id} className="relative pl-8">
                   <div className="absolute left-0 top-0.5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-950">
                     {isProcessRunning(message) ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" /> : message.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5 text-amber-500" /> : <StepIcon className="h-3.5 w-3.5 text-neutral-500" />}
                   </div>
-                  <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">
-                          <span>{index + 1}. {step.title}</span>
-                          {target?.isStaffDeck ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">StaffDeck</span> : null}
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-neutral-500">{message.senderName} · {formatTime(message.createdAt)}</div>
+                  <ProcessLiveStatus
+                    step={{ ...step, title: `${index + 1}. ${step.title}`, detail: undefined }}
+                    defaultExpanded
+                    className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/60"
+                  >
+                    <div className="text-[11px] text-neutral-500">{message.senderName} · {formatTime(message.createdAt)}</div>
+                    {activityType === 'staffdeck' ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium dark:bg-emerald-950">StaffDeck</span>
+                        {metadataString(message, 'staffDeckPhase') ? <span>阶段：{metadataString(message, 'staffDeckPhase')}</span> : null}
+                        {metadataString(message, 'staffDeckToolName') ? <span>能力：{metadataString(message, 'staffDeckToolName')}</span> : null}
+                        {metadataString(message, 'staffDeckEventType') ? <span>事件：{metadataString(message, 'staffDeckEventType')}</span> : null}
+                        {metadataString(message, 'staffDeckRunId') ? <span className="max-w-full truncate font-mono">Run：{metadataString(message, 'staffDeckRunId')}</span> : null}
                       </div>
-                      <ProcessStateIcon message={message} />
-                    </div>
+                    ) : null}
                     {target?.isStaffDeck && target.member ? (
                       <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 dark:border-emerald-900/70 dark:bg-emerald-950/30">
                         <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
                           <span>{target.member.name}</span>
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300">StaffDeck</span>
                           <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300">
                             {staffDeckAccessLabel(target.member.config.staffdeckAccess)}
                           </span>
@@ -434,16 +536,17 @@ function GroupProcessDetailDrawer({
                     {message.content ? (
                       <div className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-white px-3 py-2 text-xs leading-5 text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">{message.content}</div>
                     ) : null}
+                    {activityType === 'staffdeck' ? <StaffDeckActivityOutput message={message} /> : null}
                     {message.error ? <div className="mt-2 text-xs text-amber-600 dark:text-amber-300">{message.error}</div> : null}
                     {response ? (
                       <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
                         <div className="mb-1.5 text-[11px] font-medium text-neutral-500">{response.senderName} 的回复</div>
                         {response.status === 'failed'
-                          ? <div className="text-xs text-red-600 dark:text-red-300">{response.error || '成员回复失败'}</div>
+                          ? <div className={cn('text-xs', isStoppedByUser(response) ? 'text-amber-600 dark:text-amber-300' : 'text-red-600 dark:text-red-300')}>{isStoppedByUser(response) ? '已由用户停止' : response.error || '成员回复失败'}</div>
                           : <Markdown className="group-chat-markdown text-xs leading-5">{response.content}</Markdown>}
                       </div>
                     ) : null}
-                  </div>
+                  </ProcessLiveStatus>
                 </section>
               );
             })}
@@ -471,6 +574,7 @@ export default function GroupChatView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -540,6 +644,13 @@ export default function GroupChatView({
     [group?.members],
   );
   const processBundles = useMemo(() => buildProcessBundles(messages), [messages]);
+  const roundsWithFailedProcess = useMemo(() => new Set(
+    processBundles
+      .filter((bundle) => bundle.messages.some((message) => (
+        message.status === 'failed' && !isStoppedByUser(message)
+      )))
+      .flatMap((bundle) => bundle.roundId ? [bundle.roundId] : []),
+  ), [processBundles]);
   const processBundleByMessageId = useMemo(() => {
     const byMessageId = new Map<string, GroupProcessBundle>();
     for (const bundle of processBundles) {
@@ -553,7 +664,13 @@ export default function GroupChatView({
   );
   const selectedProcessBundle = selectedProcessKey ? processBundleByKey.get(selectedProcessKey) : undefined;
   const canManageMembers = group?.participantRole === 'owner' || group?.participantRole === 'moderator';
-  const roundInProgress = messages.some((message) => message.status === 'thinking' || message.status === 'queued');
+  const latestUserRoundId = [...messages].reverse().find((message) => message.senderType === 'user')?.roundId;
+  const latestRoundStopped = Boolean(latestUserRoundId && messages.some((message) => (
+    message.roundId === latestUserRoundId && isStoppedByUser(message)
+  )));
+  const roundInProgress = Boolean(latestUserRoundId && !latestRoundStopped && messages.some((message) => (
+    message.roundId === latestUserRoundId && (message.status === 'thinking' || message.status === 'queued')
+  )));
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('zh-CN');
   const searchMatches = useMemo(
     () => normalizedSearchQuery
@@ -635,6 +752,23 @@ export default function GroupChatView({
       return false;
     } finally {
       setSending(false);
+    }
+  };
+
+  const stop = async () => {
+    if (!group || stopping || !roundInProgress) return;
+    setStopping(true);
+    setError('');
+    try {
+      const response = await api.stopGroupConversation(group.id, conversationId);
+      const payload = await json<{ error?: string }>(response);
+      if (!response.ok) throw new Error(readError(payload, '停止失败'));
+      await refresh(true);
+      onGroupsChanged();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -827,6 +961,17 @@ export default function GroupChatView({
             let messageContent;
             const processBundle = isGroupProcessMessage(message) ? processBundleByMessageId.get(message.id) : undefined;
             if (processBundle && processBundle.anchorMessageId !== message.id) return null;
+            // Older servers persisted a gateway timeout twice: once as the
+            // failed process activity and again as an empty main-agent chat
+            // reply. Keep the diagnostic in the collaboration timeline and
+            // suppress only that redundant final bubble. User-initiated stops
+            // retain their explicit acknowledgement.
+            if (message.kind === 'chat'
+              && message.status === 'failed'
+              && !isStoppedByUser(message)
+              && message.senderMemberId === 'main'
+              && message.roundId
+              && roundsWithFailedProcess.has(message.roundId)) return null;
             if (processBundle) {
               messageContent = (
                 <GroupProcessSummary
@@ -859,12 +1004,14 @@ export default function GroupChatView({
                       'text-left text-sm leading-6',
                       isUser && 'rounded-[22px] bg-neutral-100 px-4 py-2.5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
                       !isUser && 'py-1 text-neutral-800 dark:text-neutral-100',
-                      message.status === 'failed' && 'rounded-xl bg-red-50 px-4 py-3 text-red-700 dark:bg-red-950/30 dark:text-red-300',
+                      message.status === 'failed' && (isStoppedByUser(message)
+                        ? 'rounded-xl bg-amber-50 px-4 py-3 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
+                        : 'rounded-xl bg-red-50 px-4 py-3 text-red-700 dark:bg-red-950/30 dark:text-red-300'),
                     )}>
                       {message.status === 'thinking' ? (
                         <div className="flex items-center gap-2 text-neutral-500"><Loader2 className="h-4 w-4 animate-spin" /><span>{message.senderName} 正在输入…</span></div>
                       ) : message.status === 'failed' ? (
-                        <div>回复失败：{message.error || '未知错误'}</div>
+                        <div>{isStoppedByUser(message) ? '已停止：本轮执行已由用户停止。' : `回复失败：${message.error || '未知错误'}`}</div>
                       ) : isUser ? (
                         <>
                           <div className="whitespace-pre-wrap break-words">{message.content}</div>
@@ -903,8 +1050,11 @@ export default function GroupChatView({
             placeholder={group.triggerMode === 'mentions' ? '输入消息，使用 @成员 或 @所有人 触发回复…' : '向群组发送消息，由你的通用智能体理解并协调…'}
             disabled={roundInProgress}
             sending={sending}
-            statusText={roundInProgress ? '智能体正在处理并协调本轮消息' : undefined}
+            stopping={stopping}
+            showStopButton={roundInProgress}
+            statusText={roundInProgress ? (stopping ? '正在停止本轮执行…' : '智能体正在处理并协调本轮消息') : undefined}
             onSubmit={send}
+            onStop={stop}
           />
         </div>
       </div>

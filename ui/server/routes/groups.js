@@ -239,6 +239,20 @@ router.post('/:groupId/messages', (req, res) => {
   }
 });
 
+router.post('/:groupId/conversations/:conversationId/stop', async (req, res) => {
+  try {
+    const result = await groupChatService.stopConversation(
+      req.user.id,
+      req.params.groupId,
+      req.params.conversationId,
+    );
+    if (!result) return fail(res, 404, '群组会话不存在。');
+    return res.json(result);
+  } catch (error) {
+    return fail(res, 400, error);
+  }
+});
+
 router.post('/:groupId/delegate', async (req, res) => {
   try {
     const turn = groupChatDb.getTurnById(req.groupDelegationGrant?.turn_id);

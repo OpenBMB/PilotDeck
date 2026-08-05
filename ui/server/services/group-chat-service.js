@@ -20,6 +20,13 @@ const configuredMemberTimeout = Number(process.env.PILOTDECK_GROUP_MEMBER_TIMEOU
 const MEMBER_TIMEOUT_MS = Number.isFinite(configuredMemberTimeout) && configuredMemberTimeout >= 100
   ? configuredMemberTimeout
   : 5 * 60_000;
+const configuredTurnTimeout = Number(process.env.PILOTDECK_GROUP_TURN_TIMEOUT_MS);
+// The entry agent owns delegation and final synthesis, so its wall-clock budget
+// must outlive a delegated member's budget. Otherwise the main turn fails first
+// and leaves the member request running without a coordinator to consume it.
+const ENTRY_TURN_TIMEOUT_MS = Number.isFinite(configuredTurnTimeout) && configuredTurnTimeout >= 100
+  ? configuredTurnTimeout
+  : MEMBER_TIMEOUT_MS + 60_000;
 const configuredStaffDeckPollInterval = Number(process.env.STAFFDECK_POLL_INTERVAL_MS);
 const STAFFDECK_POLL_INTERVAL_MS = Number.isFinite(configuredStaffDeckPollInterval) && configuredStaffDeckPollInterval >= 0
   ? configuredStaffDeckPollInterval
@@ -36,8 +43,27 @@ const GROUP_READ_ONLY_DENY_RULES = [
   'bash', 'write_file', 'edit_file', 'edit_notebook', 'execute_code',
   'agent', 'group_chat', 'task_create', 'task_stop', 'todo_write', 'mcp__*',
 ].map((toolName) => ({ source: 'policy', behavior: 'deny', toolName }));
-const dispatchingRooms = new Set();
+const dispatchingConversations = new Set();
 const activeMainTurns = new Map();
+const activeRoundExecutions = new Map();
+const USER_STOPPED_ERROR = '本轮执行已由用户停止。';
+
+function abortReason(signal, fallback = USER_STOPPED_ERROR) {
+  if (!signal?.aborted) return fallback;
+  return signal.reason instanceof Error ? signal.reason.message : String(signal.reason || fallback);
+}
+
+function stoppedMetadata(metadata, errorMessage) {
+  return errorMessage === USER_STOPPED_ERROR
+    ? { ...metadata, stoppedByUser: true }
+    : metadata;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error(USER_STOPPED_ERROR);
+  }
+}
 
 function memberCategory(kind) {
   if (kind === 'pilotdeck_main' || kind === 'pilotdeck_remote') return 'pilotdeck_instance';
@@ -300,10 +326,459 @@ function boundedPreview(value, max = 4_000) {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 
+function staffDeckEventText(data, ...keys) {
+  if (!data || typeof data !== 'object') return '';
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function staffDeckEventNumber(data, ...keys) {
+  if (!data || typeof data !== 'object') return undefined;
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  }
+  return undefined;
+}
+
+function staffDeckEventList(data, key) {
+  if (!data || typeof data !== 'object' || !Array.isArray(data[key])) return [];
+  return data[key]
+    .map((value) => typeof value === 'string' ? value.trim() : '')
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function staffDeckEventRecord(data, key) {
+  const value = data && typeof data === 'object' ? data[key] : null;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function staffDeckPayloadPreview(value, max = 4_000) {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'string') return boundedPreview(value, max);
+  try {
+    return boundedPreview(JSON.stringify(value, null, 2), max);
+  } catch {
+    return boundedPreview(String(value), max);
+  }
+}
+
+function staffDeckTraceIdentity(event, ...keys) {
+  const parts = keys.map((key) => staffDeckEventText(event.data, key)).filter(Boolean);
+  return parts.length > 0 ? parts.join(':') : event.id || 'current';
+}
+
+function staffDeckFailureDetail(data) {
+  const error = staffDeckEventRecord(data, 'error');
+  return [
+    staffDeckEventText(data, 'code', 'error_type'),
+    staffDeckEventText(data, 'message', 'reason', 'text', 'detail'),
+    staffDeckEventText(error, 'code'),
+    staffDeckEventText(error, 'message'),
+  ].filter((value, index, values) => value && values.indexOf(value) === index).join(' · ');
+}
+
+function staffDeckActivityDescriptor(event) {
+  const phase = staffDeckEventText(event.data, 'phase', 'stage');
+  const statusText = staffDeckEventText(event.data, 'text', 'message', 'detail');
+  if (event.type === 'job.queued') {
+    return { key: 'queued', label: '等待 StaffDeck 调度', detail: statusText || 'Run 已进入执行队列。', state: 'running' };
+  }
+  if (event.type === 'run.started') {
+    return { key: 'started', label: '数字员工开始执行', detail: statusText || 'StaffDeck 已启动本轮任务。', state: 'running' };
+  }
+  if (event.type === 'run.executing') {
+    const engine = staffDeckEventText(event.data, 'engine', 'execution_engine');
+    return { key: 'executing', label: '进入 Agentic 执行', detail: statusText || (engine ? `执行引擎：${engine}` : '正在运行数字员工。'), state: 'running' };
+  }
+  if (event.type === 'run.status') {
+    return {
+      key: `status:${phase || statusText || 'working'}`,
+      label: statusText || (phase ? `执行阶段：${phase}` : '数字员工处理中'),
+      detail: phase && statusText ? `阶段：${phase}` : statusText,
+      state: 'running',
+      stepKind: 'system',
+    };
+  }
+  if (event.type === 'run.plan') {
+    const decision = staffDeckEventText(event.data, 'decision', 'mode');
+    const reason = staffDeckEventText(event.data, 'reason', 'summary', 'rationale');
+    return {
+      key: 'trace:plan',
+      label: '规划执行任务',
+      detail: [decision ? `执行方式：${decision}` : '', reason].filter(Boolean).join(' · ') || '已生成本轮执行计划。',
+      state: 'completed',
+      stepKind: 'decision',
+    };
+  }
+  if (event.type === 'run.intent') {
+    const intent = staffDeckEventText(event.data, 'user_intent', 'intent', 'decision');
+    const reason = staffDeckEventText(event.data, 'reason', 'detail', 'summary');
+    return {
+      key: 'trace:intent',
+      label: intent ? `判断意图 ${intent}` : '判断意图',
+      detail: reason || '已完成用户意图判断。',
+      state: 'completed',
+      stepKind: 'decision',
+    };
+  }
+  if (event.type.startsWith('run.task_frame.')) {
+    const frameId = staffDeckEventText(event.data, 'task_frame_id', 'task_id') || event.id || 'current';
+    const kind = staffDeckEventText(event.data, 'kind');
+    const stepId = staffDeckEventText(event.data, 'step_id');
+    const status = staffDeckEventText(event.data, 'status');
+    const actionCount = staffDeckEventNumber(event.data, 'action_count');
+    const failed = ['failed', 'blocked', 'cancelled'].includes(status);
+    if (event.type === 'run.task_frame.started') {
+      return {
+        key: `trace:task:${frameId}:started`,
+        label: '开始执行任务',
+        detail: [kind === 'sop' ? 'SOP TaskFrame' : '对话 TaskFrame', stepId ? `步骤：${stepId}` : ''].filter(Boolean).join(' · '),
+        state: 'running',
+        stepKind: 'task',
+      };
+    }
+    if (event.type === 'run.task_frame.waiting') {
+      return {
+        key: `trace:task:${frameId}:waiting:${event.id || 'current'}`,
+        label: '等待前置任务',
+        detail: statusText || '当前任务正在等待依赖完成。',
+        state: 'running',
+        stepKind: 'task',
+      };
+    }
+    if (event.type === 'run.task_frame.released') {
+      return {
+        key: `trace:task:${frameId}:released:${event.id || 'current'}`,
+        label: '前置任务已完成',
+        detail: statusText || '当前任务已恢复执行。',
+        state: 'running',
+        stepKind: 'task',
+      };
+    }
+    return {
+      key: `trace:task:${frameId}:finished:${event.type}`,
+      label: failed ? '任务执行失败' : '任务执行完成',
+      detail: [status ? `状态：${status}` : '', actionCount === undefined ? '' : `执行 ${actionCount} 个动作`].filter(Boolean).join(' · ') || statusText,
+      state: failed ? 'failed' : 'completed',
+      stepKind: 'task',
+    };
+  }
+  if (event.type === 'run.capability.search') {
+    const query = staffDeckEventText(event.data, 'query');
+    const matches = staffDeckEventList(event.data, 'matches');
+    const matchCount = staffDeckEventNumber(event.data, 'match_count');
+    return {
+      key: `trace:capability-search:${event.id || query || 'current'}`,
+      label: '搜索可用能力',
+      detail: [query ? `查询：${query}` : '', matchCount === undefined ? '' : `命中 ${matchCount} 项`, matches.length > 0 ? matches.join('、') : ''].filter(Boolean).join(' · '),
+      state: 'completed',
+      stepKind: 'tool',
+      toolName: 'capability_search',
+    };
+  }
+  if (event.type === 'run.capability.described') {
+    const activated = staffDeckEventList(event.data, 'activated');
+    const requested = staffDeckEventList(event.data, 'requested');
+    const notFound = staffDeckEventList(event.data, 'not_found');
+    const revoked = staffDeckEventList(event.data, 'revoked');
+    const failed = activated.length === 0 && (notFound.length > 0 || revoked.length > 0);
+    return {
+      key: `trace:capability-described:${event.id || requested.join(',') || 'current'}`,
+      label: failed ? '能力加载失败' : '加载能力定义',
+      detail: [
+        activated.length > 0 ? `已加载：${activated.join('、')}` : '',
+        notFound.length > 0 ? `未找到：${notFound.join('、')}` : '',
+        revoked.length > 0 ? `不可用：${revoked.join('、')}` : '',
+      ].filter(Boolean).join(' · '),
+      state: failed ? 'failed' : 'completed',
+      stepKind: 'tool',
+      toolName: 'capability_describe',
+    };
+  }
+  if (event.type === 'run.capability.completed') {
+    const toolName = staffDeckEventText(event.data, 'tool_name', 'name') || '未知能力';
+    const success = event.data?.success !== false;
+    const error = staffDeckEventRecord(event.data, 'error');
+    const result = event.data?.result;
+    return {
+      key: `trace:capability:${staffDeckTraceIdentity(event, 'task_frame_id', 'iteration', 'tool_name')}`,
+      label: `${success ? '能力调用完成' : '能力调用失败'} ${toolName}`,
+      detail: success
+        ? `第 ${staffDeckEventNumber(event.data, 'iteration') || 1} 个动作`
+        : staffDeckFailureDetail(error || event.data),
+      state: success ? 'completed' : 'failed',
+      stepKind: 'tool',
+      toolName,
+      output: staffDeckPayloadPreview(result),
+      outputTitle: '能力调用结果',
+    };
+  }
+  if (event.type === 'run.citation') {
+    const chunks = Array.isArray(event.data?.chunks) ? event.data.chunks.length : 0;
+    const evidence = Array.isArray(event.data?.evidence_pack) ? event.data.evidence_pack.length : 0;
+    const concepts = Array.isArray(event.data?.selected_concepts) ? event.data.selected_concepts.length : 0;
+    return {
+      key: `trace:citation:${event.id || 'current'}`,
+      label: '读取业务资料',
+      detail: [concepts ? `命中知识 ${concepts} 项` : '', chunks ? `读取 ${chunks} 个片段` : '', evidence ? `生成 ${evidence} 条引用候选` : ''].filter(Boolean).join(' · ') || statusText || '已取得知识库检索结果。',
+      state: 'completed',
+      stepKind: 'knowledge',
+    };
+  }
+  if (event.type === 'run.tool.completed') {
+    const content = staffDeckEventRecord(event.data, 'content');
+    const toolName = staffDeckEventText(event.data, 'toolName', 'rawToolName', 'toolId')
+      || staffDeckEventText(content, 'tool_name')
+      || '工具';
+    const success = event.data?.success === undefined ? !event.data?.isError : event.data.success === true;
+    return {
+      key: `trace:tool:${staffDeckTraceIdentity(event, 'toolCallId', 'tool_call_id', 'toolId')}`,
+      label: `${success ? '工具调用完成' : '工具调用失败'} ${toolName}`,
+      detail: success ? statusText : staffDeckFailureDetail(event.data),
+      state: success ? 'completed' : 'failed',
+      stepKind: 'tool',
+      toolName,
+      output: staffDeckPayloadPreview(content || event.data?.result),
+      outputTitle: '工具调用结果',
+    };
+  }
+  if (event.type === 'run.sop.state') {
+    const runtimeDecision = staffDeckEventText(event.data, 'runtimeDecision');
+    const currentSkills = Array.isArray(event.data?.currentSkills) ? event.data.currentSkills : [];
+    const names = currentSkills.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const name = staffDeckEventText(entry, 'name', 'skillId');
+      return name ? [name] : [];
+    }).slice(0, 8);
+    return {
+      key: `trace:sop-state:${event.id || runtimeDecision || 'current'}`,
+      label: '更新 SOP 状态',
+      detail: [runtimeDecision, names.length > 0 ? names.join('、') : ''].filter(Boolean).join(' · '),
+      state: 'completed',
+      stepKind: 'skill',
+    };
+  }
+  if (event.type === 'run.sop.step') {
+    const toolCall = staffDeckEventRecord(event.data, 'tool_call');
+    const knowledgeQuery = staffDeckEventRecord(event.data, 'knowledge_query');
+    const toolName = staffDeckEventText(toolCall, 'name');
+    const query = staffDeckEventText(knowledgeQuery, 'query');
+    const nextStep = staffDeckEventText(event.data, 'next_step_id');
+    return {
+      key: `trace:sop-step:${event.id || nextStep || toolName || query || 'current'}`,
+      label: toolName ? `决定调用工具 ${toolName}` : query ? '决定查询知识库' : nextStep ? '决定下一步' : '完成步骤判断',
+      detail: [nextStep ? `下一节点：${nextStep}` : '', query ? `查询：${query}` : ''].filter(Boolean).join(' · ') || staffDeckEventText(event.data, 'reply'),
+      state: toolName || query ? 'running' : 'completed',
+      stepKind: toolName ? 'tool' : query ? 'knowledge' : 'decision',
+      toolName: toolName || undefined,
+    };
+  }
+  if (event.type === 'run.skill.trace') {
+    const message = staffDeckEventText(event.data, 'message', 'text');
+    const skillPhase = staffDeckEventText(event.data, 'phase');
+    const skillName = staffDeckEventText(event.data, 'skill_name', 'skill_slug');
+    const failed = /(?:failed|error|timeout)/iu.test(skillPhase);
+    const output = staffDeckPayloadPreview(
+      event.data?.structured_result
+      ?? event.data?.stdout_preview
+      ?? event.data?.stderr_preview,
+    );
+    return {
+      key: `trace:skill:${event.id || staffDeckTraceIdentity(event, 'skill_slug', 'phase')}`,
+      label: message || (skillName ? `执行通用技能 ${skillName}` : '执行通用技能'),
+      detail: [skillPhase ? `阶段：${skillPhase}` : '', staffDeckEventText(event.data, 'rationale')].filter(Boolean).join(' · '),
+      state: failed ? 'failed' : 'completed',
+      stepKind: 'skill',
+      output,
+      outputTitle: output ? '技能运行结果' : undefined,
+    };
+  }
+  if (event.type === 'run.skill.completed') {
+    const success = event.data?.success !== false;
+    const skillName = staffDeckEventText(event.data, 'skill_name', 'skill_slug');
+    return {
+      key: `trace:skill-completed:${event.id || skillName || 'current'}`,
+      label: `通用技能${success ? '运行完成' : '运行失败'}${skillName ? ` ${skillName}` : ''}`,
+      detail: staffDeckEventText(event.data, 'operation'),
+      state: success ? 'completed' : 'failed',
+      stepKind: 'skill',
+      output: staffDeckPayloadPreview(event.data?.structured_result),
+      outputTitle: '技能运行结果',
+    };
+  }
+  if (event.type === 'run.loop.continued') {
+    const targetTool = staffDeckEventText(event.data, 'target_tool_name');
+    return {
+      key: `trace:loop:${event.id || staffDeckEventText(event.data, 'iteration') || 'current'}`,
+      label: '重新分析执行动作',
+      detail: targetTool ? `决定继续调用工具 ${targetTool}` : '继续下一轮 Agentic 执行。',
+      state: 'completed',
+      stepKind: 'decision',
+    };
+  }
+  if (event.type === 'run.loop.completed') {
+    return {
+      key: `trace:loop:${event.id || staffDeckEventText(event.data, 'iteration') || 'completed'}`,
+      label: '数字员工完成分析',
+      detail: statusText || 'Agentic Loop 已完成。',
+      state: 'completed',
+      stepKind: 'decision',
+    };
+  }
+  if (event.type === 'handoff.created') {
+    return {
+      key: `trace:handoff:${event.id || 'current'}`,
+      label: '转交人工处理',
+      detail: statusText || staffDeckFailureDetail(event.data),
+      state: 'completed',
+      stepKind: 'handoff',
+    };
+  }
+  if (event.type.startsWith('run.output.')) {
+    return {
+      key: 'output',
+      label: event.type === 'run.output.completed' ? '数字员工已生成回复' : '数字员工正在生成回复',
+      detail: boundedPreview(event.output || statusText || '正在流式生成回复。'),
+      state: event.type === 'run.output.completed' ? 'completed' : 'running',
+      stepKind: 'output',
+    };
+  }
+  if (event.type === 'run.awaiting_input') {
+    return { key: 'awaiting_input', label: '数字员工需要补充信息', detail: statusText || '等待用户补充信息。', state: 'completed' };
+  }
+  if (event.type === 'run.failed' || event.type === 'run.cancelled') {
+    return { key: 'failure', label: event.type === 'run.cancelled' ? '数字员工执行已取消' : '数字员工执行失败', detail: staffDeckFailureDetail(event.data) || statusText, state: 'failed', stepKind: 'system' };
+  }
+  if (event.type === 'run.succeeded') {
+    return { key: 'run-completed', label: 'StaffDeck 执行完成', detail: statusText || '数字员工本轮任务已完成。', state: 'completed', stepKind: 'system' };
+  }
+  return null;
+}
+
+function createStaffDeckActivityRecorder({ userId, room, member, roundId, signal }) {
+  const messages = new Map();
+  let activeKey = '';
+  let lastOutputWriteAt = 0;
+  const updateState = (key, state, error = null) => {
+    const entry = messages.get(key);
+    if (!entry) return;
+    entry.metadata = stoppedMetadata({ ...entry.metadata, state }, error);
+    groupChatDb.updateMessage(entry.id, {
+      metadata: entry.metadata,
+      status: state === 'running' ? 'thinking' : state === 'failed' ? 'failed' : 'completed',
+      error,
+    });
+  };
+  return {
+    async consume(event) {
+      if (signal?.aborted) return;
+      const descriptor = staffDeckActivityDescriptor(event);
+      if (!descriptor) return;
+      if (activeKey && activeKey !== descriptor.key) {
+        updateState(
+          activeKey,
+          descriptor.state === 'failed' ? 'failed' : 'completed',
+          descriptor.state === 'failed' ? descriptor.detail || 'StaffDeck 执行失败' : null,
+        );
+      }
+      activeKey = descriptor.state === 'running' ? descriptor.key : '';
+      const metadata = {
+        activityType: 'staffdeck',
+        state: descriptor.state,
+        staffDeckEventType: event.type,
+        staffDeckPhase: staffDeckEventText(event.data, 'phase', 'stage') || undefined,
+        staffDeckRunId: event.runId || undefined,
+        staffDeckLabel: descriptor.label,
+        staffDeckStepKind: descriptor.stepKind || 'system',
+        staffDeckToolName: descriptor.toolName || undefined,
+        staffDeckOutput: descriptor.output || undefined,
+        staffDeckOutputTitle: descriptor.outputTitle || undefined,
+        targetMemberId: member.id,
+        targetMemberName: member.name,
+      };
+      const existing = messages.get(descriptor.key);
+      const now = Date.now();
+      const throttledOutput = descriptor.key === 'output'
+        && descriptor.state === 'running'
+        && now - lastOutputWriteAt < 160;
+      if (existing) {
+        existing.metadata = metadata;
+        if (!throttledOutput || descriptor.state !== 'running') {
+          groupChatDb.updateMessage(existing.id, {
+            content: descriptor.detail,
+            metadata,
+            status: descriptor.state === 'running' ? 'thinking' : descriptor.state === 'failed' ? 'failed' : 'completed',
+            error: descriptor.state === 'failed' ? descriptor.detail || 'StaffDeck 执行失败' : null,
+          });
+          if (descriptor.key === 'output') lastOutputWriteAt = now;
+        }
+        return;
+      }
+      const created = groupChatDb.createMessage(userId, room.id, {
+        roundId,
+        kind: 'activity',
+        senderType: 'agent',
+        senderMemberId: member.id,
+        senderName: member.name,
+        content: descriptor.detail,
+        metadata,
+        status: descriptor.state === 'running' ? 'thinking' : descriptor.state === 'failed' ? 'failed' : 'completed',
+        error: descriptor.state === 'failed' ? descriptor.detail || 'StaffDeck 执行失败' : null,
+      });
+      if (created) messages.set(descriptor.key, { id: created.id, metadata });
+      if (descriptor.key === 'output') lastOutputWriteAt = now;
+    },
+    finish(error) {
+      const resolvedError = signal?.aborted ? abortReason(signal) : error;
+      if (activeKey) updateState(activeKey, resolvedError ? 'failed' : 'completed', resolvedError || null);
+      if (resolvedError && messages.size === 0) {
+        const created = groupChatDb.createMessage(userId, room.id, {
+          roundId,
+          kind: 'activity',
+          senderType: 'agent',
+          senderMemberId: member.id,
+          senderName: member.name,
+          content: resolvedError,
+          metadata: stoppedMetadata({
+            activityType: 'staffdeck', state: 'failed', staffDeckLabel: '数字员工执行失败',
+            targetMemberId: member.id, targetMemberName: member.name,
+          }, resolvedError),
+          status: 'failed',
+          error: resolvedError,
+        });
+        if (created) messages.set('failure', { id: created.id, metadata: created.metadata });
+      }
+      activeKey = '';
+    },
+  };
+}
+
 async function invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options = {}) {
   const gateway = await getPilotDeckGateway();
   const runId = crypto.randomUUID();
   const sessionKey = `group:${room.id}:${options.conversationId || 'default'}:${member.id}`;
+  throwIfAborted(options.signal);
+  if (options.execution) {
+    options.execution.gateway = gateway;
+    options.execution.sessionKey = sessionKey;
+    options.execution.runId = runId;
+  }
+  const abortGateway = () => {
+    const reason = abortReason(options.signal);
+    const abortPromise = gateway.abortTurn({
+      sessionKey,
+      runId,
+      reason: reason === USER_STOPPED_ERROR ? 'user:group_stop' : 'system:group_timeout',
+    }).catch(() => undefined);
+    if (options.execution) options.execution.abortPromise = abortPromise;
+  };
+  options.signal?.addEventListener('abort', abortGateway, { once: true });
   let output = '';
   let failure = null;
   let sawDelegation = false;
@@ -334,7 +809,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
     mode: 'default',
     canPrompt: false,
     permissionRules: { deny: GROUP_READ_ONLY_DENY_RULES },
-    timeoutMs: MEMBER_TIMEOUT_MS,
+    timeoutMs: ENTRY_TURN_TIMEOUT_MS,
     runId,
     syntheticMessages: [{
       purpose: 'group_chat_context',
@@ -402,23 +877,55 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
           toolMessages.delete(event.toolCallId);
         }
       }
-      if (event.type === 'error') failure = event.message || event.code || 'PilotDeck 调用失败';
+      if (event.type === 'error') {
+        failure = event.message || event.code || 'PilotDeck 调用失败';
+        if (event.code === 'turn_timeout' && options.execution && !options.execution.signal.aborted) {
+          // Gateway wall-clock timeouts abort only the agent session itself.
+          // Abort the owning group execution too so an in-flight delegate sees
+          // the same terminal state and can cancel its StaffDeck Run.
+          options.execution.abortController.abort(new Error(failure));
+        }
+      }
     }
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);
   } finally {
+    options.signal?.removeEventListener('abort', abortGateway);
+    if (options.execution?.runId === runId) {
+      options.execution.gateway = null;
+      options.execution.sessionKey = '';
+      options.execution.runId = '';
+    }
     if (reasoningMessage) {
+      const stopped = failure === USER_STOPPED_ERROR;
       groupChatDb.updateMessage(reasoningMessage.id, {
-        content: reasoning || (failure ? '本轮分析失败。' : '已完成本轮分析。'),
-        metadata: { activityType: 'reasoning', state: failure ? 'failed' : 'completed' },
-        status: failure ? 'failed' : 'completed',
-        error: failure,
+        content: reasoning || (stopped ? '本轮分析已停止。' : '已完成本轮分析。'),
+        metadata: stoppedMetadata({ activityType: 'reasoning', state: stopped ? 'failed' : 'completed' }, failure),
+        status: stopped ? 'failed' : 'completed',
+        error: stopped ? failure : null,
       });
     }
     if (failure) {
       for (const [toolCallId, activityId] of toolMessages) {
         groupChatDb.updateMessage(activityId, {
-          metadata: { activityType: 'tool', state: 'failed', toolCallId },
+          metadata: stoppedMetadata({ activityType: 'tool', state: 'failed', toolCallId }, failure),
+          status: 'failed',
+          error: failure,
+        });
+      }
+      // A gateway error is terminal state, not the state of the reasoning
+      // activity that began at the start of the turn. Append a distinct event
+      // so its sequence reflects when the failure actually occurred (after any
+      // delegated StaffDeck trace), instead of moving an early step in time.
+      if (options.persistActivity && failure !== USER_STOPPED_ERROR) {
+        groupChatDb.createMessage(userId, room.id, {
+          roundId: options.roundId,
+          kind: 'activity',
+          senderType: 'agent',
+          senderMemberId: member.id,
+          senderName: member.name,
+          content: '主智能体未能完成本轮执行。',
+          metadata: { activityType: 'execution', state: 'failed' },
           status: 'failed',
           error: failure,
         });
@@ -435,6 +942,9 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
   }
   const { instance, binding, token } = await assertApprovedRemoteInstance(member.instanceId, room.projectPath);
   const controller = new AbortController();
+  throwIfAborted(options.signal);
+  const forwardAbort = () => controller.abort(options.signal?.reason ?? new Error(USER_STOPPED_ERROR));
+  options.signal?.addEventListener('abort', forwardAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(new Error('远程 PilotDeck group-turn 调用超时。')), MEMBER_TIMEOUT_MS);
   let response;
   try {
@@ -462,13 +972,15 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
     });
   } catch (error) {
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', forwardAbort);
     throw new Error(controller.signal.aborted
-      ? '远程 PilotDeck group-turn 调用超时。'
+      ? (options.signal?.aborted ? USER_STOPPED_ERROR : '远程 PilotDeck group-turn 调用超时。')
       : (error instanceof Error ? error.message : String(error)));
   }
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({}));
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', forwardAbort);
     throw new Error(payload.error || `远程 PilotDeck group-turn 请求失败（HTTP ${response.status}）。`);
   }
   let output = '';
@@ -543,6 +1055,7 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
     failure = error instanceof Error ? error.message : String(error);
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', forwardAbort);
     if (reasoningMessage) {
       groupChatDb.updateMessage(reasoningMessage.id, {
         content: reasoning || (failure ? '远程分析失败。' : '远程分析完成。'),
@@ -565,44 +1078,60 @@ async function invokeStaffDeck(room, member, userMessage, transcript, userId, op
   const staffDeckAttachments = options.messageAttachments
     ? await toGatewayAttachments(options.messageAttachments)
     : [];
-  return staffDeckClient.invoke({
-    room: {
-      id: room.id,
-      ownerSessionId: `user-${userId}`,
-      title: room.title,
-      status: 'active',
-      participants: [{
+  const activityRecorder = createStaffDeckActivityRecorder({
+    userId,
+    room,
+    member,
+    roundId: options.roundId,
+    signal: options.signal,
+  });
+  try {
+    const result = await staffDeckClient.invoke({
+      room: {
+        id: room.id,
+        ownerSessionId: `user-${userId}`,
+        title: room.title,
+        status: 'active',
+        participants: [{
+          id: member.id,
+          kind: 'staffdeck',
+          name: member.name,
+          role: member.role,
+          description: member.description,
+          employeeId,
+        }],
+        messages: [],
+        createdAt: room.createdAt || now,
+        updatedAt: room.updatedAt || now,
+      },
+      participant: {
         id: member.id,
         kind: 'staffdeck',
         name: member.name,
         role: member.role,
         description: member.description,
         employeeId,
-      }],
-      messages: [],
-      createdAt: room.createdAt || now,
-      updatedAt: room.updatedAt || now,
-    },
-    participant: {
-      id: member.id,
-      kind: 'staffdeck',
-      name: member.name,
-      role: member.role,
-      description: member.description,
-      employeeId,
-    },
-    sourceMessage: {
-      id: options.roundId || `group-message-${crypto.randomUUID()}`,
-      roomId: room.id,
-      senderId: 'main',
-      senderName: 'PilotDeck 主智能体',
-      senderKind: 'pilotdeck_main',
-      content: userMessage,
-      createdAt: now,
-    },
-    transcript,
-    ...(staffDeckAttachments.length > 0 ? { attachments: staffDeckAttachments } : {}),
-  }, prompt, connection);
+      },
+      sourceMessage: {
+        id: options.roundId || `group-message-${crypto.randomUUID()}`,
+        roomId: room.id,
+        conversationId: options.conversationId,
+        senderId: 'main',
+        senderName: 'PilotDeck 主智能体',
+        senderKind: 'pilotdeck_main',
+        content: userMessage,
+        createdAt: now,
+      },
+      transcript,
+      ...(staffDeckAttachments.length > 0 ? { attachments: staffDeckAttachments } : {}),
+    }, prompt, connection, options.signal, activityRecorder.consume);
+    activityRecorder.finish(null);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    activityRecorder.finish(message);
+    throw error;
+  }
 }
 
 async function invokeMember(room, member, userMessage, transcript, userId, options = {}) {
@@ -716,12 +1245,13 @@ function notifyRoundCompleted(userId, roomId, roundId) {
   }
 }
 
-async function runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments) {
+async function runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution) {
+  throwIfAborted(execution?.signal);
   const room = groupChatDb.getRoom(userId, roomId);
   if (!room || room.status !== 'active') return;
   if (target.id === 'main') {
     try {
-      await runEntryAgent(userId, room, conversationId, roundId, userMessage, target, [], messageAttachments);
+      await runEntryAgent(userId, room, conversationId, roundId, userMessage, target, [], messageAttachments, execution);
     } catch (error) {
       groupChatDb.createMessage(userId, roomId, {
         roundId,
@@ -730,47 +1260,83 @@ async function runDirectMember(userId, roomId, conversationId, roundId, userMess
         senderMemberId: target.id,
         senderName: target.name,
         content: '',
+        metadata: stoppedMetadata({}, error instanceof Error ? error.message : String(error)),
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
       });
     }
     return;
   }
-  const placeholder = groupChatDb.createMessage(userId, roomId, {
-    roundId,
-    kind: 'chat',
-    senderType: 'agent',
-    senderMemberId: target.id,
-    senderName: target.name,
-    content: '',
-    status: 'thinking',
-  });
+  // StaffDeck emits its own persisted streaming activities. Delay its final
+  // chat message until the stream completes so the visible order remains
+  // process -> reply instead of reply -> process after the placeholder update.
+  let placeholder = target.kind === 'staffdeck'
+    ? null
+    : groupChatDb.createMessage(userId, roomId, {
+        roundId,
+        kind: 'chat',
+        senderType: 'agent',
+        senderMemberId: target.id,
+        senderName: target.name,
+        content: '',
+        status: 'thinking',
+      });
   try {
     const messages = groupChatDb.listMessages(userId, roomId, conversationId, 100) || [];
-    const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder.id));
+    const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder?.id));
     const result = await invokeMember(room, target, userMessage, transcript, userId, {
       roundId,
       conversationId,
       requiredDelegateIds: [],
       messageAttachments,
+      signal: execution?.signal,
+      execution,
       collaboration: { canDelegate: false },
     });
     if (!result.content) throw new Error('智能体没有返回可显示的内容。');
-    groupChatDb.updateMessage(placeholder.id, {
-      content: result.content,
-      status: 'completed',
-      error: null,
-    });
+    if (placeholder) {
+      groupChatDb.updateMessage(placeholder.id, {
+        content: result.content,
+        status: 'completed',
+        error: null,
+      });
+    } else {
+      placeholder = groupChatDb.createMessage(userId, roomId, {
+        roundId,
+        kind: 'chat',
+        senderType: 'agent',
+        senderMemberId: target.id,
+        senderName: target.name,
+        content: result.content,
+        status: 'completed',
+      });
+    }
   } catch (error) {
-    groupChatDb.updateMessage(placeholder.id, {
-      content: '',
-      status: 'failed',
-      error: error instanceof Error ? error.message : String(error),
-    });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (placeholder) {
+      groupChatDb.updateMessage(placeholder.id, {
+        content: '',
+        metadata: stoppedMetadata(placeholder.metadata, errorMessage),
+        status: 'failed',
+        error: errorMessage,
+      });
+    } else {
+      groupChatDb.createMessage(userId, roomId, {
+        roundId,
+        kind: 'chat',
+        senderType: 'agent',
+        senderMemberId: target.id,
+        senderName: target.name,
+        content: '',
+        metadata: stoppedMetadata({}, errorMessage),
+        status: 'failed',
+        error: errorMessage,
+      });
+    }
   }
 }
 
-async function runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments) {
+async function runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution) {
   const sessionId = `group:${room.id}:${conversationId}:${entryMember.id}`;
   const turnContext = {
     userId,
@@ -784,6 +1350,8 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
     delegationCallCounts: new Map(),
     delegationSequence: [],
     messageAttachments,
+    signal: execution?.signal,
+    execution,
   };
   activeMainTurns.set(sessionId, turnContext);
   const grant = createGroupDelegationGrant({
@@ -805,6 +1373,7 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
   let result = { content: '', sawDelegation: false };
   try {
     for (let attempt = 0; attempt <= MAX_REQUIRED_DELEGATE_RETRIES; attempt += 1) {
+      throwIfAborted(execution?.signal);
       const currentRoom = groupChatDb.getRoom(userId, room.id);
       if (!currentRoom || currentRoom.status !== 'active') throw new Error('群组已经归档。');
       const missing = requiredDelegateIds.filter((id) => !turnContext.attemptedDelegateIds.has(id));
@@ -824,6 +1393,8 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
         persistActivity: true,
         requiredDelegateIds: missing,
         ...(attempt === 0 && messageAttachments ? { messageAttachments } : {}),
+        signal: execution?.signal,
+        execution,
         collaboration,
       });
       if (requiredDelegateIds.every((id) => turnContext.attemptedDelegateIds.has(id))) break;
@@ -852,11 +1423,13 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
   }
 }
 
-async function dispatchMentionRound(userId, roomId, conversationId, roundId, userMessage, targets, messageAttachments) {
+async function dispatchMentionRound(userId, roomId, conversationId, roundId, userMessage, targets, messageAttachments, execution) {
   try {
     for (const target of targets) {
-      await runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments);
+      throwIfAborted(execution?.signal);
+      await runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution);
     }
+    throwIfAborted(execution?.signal);
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     notifyRoundCompleted(userId, roomId, roundId);
   } catch (error) {
@@ -867,74 +1440,112 @@ async function dispatchMentionRound(userId, roomId, conversationId, roundId, use
   }
 }
 
-async function dispatchSmartRound(userId, roomId, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments) {
+async function dispatchSmartRound(userId, roomId, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution) {
   try {
+    throwIfAborted(execution?.signal);
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') throw new Error('群组已经归档。');
-    await runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments);
+    await runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution);
+    throwIfAborted(execution?.signal);
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     notifyRoundCompleted(userId, roomId, roundId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    groupChatDb.createMessage(userId, roomId, {
-      roundId,
-      kind: 'chat',
-      senderType: 'agent',
-      senderMemberId: entryMember.id,
-      senderName: entryMember.name,
-      content: '',
-      status: 'failed',
-      error: message,
-    });
+    const existingFailure = (groupChatDb.listMessages(userId, roomId, conversationId, 200) || [])
+      .some((candidate) => candidate.roundId === roundId
+        && candidate.kind === 'activity'
+        && candidate.senderMemberId === entryMember.id
+        && candidate.status === 'failed');
+    if (!existingFailure) {
+      groupChatDb.createMessage(userId, roomId, {
+        roundId,
+        kind: 'activity',
+        senderType: 'agent',
+        senderMemberId: entryMember.id,
+        senderName: entryMember.name,
+        content: message,
+        metadata: stoppedMetadata({ activityType: 'execution', state: 'failed' }, message),
+        status: 'failed',
+        error: message,
+      });
+    }
     groupChatDb.updateTurn(roundId, { status: 'failed', error: message });
   }
 }
 
 async function executeQueuedTurn(turn) {
-  if (!userDb.getUserById(turn.senderUserId)) {
-    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '消息发送者账号已停用。' });
-    return;
-  }
-  const message = groupChatDb.getUserMessageForTurn(turn.id);
-  if (!message) {
-    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组轮次缺少用户消息。' });
-    return;
-  }
-  const room = groupChatDb.getRoom(turn.senderUserId, turn.roomId);
-  if (!room || room.status !== 'active') {
-    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组不存在或已经归档。' });
-    return;
-  }
-  const targetIds = turn.requiredDelegates || [];
-  const persistedAttachments = {
-    images: Array.isArray(message.metadata?.images) ? message.metadata.images : [],
-    attachments: Array.isArray(message.metadata?.attachments) ? message.metadata.attachments : [],
+  const abortController = new AbortController();
+  const execution = {
+    userId: turn.senderUserId,
+    roomId: turn.roomId,
+    conversationId: turn.conversationId,
+    roundId: turn.id,
+    signal: abortController.signal,
+    abortController,
+    gateway: null,
+    sessionKey: '',
+    runId: '',
+    abortPromise: null,
   };
-  const messageAttachments = persistedAttachments.images.length > 0 || persistedAttachments.attachments.length > 0
-    ? persistedAttachments
-    : undefined;
-  const userMessage = `${message.content}${attachmentNote(messageAttachments)}`;
-  if (turn.triggerSource === 'mentions') {
-    const targetsById = new Map(room.members.map((member) => [member.id, member]));
-    const targets = targetIds.flatMap((id) => targetsById.get(id) || []);
-    await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, targets, messageAttachments);
-    return;
+  activeRoundExecutions.set(turn.id, execution);
+  try {
+    const queueMessage = groupChatDb.getMessage(turn.senderUserId, turn.roomId, `queue-${turn.id}`);
+    if (queueMessage) {
+      groupChatDb.updateMessage(queueMessage.id, {
+        content: '已开始处理这条消息。',
+        metadata: { ...queueMessage.metadata, state: 'completed' },
+        status: 'completed',
+        error: null,
+      });
+    }
+    if (!userDb.getUserById(turn.senderUserId)) {
+      groupChatDb.updateTurn(turn.id, { status: 'failed', error: '消息发送者账号已停用。' });
+      return;
+    }
+    const message = groupChatDb.getUserMessageForTurn(turn.id);
+    if (!message) {
+      groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组轮次缺少用户消息。' });
+      return;
+    }
+    const room = groupChatDb.getRoom(turn.senderUserId, turn.roomId);
+    if (!room || room.status !== 'active') {
+      groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组不存在或已经归档。' });
+      return;
+    }
+    const targetIds = turn.requiredDelegates || [];
+    const persistedAttachments = {
+      images: Array.isArray(message.metadata?.images) ? message.metadata.images : [],
+      attachments: Array.isArray(message.metadata?.attachments) ? message.metadata.attachments : [],
+    };
+    const messageAttachments = persistedAttachments.images.length > 0 || persistedAttachments.attachments.length > 0
+      ? persistedAttachments
+      : undefined;
+    const userMessage = `${message.content}${attachmentNote(messageAttachments)}`;
+    if (turn.triggerSource === 'mentions') {
+      const targetsById = new Map(room.members.map((member) => [member.id, member]));
+      const targets = targetIds.flatMap((id) => targetsById.get(id) || []);
+      await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, targets, messageAttachments, execution);
+      return;
+    }
+    const entryMember = room.members.find((member) => member.id === turn.entryMemberId && member.isActive !== false);
+    if (!entryMember) {
+      groupChatDb.updateTurn(turn.id, { status: 'failed', error: '入口 PilotDeck 实例不可用。' });
+      return;
+    }
+    await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, entryMember, targetIds, messageAttachments, execution);
+  } finally {
+    if (activeRoundExecutions.get(turn.id) === execution) activeRoundExecutions.delete(turn.id);
   }
-  const entryMember = room.members.find((member) => member.id === turn.entryMemberId && member.isActive !== false);
-  if (!entryMember) {
-    groupChatDb.updateTurn(turn.id, { status: 'failed', error: '入口 PilotDeck 实例不可用。' });
-    return;
-  }
-  await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, entryMember, targetIds, messageAttachments);
 }
 
-function scheduleRoom(roomId) {
-  if (dispatchingRooms.has(roomId)) return;
-  dispatchingRooms.add(roomId);
+function scheduleConversation(roomId, conversationId) {
+  const queueKey = `${roomId}:${conversationId}`;
+  if (dispatchingConversations.has(queueKey)) return;
+  dispatchingConversations.add(queueKey);
   queueMicrotask(async () => {
     try {
       while (true) {
-        const queued = groupChatDb.getNextQueuedTurn(roomId);
+        const queued = groupChatDb.getNextQueuedTurn(roomId, conversationId);
         if (!queued) break;
         const claimed = groupChatDb.claimQueuedTurn(queued.id);
         if (!claimed) continue;
@@ -948,8 +1559,10 @@ function scheduleRoom(roomId) {
         }
       }
     } finally {
-      dispatchingRooms.delete(roomId);
-      if (groupChatDb.getNextQueuedTurn(roomId)) scheduleRoom(roomId);
+      dispatchingConversations.delete(queueKey);
+      if (groupChatDb.getNextQueuedTurn(roomId, conversationId)) {
+        scheduleConversation(roomId, conversationId);
+      }
     }
   });
 }
@@ -1059,6 +1672,8 @@ export const groupChatService = {
         roundId,
         conversationId: activeTurn.conversationId,
         requiredDelegateIds: [],
+        signal: activeTurn.signal,
+        execution: activeTurn.execution,
         ...(activeTurn.messageAttachments ? { messageAttachments: activeTurn.messageAttachments } : {}),
         collaboration: { canDelegate: false },
       });
@@ -1082,16 +1697,69 @@ export const groupChatService = {
       const errorMessage = error instanceof Error ? error.message : String(error);
       groupChatDb.updateMessage(placeholder.id, {
         content: '',
+        metadata: stoppedMetadata(placeholder.metadata, errorMessage),
         status: 'failed',
         error: errorMessage,
       });
       groupChatDb.updateMessage(delegation.id, {
-        metadata: { ...delegation.metadata, state: 'failed' },
+        metadata: stoppedMetadata({ ...delegation.metadata, state: 'failed' }, errorMessage),
         status: 'failed',
         error: errorMessage,
       });
       throw error;
     }
+  },
+
+  async stopConversation(userId, roomId, conversationId) {
+    const conversation = groupChatDb.getConversation(userId, roomId, conversationId);
+    if (!conversation) return null;
+    const turns = groupChatDb.listActiveTurns(userId, roomId, conversationId) || [];
+    const activeTurnIds = new Set(turns.map((turn) => turn.id));
+    const executions = [...activeRoundExecutions.values()].filter((execution) => (
+      execution.roomId === roomId && execution.conversationId === conversationId
+    ));
+
+    for (const turn of turns) {
+      groupChatDb.updateTurn(turn.id, { status: 'failed', error: USER_STOPPED_ERROR });
+    }
+
+    let stoppedMessages = 0;
+    const messages = groupChatDb.listMessages(userId, roomId, conversationId, 200) || [];
+    for (const message of messages) {
+      if (!['thinking', 'queued'].includes(message.status)) continue;
+      if (activeTurnIds.size > 0 && message.roundId && !activeTurnIds.has(message.roundId)) continue;
+      groupChatDb.updateMessage(message.id, {
+        content: message.content,
+        metadata: { ...message.metadata, state: 'failed', stoppedByUser: true },
+        status: 'failed',
+        error: USER_STOPPED_ERROR,
+      });
+      stoppedMessages += 1;
+    }
+
+    const aborts = [];
+    for (const execution of executions) {
+      if (!execution.signal.aborted) execution.abortController.abort(new Error(USER_STOPPED_ERROR));
+      if (execution.abortPromise) {
+        aborts.push(execution.abortPromise);
+      } else if (execution.gateway && execution.sessionKey) {
+        aborts.push(execution.gateway.abortTurn({
+          sessionKey: execution.sessionKey,
+          ...(execution.runId ? { runId: execution.runId } : {}),
+          reason: 'user:group_stop',
+        }).catch(() => undefined));
+      }
+    }
+    if (aborts.length > 0) {
+      await Promise.race([
+        Promise.allSettled(aborts),
+        new Promise((resolve) => setTimeout(resolve, 10_000)),
+      ]);
+    }
+    return {
+      stopped: turns.length > 0 || executions.length > 0 || stoppedMessages > 0,
+      turnIds: turns.map((turn) => turn.id),
+    };
   },
 
   sendMessage(userId, roomId, input) {
@@ -1140,7 +1808,7 @@ export const groupChatService = {
     const roundId = turn.id;
     const existingMessage = groupChatDb.getUserMessageForTurn(roundId);
     if (existingMessage) {
-      if (turn.status === 'queued') scheduleRoom(roomId);
+      if (turn.status === 'queued') scheduleConversation(roomId, turn.conversationId);
       return {
         message: existingMessage,
         roundId,
@@ -1173,7 +1841,19 @@ export const groupChatService = {
       });
       groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     } else {
-      scheduleRoom(roomId);
+      groupChatDb.createMessage(userId, roomId, {
+        id: `queue-${roundId}`,
+        conversationId: conversation.id,
+        roundId,
+        kind: 'activity',
+        senderType: 'agent',
+        senderMemberId: entryMember.id,
+        senderName: entryMember.name,
+        content: '消息已进入当前会话的处理队列。',
+        metadata: { activityType: 'queue', state: 'running' },
+        status: 'queued',
+      });
+      scheduleConversation(roomId, conversation.id);
     }
     return {
       message,
@@ -1190,6 +1870,8 @@ export const groupChatService = {
 
   recoverPendingTurns() {
     groupChatDb.requeueInterruptedTurns();
-    for (const roomId of groupChatDb.listPendingRoomIds()) scheduleRoom(roomId);
+    for (const queue of groupChatDb.listPendingQueues()) {
+      scheduleConversation(queue.roomId, queue.conversationId);
+    }
   },
 };

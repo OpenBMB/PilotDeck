@@ -284,6 +284,9 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
+  stopGroupConversation: (groupId, conversationId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations/${encodeURIComponent(conversationId)}/stop`, {
+    method: 'POST',
+  }),
   uploadProjectAttachments: (projectName, attachments) => {
     const formData = new FormData();
     for (const attachment of attachments) formData.append('attachments', attachment);

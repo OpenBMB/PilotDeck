@@ -625,12 +625,13 @@ export const groupChatDb = {
     return mapTurn(db.prepare('SELECT * FROM group_turns WHERE id = ?').get(turnId));
   },
 
-  getNextQueuedTurn(roomId) {
+  getNextQueuedTurn(roomId, conversationId) {
     return mapTurn(db.prepare(`
-      SELECT * FROM group_turns WHERE room_id = ? AND status = 'queued'
+      SELECT * FROM group_turns
+      WHERE room_id = ? AND conversation_id = ? AND status = 'queued'
       ORDER BY COALESCE(message_sequence, 9223372036854775807) ASC, created_at ASC, rowid ASC
       LIMIT 1
-    `).get(roomId));
+    `).get(roomId, conversationId));
   },
 
   claimQueuedTurn(turnId) {
@@ -641,10 +642,20 @@ export const groupChatDb = {
     return result.changes > 0 ? this.getTurnById(turnId) : null;
   },
 
-  listPendingRoomIds() {
+  listPendingQueues() {
     return db.prepare(`
-      SELECT DISTINCT room_id FROM group_turns WHERE status IN ('queued', 'running')
-    `).all().map((row) => row.room_id);
+      SELECT DISTINCT room_id, conversation_id FROM group_turns
+      WHERE status IN ('queued', 'running') AND conversation_id IS NOT NULL
+    `).all().map((row) => ({ roomId: row.room_id, conversationId: row.conversation_id }));
+  },
+
+  listActiveTurns(userId, roomId, conversationId) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    return db.prepare(`
+      SELECT * FROM group_turns
+      WHERE room_id = ? AND conversation_id = ? AND status IN ('queued', 'running')
+      ORDER BY COALESCE(message_sequence, 9223372036854775807) ASC, created_at ASC, rowid ASC
+    `).all(roomId, conversationId).map(mapTurn);
   },
 
   requeueInterruptedTurns() {
