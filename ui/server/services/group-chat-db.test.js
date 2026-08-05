@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -75,6 +75,61 @@ describe('group chat persistence', () => {
 
     groupChatDb.markRead(user.id, room.id);
     expect(groupChatDb.listRooms(user.id)[0].hasSilentUnread).toBe(false);
+  });
+
+  it('keeps timelines, titles, and read state isolated between conversations in one group', async () => {
+    const { user, groupChatDb } = await setup();
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Multi conversation group', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: false,
+    });
+    const first = room.conversations[0];
+    groupChatDb.createMessage(user.id, room.id, {
+      conversationId: first.id,
+      senderType: 'user', senderUserId: user.id, senderName: 'Owner', content: 'First topic',
+    });
+    const second = groupChatDb.createConversation(user.id, room.id);
+    const reusedSecond = groupChatDb.createConversation(user.id, room.id);
+    expect(reusedSecond.id).toBe(second.id);
+    expect(groupChatDb.listConversations(user.id, room.id)).toHaveLength(2);
+
+    groupChatDb.createMessage(user.id, room.id, {
+      conversationId: second.id,
+      senderType: 'user', senderUserId: user.id, senderName: 'Owner', content: 'Second topic',
+    });
+    groupChatDb.createMessage(user.id, room.id, {
+      conversationId: second.id,
+      senderType: 'agent', senderMemberId: 'main', senderName: 'Main', content: 'Second reply',
+    });
+
+    expect(groupChatDb.listMessages(user.id, room.id, first.id, 20).map((message) => message.content))
+      .toEqual(['First topic']);
+    expect(groupChatDb.listMessages(user.id, room.id, second.id, 20).map((message) => message.content))
+      .toEqual(['Second topic', 'Second reply']);
+    const conversations = groupChatDb.listConversations(user.id, room.id);
+    expect(conversations.map((conversation) => conversation.title)).toEqual(['Second topic', 'First topic']);
+    expect(conversations.find((conversation) => conversation.id === second.id).unreadCount).toBe(1);
+    groupChatDb.markRead(user.id, room.id, second.id);
+    expect(groupChatDb.listConversations(user.id, room.id)
+      .find((conversation) => conversation.id === second.id).unreadCount).toBe(0);
+  });
+
+  it('reuses an untouched draft and can archive the final conversation', async () => {
+    const { user, groupChatDb } = await setup();
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Draft reuse group', projectName: 'general', projectPath: '/workspace/general',
+      triggerMode: 'auto', muted: false,
+    });
+    const initial = room.conversations[0];
+
+    expect(groupChatDb.createConversation(user.id, room.id).id).toBe(initial.id);
+    expect(groupChatDb.listConversations(user.id, room.id)).toHaveLength(1);
+    expect(groupChatDb.archiveConversation(user.id, room.id, initial.id)).toBe(true);
+    expect(groupChatDb.listConversations(user.id, room.id)).toEqual([]);
+
+    const replacement = groupChatDb.createConversation(user.id, room.id);
+    expect(replacement.id).not.toBe(initial.id);
+    expect(groupChatDb.listConversations(user.id, room.id)).toHaveLength(1);
   });
 
   it('routes the main member through a remote coordinator instance when one is bound', async () => {
@@ -178,8 +233,8 @@ describe('group chat dispatch semantics', () => {
       expect(groupChatDb.getTurn(user.id, room.id, second.roundId).status).toBe('completed');
     });
     expect(gatewayCalls).toEqual([
-      { sessionKey: `group:${room.id}:user-${alice.id}`, message: 'alice-first' },
-      { sessionKey: `group:${room.id}:main`, message: 'owner-second' },
+      { sessionKey: `group:${room.id}:${room.conversations[0].id}:user-${alice.id}`, message: 'alice-first' },
+      { sessionKey: `group:${room.id}:${room.conversations[0].id}:main`, message: 'owner-second' },
     ]);
     const userMessages = groupChatDb.listMessages(user.id, room.id, 50).filter((message) => message.senderType === 'user');
     expect(userMessages.map((message) => message.content)).toEqual(['alice-first', 'owner-second']);
@@ -243,8 +298,8 @@ describe('group chat dispatch semantics', () => {
 
     await vi.waitFor(() => expect(gatewayCalls).toHaveLength(2));
     expect(gatewayCalls.map((call) => call.sessionKey)).toEqual([
-      `group:${room.id}:engineer`,
-      `group:${room.id}:main`,
+      `group:${room.id}:${room.conversations[0].id}:engineer`,
+      `group:${room.id}:${room.conversations[0].id}:main`,
     ]);
   });
 
@@ -284,12 +339,64 @@ describe('group chat dispatch semantics', () => {
         .toBe(false);
     });
 
-    expect(gatewayCalls.map((call) => call.sessionKey)).toEqual([`group:${room.id}:main`]);
+    expect(gatewayCalls.map((call) => call.sessionKey)).toEqual([
+      `group:${room.id}:${room.conversations[0].id}:main`,
+    ]);
     expect(gatewayCalls.every((call) => call.workspaceCwd === '/workspace/PilotDeck')).toBe(true);
     expect(gatewayCalls.every((call) => call.projectKey === '/workspace/PilotDeck')).toBe(true);
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('主智能体');
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('group_member_delegate');
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('id=reviewer');
+  });
+
+  it('persists uploaded group attachments and forwards them to the entry PilotDeck turn', async () => {
+    const { user, groupChatDb } = await setup();
+    const projectPath = mkdtempSync(join(tmpdir(), 'pilotdeck-group-attachments-'));
+    tempDirs.push(projectPath);
+    const attachmentDir = join(projectPath, '.tmp', 'chat-attachments', 'round-1');
+    mkdirSync(attachmentDir, { recursive: true });
+    const imagePath = join(attachmentDir, 'diagram.png');
+    const filePath = join(attachmentDir, 'notes.md');
+    writeFileSync(imagePath, 'image');
+    writeFileSync(filePath, '# notes');
+    const gatewayCalls = [];
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        submitTurn: async function* (input) {
+          gatewayCalls.push(input);
+          yield { type: 'assistant_text_delta', text: '附件已收到' };
+          yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Attachment group', projectName: 'attachment-project', projectPath,
+      triggerMode: 'auto', muted: true,
+    });
+
+    const result = groupChatService.sendMessage(user.id, room.id, {
+      content: '分析这些材料',
+      images: [{
+        name: 'diagram.png', path: imagePath, size: 5, mimeType: 'image/png',
+        data: 'data:image/png;base64,aW1hZ2U=',
+      }],
+      attachments: [{ name: 'notes.md', path: filePath, size: 7, mimeType: 'text/markdown' }],
+    });
+
+    await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, result.roundId).status).toBe('completed'));
+    const saved = groupChatDb.getUserMessageForTurn(result.roundId);
+    expect(saved.metadata).toMatchObject({
+      images: [expect.objectContaining({ name: 'diagram.png', path: imagePath })],
+      attachments: [expect.objectContaining({ name: 'notes.md', path: filePath })],
+    });
+    expect(gatewayCalls).toHaveLength(1);
+    expect(gatewayCalls[0].message).toContain('图片：diagram.png');
+    expect(gatewayCalls[0].message).toContain('附件：notes.md');
+    expect(gatewayCalls[0].attachments).toEqual([
+      expect.objectContaining({ type: 'image', name: 'diagram.png', content: 'aW1hZ2U=', path: imagePath }),
+      expect.objectContaining({ type: 'file', name: 'notes.md', path: filePath }),
+    ]);
   });
 
   it('turns automatic-mode mentions into ordered required delegations through the main agent', async () => {
@@ -304,7 +411,7 @@ describe('group chat dispatch semantics', () => {
             for (const memberId of ['reviewer', 'engineer']) {
               yield { type: 'tool_call_started', toolCallId: `call-${memberId}`, name: 'group_member_delegate', argsPreview: '{}' };
               await delegateMember(user.id, room.id, {
-                sourceSessionId: `group:${room.id}:main`,
+                sourceSessionId: input.sessionKey,
                 sourceTurnId: 'turn-main',
                 memberId,
                 message: `请 ${memberId} 回答`,
@@ -343,9 +450,9 @@ describe('group chat dispatch semantics', () => {
     expect(result.requiredDelegateIds).toEqual(['reviewer', 'engineer']);
     await vi.waitFor(() => expect(gatewayCalls).toHaveLength(3));
     expect(gatewayCalls.map((call) => call.sessionKey)).toEqual([
-      `group:${room.id}:main`,
-      `group:${room.id}:reviewer`,
-      `group:${room.id}:engineer`,
+      `group:${room.id}:${room.conversations[0].id}:main`,
+      `group:${room.id}:${room.conversations[0].id}:reviewer`,
+      `group:${room.id}:${room.conversations[0].id}:engineer`,
     ]);
     await vi.waitFor(() => {
       const timeline = groupChatDb.listMessages(user.id, room.id, 30);
@@ -386,7 +493,9 @@ describe('group chat dispatch semantics', () => {
 
     expect(result.targetMemberIds).toEqual(['reviewer']);
     await vi.waitFor(() => expect(gatewayCalls).toHaveLength(1));
-    expect(gatewayCalls[0].sessionKey).toBe(`group:${room.id}:reviewer`);
+    expect(gatewayCalls[0].sessionKey).toBe(
+      `group:${room.id}:${room.conversations[0].id}:reviewer`,
+    );
   });
 
   it('rejects delegation calls that are not attached to an active main-agent turn', async () => {
@@ -419,7 +528,7 @@ describe('group chat dispatch semantics', () => {
             yield { type: 'assistant_thinking_delta', text: '这需要评审员本人提供信息。' };
             yield { type: 'tool_call_started', toolCallId: 'delegate-reviewer', name: 'group_member_delegate', argsPreview: '{}' };
             await delegateMember(user.id, room.id, {
-              sourceSessionId: `group:${room.id}:main`, sourceTurnId: 'turn-natural',
+              sourceSessionId: input.sessionKey, sourceTurnId: 'turn-natural',
               memberId: 'reviewer', message: '请介绍你的职责。',
             });
             yield { type: 'tool_call_finished', toolCallId: 'delegate-reviewer', toolName: 'group_member_delegate', ok: true, resultPreview: 'ok' };
@@ -466,7 +575,7 @@ describe('group chat dispatch semantics', () => {
             } else {
               yield { type: 'tool_call_started', toolCallId: 'required-reviewer', name: 'group_member_delegate', argsPreview: '{}' };
               await delegateMember(user.id, room.id, {
-                sourceSessionId: `group:${room.id}:main`, sourceTurnId: 'turn-retry',
+                sourceSessionId: input.sessionKey, sourceTurnId: 'turn-retry',
                 memberId: 'reviewer', message: '请直接回答用户。',
               });
               yield { type: 'tool_call_finished', toolCallId: 'required-reviewer', toolName: 'group_member_delegate', ok: true, resultPreview: 'ok' };
@@ -560,7 +669,10 @@ describe('group chat dispatch semantics', () => {
     await vi.waitFor(() => expect(groupChatDb.getTurn(user.id, room.id, result.roundId).status).toBe('completed'));
     const chats = groupChatDb.listMessages(user.id, room.id, 30).filter((message) => message.kind === 'chat');
 
-    expect(gatewayCalls).toEqual([`group:${room.id}:main`, `group:${room.id}:engineer`]);
+    expect(gatewayCalls).toEqual([
+      `group:${room.id}:${room.conversations[0].id}:main`,
+      `group:${room.id}:${room.conversations[0].id}:engineer`,
+    ]);
     expect(chats.some((message) => message.senderMemberId === 'main' && message.status === 'failed')).toBe(true);
     expect(chats.at(-1)).toMatchObject({ senderMemberId: 'engineer', content: '工程师仍然完成了回复。' });
   });

@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +40,7 @@ async function setupDatabase() {
   openDb = database.db;
   await database.initializeDatabase();
   const user = database.userDb.createUser('staffdeck-test', 'not-a-real-password-hash');
-  return { database, user };
+  return { database, user, dir };
 }
 
 async function startStaffDeckStub() {
@@ -185,9 +185,57 @@ describe('StaffDeck Open API v1 group integration', () => {
     expect(stub.requests[2].body).not.toHaveProperty('tenant_id');
   });
 
+  it('forwards pasted images and text attachments to a directly mentioned StaffDeck employee', async () => {
+    const stub = await startStaffDeckStub();
+    const { user, dir } = await setupDatabase();
+    process.env.STAFFDECK_BASE_URL = stub.baseUrl;
+    process.env.STAFFDECK_API_KEY = 'test-admin-key';
+    process.env.STAFFDECK_POLL_INTERVAL_MS = '0';
+    process.env.PILOTDECK_GROUP_MEMBER_TIMEOUT_MS = '5000';
+    const projectPath = join(dir, 'general');
+    mkdirSync(projectPath, { recursive: true });
+    const imagePath = join(projectPath, 'evidence.png');
+    const notePath = join(projectPath, 'evidence.md');
+    const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+    writeFileSync(imagePath, imageBytes);
+    writeFileSync(notePath, '# 验收证据\n这是传给数字员工的文本附件。\n');
+    const { groupChatDb } = await import('./group-chat-db.js');
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: '附件直达财务',
+      projectName: 'general',
+      projectPath,
+      triggerMode: 'mentions',
+      muted: false,
+    });
+    groupChatService.addMember(user.id, room.id, {
+      id: 'finance-1', employeeId: 'finance-1', kind: 'staffdeck', name: '财务', role: '财务', description: '财务审核',
+    });
+
+    const sent = groupChatService.sendMessage(user.id, room.id, {
+      content: '@财务 请查看图片和说明文件',
+      mentionedMemberIds: ['finance-1'],
+      images: [{ name: 'evidence.png', path: imagePath, size: imageBytes.length, mimeType: 'image/png' }],
+      attachments: [{ name: 'evidence.md', path: notePath, size: 64, mimeType: 'text/markdown' }],
+      clientMessageId: 'staffdeck-direct-attachments',
+    });
+    await vi.waitFor(() => {
+      expect(['completed', 'failed']).toContain(groupChatDb.getTurn(user.id, room.id, sent.roundId).status);
+    }, { timeout: 12_000 });
+    expect(groupChatDb.getTurn(user.id, room.id, sent.roundId).status).toBe('completed');
+    const runRequest = stub.requests.find((request) => request.method === 'POST' && request.url === '/api/v1/agents/finance-1/runs');
+    expect(runRequest.body.attachments).toEqual([
+      expect.objectContaining({ filename: 'evidence.png', content_type: 'image/png', kind: 'image', data_url: expect.stringMatching(/^data:image\/png;base64,/) }),
+      expect.objectContaining({ filename: 'evidence.md', content_type: 'text/markdown', kind: 'text', text: expect.stringContaining('验收证据') }),
+    ]);
+    expect(runRequest.body.input).toContain('<staffdeck_text_attachment name="evidence.md"');
+    expect(runRequest.body.input).toContain('这是传给数字员工的文本附件。');
+    expect(JSON.stringify(runRequest.body.attachments)).not.toContain(projectPath);
+  });
+
   it('lets the same main-agent loop reassess one StaffDeck reply and delegate to another employee', async () => {
     const stub = await startStaffDeckStub();
-    const { user } = await setupDatabase();
+    const { user, dir } = await setupDatabase();
     process.env.STAFFDECK_BASE_URL = stub.baseUrl;
     process.env.STAFFDECK_API_KEY = 'test-admin-key';
     process.env.STAFFDECK_POLL_INTERVAL_MS = '0';
@@ -216,7 +264,7 @@ describe('StaffDeck Open API v1 group integration', () => {
               argsPreview: JSON.stringify({ memberId }),
             };
             await delegateMember(user.id, room.id, {
-              sourceSessionId: `group:${room.id}:main`,
+              sourceSessionId: `group:${room.id}:${room.conversations[0].id}:main`,
               sourceTurnId: `turn-${memberId}`,
               memberId,
               message: `请从${name}职责给出一句建议。`,
@@ -237,10 +285,14 @@ describe('StaffDeck Open API v1 group integration', () => {
     const { groupChatDb } = await import('./group-chat-db.js');
     const { groupChatService } = await import('./group-chat-service.js');
     delegateMember = groupChatService.delegateMember.bind(groupChatService);
+    const projectPath = join(dir, 'general');
+    mkdirSync(projectPath, { recursive: true });
+    const attachmentPath = join(projectPath, 'onboarding.md');
+    writeFileSync(attachmentPath, '# 入职方案\n请五个部门分别评估。\n');
     room = groupChatDb.createRoom(user.id, {
       title: '智能财务协作群',
       projectName: 'general',
-      projectPath: '/workspace/general',
+      projectPath,
       triggerMode: 'auto',
       muted: false,
     });
@@ -263,6 +315,7 @@ describe('StaffDeck Open API v1 group integration', () => {
 
     const sent = groupChatService.sendMessage(user.id, room.id, {
       content: '请从财务、人事、法务、行政和 IT 五个部门综合评估新员工入职方案，需要时咨询合适的数字员工。',
+      attachments: [{ name: 'onboarding.md', path: attachmentPath, size: 48, mimeType: 'text/markdown' }],
       clientMessageId: 'staffdeck-agentic-delegation-test',
     });
     await vi.waitFor(() => {
@@ -285,6 +338,10 @@ describe('StaffDeck Open API v1 group integration', () => {
       content: '已综合财务、人事、法务、行政和 IT 五位数字员工的意见。',
     });
     expect(stub.requests).toHaveLength(20);
+    const runRequests = stub.requests.filter((request) => request.method === 'POST' && request.url.endsWith('/runs'));
+    expect(runRequests).toHaveLength(5);
+    expect(runRequests.every((request) => request.body.attachments?.[0]?.text?.includes('入职方案'))).toBe(true);
+    expect(runRequests.every((request) => request.body.input?.includes('# 入职方案'))).toBe(true);
   }, 15_000);
 });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentGroup } from '../types/group';
+import type { AgentGroup, AgentGroupConversation } from '../types/group';
 import { api } from '../utils/api';
 
 const GROUP_LIST_POLL_MS = 2_500;
@@ -48,10 +48,22 @@ export function useAgentGroups() {
     return payload.group;
   }, []);
 
+  const createGroupConversation = useCallback(async (groupId: string): Promise<AgentGroupConversation> => {
+    const response = await api.createGroupConversation(groupId);
+    const payload = await response.json().catch(() => ({})) as {
+      conversation?: AgentGroupConversation;
+      error?: string;
+    };
+    if (!response.ok || !payload.conversation) throw new Error(payload.error || '创建群组会话失败');
+    await refreshGroups(false);
+    return payload.conversation;
+  }, [refreshGroups]);
+
   return {
     groups,
     isLoadingGroups,
     refreshGroups,
     createGroup,
+    createGroupConversation,
   };
 }

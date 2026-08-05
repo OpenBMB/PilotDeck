@@ -48,6 +48,7 @@ function mapMessage(row) {
   return {
     id: row.id,
     roomId: row.room_id,
+    conversationId: row.conversation_id,
     roundId: row.round_id || undefined,
     sequence: Number(row.sequence || 0),
     kind: row.message_kind || 'chat',
@@ -86,6 +87,7 @@ function mapTurn(row) {
   return {
     id: row.id,
     roomId: row.room_id,
+    conversationId: row.conversation_id,
     senderUserId: row.sender_user_id,
     entryMemberId: row.entry_member_id,
     triggerSource: row.trigger_source,
@@ -101,7 +103,24 @@ function mapTurn(row) {
   };
 }
 
-function mapRoom(row, members = []) {
+function mapConversation(row) {
+  if (!row) return null;
+  const muted = Number(row.participant_muted || 0) === 1;
+  return {
+    id: row.id,
+    roomId: row.room_id,
+    title: row.title,
+    status: row.status,
+    unreadCount: muted ? 0 : Number(row.unread_count || 0),
+    hasSilentUnread: muted && Number(row.raw_unread_count || 0) > 0,
+    lastMessagePreview: row.last_message_preview || '',
+    createdByUserId: Number(row.created_by_user_id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapRoom(row, members = [], conversations = []) {
   if (!row) return null;
   return {
     id: row.id,
@@ -120,7 +139,38 @@ function mapRoom(row, members = []) {
     hasSilentUnread: Number(row.participant_muted ?? row.muted) === 1 && Number(row.raw_unread_count || 0) > 0,
     lastMessagePreview: row.last_message_preview || '',
     members,
+    conversations,
   };
+}
+
+function queryConversations(userId, roomId) {
+  return db.prepare(`
+    SELECT c.*, p.muted AS participant_muted,
+      (SELECT gm.content FROM group_messages gm
+        WHERE gm.conversation_id = c.id
+          AND gm.message_kind = 'chat'
+          AND gm.status IN ('completed', 'failed')
+        ORDER BY gm.sequence DESC, gm.rowid DESC LIMIT 1) AS last_message_preview,
+      (SELECT COUNT(*) FROM group_messages gm
+        WHERE gm.conversation_id = c.id
+          AND gm.sender_type = 'agent'
+          AND gm.message_kind = 'chat'
+          AND gm.created_at > COALESCE(crs.last_read_at, c.created_at)) AS raw_unread_count,
+      CASE WHEN p.muted = 1 THEN 0 ELSE
+        (SELECT COUNT(*) FROM group_messages gm
+          WHERE gm.conversation_id = c.id
+            AND gm.sender_type = 'agent'
+            AND gm.message_kind = 'chat'
+            AND gm.created_at > COALESCE(crs.last_read_at, c.created_at))
+      END AS unread_count
+    FROM group_conversations c
+    JOIN group_participants p
+      ON p.room_id = c.room_id AND p.user_id = ? AND p.status = 'active'
+    LEFT JOIN group_conversation_read_state crs
+      ON crs.conversation_id = c.id AND crs.user_id = p.user_id
+    WHERE c.room_id = ? AND c.status = 'active'
+    ORDER BY c.updated_at DESC, c.created_at DESC
+  `).all(userId, roomId).map(mapConversation);
 }
 
 const createRoomTransaction = db.transaction((userId, input) => {
@@ -148,6 +198,12 @@ const createRoomTransaction = db.transaction((userId, input) => {
     timestamp,
     timestamp,
   );
+  const conversationId = newId('group-conversation');
+  db.prepare(`
+    INSERT INTO group_conversations (
+      id, room_id, title, status, created_by_user_id, created_at, updated_at
+    ) VALUES (?, ?, '新会话', 'active', ?, ?, ?)
+  `).run(conversationId, id, userId, timestamp, timestamp);
   db.prepare(`
     INSERT INTO group_members (
       id, room_id, kind, name, role, description, position, config_json,
@@ -166,6 +222,10 @@ const createRoomTransaction = db.transaction((userId, input) => {
     INSERT INTO group_read_state (user_id, room_id, last_read_at)
     VALUES (?, ?, ?)
   `).run(userId, id, timestamp);
+  db.prepare(`
+    INSERT INTO group_conversation_read_state (user_id, room_id, conversation_id, last_read_at)
+    VALUES (?, ?, ?, ?)
+  `).run(userId, id, conversationId, timestamp);
   return id;
 });
 
@@ -211,7 +271,11 @@ export const groupChatDb = {
       SELECT * FROM group_members WHERE room_id = ? AND is_active = 1
       ORDER BY position ASC, created_at ASC
     `);
-    return rows.map((row) => mapRoom(row, memberStmt.all(row.id).map(mapMember)));
+    return rows.map((row) => mapRoom(
+      row,
+      memberStmt.all(row.id).map(mapMember),
+      queryConversations(userId, row.id),
+    ));
   },
 
   getRoom(userId, roomId) {
@@ -237,7 +301,101 @@ export const groupChatDb = {
     `).get(userId, userId, roomId);
     if (!row) return null;
     const members = this.listMembers(userId, roomId);
-    return mapRoom(row, members);
+    return mapRoom(row, members, queryConversations(userId, roomId));
+  },
+
+  listConversations(userId, roomId) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    return queryConversations(userId, roomId);
+  },
+
+  getConversation(userId, roomId, conversationId) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    return mapConversation(db.prepare(`
+      SELECT c.*, p.muted AS participant_muted
+      FROM group_conversations c
+      JOIN group_participants p
+        ON p.room_id = c.room_id AND p.user_id = ? AND p.status = 'active'
+      WHERE c.id = ? AND c.room_id = ? AND c.status = 'active'
+    `).get(userId, conversationId, roomId));
+  },
+
+  createConversation(userId, roomId, input = {}) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    const requestedTitle = typeof input.title === 'string' ? input.title.trim() : '';
+    const conversationId = db.transaction(() => {
+      // Match the project/general draft behavior: repeatedly pressing "new
+      // conversation" before sending anything should focus the same draft,
+      // not leave a stack of persisted empty rows behind. Scope the reusable
+      // draft to its creator so two human participants can still each start
+      // their own conversation.
+      if (!requestedTitle) {
+        const reusable = db.prepare(`
+          SELECT c.id FROM group_conversations c
+          WHERE c.room_id = ?
+            AND c.created_by_user_id = ?
+            AND c.status = 'active'
+            AND c.title = '新会话'
+            AND NOT EXISTS (
+              SELECT 1 FROM group_messages gm WHERE gm.conversation_id = c.id
+            )
+          ORDER BY c.updated_at DESC, c.created_at DESC
+          LIMIT 1
+        `).get(roomId, userId);
+        if (reusable?.id) return reusable.id;
+      }
+
+      const id = newId('group-conversation');
+      const timestamp = nowIso();
+      const title = requestedTitle ? requestedTitle.slice(0, 120) : '新会话';
+      db.prepare(`
+        INSERT INTO group_conversations (
+          id, room_id, title, status, created_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, 'active', ?, ?, ?)
+      `).run(id, roomId, title, userId, timestamp, timestamp);
+      const participants = db.prepare(`
+        SELECT user_id FROM group_participants WHERE room_id = ? AND status = 'active'
+      `).all(roomId);
+      const insertReadState = db.prepare(`
+        INSERT INTO group_conversation_read_state (
+          user_id, room_id, conversation_id, last_read_at
+        ) VALUES (?, ?, ?, ?)
+      `);
+      for (const participant of participants) {
+        insertReadState.run(participant.user_id, roomId, id, timestamp);
+      }
+      db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
+      return id;
+    })();
+    return this.getConversation(userId, roomId, conversationId);
+  },
+
+  updateConversation(userId, roomId, conversationId, patch) {
+    const current = this.getConversation(userId, roomId, conversationId);
+    if (!current) return null;
+    const title = typeof patch.title === 'string' && patch.title.trim()
+      ? patch.title.trim().slice(0, 120)
+      : current.title;
+    const timestamp = nowIso();
+    db.prepare(`
+      UPDATE group_conversations SET title = ?, updated_at = ?
+      WHERE id = ? AND room_id = ? AND status = 'active'
+    `).run(title, timestamp, conversationId, roomId);
+    return this.getConversation(userId, roomId, conversationId);
+  },
+
+  archiveConversation(userId, roomId, conversationId) {
+    const current = this.getConversation(userId, roomId, conversationId);
+    if (!current) return false;
+    const timestamp = nowIso();
+    const result = db.prepare(`
+      UPDATE group_conversations SET status = 'archived', updated_at = ?
+      WHERE id = ? AND room_id = ? AND status = 'active'
+    `).run(timestamp, conversationId, roomId);
+    if (result.changes > 0) {
+      db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
+    }
+    return result.changes > 0;
   },
 
   updateRoom(userId, roomId, patch) {
@@ -336,6 +494,18 @@ export const groupChatDb = {
         INSERT INTO group_read_state (user_id, room_id, last_read_at) VALUES (?, ?, ?)
         ON CONFLICT(user_id, room_id) DO UPDATE SET last_read_at = excluded.last_read_at
       `).run(input.userId, roomId, timestamp);
+      const conversations = db.prepare(`
+        SELECT id FROM group_conversations WHERE room_id = ? AND status = 'active'
+      `).all(roomId);
+      const insertConversationReadState = db.prepare(`
+        INSERT INTO group_conversation_read_state (
+          user_id, room_id, conversation_id, last_read_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, conversation_id) DO UPDATE SET last_read_at = excluded.last_read_at
+      `);
+      for (const conversation of conversations) {
+        insertConversationReadState.run(input.userId, roomId, conversation.id, timestamp);
+      }
       db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
     })();
     return this.getParticipant(input.userId, roomId);
@@ -396,6 +566,9 @@ export const groupChatDb = {
   createTurn(userId, roomId, input) {
     const participant = this.getParticipant(userId, roomId);
     if (!participant) return null;
+    const conversationId = input.conversationId || this.listConversations(userId, roomId)?.[0]?.id;
+    const conversation = this.getConversation(userId, roomId, conversationId);
+    if (!conversation) return null;
     const id = input.id || newId('round');
     const timestamp = nowIso();
     if (input.idempotencyKey) {
@@ -406,13 +579,14 @@ export const groupChatDb = {
     }
     db.prepare(`
       INSERT INTO group_turns (
-        id, room_id, sender_user_id, entry_member_id, trigger_source,
+        id, room_id, conversation_id, sender_user_id, entry_member_id, trigger_source,
         status, message_sequence, idempotency_key, required_delegates_json,
         error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
     `).run(
       id,
       roomId,
+      conversation.id,
       userId,
       input.entryMemberId,
       input.triggerSource,
@@ -592,48 +766,70 @@ export const groupChatDb = {
     return this.listMembers(userId, roomId).find((member) => member.id === memberId) || null;
   },
 
-  listMessages(userId, roomId, limit = 100, before = null) {
+  listMessages(userId, roomId, conversationId, limit = 100, before = null) {
     if (!this.getParticipant(userId, roomId)) return null;
+    if (typeof conversationId !== 'string') {
+      before = typeof limit === 'string' ? limit : null;
+      limit = conversationId ?? 100;
+      conversationId = this.listConversations(userId, roomId)?.[0]?.id;
+    }
+    if (!this.getConversation(userId, roomId, conversationId)) return null;
     const safeLimit = Math.max(1, Math.min(200, Number(limit) || 100));
     const anchor = before
-      ? db.prepare('SELECT sequence FROM group_messages WHERE room_id = ? AND id = ?').get(roomId, before)
+      ? db.prepare('SELECT sequence FROM group_messages WHERE conversation_id = ? AND id = ?').get(conversationId, before)
       : null;
     const rows = anchor
       ? db.prepare(`
-          SELECT * FROM group_messages WHERE room_id = ? AND sequence < ?
+          SELECT * FROM group_messages WHERE conversation_id = ? AND sequence < ?
           ORDER BY sequence DESC, rowid DESC LIMIT ?
-        `).all(roomId, anchor.sequence, safeLimit)
+        `).all(conversationId, anchor.sequence, safeLimit)
       : before
         ? db.prepare(`
-            SELECT * FROM group_messages WHERE room_id = ? AND created_at < ?
+            SELECT * FROM group_messages WHERE conversation_id = ? AND created_at < ?
             ORDER BY sequence DESC, rowid DESC LIMIT ?
-          `).all(roomId, before, safeLimit)
+          `).all(conversationId, before, safeLimit)
         : db.prepare(`
-          SELECT * FROM group_messages WHERE room_id = ?
+          SELECT * FROM group_messages WHERE conversation_id = ?
           ORDER BY sequence DESC, rowid DESC LIMIT ?
-        `).all(roomId, safeLimit);
+        `).all(conversationId, safeLimit);
     return rows.reverse().map(mapMessage);
+  },
+
+  getMessage(userId, roomId, messageId) {
+    if (!this.getParticipant(userId, roomId)) return null;
+    const row = db.prepare(`
+      SELECT * FROM group_messages WHERE room_id = ? AND id = ?
+    `).get(roomId, messageId);
+    return row ? mapMessage(row) : null;
   },
 
   createMessage(userId, roomId, input) {
     const room = this.getRoom(userId, roomId);
     if (!room) return null;
+    const conversationId = input.conversationId
+      || (input.roundId
+        ? db.prepare('SELECT conversation_id FROM group_turns WHERE id = ? AND room_id = ?').get(input.roundId, roomId)?.conversation_id
+        : null)
+      || room.conversations[0]?.id;
+    const conversation = this.getConversation(userId, roomId, conversationId);
+    if (!conversation) return null;
     const id = input.id || newId('gmsg');
     const timestamp = nowIso();
     db.transaction(() => {
       const nextSequence = Number(db.prepare(`
         SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
-        FROM group_messages WHERE room_id = ?
-      `).get(roomId).next_sequence);
+        FROM group_messages WHERE conversation_id = ?
+      `).get(conversation.id).next_sequence);
       db.prepare(`
         INSERT INTO group_messages (
-          id, room_id, round_id, sequence, message_kind, sender_type,
+          id, room_id, conversation_id, round_id, sequence, message_kind, sender_type,
           sender_user_id, sender_member_id, sender_name, reply_to_message_id,
           content, metadata_json, status, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         roomId,
+        conversation.id,
         input.roundId || null,
         nextSequence,
         input.kind || 'chat',
@@ -649,6 +845,15 @@ export const groupChatDb = {
         timestamp,
         timestamp,
       );
+      if (input.senderType === 'user' && ['新会话', '默认会话'].includes(conversation.title)) {
+        db.prepare(`
+          UPDATE group_conversations SET title = ?, updated_at = ?
+          WHERE id = ? AND title IN ('新会话', '默认会话')
+        `).run((input.content || '').trim().slice(0, 60) || conversation.title, timestamp, conversation.id);
+      } else {
+        db.prepare('UPDATE group_conversations SET updated_at = ? WHERE id = ?')
+          .run(timestamp, conversation.id);
+      }
       db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, roomId);
     })();
     return mapMessage(db.prepare('SELECT * FROM group_messages WHERE id = ?').get(id));
@@ -670,17 +875,34 @@ export const groupChatDb = {
       messageId,
     );
     db.prepare('UPDATE group_rooms SET updated_at = ? WHERE id = ?').run(timestamp, current.room_id);
+    if (current.conversation_id) {
+      db.prepare('UPDATE group_conversations SET updated_at = ? WHERE id = ?')
+        .run(timestamp, current.conversation_id);
+    }
     return mapMessage(db.prepare('SELECT * FROM group_messages WHERE id = ?').get(messageId));
   },
 
-  markRead(userId, roomId) {
+  markRead(userId, roomId, conversationId) {
     const room = this.getRoom(userId, roomId);
     if (!room) return false;
+    const conversations = conversationId
+      ? [this.getConversation(userId, roomId, conversationId)].filter(Boolean)
+      : this.listConversations(userId, roomId) || [];
+    if (conversations.length === 0) return false;
+    const timestamp = nowIso();
+    const markConversation = db.prepare(`
+      INSERT INTO group_conversation_read_state (user_id, room_id, conversation_id, last_read_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, conversation_id) DO UPDATE SET last_read_at = excluded.last_read_at
+    `);
+    for (const conversation of conversations) {
+      markConversation.run(userId, roomId, conversation.id, timestamp);
+    }
     db.prepare(`
       INSERT INTO group_read_state (user_id, room_id, last_read_at)
       VALUES (?, ?, ?)
       ON CONFLICT(user_id, room_id) DO UPDATE SET last_read_at = excluded.last_read_at
-    `).run(userId, roomId, nowIso());
+    `).run(userId, roomId, timestamp);
     return true;
   },
 };

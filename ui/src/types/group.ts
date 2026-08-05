@@ -40,6 +40,20 @@ export interface AgentGroup {
   hasSilentUnread: boolean;
   lastMessagePreview: string;
   members: AgentGroupMember[];
+  conversations: AgentGroupConversation[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentGroupConversation {
+  id: string;
+  roomId: string;
+  title: string;
+  status: 'active' | 'archived';
+  unreadCount: number;
+  hasSilentUnread: boolean;
+  lastMessagePreview: string;
+  createdByUserId: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +74,7 @@ export interface AgentGroupParticipant {
 export interface AgentGroupMessage {
   id: string;
   roomId: string;
+  conversationId?: string;
   roundId?: string;
   sequence: number;
   kind: 'chat' | 'delegation' | 'activity';
@@ -74,6 +89,21 @@ export interface AgentGroupMessage {
   error?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AgentGroupImageAttachment {
+  name: string;
+  data?: string;
+  path?: string;
+  size?: number;
+  mimeType?: string;
+}
+
+export interface AgentGroupFileAttachment {
+  name: string;
+  path: string;
+  size?: number;
+  mimeType?: string;
 }
 
 export interface AvailableGroupMember {

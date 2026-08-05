@@ -289,9 +289,39 @@ const runMigrations = () => {
     ensureColumn('group_turns', 'required_delegates_json', "TEXT NOT NULL DEFAULT '[]'");
 
     db.exec(`
+      CREATE TABLE IF NOT EXISTS group_conversations (
+        id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '新会话',
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+        created_by_user_id INTEGER NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_conversations_room_activity
+        ON group_conversations(room_id, status, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS group_conversation_read_state (
+        user_id INTEGER NOT NULL,
+        room_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, conversation_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES group_conversations(id) ON DELETE CASCADE
+      );
+    `);
+
+    ensureColumn('group_messages', 'conversation_id', 'TEXT');
+    ensureColumn('group_turns', 'conversation_id', 'TEXT');
+
+    db.exec(`
       CREATE TABLE IF NOT EXISTS group_turns (
         id TEXT PRIMARY KEY,
         room_id TEXT NOT NULL,
+        conversation_id TEXT,
         sender_user_id INTEGER NOT NULL,
         entry_member_id TEXT NOT NULL,
         trigger_source TEXT NOT NULL CHECK (trigger_source IN ('auto', 'mentions')),
@@ -397,6 +427,56 @@ const runMigrations = () => {
         r.created_at, r.updated_at
       FROM group_rooms r
       LEFT JOIN users u ON u.id = r.user_id
+    `);
+
+    // A room used to be its own single conversation. Give every existing room
+    // one deterministic default conversation and attach its complete timeline
+    // before any conversation-scoped indexes or queries are used.
+    db.exec(`
+      INSERT OR IGNORE INTO group_conversations (
+        id, room_id, title, status, created_by_user_id, created_at, updated_at
+      )
+      SELECT
+        'group-conversation-' || r.id,
+        r.id,
+        COALESCE(
+          NULLIF(TRIM(SUBSTR((
+            SELECT gm.content FROM group_messages gm
+            WHERE gm.room_id = r.id
+              AND gm.sender_type = 'user'
+              AND gm.message_kind = 'chat'
+            ORDER BY gm.created_at ASC, gm.rowid ASC LIMIT 1
+          ), 1, 60)), ''),
+          '默认会话'
+        ),
+        'active',
+        COALESCE(r.owner_user_id, r.user_id),
+        r.created_at,
+        r.updated_at
+      FROM group_rooms r;
+
+      UPDATE group_messages
+      SET conversation_id = 'group-conversation-' || room_id
+      WHERE conversation_id IS NULL OR conversation_id = '';
+
+      UPDATE group_turns
+      SET conversation_id = 'group-conversation-' || room_id
+      WHERE conversation_id IS NULL OR conversation_id = '';
+
+      INSERT OR IGNORE INTO group_conversation_read_state (
+        user_id, room_id, conversation_id, last_read_at
+      )
+      SELECT p.user_id, p.room_id, c.id,
+        COALESCE(rs.last_read_at, c.created_at)
+      FROM group_participants p
+      JOIN group_conversations c ON c.room_id = p.room_id AND c.status = 'active'
+      LEFT JOIN group_read_state rs ON rs.user_id = p.user_id AND rs.room_id = p.room_id
+      WHERE p.status = 'active';
+
+      CREATE INDEX IF NOT EXISTS idx_group_messages_conversation_sequence
+        ON group_messages(conversation_id, sequence, id);
+      CREATE INDEX IF NOT EXISTS idx_group_turns_conversation_created
+        ON group_turns(conversation_id, created_at, id);
     `);
 
     const roomsNeedingSequence = db.prepare(`

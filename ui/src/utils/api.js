@@ -260,17 +260,41 @@ export const api = {
   archiveGroup: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
     method: 'DELETE',
   }),
-  groupMessages: (groupId, limit = 100, before = '') => {
-    const params = new URLSearchParams({ limit: String(limit) });
+  groupConversations: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations`),
+  createGroupConversation: (groupId, payload = {}) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateGroupConversation: (groupId, conversationId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  archiveGroupConversation: (groupId, conversationId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'DELETE',
+  }),
+  groupMessages: (groupId, conversationId, limit = 100, before = '') => {
+    const params = new URLSearchParams({ conversationId, limit: String(limit) });
     if (before) params.set('before', before);
     return authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/messages?${params.toString()}`);
   },
+  groupMessageImageUrl: (groupId, messageId, imageIndex) => appendAuthToken(
+    `/api/groups/${encodeURIComponent(groupId)}/messages/${encodeURIComponent(messageId)}/images/${encodeURIComponent(String(imageIndex))}`,
+  ),
   sendGroupMessage: (groupId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/messages`, {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
-  markGroupRead: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/read`, {
+  uploadProjectAttachments: (projectName, attachments) => {
+    const formData = new FormData();
+    for (const attachment of attachments) formData.append('attachments', attachment);
+    return authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/upload-attachments`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  markGroupRead: (groupId, conversationId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/read`, {
     method: 'POST',
+    body: JSON.stringify({ conversationId }),
   }),
   groupParticipants: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participants`),
   groupParticipantCandidates: (groupId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/participant-candidates`),

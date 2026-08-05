@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { networkFetchJson, networkPostJson } from "../../network/fetch.js";
 import type {
   GroupChatInvocation,
@@ -162,12 +164,16 @@ export class StaffDeckClient {
       "run",
       `${sessionKey}:${invocation.sourceMessage.id}:${prompt}`,
     );
+    const attachmentPayload = await staffDeckRunAttachments(invocation.attachments);
     const { json: createdRun } = await networkPostJson<StaffDeckRunJob>(
       new URL(`${connection.baseUrl}/agents/${encodeURIComponent(agentId)}/runs`),
       {
-        input: prompt,
+        input: `${prompt}${attachmentPayload.promptContext}`,
         session_id: sessionId,
         session_mode: "stateful",
+        ...(attachmentPayload.attachments.length > 0
+          ? { attachments: attachmentPayload.attachments }
+          : {}),
         metadata: {
           channel: "pilotdeck_group_chat",
           room_id: invocation.room.id,
@@ -408,6 +414,96 @@ export class StaffDeckClient {
     });
     return token;
   }
+}
+
+const STAFFDECK_INLINE_IMAGE_LIMIT_BYTES = 4 * 1024 * 1024;
+const STAFFDECK_TEXT_ATTACHMENT_LIMIT_CHARS = 24_000;
+const STAFFDECK_TEXT_EXTENSIONS = new Set([
+  ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl", ".log",
+  ".xml", ".html", ".htm", ".yaml", ".yml", ".js", ".jsx", ".ts", ".tsx",
+  ".py", ".java", ".go", ".rs", ".sql", ".sh", ".zsh", ".toml", ".ini",
+]);
+
+async function staffDeckRunAttachments(
+  attachments: GroupChatInvocation["attachments"],
+): Promise<{ attachments: Array<Record<string, unknown>>; promptContext: string }> {
+  if (!attachments?.length) return { attachments: [], promptContext: "" };
+  const prepared = await Promise.all(attachments.map(async (attachment) => {
+    const bytes = attachment.content
+      ? Buffer.from(attachment.content, "base64")
+      : attachment.path
+        ? await readFile(attachment.path)
+        : undefined;
+    if (!bytes) throw new Error(`StaffDeck attachment ${attachment.name} has no readable content.`);
+    const contentType = attachment.mimeType?.trim() || attachmentContentType(attachment.name, attachment.type);
+    const id = `file_pd_${digest(`${attachment.name}:${contentType}:${bytes.length}:${digest(bytes.toString("base64"))}`).slice(0, 24)}`;
+    if (attachment.type === "image") {
+      if (bytes.length > STAFFDECK_INLINE_IMAGE_LIMIT_BYTES) {
+        throw new Error(`图片“${attachment.name}”超过 StaffDeck 4 MB 内联图片限制。`);
+      }
+      if (!contentType.startsWith("image/")) {
+        throw new Error(`图片“${attachment.name}”缺少有效的图片 MIME 类型。`);
+      }
+      return {
+        promptContext: "",
+        apiAttachment: {
+          id,
+          filename: attachment.name,
+          content_type: contentType,
+          size: bytes.length,
+          kind: "image",
+          preview: "图片由 PilotDeck 群组消息转发。",
+          data_url: `data:${contentType};base64,${bytes.toString("base64")}`,
+        },
+      };
+    }
+    if (!isReadableTextAttachment(attachment.name, contentType)) {
+      throw new Error(`StaffDeck Open API 暂不支持转发二进制附件“${attachment.name}”；请改用图片或文本文件。`);
+    }
+    const text = bytes.toString("utf8").slice(0, STAFFDECK_TEXT_ATTACHMENT_LIMIT_CHARS);
+    return {
+      promptContext: `\n\n<staffdeck_text_attachment name=${JSON.stringify(attachment.name)} content_type=${JSON.stringify(contentType)}>\n${text}\n</staffdeck_text_attachment>`,
+      apiAttachment: {
+        id,
+        filename: attachment.name,
+        content_type: contentType,
+        size: bytes.length,
+        kind: "text",
+        text,
+        preview: text.slice(0, 600),
+      },
+    };
+  }));
+  return {
+    attachments: prepared.map((entry) => entry.apiAttachment),
+    promptContext: prepared.map((entry) => entry.promptContext).join(""),
+  };
+}
+
+function isReadableTextAttachment(name: string, contentType: string): boolean {
+  return contentType.startsWith("text/")
+    || ["application/json", "application/xml", "application/javascript", "application/x-yaml"].includes(contentType)
+    || STAFFDECK_TEXT_EXTENSIONS.has(extname(name).toLowerCase());
+}
+
+function attachmentContentType(name: string, type: "image" | "file"): string {
+  const extension = extname(name).toLowerCase();
+  const known: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".md": "text/markdown",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".xml": "application/xml",
+    ".yaml": "application/x-yaml",
+    ".yml": "application/x-yaml",
+  };
+  return known[extension] || (type === "image" ? "image/png" : "application/octet-stream");
 }
 
 function normalizeEmployees(

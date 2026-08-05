@@ -35,6 +35,18 @@ function group(overrides: Partial<AgentGroup>): AgentGroup {
     unreadCount: 0,
     hasSilentUnread: false,
     lastMessagePreview: 'Main agent summary',
+    conversations: [{
+      id: 'conversation-1',
+      roomId: 'group-1',
+      title: 'Architecture discussion',
+      status: 'active',
+      unreadCount: 0,
+      hasSilentUnread: false,
+      lastMessagePreview: 'Main agent summary',
+      createdByUserId: 1,
+      createdAt: now,
+      updatedAt: now,
+    }],
     members: [{
       id: 'main',
       roomId: 'group-1',
@@ -70,10 +82,13 @@ function renderSidebar(
     onStartNewSession: vi.fn(),
     onCreateProject: vi.fn(),
     onSelectGroup: vi.fn(),
+    onCreateGroupConversation: vi.fn(),
     onCreateGroup: vi.fn(),
     onOpenGroups: vi.fn(),
     onRenameGroup: vi.fn(),
+    onRenameGroupConversation: vi.fn(),
     onRequestDeleteGroup: vi.fn(),
+    onRequestDeleteGroupConversation: vi.fn(),
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
@@ -112,14 +127,28 @@ describe('SidebarV2 default section', () => {
     });
   });
 
-  it('shows first-class groups and suppresses the bright unread badge for muted groups', async () => {
-    const active = group({ unreadCount: 2 });
+  it('shows group conversations as nested rows and creates a conversation inside the group', async () => {
+    const active = group({
+      unreadCount: 2,
+      conversations: [{
+        ...group({}).conversations[0],
+        unreadCount: 2,
+      }],
+    });
     const muted = group({
       id: 'group-2',
       title: 'Quiet review room',
       muted: true,
       unreadCount: 7,
       hasSilentUnread: true,
+      conversations: [{
+        ...group({}).conversations[0],
+        id: 'conversation-2',
+        roomId: 'group-2',
+        title: 'Quiet discussion',
+        unreadCount: 7,
+        hasSilentUnread: true,
+      }],
     });
     const { props } = renderSidebar(null, [active, muted]);
 
@@ -128,8 +157,15 @@ describe('SidebarV2 default section', () => {
     expect(props.onOpenGroups).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Architecture room')).toBeTruthy();
     expect(screen.getByText('Quiet review room')).toBeTruthy();
-    expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.queryByText('7')).toBeNull();
+
+    fireEvent.click(screen.getByText('Architecture room'));
+    expect(await screen.findByText('Architecture discussion')).toBeTruthy();
+    expect(screen.getByLabelText('有未读消息')).toBeTruthy();
+    fireEvent.click(screen.getByText('Architecture discussion'));
+    expect(props.onSelectGroup).toHaveBeenCalledWith('group-1', 'conversation-1');
+
+    fireEvent.click(screen.getByRole('button', { name: '在 Architecture room 中新建会话' }));
+    expect(props.onCreateGroupConversation).toHaveBeenCalledWith('group-1');
   });
 
   it('renames and requests deletion from the group context menu', async () => {
@@ -148,5 +184,36 @@ describe('SidebarV2 default section', () => {
     fireEvent.contextMenu(screen.getByText('Architecture room'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(onRequestDeleteGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-1' }));
+  });
+
+  it('renames and requests deletion from a group conversation context menu', async () => {
+    const onRenameGroupConversation = vi.fn();
+    const onRequestDeleteGroupConversation = vi.fn();
+    renderSidebar(null, [group({})], {
+      selectedGroupId: 'group-1',
+      selectedGroupConversationId: 'conversation-1',
+      onRenameGroupConversation,
+      onRequestDeleteGroupConversation,
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Groups' }));
+    const conversationTitle = await screen.findByText('Architecture discussion');
+    fireEvent.contextMenu(conversationTitle);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: '重命名群组会话' });
+    fireEvent.change(input, { target: { value: 'Architecture follow-up' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameGroupConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'group-1' }),
+      expect.objectContaining({ id: 'conversation-1' }),
+      'Architecture follow-up',
+    );
+
+    fireEvent.contextMenu(screen.getByText('Architecture discussion'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(onRequestDeleteGroupConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'group-1' }),
+      expect.objectContaining({ id: 'conversation-1' }),
+    );
   });
 });

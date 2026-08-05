@@ -35,6 +35,7 @@ import MainContentStateView from './subcomponents/MainContentStateView';
 import ConversationSwitcher from './subcomponents/ConversationSwitcher';
 import ErrorBoundary from './ErrorBoundary';
 import ToolSidePanel from './subcomponents/ToolSidePanel';
+import GroupChatView from '../../group-chat/GroupChatView';
 
 const AlwaysOnV2 = React.lazy(() => import('../../main-content-v2/AlwaysOnV2'));
 const CronV2 = React.lazy(() => import('../../main-content-v2/CronV2'));
@@ -124,6 +125,12 @@ function MainContent({
   projects,
   selectedProject,
   selectedSession,
+  selectedGroup,
+  selectedGroupId,
+  selectedGroupConversationId,
+  onGroupsChanged,
+  onGroupArchived,
+  onRequestDeleteGroup,
   activeTab,
   setActiveTab,
   alwaysOnSubTab = 'dashboard',
@@ -398,6 +405,12 @@ function MainContent({
           projects={projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
+          selectedGroup={selectedGroup}
+          selectedGroupId={selectedGroupId}
+          selectedGroupConversationId={selectedGroupConversationId}
+          onGroupsChanged={onGroupsChanged}
+          onGroupArchived={onGroupArchived}
+          onRequestDeleteGroup={onRequestDeleteGroup}
           activeTab={activeTab}
           shouldShowTasksTab={shouldShowTasksTab}
           tasksEnabled={tasksEnabled}
@@ -478,6 +491,12 @@ type SplitBodyProps = {
   projects: Project[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
+  selectedGroup: MainContentProps['selectedGroup'];
+  selectedGroupId: MainContentProps['selectedGroupId'];
+  selectedGroupConversationId: MainContentProps['selectedGroupConversationId'];
+  onGroupsChanged: MainContentProps['onGroupsChanged'];
+  onGroupArchived: MainContentProps['onGroupArchived'];
+  onRequestDeleteGroup: MainContentProps['onRequestDeleteGroup'];
   activeTab: AppTab;
   shouldShowTasksTab: boolean;
   tasksEnabled: boolean;
@@ -530,6 +549,12 @@ function SplitBody(props: SplitBodyProps) {
     projects,
     selectedProject,
     selectedSession,
+    selectedGroup,
+    selectedGroupId,
+    selectedGroupConversationId,
+    onGroupsChanged,
+    onGroupArchived,
+    onRequestDeleteGroup,
     activeTab,
     shouldShowTasksTab,
     tasksEnabled,
@@ -806,6 +831,7 @@ function SplitBody(props: SplitBodyProps) {
     && !editorExpanded
     && !isMobile
     && !assistantVisible;
+  const groupAssistantActive = Boolean(selectedGroupId && selectedGroupConversationId);
   return (
     <div
       ref={filesSplitContainerRef}
@@ -903,7 +929,7 @@ function SplitBody(props: SplitBodyProps) {
         style={assistantVisible ? { width: filesAssistantWidth } : undefined}
         aria-hidden={!showChat || (isFiles && !assistantVisible)}
       >
-        {isFiles ? (
+        {isFiles && !groupAssistantActive ? (
           <div className="relative z-50 flex h-12 flex-shrink-0 items-center gap-1 border-b border-neutral-200 px-2 dark:border-neutral-800">
             {selectedProject ? (
               <ConversationSwitcher
@@ -940,7 +966,20 @@ function SplitBody(props: SplitBodyProps) {
           </div>
         ) : null}
         <ErrorBoundary showDetails>
-          <ChatInterfaceV2
+          {groupAssistantActive ? (
+            <GroupChatView
+              groupId={selectedGroupId as string}
+              conversationId={selectedGroupConversationId as string}
+              compact
+              onCollapse={() => {
+                if (isNarrowWorkbench) setAssistantOverlayOpen(false);
+                else setAssistantCollapsed(true);
+              }}
+              onGroupsChanged={onGroupsChanged || (() => undefined)}
+              onArchived={onGroupArchived || (() => undefined)}
+              onRequestDelete={onRequestDeleteGroup}
+            />
+          ) : <ChatInterfaceV2
             selectedProject={selectedProject}
             selectedSession={selectedSession}
             ws={ws}
@@ -968,7 +1007,7 @@ function SplitBody(props: SplitBodyProps) {
             forceWelcome={false}
             onExitWelcome={isFiles ? undefined : () => setActiveTab('chat')}
             compact={isFiles}
-          />
+          />}
         </ErrorBoundary>
       </div>
 

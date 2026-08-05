@@ -84,7 +84,9 @@ type MainAreaV2Props = MainContentProps & {
   activeTab: AppTab;
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
+  selectedGroup?: AgentGroup | null;
   selectedGroupId?: string | null;
+  selectedGroupConversationId?: string | null;
   groupsActive?: boolean;
   onGroupsChanged?: () => void;
   onGroupArchived?: () => void;
@@ -101,6 +103,8 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     setActiveTab,
     isSidebarCollapsed,
     onOpenSidebar,
+    selectedGroup,
+    selectedGroupConversationId,
   } = props;
   const [alwaysOnSubTab, setAlwaysOnSubTab] = useState<AlwaysOnSubTab>('dashboard');
   const [latestAlwaysOnEventMarker, setLatestAlwaysOnEventMarker] = useState<string | null>(null);
@@ -205,8 +209,14 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     : displayActiveTab.startsWith('plugin:')
       ? displayActiveTab.replace('plugin:', '')
       : displayActiveTab;
-  const sessionSummary = selectedSession ? sessionDisplayTitle(selectedSession) : '';
-  const projectName = selectedProject
+  const selectedGroupConversation = selectedGroup?.conversations.find(
+    (conversation) => conversation.id === selectedGroupConversationId,
+  );
+  const sessionSummary = selectedGroupConversation?.title
+    || (selectedSession ? sessionDisplayTitle(selectedSession) : '');
+  const projectName = selectedGroup
+    ? (selectedGroup.projectName === 'general' ? '通用' : selectedGroup.projectName)
+    : selectedProject
     ? projectDisplayName(selectedProject)
     : t('navigation.home', { defaultValue: 'Home' });
   const headerTitle =
@@ -461,10 +471,11 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
-  if (props.selectedGroupId && props.activeTab !== 'files') {
+  if (props.selectedGroupId && props.selectedGroupConversationId && props.activeTab !== 'files') {
     return (
       <GroupChatView
         groupId={props.selectedGroupId}
+        conversationId={props.selectedGroupConversationId}
         isSidebarCollapsed={props.isSidebarCollapsed}
         onOpenSidebar={props.onOpenSidebar}
         onGroupsChanged={props.onGroupsChanged || (() => undefined)}
@@ -474,7 +485,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
       />
     );
   }
-  if (props.groupsActive && !props.selectedGroupId) {
+  if (props.groupsActive && (!props.selectedGroupId || !props.selectedGroupConversationId)) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-white p-8 text-center text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">

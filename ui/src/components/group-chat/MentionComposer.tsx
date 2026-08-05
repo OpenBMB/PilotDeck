@@ -8,14 +8,23 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { AtSign, Loader2, Send, UsersRound } from 'lucide-react';
+import { AtSign, Loader2, Paperclip, Send, UsersRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { AgentGroupMember, GroupMemberCategory } from '../../types/group';
+import type {
+  AgentGroupFileAttachment,
+  AgentGroupImageAttachment,
+  AgentGroupMember,
+  GroupMemberCategory,
+} from '../../types/group';
+import { api } from '../../utils/api';
+import ImageAttachment from '../chat/view/subcomponents/ImageAttachment';
 
 export type MentionDraft = {
   content: string;
   mentionedMemberIds: string[];
   mentionAll: boolean;
+  images?: AgentGroupImageAttachment[];
+  attachments?: AgentGroupFileAttachment[];
 };
 
 export type MentionComposerHandle = {
@@ -24,12 +33,22 @@ export type MentionComposerHandle = {
 
 type Props = {
   members: AgentGroupMember[];
+  projectName: string;
   placeholder: string;
   disabled?: boolean;
   sending?: boolean;
   statusText?: string;
   onSubmit: (draft: MentionDraft) => boolean | Promise<boolean>;
 };
+
+type UploadedAttachments = {
+  images?: AgentGroupImageAttachment[];
+  files?: AgentGroupFileAttachment[];
+  error?: string;
+};
+
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 type MentionCandidate = {
   id: string;
@@ -112,6 +131,7 @@ function adjacentMention(selection: Selection, direction: 'backward' | 'forward'
 
 export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function MentionComposer({
   members,
+  projectName,
   placeholder,
   disabled = false,
   sending = false,
@@ -124,6 +144,12 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hasContent, setHasContent] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const attachedFilesRef = useRef<File[]>([]);
+  const submittingRef = useRef(false);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const candidates = useMemo<MentionCandidate[]>(() => {
     const normalized = query.toLocaleLowerCase();
@@ -211,20 +237,63 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
     editor.focus();
   };
 
+  const addFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return;
+    const accepted = incoming.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    const oversized = incoming.length - accepted.length;
+    const current = attachedFilesRef.current;
+    const next = [...current, ...accepted].slice(0, MAX_ATTACHMENTS);
+    const dropped = Math.max(0, current.length + accepted.length - MAX_ATTACHMENTS);
+    attachedFilesRef.current = next;
+    setAttachedFiles(next);
+    if (oversized > 0) setAttachmentError(`有 ${oversized} 个附件超过 20 MB，未添加。`);
+    else if (dropped > 0) setAttachmentError(`每条消息最多添加 ${MAX_ATTACHMENTS} 个附件。`);
+    else setAttachmentError('');
+  };
+
   const submit = async () => {
     const editor = editorRef.current;
-    if (!editor || disabled || sending) return;
-    const content = editorText(editor);
-    if (!content) return;
+    if (!editor || disabled || sending || uploading || submittingRef.current) return;
+    const rawContent = editorText(editor);
+    const filesToUpload = attachedFilesRef.current;
+    if (!rawContent && filesToUpload.length === 0) return;
+    submittingRef.current = true;
     const chips = Array.from(editor.querySelectorAll<HTMLElement>('[data-mention-id]'));
     const mentionedMemberIds = [...new Set(chips
       .map((chip) => chip.dataset.mentionId || '')
       .filter((id) => id && id !== 'all'))];
     const mentionAll = chips.some((chip) => chip.dataset.mentionAll === 'true');
-    const accepted = await onSubmit({ content, mentionedMemberIds, mentionAll });
+    let uploaded: UploadedAttachments = {};
+    if (filesToUpload.length > 0) {
+      setUploading(true);
+      setAttachmentError('');
+      try {
+        const response = await api.uploadProjectAttachments(projectName, filesToUpload);
+        uploaded = await response.json().catch(() => ({})) as UploadedAttachments;
+        if (!response.ok) throw new Error(uploaded.error || '附件上传失败');
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : '附件上传失败');
+        setUploading(false);
+        submittingRef.current = false;
+        return;
+      }
+    }
+    const content = rawContent || '请查看附件。';
+    const accepted = await onSubmit({
+      content,
+      mentionedMemberIds,
+      mentionAll,
+      ...(uploaded.images?.length ? { images: uploaded.images } : {}),
+      ...(uploaded.files?.length ? { attachments: uploaded.files } : {}),
+    });
+    setUploading(false);
+    submittingRef.current = false;
     if (!accepted) return;
     editor.replaceChildren();
     setHasContent(false);
+    attachedFilesRef.current = [];
+    setAttachedFiles([]);
+    setAttachmentError('');
     setMenuOpen(false);
   };
 
@@ -274,9 +343,19 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
   };
 
   const onPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const directFiles = Array.from(event.clipboardData.files || []);
+    const itemFiles = Array.from(event.clipboardData.items || [])
+      .filter((item) => item.kind === 'file')
+      .flatMap((item) => item.getAsFile() || []);
+    const files = directFiles.length > 0 ? directFiles : itemFiles;
+    const text = event.clipboardData.getData('text/plain');
+    if (files.length > 0) addFiles(files);
     event.preventDefault();
-    document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+    if (text) document.execCommand('insertText', false, text);
+    syncContent();
   };
+
+  const canSubmit = hasContent || attachedFiles.length > 0;
 
   return (
     <div className="relative">
@@ -310,7 +389,52 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
           {candidates.length === 0 ? <div className="px-3 py-4 text-center text-xs text-neutral-500">没有匹配的成员</div> : null}
         </div>
       ) : null}
-      <div className="rounded-2xl border border-neutral-200 bg-white p-2 shadow-sm focus-within:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900">
+      {attachedFiles.length > 0 ? (
+        <div className="pd-composer-attachment-panel mb-2 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex flex-wrap gap-2">
+            {attachedFiles.map((file, index) => (
+              <ImageAttachment
+                key={`${file.name}-${file.size}-${index}`}
+                file={file}
+                onRemove={() => {
+                  const next = attachedFilesRef.current.filter((_, candidateIndex) => candidateIndex !== index);
+                  attachedFilesRef.current = next;
+                  setAttachedFiles(next);
+                }}
+                uploadProgress={uploading ? 55 : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {attachmentError ? (
+        <div role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          {attachmentError}
+        </div>
+      ) : null}
+      <div
+        className="group rounded-xl border border-neutral-200 bg-white p-2 shadow-sm transition-colors focus-within:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:focus-within:border-neutral-700"
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          const files = Array.from(event.dataTransfer.files || []);
+          if (files.length === 0) return;
+          event.preventDefault();
+          addFiles(files);
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="sr-only"
+          aria-label="添加附件"
+          onChange={(event) => {
+            addFiles(Array.from(event.target.files || []));
+            event.target.value = '';
+          }}
+        />
         <div className="relative">
           {!hasContent ? <div className="pointer-events-none absolute inset-x-2 top-1.5 text-sm leading-6 text-neutral-400">{placeholder}</div> : null}
           <div
@@ -318,28 +442,46 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
             role="textbox"
             aria-label="群组消息"
             aria-multiline="true"
-            contentEditable={!disabled && !sending}
+            contentEditable={!disabled && !sending && !uploading}
             suppressContentEditableWarning
             onInput={onInput}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             onClick={captureMentionQuery}
-            className="max-h-40 min-h-[52px] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-2 py-1.5 text-sm leading-6 outline-none"
+            className="max-h-[40vh] min-h-[48px] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-2 pt-1.5 text-[14px] leading-6 text-neutral-900 outline-none dark:text-neutral-100"
           />
         </div>
-        <div className="flex items-center gap-2 px-1 pt-1">
-          <button type="button" onClick={openMentionMenu} disabled={disabled} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200">
-            <AtSign className="h-4 w-4" /> 提及成员
-          </button>
-          {statusText ? <span className="text-xs text-amber-600 dark:text-amber-300">{statusText}</span> : null}
+        <div className="pd-composer-control-row flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1">
+          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+            <button type="button" onClick={openMentionMenu} disabled={disabled || uploading} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800">
+              <AtSign className="h-4 w-4" /> 提及成员
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || uploading || attachedFiles.length >= MAX_ATTACHMENTS}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              aria-label="上传附件"
+              title="上传附件"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+            {uploading ? (
+              <span className="ml-1 truncate text-xs text-blue-600 dark:text-blue-300">正在上传 {attachedFiles.length} 个附件…</span>
+            ) : attachedFiles.length > 0 ? (
+              <span className="ml-1 truncate text-xs text-neutral-500">已添加 {attachedFiles.length} 个附件，发送时一并上传</span>
+            ) : statusText ? (
+              <span className="ml-1 truncate text-xs text-amber-600 dark:text-amber-300">{statusText}</span>
+            ) : null}
+          </div>
           <button
             type="button"
             aria-label="发送群组消息"
             onClick={() => void submit()}
-            disabled={!hasContent || disabled || sending}
+            disabled={!canSubmit || disabled || sending || uploading}
             className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white dark:text-neutral-900"
           >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending || uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
       </div>

@@ -25,7 +25,7 @@ import {
 import { api } from '../../utils/api';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import GroupCreateDialog from '../group-chat/GroupCreateDialog';
-import type { AgentGroup } from '../../types/group';
+import type { AgentGroup, AgentGroupConversation } from '../../types/group';
 import type { SessionNavigationOptions } from '../main-content/types/types';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
@@ -42,6 +42,11 @@ type TypedSettingsProps = {
 type DeleteSessionTarget = {
   project: Project;
   session: ProjectSession;
+};
+
+type DeleteGroupConversationTarget = {
+  group: AgentGroup;
+  conversation: AgentGroupConversation;
 };
 
 const SettingsComponent = Settings as unknown as (props: TypedSettingsProps) => JSX.Element;
@@ -99,10 +104,12 @@ export default function AppShellV2() {
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
   const matchProject = useMatch('/p/:projectName');
   const matchLegacySession = useMatch('/session/:sessionId');
+  const matchGroupConversation = useMatch('/groups/:groupId/c/:conversationId');
   const matchGroup = useMatch('/groups/:groupId');
   const matchGroupsLanding = useMatch('/groups');
-  const selectedGroupId = matchGroup?.params.groupId ?? null;
-  const groupsActive = Boolean(matchGroup || matchGroupsLanding);
+  const selectedGroupId = matchGroupConversation?.params.groupId ?? matchGroup?.params.groupId ?? null;
+  const selectedGroupConversationId = matchGroupConversation?.params.conversationId ?? null;
+  const groupsActive = Boolean(matchGroupConversation || matchGroup || matchGroupsLanding);
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
@@ -119,6 +126,7 @@ export default function AppShellV2() {
     isLoadingGroups,
     refreshGroups,
     createGroup,
+    createGroupConversation,
   } = useAgentGroups();
 
   const {
@@ -181,6 +189,21 @@ export default function AppShellV2() {
       sessions: [],
     };
   }, [groups, selectedGroupId, sidebarSharedProps.projects]);
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.id === selectedGroupId) ?? null,
+    [groups, selectedGroupId],
+  );
+
+  useEffect(() => {
+    if (!selectedGroupId || selectedGroupConversationId || groups.length === 0) return;
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    const conversation = group?.conversations?.[0];
+    if (!conversation) return;
+    navigate(
+      `/groups/${encodeURIComponent(group.id)}/c/${encodeURIComponent(conversation.id)}`,
+      { replace: true },
+    );
+  }, [groups, navigate, selectedGroupConversationId, selectedGroupId]);
 
   useEffect(() => {
     if (!selectedGroupProject) return;
@@ -452,15 +475,38 @@ export default function AppShellV2() {
     setActiveTab('chat');
   }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
 
-  const handleSelectGroup = useCallback((groupId: string) => {
-    navigate(`/groups/${encodeURIComponent(groupId)}`);
+  const handleSelectGroup = useCallback((groupId: string, conversationId?: string) => {
+    const group = groups.find((candidate) => candidate.id === groupId);
+    const targetConversationId = conversationId || group?.conversations?.[0]?.id;
+    navigate(targetConversationId
+      ? `/groups/${encodeURIComponent(groupId)}/c/${encodeURIComponent(targetConversationId)}`
+      : `/groups/${encodeURIComponent(groupId)}`);
     setActiveTab('chat');
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile, navigate, setActiveTab, setSidebarOpen]);
+  }, [groups, isMobile, navigate, setActiveTab, setSidebarOpen]);
+
+  const handleCreateGroupConversation = useCallback(async (groupId: string) => {
+    try {
+      const conversation = await createGroupConversation(groupId);
+      navigate(`/groups/${encodeURIComponent(groupId)}/c/${encodeURIComponent(conversation.id)}`);
+      setActiveTab('chat');
+      if (isMobile) setSidebarOpen(false);
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('pilotdeck:toast', {
+        detail: { kind: 'error', message: error instanceof Error ? error.message : '创建群组会话失败' },
+      }));
+    }
+  }, [createGroupConversation, isMobile, navigate, setActiveTab, setSidebarOpen]);
 
   const handleOpenGroups = useCallback(() => {
     if (selectedGroupId) return;
-    navigate(groups[0] ? `/groups/${encodeURIComponent(groups[0].id)}` : '/groups');
+    const first = groups[0];
+    const conversation = first?.conversations?.[0];
+    navigate(first
+      ? conversation
+        ? `/groups/${encodeURIComponent(first.id)}/c/${encodeURIComponent(conversation.id)}`
+        : `/groups/${encodeURIComponent(first.id)}`
+      : '/groups');
   }, [groups, navigate, selectedGroupId]);
 
   const handleCreateGroup = useCallback(async (input: {
@@ -471,7 +517,10 @@ export default function AppShellV2() {
   }) => {
     const group = await createGroup(input);
     setShowCreateGroup(false);
-    navigate(`/groups/${encodeURIComponent(group.id)}`);
+    const conversation = group.conversations?.[0];
+    navigate(conversation
+      ? `/groups/${encodeURIComponent(group.id)}/c/${encodeURIComponent(conversation.id)}`
+      : `/groups/${encodeURIComponent(group.id)}`);
     setActiveTab('chat');
     return group;
   }, [createGroup, navigate, setActiveTab]);
@@ -492,6 +541,64 @@ export default function AppShellV2() {
     }
     await refreshGroups();
   }, [refreshGroups]);
+
+  const handleRenameGroupConversation = useCallback(async (
+    group: AgentGroup,
+    conversation: AgentGroupConversation,
+    title: string,
+  ) => {
+    const response = await api.updateGroupConversation(group.id, conversation.id, { title });
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      window.dispatchEvent(new CustomEvent('pilotdeck:toast', {
+        detail: { kind: 'error', message: payload.error || '重命名群组会话失败' },
+      }));
+      return;
+    }
+    await refreshGroups();
+  }, [refreshGroups]);
+
+  const [deleteGroupConversationTarget, setDeleteGroupConversationTarget] =
+    useState<DeleteGroupConversationTarget | null>(null);
+  const [isDeletingGroupConversation, setIsDeletingGroupConversation] = useState(false);
+  const [deleteGroupConversationError, setDeleteGroupConversationError] = useState<string | null>(null);
+  const handleRequestDeleteGroupConversation = useCallback((
+    group: AgentGroup,
+    conversation: AgentGroupConversation,
+  ) => {
+    setDeleteGroupConversationError(null);
+    setDeleteGroupConversationTarget({ group, conversation });
+  }, []);
+  const handleCancelDeleteGroupConversation = useCallback(() => {
+    if (isDeletingGroupConversation) return;
+    setDeleteGroupConversationTarget(null);
+    setDeleteGroupConversationError(null);
+  }, [isDeletingGroupConversation]);
+  const handleConfirmDeleteGroupConversation = useCallback(async () => {
+    if (!deleteGroupConversationTarget) return;
+    const { group, conversation } = deleteGroupConversationTarget;
+    const nextConversation = group.conversations.find((candidate) => candidate.id !== conversation.id);
+    setIsDeletingGroupConversation(true);
+    setDeleteGroupConversationError(null);
+    try {
+      const response = await api.archiveGroupConversation(group.id, conversation.id);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || '删除群组会话失败');
+      }
+      await refreshGroups();
+      setDeleteGroupConversationTarget(null);
+      if (selectedGroupId === group.id && selectedGroupConversationId === conversation.id) {
+        navigate(nextConversation
+          ? `/groups/${encodeURIComponent(group.id)}/c/${encodeURIComponent(nextConversation.id)}`
+          : `/groups/${encodeURIComponent(group.id)}`);
+      }
+    } catch (error) {
+      setDeleteGroupConversationError(error instanceof Error ? error.message : '删除群组会话失败');
+    } finally {
+      setIsDeletingGroupConversation(false);
+    }
+  }, [deleteGroupConversationTarget, navigate, refreshGroups, selectedGroupConversationId, selectedGroupId]);
 
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<AgentGroup | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
@@ -520,7 +627,12 @@ export default function AppShellV2() {
       await refreshGroups();
       setDeleteGroupTarget(null);
       if (selectedGroupId === target.id) {
-        navigate(nextGroup ? `/groups/${encodeURIComponent(nextGroup.id)}` : '/groups');
+        const nextConversation = nextGroup?.conversations?.[0];
+        navigate(nextGroup
+          ? nextConversation
+            ? `/groups/${encodeURIComponent(nextGroup.id)}/c/${encodeURIComponent(nextConversation.id)}`
+            : `/groups/${encodeURIComponent(nextGroup.id)}`
+          : '/groups');
       }
     } catch (error) {
       setDeleteGroupError(error instanceof Error ? error.message : '删除群组失败');
@@ -721,6 +833,7 @@ export default function AppShellV2() {
       selectedProject={selectedProject}
       selectedSession={selectedSession}
       selectedGroupId={selectedGroupId}
+      selectedGroupConversationId={selectedGroupConversationId}
       groupsActive={groupsActive}
       activeTab={activeTab}
       isLoading={isLoadingProjects || isLoadingGroups}
@@ -731,10 +844,13 @@ export default function AppShellV2() {
 	      onStartNewSession={handleStartNewSession}
 	      onCreateProject={handleOpenNewProject}
 	      onSelectGroup={handleSelectGroup}
+	      onCreateGroupConversation={handleCreateGroupConversation}
 	      onCreateGroup={handleOpenCreateGroup}
 	      onOpenGroups={handleOpenGroups}
 	      onRenameGroup={handleRenameGroup}
+	      onRenameGroupConversation={handleRenameGroupConversation}
 	      onRequestDeleteGroup={handleRequestDeleteGroup}
+	      onRequestDeleteGroupConversation={handleRequestDeleteGroupConversation}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
 	      onShowSettings={onShowSettings}
@@ -780,7 +896,9 @@ export default function AppShellV2() {
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
+          selectedGroup={selectedGroup}
           selectedGroupId={selectedGroupId}
+          selectedGroupConversationId={selectedGroupConversationId}
           groupsActive={groupsActive}
           activeTab={activeTab}
           setActiveTab={handleSelectTab}
@@ -886,6 +1004,19 @@ export default function AppShellV2() {
 	            document.body,
 	          )
 	        : null}
+
+        {deleteGroupConversationTarget
+          ? ReactDOM.createPortal(
+              <DeleteGroupConversationDialog
+                target={deleteGroupConversationTarget}
+                isDeleting={isDeletingGroupConversation}
+                error={deleteGroupConversationError}
+                onCancel={handleCancelDeleteGroupConversation}
+                onConfirm={handleConfirmDeleteGroupConversation}
+              />,
+              document.body,
+            )
+          : null}
 
         {deleteGroupTarget
           ? ReactDOM.createPortal(
@@ -1047,6 +1178,53 @@ function DeleteSessionDialog({
           >
             {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
             {isDeleting ? 'Deleting…' : 'Delete conversation'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteGroupConversationDialog({
+  target,
+  isDeleting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  target: DeleteGroupConversationTarget;
+  isDeleting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card text-card-foreground shadow-xl">
+        <div className="flex items-start gap-3 border-b border-border p-5">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+            <Trash2 className="h-5 w-5" strokeWidth={1.75} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold text-foreground">删除会话？</h3>
+            <p className="mt-1 truncate text-sm text-muted-foreground">{target.conversation.title}</p>
+          </div>
+        </div>
+        <div className="space-y-3 p-5">
+          <p className="text-sm text-foreground">
+            该会话将从群组 <span className="font-medium">{target.group.title}</span> 中移除，消息记录会以归档形式保留。
+          </p>
+          {error ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+          <button type="button" onClick={onCancel} disabled={isDeleting} className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">取消</button>
+          <button type="button" onClick={onConfirm} disabled={isDeleting} className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60">
+            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
+            {isDeleting ? '删除中…' : '删除会话'}
           </button>
         </div>
       </div>

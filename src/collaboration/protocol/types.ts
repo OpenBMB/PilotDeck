@@ -55,11 +55,22 @@ export type GroupChatParticipantReply = {
   error?: string;
 };
 
+export type GroupChatInvocationAttachment = {
+  type: "image" | "file";
+  name: string;
+  path?: string;
+  /** Base64 payload without a data-URL prefix. Used for inline images. */
+  content?: string;
+  mimeType?: string;
+  bytes?: number;
+};
+
 export type GroupChatInvocation = {
   room: GroupChatRoom;
   participant: GroupChatParticipant;
   sourceMessage: GroupChatMessage;
   transcript: string;
+  attachments?: GroupChatInvocationAttachment[];
 };
 
 export type GroupChatParticipantInvoker = (

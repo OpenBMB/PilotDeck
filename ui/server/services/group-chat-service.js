@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { StaffDeckClient } from '../../../src/collaboration/participants/StaffDeckClient.js';
 import { instancesDb, userDb } from '../database/db.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
@@ -11,6 +13,8 @@ import {
 import { assertApprovedRemoteInstance } from './instance-service.js';
 
 const MAX_MESSAGE_CHARS = 20_000;
+const MAX_GROUP_ATTACHMENTS = 10;
+const MAX_GROUP_ATTACHMENT_DATA_CHARS = 28 * 1024 * 1024;
 const MAX_MEMBERS = 8;
 const configuredMemberTimeout = Number(process.env.PILOTDECK_GROUP_MEMBER_TIMEOUT_MS);
 const MEMBER_TIMEOUT_MS = Number.isFinite(configuredMemberTimeout) && configuredMemberTimeout >= 100
@@ -53,6 +57,95 @@ function cleanText(value, field, max = 200) {
   if (!text) throw new Error(`${field} 不能为空。`);
   if (text.length > max) throw new Error(`${field} 不能超过 ${max} 个字符。`);
   return text;
+}
+
+function attachmentPathInProject(projectPath, candidatePath) {
+  const root = path.resolve(projectPath);
+  const resolved = path.resolve(candidatePath);
+  const relative = path.relative(root, resolved);
+  if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) return resolved;
+  throw new Error('附件必须位于群组绑定的项目目录中。');
+}
+
+function normalizeGroupMessageAttachments(room, input) {
+  const images = [];
+  const attachments = [];
+  const rawImages = Array.isArray(input?.images) ? input.images : [];
+  const rawFiles = Array.isArray(input?.attachments) ? input.attachments : [];
+  if (rawImages.length + rawFiles.length > MAX_GROUP_ATTACHMENTS) {
+    throw new Error(`每条消息最多添加 ${MAX_GROUP_ATTACHMENTS} 个附件。`);
+  }
+  for (const [index, candidate] of rawImages.entries()) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const name = cleanText(candidate.name || `image-${index + 1}.png`, '图片名称', 180);
+    const mimeType = typeof candidate.mimeType === 'string' && candidate.mimeType.startsWith('image/')
+      ? candidate.mimeType.slice(0, 120)
+      : 'image/png';
+    const data = typeof candidate.data === 'string' ? candidate.data : '';
+    if (data && (data.length > MAX_GROUP_ATTACHMENT_DATA_CHARS || !/^data:image\/[a-zA-Z0-9.+-]+;base64,/u.test(data))) {
+      throw new Error(`图片“${name}”的数据格式无效或超过大小限制。`);
+    }
+    const storedPath = typeof candidate.path === 'string' && candidate.path.trim()
+      ? attachmentPathInProject(room.projectPath, candidate.path)
+      : '';
+    if (!data && !storedPath) throw new Error(`图片“${name}”缺少可用内容。`);
+    images.push({
+      name,
+      ...(data && !storedPath ? { data } : {}),
+      ...(storedPath ? { path: storedPath } : {}),
+      ...(Number.isFinite(Number(candidate.size)) ? { size: Math.max(0, Number(candidate.size)) } : {}),
+      mimeType,
+    });
+  }
+  for (const [index, candidate] of rawFiles.entries()) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const name = cleanText(candidate.name || `attachment-${index + 1}`, '附件名称', 180);
+    const storedPath = attachmentPathInProject(room.projectPath, cleanText(candidate.path, '附件路径', 2_000));
+    attachments.push({
+      name,
+      path: storedPath,
+      ...(Number.isFinite(Number(candidate.size)) ? { size: Math.max(0, Number(candidate.size)) } : {}),
+      ...(typeof candidate.mimeType === 'string' && candidate.mimeType.trim()
+        ? { mimeType: candidate.mimeType.trim().slice(0, 120) }
+        : {}),
+    });
+  }
+  return { images, attachments };
+}
+
+function attachmentNote(bundle) {
+  const entries = [
+    ...(bundle?.images || []).map((image) => `图片：${image.name}${image.path ? `（${image.path}）` : ''}`),
+    ...(bundle?.attachments || []).map((file) => `附件：${file.name}（${file.path}）`),
+  ];
+  return entries.length > 0 ? `\n\n本条消息附带以下文件：\n${entries.join('\n')}` : '';
+}
+
+async function toGatewayAttachments(bundle) {
+  const images = await Promise.all((bundle?.images || []).map(async (image) => {
+      const match = typeof image.data === 'string'
+        ? image.data.match(/^data:([^;]+);base64,(.*)$/u)
+        : null;
+      const content = match?.[2] || (image.path ? (await readFile(image.path)).toString('base64') : '');
+      return {
+        type: 'image',
+        name: image.name,
+        ...(image.path ? { path: image.path } : {}),
+        mimeType: image.mimeType || match?.[1] || 'image/png',
+        ...(content ? { content } : {}),
+        ...(typeof image.size === 'number' ? { bytes: image.size } : {}),
+      };
+    }));
+  return [
+    ...images,
+    ...(bundle?.attachments || []).map((file) => ({
+      type: 'file',
+      name: file.name,
+      path: file.path,
+      ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+      ...(typeof file.size === 'number' ? { bytes: file.size } : {}),
+    })),
+  ];
 }
 
 function normalizeMemberInput(input) {
@@ -210,7 +303,7 @@ function boundedPreview(value, max = 4_000) {
 async function invokeLocalPilotDeck(room, member, userMessage, transcript, userId, options = {}) {
   const gateway = await getPilotDeckGateway();
   const runId = crypto.randomUUID();
-  const sessionKey = `group:${room.id}:${member.id}`;
+  const sessionKey = `group:${room.id}:${options.conversationId || 'default'}:${member.id}`;
   let output = '';
   let failure = null;
   let sawDelegation = false;
@@ -236,6 +329,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
       projectKey: room.projectPath,
     workspaceCwd: room.projectPath,
     message: userMessage,
+    ...(options.messageAttachments ? { attachments: await toGatewayAttachments(options.messageAttachments) } : {}),
     runMode: 'ask',
     mode: 'default',
     canPrompt: false,
@@ -355,10 +449,12 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
       body: JSON.stringify({
         version: 1,
         roomId: room.id,
+        conversationId: options.conversationId,
         roundId: options.roundId,
         entryMemberId: member.id,
         workspaceKey: binding.workspace_key,
         message: userMessage,
+        ...(options.messageAttachments ? { attachments: options.messageAttachments } : {}),
         rosterContext: buildMemberContext(room, member, transcript, true, options.requiredDelegateIds || []),
         requiredDelegates: options.requiredDelegateIds || [],
         collaboration: options.collaboration || { canDelegate: false },
@@ -466,6 +562,9 @@ async function invokeStaffDeck(room, member, userMessage, transcript, userId, op
   const now = new Date().toISOString();
   const employeeId = member.config?.employeeId || member.id;
   const prompt = `${buildMemberContext(room, member, transcript, false)}\n\n当前用户消息：\n${userMessage}`;
+  const staffDeckAttachments = options.messageAttachments
+    ? await toGatewayAttachments(options.messageAttachments)
+    : [];
   return staffDeckClient.invoke({
     room: {
       id: room.id,
@@ -502,6 +601,7 @@ async function invokeStaffDeck(room, member, userMessage, transcript, userId, op
       createdAt: now,
     },
     transcript,
+    ...(staffDeckAttachments.length > 0 ? { attachments: staffDeckAttachments } : {}),
   }, prompt, connection);
 }
 
@@ -616,12 +716,12 @@ function notifyRoundCompleted(userId, roomId, roundId) {
   }
 }
 
-async function runDirectMember(userId, roomId, roundId, userMessage, target) {
+async function runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments) {
   const room = groupChatDb.getRoom(userId, roomId);
   if (!room || room.status !== 'active') return;
   if (target.id === 'main') {
     try {
-      await runEntryAgent(userId, room, roundId, userMessage, target, []);
+      await runEntryAgent(userId, room, conversationId, roundId, userMessage, target, [], messageAttachments);
     } catch (error) {
       groupChatDb.createMessage(userId, roomId, {
         roundId,
@@ -646,11 +746,13 @@ async function runDirectMember(userId, roomId, roundId, userMessage, target) {
     status: 'thinking',
   });
   try {
-    const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
+    const messages = groupChatDb.listMessages(userId, roomId, conversationId, 100) || [];
     const transcript = formatTranscript(messages.filter((message) => message.id !== placeholder.id));
     const result = await invokeMember(room, target, userMessage, transcript, userId, {
       roundId,
+      conversationId,
       requiredDelegateIds: [],
+      messageAttachments,
       collaboration: { canDelegate: false },
     });
     if (!result.content) throw new Error('智能体没有返回可显示的内容。');
@@ -668,11 +770,12 @@ async function runDirectMember(userId, roomId, roundId, userMessage, target) {
   }
 }
 
-async function runEntryAgent(userId, room, roundId, userMessage, entryMember, requiredDelegateIds) {
-  const sessionId = `group:${room.id}:${entryMember.id}`;
+async function runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments) {
+  const sessionId = `group:${room.id}:${conversationId}:${entryMember.id}`;
   const turnContext = {
     userId,
     roomId: room.id,
+    conversationId,
     roundId,
     sessionId,
     entryMemberId: entryMember.id,
@@ -680,6 +783,7 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
     attemptedDelegateIds: new Set(),
     delegationCallCounts: new Map(),
     delegationSequence: [],
+    messageAttachments,
   };
   activeMainTurns.set(sessionId, turnContext);
   const grant = createGroupDelegationGrant({
@@ -691,6 +795,7 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
     version: 1,
     kind: 'group_turn',
     roomId: room.id,
+    conversationId,
     turnId: roundId,
     entryMemberId: entryMember.id,
     canDelegate: true,
@@ -704,7 +809,7 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
       if (!currentRoom || currentRoom.status !== 'active') throw new Error('群组已经归档。');
       const missing = requiredDelegateIds.filter((id) => !turnContext.attemptedDelegateIds.has(id));
       if (attempt > 0 && missing.length === 0) break;
-      const messages = groupChatDb.listMessages(userId, room.id, 100) || [];
+      const messages = groupChatDb.listMessages(userId, room.id, conversationId, 100) || [];
       const transcript = formatTranscript(messages);
       const prompt = attempt === 0
         ? userMessage
@@ -715,8 +820,10 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
           ].join('\n');
       result = await invokeMember(currentRoom, entryMember, prompt, transcript, userId, {
         roundId,
+        conversationId,
         persistActivity: true,
         requiredDelegateIds: missing,
+        ...(attempt === 0 && messageAttachments ? { messageAttachments } : {}),
         collaboration,
       });
       if (requiredDelegateIds.every((id) => turnContext.attemptedDelegateIds.has(id))) break;
@@ -745,10 +852,10 @@ async function runEntryAgent(userId, room, roundId, userMessage, entryMember, re
   }
 }
 
-async function dispatchMentionRound(userId, roomId, roundId, userMessage, targets) {
+async function dispatchMentionRound(userId, roomId, conversationId, roundId, userMessage, targets, messageAttachments) {
   try {
     for (const target of targets) {
-      await runDirectMember(userId, roomId, roundId, userMessage, target);
+      await runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments);
     }
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     notifyRoundCompleted(userId, roomId, roundId);
@@ -760,11 +867,11 @@ async function dispatchMentionRound(userId, roomId, roundId, userMessage, target
   }
 }
 
-async function dispatchSmartRound(userId, roomId, roundId, userMessage, entryMember, requiredDelegateIds) {
+async function dispatchSmartRound(userId, roomId, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments) {
   try {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') throw new Error('群组已经归档。');
-    await runEntryAgent(userId, room, roundId, userMessage, entryMember, requiredDelegateIds);
+    await runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments);
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     notifyRoundCompleted(userId, roomId, roundId);
   } catch (error) {
@@ -799,10 +906,18 @@ async function executeQueuedTurn(turn) {
     return;
   }
   const targetIds = turn.requiredDelegates || [];
+  const persistedAttachments = {
+    images: Array.isArray(message.metadata?.images) ? message.metadata.images : [],
+    attachments: Array.isArray(message.metadata?.attachments) ? message.metadata.attachments : [],
+  };
+  const messageAttachments = persistedAttachments.images.length > 0 || persistedAttachments.attachments.length > 0
+    ? persistedAttachments
+    : undefined;
+  const userMessage = `${message.content}${attachmentNote(messageAttachments)}`;
   if (turn.triggerSource === 'mentions') {
     const targetsById = new Map(room.members.map((member) => [member.id, member]));
     const targets = targetIds.flatMap((id) => targetsById.get(id) || []);
-    await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.id, message.content, targets);
+    await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, targets, messageAttachments);
     return;
   }
   const entryMember = room.members.find((member) => member.id === turn.entryMemberId && member.isActive !== false);
@@ -810,7 +925,7 @@ async function executeQueuedTurn(turn) {
     groupChatDb.updateTurn(turn.id, { status: 'failed', error: '入口 PilotDeck 实例不可用。' });
     return;
   }
-  await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.id, message.content, entryMember, targetIds);
+  await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, entryMember, targetIds, messageAttachments);
 }
 
 function scheduleRoom(roomId) {
@@ -938,11 +1053,13 @@ export const groupChatService = {
       status: 'thinking',
     });
     try {
-      const messages = groupChatDb.listMessages(userId, roomId, 100) || [];
+      const messages = groupChatDb.listMessages(userId, roomId, activeTurn.conversationId, 100) || [];
       const transcript = formatTranscript(messages.filter((candidate) => candidate.id !== placeholder.id));
       const result = await invokeMember(room, member, message, transcript, userId, {
         roundId,
+        conversationId: activeTurn.conversationId,
         requiredDelegateIds: [],
+        ...(activeTurn.messageAttachments ? { messageAttachments: activeTurn.messageAttachments } : {}),
         collaboration: { canDelegate: false },
       });
       if (!result.content) throw new Error('被委派成员没有返回可显示的内容。');
@@ -980,7 +1097,18 @@ export const groupChatService = {
   sendMessage(userId, roomId, input) {
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') return null;
-    const content = cleanText(input.content, '消息', MAX_MESSAGE_CHARS);
+    const conversationId = typeof input.conversationId === 'string'
+      ? input.conversationId
+      : room.conversations?.[0]?.id || '';
+    const conversation = groupChatDb.getConversation(userId, roomId, conversationId);
+    if (!conversation) throw new Error('群组会话不存在或已经归档。');
+    const messageAttachments = normalizeGroupMessageAttachments(room, input);
+    const hasAttachments = messageAttachments.images.length > 0 || messageAttachments.attachments.length > 0;
+    const content = typeof input.content === 'string' && input.content.trim()
+      ? cleanText(input.content, '消息', MAX_MESSAGE_CHARS)
+      : hasAttachments
+        ? '请查看附件。'
+        : cleanText(input.content, '消息', MAX_MESSAGE_CHARS);
     // Mentions are derived from the saved text so callers cannot trigger an
     // unmentioned member by sending a forged `mentionedMemberIds` payload.
     const { mentionedMemberIds, mentionAll } = extractMentions(room, content, input.mentionedMemberIds);
@@ -998,9 +1126,10 @@ export const groupChatService = {
         ? room.members.filter((member) => member.id !== entryMember.id && member.isActive !== false).map((member) => member.id)
         : mentionedMemberIds.filter((id) => id !== entryMember.id);
     const idempotencyKey = typeof input.clientMessageId === 'string' && input.clientMessageId.trim()
-      ? `${userId}:${input.clientMessageId.trim().slice(0, 140)}`
+      ? `${conversation.id}:${userId}:${input.clientMessageId.trim().slice(0, 140)}`
       : null;
     const turn = groupChatDb.createTurn(userId, roomId, {
+      conversationId: conversation.id,
       entryMemberId: room.triggerMode === 'auto' ? entryMember.id : (directTargets[0]?.id || entryMember.id),
       triggerSource: room.triggerMode,
       status: 'queued',
@@ -1022,12 +1151,14 @@ export const groupChatService = {
       };
     }
     const message = groupChatDb.createMessage(userId, roomId, {
+      conversationId: conversation.id,
       roundId,
       kind: 'chat',
       senderType: 'user',
       senderUserId: userId,
       senderName: participant.displayName || '你',
       content,
+      metadata: messageAttachments,
       status: 'completed',
     });
     groupChatDb.setTurnMessageSequence(roundId, message.sequence);

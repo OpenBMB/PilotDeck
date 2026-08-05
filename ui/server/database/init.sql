@@ -267,9 +267,25 @@ CREATE TABLE IF NOT EXISTS group_participants (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS group_conversations (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '新会话',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_by_user_id INTEGER NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_conversations_room_activity
+    ON group_conversations(room_id, status, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS group_turns (
     id TEXT PRIMARY KEY,
     room_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
     sender_user_id INTEGER NOT NULL,
     entry_member_id TEXT NOT NULL,
     trigger_source TEXT NOT NULL CHECK (trigger_source IN ('auto', 'mentions')),
@@ -281,6 +297,7 @@ CREATE TABLE IF NOT EXISTS group_turns (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES group_conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -307,6 +324,7 @@ CREATE TABLE IF NOT EXISTS group_delegation_grants (
 CREATE TABLE IF NOT EXISTS group_messages (
     id TEXT PRIMARY KEY,
     room_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
     round_id TEXT,
     sequence INTEGER NOT NULL DEFAULT 0,
     message_kind TEXT NOT NULL DEFAULT 'chat' CHECK (message_kind IN ('chat', 'delegation', 'activity')),
@@ -322,6 +340,7 @@ CREATE TABLE IF NOT EXISTS group_messages (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES group_conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (reply_to_message_id) REFERENCES group_messages(id) ON DELETE SET NULL
 );
@@ -339,4 +358,15 @@ CREATE TABLE IF NOT EXISTS group_read_state (
     PRIMARY KEY (user_id, room_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS group_conversation_read_state (
+    user_id INTEGER NOT NULL,
+    room_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, conversation_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (room_id) REFERENCES group_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES group_conversations(id) ON DELETE CASCADE
 );

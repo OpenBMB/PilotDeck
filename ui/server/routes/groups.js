@@ -1,4 +1,6 @@
 import express from 'express';
+import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { getProjects } from '../projects.js';
 import { groupChatDb } from '../services/group-chat-db.js';
 import { groupChatService } from '../services/group-chat-service.js';
@@ -69,6 +71,59 @@ router.get('/:groupId', (req, res) => {
   }
 });
 
+router.get('/:groupId/conversations', (req, res) => {
+  try {
+    const conversations = groupChatDb.listConversations(req.user.id, req.params.groupId);
+    if (!conversations) return fail(res, 404, '群组不存在。');
+    return res.json({ conversations });
+  } catch (error) {
+    return fail(res, 500, error);
+  }
+});
+
+router.post('/:groupId/conversations', (req, res) => {
+  try {
+    const conversation = groupChatDb.createConversation(req.user.id, req.params.groupId, {
+      title: req.body?.title,
+    });
+    if (!conversation) return fail(res, 404, '群组不存在。');
+    return res.status(201).json({ conversation });
+  } catch (error) {
+    return fail(res, 400, error);
+  }
+});
+
+router.patch('/:groupId/conversations/:conversationId', (req, res) => {
+  try {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    if (!title || title.length > 120) return fail(res, 400, '会话名称不能为空且不能超过 120 个字符。');
+    const conversation = groupChatDb.updateConversation(
+      req.user.id,
+      req.params.groupId,
+      req.params.conversationId,
+      { title },
+    );
+    if (!conversation) return fail(res, 404, '会话不存在。');
+    return res.json({ conversation });
+  } catch (error) {
+    return fail(res, 400, error);
+  }
+});
+
+router.delete('/:groupId/conversations/:conversationId', (req, res) => {
+  try {
+    const archived = groupChatDb.archiveConversation(
+      req.user.id,
+      req.params.groupId,
+      req.params.conversationId,
+    );
+    if (!archived) return fail(res, 404, '会话不存在。');
+    return res.status(204).end();
+  } catch (error) {
+    return fail(res, 400, error);
+  }
+});
+
 router.patch('/:groupId', (req, res) => {
   try {
     const existing = groupChatDb.getRoom(req.user.id, req.params.groupId);
@@ -114,9 +169,12 @@ router.delete('/:groupId', (req, res) => {
 
 router.get('/:groupId/messages', (req, res) => {
   try {
+    const conversationId = typeof req.query.conversationId === 'string' ? req.query.conversationId : '';
+    if (!conversationId) return fail(res, 400, '请指定群组会话。');
     const messages = groupChatDb.listMessages(
       req.user.id,
       req.params.groupId,
+      conversationId,
       req.query.limit,
       typeof req.query.before === 'string' ? req.query.before : null,
     );
@@ -124,6 +182,50 @@ router.get('/:groupId/messages', (req, res) => {
     res.json({ messages });
   } catch (error) {
     fail(res, 500, error);
+  }
+});
+
+router.get('/:groupId/messages/:messageId/images/:imageIndex', async (req, res) => {
+  try {
+    const group = groupChatDb.getRoom(req.user.id, req.params.groupId);
+    if (!group) return fail(res, 404, '群组不存在。');
+    const message = groupChatDb.getMessage(req.user.id, req.params.groupId, req.params.messageId);
+    if (!message) return fail(res, 404, '群组消息不存在。');
+    const imageIndex = Number.parseInt(req.params.imageIndex, 10);
+    const images = Array.isArray(message.metadata?.images) ? message.metadata.images : [];
+    const image = Number.isInteger(imageIndex) && imageIndex >= 0 ? images[imageIndex] : null;
+    if (!image || typeof image !== 'object') return fail(res, 404, '图片附件不存在。');
+
+    let bytes;
+    let contentType = typeof image.mimeType === 'string' && image.mimeType.startsWith('image/')
+      ? image.mimeType
+      : 'image/png';
+    if (typeof image.data === 'string') {
+      const match = image.data.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/u);
+      if (!match) return fail(res, 400, '图片附件格式无效。');
+      contentType = match[1];
+      bytes = Buffer.from(match[2], 'base64');
+    } else if (typeof image.path === 'string' && image.path.trim()) {
+      const root = path.resolve(group.projectPath);
+      const resolved = path.resolve(image.path);
+      const relative = path.relative(root, resolved).replace(/\\/gu, '/');
+      const withinProject = relative && !relative.startsWith('../') && !path.isAbsolute(relative);
+      const stagedAttachment = relative.startsWith('.tmp/chat-attachments/')
+        || relative.includes('/.tmp/chat-attachments/');
+      if (!withinProject || !stagedAttachment) return fail(res, 403, '图片附件路径无效。');
+      const fileStats = await stat(resolved).catch(() => null);
+      if (!fileStats?.isFile()) return fail(res, 404, '图片附件文件不存在。');
+      bytes = await readFile(resolved);
+    } else {
+      return fail(res, 404, '图片附件没有可显示的内容。');
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(bytes);
+  } catch (error) {
+    return fail(res, 500, error);
   }
 });
 
@@ -155,7 +257,9 @@ router.post('/:groupId/delegate', async (req, res) => {
 
 router.post('/:groupId/read', (req, res) => {
   try {
-    const marked = groupChatDb.markRead(req.user.id, req.params.groupId);
+    const conversationId = typeof req.body?.conversationId === 'string' ? req.body.conversationId : '';
+    if (!conversationId) return fail(res, 400, '请指定群组会话。');
+    const marked = groupChatDb.markRead(req.user.id, req.params.groupId, conversationId);
     if (!marked) return fail(res, 404, '群组不存在。');
     res.status(204).end();
   } catch (error) {

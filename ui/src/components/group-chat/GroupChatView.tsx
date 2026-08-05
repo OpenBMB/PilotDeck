@@ -9,12 +9,14 @@ import {
   Bot,
   CheckCircle2,
   ChevronRight,
+  FileText,
   Folder,
   GitBranch,
   Loader2,
   MessageCircleMore,
   MoreHorizontal,
   PanelLeftOpen,
+  PanelRightClose,
   Plus,
   Search,
   Settings2,
@@ -27,6 +29,8 @@ import {
 import { cn } from '../../lib/utils';
 import type {
   AgentGroup,
+  AgentGroupFileAttachment,
+  AgentGroupImageAttachment,
   AgentGroupMember,
   AgentGroupMessage,
   AgentGroupParticipant,
@@ -43,12 +47,15 @@ import { MentionComposer, type MentionDraft } from './MentionComposer';
 
 type Props = {
   groupId: string;
+  conversationId: string;
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
   onGroupsChanged: () => void;
   onArchived: () => void;
   onRequestDelete?: (group: AgentGroup) => void;
   onOpenFiles?: () => void;
+  compact?: boolean;
+  onCollapse?: () => void;
 };
 
 const POLL_MS = 1_200;
@@ -132,6 +139,80 @@ function AgentAvatar({ member, size = 'normal' }: { member: AgentGroupMember; si
 function metadataString(message: AgentGroupMessage, key: string) {
   const value = message.metadata?.[key];
   return typeof value === 'string' ? value : '';
+}
+
+function messageImages(message: AgentGroupMessage): AgentGroupImageAttachment[] {
+  const images = message.metadata?.images;
+  if (!Array.isArray(images)) return [];
+  return images.filter((image): image is AgentGroupImageAttachment => (
+    Boolean(image) && typeof image === 'object' && typeof image.name === 'string'
+  ));
+}
+
+function messageFiles(message: AgentGroupMessage): AgentGroupFileAttachment[] {
+  const attachments = message.metadata?.attachments;
+  if (!Array.isArray(attachments)) return [];
+  return attachments.filter((attachment): attachment is AgentGroupFileAttachment => (
+    Boolean(attachment) && typeof attachment === 'object'
+      && typeof attachment.name === 'string' && typeof attachment.path === 'string'
+  ));
+}
+
+function formatBytes(value?: number) {
+  if (!value || value < 1) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function groupImageSource(
+  group: AgentGroup,
+  message: AgentGroupMessage,
+  image: AgentGroupImageAttachment,
+  imageIndex: number,
+) {
+  if (image.data) return image.data;
+  if (!image.path) return '';
+  return api.groupMessageImageUrl(group.id, message.id, imageIndex);
+}
+
+function GroupMessageAttachments({ group, message }: { group: AgentGroup; message: AgentGroupMessage }) {
+  const images = messageImages(message);
+  const attachments = messageFiles(message);
+  if (images.length === 0 && attachments.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap justify-end gap-2" aria-label="消息附件">
+      {images.map((image, index) => {
+        const source = groupImageSource(group, message, image, index);
+        return source ? (
+          <a
+            key={`${image.name}-${index}`}
+            href={source}
+            target="_blank"
+            rel="noreferrer"
+            className="block overflow-hidden rounded-lg border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900"
+            title={image.name}
+          >
+            <img src={source} alt={image.name} className="h-24 w-24 object-cover" />
+          </a>
+        ) : (
+          <div key={`${image.name}-${index}`} className="flex max-w-48 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
+            <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+            <span className="truncate">{image.name}</span>
+          </div>
+        );
+      })}
+      {attachments.map((attachment, index) => (
+        <div key={`${attachment.path}-${index}`} className="flex max-w-56 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+          <div className="min-w-0">
+            <div className="truncate font-medium">{attachment.name}</div>
+            {formatBytes(attachment.size) ? <div className="text-[10px] text-neutral-400">{formatBytes(attachment.size)}</div> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type GroupProcessBundle = {
@@ -375,12 +456,15 @@ function GroupProcessDetailDrawer({
 
 export default function GroupChatView({
   groupId,
+  conversationId,
   isSidebarCollapsed,
   onOpenSidebar,
   onGroupsChanged,
   onArchived,
   onRequestDelete,
   onOpenFiles,
+  compact = false,
+  onCollapse,
 }: Props) {
   const [group, setGroup] = useState<AgentGroup | null>(null);
   const [messages, setMessages] = useState<AgentGroupMessage[]>([]);
@@ -405,7 +489,7 @@ export default function GroupChatView({
     try {
       const [groupResponse, messagesResponse] = await Promise.all([
         api.group(groupId),
-        api.groupMessages(groupId, 150),
+        api.groupMessages(groupId, conversationId, 150),
       ]);
       const groupPayload = await json<{ group?: AgentGroup; error?: string }>(groupResponse);
       const messagesPayload = await json<{ messages?: AgentGroupMessage[]; error?: string }>(messagesResponse);
@@ -415,14 +499,14 @@ export default function GroupChatView({
       setMessages(Array.isArray(messagesPayload.messages) ? messagesPayload.messages : []);
       setError('');
       if (document.visibilityState === 'visible') {
-        void api.markGroupRead(groupId).then(() => onGroupsChanged()).catch(() => undefined);
+        void api.markGroupRead(groupId, conversationId).then(() => onGroupsChanged()).catch(() => undefined);
       }
     } catch (reason) {
       if (!silent) setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [groupId, onGroupsChanged]);
+  }, [conversationId, groupId, onGroupsChanged]);
 
   useEffect(() => {
     void refresh(false);
@@ -484,7 +568,7 @@ export default function GroupChatView({
 
   useEffect(() => {
     setSelectedProcessKey('');
-  }, [groupId]);
+  }, [conversationId, groupId]);
 
   useEffect(() => {
     if (selectedProcessKey && !selectedProcessBundle) setSelectedProcessKey('');
@@ -540,7 +624,7 @@ export default function GroupChatView({
     setSending(true);
     setError('');
     try {
-      const response = await api.sendGroupMessage(group.id, draft);
+      const response = await api.sendGroupMessage(group.id, { ...draft, conversationId });
       const payload = await json<{ error?: string }>(response);
       if (!response.ok) throw new Error(readError(payload, '发送失败'));
       await refresh(true);
@@ -568,37 +652,47 @@ export default function GroupChatView({
     );
   }
 
+  const conversation = group.conversations.find((candidate) => candidate.id === conversationId);
+
   return (
     <div className="relative flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="relative z-[80] flex h-14 shrink-0 items-center gap-3 overflow-visible border-b border-neutral-100 bg-white px-4 dark:border-neutral-900 dark:bg-neutral-950 sm:px-6">
-        {isSidebarCollapsed ? (
+      <header className={cn(
+        'relative z-[80] flex shrink-0 items-center gap-3 overflow-visible border-b bg-white dark:bg-neutral-950',
+        compact
+          ? 'h-12 border-neutral-200 px-3 dark:border-neutral-800'
+          : 'h-14 border-neutral-100 px-4 dark:border-neutral-900 sm:px-6',
+      )}>
+        {!compact && isSidebarCollapsed ? (
           <button type="button" onClick={onOpenSidebar} aria-label="显示侧边栏" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100">
             <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
           </button>
         ) : null}
+        {compact ? <UsersRound className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" /> : null}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="truncate text-[15px] font-semibold">{group.title}</h1>
+            <h1 className="truncate text-[15px] font-semibold">{conversation?.title || group.title}</h1>
             {group.muted ? <BellOff className="h-3.5 w-3.5 shrink-0 text-neutral-400" aria-label="消息免打扰" /> : null}
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+          <div className={cn('items-center gap-2 text-[11px] text-neutral-500', compact ? 'hidden' : 'flex')}>
+            <span>{group.title}</span>
+            <span>·</span>
             <span>{projectLabel(group)}</span>
             <span>·</span>
             <span>{group.triggerMode === 'auto' ? '智能协调' : '仅 @ 触发'}</span>
           </div>
         </div>
-        <div className="hidden items-center -space-x-1.5 sm:flex">
+        <div className={cn('hidden items-center -space-x-1.5 sm:flex', compact && 'sm:hidden')}>
           {group.members.slice(0, 6).map((member) => <AgentAvatar key={member.id} member={member} size="small" />)}
           {group.members.length > 6 ? <span className="ml-2 text-xs text-neutral-500">+{group.members.length - 6}</span> : null}
         </div>
-        {canManageMembers ? (
+        {!compact && canManageMembers ? (
           <button type="button" onClick={() => setInviteOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">邀请</span>
           </button>
         ) : null}
-        <div className="hidden h-5 w-px bg-neutral-200 dark:bg-neutral-800 sm:block" aria-hidden="true" />
-        {searchOpen ? (
+        {!compact ? <div className="hidden h-5 w-px bg-neutral-200 dark:bg-neutral-800 sm:block" aria-hidden="true" /> : null}
+        {!compact && searchOpen ? (
           <div role="search" aria-label="搜索群组消息" className="flex h-8 w-[min(310px,34vw)] min-w-[220px] items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 text-neutral-500 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
             <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />
             <input
@@ -638,7 +732,7 @@ export default function GroupChatView({
             <button type="button" onClick={closeSearch} aria-label="关闭搜索" className="rounded p-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-3 w-3" /></button>
           </div>
         ) : null}
-        <div className="flex h-9 shrink-0 items-center gap-1" aria-label="群组工具">
+        {!compact ? <div className="flex h-9 shrink-0 items-center gap-1" aria-label="群组工具">
           <button
             type="button"
             aria-label="搜索当前群组"
@@ -697,19 +791,29 @@ export default function GroupChatView({
               </div>
             ) : null}
           </div>
-        </div>
+        </div> : (
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            aria-label="收起群组对话"
+            title="收起群组对话"
+          >
+            <PanelRightClose className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+        )}
       </header>
 
-      <div ref={timelineRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto max-w-3xl space-y-5">
-          <div className="rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+      <div ref={timelineRef} className={cn('min-h-0 flex-1 overflow-y-auto', compact ? 'px-3 py-4' : 'px-4 py-6 sm:px-8')}>
+        <div className={cn('mx-auto space-y-5', compact ? 'max-w-none' : 'max-w-3xl')}>
+          {!compact ? <div className="rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
             <div className="flex items-center gap-2 font-medium"><MessageCircleMore className="h-4 w-4" />群组协作已开启</div>
             <p className="mt-1 text-blue-700/80 dark:text-blue-300/80">
               {group.triggerMode === 'auto'
                 ? '消息先交给你的通用 PilotDeck 智能体；它会自主回答或真实邀请合适成员协作，显式 @ 的成员必须被邀请。'
                 : '消息只有在 @成员 或 @所有人 时才调用智能体；未 @ 的消息仍会保存在时间线中。'}
             </p>
-          </div>
+          </div> : null}
 
           {messages.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-20 text-center text-neutral-400">
@@ -762,7 +866,10 @@ export default function GroupChatView({
                       ) : message.status === 'failed' ? (
                         <div>回复失败：{message.error || '未知错误'}</div>
                       ) : isUser ? (
-                        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                        <>
+                          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                          <GroupMessageAttachments group={group} message={message} />
+                        </>
                       ) : (
                         <Markdown className="group-chat-markdown">{message.content}</Markdown>
                       )}
@@ -787,11 +894,12 @@ export default function GroupChatView({
         </div>
       </div>
 
-      <div className="shrink-0 bg-white px-4 pb-5 pt-3 dark:bg-neutral-950 sm:px-8">
-        <div className="relative mx-auto max-w-3xl">
+      <div className={cn('shrink-0 bg-white pt-3 dark:bg-neutral-950', compact ? 'px-3 pb-3' : 'px-4 pb-5 sm:px-8')}>
+        <div className={cn('relative mx-auto', compact ? 'max-w-none' : 'max-w-3xl')}>
           {error ? <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
           <MentionComposer
             members={group.members}
+            projectName={group.projectName}
             placeholder={group.triggerMode === 'mentions' ? '输入消息，使用 @成员 或 @所有人 触发回复…' : '向群组发送消息，由你的通用智能体理解并协调…'}
             disabled={roundInProgress}
             sending={sending}

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentGroup, AgentGroupMessage, AgentGroupMember } from '../../types/group';
 import GroupChatView from './GroupChatView';
@@ -7,8 +8,12 @@ import GroupChatView from './GroupChatView';
 const apiMock = vi.hoisted(() => ({
   group: vi.fn(),
   groupMessages: vi.fn(),
+  groupMessageImageUrl: vi.fn((groupId: string, messageId: string, imageIndex: number) => (
+    `/api/groups/${groupId}/messages/${messageId}/images/${imageIndex}`
+  )),
   markGroupRead: vi.fn(),
   sendGroupMessage: vi.fn(),
+  uploadProjectAttachments: vi.fn(),
   updateGroup: vi.fn(),
   reorderGroupMembers: vi.fn(),
   archiveGroup: vi.fn(),
@@ -60,6 +65,18 @@ const group: AgentGroup = {
   unreadCount: 0,
   hasSilentUnread: false,
   lastMessagePreview: '综合结论',
+  conversations: [{
+    id: 'conversation-1',
+    roomId: 'group-1',
+    title: '学生系统评审讨论',
+    status: 'active',
+    unreadCount: 0,
+    hasSilentUnread: false,
+    lastMessagePreview: '综合结论',
+    createdByUserId: 1,
+    createdAt: now,
+    updatedAt: now,
+  }],
   members: [
     member('finance', '财务', 'staffdeck', 0),
     member('main', 'PilotDeck 主智能体', 'pilotdeck_main', 10_000),
@@ -90,13 +107,15 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function renderGroup(onOpenFiles = vi.fn()) {
+function renderGroup(onOpenFiles = vi.fn(), extraProps: Partial<ComponentProps<typeof GroupChatView>> = {}) {
   return render(
     <GroupChatView
       groupId={group.id}
+      conversationId="conversation-1"
       onGroupsChanged={vi.fn()}
       onArchived={vi.fn()}
       onOpenFiles={onOpenFiles}
+      {...extraProps}
     />,
   );
 }
@@ -106,9 +125,12 @@ beforeEach(() => {
   apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages }));
   apiMock.markGroupRead.mockResolvedValue(new Response(null, { status: 204 }));
   apiMock.sendGroupMessage.mockResolvedValue(jsonResponse({ roundId: 'round-1' }, 202));
+  apiMock.uploadProjectAttachments.mockResolvedValue(jsonResponse({ images: [], files: [] }));
   apiMock.groupParticipants.mockResolvedValue(jsonResponse({ participants: [] }));
   apiMock.groupParticipantCandidates.mockResolvedValue(jsonResponse({ candidates: [] }));
   apiMock.instances.list.mockResolvedValue(jsonResponse({ instances: [] }));
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:preview') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
 });
 
 afterEach(() => {
@@ -120,7 +142,7 @@ describe('GroupChatView', () => {
   it('renders a dedicated speaker timeline and the mention-only rule', async () => {
     renderGroup();
 
-    expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '学生系统评审讨论' })).toBeTruthy();
     expect(screen.getByText('仅 @ 触发')).toBeTruthy();
     expect(screen.getAllByText('财务').length).toBeGreaterThan(0);
     expect(screen.getAllByText('PilotDeck 主智能体').length).toBeGreaterThan(0);
@@ -133,7 +155,7 @@ describe('GroupChatView', () => {
     const onOpenFiles = vi.fn();
     renderGroup(onOpenFiles);
 
-    expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '学生系统评审讨论' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '搜索当前群组' }));
     const search = screen.getByRole('searchbox', { name: '搜索群组消息' });
     fireEvent.change(search, { target: { value: '财务建议' } });
@@ -142,6 +164,130 @@ describe('GroupChatView', () => {
     fireEvent.click(screen.getByRole('button', { name: '文件' }));
     expect(onOpenFiles).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('searchbox', { name: '搜索群组消息' })).toBeNull();
+  });
+
+  it('reuses the same group timeline in the compact Files assistant', async () => {
+    const onCollapse = vi.fn();
+    renderGroup(vi.fn(), { compact: true, onCollapse });
+
+    expect(await screen.findByRole('heading', { name: '学生系统评审讨论' })).toBeTruthy();
+    expect(screen.getByText('财务建议')).toBeTruthy();
+    expect(screen.getByText('综合结论')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '文件' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '收起群组对话' }));
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it('pastes an image, selects a file, uploads both, and sends them with the group message', async () => {
+    const image = new File(['image-bytes'], 'clipboard.png', { type: 'image/png' });
+    const document = new File(['report'], 'report.txt', { type: 'text/plain' });
+    apiMock.uploadProjectAttachments.mockResolvedValue(jsonResponse({
+      images: [{
+        name: image.name,
+        data: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
+        path: '/workspace/PilotDeck/.tmp/chat-attachments/clipboard.png',
+        size: image.size,
+        mimeType: image.type,
+      }],
+      files: [{
+        name: document.name,
+        path: '/workspace/PilotDeck/.tmp/chat-attachments/report.txt',
+        size: document.size,
+        mimeType: document.type,
+      }],
+    }));
+    renderGroup();
+
+    const editor = await screen.findByRole('textbox', { name: '群组消息' });
+    fireEvent.paste(editor, {
+      clipboardData: { files: [image], getData: () => '' },
+    });
+    fireEvent.change(screen.getByLabelText('添加附件'), { target: { files: [document] } });
+    expect(await screen.findByAltText('clipboard.png')).toBeTruthy();
+    expect(screen.getByText('report.txt')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
+    await waitFor(() => {
+      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(group.projectName, [image, document]);
+      expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
+        content: '请查看附件。',
+        conversationId: 'conversation-1',
+        images: expect.arrayContaining([expect.objectContaining({ name: 'clipboard.png' })]),
+        attachments: expect.arrayContaining([expect.objectContaining({ name: 'report.txt' })]),
+      }));
+    });
+  });
+
+  it('keeps a just-pasted image when Enter is pressed before React commits the preview state', async () => {
+    const image = new File(['fresh-image-bytes'], 'fast-paste.png', { type: 'image/png' });
+    apiMock.uploadProjectAttachments.mockResolvedValue(jsonResponse({
+      images: [{
+        name: image.name,
+        data: 'data:image/png;base64,ZnJlc2gtaW1hZ2UtYnl0ZXM=',
+        path: '/workspace/PilotDeck/.tmp/chat-attachments/fast-paste.png',
+        size: image.size,
+        mimeType: image.type,
+      }],
+      files: [],
+    }));
+    renderGroup();
+
+    const editor = await screen.findByRole('textbox', { name: '群组消息' });
+    editor.textContent = '这是什么';
+    fireEvent.input(editor);
+    await act(async () => {
+      fireEvent.paste(editor, {
+        clipboardData: { files: [image], items: [], getData: () => '' },
+      });
+      fireEvent.keyDown(editor, { key: 'Enter' });
+    });
+
+    await waitFor(() => {
+      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(group.projectName, [image]);
+      expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
+        content: '这是什么',
+        images: [expect.objectContaining({ name: 'fast-paste.png' })],
+      }));
+    });
+  });
+
+  it('renders persisted image and file attachments in the group timeline', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [{
+        ...messages[0],
+        content: '请查看附件。',
+        metadata: {
+          images: [{ name: 'diagram.png', data: 'data:image/png;base64,aW1hZ2U=', mimeType: 'image/png' }],
+          attachments: [{ name: 'notes.md', path: '/workspace/PilotDeck/notes.md', size: 2048, mimeType: 'text/markdown' }],
+        },
+      }],
+    }));
+    renderGroup();
+
+    expect(await screen.findByAltText('diagram.png')).toBeTruthy();
+    expect(screen.getByText('notes.md')).toBeTruthy();
+    expect(screen.getByText('2 KB')).toBeTruthy();
+  });
+
+  it('renders path-backed images through the group message image endpoint', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [{
+        ...messages[0],
+        id: 'message-with-path-image',
+        metadata: {
+          images: [{
+            name: 'image.png',
+            path: '/legacy/general/users/1/general/.tmp/chat-attachments/image.png',
+            mimeType: 'image/png',
+          }],
+        },
+      }],
+    }));
+    renderGroup();
+
+    const image = await screen.findByAltText('image.png');
+    expect(image.getAttribute('src')).toBe('/api/groups/group-1/messages/message-with-path-image/images/0');
+    expect(apiMock.groupMessageImageUrl).toHaveBeenCalledWith('group-1', 'message-with-path-image', 0);
   });
 
   it('sends @所有人 as an explicit all-member mention', async () => {
@@ -156,6 +302,7 @@ describe('GroupChatView', () => {
         content: '@所有人',
         mentionedMemberIds: [],
         mentionAll: true,
+        conversationId: 'conversation-1',
       });
     });
   });
@@ -177,6 +324,7 @@ describe('GroupChatView', () => {
         content: '@财务',
         mentionedMemberIds: ['finance'],
         mentionAll: false,
+        conversationId: 'conversation-1',
       });
     });
 
@@ -347,7 +495,7 @@ describe('GroupChatView', () => {
     apiMock.group.mockResolvedValue(jsonResponse({ group: { ...group, participantRole: 'member' } }));
     renderGroup();
 
-    expect(await screen.findByRole('heading', { name: group.title })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '学生系统评审讨论' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '邀请' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '更多群组操作' }));

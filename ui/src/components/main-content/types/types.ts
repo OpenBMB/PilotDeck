@@ -1,4 +1,5 @@
 import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
+import type { AgentGroup } from '../../../types/group';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -39,6 +40,13 @@ export type MainContentProps = {
   projects: Project[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
+  selectedGroup?: AgentGroup | null;
+  selectedGroupId?: string | null;
+  selectedGroupConversationId?: string | null;
+  groupsActive?: boolean;
+  onGroupsChanged?: () => void;
+  onGroupArchived?: () => void;
+  onRequestDeleteGroup?: (group: AgentGroup) => void;
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
   alwaysOnSubTab?: AlwaysOnSubTab;
