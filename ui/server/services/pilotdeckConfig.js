@@ -43,6 +43,13 @@ function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function describeModelRef(value) {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
 function deepMerge(base, override) {
   if (!isRecord(base)) return clone(override);
   const output = clone(base);
@@ -223,6 +230,10 @@ function validateProvider(id, provider, errors) {
 }
 
 function validateModelRef(config, ref, label, errors) {
+  if (ref !== undefined && ref !== null && typeof ref !== 'string') {
+    errors.push(`${label} must be a provider/model string; got ${describeModelRef(ref)}`);
+    return;
+  }
   const modelRef = normalizeString(ref);
   if (!modelRef) return;
   if (!resolveModel(config, modelRef, { allowMissing: true })) {
@@ -556,8 +567,6 @@ export function syncAgentModelWithRouter(config) {
   if (!agentRef) return config;
   const slash = agentRef.indexOf('/');
   if (slash <= 0 || slash >= agentRef.length - 1) return config;
-  const providerId = agentRef.slice(0, slash);
-  const modelId = agentRef.slice(slash + 1);
 
   if (!isRecord(config.router)) return config;
   if (config.router.enabled === false) return config;
@@ -568,9 +577,7 @@ export function syncAgentModelWithRouter(config) {
     ? currentDefault.trim()
     : (isRecord(currentDefault) ? normalizeString(currentDefault.id) : '');
   if (currentId === agentRef) return config;
-  config.router.scenarios.default = typeof currentDefault === 'string'
-    ? agentRef
-    : { id: agentRef, provider: providerId, model: modelId };
+  config.router.scenarios.default = agentRef;
   return config;
 }
 
