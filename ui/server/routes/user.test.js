@@ -58,9 +58,81 @@ describe('user onboarding status route', () => {
       hasCompletedOnboarding: false,
     });
   });
+
+  it('accepts Codex subscription credentials without an API key', async () => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'codex/gpt-5.6-sol' },
+        model: {
+          providers: {
+            codex: {
+              protocol: 'openai-responses',
+              url: 'https://chatgpt.com/backend-api/codex',
+              apiKey: '',
+              models: { 'gpt-5.6-sol': {} },
+            },
+          },
+        },
+      },
+    }, { codexAuthenticated: true });
+
+    const data = await request('/api/user/onboarding-status');
+
+    expect(data).toMatchObject({
+      success: true,
+      hasCompletedOnboarding: true,
+    });
+  });
+
+  it('does not complete onboarding for malformed Codex provider config', async () => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'codex/gpt-5.6-sol' },
+        model: { providers: { codex: { apiKey: '' } } },
+      },
+    }, { codexAuthenticated: true });
+
+    const data = await request('/api/user/onboarding-status');
+
+    expect(data).toMatchObject({
+      success: true,
+      hasCompletedOnboarding: false,
+    });
+  });
+
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('does not complete onboarding for a Codex provider with the %s', async (_case, protocol, url) => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'codex/gpt-5.6-sol' },
+        model: {
+          providers: {
+            codex: {
+              protocol,
+              url,
+              apiKey: '',
+              models: { 'gpt-5.6-sol': {} },
+            },
+          },
+        },
+      },
+    }, { codexAuthenticated: true });
+
+    const data = await request('/api/user/onboarding-status');
+
+    expect(data).toMatchObject({
+      success: true,
+      hasCompletedOnboarding: false,
+    });
+  });
 });
 
-async function createUserApp(record) {
+async function createUserApp(record, { codexAuthenticated = false } = {}) {
   vi.doMock('../database/db.js', () => ({
     userDb: {
       getGitConfig: vi.fn(),
@@ -78,6 +150,12 @@ async function createUserApp(record) {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => record),
+  }));
+  vi.doMock('../../../src/model/providers/codex/auth.js', () => ({
+    getCodexAuthStatus: vi.fn(async () => ({
+      authenticated: codexAuthenticated,
+      importAvailable: false,
+    })),
   }));
 
   const { default: userRoutes } = await import('./user.js');

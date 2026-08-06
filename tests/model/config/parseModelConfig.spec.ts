@@ -27,3 +27,17 @@ test("catalog provider resolves api key from default env var when apiKey is blan
 
   assert.equal(config.providers.google.apiKey, "gemini-env");
 });
+
+test("Codex subscription provider does not require an API key", () => {
+  const config = parseModelConfig({
+    providers: {
+      codex: {
+        models: { "gpt-5.6-sol": {} },
+      },
+    },
+  });
+
+  assert.equal(config.providers.codex.protocol, "openai-responses");
+  assert.equal(config.providers.codex.url, "https://chatgpt.com/backend-api/codex");
+  assert.equal(config.providers.codex.apiKey, "");
+});

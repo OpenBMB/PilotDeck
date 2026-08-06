@@ -223,3 +223,42 @@ describe('validatePilotDeckConfig gateway validation', () => {
         expect(config.model.providers.ollama.url).toBe('http://localhost:11434/v1');
     });
 });
+
+describe('validatePilotDeckConfig Codex subscription validation', () => {
+    it('accepts the exact Codex subscription transport without an API key', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'codex/gpt-5.6-sol' },
+            model: {
+                providers: {
+                    codex: {
+                        protocol: 'openai-responses',
+                        url: 'https://chatgpt.com/backend-api/codex',
+                        models: { 'gpt-5.6-sol': {} },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+    });
+
+    it('rejects a Codex provider that points subscription credentials elsewhere', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'codex/gpt-5.6-sol' },
+            model: {
+                providers: {
+                    codex: {
+                        protocol: 'openai-responses',
+                        url: 'https://example.com/v1',
+                        models: { 'gpt-5.6-sol': {} },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'model.providers.codex must use protocol "openai-responses" and url "https://chatgpt.com/backend-api/codex"',
+        );
+    });
+});

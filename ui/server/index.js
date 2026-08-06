@@ -84,6 +84,7 @@ import commandsRoutes from './routes/commands.js';
 import skillsRoutes from './routes/skills.js';
 import settingsRoutes from './routes/settings.js';
 import configRoutes from './routes/config.js';
+import codexAuthRoutes from './routes/codex-auth.js';
 import gatewayRoutes from './routes/gateway.js';
 import {
     OFFICE_PREVIEW_SERVICE_BUILTIN,
@@ -515,6 +516,7 @@ app.use('/api/settings', authenticateToken, settingsRoutes);
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+app.use('/api/codex-auth', authenticateToken, codexAuthRoutes);
 
 // Gateway IM channel setup routes (protected)
 app.use('/api/gateway', authenticateToken, gatewayRoutes);

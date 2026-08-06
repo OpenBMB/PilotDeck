@@ -309,6 +309,117 @@ describe('config test-connection route', () => {
     expect(calls).toEqual(['http://localhost:11434/v1/chat/completions']);
     expect(authHeaders).toEqual([undefined]);
   });
+
+  it('tests Codex through subscription credentials without an API key', async () => {
+    const probeCodexModel = vi.fn(async () => undefined);
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels: vi.fn(),
+      probeCodexModel,
+    }));
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType: 'openai-responses',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        apiKey: '',
+        model: 'gpt-5.6-sol',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+    expect(probeCodexModel).toHaveBeenCalledWith('gpt-5.6-sol');
+  });
+
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('rejects Codex connection tests with the %s without probing subscription credentials', async (_case, providerType, baseUrl) => {
+    const probeCodexModel = vi.fn();
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels: vi.fn(),
+      probeCodexModel,
+    }));
+
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType,
+        baseUrl,
+        apiKey: '',
+        model: 'gpt-5.6-sol',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(probeCodexModel).not.toHaveBeenCalled();
+  });
+
+  it('loads the Codex subscription model catalog without an API key', async () => {
+    const fetchCodexModels = vi.fn(async () => [{
+      id: 'gpt-5.6-sol',
+      displayName: 'GPT-5.6 Sol',
+      contextWindow: 272000,
+      maxOutputTokens: 128000,
+    }]);
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels,
+      probeCodexModel: vi.fn(),
+    }));
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/models', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType: 'openai-responses',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        apiKey: '',
+      }),
+    });
+
+    expect(data).toEqual({
+      ok: true,
+      models: [{
+        id: 'gpt-5.6-sol',
+        displayName: 'GPT-5.6 Sol',
+        contextWindow: 272000,
+        maxOutputTokens: 128000,
+      }],
+    });
+    expect(fetchCodexModels).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['wrong protocol', 'openai', 'https://chatgpt.com/backend-api/codex'],
+    ['wrong URL', 'openai-responses', 'https://example.com/backend-api/codex'],
+  ])('rejects Codex model listing with the %s without loading subscription credentials', async (_case, providerType, baseUrl) => {
+    const fetchCodexModels = vi.fn();
+    vi.doMock('../../../src/model/providers/codex/client.js', () => ({
+      fetchCodexModels,
+      probeCodexModel: vi.fn(),
+    }));
+
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/models', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'codex',
+        providerType,
+        baseUrl,
+        apiKey: '',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(fetchCodexModels).not.toHaveBeenCalled();
+  });
 });
 
 describe('config model-list route', () => {

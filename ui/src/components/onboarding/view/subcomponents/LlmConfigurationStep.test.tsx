@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
   fetchProviderModels: vi.fn(),
   fetchRemoteDefaultModels: vi.fn(),
+  translate: vi.fn((key: string) => key),
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: mocks.translate }),
 }));
 
 vi.mock('../../../../utils/api', () => ({
@@ -23,6 +28,16 @@ describe('LlmConfigurationStep', () => {
     mocks.authenticatedFetch.mockImplementation(async (url: string) => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/codex-auth/status') {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            authenticated: true,
+            importAvailable: false,
+          }),
+        };
       }
       return { ok: true, json: async () => ({}) };
     });
@@ -92,5 +107,39 @@ describe('LlmConfigurationStep', () => {
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Fetch model list' })).toHaveProperty('disabled', true);
     expect(screen.getByRole('combobox', { name: 'Model' }).textContent).toContain('Kimi K2.6');
+  });
+
+  it('uses subscription auth instead of an API key for Codex', async () => {
+    mocks.fetchProviderModels.mockResolvedValueOnce([
+      { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' },
+    ]);
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Codex \(ChatGPT subscription\)$/ }));
+
+    expect(screen.queryByLabelText(/^API Key/)).toBeNull();
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledWith({
+        providerId: 'codex',
+        protocol: 'openai-responses',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        apiKey: '',
+      });
+    });
+  });
+
+  it('keeps Codex authenticated when the selected provider is selected again', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    const codexButton = screen.getByRole('button', { name: /^Codex \(ChatGPT subscription\)$/ });
+    fireEvent.click(codexButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveProperty('disabled', false);
+    });
+
+    fireEvent.click(codexButton);
+
+    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveProperty('disabled', false);
   });
 });
