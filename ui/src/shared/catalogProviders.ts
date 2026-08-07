@@ -143,8 +143,8 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     protocol: 'openai',
     defaultUrl: 'https://api.minimax.io/v1',
     models: [
-      { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5', maxContextTokens: 1000000 },
-      { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000 },
+      { id: 'MiniMax-M3', displayName: 'MiniMax M3', supportsImage: true, maxContextTokens: 1000000 },
+      { id: 'MiniMax-M2.7', displayName: 'MiniMax M2.7', maxContextTokens: 204800 },
     ],
   },
   {
