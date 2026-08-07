@@ -287,6 +287,9 @@ const runMigrations = () => {
     ensureColumn('group_turns', 'message_sequence', 'INTEGER');
     ensureColumn('group_turns', 'idempotency_key', 'TEXT');
     ensureColumn('group_turns', 'required_delegates_json', "TEXT NOT NULL DEFAULT '[]'");
+    ensureColumn('group_turns', 'run_mode', "TEXT NOT NULL DEFAULT 'agent'");
+    ensureColumn('group_turns', 'permission_mode', "TEXT NOT NULL DEFAULT 'default'");
+    ensureColumn('group_turns', 'base_permission_mode', "TEXT NOT NULL DEFAULT 'default'");
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS group_conversations (

@@ -87,7 +87,12 @@ describe('multi-user migration and isolation primitives', () => {
     database.instancesDb.ensureLocalForUser(alice);
     database.instancesDb.ensureLocalForUser(bob);
 
-    const { canonicalizeProjectPath, getProjectRole, requireSessionOwner } = await import('./access-control.js');
+    const {
+      canonicalizeProjectPath,
+      getProjectRole,
+      requireSessionOwner,
+      resolveProjectNameForUser,
+    } = await import('./access-control.js');
     const projectPath = canonicalizeProjectPath(join(tempDirs[0], 'shared-project'));
     database.projectAccessDb.setRole(projectPath, owner.id, 'owner', owner.id);
     database.projectAccessDb.setRole(projectPath, alice.id, 'editor', owner.id);
@@ -110,6 +115,14 @@ describe('multi-user migration and isolation primitives', () => {
     });
     expect(groupChatDb.getRoom(alice.id, room.id)).toMatchObject({ participantRole: 'member' });
     expect(groupChatDb.getRoom(bob.id, room.id)).toBeNull();
+    await expect(resolveProjectNameForUser(`group:${room.id}`, {
+      id: alice.id,
+      systemRole: 'member',
+    })).resolves.toBe(projectPath);
+    await expect(resolveProjectNameForUser(`group:${room.id}`, {
+      id: bob.id,
+      systemRole: 'member',
+    })).rejects.toMatchObject({ statusCode: 404 });
     groupChatDb.setParticipantMuted(alice.id, room.id, true);
     expect(groupChatDb.getRoom(alice.id, room.id).muted).toBe(true);
     expect(groupChatDb.getRoom(owner.id, room.id).muted).toBe(false);

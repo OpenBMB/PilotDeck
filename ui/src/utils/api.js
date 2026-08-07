@@ -287,6 +287,10 @@ export const api = {
   stopGroupConversation: (groupId, conversationId) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations/${encodeURIComponent(conversationId)}/stop`, {
     method: 'POST',
   }),
+  respondToGroupInteraction: (groupId, conversationId, requestId, payload) => authenticatedFetch(`/api/groups/${encodeURIComponent(groupId)}/conversations/${encodeURIComponent(conversationId)}/interactions/${encodeURIComponent(requestId)}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   uploadProjectAttachments: (projectName, attachments) => {
     const formData = new FormData();
     for (const attachment of attachments) formData.append('attachments', attachment);

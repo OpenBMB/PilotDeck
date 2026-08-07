@@ -215,7 +215,11 @@ function MainAreaV2Content(props: MainAreaV2Props) {
   const sessionSummary = selectedGroupConversation?.title
     || (selectedSession ? sessionDisplayTitle(selectedSession) : '');
   const projectName = selectedGroup
-    ? (selectedGroup.projectName === 'general' ? '通用' : selectedGroup.projectName)
+    ? (selectedGroup.projectName === 'general'
+        ? '通用'
+        : selectedProject
+          ? projectDisplayName(selectedProject)
+          : selectedGroup.projectName)
     : selectedProject
     ? projectDisplayName(selectedProject)
     : t('navigation.home', { defaultValue: 'Home' });

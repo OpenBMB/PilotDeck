@@ -35,6 +35,7 @@ export interface AgentGroup {
   ownerUserId?: number;
   coordinatorInstanceId?: string;
   participantRole?: 'owner' | 'moderator' | 'member';
+  projectRole?: 'owner' | 'editor' | 'viewer';
   status: 'active' | 'archived';
   unreadCount: number;
   hasSilentUnread: boolean;

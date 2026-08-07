@@ -8,7 +8,21 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { AtSign, Loader2, Paperclip, Send, Square, UsersRound } from 'lucide-react';
+import {
+  AtSign,
+  Bot,
+  Check,
+  ChevronDown,
+  CircleHelp,
+  Hand,
+  ListChecks,
+  Loader2,
+  Paperclip,
+  Send,
+  ShieldAlert,
+  Square,
+  UsersRound,
+} from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type {
   AgentGroupFileAttachment,
@@ -18,6 +32,7 @@ import type {
 } from '../../types/group';
 import { api } from '../../utils/api';
 import ImageAttachment from '../chat/view/subcomponents/ImageAttachment';
+import type { ChatRunMode, PermissionMode } from '../chat/types/types';
 
 export type MentionDraft = {
   content: string;
@@ -40,6 +55,11 @@ type Props = {
   stopping?: boolean;
   showStopButton?: boolean;
   statusText?: string;
+  runMode: ChatRunMode;
+  permissionMode: PermissionMode;
+  modeSelectionDisabled?: boolean;
+  onRunModeChange: (mode: ChatRunMode) => void;
+  onPermissionModeChange: (mode: PermissionMode) => void;
   onSubmit: (draft: MentionDraft) => boolean | Promise<boolean>;
   onStop?: () => void | Promise<void>;
 };
@@ -52,6 +72,17 @@ type UploadedAttachments = {
 
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+const RUN_MODE_OPTIONS = [
+  { mode: 'agent' as const, Icon: Bot, label: '智能体', description: '直接处理并执行任务' },
+  { mode: 'plan' as const, Icon: ListChecks, label: '计划', description: '先产出计划，确认后再执行' },
+  { mode: 'ask' as const, Icon: CircleHelp, label: '询问', description: '仅回答问题，不修改文件' },
+];
+
+const PERMISSION_MODE_OPTIONS = [
+  { mode: 'default' as const, Icon: Hand, label: '默认权限', description: '执行高风险操作前询问' },
+  { mode: 'bypassPermissions' as const, Icon: ShieldAlert, label: '完全访问权限', description: '跳过确认并允许完整访问' },
+];
 
 type MentionCandidate = {
   id: string;
@@ -141,6 +172,11 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
   stopping = false,
   showStopButton = false,
   statusText,
+  runMode,
+  permissionMode,
+  modeSelectionDisabled = false,
+  onRunModeChange,
+  onPermissionModeChange,
   onSubmit,
   onStop,
 }, ref) {
@@ -155,7 +191,14 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
   const submittingRef = useRef(false);
   const [attachmentError, setAttachmentError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [runModeMenuOpen, setRunModeMenuOpen] = useState(false);
+  const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedRunMode = RUN_MODE_OPTIONS.find((option) => option.mode === runMode) || RUN_MODE_OPTIONS[0];
+  const selectedPermissionMode = PERMISSION_MODE_OPTIONS.find((option) => option.mode === permissionMode) || PERMISSION_MODE_OPTIONS[0];
+  const SelectedRunModeIcon = selectedRunMode.Icon;
+  const SelectedPermissionIcon = selectedPermissionMode.Icon;
 
   const candidates = useMemo<MentionCandidate[]>(() => {
     const normalized = query.toLocaleLowerCase();
@@ -459,6 +502,59 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
         </div>
         <div className="pd-composer-control-row flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1">
           <div className="flex min-w-0 flex-1 items-center gap-0.5">
+            <div
+              className="relative mr-1"
+              onBlur={(event) => {
+                const nextTarget = event.relatedTarget as Node | null;
+                if (!nextTarget || !event.currentTarget.contains(nextTarget)) setRunModeMenuOpen(false);
+              }}
+            >
+              <button
+                type="button"
+                disabled={modeSelectionDisabled || disabled}
+                onClick={() => setRunModeMenuOpen((open) => !open)}
+                className="pd-composer-icon-button inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-45 dark:text-neutral-300 dark:hover:bg-neutral-800 sm:max-w-[140px]"
+                title={modeSelectionDisabled ? '项目只读成员仅能使用询问模式' : '选择运行模式'}
+                aria-haspopup="menu"
+                aria-expanded={runModeMenuOpen}
+              >
+                <SelectedRunModeIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span className="truncate">{selectedRunMode.label}</span>
+                <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', runModeMenuOpen && 'rotate-180')} />
+              </button>
+              {runModeMenuOpen ? (
+                <div role="menu" className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+                  {RUN_MODE_OPTIONS.map((option) => {
+                    const Icon = option.Icon;
+                    const selected = runMode === option.mode;
+                    return (
+                      <button
+                        key={option.mode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          onRunModeChange(option.mode);
+                          setRunModeMenuOpen(false);
+                        }}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition',
+                          selected ? 'bg-neutral-100 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/70',
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.9} />
+                        <span className="min-w-0 flex-1">
+                          <span className={cn('block truncate text-[13px]', selected ? 'font-bold text-neutral-900 dark:text-neutral-100' : 'font-medium text-neutral-700 dark:text-neutral-300')}>{option.label}</span>
+                          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">{option.description}</span>
+                        </span>
+                        {selected ? <Check className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-300" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
             <button type="button" onClick={openMentionMenu} disabled={disabled || uploading} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800">
               <AtSign className="h-4 w-4" /> 提及成员
             </button>
@@ -472,6 +568,64 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(function
             >
               <Paperclip className="h-4 w-4" />
             </button>
+            <div
+              className="relative"
+              onBlur={(event) => {
+                const nextTarget = event.relatedTarget as Node | null;
+                if (!nextTarget || !event.currentTarget.contains(nextTarget)) setPermissionMenuOpen(false);
+              }}
+            >
+              <button
+                type="button"
+                disabled={modeSelectionDisabled || disabled || runMode === 'plan'}
+                onClick={() => setPermissionMenuOpen((open) => !open)}
+                className={cn(
+                  'pd-composer-icon-button inline-flex h-7 max-w-[132px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px]',
+                  modeSelectionDisabled || disabled || runMode === 'plan'
+                    ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
+                    : permissionMode === 'bypassPermissions'
+                      ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+                      : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                )}
+                title={runMode === 'plan' ? '计划模式使用受控权限' : modeSelectionDisabled ? '项目只读成员不能修改权限模式' : '选择权限模式'}
+                aria-haspopup="menu"
+                aria-expanded={permissionMenuOpen}
+              >
+                <SelectedPermissionIcon className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                <span className="truncate">{selectedPermissionMode.label}</span>
+                <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', permissionMenuOpen && 'rotate-180')} />
+              </button>
+              {permissionMenuOpen ? (
+                <div role="menu" className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border border-neutral-200 bg-white p-1.5 text-left shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+                  {PERMISSION_MODE_OPTIONS.map((option) => {
+                    const Icon = option.Icon;
+                    const selected = permissionMode === option.mode;
+                    const dangerous = option.mode === 'bypassPermissions';
+                    return (
+                      <button
+                        key={option.mode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          onPermissionModeChange(option.mode);
+                          setPermissionMenuOpen(false);
+                        }}
+                        className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition', selected ? 'bg-neutral-100 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/70')}
+                      >
+                        <Icon className={cn('h-4 w-4 shrink-0', dangerous ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400')} />
+                        <span className="min-w-0 flex-1">
+                          <span className={cn('block truncate text-[13px] font-medium', dangerous ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-900 dark:text-neutral-100')}>{option.label}</span>
+                          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">{option.description}</span>
+                        </span>
+                        {selected ? <Check className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-300" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
             {uploading ? (
               <span className="ml-1 truncate text-xs text-blue-600 dark:text-blue-300">正在上传 {attachedFiles.length} 个附件…</span>
             ) : attachedFiles.length > 0 ? (

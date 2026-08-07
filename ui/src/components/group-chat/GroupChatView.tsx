@@ -38,9 +38,14 @@ import type {
   GroupMemberKind,
   GroupTriggerMode,
 } from '../../types/group';
+import type { Project } from '../../types/app';
 import { api } from '../../utils/api';
+import { groupWorkspaceProjectName } from '../../utils/groupWorkspaceProject';
 import { useAuth } from '../auth/context/AuthContext';
+import type { ChatRunMode, PendingPermissionRequest, PermissionMode } from '../chat/types/types';
+import { grantPilotDeckToolPermission } from '../chat/utils/chatPermissions';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
+import PermissionRequestsBanner from '../chat/view/subcomponents/PermissionRequestsBanner';
 import { ProcessLiveStatus, type ProcessTraceStep } from '../chat-v2/ProcessTrace';
 import { MentionComposer, type MentionDraft } from './MentionComposer';
 
@@ -582,6 +587,8 @@ export default function GroupChatView({
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedProcessKey, setSelectedProcessKey] = useState('');
+  const [runMode, setRunMode] = useState<ChatRunMode>('agent');
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const lastMessageSignatureRef = useRef('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -688,6 +695,37 @@ export default function GroupChatView({
   }, [conversationId, groupId]);
 
   useEffect(() => {
+    const storedRunMode = window.localStorage.getItem(`group-run-mode:${conversationId}`);
+    const storedPermissionMode = window.localStorage.getItem(`group-permission-mode:${conversationId}`)
+      || window.localStorage.getItem('permissionMode-default');
+    setRunMode(['agent', 'plan', 'ask'].includes(storedRunMode || '')
+      ? storedRunMode as ChatRunMode
+      : 'agent');
+    setPermissionMode(storedPermissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default');
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (group?.projectRole !== 'viewer') return;
+    setRunMode('ask');
+    setPermissionMode('default');
+  }, [group?.projectRole]);
+
+  const pendingPermissionRequests = useMemo<PendingPermissionRequest[]>(() => messages
+    .filter((message) => message.kind === 'activity'
+      && message.status === 'thinking'
+      && metadataString(message, 'activityType') === 'permission'
+      && metadataString(message, 'state') === 'awaiting'
+      && metadataString(message, 'requestId'))
+    .map((message) => ({
+      requestId: metadataString(message, 'requestId'),
+      toolName: metadataString(message, 'toolName'),
+      input: message.metadata.input,
+      sessionId: `group:${groupId}:${conversationId}`,
+      receivedAt: new Date(message.createdAt),
+      isElicitation: message.metadata.isElicitation === true,
+    })), [conversationId, groupId, messages]);
+
+  useEffect(() => {
     if (selectedProcessKey && !selectedProcessBundle) setSelectedProcessKey('');
   }, [selectedProcessBundle, selectedProcessKey]);
 
@@ -741,7 +779,15 @@ export default function GroupChatView({
     setSending(true);
     setError('');
     try {
-      const response = await api.sendGroupMessage(group.id, { ...draft, conversationId });
+      const effectiveRunMode: ChatRunMode = group.projectRole === 'viewer' ? 'ask' : runMode;
+      const effectiveBasePermissionMode: PermissionMode = group.projectRole === 'viewer' ? 'default' : permissionMode;
+      const response = await api.sendGroupMessage(group.id, {
+        ...draft,
+        conversationId,
+        runMode: effectiveRunMode,
+        permissionMode: effectiveRunMode === 'plan' ? 'plan' : effectiveBasePermissionMode,
+        basePermissionMode: effectiveBasePermissionMode,
+      });
       const payload = await json<{ error?: string }>(response);
       if (!response.ok) throw new Error(readError(payload, '发送失败'));
       await refresh(true);
@@ -752,6 +798,35 @@ export default function GroupChatView({
       return false;
     } finally {
       setSending(false);
+    }
+  };
+
+  const changeRunMode = (next: ChatRunMode) => {
+    if (group?.projectRole === 'viewer') return;
+    setRunMode(next);
+    window.localStorage.setItem(`group-run-mode:${conversationId}`, next);
+  };
+
+  const changePermissionMode = (next: PermissionMode) => {
+    if (group?.projectRole === 'viewer' || next === 'plan') return;
+    setPermissionMode(next);
+    window.localStorage.setItem(`group-permission-mode:${conversationId}`, next);
+  };
+
+  const handlePermissionDecision = async (
+    requestIds: string | string[],
+    decision: { allow?: boolean; message?: string; rememberEntry?: string | null; updatedInput?: unknown },
+  ) => {
+    const ids = (Array.isArray(requestIds) ? requestIds : [requestIds]).filter(Boolean);
+    try {
+      for (const requestId of ids) {
+        const response = await api.respondToGroupInteraction(groupId, conversationId, requestId, decision);
+        const payload = await json<{ error?: string }>(response);
+        if (!response.ok) throw new Error(readError(payload, '处理权限请求失败'));
+      }
+      await refresh(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
 
@@ -1044,15 +1119,26 @@ export default function GroupChatView({
       <div className={cn('shrink-0 bg-white pt-3 dark:bg-neutral-950', compact ? 'px-3 pb-3' : 'px-4 pb-5 sm:px-8')}>
         <div className={cn('relative mx-auto', compact ? 'max-w-none' : 'max-w-3xl')}>
           {error ? <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
+          <PermissionRequestsBanner
+            pendingPermissionRequests={pendingPermissionRequests}
+            handlePermissionDecision={(requestIds, decision) => { void handlePermissionDecision(requestIds, decision); }}
+            handleGrantToolPermission={({ entry }) => grantPilotDeckToolPermission(entry)}
+            onPlanExecutionApproved={() => changeRunMode('agent')}
+          />
           <MentionComposer
             members={group.members}
-            projectName={group.projectName}
+            projectName={groupWorkspaceProjectName(group.id)}
             placeholder={group.triggerMode === 'mentions' ? '输入消息，使用 @成员 或 @所有人 触发回复…' : '向群组发送消息，由你的通用智能体理解并协调…'}
             disabled={roundInProgress}
             sending={sending}
             stopping={stopping}
             showStopButton={roundInProgress}
             statusText={roundInProgress ? (stopping ? '正在停止本轮执行…' : '智能体正在处理并协调本轮消息') : undefined}
+            runMode={group.projectRole === 'viewer' ? 'ask' : runMode}
+            permissionMode={group.projectRole === 'viewer' ? 'default' : permissionMode}
+            modeSelectionDisabled={group.projectRole === 'viewer'}
+            onRunModeChange={changeRunMode}
+            onPermissionModeChange={changePermissionMode}
             onSubmit={send}
             onStop={stop}
           />
@@ -1118,21 +1204,27 @@ function GroupSettingsDrawer({
   const [participants, setParticipants] = useState<AgentGroupParticipant[]>([]);
   const [participantCandidates, setParticipantCandidates] = useState<Array<{ userId: number; displayName: string; projectRole: string; defaultInstance: { id: string; name: string; kind: string } | null }>>([]);
   const [myInstances, setMyInstances] = useState<Array<{ id: string; name: string; status: string; isDefault: boolean }>>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectName, setProjectName] = useState(group.projectName);
   const [inviteUserId, setInviteUserId] = useState('');
   const isOwner = group.participantRole === 'owner';
   const canManageMembers = isOwner || group.participantRole === 'moderator';
 
   const refreshParticipants = useCallback(async () => {
-    const [participantsResponse, instancesResponse] = await Promise.all([
+    const [participantsResponse, instancesResponse, projectsResponse] = await Promise.all([
       api.groupParticipants(group.id),
       api.instances.list(),
+      api.projects(),
     ]);
     const participantsPayload = await json<{ participants?: AgentGroupParticipant[]; error?: string }>(participantsResponse);
     const instancesPayload = await json<{ instances?: Array<{ id: string; name: string; status: string; isDefault: boolean }>; error?: string }>(instancesResponse);
+    const projectsPayload = await json<Project[] | { error?: string }>(projectsResponse);
     if (!participantsResponse.ok) throw new Error(readError(participantsPayload, '加载群组参与者失败'));
     if (!instancesResponse.ok) throw new Error(readError(instancesPayload, '加载实例失败'));
+    if (!projectsResponse.ok) throw new Error(readError(projectsPayload, '加载项目失败'));
     setParticipants(participantsPayload.participants || []);
     setMyInstances((instancesPayload.instances || []).filter((instance) => instance.status === 'approved'));
+    setProjects(Array.isArray(projectsPayload) ? projectsPayload : []);
     if (group.participantRole === 'owner' || group.participantRole === 'moderator') {
       const candidatesResponse = await api.groupParticipantCandidates(group.id);
       const candidatesPayload = await json<{ candidates?: typeof participantCandidates; error?: string }>(candidatesResponse);
@@ -1145,7 +1237,7 @@ function GroupSettingsDrawer({
     void refreshParticipants().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [refreshParticipants]);
 
-  const patchGroup = async (patch: Partial<{ title: string; triggerMode: GroupTriggerMode; muted: boolean }>) => {
+  const patchGroup = async (patch: Partial<{ title: string; projectName: string; triggerMode: GroupTriggerMode; muted: boolean }>) => {
     setSaving(true);
     setError('');
     try {
@@ -1207,10 +1299,35 @@ function GroupSettingsDrawer({
             </div>
           </div>
 
-          <div className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800/60">
+          <div className="space-y-2 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800/60">
             <div className="text-xs text-neutral-500">绑定工作空间</div>
-            <div className="mt-1 truncate text-sm font-medium">{projectLabel(group)}</div>
-            <div className="mt-1 truncate font-mono text-[10px] text-neutral-400">{group.projectPath}</div>
+            {isOwner ? (
+              <div className="flex gap-2">
+                <select
+                  aria-label="绑定工作空间"
+                  value={projectName}
+                  disabled={saving}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-blue-400 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
+                >
+                  {projects.map((project) => (
+                    <option key={project.name} value={project.name}>{project.displayName || project.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={saving || !projectName || projectName === group.projectName}
+                  onClick={() => void patchGroup({ projectName })}
+                  className="rounded-lg bg-neutral-900 px-3 text-xs text-white disabled:opacity-35 dark:bg-white dark:text-neutral-900"
+                >
+                  绑定
+                </button>
+              </div>
+            ) : <div className="truncate text-sm font-medium">{projectLabel(group)}</div>}
+            <div className="truncate font-mono text-[10px] text-neutral-400">
+              {projects.find((project) => project.name === projectName)?.fullPath || group.projectPath}
+            </div>
+            {isOwner ? <div className="text-[11px] text-neutral-500">切换后，群组文件、附件和主智能体工作目录都会使用新项目。</div> : null}
           </div>
 
           <section className="space-y-3">

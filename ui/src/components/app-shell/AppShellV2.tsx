@@ -23,6 +23,7 @@ import {
   type ProjectSession,
 } from '../../types/app';
 import { api } from '../../utils/api';
+import { groupWorkspaceProject } from '../../utils/groupWorkspaceProject';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import GroupCreateDialog from '../group-chat/GroupCreateDialog';
 import type { AgentGroup, AgentGroupConversation } from '../../types/group';
@@ -177,18 +178,8 @@ export default function AppShellV2() {
     if (!selectedGroupId) return null;
     const selectedGroup = groups.find((group) => group.id === selectedGroupId);
     if (!selectedGroup) return null;
-    return sidebarSharedProps.projects.find((project) => (
-      project.name === selectedGroup.projectName
-      || project.fullPath === selectedGroup.projectPath
-      || project.path === selectedGroup.projectPath
-    )) ?? {
-      name: selectedGroup.projectName,
-      displayName: selectedGroup.projectName === 'general' ? 'General' : selectedGroup.projectName,
-      fullPath: selectedGroup.projectPath,
-      path: selectedGroup.projectPath,
-      sessions: [],
-    };
-  }, [groups, selectedGroupId, sidebarSharedProps.projects]);
+    return groupWorkspaceProject(selectedGroup);
+  }, [groups, selectedGroupId]);
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) ?? null,
     [groups, selectedGroupId],

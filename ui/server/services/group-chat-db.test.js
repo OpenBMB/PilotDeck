@@ -19,6 +19,7 @@ afterEach(() => {
   delete process.env.DATABASE_PATH;
   delete process.env.PILOTDECK_GROUP_MEMBER_TIMEOUT_MS;
   delete process.env.PILOTDECK_GROUP_TURN_TIMEOUT_MS;
+  delete process.env.PILOTDECK_AUTH_MODE;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -64,6 +65,15 @@ describe('group chat persistence', () => {
 
     expect(groupChatDb.getRoom(user.id, room.id).members.map((member) => member.id))
       .toEqual(['reviewer', 'engineer', 'main']);
+
+    const rebound = groupChatDb.updateRoom(user.id, room.id, {
+      projectName: 'office',
+      projectPath: '/workspace/office_01',
+    });
+    expect(rebound).toMatchObject({
+      projectName: 'office',
+      projectPath: '/workspace/office_01',
+    });
 
     groupChatDb.createMessage(user.id, room.id, {
       senderType: 'agent', senderMemberId: 'reviewer', senderName: 'Reviewer', content: 'Looks good.',
@@ -446,9 +456,149 @@ describe('group chat dispatch semantics', () => {
     ]);
     expect(gatewayCalls.every((call) => call.workspaceCwd === '/workspace/PilotDeck')).toBe(true);
     expect(gatewayCalls.every((call) => call.projectKey === '/workspace/PilotDeck')).toBe(true);
+    expect(gatewayCalls[0]).toMatchObject({
+      runMode: 'agent',
+      mode: 'default',
+      basePermissionMode: 'default',
+      canPrompt: true,
+    });
+    expect(gatewayCalls[0].permissionRules?.deny || []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ toolName: 'write_file' }),
+    ]));
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('主智能体');
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('group_member_delegate');
     expect(gatewayCalls[0].syntheticMessages[0].text).toContain('id=reviewer');
+  });
+
+  it('persists plan and full-access choices and forwards them to the same gateway agent loop', async () => {
+    const { user, groupChatDb } = await setup();
+    const gatewayCalls = [];
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        submitTurn: async function* (input) {
+          gatewayCalls.push(input);
+          yield { type: 'assistant_text_delta', text: 'done' };
+          yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Mode parity', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: true,
+    });
+
+    const plan = groupChatService.sendMessage(user.id, room.id, {
+      conversationId: room.conversations[0].id,
+      content: 'Plan this change',
+      runMode: 'plan',
+      permissionMode: 'plan',
+      basePermissionMode: 'bypassPermissions',
+    });
+    expect(groupChatDb.getTurnById(plan.roundId)).toMatchObject({
+      runMode: 'plan', permissionMode: 'plan', basePermissionMode: 'bypassPermissions',
+    });
+    await vi.waitFor(() => expect(gatewayCalls).toHaveLength(1));
+    expect(gatewayCalls[0]).toMatchObject({
+      runMode: 'plan', mode: 'plan', basePermissionMode: 'bypassPermissions', allowPlanModeTools: true,
+    });
+
+    const secondConversation = groupChatDb.createConversation(user.id, room.id);
+    const full = groupChatService.sendMessage(user.id, room.id, {
+      conversationId: secondConversation.id,
+      content: 'Implement this change',
+      runMode: 'agent',
+      permissionMode: 'bypassPermissions',
+      basePermissionMode: 'bypassPermissions',
+    });
+    expect(groupChatDb.getTurnById(full.roundId)).toMatchObject({
+      runMode: 'agent', permissionMode: 'bypassPermissions', basePermissionMode: 'bypassPermissions',
+    });
+    await vi.waitFor(() => expect(gatewayCalls).toHaveLength(2));
+    expect(gatewayCalls[1]).toMatchObject({
+      runMode: 'agent', mode: 'bypassPermissions', basePermissionMode: 'bypassPermissions',
+    });
+  });
+
+  it('persists gateway permission requests and resumes the blocked group turn after a decision', async () => {
+    const { user, groupChatDb } = await setup();
+    let resolveDecision;
+    const decision = new Promise((resolve) => { resolveDecision = resolve; });
+    const gateway = {
+      submitTurn: async function* () {
+        yield { type: 'permission_request', requestId: 'permission-1', toolName: 'write_file', payload: { path: 'index.html' } };
+        await decision;
+        yield { type: 'assistant_text_delta', text: 'File created.' };
+        yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+      },
+      permissionDecide: vi.fn(async (input) => {
+        resolveDecision(input);
+        return { delivered: true };
+      }),
+    };
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(async () => gateway) }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Permission parity', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: true,
+    });
+
+    const sent = groupChatService.sendMessage(user.id, room.id, {
+      content: 'Create index.html', runMode: 'agent', permissionMode: 'default',
+    });
+    await vi.waitFor(() => {
+      expect(groupChatDb.listMessages(user.id, room.id, room.conversations[0].id, 50)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'activity', status: 'thinking',
+          metadata: expect.objectContaining({ activityType: 'permission', state: 'awaiting', requestId: 'permission-1' }),
+        }),
+      ]));
+    });
+
+    expect(await groupChatService.respondToInteraction(
+      user.id, room.id, room.conversations[0].id, 'permission-1', { allow: true },
+    )).toEqual({ delivered: true });
+    await vi.waitFor(() => expect(groupChatDb.getTurnById(sent.roundId).status).toBe('completed'));
+    expect(gateway.permissionDecide).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 'permission-1', decision: 'allow',
+    }));
+    const permissionMessage = groupChatDb.listMessages(user.id, room.id, room.conversations[0].id, 50)
+      .find((message) => message.metadata.requestId === 'permission-1');
+    expect(permissionMessage).toMatchObject({ status: 'completed', metadata: expect.objectContaining({ decision: 'allow' }) });
+  });
+
+  it('enforces the project viewer ceiling even when the client requests agent full access', async () => {
+    const { user, groupChatDb, database } = await setup();
+    process.env.PILOTDECK_AUTH_MODE = 'true';
+    database.projectAccessDb.setRole('/workspace/PilotDeck', user.id, 'viewer', user.id);
+    const gatewayCalls = [];
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(async () => ({
+        submitTurn: async function* (input) {
+          gatewayCalls.push(input);
+          yield { type: 'assistant_text_delta', text: 'read-only reply' };
+          yield { type: 'turn_completed', usage: {}, finishReason: 'completed' };
+        },
+      })),
+    }));
+    const { groupChatService } = await import('./group-chat-service.js');
+    const room = groupChatDb.createRoom(user.id, {
+      title: 'Viewer group', projectName: 'pilotdeck', projectPath: '/workspace/PilotDeck',
+      triggerMode: 'auto', muted: true,
+    });
+    const sent = groupChatService.sendMessage(user.id, room.id, {
+      content: 'Try to write', runMode: 'agent', permissionMode: 'bypassPermissions',
+    });
+
+    expect(groupChatDb.getTurnById(sent.roundId)).toMatchObject({
+      runMode: 'ask', permissionMode: 'default', basePermissionMode: 'default',
+    });
+    await vi.waitFor(() => expect(gatewayCalls).toHaveLength(1));
+    expect(gatewayCalls[0]).toMatchObject({ runMode: 'ask', mode: 'default', canPrompt: false });
+    expect(gatewayCalls[0].permissionRules.deny).toEqual(expect.arrayContaining([
+      expect.objectContaining({ toolName: 'write_file', behavior: 'deny' }),
+      expect.objectContaining({ toolName: 'bash', behavior: 'deny' }),
+    ]));
   });
 
   it('persists uploaded group attachments and forwards them to the entry PilotDeck turn', async () => {

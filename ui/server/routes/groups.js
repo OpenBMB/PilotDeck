@@ -14,9 +14,13 @@ const fail = (res, status, error) => res.status(status).json({
   error: error instanceof Error ? error.message : String(error),
 });
 
+const withProjectRole = (group, user) => group
+  ? { ...group, projectRole: getProjectRole(group.projectPath, user) }
+  : group;
+
 router.get('/', (req, res) => {
   try {
-    res.json({ groups: groupChatDb.listRooms(req.user.id) });
+    res.json({ groups: groupChatDb.listRooms(req.user.id).map((group) => withProjectRole(group, req.user)) });
   } catch (error) {
     fail(res, 500, error);
   }
@@ -47,7 +51,7 @@ router.post('/', async (req, res) => {
       coordinatorInstanceId: coordinator.id,
     });
     recordAudit(req, { eventType: 'group.created', targetType: 'group', targetId: group.id, metadata: { projectPath: project.fullPath } });
-    res.status(201).json({ group });
+    res.status(201).json({ group: withProjectRole(group, req.user) });
   } catch (error) {
     fail(res, 400, error);
   }
@@ -65,7 +69,7 @@ router.get('/:groupId', (req, res) => {
   try {
     const group = groupChatDb.getRoom(req.user.id, req.params.groupId);
     if (!group) return fail(res, 404, '群组不存在。');
-    res.json({ group });
+    res.json({ group: withProjectRole(group, req.user) });
   } catch (error) {
     fail(res, 500, error);
   }
@@ -124,7 +128,7 @@ router.delete('/:groupId/conversations/:conversationId', (req, res) => {
   }
 });
 
-router.patch('/:groupId', (req, res) => {
+router.patch('/:groupId', async (req, res) => {
   try {
     const existing = groupChatDb.getRoom(req.user.id, req.params.groupId);
     if (!existing) return fail(res, 404, '群组不存在。');
@@ -138,17 +142,56 @@ router.patch('/:groupId', (req, res) => {
       if (!['auto', 'mentions'].includes(req.body.triggerMode)) return fail(res, 400, '无效的触发模式。');
       patch.triggerMode = req.body.triggerMode;
     }
+    if (req.body?.projectName !== undefined) {
+      if (existing.participantRole !== 'owner') return fail(res, 403, '只有群主可以修改绑定工作空间。');
+      const projectName = typeof req.body.projectName === 'string' ? req.body.projectName.trim() : '';
+      const projects = filterProjectsForUser(await getProjects(null, { userId: req.user.id }), req.user);
+      const project = projects.find((candidate) => candidate.name === projectName);
+      if (!project) return fail(res, 400, '请选择有效的项目工作空间。');
+      const projectRole = getProjectRole(project.fullPath, req.user);
+      if (!hasProjectRole(projectRole, 'editor')) return fail(res, 403, '该项目角色不能绑定群组。');
+
+      const participants = groupChatDb.listParticipants(req.user.id, req.params.groupId) || [];
+      const unavailableParticipant = participants.find((participant) => {
+        const participantUser = userDb.getUserById(participant.userId);
+        return !participantUser || !hasProjectRole(getProjectRole(project.fullPath, participantUser), 'viewer');
+      });
+      if (unavailableParticipant) return fail(res, 409, '群组参与者尚未全部获得目标项目的访问权。');
+
+      const missingRemoteBinding = participants.find((participant) => (
+        participant.instanceKind === 'remote'
+        && participant.boundInstanceId
+        && !instancesDb.getProjectBinding(participant.boundInstanceId, project.fullPath)
+      ));
+      if (missingRemoteBinding) return fail(res, 409, '群组中的远端实例尚未绑定目标项目工作区。');
+
+      patch.projectName = project.name;
+      patch.projectPath = project.fullPath;
+    }
     if (req.body?.muted !== undefined) {
       const participant = groupChatDb.setParticipantMuted(req.user.id, req.params.groupId, req.body.muted === true);
       if (!participant) return fail(res, 404, '群组不存在。');
     }
-    const hasSharedPatch = patch.title !== undefined || patch.triggerMode !== undefined;
+    const hasSharedPatch = patch.title !== undefined
+      || patch.triggerMode !== undefined
+      || patch.projectName !== undefined;
     if (hasSharedPatch && existing.participantRole !== 'owner') return fail(res, 403, '只有群主可以修改群组设置。');
     const group = hasSharedPatch
       ? groupChatDb.updateRoom(req.user.id, req.params.groupId, patch)
       : groupChatDb.getRoom(req.user.id, req.params.groupId);
     if (!group) return fail(res, 404, '群组不存在。');
-    res.json({ group });
+    if (patch.projectName !== undefined) {
+      recordAudit(req, {
+        eventType: 'group.project_changed',
+        targetType: 'group',
+        targetId: group.id,
+        metadata: {
+          previousProjectPath: existing.projectPath,
+          projectPath: group.projectPath,
+        },
+      });
+    }
+    res.json({ group: withProjectRole(group, req.user) });
   } catch (error) {
     fail(res, 400, error);
   }
@@ -247,6 +290,23 @@ router.post('/:groupId/conversations/:conversationId/stop', async (req, res) => 
       req.params.conversationId,
     );
     if (!result) return fail(res, 404, '群组会话不存在。');
+    return res.json(result);
+  } catch (error) {
+    return fail(res, 400, error);
+  }
+});
+
+router.post('/:groupId/conversations/:conversationId/interactions/:requestId', async (req, res) => {
+  try {
+    const result = await groupChatService.respondToInteraction(
+      req.user.id,
+      req.params.groupId,
+      req.params.conversationId,
+      req.params.requestId,
+      req.body || {},
+    );
+    if (!result) return fail(res, 404, '交互请求不存在或已经结束。');
+    if (!result.delivered) return fail(res, 409, '交互请求已经结束，无法重复处理。');
     return res.json(result);
   } catch (error) {
     return fail(res, 400, error);

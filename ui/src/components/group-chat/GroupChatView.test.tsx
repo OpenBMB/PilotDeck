@@ -14,8 +14,10 @@ const apiMock = vi.hoisted(() => ({
   markGroupRead: vi.fn(),
   sendGroupMessage: vi.fn(),
   stopGroupConversation: vi.fn(),
+  respondToGroupInteraction: vi.fn(),
   uploadProjectAttachments: vi.fn(),
   updateGroup: vi.fn(),
+  projects: vi.fn(),
   reorderGroupMembers: vi.fn(),
   archiveGroup: vi.fn(),
   availableGroupMembers: vi.fn(),
@@ -127,10 +129,15 @@ beforeEach(() => {
   apiMock.markGroupRead.mockResolvedValue(new Response(null, { status: 204 }));
   apiMock.sendGroupMessage.mockResolvedValue(jsonResponse({ roundId: 'round-1' }, 202));
   apiMock.stopGroupConversation.mockResolvedValue(jsonResponse({ stopped: true, turnIds: ['round-1'] }));
+  apiMock.respondToGroupInteraction.mockResolvedValue(jsonResponse({ delivered: true }));
   apiMock.uploadProjectAttachments.mockResolvedValue(jsonResponse({ images: [], files: [] }));
   apiMock.groupParticipants.mockResolvedValue(jsonResponse({ participants: [] }));
   apiMock.groupParticipantCandidates.mockResolvedValue(jsonResponse({ candidates: [] }));
   apiMock.instances.list.mockResolvedValue(jsonResponse({ instances: [] }));
+  apiMock.projects.mockResolvedValue(jsonResponse([
+    { name: 'pilotdeck', displayName: 'PilotDeck', fullPath: '/workspace/PilotDeck', path: '/workspace/PilotDeck', projectRole: 'owner', sessions: [] },
+    { name: 'office', displayName: 'office_01', fullPath: '/workspace/office_01', path: '/workspace/office_01', projectRole: 'owner', sessions: [] },
+  ]));
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:preview') });
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
 });
@@ -138,6 +145,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 describe('GroupChatView', () => {
@@ -324,7 +332,7 @@ describe('GroupChatView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
     await waitFor(() => {
-      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(group.projectName, [image, document]);
+      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(`group:${group.id}`, [image, document]);
       expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
         content: '请查看附件。',
         conversationId: 'conversation-1',
@@ -359,7 +367,7 @@ describe('GroupChatView', () => {
     });
 
     await waitFor(() => {
-      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(group.projectName, [image]);
+      expect(apiMock.uploadProjectAttachments).toHaveBeenCalledWith(`group:${group.id}`, [image]);
       expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
         content: '这是什么',
         images: [expect.objectContaining({ name: 'fast-paste.png' })],
@@ -419,8 +427,78 @@ describe('GroupChatView', () => {
         mentionedMemberIds: [],
         mentionAll: true,
         conversationId: 'conversation-1',
+        runMode: 'agent',
+        permissionMode: 'default',
+        basePermissionMode: 'default',
       });
     });
+  });
+
+  it('sends the selected plan and full-access modes with the group message', async () => {
+    renderGroup();
+    const editor = await screen.findByRole('textbox', { name: '群组消息' });
+    fireEvent.click(screen.getByTitle('选择运行模式'));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /计划/ }));
+    fireEvent.click(screen.getByTitle('计划模式使用受控权限'));
+    expect(screen.queryByRole('menuitemradio', { name: /完全访问权限/ })).toBeNull();
+
+    editor.textContent = '先规划这个功能';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
+    await waitFor(() => expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
+      content: '先规划这个功能',
+      runMode: 'plan',
+      permissionMode: 'plan',
+      basePermissionMode: 'default',
+    })));
+
+    apiMock.sendGroupMessage.mockClear();
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({ messages }));
+    fireEvent.click(screen.getByTitle('选择运行模式'));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /智能体/ }));
+    fireEvent.click(screen.getByTitle('选择权限模式'));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /完全访问权限/ }));
+    editor.textContent = '直接执行这个功能';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole('button', { name: '发送群组消息' }));
+    await waitFor(() => expect(apiMock.sendGroupMessage).toHaveBeenCalledWith(group.id, expect.objectContaining({
+      content: '直接执行这个功能',
+      runMode: 'agent',
+      permissionMode: 'bypassPermissions',
+      basePermissionMode: 'bypassPermissions',
+    })));
+  });
+
+  it('forces project viewers to ask mode and disables permission escalation', async () => {
+    apiMock.group.mockResolvedValue(jsonResponse({ group: { ...group, projectRole: 'viewer' } }));
+    renderGroup();
+    expect((await screen.findByTitle('项目只读成员仅能使用询问模式') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTitle('项目只读成员不能修改权限模式') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('renders and resolves a persisted group permission request', async () => {
+    apiMock.groupMessages.mockResolvedValue(jsonResponse({
+      messages: [
+        { ...messages[0], id: 'permission-user', roundId: 'permission-round', content: '创建文件' },
+        {
+          id: 'permission-activity', roomId: group.id, conversationId: 'conversation-1', roundId: 'permission-round',
+          senderType: 'agent', senderMemberId: 'main', senderName: 'PilotDeck 主智能体', content: '等待确认',
+          sequence: 2, kind: 'activity', status: 'thinking', createdAt: now, updatedAt: now,
+          metadata: {
+            activityType: 'permission', state: 'awaiting', requestId: 'permission-1',
+            toolName: 'write_file', input: { path: 'index.html' }, isElicitation: false,
+          },
+        },
+      ],
+    }));
+    renderGroup();
+    fireEvent.click(await screen.findByRole('button', { name: /允许一次|Allow once|permissionBanner\.allowOnce/i }));
+    await waitFor(() => expect(apiMock.respondToGroupInteraction).toHaveBeenCalledWith(
+      group.id,
+      'conversation-1',
+      'permission-1',
+      expect.objectContaining({ allow: true }),
+    ));
   });
 
   it('selects a named mention with arrow keys and deletes it atomically', async () => {
@@ -441,6 +519,9 @@ describe('GroupChatView', () => {
         mentionedMemberIds: ['finance'],
         mentionAll: false,
         conversationId: 'conversation-1',
+        runMode: 'agent',
+        permissionMode: 'default',
+        basePermissionMode: 'default',
       });
     });
 
@@ -704,5 +785,26 @@ describe('GroupChatView', () => {
     expect(screen.getByRole('switch', { name: '仅 @ 触发' }).hasAttribute('disabled')).toBe(true);
     expect(screen.queryByRole('button', { name: '归档群组' })).toBeNull();
     expect(screen.queryByRole('button', { name: '邀请' })).toBeNull();
+  });
+
+  it('lets the group owner rebind the workspace to another authorized project', async () => {
+    apiMock.updateGroup.mockResolvedValue(jsonResponse({
+      group: {
+        ...group,
+        projectName: 'office',
+        projectPath: '/workspace/office_01',
+      },
+    }));
+    renderGroup();
+
+    fireEvent.click(await screen.findByRole('button', { name: '更多群组操作' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '群组设置' }));
+    const projectSelect = await screen.findByRole('combobox', { name: '绑定工作空间' });
+    fireEvent.change(projectSelect, { target: { value: 'office' } });
+    fireEvent.click(screen.getByRole('button', { name: '绑定' }));
+
+    await waitFor(() => {
+      expect(apiMock.updateGroup).toHaveBeenCalledWith(group.id, { projectName: 'office' });
+    });
   });
 });

@@ -96,6 +96,9 @@ function mapTurn(row) {
     requiredDelegates: Array.isArray(parseJson(row.required_delegates_json))
       ? parseJson(row.required_delegates_json)
       : [],
+    runMode: row.run_mode || 'agent',
+    permissionMode: row.permission_mode || 'default',
+    basePermissionMode: row.base_permission_mode || 'default',
     status: row.status,
     error: row.error || undefined,
     createdAt: row.created_at,
@@ -403,10 +406,13 @@ export const groupChatDb = {
     if (!current || current.participantRole !== 'owner') return null;
     const timestamp = nowIso();
     db.prepare(`
-      UPDATE group_rooms SET title = ?, trigger_mode = ?, updated_at = ?
+      UPDATE group_rooms
+      SET title = ?, project_name = ?, project_path = ?, trigger_mode = ?, updated_at = ?
       WHERE id = ? AND COALESCE(owner_user_id, user_id) = ?
     `).run(
       patch.title ?? current.title,
+      patch.projectName ?? current.projectName,
+      patch.projectPath ?? current.projectPath,
       patch.triggerMode ?? current.triggerMode,
       timestamp,
       roomId,
@@ -581,8 +587,8 @@ export const groupChatDb = {
       INSERT INTO group_turns (
         id, room_id, conversation_id, sender_user_id, entry_member_id, trigger_source,
         status, message_sequence, idempotency_key, required_delegates_json,
-        error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        run_mode, permission_mode, base_permission_mode, error, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
     `).run(
       id,
       roomId,
@@ -594,6 +600,9 @@ export const groupChatDb = {
       input.messageSequence ?? null,
       input.idempotencyKey || null,
       JSON.stringify(input.requiredDelegates || []),
+      input.runMode || 'agent',
+      input.permissionMode || 'default',
+      input.basePermissionMode || 'default',
       timestamp,
       timestamp,
     );

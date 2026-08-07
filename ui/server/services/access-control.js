@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { projectAccessDb, sessionOwnersDb } from '../database/db.js';
 import { isAuthEnabled } from './auth-service.js';
+import { groupChatDb } from './group-chat-db.js';
 import { extractProjectDirectory } from '../projects.js';
 
 const PROJECT_RANK = { viewer: 1, editor: 2, owner: 3 };
@@ -62,6 +63,16 @@ export function requireProjectRole(projectPath, user, minimumRole = 'viewer') {
 }
 
 export async function resolveProjectNameForUser(projectName, user) {
+  if (projectName.startsWith('group:')) {
+    const roomId = projectName.slice('group:'.length);
+    const room = roomId ? groupChatDb.getRoom(user.id, roomId) : null;
+    if (!room) {
+      const error = new Error('Project not found.');
+      error.statusCode = 404;
+      throw error;
+    }
+    return canonicalizeProjectPath(room.projectPath);
+  }
   if (projectName === 'general') return getUserGeneralPath(user.id);
   return canonicalizeProjectPath(await extractProjectDirectory(projectName));
 }

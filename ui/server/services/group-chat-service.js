@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { StaffDeckClient } from '../../../src/collaboration/participants/StaffDeckClient.js';
-import { instancesDb, userDb } from '../database/db.js';
+import { instancesDb, userDb, userToolPermissionsDb } from '../database/db.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
+import { getProjectRole } from './access-control.js';
 import { createNotificationEvent, notifyUserIfEnabled } from './notification-orchestrator.js';
 import { groupChatDb } from './group-chat-db.js';
 import {
@@ -11,6 +12,12 @@ import {
   revokeGroupDelegationGrants,
 } from './group-delegation-grants.js';
 import { assertApprovedRemoteInstance } from './instance-service.js';
+import {
+  DEFAULT_USER_PERMISSION_SETTINGS,
+  normalizePermissionEntry,
+  normalizePermissionSettings,
+  permissionSettingsToRuleSet,
+} from './permissionSettings.js';
 
 const MAX_MESSAGE_CHARS = 20_000;
 const MAX_GROUP_ATTACHMENTS = 10;
@@ -46,7 +53,55 @@ const GROUP_READ_ONLY_DENY_RULES = [
 const dispatchingConversations = new Set();
 const activeMainTurns = new Map();
 const activeRoundExecutions = new Map();
+const pendingGroupInteractions = new Map();
 const USER_STOPPED_ERROR = '本轮执行已由用户停止。';
+
+function normalizeRunMode(value) {
+  return ['agent', 'plan', 'ask'].includes(value) ? value : 'agent';
+}
+
+function normalizePermissionMode(value) {
+  return value === 'bypassPermissions' ? value : 'default';
+}
+
+function resolveTurnExecutionOptions(userId, room, input = {}) {
+  const user = userDb.getUserById(userId);
+  if (!user) throw new Error('消息发送者账号已停用。');
+  // Database rows use snake_case while request-auth users use camelCase.
+  // Normalize here so owner/admin privileges keep working after auth is enabled.
+  const projectRole = getProjectRole(room.projectPath, {
+    ...user,
+    systemRole: user.systemRole || user.system_role || 'member',
+  });
+  if (!projectRole) throw new Error('当前用户无权访问群组绑定的项目。');
+  const personalPermissionSettings = userToolPermissionsDb.get(userId) || DEFAULT_USER_PERMISSION_SETTINGS;
+  const personalPermissionRules = permissionSettingsToRuleSet(personalPermissionSettings);
+  if (projectRole === 'viewer') {
+    return {
+      projectRole,
+      runMode: 'ask',
+      permissionMode: 'default',
+      basePermissionMode: 'default',
+      canPrompt: false,
+      permissionSettings: { ...personalPermissionSettings, skipPermissions: false },
+      permissionRules: {
+        ...personalPermissionRules,
+        deny: [...personalPermissionRules.deny, ...GROUP_READ_ONLY_DENY_RULES],
+      },
+    };
+  }
+  const runMode = normalizeRunMode(input.runMode);
+  const basePermissionMode = normalizePermissionMode(input.basePermissionMode || input.permissionMode);
+  return {
+    projectRole,
+    runMode,
+    permissionMode: runMode === 'plan' ? 'plan' : normalizePermissionMode(input.permissionMode),
+    basePermissionMode,
+    canPrompt: true,
+    permissionSettings: personalPermissionSettings,
+    permissionRules: personalPermissionRules,
+  };
+}
 
 function abortReason(signal, fallback = USER_STOPPED_ERROR) {
   if (!signal?.aborted) return fallback;
@@ -57,6 +112,86 @@ function stoppedMetadata(metadata, errorMessage) {
   return errorMessage === USER_STOPPED_ERROR
     ? { ...metadata, stoppedByUser: true }
     : metadata;
+}
+
+function interactionDisplay(event) {
+  if (event.type === 'permission_request') {
+    return {
+      toolName: event.toolName,
+      input: event.payload,
+      isElicitation: false,
+      content: `等待确认是否允许调用 ${event.toolName}。`,
+    };
+  }
+  const exitPlanMode = event.toolName === 'exit_plan_mode';
+  return {
+    toolName: exitPlanMode ? 'ExitPlanModeV2' : 'AskUserQuestion',
+    input: exitPlanMode
+      ? {
+          plan: event.metadata?.plan,
+          planFilePath: event.metadata?.planFilePath,
+          questions: event.questions,
+          metadata: event.metadata,
+        }
+      : { questions: event.questions, metadata: event.metadata },
+    isElicitation: true,
+    content: exitPlanMode ? '计划已生成，等待确认后执行。' : '智能体需要补充信息后继续执行。',
+  };
+}
+
+function persistPendingInteraction({ event, gateway, sessionKey, userId, room, member, options }) {
+  const display = interactionDisplay(event);
+  const activity = groupChatDb.createMessage(userId, room.id, {
+    roundId: options.roundId,
+    kind: 'activity',
+    senderType: 'agent',
+    senderMemberId: member.id,
+    senderName: member.name,
+    content: display.content,
+    metadata: {
+      activityType: 'permission',
+      state: 'awaiting',
+      requestId: event.requestId,
+      toolName: display.toolName,
+      input: display.input,
+      isElicitation: display.isElicitation,
+    },
+    status: 'thinking',
+  });
+  if (!activity) return;
+  pendingGroupInteractions.set(event.requestId, {
+    requestId: event.requestId,
+    gateway,
+    sessionKey,
+    userId,
+    roomId: room.id,
+    conversationId: options.conversationId,
+    roundId: options.roundId,
+    activityMessageId: activity.id,
+    isElicitation: display.isElicitation,
+    toolName: display.toolName,
+    input: display.input,
+  });
+}
+
+function cancelPendingInteractions(roundId, errorMessage) {
+  for (const [requestId, pending] of pendingGroupInteractions) {
+    if (pending.roundId !== roundId) continue;
+    groupChatDb.updateMessage(pending.activityMessageId, {
+      content: errorMessage === USER_STOPPED_ERROR ? '用户已停止本轮执行。' : '交互请求已取消。',
+      metadata: stoppedMetadata({
+        activityType: 'permission',
+        state: 'failed',
+        requestId,
+        toolName: pending.toolName,
+        input: pending.input,
+        isElicitation: pending.isElicitation,
+      }, errorMessage),
+      status: 'failed',
+      error: errorMessage,
+    });
+    pendingGroupInteractions.delete(requestId);
+  }
 }
 
 function throwIfAborted(signal) {
@@ -799,34 +934,37 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
   }
   try {
     for await (const event of gateway.submitTurn({
-    sessionKey,
-    channelKey: 'group',
+      sessionKey,
+      channelKey: 'group',
       projectKey: room.projectPath,
-    workspaceCwd: room.projectPath,
-    message: userMessage,
-    ...(options.messageAttachments ? { attachments: await toGatewayAttachments(options.messageAttachments) } : {}),
-    runMode: 'ask',
-    mode: 'default',
-    canPrompt: false,
-    permissionRules: { deny: GROUP_READ_ONLY_DENY_RULES },
-    timeoutMs: ENTRY_TURN_TIMEOUT_MS,
-    runId,
-    syntheticMessages: [{
-      purpose: 'group_chat_context',
-      text: buildMemberContext(
-        room,
-        member,
-        transcript,
-        options.collaboration?.canDelegate === true,
-        options.requiredDelegateIds || [],
-      ),
-    }],
-    telemetry: {
-      ownerModule: 'session',
-      executionKind: 'user_session',
-      phase: 'group_chat',
-    },
-    ...(options.collaboration ? { collaboration: options.collaboration } : {}),
+      workspaceCwd: room.projectPath,
+      message: userMessage,
+      ...(options.messageAttachments ? { attachments: await toGatewayAttachments(options.messageAttachments) } : {}),
+      runMode: options.runMode || 'agent',
+      mode: options.permissionMode || 'default',
+      basePermissionMode: options.basePermissionMode || 'default',
+      allowPlanModeTools: options.runMode === 'plan',
+      canPrompt: options.canPrompt !== false,
+      permissionSettings: options.permissionSettings,
+      permissionRules: options.permissionRules,
+      timeoutMs: ENTRY_TURN_TIMEOUT_MS,
+      runId,
+      syntheticMessages: [{
+        purpose: 'group_chat_context',
+        text: buildMemberContext(
+          room,
+          member,
+          transcript,
+          options.collaboration?.canDelegate === true,
+          options.requiredDelegateIds || [],
+        ),
+      }],
+      telemetry: {
+        ownerModule: 'session',
+        executionKind: 'user_session',
+        phase: 'group_chat',
+      },
+      ...(options.collaboration ? { collaboration: options.collaboration } : {}),
     })) {
       if (event.type === 'assistant_text_delta') output += event.text || '';
       if (event.type === 'assistant_thinking_delta' && reasoningMessage) {
@@ -877,6 +1015,21 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
           toolMessages.delete(event.toolCallId);
         }
       }
+      if ((event.type === 'permission_request' || event.type === 'elicitation_request') && options.persistActivity) {
+        persistPendingInteraction({ event, gateway, sessionKey, userId, room, member, options });
+      }
+      if (event.type === 'elicitation_cancelled') {
+        const pending = pendingGroupInteractions.get(event.requestId);
+        if (pending) {
+          groupChatDb.updateMessage(pending.activityMessageId, {
+            content: event.reason || '交互请求已取消。',
+            metadata: { activityType: 'permission', state: 'failed', requestId: event.requestId },
+            status: 'failed',
+            error: event.reason || '交互请求已取消。',
+          });
+          pendingGroupInteractions.delete(event.requestId);
+        }
+      }
       if (event.type === 'error') {
         failure = event.message || event.code || 'PilotDeck 调用失败';
         if (event.code === 'turn_timeout' && options.execution && !options.execution.signal.aborted) {
@@ -906,6 +1059,7 @@ async function invokeLocalPilotDeck(room, member, userMessage, transcript, userI
       });
     }
     if (failure) {
+      cancelPendingInteractions(options.roundId, failure);
       for (const [toolCallId, activityId] of toolMessages) {
         groupChatDb.updateMessage(activityId, {
           metadata: stoppedMetadata({ activityType: 'tool', state: 'failed', toolCallId }, failure),
@@ -964,6 +1118,9 @@ async function invokeRemoteGroupTurn(room, member, userMessage, transcript, user
         entryMemberId: member.id,
         workspaceKey: binding.workspace_key,
         message: userMessage,
+        runMode: options.runMode || 'agent',
+        permissionMode: options.permissionMode || 'default',
+        basePermissionMode: options.basePermissionMode || 'default',
         ...(options.messageAttachments ? { attachments: options.messageAttachments } : {}),
         rosterContext: buildMemberContext(room, member, transcript, true, options.requiredDelegateIds || []),
         requiredDelegates: options.requiredDelegateIds || [],
@@ -1245,13 +1402,13 @@ function notifyRoundCompleted(userId, roomId, roundId) {
   }
 }
 
-async function runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution) {
+async function runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution, turnOptions) {
   throwIfAborted(execution?.signal);
   const room = groupChatDb.getRoom(userId, roomId);
   if (!room || room.status !== 'active') return;
   if (target.id === 'main') {
     try {
-      await runEntryAgent(userId, room, conversationId, roundId, userMessage, target, [], messageAttachments, execution);
+      await runEntryAgent(userId, room, conversationId, roundId, userMessage, target, [], messageAttachments, execution, turnOptions);
     } catch (error) {
       groupChatDb.createMessage(userId, roomId, {
         roundId,
@@ -1292,6 +1449,7 @@ async function runDirectMember(userId, roomId, conversationId, roundId, userMess
       signal: execution?.signal,
       execution,
       collaboration: { canDelegate: false },
+      ...turnOptions,
     });
     if (!result.content) throw new Error('智能体没有返回可显示的内容。');
     if (placeholder) {
@@ -1336,7 +1494,7 @@ async function runDirectMember(userId, roomId, conversationId, roundId, userMess
   }
 }
 
-async function runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution) {
+async function runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution, turnOptions) {
   const sessionId = `group:${room.id}:${conversationId}:${entryMember.id}`;
   const turnContext = {
     userId,
@@ -1396,6 +1554,7 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
         signal: execution?.signal,
         execution,
         collaboration,
+        ...turnOptions,
       });
       if (requiredDelegateIds.every((id) => turnContext.attemptedDelegateIds.has(id))) break;
     }
@@ -1423,11 +1582,11 @@ async function runEntryAgent(userId, room, conversationId, roundId, userMessage,
   }
 }
 
-async function dispatchMentionRound(userId, roomId, conversationId, roundId, userMessage, targets, messageAttachments, execution) {
+async function dispatchMentionRound(userId, roomId, conversationId, roundId, userMessage, targets, messageAttachments, execution, turnOptions) {
   try {
     for (const target of targets) {
       throwIfAborted(execution?.signal);
-      await runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution);
+      await runDirectMember(userId, roomId, conversationId, roundId, userMessage, target, messageAttachments, execution, turnOptions);
     }
     throwIfAborted(execution?.signal);
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
@@ -1440,12 +1599,12 @@ async function dispatchMentionRound(userId, roomId, conversationId, roundId, use
   }
 }
 
-async function dispatchSmartRound(userId, roomId, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution) {
+async function dispatchSmartRound(userId, roomId, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution, turnOptions) {
   try {
     throwIfAborted(execution?.signal);
     const room = groupChatDb.getRoom(userId, roomId);
     if (!room || room.status !== 'active') throw new Error('群组已经归档。');
-    await runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution);
+    await runEntryAgent(userId, room, conversationId, roundId, userMessage, entryMember, requiredDelegateIds, messageAttachments, execution, turnOptions);
     throwIfAborted(execution?.signal);
     groupChatDb.updateTurn(roundId, { status: 'completed', error: null });
     notifyRoundCompleted(userId, roomId, roundId);
@@ -1512,6 +1671,7 @@ async function executeQueuedTurn(turn) {
       groupChatDb.updateTurn(turn.id, { status: 'failed', error: '群组不存在或已经归档。' });
       return;
     }
+    const turnOptions = resolveTurnExecutionOptions(turn.senderUserId, room, turn);
     const targetIds = turn.requiredDelegates || [];
     const persistedAttachments = {
       images: Array.isArray(message.metadata?.images) ? message.metadata.images : [],
@@ -1524,7 +1684,7 @@ async function executeQueuedTurn(turn) {
     if (turn.triggerSource === 'mentions') {
       const targetsById = new Map(room.members.map((member) => [member.id, member]));
       const targets = targetIds.flatMap((id) => targetsById.get(id) || []);
-      await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, targets, messageAttachments, execution);
+      await dispatchMentionRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, targets, messageAttachments, execution, turnOptions);
       return;
     }
     const entryMember = room.members.find((member) => member.id === turn.entryMemberId && member.isActive !== false);
@@ -1532,7 +1692,7 @@ async function executeQueuedTurn(turn) {
       groupChatDb.updateTurn(turn.id, { status: 'failed', error: '入口 PilotDeck 实例不可用。' });
       return;
     }
-    await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, entryMember, targetIds, messageAttachments, execution);
+    await dispatchSmartRound(turn.senderUserId, turn.roomId, turn.conversationId, turn.id, userMessage, entryMember, targetIds, messageAttachments, execution, turnOptions);
   } finally {
     if (activeRoundExecutions.get(turn.id) === execution) activeRoundExecutions.delete(turn.id);
   }
@@ -1710,6 +1870,80 @@ export const groupChatService = {
     }
   },
 
+  async respondToInteraction(userId, roomId, conversationId, requestId, input = {}) {
+    const pending = pendingGroupInteractions.get(requestId);
+    if (!pending
+        || pending.userId !== userId
+        || pending.roomId !== roomId
+        || pending.conversationId !== conversationId) {
+      return null;
+    }
+    let delivered = false;
+    if (pending.isElicitation) {
+      const submitted = input.updatedInput && typeof input.updatedInput === 'object'
+        ? input.updatedInput
+        : {};
+      const answers = submitted.answers && typeof submitted.answers === 'object'
+        ? submitted.answers
+        : {};
+      const answer = input.allow === true && Object.keys(answers).length > 0
+        ? {
+            type: 'answered',
+            answers,
+            ...(submitted.annotations && typeof submitted.annotations === 'object'
+              ? { annotations: submitted.annotations }
+              : {}),
+          }
+        : {
+            type: 'cancelled',
+            reason: typeof input.message === 'string'
+              ? input.message
+              : input.allow === true ? 'skipped' : 'declined',
+          };
+      delivered = (await pending.gateway.respondElicitation({
+        sessionKey: pending.sessionKey,
+        requestId,
+        answer,
+      }))?.delivered === true;
+    } else {
+      delivered = (await pending.gateway.permissionDecide({
+        sessionKey: pending.sessionKey,
+        requestId,
+        decision: input.allow === true ? 'allow' : 'deny',
+        remember: false,
+        reason: typeof input.message === 'string' ? input.message : undefined,
+      }))?.delivered === true;
+      if (delivered && input.allow === true && typeof input.rememberEntry === 'string') {
+        const remembered = normalizePermissionEntry(input.rememberEntry);
+        if (remembered) {
+          const current = userToolPermissionsDb.get(userId) || DEFAULT_USER_PERMISSION_SETTINGS;
+          userToolPermissionsDb.set(userId, normalizePermissionSettings({
+            ...current,
+            allowedTools: [...(current.allowedTools || []), remembered],
+            lastUpdated: new Date().toISOString(),
+          }));
+        }
+      }
+    }
+    if (!delivered) return { delivered: false };
+    groupChatDb.updateMessage(pending.activityMessageId, {
+      content: input.allow === true ? '用户已允许，继续执行。' : '用户已拒绝本次请求。',
+      metadata: {
+        activityType: 'permission',
+        state: 'completed',
+        requestId,
+        toolName: pending.toolName,
+        input: pending.input,
+        isElicitation: pending.isElicitation,
+        decision: input.allow === true ? 'allow' : 'deny',
+      },
+      status: 'completed',
+      error: null,
+    });
+    pendingGroupInteractions.delete(requestId);
+    return { delivered: true };
+  },
+
   async stopConversation(userId, roomId, conversationId) {
     const conversation = groupChatDb.getConversation(userId, roomId, conversationId);
     if (!conversation) return null;
@@ -1721,6 +1955,7 @@ export const groupChatService = {
 
     for (const turn of turns) {
       groupChatDb.updateTurn(turn.id, { status: 'failed', error: USER_STOPPED_ERROR });
+      cancelPendingInteractions(turn.id, USER_STOPPED_ERROR);
     }
 
     let stoppedMessages = 0;
@@ -1782,6 +2017,7 @@ export const groupChatService = {
     const { mentionedMemberIds, mentionAll } = extractMentions(room, content, input.mentionedMemberIds);
     const participant = groupChatDb.getParticipant(userId, roomId);
     if (!participant) throw new Error('当前用户不是该群组的有效参与者。');
+    const turnOptions = resolveTurnExecutionOptions(userId, room, input);
     let entryMember = resolveEntryMember(room, participant);
     if (!entryMember) throw new Error('群组没有可用的入口 PilotDeck 实例。');
     const directTargets = resolveMentionTargets(room, mentionedMemberIds, mentionAll);
@@ -1803,6 +2039,9 @@ export const groupChatService = {
       status: 'queued',
       idempotencyKey,
       requiredDelegates: requiredDelegateIds,
+      runMode: turnOptions.runMode,
+      permissionMode: turnOptions.permissionMode,
+      basePermissionMode: turnOptions.basePermissionMode,
     });
     if (!turn) throw new Error('无法创建群组轮次。');
     const roundId = turn.id;
