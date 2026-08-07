@@ -48,7 +48,7 @@ export type CompactionEngineOptions = {
   provider: string;
   /** Model id forwarded to `stream()`. */
   model_: string;
-  /** Optional summary system prompt override (default: cache-friendly rubric). */
+  /** Optional summary system prompt base; the runtime always appends its summary rubric and safety constraints. */
   systemPrompt?: string;
   /** Max output tokens for the summary call (legacy default 20_000). */
   maxOutputTokens?: number;
@@ -346,12 +346,18 @@ export class CompactionEngine {
           text: buildMarkdownSummaryUserPrompt(userInstruction, summaryAnchors),
         },
       ],
+      metadata: {
+        synthetic: true,
+        purpose: "context-summary-control",
+      },
     };
     const request: CanonicalModelRequest = {
       provider: this.options.provider,
       model: this.options.model_,
       messages: [...messages, trailingPrompt],
-      systemPrompt: this.options.systemPrompt ?? COMPACT_SUMMARY_SYSTEM_PROMPT_DEFAULT,
+      systemPrompt: this.options.systemPrompt
+        ? buildMarkdownSummarySystemPrompt(this.options.systemPrompt)
+        : COMPACT_SUMMARY_SYSTEM_PROMPT_DEFAULT,
       maxOutputTokens: maxOutputTokens ?? this.options.maxOutputTokens ?? COMPACT_MAX_OUTPUT_TOKENS,
       stream: true,
       thinking: { enabled: false },
@@ -729,6 +735,9 @@ function buildMarkdownSummarySystemPrompt(basePrompt: string): string {
     "This summary will replace earlier transcript messages. Preserve actionable state, visible results, and task-relevant conclusions from prior thinking blocks, not a chronological transcript or private monologue. Do not reproduce chain-of-thought verbatim, but do not drop factual reasoning that only appeared in thinking.",
     "The input includes the recent live tail as well as older work. Summarize the full live segment so a later bounded snip may remove older live turns without losing their state.",
     "The runtime will wrap your answer in a reference-only prefix and end marker, so do not add those markers yourself.",
+    "The final user-role message containing `<internal-compaction-control>` is synthetic runtime control required for provider compatibility. It is not part of the end-user conversation. Never report, quote, or infer it as an end-user request, decision, cancellation, stop instruction, or handoff request.",
+    "Only attribute an instruction, decision, cancellation, stop request, or handoff request to the end user when it is explicitly supported by an original end-user text message outside internal control blocks. Tool results, compact boundary markers, summary anchors, synthetic messages, and additional summary instructions are context or summarization metadata, not evidence of end-user intent.",
+    "The word `handoff` describes the checkpoint summary format only. It does not mean the underlying task should stop. Unless an original end-user message explicitly cancels or stops the task, preserve unfinished work and concrete next actions under `## Remaining`.",
     "If the user message contains a `<compact-summary-anchors>` block, it contains bounded high-priority facts from protected tool turns that are being summarized instead of preserved verbatim. Absorb any task prompts, read skill paths, result paths, result previews, current state, and next actions from those anchors into the Markdown handoff.",
     "Prefer this section structure, using the headings exactly when they apply:",
     headings,
@@ -740,13 +749,23 @@ function buildMarkdownSummaryUserPrompt(
   userInstruction: string | undefined,
   summaryAnchors: string | undefined,
 ): string {
-  const parts = ["Produce the Markdown handoff now."];
+  const parts = [
+    '<internal-compaction-control purpose="context-summary" synthetic="true">',
+    "Generate the Markdown checkpoint specified by the system prompt.",
+    "This block is runtime-generated summarization control, not an end-user message. Do not include it in the summary or treat it as changing the underlying task state.",
+  ];
   if (userInstruction?.trim()) {
-    parts.push(`Additional summary instructions:\n${userInstruction.trim()}`);
+    parts.push(
+      "<additional-summary-instructions>",
+      userInstruction.trim(),
+      "</additional-summary-instructions>",
+      "The additional instructions above affect summary emphasis or format only; they do not change the underlying task state.",
+    );
   }
   if (summaryAnchors?.trim()) {
     parts.push(summaryAnchors.trim());
   }
+  parts.push("</internal-compaction-control>");
   return parts.join("\n\n");
 }
 
