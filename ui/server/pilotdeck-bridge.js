@@ -1369,13 +1369,31 @@ export function isSessionActiveViaGateway(sessionId) {
     return Boolean(sessionState.get(sessionId)?.active);
 }
 
-export async function getActiveTurnSnapshotFramesViaGateway(sessionId, provider = 'pilotdeck') {
-    if (!isPilotDeckSessionKey(sessionId)) return [];
-    const gw = await ensureGateway();
-    if (typeof gw.getActiveTurnSnapshot !== 'function') return [];
-    const snapshot = await gw.getActiveTurnSnapshot({ sessionKey: sessionId });
-    if (!snapshot?.active || !Array.isArray(snapshot.events)) return [];
-    return snapshot.events.flatMap((event) => gatewayEventToFrames(event, sessionId, provider) || []);
+export async function getSessionActivityViaGateway(sessionId, provider = 'pilotdeck', includeActiveTurnMessages = true) {
+    if (!isPilotDeckSessionKey(sessionId)) {
+        return { isProcessing: false, activeTurnMessages: [] };
+    }
+
+    const localIsProcessing = Boolean(sessionState.get(sessionId)?.active);
+    try {
+        const gw = await ensureGateway();
+        if (typeof gw.getActiveTurnSnapshot !== 'function') {
+            return { isProcessing: localIsProcessing, activeTurnMessages: [] };
+        }
+        const snapshot = await gw.getActiveTurnSnapshot({ sessionKey: sessionId, includeEvents: includeActiveTurnMessages });
+        if (!snapshot || typeof snapshot.active !== 'boolean') {
+            return { isProcessing: localIsProcessing, activeTurnMessages: [] };
+        }
+        return {
+            isProcessing: snapshot.active,
+            activeTurnMessages: includeActiveTurnMessages && snapshot.active && Array.isArray(snapshot.events)
+                ? snapshot.events.flatMap((event) => gatewayEventToFrames(event, sessionId, provider) || [])
+                : [],
+        };
+    } catch (error) {
+        console.warn('[pilotdeck-bridge] failed to read active turn snapshot:', error?.message || error);
+        return { isProcessing: localIsProcessing, activeTurnMessages: [] };
+    }
 }
 
 export function getActiveSessionIdsViaGateway() {
@@ -2236,6 +2254,79 @@ export function getRouterStatsSummary() {
     };
 }
 
+export function isTerminalAlwaysOnTurnEvent(event) {
+    return event?.type === 'turn_completed' || event?.type === 'error';
+}
+
+/**
+ * Creates the notification callback used by the UI server for Always-On
+ * runs. Kept separate so terminal notification handling can be tested
+ * without opening a Gateway socket.
+ *
+ * @param {(sessionId: string, frame: object) => void} forwardFrame
+ */
+export function createAlwaysOnTurnEventForwarder(forwardFrame) {
+    const knownSessions = new Set();
+
+    return (name, payload) => {
+        if (name !== 'always-on:turn-event') return;
+        const { sessionKey, channelKey, event } = payload ?? {};
+        if (!sessionKey || !event) return;
+
+        const provider = 'pilotdeck';
+
+        if (!knownSessions.has(sessionKey)) {
+            knownSessions.add(sessionKey);
+            const createdFrame = createNormalizedMessage({
+                provider,
+                sessionId: sessionKey,
+                kind: 'session_created',
+                newSessionId: sessionKey,
+                sessionKey,
+                channelKey,
+            });
+            forwardFrame(sessionKey, createdFrame);
+        }
+
+        if (event.type === 'context_budget') {
+            const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
+            aoState.tokenBudget = {
+                used: event.used,
+                displayUsed: event.displayUsed,
+                budgetUsed: event.budgetUsed,
+                total: event.total,
+                effectiveTotal: event.effectiveTotal,
+                reservedOutputTokens: event.reservedOutputTokens,
+                ratio: event.ratio,
+                state: event.state,
+            };
+        }
+        const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
+        const compactTokenBudget = event.type === 'agent_status' && event.event === 'compact_completed'
+            ? tokenBudgetFromCompact(aoState.tokenBudget, event.detail)
+            : null;
+        const eventForFrames = compactTokenBudget
+            ? {
+                ...event,
+                detail: {
+                    ...(event.detail || {}),
+                    tokenBudget: compactTokenBudget,
+                },
+            }
+            : event;
+        if (compactTokenBudget) {
+            aoState.tokenBudget = compactTokenBudget;
+        }
+        for (const frame of gatewayEventToFrames(eventForFrames, sessionKey, provider)) {
+            forwardFrame(sessionKey, frame);
+        }
+
+        if (isTerminalAlwaysOnTurnEvent(event)) {
+            knownSessions.delete(sessionKey);
+        }
+    };
+}
+
 /**
  * Register a notification handler that forwards Always-On turn events as
  * NormalizedMessage frames. The UI server can provide a session-scoped
@@ -2248,8 +2339,6 @@ export function getRouterStatsSummary() {
  * @param {(sessionId: string, frame: object) => void} [forwardToSessionWatchers]
  */
 export function registerAlwaysOnNotificationForwarding(clients, forwardToSessionWatchers) {
-    const knownSessions = new Set();
-
     const forwardFrame = (sessionId, frame) => {
         if (typeof forwardToSessionWatchers === 'function') {
             forwardToSessionWatchers(sessionId, frame);
@@ -2263,65 +2352,10 @@ export function registerAlwaysOnNotificationForwarding(clients, forwardToSession
             if (client.readyState === 1) client.send(msg);
         }
     };
+    const onNotification = createAlwaysOnTurnEventForwarder(forwardFrame);
 
     ensureGateway().then((gw) => {
-        gw.onNotification((name, payload) => {
-            if (name !== 'always-on:turn-event') return;
-            const { sessionKey, channelKey, event } = payload ?? {};
-            if (!sessionKey || !event) return;
-
-            const provider = 'pilotdeck';
-
-            if (!knownSessions.has(sessionKey)) {
-                knownSessions.add(sessionKey);
-                const createdFrame = createNormalizedMessage({
-                    provider,
-                    sessionId: sessionKey,
-                    kind: 'session_created',
-                    newSessionId: sessionKey,
-                    sessionKey,
-                    channelKey,
-                });
-                forwardFrame(sessionKey, createdFrame);
-            }
-
-            if (event.type === 'context_budget') {
-                const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
-                aoState.tokenBudget = {
-                    used: event.used,
-                    displayUsed: event.displayUsed,
-                    budgetUsed: event.budgetUsed,
-                    total: event.total,
-                    effectiveTotal: event.effectiveTotal,
-                    reservedOutputTokens: event.reservedOutputTokens,
-                    ratio: event.ratio,
-                    state: event.state,
-                };
-            }
-            const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
-            const compactTokenBudget = event.type === 'agent_status' && event.event === 'compact_completed'
-                ? tokenBudgetFromCompact(aoState.tokenBudget, event.detail)
-                : null;
-            const eventForFrames = compactTokenBudget
-                ? {
-                    ...event,
-                    detail: {
-                        ...(event.detail || {}),
-                        tokenBudget: compactTokenBudget,
-                    },
-                }
-                : event;
-            if (compactTokenBudget) {
-                aoState.tokenBudget = compactTokenBudget;
-            }
-            for (const frame of gatewayEventToFrames(eventForFrames, sessionKey, provider)) {
-                forwardFrame(sessionKey, frame);
-            }
-
-            if (event.type === 'turn_completed') {
-                knownSessions.delete(sessionKey);
-            }
-        });
+        gw.onNotification(onNotification);
     }).catch((err) => {
         console.warn('[pilotdeck-bridge] failed to register always-on notification forwarding:', err?.message || err);
     });

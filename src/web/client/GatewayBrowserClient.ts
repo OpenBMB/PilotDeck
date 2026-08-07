@@ -227,6 +227,9 @@ export class GatewayBrowserClient {
   cronList(input: unknown) {
     return this.request<unknown>("cron_list", input);
   }
+  cronUpdate(input: unknown) {
+    return this.request<unknown>("cron_update", input);
+  }
   cronDelete(input: unknown) {
     return this.request<unknown>("cron_delete", input);
   }
