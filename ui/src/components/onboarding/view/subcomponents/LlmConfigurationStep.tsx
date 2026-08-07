@@ -103,7 +103,13 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     : (selectedProvider?.protocol ?? 'openai');
   const effectiveProviderId = isCustomMode ? customProviderId.trim() : (selectedProvider?.id ?? '');
   const selectedProviderRequiresApiKey = requiresApiKey(selectedProvider);
-  const canFetchModels = Boolean(selectedProvider && effectiveProviderId && effectiveUrl);
+  const modelListRequiresApiKey = selectedProvider?.modelListRequiresApiKey === true;
+  const canFetchModels = Boolean(
+    selectedProvider
+      && effectiveProviderId
+      && effectiveUrl
+      && (!modelListRequiresApiKey || hasUsableApiKey(apiKey)),
+  );
   const canTest = Boolean(
     selectedProvider &&
     (!selectedProviderRequiresApiKey || apiKey.trim()) &&
@@ -120,7 +126,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
 
   useEffect(() => {
     if (!selectedProvider || isCustomMode || apiKey.trim()) return;
-    if (!selectedProviderRequiresApiKey) return;
+    if (!selectedProviderRequiresApiKey || modelListRequiresApiKey) return;
     const catalogModels = selectedProvider.models;
     const controller = new AbortController();
     setModelListStatus('loading');
@@ -145,7 +151,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         setModelListMessage(`Using bundled model list. Remote model list unavailable: ${message}`);
       });
     return () => controller.abort();
-  }, [apiKey, isCustomMode, selectedProvider, selectedProviderRequiresApiKey]);
+  }, [apiKey, isCustomMode, modelListRequiresApiKey, selectedProvider, selectedProviderRequiresApiKey]);
 
   useEffect(() => {
     const key = apiKey.trim();

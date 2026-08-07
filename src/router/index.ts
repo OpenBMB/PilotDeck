@@ -59,6 +59,7 @@ export {
   classifyAndRoute,
   type ClassifyAndRouteInput,
   type TokenSaverDecision,
+  type TokenSaverFailure,
 } from "./tokenSaver/classifyAndRoute.js";
 export {
   applyOrchestration,

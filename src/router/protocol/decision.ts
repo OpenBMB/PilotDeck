@@ -70,6 +70,8 @@ export type RouterDecisionInput = {
   request: import("../../model/protocol/canonical.js").CanonicalModelRequest;
   sessionId: string;
   isMainAgent: boolean;
+  /** Cancels a pending router judge request when the enclosing turn stops. */
+  abortSignal?: AbortSignal;
   metadata?: {
     lastUsage?: RouterDecisionInputUsageHint;
     explicitProvider?: string;

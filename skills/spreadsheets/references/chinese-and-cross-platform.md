@@ -47,12 +47,12 @@ Use `helpers.autoFitColumns`; it treats Han characters and full-width punctuatio
 
 The runtime detects UTF-8, UTF-8 BOM, GBK, and GB18030 input. Use `--encoding` when detection is ambiguous. New CSV/TSV exports default to UTF-8 with BOM for Excel compatibility; override with `--encoding utf8`, `gbk`, or `gb18030` only when required.
 
-## QA
+## Review
 
 For a Chinese or bilingual workbook:
 
 1. Inspect representative Chinese cells after LibreOffice recalculation.
 2. Review `cjk_font_fallback` warnings.
-3. Render every sheet and verify Chinese titles, table headers, chart titles, axes, legends, and month/category labels.
+3. Open the rendered pages that best represent Chinese titles, table headers, chart labels, and dense text areas.
 4. Treat missing glyphs, replacement squares, blank Chinese labels, and clipped Han text as hard failures.
-5. When assurance matters, perform an additional smoke test in Microsoft Excel on the user's target platform.
+5. Report cross-platform uncertainty when the target application was not available for direct inspection.

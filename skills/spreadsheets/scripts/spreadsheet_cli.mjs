@@ -15,6 +15,7 @@ import {
   inspectDrawingPackage,
   inspectNativeCharts,
   pruneEmptyDrawingParts,
+  workbookSheetParts,
 } from "./lib/native-charts.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -34,12 +35,38 @@ const sharp = require("sharp");
 const iconv = require("iconv-lite");
 
 const NATIVE_CHART_SPECS = new WeakMap();
+const INSERTED_IMAGE_SPECS = new WeakMap();
+const GUARDED_WORKBOOKS = new WeakSet();
+const GUARDED_WORKSHEETS = new WeakSet();
+const TABLE_RANGE_COPY_DEPTH = Symbol("pilotdeckTableRangeCopyDepth");
+
+const RESULT_STATUSES = ["ok", "partial", "unsupported", "blocked", "error", "review_pending", "evidence_unavailable"];
+const CAPABILITY_STATES = ["supported", "partial", "fallback", "unsupported", "blocked"];
+
+class SpreadsheetProtocolError extends Error {
+  constructor(status, code, message, details = {}) {
+    super(message);
+    this.name = "SpreadsheetProtocolError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function blocked(code, message, details = {}) {
+  return new SpreadsheetProtocolError("blocked", code, message, details);
+}
+
+function unsupported(code, message, details = {}) {
+  return new SpreadsheetProtocolError("unsupported", code, message, details);
+}
 
 class SpreadsheetStageError extends Error {
-  constructor(stage, message, cause) {
+  constructor(stage, message, cause, details = {}) {
     super(`${stage}: ${message}`, { cause });
     this.name = "SpreadsheetStageError";
     this.stage = stage;
+    this.details = details;
   }
 }
 
@@ -47,7 +74,7 @@ async function runStage(stage, operation) {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof SpreadsheetStageError) throw error;
+    if (error instanceof SpreadsheetStageError || error instanceof SpreadsheetProtocolError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new SpreadsheetStageError(stage, message, error);
   }
@@ -80,10 +107,13 @@ function parseArgs(argv) {
     }
     const key = token.slice(2);
     const next = rest[index + 1];
-    if (next === undefined || next.startsWith("--")) {
-      options[key] = true;
+    const value = next === undefined || next.startsWith("--") ? true : next;
+    if (Object.hasOwn(options, key)) {
+      options[key] = Array.isArray(options[key]) ? [...options[key], value] : [options[key], value];
     } else {
-      options[key] = next;
+      options[key] = value;
+    }
+    if (value !== true) {
       index += 1;
     }
   }
@@ -92,10 +122,18 @@ function parseArgs(argv) {
 
 function requireOption(options, key) {
   const value = options[key];
-  if (value === undefined || value === true || value === "") {
+  if (value === undefined || value === true || value === "" || Array.isArray(value)) {
     throw new Error(`Missing required option --${key}`);
   }
   return String(value);
+}
+
+function optionValues(options, key) {
+  const value = options[key];
+  if (value === undefined) return [];
+  return (Array.isArray(value) ? value : [value])
+    .filter((item) => item !== true && item !== "")
+    .map(String);
 }
 
 function integerOption(options, key, fallback) {
@@ -147,6 +185,28 @@ function resolveThroughExistingAncestor(filePath) {
 
 function pathsReferToSameLocation(left, right) {
   return resolveThroughExistingAncestor(left) === resolveThroughExistingAncestor(right);
+}
+
+function assertDistinctArtifactPaths(artifacts) {
+  const entries = Object.entries(artifacts)
+    .filter(([, filePath]) => filePath !== null && filePath !== undefined && filePath !== "")
+    .map(([role, filePath]) => [role, path.resolve(String(filePath))]);
+  for (let leftIndex = 0; leftIndex < entries.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < entries.length; rightIndex += 1) {
+      const [leftRole, leftPath] = entries[leftIndex];
+      const [rightRole, rightPath] = entries[rightIndex];
+      if (!pathsReferToSameLocation(leftPath, rightPath)) continue;
+      throw blocked(
+        "artifact-path-conflict",
+        `Spreadsheet ${leftRole} and ${rightRole} must use distinct paths`,
+        {
+          [leftRole]: leftPath,
+          [rightRole]: rightPath,
+          next: "Choose a separate path for every input, executable, candidate, report, manifest, and deliverable artifact.",
+        },
+      );
+    }
+  }
 }
 
 function assertInternalArtifactPath(filePath, purpose) {
@@ -202,8 +262,63 @@ function assertSupportedOutput(filePath) {
   return extension;
 }
 
+function hasCellContent(value) {
+  return value !== null && value !== undefined && value !== "";
+}
+
+function comparableCellValue(value) {
+  if (value instanceof Date) return { date: value.toISOString() };
+  return serializableValue(value);
+}
+
+function assertRawTableWriteIsNonDestructive(worksheet, model) {
+  if (!model || typeof model !== "object" || !Array.isArray(model.columns) || !Array.isArray(model.rows)) return;
+  const start = parseCellReference(String(model.ref ?? "").split(":")[0]);
+  const incoming = [model.columns.map((column) => column?.name ?? null), ...model.rows];
+  const conflicts = [];
+  for (let rowOffset = 0; rowOffset < incoming.length; rowOffset += 1) {
+    const row = Array.isArray(incoming[rowOffset]) ? incoming[rowOffset] : [];
+    for (let columnOffset = 0; columnOffset < model.columns.length; columnOffset += 1) {
+      const cell = worksheet.getCell(start.row + rowOffset, start.col + columnOffset);
+      const existing = cell.value;
+      const replacement = row[columnOffset] ?? null;
+      if (!hasCellContent(existing)) continue;
+      if (JSON.stringify(comparableCellValue(existing)) === JSON.stringify(comparableCellValue(replacement))) continue;
+      if (conflicts.length < 8) {
+        conflicts.push({ address: cell.address, existing: comparableCellValue(existing), replacement: comparableCellValue(replacement) });
+      }
+    }
+  }
+  if (conflicts.length > 0) {
+    throw new Error(
+      `worksheet '${worksheet.name}'.addTable would overwrite populated cells (${conflicts.map((item) => item.address).join(", ")}). `
+      + "When cells are already populated, use helpers.addTableFromRange(worksheet, { name, range }) instead of passing replacement rows to worksheet.addTable.",
+    );
+  }
+}
+
+function guardWorksheetTableWrites(worksheet) {
+  if (!worksheet || GUARDED_WORKSHEETS.has(worksheet)) return worksheet;
+  const originalAddTable = worksheet.addTable.bind(worksheet);
+  worksheet.addTable = (model) => {
+    if (!worksheet[TABLE_RANGE_COPY_DEPTH]) assertRawTableWriteIsNonDestructive(worksheet, model);
+    return originalAddTable(model);
+  };
+  GUARDED_WORKSHEETS.add(worksheet);
+  return worksheet;
+}
+
+function guardWorkbookTableWrites(workbook) {
+  if (!workbook || GUARDED_WORKBOOKS.has(workbook)) return workbook;
+  for (const worksheet of workbook.worksheets) guardWorksheetTableWrites(worksheet);
+  const originalAddWorksheet = workbook.addWorksheet.bind(workbook);
+  workbook.addWorksheet = (...args) => guardWorksheetTableWrites(originalAddWorksheet(...args));
+  GUARDED_WORKBOOKS.add(workbook);
+  return workbook;
+}
+
 function createWorkbook() {
-  const workbook = new ExcelJS.Workbook();
+  const workbook = guardWorkbookTableWrites(new ExcelJS.Workbook());
   workbook.creator = "PilotDeck";
   workbook.lastModifiedBy = "PilotDeck";
   workbook.created = new Date();
@@ -211,6 +326,21 @@ function createWorkbook() {
   workbook.calcProperties.fullCalcOnLoad = true;
   workbook.calcProperties.forceFullCalc = true;
   return workbook;
+}
+
+function guardedExcelJsApi() {
+  class GuardedWorkbook extends ExcelJS.Workbook {
+    constructor(...args) {
+      super(...args);
+      guardWorkbookTableWrites(this);
+    }
+  }
+  return new Proxy(ExcelJS, {
+    get(target, property) {
+      if (property === "Workbook") return GuardedWorkbook;
+      return Reflect.get(target, property);
+    },
+  });
 }
 
 function escapeRegularExpression(value) {
@@ -258,6 +388,70 @@ function elementsByLocalName(root, localName) {
   return matches;
 }
 
+function expectedPackageXmlRoot(entryName) {
+  if (entryName === "[Content_Types].xml") return "Types";
+  if (/[.]rels$/i.test(entryName)) return "Relationships";
+  if (/^xl\/charts\/chart[^/]*[.]xml$/i.test(entryName)) return "chartSpace";
+  if (/^xl\/drawings\/drawing[^/]*[.]xml$/i.test(entryName)) return "wsDr";
+  if (/^xl\/worksheets\/sheet[^/]*[.]xml$/i.test(entryName)) return "worksheet";
+  if (entryName === "xl/workbook.xml") return "workbook";
+  if (entryName === "xl/styles.xml") return "styleSheet";
+  if (entryName === "xl/sharedStrings.xml") return "sst";
+  return null;
+}
+
+async function collectChangedPackageXmlIssues(zip, changedParts) {
+  const issues = [];
+  for (const entryName of changedParts) {
+    if (!/[.](?:xml|rels)$/i.test(entryName)) continue;
+    const entry = zip.file(entryName);
+    if (!entry) continue;
+    const diagnostics = [];
+    let document;
+    try {
+      document = new DOMParser({
+        onError(level, message) {
+          diagnostics.push({ level, message });
+        },
+      }).parseFromString(await entry.async("string"), "application/xml");
+    } catch (error) {
+      diagnostics.push({ level: "fatalError", message: error instanceof Error ? error.message : String(error) });
+    }
+    const parseErrors = diagnostics.filter((item) => item.level === "error" || item.level === "fatalError");
+    if (!document?.documentElement || parseErrors.length > 0) {
+      issues.push({
+        type: "malformed_package_xml",
+        part: entryName,
+        diagnostics: parseErrors.slice(0, 8),
+      });
+      continue;
+    }
+    const actualRoot = document.documentElement.localName ?? document.documentElement.nodeName?.split(":").at(-1);
+    const expectedRoot = expectedPackageXmlRoot(entryName);
+    if (expectedRoot && actualRoot !== expectedRoot) {
+      issues.push({
+        type: "unexpected_package_xml_root",
+        part: entryName,
+        expected: expectedRoot,
+        actual: actualRoot ?? null,
+      });
+      continue;
+    }
+    if (/^xl\/charts\/chart[^/]*[.]xml$/i.test(entryName)) {
+      const hasChart = elementsByLocalName(document, "chart").length > 0;
+      const hasPlotArea = elementsByLocalName(document, "plotArea").length > 0;
+      if (!hasChart || !hasPlotArea) {
+        issues.push({
+          type: "invalid_chart_xml_structure",
+          part: entryName,
+          missing: [!hasChart ? "chart" : null, !hasPlotArea ? "plotArea" : null].filter(Boolean),
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 function normalizeLibreOfficeDataValidations(xml) {
   const validationPattern = /<(?:(?:[A-Za-z_][\w.-]*):)?dataValidation\b[^>]*(?:\/>|>[\s\S]*?<\/(?:(?:[A-Za-z_][\w.-]*):)?dataValidation\s*>)/gi;
   const formula2Pattern = /<(?:(?:[A-Za-z_][\w.-]*):)?formula2\b[^>]*(?:\/>|>[\s\S]*?<\/(?:(?:[A-Za-z_][\w.-]*):)?formula2\s*>)/gi;
@@ -276,6 +470,36 @@ function normalizeLibreOfficeDataValidations(xml) {
     return normalized;
   });
   return { xml: normalizedXml, normalizedCount };
+}
+
+function normalizeExcelJsTableSemantics(xml) {
+  const tableOpen = xml.match(/<table\b[^>]*>/i)?.[0];
+  if (!tableOpen || /\btotalsRowCount="1"/i.test(tableOpen)) {
+    return { xml, changed: false };
+  }
+  let normalizedOpen = tableOpen.replace(/\s+totalsRowShown="[^"]*"/i, "");
+  normalizedOpen = normalizedOpen.replace(/>$/, ' totalsRowShown="0">');
+  const normalized = xml
+    .replace(tableOpen, normalizedOpen)
+    .replace(/\s+totalsRowLabel=""/gi, "");
+  return { xml: normalized, changed: normalized !== xml };
+}
+
+async function normalizeGeneratedTablePackage(filePath) {
+  const zip = await JSZip.loadAsync(await fs.readFile(filePath));
+  let changedParts = 0;
+  for (const [entryName, entry] of Object.entries(zip.files)) {
+    if (entry.dir || !/^xl\/tables\/table\d+[.]xml$/i.test(entryName)) continue;
+    const xml = await entry.async("string");
+    const normalized = normalizeExcelJsTableSemantics(xml);
+    if (!normalized.changed) continue;
+    zip.file(entryName, normalized.xml);
+    changedParts += 1;
+  }
+  if (changedParts > 0) {
+    await fs.writeFile(filePath, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  }
+  return { changed: changedParts > 0, changedParts };
 }
 
 async function normalizeLibreOfficeRoundTripPackage(filePath) {
@@ -329,18 +553,60 @@ async function collectSpreadsheetCompatibilityIssues(zip) {
   return issues;
 }
 
+function cachedFormulaResult(cellElement) {
+  const children = elementsByLocalName(cellElement, "v");
+  const valueElement = children[0];
+  if (!valueElement) return { present: false, value: undefined };
+  const text = valueElement.textContent ?? "";
+  const type = cellElement.getAttribute("t")?.toLowerCase() ?? "n";
+  if (type === "str" || type === "inlinestr") return { present: true, value: text };
+  if (type === "b") return { present: true, value: text !== "0" };
+  if (type === "e") return { present: true, value: { error: text } };
+  const numeric = Number(text);
+  return { present: Number.isFinite(numeric), value: numeric };
+}
+
+async function restoreFalseyFormulaResults(workbook, packageBuffer) {
+  const zip = await JSZip.loadAsync(packageBuffer);
+  const sheetParts = await workbookSheetParts(zip);
+  let restored = 0;
+  for (const [sheetName, sheetPart] of sheetParts.entries()) {
+    const worksheet = workbook.getWorksheet(sheetName);
+    const part = zip.file(sheetPart);
+    if (!worksheet || !part) continue;
+    const document = new DOMParser().parseFromString(await part.async("string"), "application/xml");
+    for (const cellElement of elementsByLocalName(document, "c")) {
+      const address = cellElement.getAttribute("r");
+      if (!address || elementsByLocalName(cellElement, "f").length === 0) continue;
+      const cell = worksheet.getCell(address);
+      const formula = formulaDescriptor(cell);
+      if (!formula || formula.result !== null) continue;
+      const cached = cachedFormulaResult(cellElement);
+      if (!cached.present) continue;
+      cell.value = { ...cell.value, result: cached.value };
+      restored += 1;
+    }
+  }
+  return restored;
+}
+
 async function loadXlsx(filePath) {
+  const source = await fs.readFile(path.resolve(filePath));
   const workbook = new ExcelJS.Workbook();
+  let packageBuffer = source;
   try {
-    await workbook.xlsx.readFile(path.resolve(filePath));
-    return workbook;
+    await workbook.xlsx.load(source);
   } catch (error) {
     const normalizedPackage = await normalizePrefixedSpreadsheetPackage(filePath);
     if (!normalizedPackage) throw error;
     const normalizedWorkbook = new ExcelJS.Workbook();
     await normalizedWorkbook.xlsx.load(normalizedPackage);
-    return normalizedWorkbook;
+    packageBuffer = normalizedPackage;
+    await restoreFalseyFormulaResults(normalizedWorkbook, packageBuffer);
+    return guardWorkbookTableWrites(normalizedWorkbook);
   }
+  await restoreFalseyFormulaResults(workbook, packageBuffer);
+  return guardWorkbookTableWrites(workbook);
 }
 
 function normalizeEncoding(value) {
@@ -477,7 +743,7 @@ function setNumberFormat(worksheet, rangeRef, numberFormat) {
   });
 }
 
-function addTableFromRange(worksheet, { name, range, style = { theme: "TableStyleMedium2", showRowStripes: true } }) {
+function addTableFromRange(worksheet, { name, range, style = { theme: "TableStyleLight1", showRowStripes: true } }) {
   if (!name || !range) throw new Error("addTableFromRange requires name and range");
   const bounds = parseRangeReference(range);
   if (bounds.endRow <= bounds.startRow) throw new Error(`Table range '${range}' must contain a header row and at least one data row`);
@@ -488,7 +754,11 @@ function addTableFromRange(worksheet, { name, range, style = { theme: "TableStyl
     if (!header) throw new Error(`Table '${name}' has an empty header at ${columnLetters(column)}${bounds.startRow}`);
     if (seen.has(header)) throw new Error(`Table '${name}' has duplicate header '${header}'`);
     seen.add(header);
-    columns.push({ name: header });
+    columns.push({
+      name: header,
+      filterButton: true,
+      ...(column === bounds.startCol ? { totalsRowLabel: "" } : {}),
+    });
   }
   const rows = [];
   for (let row = bounds.startRow + 1; row <= bounds.endRow; row += 1) {
@@ -496,15 +766,20 @@ function addTableFromRange(worksheet, { name, range, style = { theme: "TableStyl
     for (let column = bounds.startCol; column <= bounds.endCol; column += 1) values.push(worksheet.getCell(row, column).value);
     rows.push(values);
   }
-  return worksheet.addTable({
-    name: String(name),
-    ref: `${columnLetters(bounds.startCol)}${bounds.startRow}`,
-    headerRow: true,
-    totalsRow: false,
-    style: cloneCellStyle(style),
-    columns,
-    rows,
-  });
+  worksheet[TABLE_RANGE_COPY_DEPTH] = (worksheet[TABLE_RANGE_COPY_DEPTH] ?? 0) + 1;
+  try {
+    return worksheet.addTable({
+      name: String(name),
+      ref: `${columnLetters(bounds.startCol)}${bounds.startRow}`,
+      headerRow: true,
+      totalsRow: false,
+      style: cloneCellStyle(style),
+      columns,
+      rows,
+    });
+  } finally {
+    worksheet[TABLE_RANGE_COPY_DEPTH] -= 1;
+  }
 }
 
 function addListValidation(worksheet, rangeRef, values, options = {}) {
@@ -515,16 +790,14 @@ function addListValidation(worksheet, rangeRef, values, options = {}) {
   if (Array.isArray(values) && formula.length > 255) {
     throw new Error("Inline list validation exceeds Excel's 255-character limit; place the values in cells and pass a range formula instead");
   }
-  forEachCellInRange(worksheet, rangeRef, (cell) => {
-    cell.dataValidation = {
-      type: "list",
-      allowBlank: options.allowBlank ?? true,
-      showErrorMessage: options.showErrorMessage ?? true,
-      errorStyle: options.errorStyle ?? "stop",
-      errorTitle: options.errorTitle ?? "输入无效",
-      error: options.error ?? "请选择列表中的值",
-      formulae: [formula],
-    };
+  worksheet.dataValidations.add(rangeRef, {
+    type: "list",
+    allowBlank: options.allowBlank ?? true,
+    showErrorMessage: options.showErrorMessage ?? true,
+    errorStyle: options.errorStyle ?? "stop",
+    errorTitle: options.errorTitle ?? "输入无效",
+    error: options.error ?? "请选择列表中的值",
+    formulae: [formula],
   });
 }
 
@@ -557,16 +830,66 @@ function addConditionalFormatting(worksheet, { range, rules }) {
 }
 
 function styleHeader(worksheet, rangeRef, options = {}) {
-  const fill = options.fill ?? "FF0F766E";
-  const color = options.color ?? "FFFFFFFF";
+  const fill = options.fill ?? "FFF3F4F6";
+  const color = options.color ?? "FF1F2937";
   forEachCellInRange(worksheet, rangeRef, (cell) => {
     cell.style = cloneCellStyle({
       ...(cell.style ?? {}),
       fill: { type: "pattern", pattern: "solid", fgColor: { argb: fill } },
       font: { ...(cell.font ?? {}), bold: true, color: { argb: color } },
-      alignment: { ...(cell.alignment ?? {}), vertical: "middle" },
+      border: {
+        ...(cell.border ?? {}),
+        bottom: options.bottomBorder ?? { style: "thin", color: { argb: "FFD1D5DB" } },
+      },
+      alignment: { ...(cell.alignment ?? {}), vertical: "middle", horizontal: options.horizontal ?? "left" },
     });
   });
+}
+
+async function addImage(workbook, spec) {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("addImage requires an options object");
+  const worksheet = workbook.getWorksheet(spec.sheet);
+  if (!worksheet) throw new Error(`addImage references missing worksheet '${spec.sheet ?? ""}'`);
+  const sourcePath = path.resolve(String(spec.path ?? ""));
+  if (!sourcePath || !(await pathExists(sourcePath))) throw new Error(`Image not found: ${sourcePath || "(empty path)"}`);
+  const sourceExtension = path.extname(sourcePath).toLowerCase();
+  if (![".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"].includes(sourceExtension)) {
+    throw new Error("addImage supports local PNG, JPEG, WebP, and TIFF raster images");
+  }
+  const from = String(spec.anchor?.from ?? "").trim();
+  const to = String(spec.anchor?.to ?? "").trim();
+  if (!from || !to) throw new Error("addImage requires anchor.from and anchor.to cell references");
+  const fromCell = parseCellReference(from);
+  const toCell = parseCellReference(to);
+  if (toCell.row <= fromCell.row || toCell.col <= fromCell.col) {
+    throw new Error("addImage anchor.to must be below and to the right of anchor.from");
+  }
+
+  const image = sharp(sourcePath, { failOn: "error" }).rotate();
+  const metadata = await image.metadata();
+  if (!metadata.width || !metadata.height) throw new Error("Image dimensions could not be determined");
+  const stats = await image.stats();
+  const alpha = stats.channels[3];
+  const visibleChannels = stats.channels.slice(0, 3);
+  const blankTransparent = alpha && alpha.max === 0;
+  const blankWhite = stats.entropy < 0.0001 && visibleChannels.length >= 3 && visibleChannels.every((channel) => channel.min >= 250);
+  if (blankTransparent || blankWhite) throw new Error("Refusing to insert a blank image");
+
+  const buffer = await image.flatten({ background: "#ffffff" }).png().toBuffer();
+  const imageId = workbook.addImage({ buffer, extension: "png" });
+  worksheet.addImage(imageId, `${from}:${to}`);
+  const current = INSERTED_IMAGE_SPECS.get(workbook) ?? [];
+  const record = {
+    sheet: worksheet.name,
+    source: sourcePath,
+    sourceSha256: await fileSha256(sourcePath),
+    sourceWidth: metadata.width,
+    sourceHeight: metadata.height,
+    anchor: { from, to },
+  };
+  current.push(record);
+  INSERTED_IMAGE_SPECS.set(workbook, current);
+  return structuredClone(record);
 }
 
 function isValidDate(value) {
@@ -585,6 +908,12 @@ function displayCellText(cell) {
     renderedText = undefined;
   }
   if (renderedText !== undefined && renderedText !== null && renderedText !== "") return String(renderedText);
+  const formula = formulaDescriptor(cell);
+  if (formula) {
+    const result = rawFormulaResult(cell);
+    if (result instanceof Date) return safeDateIso(result)?.slice(0, 10) ?? "<Invalid Date>";
+    return result === null || result === undefined ? "" : String(result);
+  }
   const value = cell.value;
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return safeDateIso(value)?.slice(0, 10) ?? "<Invalid Date>";
@@ -660,6 +989,9 @@ function applyChineseTypography(worksheet, { platform = "cross-platform", bodySi
   return profile;
 }
 
+const CJK_TEXT_PATTERN = /[\p{Script=Han}\u3000-\u303f\uff00-\uffef]/u;
+const LATIN_ONLY_CJK_FONTS = new Set(["arial", "calibri", "aptos", "times new roman", "linux libertine g", "courier new"]);
+
 function autoFitRows(worksheet, { min = 15, max = 90, lineHeight = 15, sampleRows = 5000 } = {}) {
   const lastRow = Math.min(Math.max(worksheet.rowCount, worksheet.actualRowCount, 1), sampleRows);
   const lastColumn = Math.max(worksheet.columnCount, worksheet.actualColumnCount, 1);
@@ -699,15 +1031,20 @@ function styleSummary(cell) {
   return style;
 }
 
+function rawFormulaResult(cell, value = cell?.value) {
+  return value && typeof value === "object" && Object.hasOwn(value, "result") ? value.result : cell?.result;
+}
+
 function formulaDescriptor(cell) {
   const value = cell.value;
   if (!value || typeof value !== "object") return null;
   if (!("formula" in value) && !("sharedFormula" in value)) return null;
+  const result = rawFormulaResult(cell, value);
   return {
     address: cell.address,
     formula: value.formula ?? null,
     sharedFormula: value.sharedFormula ?? null,
-    result: serializableValue(value.result),
+    result: serializableValue(result),
   };
 }
 
@@ -747,7 +1084,7 @@ function collectWorkbookFacts(workbook, { maxFormulas = 500, maxErrors = 500 } =
         if (error && errors.length < maxErrors) errors.push({ sheet: worksheet.name, address: cell.address, error });
         const candidateDates = [
           { source: "value", value: cell.value },
-          { source: "formula_result", value: cell.value && typeof cell.value === "object" ? cell.value.result : null },
+          { source: "formula_result", value: formula ? rawFormulaResult(cell) : null },
         ];
         for (const candidate of candidateDates) {
           if (candidate.value instanceof Date && !isValidDate(candidate.value) && invalidDates.length < maxErrors) {
@@ -826,6 +1163,7 @@ function tableSummaries(worksheet) {
 }
 
 function worksheetSummary(worksheet) {
+  const validationRanges = Object.keys(worksheet.dataValidations?.model ?? {}).filter((range) => worksheet.dataValidations.model[range]);
   return {
     name: worksheet.name,
     state: worksheet.state,
@@ -835,6 +1173,9 @@ function worksheetSummary(worksheet) {
     actualColumnCount: worksheet.actualColumnCount,
     mergedRanges: Array.isArray(worksheet.model?.merges) ? worksheet.model.merges : [],
     tables: tableSummaries(worksheet),
+    autoFilter: serializableValue(worksheet.autoFilter ?? null),
+    dataValidations: validationRanges.slice(0, 100),
+    conditionalFormatting: (worksheet.conditionalFormattings ?? []).slice(0, 100).map((entry) => entry.ref),
     views: serializableValue(worksheet.views),
     pageSetup: serializableValue(worksheet.pageSetup),
   };
@@ -903,7 +1244,11 @@ async function inspectXlsx(filePath, options = {}) {
     formulas: {
       count: facts.formulaCount,
       items: facts.formulas,
+      errors: facts.errors,
+      missingCachedResults: facts.missingCachedResults,
+      invalidReferences: facts.formulaReferencesWithErrors,
     },
+    invalidDates: facts.invalidDates,
   };
 }
 
@@ -935,124 +1280,8 @@ async function inspectDelimited(filePath, options = {}) {
   };
 }
 
-const REQUIREMENT_KEYS = new Set([
-  "sourceBacked",
-  "sourceFiles",
-  "sourceBackedSheets",
-  "requiredSheets",
-  "exactSheetCount",
-  "minFormulaCount",
-  "requiredFormulaRanges",
-  "requiredNonEmptyRanges",
-  "expectedCells",
-  "expectedRanges",
-  "requiredCellTypes",
-  "requiredNativeCharts",
-  "requiredTables",
-  "requiredConditionalFormatting",
-  "requiredDataValidations",
-  "maxTotalPages",
-  "maxPagesPerSheet",
-  "warningDispositions",
-]);
-
-const REQUIREMENT_ARRAY_KEYS = [
-  "sourceFiles",
-  "sourceBackedSheets",
-  "requiredSheets",
-  "requiredFormulaRanges",
-  "requiredNonEmptyRanges",
-  "expectedCells",
-  "expectedRanges",
-  "requiredCellTypes",
-  "requiredNativeCharts",
-  "requiredTables",
-  "requiredConditionalFormatting",
-  "requiredDataValidations",
-  "maxPagesPerSheet",
-  "warningDispositions",
-];
-
-function validateRequirements(requirements, source = "requirements") {
-  if (requirements === null || requirements === undefined) return null;
-  if (typeof requirements !== "object" || Array.isArray(requirements)) {
-    throw new Error(`${source} must be a JSON object`);
-  }
-  if (Object.hasOwn(requirements, "coverage") || Object.hasOwn(requirements, "status")) {
-    throw new Error(`${source} must declare checks, not audit results; remove coverage/status`);
-  }
-  const unknown = Object.keys(requirements).filter((key) => !REQUIREMENT_KEYS.has(key));
-  if (unknown.length > 0) throw new Error(`${source} contains unsupported key(s): ${unknown.join(", ")}`);
-  for (const key of REQUIREMENT_ARRAY_KEYS) {
-    if (requirements[key] !== undefined && !Array.isArray(requirements[key])) {
-      throw new Error(`${source}.${key} must be an array`);
-    }
-  }
-  if (requirements.requiredSheets?.some((sheet) => typeof sheet !== "string" || sheet.trim().length === 0)) {
-    throw new Error(`${source}.requiredSheets must contain non-empty worksheet names`);
-  }
-  if (requirements.sourceBacked !== undefined && typeof requirements.sourceBacked !== "boolean") {
-    throw new Error(`${source}.sourceBacked must be true or false`);
-  }
-  if (requirements.sourceBackedSheets?.some((sheet) => typeof sheet !== "string" || sheet.trim().length === 0)) {
-    throw new Error(`${source}.sourceBackedSheets must contain non-empty worksheet names`);
-  }
-  for (const [key, value] of [["exactSheetCount", requirements.exactSheetCount], ["minFormulaCount", requirements.minFormulaCount], ["maxTotalPages", requirements.maxTotalPages]]) {
-    if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
-      throw new Error(`${source}.${key} must be a non-negative integer`);
-    }
-  }
-  for (const [index, disposition] of (requirements.warningDispositions ?? []).entries()) {
-    if (!disposition || typeof disposition.type !== "string" || disposition.type.trim().length === 0 || typeof disposition.rationale !== "string" || disposition.rationale.trim().length === 0) {
-      throw new Error(`${source}.warningDispositions[${index}] requires non-empty type and rationale strings`);
-    }
-  }
-  for (const [index, sourceFile] of (requirements.sourceFiles ?? []).entries()) {
-    if (!sourceFile || typeof sourceFile.path !== "string" || !path.isAbsolute(sourceFile.path) || !/^[a-f0-9]{64}$/i.test(String(sourceFile.sha256 ?? ""))) {
-      throw new Error(`${source}.sourceFiles[${index}] requires an absolute path and SHA-256 hash`);
-    }
-  }
-  for (const [index, item] of (requirements.expectedRanges ?? []).entries()) {
-    if (!item || typeof item.sheet !== "string" || typeof item.range !== "string" || !Array.isArray(item.values) || item.values.length === 0 || item.values.some((row) => !Array.isArray(row))) {
-      throw new Error(`${source}.expectedRanges[${index}] requires sheet, range, and a non-empty values matrix`);
-    }
-    const bounds = parseRangeReference(item.range);
-    const expectedRows = bounds.endRow - bounds.startRow + 1;
-    const expectedColumns = bounds.endCol - bounds.startCol + 1;
-    if (item.values.length !== expectedRows || item.values.some((row) => row.length !== expectedColumns)) {
-      throw new Error(`${source}.expectedRanges[${index}].values must match ${item.range} (${expectedRows}x${expectedColumns})`);
-    }
-  }
-  for (const [index, item] of (requirements.requiredNativeCharts ?? []).entries()) {
-    if (item.minPoints !== undefined && (!Number.isInteger(item.minPoints) || item.minPoints < 1)) {
-      throw new Error(`${source}.requiredNativeCharts[${index}].minPoints must be a positive integer`);
-    }
-    if (item.sourceRanges !== undefined && (!Array.isArray(item.sourceRanges) || item.sourceRanges.some((range) => typeof range !== "string" || range.trim().length === 0))) {
-      throw new Error(`${source}.requiredNativeCharts[${index}].sourceRanges must contain non-empty ranges`);
-    }
-  }
-  if (requirements.sourceBacked) {
-    if ((requirements.sourceFiles?.length ?? 0) === 0) throw new Error(`${source}.sourceBacked requires sourceFiles`);
-    if ((requirements.sourceBackedSheets?.length ?? 0) === 0) throw new Error(`${source}.sourceBacked requires sourceBackedSheets`);
-  }
-  return requirements;
-}
-
-async function resolveRequirements(requirementsPath, inlineRequirements = null) {
-  let fileRequirements = null;
-  if (requirementsPath) fileRequirements = validateRequirements(JSON.parse(await fs.readFile(requirementsPath, "utf8")), path.resolve(requirementsPath));
-  const validatedInline = validateRequirements(inlineRequirements, "builder requirements");
-  if (!fileRequirements) return validatedInline;
-  if (!validatedInline) return fileRequirements;
-  return validateRequirements({ ...validatedInline, ...fileRequirements }, "merged requirements");
-}
-
-function normalizeChartFormula(value) {
-  return String(value ?? "").replaceAll("$", "").replaceAll("''", "'").toLowerCase();
-}
-
 function valuesEqual(actual, expected, tolerance = 0) {
-  if (typeof expected === "number") return Number.isFinite(Number(actual)) && Math.abs(Number(actual) - expected) <= tolerance;
+  if (typeof expected === "number") return typeof actual === "number" && Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance;
   if (typeof expected === "string" && /^\d{4}-\d{2}-\d{2}$/.test(expected) && actual instanceof Date && isValidDate(actual)) {
     return actual.toISOString().startsWith(expected);
   }
@@ -1063,9 +1292,7 @@ function valuesEqual(actual, expected, tolerance = 0) {
 }
 
 function effectiveCellValue(cell) {
-  const value = cell?.value;
-  if (value && typeof value === "object" && ("formula" in value || "sharedFormula" in value)) return value.result;
-  return value;
+  return cell && formulaDescriptor(cell) ? rawFormulaResult(cell) : cell?.value;
 }
 
 function cellValueType(cell) {
@@ -1082,238 +1309,15 @@ function cellValueType(cell) {
   return typeof value;
 }
 
-function evaluateRequirements(workbook, packageInfo, requirements) {
-  if (!requirements) return { status: "not_requested", total: 0, passed: 0, checks: [], failures: [] };
-  const checks = [];
-  const record = (type, passed, details = {}) => checks.push({ type, passed, ...details });
-
-  for (const sheetName of requirements.requiredSheets ?? []) {
-    record("required_sheet", Boolean(workbook.getWorksheet(sheetName)), { sheet: sheetName });
-  }
-  if (Number.isFinite(requirements.exactSheetCount)) {
-    record("exact_sheet_count", workbook.worksheets.length === requirements.exactSheetCount, { expected: requirements.exactSheetCount, actual: workbook.worksheets.length });
-  }
-  if (Number.isFinite(requirements.minFormulaCount)) {
-    const actual = collectWorkbookFacts(workbook).formulaCount;
-    record("min_formula_count", actual >= requirements.minFormulaCount, { expected: requirements.minFormulaCount, actual });
-  }
-  for (const item of requirements.requiredFormulaRanges ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    let actual = 0;
-    let expected = 0;
-    if (worksheet) {
-      forEachCellInRange(worksheet, item.range, (cell) => {
-        expected += 1;
-        if (formulaDescriptor(cell)) actual += 1;
-      });
-    }
-    const minimum = item.minCount ?? expected;
-    record("required_formula_range", Boolean(worksheet) && actual >= minimum, { sheet: item.sheet, range: item.range, expected: minimum, actual });
-  }
-  for (const item of requirements.requiredNonEmptyRanges ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    let actual = 0;
-    let expected = 0;
-    if (worksheet) {
-      forEachCellInRange(worksheet, item.range, (cell) => {
-        expected += 1;
-        if (displayCellText(cell).trim() !== "") actual += 1;
-      });
-    }
-    const minimum = item.minCount ?? expected;
-    record("required_non_empty_range", Boolean(worksheet) && actual >= minimum, { sheet: item.sheet, range: item.range, expected: minimum, actual });
-  }
-  for (const item of requirements.expectedCells ?? []) {
-    const cell = workbook.getWorksheet(item.sheet)?.getCell(item.cell);
-    const actual = cell ? cellDisplayValueForAudit(cell) : null;
-    record("expected_cell", Boolean(cell) && valuesEqual(actual, item.value, item.tolerance ?? 0), { sheet: item.sheet, cell: item.cell, expected: item.value, actual });
-  }
-  for (const item of requirements.expectedRanges ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    const bounds = parseRangeReference(item.range);
-    const mismatches = [];
-    let matched = 0;
-    let total = 0;
-    for (let rowOffset = 0; rowOffset < item.values.length; rowOffset += 1) {
-      for (let columnOffset = 0; columnOffset < item.values[rowOffset].length; columnOffset += 1) {
-        total += 1;
-        const address = `${columnLetters(bounds.startCol + columnOffset)}${bounds.startRow + rowOffset}`;
-        const actual = worksheet ? cellDisplayValueForAudit(worksheet.getCell(address)) : null;
-        const expected = item.values[rowOffset][columnOffset];
-        if (worksheet && valuesEqual(actual, expected, item.tolerance ?? 0)) matched += 1;
-        else if (mismatches.length < 100) mismatches.push({ address, expected, actual });
-      }
-    }
-    record("expected_range", Boolean(worksheet) && matched === total, { sheet: item.sheet, range: item.range, expected: total, actual: matched, mismatches });
-  }
-  for (const item of requirements.requiredCellTypes ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    const expectedType = String(item.type ?? "").toLowerCase();
-    const supportedTypes = new Set(["number", "date", "string", "boolean"]);
-    if (!supportedTypes.has(expectedType)) throw new Error(`Unsupported requiredCellTypes type '${item.type}'`);
-    const mismatches = [];
-    const counts = {};
-    let total = 0;
-    let nonBlank = 0;
-    let matched = 0;
-    if (worksheet) {
-      forEachCellInRange(worksheet, item.range, (cell) => {
-        total += 1;
-        const actualType = cellValueType(cell);
-        counts[actualType] = (counts[actualType] ?? 0) + 1;
-        if (actualType === "blank" && item.allowBlank) return;
-        if (actualType !== "blank") nonBlank += 1;
-        if (actualType === expectedType) matched += 1;
-        else if (mismatches.length < 100) mismatches.push({ address: cell.address, actualType, value: serializableValue(effectiveCellValue(cell)), numberFormat: cell.numFmt ?? null });
-      });
-    }
-    const minimum = item.minCount ?? (item.allowBlank ? nonBlank : total);
-    record("required_cell_type", Boolean(worksheet) && matched >= minimum && mismatches.length === 0, {
-      sheet: item.sheet,
-      range: item.range,
-      expectedType,
-      minimum,
-      matched,
-      counts,
-      mismatches,
-    });
-  }
-  for (const item of requirements.requiredNativeCharts ?? []) {
-    const candidates = packageInfo.charts.filter((chart) => {
-      if (item.sheet && chart.sheet !== item.sheet) return false;
-      if (item.type && !chart.types.includes(item.type)) return false;
-      if (Array.isArray(item.sourceRanges)) {
-        const actual = chart.sourceFormulas.map(normalizeChartFormula);
-        if (!item.sourceRanges.every((range) => actual.some((formula) => formula.includes(normalizeChartFormula(range))))) return false;
-      }
-      if (Number.isInteger(item.minPoints)) {
-        if ((chart.series ?? []).length === 0 || chart.series.some((series) => {
-          const stats = chartPointStats(workbook, series);
-          return !stats
-            || stats.categories !== stats.values
-            || stats.blankCategories > 0
-            || stats.blankValues > 0
-            || stats.numericValues < item.minPoints;
-        })) return false;
-      }
-      return true;
-    });
-    const minimum = item.minCount ?? 1;
-    record("required_native_chart", candidates.length >= minimum, { sheet: item.sheet ?? null, chartType: item.type ?? null, expected: minimum, actual: candidates.length, sourceRanges: item.sourceRanges ?? [], minPoints: item.minPoints ?? null });
-  }
-  for (const item of requirements.requiredTables ?? []) {
-    const worksheets = item.sheet ? [workbook.getWorksheet(item.sheet)].filter(Boolean) : workbook.worksheets;
-    const actual = worksheets.reduce((total, worksheet) => total + tableSummaries(worksheet).length, 0);
-    const minimum = item.minCount ?? 1;
-    record("required_table", actual >= minimum, { sheet: item.sheet ?? null, expected: minimum, actual });
-  }
-  for (const item of requirements.requiredConditionalFormatting ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    const ranges = worksheet?.conditionalFormattings?.map((entry) => entry.ref) ?? [];
-    const passed = Boolean(worksheet) && (item.range ? ranges.includes(item.range) : ranges.length > 0);
-    record("required_conditional_formatting", passed, { sheet: item.sheet, range: item.range ?? null, actualRanges: ranges });
-  }
-  for (const item of requirements.requiredDataValidations ?? []) {
-    const worksheet = workbook.getWorksheet(item.sheet);
-    const model = worksheet?.dataValidations?.model ?? {};
-    const addresses = Object.keys(model);
-    const passed = Boolean(worksheet) && (item.cell ? addresses.includes(item.cell) : addresses.length > 0);
-    record("required_data_validation", passed, { sheet: item.sheet, cell: item.cell ?? null, actualCells: addresses.slice(0, 100) });
-  }
-
-  const semanticAssertionCount = [
-    ...(requirements.expectedCells ?? []),
-    ...(requirements.expectedRanges ?? []),
-    ...(requirements.requiredNonEmptyRanges ?? []),
-    ...(requirements.requiredCellTypes ?? []),
-    ...(requirements.requiredNativeCharts ?? []),
-    ...(requirements.requiredTables ?? []),
-    ...(requirements.requiredConditionalFormatting ?? []),
-    ...(requirements.requiredDataValidations ?? []),
-  ].length;
-  record("semantic_requirement_floor", semanticAssertionCount > 0, { actual: semanticAssertionCount, minimum: 1 });
-
-  const formulaCount = collectWorkbookFacts(workbook).formulaCount;
-  if (formulaCount > 0) {
-    record("formula_requirement_floor", (requirements.requiredFormulaRanges?.length ?? 0) > 0, { formulaCount, requiredFormulaRanges: requirements.requiredFormulaRanges?.length ?? 0 });
-  }
-  if (packageInfo.charts.length > 0) {
-    const chartRequirements = requirements.requiredNativeCharts ?? [];
-    const complete = chartRequirements.length > 0 && chartRequirements.every((item) => (
-      Array.isArray(item.sourceRanges) && item.sourceRanges.length >= 2 && Number.isInteger(item.minPoints) && item.minPoints >= 1
-    ));
-    record("native_chart_requirement_floor", complete, { charts: packageInfo.charts.length, declared: chartRequirements.length });
-  }
-  for (const sheetName of requirements.sourceBackedSheets ?? []) {
-    const assertions = [
-      ...(requirements.expectedCells ?? []).filter((item) => item.sheet === sheetName),
-      ...(requirements.expectedRanges ?? []).filter((item) => item.sheet === sheetName),
-    ];
-    record("source_backed_sheet_assertions", assertions.length > 0, { sheet: sheetName, assertions: assertions.length });
-  }
-
-  const failures = checks.filter((check) => !check.passed);
-  return { status: failures.length === 0 ? "passed" : "failed", total: checks.length, passed: checks.length - failures.length, checks, failures };
-}
-
-async function evaluateSourceFiles(requirements) {
-  if (!requirements?.sourceBacked) return [];
-  const checks = [];
-  for (const sourceFile of requirements.sourceFiles ?? []) {
-    const exists = await pathExists(sourceFile.path);
-    const actual = exists ? await fileSha256(sourceFile.path) : null;
-    checks.push({
-      type: "source_file_integrity",
-      passed: exists && actual === sourceFile.sha256.toLowerCase(),
-      path: sourceFile.path,
-      expectedSha256: sourceFile.sha256.toLowerCase(),
-      actualSha256: actual,
-    });
-  }
-  return checks;
-}
-
-function cellDisplayValueForAudit(cell) {
-  const formula = formulaDescriptor(cell);
-  if (formula) return formula.result;
-  if (cell.value instanceof Date) return safeDateIso(cell.value) ?? "<Invalid Date>";
-  if (cell.value && typeof cell.value === "object") {
-    if (typeof cell.value.text === "string") return cell.value.text;
-    if (Array.isArray(cell.value.richText)) return cell.value.richText.map((run) => run.text ?? "").join("");
-    if (typeof cell.value.error === "string") return cell.value.error;
-  }
-  return cell.value;
-}
-
-function evaluateWarningDispositions(warnings, requirements) {
-  if (warnings.length === 0) return { status: "not_needed", total: 0, disposed: 0, dispositions: [], unresolved: [] };
-  const declared = Array.isArray(requirements?.warningDispositions) ? requirements.warningDispositions : [];
-  const dispositions = [];
-  const unresolved = [];
-  for (const warning of warnings) {
-    const disposition = declared.find((item) => item?.type === warning.type && typeof item.rationale === "string" && item.rationale.trim().length > 0);
-    if (disposition) dispositions.push({ warning, rationale: disposition.rationale.trim() });
-    else unresolved.push(warning);
-  }
-  return {
-    status: unresolved.length === 0 ? "passed" : "failed",
-    total: warnings.length,
-    disposed: dispositions.length,
-    dispositions,
-    unresolved,
-  };
-}
-
 function collectCjkFontWarnings(workbook) {
   const warnings = [];
-  const latinOnlyNames = new Set(["arial", "calibri", "aptos", "times new roman", "linux libertine g", "courier new"]);
   for (const worksheet of workbook.worksheets) {
     worksheet.eachRow({ includeEmpty: false }, (row) => {
       row.eachCell({ includeEmpty: false }, (cell) => {
         const text = displayCellText(cell);
-        if (!/[\p{Script=Han}\u3000-\u303f\uff00-\uffef]/u.test(text)) return;
+        if (!CJK_TEXT_PATTERN.test(text)) return;
         const name = cell.font?.name;
-        if (name && latinOnlyNames.has(name.toLowerCase()) && warnings.length < 100) {
+        if (name && LATIN_ONLY_CJK_FONTS.has(name.toLowerCase()) && warnings.length < 100) {
           warnings.push({ sheet: worksheet.name, address: cell.address, font: name });
         }
       });
@@ -1375,19 +1379,10 @@ function collectChartFailures(workbook, packageInfo) {
   return failures;
 }
 
-async function auditXlsx(filePath, requirements = null) {
+async function auditXlsx(filePath) {
   const packageInfo = await inspectPackage(filePath);
   const workbook = await loadXlsx(filePath);
   const facts = collectWorkbookFacts(workbook);
-  const coverage = evaluateRequirements(workbook, packageInfo, requirements);
-  const sourceFileChecks = await evaluateSourceFiles(requirements);
-  if (sourceFileChecks.length > 0) {
-    coverage.checks.push(...sourceFileChecks);
-    coverage.failures.push(...sourceFileChecks.filter((check) => !check.passed));
-    coverage.total = coverage.checks.length;
-    coverage.passed = coverage.checks.filter((check) => check.passed).length;
-    coverage.status = coverage.failures.length === 0 ? "passed" : "failed";
-  }
   const cjkFontWarnings = collectCjkFontWarnings(workbook);
   const chartFailures = collectChartFailures(workbook, packageInfo);
   const blankSheets = workbook.worksheets
@@ -1400,14 +1395,10 @@ async function auditXlsx(filePath, requirements = null) {
   const advisories = [];
   if (blankSheets.length > 0) warnings.push({ type: "blank_sheets", sheets: blankSheets });
   if (oversizedSheets.length > 0) warnings.push({ type: "large_used_ranges", sheets: oversizedSheets });
-  if (facts.missingCachedResults.length > 0) {
-    warnings.push({ type: "missing_cached_formula_results", cells: facts.missingCachedResults.slice(0, 100) });
-  }
+  if (cjkFontWarnings.length > 0) warnings.push({ type: "cjk_font_fallback", cells: cjkFontWarnings });
   if (packageInfo.unsafeForRoundTrip) {
     advisories.push({ type: "future_round_trip_risk", features: packageInfo.roundTripRisks });
   }
-  if (cjkFontWarnings.length > 0) warnings.push({ type: "cjk_font_fallback", cells: cjkFontWarnings });
-  const warningDispositions = evaluateWarningDispositions(warnings, requirements);
   const hardFailures = [
     ...facts.errors.map((error) => ({ type: "formula_error", ...error })),
     ...facts.missingCachedResults.map((error) => ({ type: "missing_cached_formula_result", ...error })),
@@ -1415,10 +1406,9 @@ async function auditXlsx(filePath, requirements = null) {
     ...facts.invalidDates.map((error) => ({ type: "invalid_date_value", ...error })),
     ...chartFailures,
     ...packageInfo.compatibility.issues,
-    ...coverage.failures.map((failure) => ({ type: "requirement_not_met", requirement: failure })),
   ];
   return {
-    status: hardFailures.length > 0 ? "error" : warnings.length > 0 ? "warning" : "ok",
+    status: hardFailures.length > 0 ? "error" : warnings.length > 0 ? "partial" : "ok",
     path: path.resolve(filePath),
     worksheetCount: workbook.worksheets.length,
     formulas: {
@@ -1429,30 +1419,41 @@ async function auditXlsx(filePath, requirements = null) {
     },
     invalidDates: facts.invalidDates,
     package: packageInfo,
-    coverage,
     hardFailures,
     warnings,
-    warningDispositions,
     advisories,
   };
 }
 
-function summarizeAuditFailures(audit, limit = 8) {
-  return audit.hardFailures.slice(0, limit).map((failure) => {
-    if (failure.type === "requirement_not_met") {
-      const requirement = failure.requirement ?? {};
-      const location = [requirement.sheet, requirement.range ?? requirement.cell].filter(Boolean).join("!");
-      const mismatch = requirement.mismatches?.[0];
-      const comparison = mismatch
-        ? `${mismatch.address}: expected ${JSON.stringify(mismatch.expected)}, actual ${JSON.stringify(mismatch.actual)}`
-        : `expected ${JSON.stringify(requirement.expected ?? requirement.minimum ?? "pass")}, actual ${JSON.stringify(requirement.actual ?? requirement.matched ?? "failed")}`;
-      return `${requirement.type}${location ? ` (${location})` : ""}: ${comparison}`;
-    }
-    if (failure.type.startsWith("chart_")) {
-      return `${failure.type} (${failure.chart ?? "chart"}, series ${failure.series ?? 0}): ${JSON.stringify(failure)}`;
-    }
-    return `${failure.type}: ${JSON.stringify(failure)}`;
-  }).join("; ");
+function failureCategory(failure) {
+  return failure.type ?? "unknown";
+}
+
+function formatFailure(failure) {
+  if (String(failure.type).startsWith("chart_")) {
+    return `${failure.type} (${failure.chart ?? "chart"}, series ${failure.series ?? 0}): ${JSON.stringify(failure)}`;
+  }
+  const location = [failure.sheet, failure.range ?? failure.address ?? failure.cell].filter(Boolean).join("!");
+  return `${failure.type}${location ? ` (${location})` : ""}: ${JSON.stringify(failure)}`;
+}
+
+function summarizeFailures(failures, maxCategories = 12) {
+  const groups = new Map();
+  for (const failure of failures ?? []) {
+    const category = failureCategory(failure);
+    const group = groups.get(category) ?? { count: 0, sample: failure };
+    group.count += 1;
+    groups.set(category, group);
+  }
+  const summaries = [...groups.entries()].slice(0, maxCategories).map(([category, group]) => (
+    `${category} ×${group.count}: ${formatFailure(group.sample)}`
+  ));
+  if (groups.size > maxCategories) summaries.push(`${groups.size - maxCategories} additional failure categories; inspect the build report for full details`);
+  return summaries.join("; ");
+}
+
+function summarizeAuditFailures(audit) {
+  return summarizeFailures(audit.hardFailures);
 }
 
 async function auditDelimited(filePath) {
@@ -1462,7 +1463,7 @@ async function auditDelimited(filePath) {
   if (report.inconsistentRowWidths) warnings.push({ type: "inconsistent_row_widths" });
   if (report.rowCount === 0) warnings.push({ type: "empty_file" });
   return {
-    status: failures.length > 0 ? "error" : warnings.length > 0 ? "warning" : "ok",
+    status: failures.length > 0 ? "error" : warnings.length > 0 ? "partial" : "ok",
     path: report.path,
     format: report.format,
     rowCount: report.rowCount,
@@ -1486,7 +1487,7 @@ function findRenderer() {
 async function runLibreOffice(args, profileDir) {
   const soffice = findSoffice();
   if (!soffice || !(await pathExists(soffice)) && path.isAbsolute(soffice)) {
-    throw new Error("LibreOffice was not found. Install LibreOffice or expose soffice on PATH.");
+    throw unsupported("libreoffice-unavailable", "LibreOffice was not found. Install LibreOffice or expose soffice on PATH.");
   }
   const fontDirectories = [
     path.join(skillRoot, "assets", "fonts"),
@@ -1656,7 +1657,7 @@ async function exportDelimited(workbook, outputPath, sheetName, encoding = "utf8
 
 function createToolkit(inputPath) {
   return {
-    ExcelJS,
+    ExcelJS: guardedExcelJsApi(),
     inputPath: inputPath ? path.resolve(inputPath) : null,
     createWorkbook,
     loadWorkbook,
@@ -1664,6 +1665,7 @@ function createToolkit(inputPath) {
     loadDelimited,
     helpers: {
       addConditionalFormatting,
+      addImage,
       addListValidation,
       addNativeChart(workbook, spec) {
         const current = NATIVE_CHART_SPECS.get(workbook) ?? [];
@@ -1724,34 +1726,345 @@ async function buildFromBuilder(builderPath, inputPath) {
     workbook,
     sheetName: product?.workbook ? product.sheetName : undefined,
     nativeCharts: product?.nativeCharts ?? NATIVE_CHART_SPECS.get(workbook) ?? [],
-    requirements: product?.requirements ?? null,
+    insertedImages: INSERTED_IMAGE_SPECS.get(workbook) ?? [],
   };
 }
 
 async function commandScaffold(options) {
   const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet builder");
-  const starter = path.join(skillRoot, "assets", "starter-workbook.mjs");
-  const requirementsOutput = options["requirements-out"]
-    ? assertInternalArtifactPath(String(options["requirements-out"]), "Spreadsheet requirements")
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet scaffold report")
     : null;
+  assertDistinctArtifactPaths({ builder: outputPath, report: reportPath });
+  const starter = path.join(skillRoot, "assets", "starter-workbook.mjs");
   if (await pathExists(outputPath)) throw new Error(`Refusing to overwrite existing builder: ${outputPath}`);
-  if (requirementsOutput && await pathExists(requirementsOutput)) throw new Error(`Refusing to overwrite existing requirements: ${requirementsOutput}`);
   await ensureParent(outputPath);
   await fs.copyFile(starter, outputPath);
-  if (requirementsOutput) {
-    await ensureParent(requirementsOutput);
-    await fs.copyFile(path.join(skillRoot, "assets", "requirements.example.json"), requirementsOutput);
-  }
-  await emitReport({ status: "ok", output: path.resolve(outputPath), requirements: requirementsOutput ? path.resolve(requirementsOutput) : null }, options.report && String(options.report));
+  await emitReport({ status: "ok", output: path.resolve(outputPath) }, reportPath);
 }
 
-function workbookRequiresRequirements(workbook, nativeCharts, facts) {
-  if (workbook.worksheets.length > 1 || facts.formulaCount > 0 || nativeCharts.length > 0) return true;
-  return workbook.worksheets.some((worksheet) => (
-    tableSummaries(worksheet).length > 0
-    || (worksheet.conditionalFormattings?.length ?? 0) > 0
-    || Object.keys(worksheet.dataValidations?.model ?? {}).length > 0
-  ));
+function capabilitiesReport() {
+  return {
+    status: "ok",
+    protocolVersion: 3,
+    resultStatuses: RESULT_STATUSES,
+    capabilityStates: CAPABILITY_STATES,
+    outputPolicy: {
+      mutationOutputsAreInternalCandidates: true,
+      finalOutputRequiresCommand: "deliver",
+      deliveryRequiresMatchingCandidateSha256: true,
+      sourceReplacement: "blocked",
+      existingOutputsBlockedByDefault: true,
+    },
+    styleGuidance: {
+      defaultWhenUnspecified: "restrained-neutral",
+      decisionMaker: "model",
+      helperDefaults: "neutral-and-overridable",
+    },
+    operations: {
+      inspect: { status: "supported", formats: ["xlsx", "xls", "csv", "tsv"] },
+      createAndEdit: {
+        status: "supported",
+        command: "build",
+        existingWorkbookRoundTrip: "partial",
+        reason: "Existing workbooks with charts, pivots, drawings, external links, connections, macros, signatures, or active content are unsafe for a generic ExcelJS round trip.",
+      },
+      nativeCharts: { status: "supported", types: ["line", "column", "bar"], helper: "addNativeChart" },
+      rasterImages: { status: "supported", formats: ["png", "jpeg", "webp", "tiff"], helper: "addImage" },
+      scatterAreaComboPieCharts: { status: "fallback", command: "fallback-patch" },
+      pivotTablesExternalConnectionsPowerQuery: { status: "unsupported", fallback: "Create a companion workbook without mutating the source package." },
+      macrosSignaturesEncryptionActiveX: { status: "blocked" },
+      controlledFallback: { status: "supported", command: "fallback-patch", directUntrackedPackageMutation: "blocked" },
+      review: { status: "supported", command: "review", multimodalRender: true, revisionDirectories: true, structuralEvidence: true, verdict: "model" },
+      evaluate: { status: "supported", command: "evaluate", taskSpecificScript: true, sourceReread: true, verdict: "model-authored-checks" },
+      delivery: { status: "supported", command: "deliver", candidateDigestBinding: true },
+    },
+  };
+}
+
+async function commandCapabilities(options = {}) {
+  const full = capabilitiesReport();
+  if (options.full) {
+    await emitReport(full);
+    return;
+  }
+  if (options.feature) {
+    const feature = requireOption(options, "feature");
+    if (!Object.hasOwn(full.operations, feature)) throw unsupported("capability-not-found", `No capability is declared for '${feature}'`, { available: Object.keys(full.operations) });
+    await emitReport({ status: "ok", protocolVersion: full.protocolVersion, feature, capability: full.operations[feature] });
+    return;
+  }
+  await emitReport({
+    status: "ok",
+    protocolVersion: full.protocolVersion,
+    workflow: ["inspect", "build", "review", "evaluate", "deliver"],
+    review: "Use model judgment over rendered pages and structural facts; add a task-specific evaluator when source fidelity or calculations need stronger evidence.",
+    next: "Use the simplest capability that supplies enough evidence for the current task; add --full only for capability debugging.",
+  });
+}
+
+function schemaFor(command) {
+  const schemas = {
+    "native-chart": {
+      required: ["sheet", "type", "categories", "series", "anchor"],
+      types: ["line", "column", "bar"],
+      seriesRequired: ["name", "values"],
+      anchorRequired: ["from", "to"],
+    },
+    image: {
+      helper: "await helpers.addImage(workbook, spec)",
+      required: ["sheet", "path", "anchor"],
+      formats: ["png", "jpeg", "webp", "tiff"],
+      anchorRequired: ["from", "to"],
+    },
+    "fallback-patch": {
+      required: ["input", "script", "out", "manifest", "reason", "allow-part"],
+      repeatable: ["allow-part"],
+      scriptContract: "node patch.mjs --package-dir <temporary-unpacked-xlsx>",
+    },
+  };
+  const schema = schemas[command];
+  if (!schema) throw unsupported("schema-not-found", `No spreadsheet schema is declared for '${command}'`, { available: Object.keys(schemas) });
+  return { status: "ok", command, schema };
+}
+
+async function commandSchema(options) {
+  await emitReport(schemaFor(requireOption(options, "command")));
+}
+
+function safePackageEntryName(entryName) {
+  const normalized = entryName.replaceAll("\\", "/");
+  return normalized
+    && !normalized.startsWith("/")
+    && !normalized.split("/").includes("..")
+    && !path.isAbsolute(normalized);
+}
+
+async function unpackXlsxToDirectory(inputPath, packageDir) {
+  const zip = await JSZip.loadAsync(await fs.readFile(inputPath));
+  for (const [entryName, entry] of Object.entries(zip.files)) {
+    if (!safePackageEntryName(entryName)) throw blocked("unsafe-package-path", `Unsafe XLSX package entry: ${entryName}`);
+    const target = path.join(packageDir, ...entryName.split("/"));
+    if (entry.dir) await fs.mkdir(target, { recursive: true });
+    else {
+      await ensureParent(target);
+      await fs.writeFile(target, await entry.async("nodebuffer"));
+    }
+  }
+}
+
+async function packageFileHashes(packageDir) {
+  const hashes = new Map();
+  async function visit(directory) {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw blocked("fallback-symlink", "Fallback package scripts may not create symbolic links");
+      if (entry.isDirectory()) await visit(absolute);
+      else if (entry.isFile()) {
+        const relative = path.relative(packageDir, absolute).split(path.sep).join("/");
+        if (!safePackageEntryName(relative)) throw blocked("unsafe-package-path", `Unsafe fallback output path: ${relative}`);
+        hashes.set(relative, await fileSha256(absolute));
+      }
+    }
+  }
+  await visit(packageDir);
+  return hashes;
+}
+
+function packageChanges(before, after) {
+  const names = new Set([...before.keys(), ...after.keys()]);
+  return [...names].filter((name) => before.get(name) !== after.get(name)).sort();
+}
+
+function globPatternMatches(pattern, value) {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "*" && pattern[index + 1] === "*") {
+      source += ".*";
+      index += 1;
+    } else if (character === "*") source += "[^/]*";
+    else if (character === "?") source += "[^/]";
+    else source += character.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  }
+  return new RegExp(`${source}$`).test(value);
+}
+
+async function repackDirectoryToXlsx(packageDir, outputPath) {
+  const zip = new JSZip();
+  const hashes = await packageFileHashes(packageDir);
+  for (const entryName of [...hashes.keys()].sort()) {
+    zip.file(entryName, await fs.readFile(path.join(packageDir, ...entryName.split("/"))));
+  }
+  await ensureParent(outputPath);
+  await fs.writeFile(outputPath, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+}
+
+async function commandFallbackPatch(options) {
+  const inputPath = path.resolve(requireOption(options, "input"));
+  const scriptPath = assertInternalArtifactPath(requireOption(options, "script"), "Spreadsheet fallback script");
+  const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet fallback candidate");
+  const manifestPath = assertInternalArtifactPath(requireOption(options, "manifest"), "Spreadsheet fallback manifest");
+  assertDistinctArtifactPaths({ input: inputPath, script: scriptPath, candidate: outputPath, manifest: manifestPath });
+  const reason = requireOption(options, "reason").trim();
+  const allowParts = optionValues(options, "allow-part");
+  if (!reason) throw new Error("--reason must explain the missing standard capability");
+  if (allowParts.length === 0) throw new Error("fallback-patch requires at least one --allow-part");
+  if (workbookExtension(inputPath) !== ".xlsx" || workbookExtension(outputPath) !== ".xlsx") throw new Error("fallback-patch requires .xlsx input and output");
+  if (!(await pathExists(inputPath))) throw new Error(`Fallback input not found: ${inputPath}`);
+  if (!(await pathExists(scriptPath))) throw new Error(`Fallback script not found: ${scriptPath}`);
+  if (!/[.]mjs$/i.test(scriptPath)) throw new Error("Fallback scripts must be JavaScript ES modules (.mjs)");
+  if (pathsReferToSameLocation(inputPath, outputPath)) throw new Error("Fallback output must be distinct from input");
+  if (await pathExists(outputPath)) throw blocked("fallback-output-exists", "Refusing to overwrite an existing fallback candidate", { output: outputPath });
+
+  const packageInfo = await inspectPackage(inputPath);
+  const forbiddenFeatures = ["macros", "activeX", "signatures", "embeddings"].filter((feature) => packageInfo.features[feature] > 0);
+  if (forbiddenFeatures.length > 0) {
+    throw blocked("fallback-active-content", "Controlled fallback cannot mutate a workbook containing active, signed, or embedded content", { features: forbiddenFeatures });
+  }
+  const forbiddenPart = /^(?:_xmlsignatures\/|xl\/(?:vbaProject[.]bin|activeX\/|embeddings\/))/i;
+  if (allowParts.some((pattern) => forbiddenPart.test(pattern.replaceAll("*", "")))) {
+    throw blocked("fallback-forbidden-part", "The fallback allowlist includes a forbidden active-content part", { allowParts });
+  }
+
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pilotdeck-spreadsheet-fallback-"));
+  const packageDir = path.join(tempRoot, "package");
+  const stagedOutput = path.join(tempRoot, "candidate.xlsx");
+  let manifest;
+  try {
+    await fs.mkdir(packageDir, { recursive: true });
+    await unpackXlsxToDirectory(inputPath, packageDir);
+    const before = await packageFileHashes(packageDir);
+    const safeEnvironment = {};
+    for (const key of ["PATH", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR"]) {
+      if (process.env[key]) safeEnvironment[key] = process.env[key];
+    }
+    let scriptResult;
+    try {
+      scriptResult = await execFileAsync(process.execPath, [scriptPath, "--package-dir", packageDir], {
+        cwd: path.dirname(scriptPath),
+        env: safeEnvironment,
+        timeout: 60_000,
+        maxBuffer: 1024 * 1024,
+      });
+    } catch (error) {
+      manifest = {
+        status: "error",
+        protocol: "pilotdeck-spreadsheet-fallback/v1",
+        reason,
+        input: inputPath,
+        script: scriptPath,
+        scriptSha256: await fileSha256(scriptPath),
+        allowParts,
+        error: error instanceof Error ? error.message : String(error),
+        stdout: String(error?.stdout ?? "").slice(0, 8000),
+        stderr: String(error?.stderr ?? "").slice(0, 8000),
+      };
+      await writeJson(manifestPath, manifest);
+      throw new Error(`Fallback script failed: ${manifest.error}`);
+    }
+    const after = await packageFileHashes(packageDir);
+    const changedParts = packageChanges(before, after);
+    const outsideAllowlist = changedParts.filter((name) => !allowParts.some((pattern) => globPatternMatches(pattern, name)));
+    const forbiddenChanges = changedParts.filter((name) => forbiddenPart.test(name));
+    if (outsideAllowlist.length > 0 || forbiddenChanges.length > 0) {
+      manifest = {
+        status: "blocked",
+        protocol: "pilotdeck-spreadsheet-fallback/v1",
+        reason,
+        input: inputPath,
+        script: scriptPath,
+        scriptSha256: await fileSha256(scriptPath),
+        allowParts,
+        changedParts,
+        outsideAllowlist,
+        forbiddenChanges,
+        stdout: String(scriptResult.stdout ?? "").slice(0, 8000),
+        stderr: String(scriptResult.stderr ?? "").slice(0, 8000),
+      };
+      await writeJson(manifestPath, manifest);
+      throw blocked("fallback-scope-exceeded", "Fallback changed XLSX parts outside its declared allowlist", manifest);
+    }
+    if (changedParts.length === 0) {
+      manifest = {
+        status: "partial",
+        protocol: "pilotdeck-spreadsheet-fallback/v1",
+        reason,
+        input: inputPath,
+        script: scriptPath,
+        scriptSha256: await fileSha256(scriptPath),
+        allowParts,
+        changedParts,
+        next: "Correct the fallback script; a no-op is not success.",
+      };
+      await writeJson(manifestPath, manifest);
+      if (!options.quiet) await emitReport(manifest);
+      return;
+    }
+    await repackDirectoryToXlsx(packageDir, stagedOutput);
+    const validationIssues = [];
+    let packageInfo = null;
+    let audit = null;
+    try {
+      const stagedZip = await JSZip.loadAsync(await fs.readFile(stagedOutput));
+      validationIssues.push(...await collectChangedPackageXmlIssues(stagedZip, changedParts));
+      packageInfo = await inspectPackage(stagedOutput);
+      validationIssues.push(...packageInfo.compatibility.issues);
+      if (validationIssues.length === 0) {
+        audit = await auditXlsx(stagedOutput);
+        if (audit.worksheetCount === 0) validationIssues.push({ type: "missing_worksheets" });
+        validationIssues.push(...audit.hardFailures);
+      }
+    } catch (error) {
+      validationIssues.push({
+        type: "package_validation_failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (validationIssues.length > 0) {
+      manifest = {
+        status: "blocked",
+        protocol: "pilotdeck-spreadsheet-fallback/v1",
+        reason,
+        input: inputPath,
+        script: scriptPath,
+        scriptSha256: await fileSha256(scriptPath),
+        allowParts,
+        changedParts,
+        validation: { status: "error", issues: validationIssues },
+        stdout: String(scriptResult.stdout ?? "").slice(0, 8000),
+        stderr: String(scriptResult.stderr ?? "").slice(0, 8000),
+      };
+      await writeJson(manifestPath, manifest);
+      throw blocked("fallback-invalid-package", "Fallback produced an invalid spreadsheet package", manifest);
+    }
+    await replaceFileAtomically(stagedOutput, outputPath);
+    manifest = {
+      status: "ok",
+      protocol: "pilotdeck-spreadsheet-fallback/v1",
+      reason,
+      input: inputPath,
+      inputSha256: await fileSha256(inputPath),
+      script: scriptPath,
+      scriptSha256: await fileSha256(scriptPath),
+      allowParts,
+      changedParts,
+      output: outputPath,
+      outputSha256: await fileSha256(outputPath),
+      validation: {
+        status: "ok",
+        issues: [],
+        compatibility: packageInfo.compatibility,
+        auditStatus: audit.status,
+      },
+      stdout: String(scriptResult.stdout ?? "").slice(0, 8000),
+      stderr: String(scriptResult.stderr ?? "").slice(0, 8000),
+    };
+    await writeJson(manifestPath, manifest);
+    if (!options.quiet) await emitReport(manifest);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
 }
 
 async function replaceFileAtomically(sourcePath, outputPath) {
@@ -1780,13 +2093,13 @@ async function replaceFileAtomically(sourcePath, outputPath) {
   }
 }
 
-async function commandBuild(options) {
+async function commandBuildCore(options) {
   const builderPath = assertInternalArtifactPath(
     requireOption(options, "builder"),
     "Spreadsheet builder",
   );
   const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet candidate");
-  const inputPath = options.input ? String(options.input) : null;
+  const inputPath = options.input ? requireOption(options, "input") : null;
   const outputExtension = assertSupportedOutput(outputPath);
 
   if (inputPath) {
@@ -1798,12 +2111,16 @@ async function commandBuild(options) {
       const packageInfo = await inspectPackage(inputPath);
       if (packageInfo.unsafeForRoundTrip && !options["allow-risky-roundtrip"]) {
         const names = packageInfo.roundTripRisks.map((risk) => `${risk.feature}(${risk.count})`).join(", ");
-        throw new Error(`Input workbook contains objects that are unsafe for an ExcelJS round trip: ${names}. Do not bypass without explicit user approval.`);
+        throw blocked(
+          "unsafe-workbook-round-trip",
+          `Input workbook contains objects that are unsafe for an ExcelJS round trip: ${names}`,
+          { risks: packageInfo.roundTripRisks, next: "Preserve the source and create a companion workbook, or obtain explicit approval for the listed losses." },
+        );
       }
     }
   }
 
-  const { workbook, sheetName, nativeCharts, requirements: builderRequirements } = await runStage(
+  const { workbook, sheetName, nativeCharts, insertedImages } = await runStage(
     "builder_execution",
     () => buildFromBuilder(builderPath, inputPath),
   );
@@ -1811,19 +2128,6 @@ async function commandBuild(options) {
   workbook.calcProperties.forceFullCalc = true;
   await runStage("builder_validation", async () => validateWorkbookForSerialization(workbook, nativeCharts));
   const facts = collectWorkbookFacts(workbook);
-  const requirements = await runStage(
-    "requirements_validation",
-    () => resolveRequirements(
-      options.requirements
-        ? assertInternalArtifactPath(String(options.requirements), "Spreadsheet requirements")
-        : null,
-      builderRequirements,
-    ),
-  );
-
-  if (outputExtension === ".xlsx" && workbookRequiresRequirements(workbook, nativeCharts, facts) && !requirements) {
-    throw new Error("Non-trivial XLSX builds require verifiable requirements. Return requirements from the builder or pass --requirements.");
-  }
 
   if (outputExtension === ".csv" || outputExtension === ".tsv") {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pilotdeck-spreadsheet-delimited-build-"));
@@ -1832,17 +2136,20 @@ async function commandBuild(options) {
       await exportDelimited(workbook, stagedPath, options.sheet ? String(options.sheet) : sheetName, options.encoding ? String(options.encoding) : "utf8-bom");
       const audit = await auditDelimited(stagedPath);
       await replaceFileAtomically(stagedPath, outputPath);
-      await emitReport({ status: audit.status, output: path.resolve(outputPath), format: outputExtension.slice(1), audit }, options.report && String(options.report));
+      const report = { status: audit.status, output: path.resolve(outputPath), format: outputExtension.slice(1), audit };
+      if (!options.quiet) await emitReport(report, options.report && String(options.report));
+      else if (options.report) await writeJson(String(options.report), report);
+      return report;
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
-    return;
   }
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pilotdeck-spreadsheet-build-"));
+  const rawPath = path.join(tempRoot, "raw.xlsx");
+  const stagedPath = path.join(tempRoot, "candidate.xlsx");
+  let audit = null;
   try {
-    const rawPath = path.join(tempRoot, "raw.xlsx");
-    const stagedPath = path.join(tempRoot, "candidate.xlsx");
     await runStage("workbook_serialization", () => workbook.xlsx.writeFile(rawPath));
     let recalculated = false;
     if (facts.formulaCount > 0) {
@@ -1851,30 +2158,101 @@ async function commandBuild(options) {
     } else {
       await fs.copyFile(rawPath, stagedPath);
     }
+    const tableNormalization = await runStage("table_normalization", () => normalizeGeneratedTablePackage(stagedPath));
     const chartResult = await runStage("chart_injection", () => injectNativeCharts(stagedPath, nativeCharts, { JSZip, loadXlsx }));
-    const audit = await runStage("audit", () => auditXlsx(stagedPath, requirements));
+    audit = await runStage("audit", () => auditXlsx(stagedPath));
     if (audit.status === "error") {
-      if (options.report) await writeJson(String(options.report), { status: "error", outputUpdated: false, audit });
-      throw new Error(`Workbook failed formula, structure, or requirement coverage audit; the candidate output was not updated. ${summarizeAuditFailures(audit)}`);
+      throw new SpreadsheetStageError(
+        "audit",
+        `Workbook failed formula, structure, or package compatibility audit; the candidate output was not updated. ${summarizeAuditFailures(audit)}`,
+      );
     }
     await replaceFileAtomically(stagedPath, outputPath);
     const reportedAudit = { ...audit, path: path.resolve(outputPath) };
-    await emitReport({
+    const report = {
       status: audit.status,
       output: path.resolve(outputPath),
       formulaCount: facts.formulaCount,
       recalculated,
       nativeCharts: chartResult,
-      requirements: reportedAudit.coverage,
+      tableNormalization,
+      insertedImages,
       audit: reportedAudit,
-    }, options.report && String(options.report));
+    };
+    if (!options.quiet) await emitReport(report, options.report && String(options.report));
+    else if (options.report) await writeJson(String(options.report), report);
+    return report;
+  } catch (error) {
+    const failedDir = assertInternalArtifactPath(`${outputPath}.failed`, "Failed spreadsheet build artifacts");
+    let failedArtifacts = null;
+    try {
+      await fs.rm(failedDir, { recursive: true, force: true });
+      await fs.mkdir(failedDir, { recursive: true });
+      const files = {};
+      if (await pathExists(rawPath)) {
+        files.raw = path.join(failedDir, "raw.xlsx");
+        await fs.copyFile(rawPath, files.raw);
+      }
+      if (await pathExists(stagedPath)) {
+        files.staged = path.join(failedDir, "staged.xlsx");
+        await fs.copyFile(stagedPath, files.staged);
+      }
+      if (audit) {
+        files.audit = path.join(failedDir, "audit.json");
+        await writeJson(files.audit, audit);
+      }
+      failedArtifacts = { directory: failedDir, files };
+    } catch (artifactError) {
+      failedArtifacts = { directory: failedDir, error: artifactError instanceof Error ? artifactError.message : String(artifactError) };
+    }
+    const report = {
+      status: "error",
+      output: path.resolve(outputPath),
+      outputUpdated: false,
+      stage: error instanceof SpreadsheetStageError ? error.stage : "build",
+      error: error instanceof Error ? error.message : String(error),
+      ...(audit ? { audit, failureSummary: summarizeAuditFailures(audit) } : {}),
+      failedArtifacts,
+    };
+    if (failedArtifacts?.directory && !failedArtifacts.error) {
+      const artifactReport = path.join(failedArtifacts.directory, "report.json");
+      await writeJson(artifactReport, report);
+      failedArtifacts.files.report = artifactReport;
+    }
+    if (options.report) await writeJson(String(options.report), report);
+    if (error instanceof SpreadsheetStageError) error.details = { ...error.details, report: options.report, failedArtifacts };
+    throw error;
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }
 
-async function commandInspect(options) {
-  const inputPath = requireOption(options, "input");
+async function commandBuild(options) {
+  const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet candidate");
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet build report")
+    : assertInternalArtifactPath(`${outputPath}.build-report.json`, "Spreadsheet build report");
+  const builderPath = assertInternalArtifactPath(requireOption(options, "builder"), "Spreadsheet builder");
+  const inputPath = options.input ? path.resolve(requireOption(options, "input")) : null;
+  assertDistinctArtifactPaths({ builder: builderPath, input: inputPath, candidate: outputPath, report: reportPath });
+  try {
+    return await commandBuildCore({ ...options, report: reportPath });
+  } catch (error) {
+    if (!(await pathExists(reportPath))) {
+      await writeJson(reportPath, {
+        status: "error",
+        output: path.resolve(outputPath),
+        outputUpdated: false,
+        stage: error instanceof SpreadsheetStageError ? error.stage : "build",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (error instanceof SpreadsheetStageError) error.details = { ...error.details, report: reportPath };
+    throw error;
+  }
+}
+
+async function inspectSpreadsheet(inputPath, options = {}) {
   const extension = assertSupportedInput(inputPath, { legacy: true });
   let report;
   if (extension === ".xls") {
@@ -1892,38 +2270,146 @@ async function commandInspect(options) {
   } else {
     report = extension === ".xlsx" ? await inspectXlsx(inputPath, options) : await inspectDelimited(inputPath, options);
   }
-  await emitReport(report, options.out && String(options.out));
+  return report;
+}
+
+async function commandInspect(options) {
+  const inputPath = path.resolve(requireOption(options, "input"));
+  const reportPath = options.out
+    ? assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet inspection report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, report: reportPath });
+  const report = await inspectSpreadsheet(inputPath, options);
+  await emitReport(report, reportPath);
+}
+
+function readRangeMatrix(workbook, sheetName, rangeRef, { typed = false } = {}) {
+  const worksheet = workbook.getWorksheet(sheetName);
+  if (!worksheet) throw new Error(`Worksheet not found: ${sheetName}`);
+  const bounds = parseRangeReference(rangeRef);
+  const matrix = [];
+  for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+    const values = [];
+    for (let column = bounds.startCol; column <= bounds.endCol; column += 1) {
+      const cell = worksheet.getCell(row, column);
+      const formula = formulaDescriptor(cell);
+      const value = effectiveCellValue(cell);
+      values.push(typed ? {
+        address: cell.address,
+        value: serializableValue(value),
+        type: cellValueType(cell),
+        formula: formula?.formula ?? null,
+        numberFormat: cell.numFmt ?? null,
+      } : serializableValue(value));
+    }
+    matrix.push(values);
+  }
+  return matrix;
+}
+
+function compareMatrices(actual, expected, { tolerance = 0, maxMismatches = 100 } = {}) {
+  const mismatches = [];
+  const rowCount = Math.max(actual?.length ?? 0, expected?.length ?? 0);
+  for (let row = 0; row < rowCount; row += 1) {
+    const actualRow = actual?.[row] ?? [];
+    const expectedRow = expected?.[row] ?? [];
+    const columnCount = Math.max(actualRow.length, expectedRow.length);
+    for (let column = 0; column < columnCount; column += 1) {
+      if (valuesEqual(actualRow[column], expectedRow[column], tolerance)) continue;
+      if (mismatches.length < maxMismatches) {
+        mismatches.push({ row: row + 1, column: column + 1, expected: expectedRow[column] ?? null, actual: actualRow[column] ?? null });
+      }
+    }
+  }
+  return {
+    passed: mismatches.length === 0,
+    actualShape: [actual?.length ?? 0, Math.max(0, ...(actual ?? []).map((row) => row.length))],
+    expectedShape: [expected?.length ?? 0, Math.max(0, ...(expected ?? []).map((row) => row.length))],
+    mismatches,
+  };
+}
+
+async function commandEvaluate(options) {
+  const inputPath = assertInternalArtifactPath(requireOption(options, "input"), "Spreadsheet candidate");
+  const scriptPath = assertInternalArtifactPath(requireOption(options, "script"), "Spreadsheet evaluator");
+  const reportPath = options.out
+    ? assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet evaluation report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, evaluator: scriptPath, report: reportPath });
+  const evaluatorUrl = `${pathToFileURL(path.resolve(scriptPath)).href}?pilotdeck=${Date.now()}`;
+  const module = await import(evaluatorUrl);
+  if (typeof module.default !== "function") throw new Error("The evaluator must export a default async function");
+  const candidate = await loadWorkbook(inputPath, { inferTypes: true });
+  const product = await module.default({
+    inputPath: path.resolve(inputPath),
+    candidate,
+    loadWorkbook,
+    loadXlsx,
+    loadDelimited,
+    helpers: {
+      readRange: (workbook, sheet, range) => readRangeMatrix(workbook, sheet, range),
+      readTypedRange: (workbook, sheet, range) => readRangeMatrix(workbook, sheet, range, { typed: true }),
+      compareMatrices,
+    },
+  });
+  if (!product || typeof product !== "object" || Array.isArray(product) || !Array.isArray(product.checks)) {
+    throw new Error("The evaluator must return { checks: [{ name, passed, ...details }], ...optionalEvidence }");
+  }
+  const checks = product.checks.map((check, index) => {
+    if (!check || typeof check !== "object" || Array.isArray(check)) throw new Error(`Evaluator checks[${index}] must be an object`);
+    const name = String(check.name ?? "").trim();
+    if (!name || typeof check.passed !== "boolean") throw new Error(`Evaluator checks[${index}] requires a name and boolean passed value`);
+    return { ...serializableValue(check), name, passed: check.passed };
+  });
+  const failed = checks.filter((check) => !check.passed);
+  const report = {
+    ...serializableValue(product),
+    status: checks.length === 0 ? "partial" : failed.length > 0 ? "error" : "ok",
+    input: path.resolve(inputPath),
+    evaluator: { path: path.resolve(scriptPath), sha256: await fileSha256(scriptPath) },
+    checks,
+    failed,
+  };
+  if (!options.quiet) await emitReport(report, reportPath);
+  else if (reportPath) await writeJson(reportPath, report);
+  if (report.status === "error") process.exitCode = 1;
+  return report;
 }
 
 async function commandAudit(options) {
-  const inputPath = requireOption(options, "input");
+  const inputPath = path.resolve(requireOption(options, "input"));
+  const reportPath = options.out
+    ? assertInternalArtifactPath(requireOption(options, "out"), "Spreadsheet audit report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, report: reportPath });
   const extension = assertSupportedInput(inputPath);
-  const requirements = await runStage(
-    "requirements_validation",
-    () => resolveRequirements(
-      options.requirements
-        ? assertInternalArtifactPath(String(options.requirements), "Spreadsheet requirements")
-        : null,
-    ),
-  );
   const report = await runStage(
     "audit",
-    () => extension === ".xlsx" ? auditXlsx(inputPath, requirements) : auditDelimited(inputPath),
+    () => extension === ".xlsx" ? auditXlsx(inputPath) : auditDelimited(inputPath),
   );
-  await emitReport(report, options.out && String(options.out));
+  await emitReport(report, reportPath);
   if (report.status === "error") process.exitCode = 1;
 }
 
 async function commandConvertLegacy(options) {
-  const inputPath = requireOption(options, "input");
+  const inputPath = path.resolve(requireOption(options, "input"));
   const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Converted spreadsheet candidate");
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet conversion report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, candidate: outputPath, report: reportPath });
   const report = await convertLegacyXls(inputPath, outputPath);
-  await emitReport(report, options.report && String(options.report));
+  if (!options.quiet) await emitReport(report, reportPath);
+  else if (reportPath) await writeJson(reportPath, report);
 }
 
 async function commandRecalculate(options) {
-  const inputPath = requireOption(options, "input");
+  const inputPath = path.resolve(requireOption(options, "input"));
   const outputPath = assertInternalArtifactPath(requireOption(options, "out"), "Recalculated spreadsheet candidate");
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet recalculation report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, candidate: outputPath, report: reportPath });
   if (workbookExtension(inputPath) !== ".xlsx" || workbookExtension(outputPath) !== ".xlsx") {
     throw new Error("recalculate accepts .xlsx input and output only");
   }
@@ -1931,11 +2417,15 @@ async function commandRecalculate(options) {
   const packageInfo = await inspectPackage(inputPath);
   if (packageInfo.unsafeForRoundTrip && !options["allow-risky-roundtrip"]) {
     const names = packageInfo.roundTripRisks.map((risk) => `${risk.feature}(${risk.count})`).join(", ");
-    throw new Error(`Input workbook contains objects that are unsafe for a LibreOffice round trip: ${names}. Do not bypass without explicit user approval.`);
+    throw blocked(
+      "unsafe-libreoffice-round-trip",
+      `Input workbook contains objects that are unsafe for a LibreOffice round trip: ${names}`,
+      { risks: packageInfo.roundTripRisks, next: "Preserve the source unless the user explicitly accepts the listed compatibility risks." },
+    );
   }
   const result = await runStage("formula_recalculation", () => recalculateWorkbook(inputPath, outputPath));
   const audit = await runStage("audit", () => auditXlsx(outputPath));
-  await emitReport({ status: audit.status, ...result, audit }, options.report && String(options.report));
+  await emitReport({ status: audit.status, ...result, audit }, reportPath);
   if (audit.status === "error") process.exitCode = 1;
 }
 
@@ -1943,39 +2433,6 @@ function naturalPageSort(left, right) {
   const leftNumber = Number(left.match(/(\d+)(?=\.png$)/)?.[1] ?? 0);
   const rightNumber = Number(right.match(/(\d+)(?=\.png$)/)?.[1] ?? 0);
   return leftNumber - rightNumber || left.localeCompare(right);
-}
-
-async function createMontage(pagePaths, outputPath, labels = []) {
-  const thumbWidth = 420;
-  const thumbHeight = 560;
-  const gutter = 20;
-  const labelHeight = 30;
-  const columns = Math.min(3, Math.max(1, pagePaths.length));
-  const rows = Math.ceil(pagePaths.length / columns);
-  const width = columns * (thumbWidth + gutter) + gutter;
-  const height = rows * (thumbHeight + labelHeight + gutter) + gutter;
-  const composites = [];
-
-  for (let index = 0; index < pagePaths.length; index += 1) {
-    const page = pagePaths[index];
-    const x = gutter + (index % columns) * (thumbWidth + gutter);
-    const y = gutter + Math.floor(index / columns) * (thumbHeight + labelHeight + gutter);
-    const image = await sharp(page)
-      .flatten({ background: "#ffffff" })
-      .resize({ width: thumbWidth, height: thumbHeight, fit: "inside", background: "#ffffff" })
-      .png()
-      .toBuffer({ resolveWithObject: true });
-    composites.push({ input: image.data, left: x + Math.floor((thumbWidth - image.info.width) / 2), top: y });
-    const labelText = String(labels[index] ?? `Page ${index + 1}`).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-    const label = Buffer.from(`<svg width="${thumbWidth}" height="${labelHeight}"><text x="${thumbWidth / 2}" y="21" text-anchor="middle" font-family="Arial" font-size="16" fill="#334155">${labelText}</text></svg>`);
-    composites.push({ input: label, left: x, top: y + thumbHeight });
-  }
-
-  await ensureParent(outputPath);
-  await sharp({ create: { width, height, channels: 4, background: "#e2e8f0" } })
-    .composite(composites)
-    .png()
-    .toFile(outputPath);
 }
 
 async function analyzeRenderedPage(pagePath) {
@@ -2035,9 +2492,9 @@ async function convertToXlsxForRender(inputPath, tempRoot) {
   return outputPath;
 }
 
-async function renderWorkbook(inputPath, outputDir, { pdfPath, montagePath, perSheet = false } = {}) {
+async function renderWorkbook(inputPath, outputDir, { pdfPath, perSheet = false, sheetNames = null } = {}) {
   const renderer = findRenderer();
-  if (!renderer) throw new Error("No PDF renderer was found. Install pdftoppm, mutool, or ImageMagick.");
+  if (!renderer) throw unsupported("pdf-renderer-unavailable", "No PDF renderer was found. Install pdftoppm, mutool, or ImageMagick.");
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pilotdeck-spreadsheet-render-"));
   try {
     const sourceDir = path.join(tempRoot, "source");
@@ -2050,28 +2507,36 @@ async function renderWorkbook(inputPath, outputDir, { pdfPath, montagePath, perS
       fs.mkdir(outputDir, { recursive: true }),
     ]);
     for (const name of await fs.readdir(outputDir)) {
-      if (/^page-?\d+\.png$/i.test(name)) await fs.rm(path.join(outputDir, name), { force: true });
+      if (/^page-?\d+\.png$/i.test(name) || /^montage\.png$/i.test(name)) {
+        await fs.rm(path.join(outputDir, name), { force: true });
+      } else if (perSheet && /^sheet-\d+$/i.test(name)) {
+        await fs.rm(path.join(outputDir, name), { recursive: true, force: true });
+      }
     }
     const xlsxInput = await convertToXlsxForRender(inputPath, tempRoot);
     if (perSheet) {
       const workbook = await loadXlsx(xlsxInput);
       const sheetReports = [];
       const allPages = [];
-      const labels = [];
-      for (let index = 0; index < workbook.worksheets.length; index += 1) {
-        const worksheet = workbook.worksheets[index];
-        const singlePath = path.join(tempRoot, `sheet-${index + 1}.xlsx`);
-        const sheetOutput = path.join(outputDir, `sheet-${String(index + 1).padStart(2, "0")}`);
+      const requestedSheetNames = Array.isArray(sheetNames) ? [...new Set(sheetNames)] : null;
+      const worksheets = requestedSheetNames
+        ? requestedSheetNames.map((name) => workbook.getWorksheet(name)).filter(Boolean)
+        : workbook.worksheets;
+      if (requestedSheetNames && worksheets.length !== requestedSheetNames.length) {
+        const missing = requestedSheetNames.filter((name) => !workbook.getWorksheet(name));
+        throw new Error(`Visual review references missing worksheet(s): ${missing.join(", ")}`);
+      }
+      for (const worksheet of worksheets) {
+        const workbookSheetIndex = workbook.worksheets.indexOf(worksheet) + 1;
+        const sheetIdentifier = String(workbookSheetIndex).padStart(2, "0");
+        const singlePath = path.join(tempRoot, `sheet-${sheetIdentifier}.xlsx`);
+        const sheetOutput = path.join(outputDir, `sheet-${sheetIdentifier}`);
         await createSingleSheetPackage(xlsxInput, singlePath, worksheet.name);
         const report = await renderWorkbook(singlePath, sheetOutput, {});
         sheetReports.push({ sheet: worksheet.name, ...report });
         allPages.push(...report.pages);
-        labels.push(...report.pages.map((_page, pageIndex) => `${worksheet.name} · ${pageIndex + 1}/${report.pages.length}`));
       }
-      const finalMontage = montagePath ?? path.join(outputDir, "montage.png");
-      await createMontage(allPages, finalMontage, labels);
       return {
-        montage: path.resolve(finalMontage),
         pages: allPages,
         pageCount: allPages.length,
         pageStats: sheetReports.flatMap((sheet) => sheet.pageStats.map((page) => ({ ...page, sheet: sheet.sheet }))),
@@ -2108,11 +2573,8 @@ async function renderWorkbook(inputPath, outputDir, { pdfPath, montagePath, perS
     if (pageNames.length === 0) throw new Error("The PDF renderer produced no page images");
     const pages = pageNames.map((name) => path.join(outputDir, name));
     const pageStats = await Promise.all(pages.map(analyzeRenderedPage));
-    const finalMontage = montagePath ?? path.join(outputDir, "montage.png");
-    await createMontage(pages, finalMontage);
     return {
       pdf: path.resolve(finalPdf),
-      montage: path.resolve(finalMontage),
       pages: pages.map((page) => path.resolve(page)),
       pageCount: pages.length,
       pageStats,
@@ -2123,688 +2585,392 @@ async function renderWorkbook(inputPath, outputDir, { pdfPath, montagePath, perS
 }
 
 async function commandRender(options) {
-  const inputPath = requireOption(options, "input");
+  const inputPath = path.resolve(requireOption(options, "input"));
   const outputDir = assertInternalArtifactPath(requireOption(options, "out-dir"), "Spreadsheet render directory");
-  if (options.pdf) assertInternalArtifactPath(String(options.pdf), "Spreadsheet render PDF");
-  if (options.montage) assertInternalArtifactPath(String(options.montage), "Spreadsheet render montage");
+  const pdfPath = options.pdf
+    ? assertInternalArtifactPath(requireOption(options, "pdf"), "Spreadsheet render PDF")
+    : null;
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet render report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, directory: outputDir, pdf: pdfPath, report: reportPath });
   assertSupportedInput(inputPath, { legacy: true });
   const rendered = await renderWorkbook(inputPath, outputDir, {
-    pdfPath: options.pdf ? String(options.pdf) : undefined,
-    montagePath: options.montage ? String(options.montage) : undefined,
+    pdfPath: pdfPath ?? undefined,
     perSheet: Boolean(options["per-sheet"]),
   });
   const blankPages = rendered.pageStats.filter((page) => page.blank);
-  await emitReport({ status: blankPages.length > 0 ? "warning" : "ok", input: path.resolve(inputPath), blankPages, ...rendered }, options.report && String(options.report));
+  await emitReport({ status: blankPages.length > 0 ? "partial" : "ok", input: path.resolve(inputPath), blankPages, ...rendered }, reportPath);
+}
+
+async function commandReview(options) {
+  const inputPath = path.resolve(requireOption(options, "input"));
+  const outputDir = assertInternalArtifactPath(requireOption(options, "out-dir"), "Spreadsheet review directory");
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet review report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, directory: outputDir, report: reportPath });
+  const candidateSha256 = await fileSha256(inputPath);
+  const revisionId = `rev-${candidateSha256.slice(0, 12)}`;
+  const evidenceId = `run-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+  const revisionDir = assertInternalArtifactPath(path.join(outputDir, revisionId, evidenceId), "Spreadsheet review revision directory");
+  const sheetNames = [...new Set(optionValues(options, "sheet"))];
+  const inspectionOptions = {
+    ...(sheetNames[0] ? { sheet: sheetNames[0] } : {}),
+    ...(options.range ? { range: String(options.range) } : {}),
+    ...(options["max-rows"] ? { "max-rows": options["max-rows"] } : {}),
+    ...(options["max-cols"] ? { "max-cols": options["max-cols"] } : {}),
+    styles: true,
+  };
+  const inspection = await runStage("inspection", () => inspectSpreadsheet(inputPath, inspectionOptions));
+  let render;
+  try {
+    const rendered = await runStage("render", () => renderWorkbook(inputPath, revisionDir, {
+      perSheet: true,
+      sheetNames: sheetNames.length > 0 ? sheetNames : null,
+    }));
+    const blankPages = rendered.pageStats.filter((page) => page.blank);
+    const pages = rendered.sheets.flatMap((sheet) => sheet.pages.map((pagePath, pageIndex) => ({
+      sheet: sheet.sheet,
+      page: pageIndex + 1,
+      path: pagePath,
+    })));
+    render = {
+      status: blankPages.length > 0 ? "partial" : "success",
+      directory: revisionDir,
+      pages,
+      pageCount: pages.length,
+    };
+  } catch (error) {
+    render = {
+      status: "unavailable",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const evidenceReady = render.status !== "unavailable"
+    && Array.isArray(render.pages)
+    && render.pages.length > 0;
+  const currentSha256 = await fileSha256(inputPath);
+  if (currentSha256 !== candidateSha256) {
+    throw blocked("spreadsheet-changed-during-review", "The spreadsheet candidate changed while its visual evidence was being generated", {
+      expected: candidateSha256,
+      actual: currentSha256,
+      next: "Run review again for the current candidate revision.",
+    });
+  }
+  const report = {
+    status: evidenceReady ? "review_pending" : "evidence_unavailable",
+    input: path.resolve(inputPath),
+    revision: {
+      id: revisionId,
+      sha256: candidateSha256,
+      directory: revisionDir,
+      evidenceId,
+    },
+    inspection,
+    render,
+    visualReview: evidenceReady ? {
+      status: "pending",
+      instruction: `These pages describe ${revisionId}. Choose and open the pages relevant to the task before making visual claims. If you revise the workbook, run review again and inspect the new revision's relevant pages before delivery.`,
+    } : {
+      status: "unavailable",
+      instruction: "Report the rendering limitation; no visual judgment was performed.",
+    },
+    next: evidenceReady
+      ? "Open the current revision's relevant page images and judge them against the task."
+      : "Report the rendering limitation; no visual judgment was performed.",
+    judgment: "Review the rendered workbook and structural facts against the user's request. This report records evidence and does not make the final product decision.",
+  };
+  if (!options.quiet) await emitReport(report, reportPath);
+  else if (reportPath) await writeJson(reportPath, report);
+  return report;
 }
 
 async function fileSha256(filePath) {
   return crypto.createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
 }
 
-function evaluateRenderRequirements(rendered, requirements) {
-  const checks = [];
-  if (!requirements) return { status: "not_requested", total: 0, passed: 0, checks: [], failures: [] };
-  if (Number.isFinite(requirements.maxTotalPages)) {
-    checks.push({ type: "max_total_pages", passed: rendered.pageCount <= requirements.maxTotalPages, expected: requirements.maxTotalPages, actual: rendered.pageCount });
-  }
-  for (const item of requirements.maxPagesPerSheet ?? []) {
-    const actual = rendered.sheets.find((sheet) => sheet.sheet === item.sheet)?.pageCount ?? null;
-    checks.push({ type: "max_pages_per_sheet", passed: actual !== null && actual <= item.max, sheet: item.sheet, expected: item.max, actual });
-  }
-  const failures = checks.filter((check) => !check.passed);
-  return { status: failures.length === 0 ? "passed" : "failed", total: checks.length, passed: checks.length - failures.length, checks, failures };
-}
-
-async function commandDeliver(options) {
-  const inputPath = requireOption(options, "input");
-  assertInternalArtifactPath(inputPath, "Spreadsheet candidate");
+async function commandDirectDeliver(options) {
+  const inputPath = assertInternalArtifactPath(requireOption(options, "input"), "Spreadsheet candidate");
   const outputPath = assertDeliveryOutputPath(requireOption(options, "out"));
-  const qaDir = assertInternalArtifactPath(requireOption(options, "qa-dir"), "Spreadsheet QA directory");
-  const requirementsPath = assertInternalArtifactPath(
-    requireOption(options, "requirements"),
-    "Spreadsheet requirements",
-  );
-  if (workbookExtension(inputPath) !== ".xlsx" || workbookExtension(outputPath) !== ".xlsx") {
-    throw new Error("deliver currently seals .xlsx candidates only");
+  const reportPath = options.report
+    ? assertInternalArtifactPath(requireOption(options, "report"), "Spreadsheet delivery report")
+    : null;
+  assertDistinctArtifactPaths({ input: inputPath, deliverable: outputPath, report: reportPath });
+  const inputExtension = assertSupportedInput(inputPath);
+  const outputExtension = assertSupportedOutput(outputPath);
+  if (inputExtension !== outputExtension) {
+    throw new Error(`Candidate and deliverable formats must match (${inputExtension} != ${outputExtension})`);
   }
   if (pathsReferToSameLocation(inputPath, outputPath)) throw new Error("Deliverable must be distinct from the candidate workbook");
   if (await pathExists(outputPath)) throw new Error(`Refusing to overwrite existing deliverable: ${outputPath}`);
-  const requirements = await runStage("requirements_validation", () => resolveRequirements(requirementsPath));
-  const audit = await runStage("audit", () => auditXlsx(inputPath, requirements));
-  if (audit.status === "error") throw new Error(`Candidate workbook failed structural, formula, or requirement coverage audit. ${summarizeAuditFailures(audit)}`);
-  if (audit.coverage.status !== "passed" || audit.coverage.total === 0) {
-    throw new Error("Candidate workbook has no passing, verifiable requirement coverage");
-  }
-  if (audit.warningDispositions.status === "failed") {
-    throw new Error(`Candidate workbook has unresolved audit warnings: ${audit.warningDispositions.unresolved.map((warning) => warning.type).join(", ")}`);
-  }
 
-  const rendered = await runStage("render", () => renderWorkbook(inputPath, qaDir, { perSheet: true, montagePath: path.join(qaDir, "montage.png") }));
-  const blankPages = rendered.pageStats.filter((page) => page.blank);
-  if (blankPages.length > 0) {
-    throw new Error(`Candidate workbook produced ${blankPages.length} blank print page(s): ${blankPages.map((page) => `${page.sheet}:${path.basename(page.path)}`).join(", ")}`);
+  const audit = await runStage(
+    "audit",
+    () => inputExtension === ".xlsx" ? auditXlsx(inputPath) : auditDelimited(inputPath),
+  );
+  if (audit.status === "error") {
+    throw new Error(`Candidate workbook is not safe to deliver. ${summarizeFailures(audit.hardFailures)}`);
   }
-  const renderCoverage = evaluateRenderRequirements(rendered, requirements);
-  if (renderCoverage.status === "failed") throw new Error(`Candidate workbook failed render requirements: ${renderCoverage.failures.map((failure) => failure.type).join(", ")}`);
 
   await ensureParent(outputPath);
-  const temporaryOutput = path.join(path.dirname(path.resolve(outputPath)), `.${path.basename(outputPath)}.${process.pid}.tmp`);
+  const temporaryOutput = path.join(path.dirname(path.resolve(outputPath)), `.${path.basename(outputPath)}.${process.pid}.${Date.now()}.tmp`);
   await fs.copyFile(inputPath, temporaryOutput);
   const candidateSha256 = await fileSha256(inputPath);
   const copiedSha256 = await fileSha256(temporaryOutput);
   if (candidateSha256 !== copiedSha256) {
     await fs.rm(temporaryOutput, { force: true });
-    throw new Error("Candidate and sealed deliverable hashes do not match");
+    throw new Error("Candidate and deliverable hashes do not match");
   }
   await fs.rename(temporaryOutput, outputPath);
-  const finalAudit = await auditXlsx(outputPath, requirements);
   const finalSha256 = await fileSha256(outputPath);
-  if (finalAudit.status === "error" || finalAudit.coverage.status !== "passed" || finalAudit.warningDispositions.status === "failed" || finalSha256 !== candidateSha256) {
+  if (finalSha256 !== candidateSha256) {
     await fs.rm(outputPath, { force: true });
-    throw new Error("Final deliverable failed post-seal verification");
+    throw new Error("Final deliverable hash does not match the reviewed candidate");
   }
   const report = {
-    status: finalAudit.status,
+    status: "ok",
     output: path.resolve(outputPath),
     sha256: finalSha256,
-    coverage: finalAudit.coverage,
-    renderCoverage,
-    audit: finalAudit,
-    render: rendered,
-    blankPages,
+    candidate: { path: path.resolve(inputPath), sha256: candidateSha256 },
+    audit,
   };
-  await emitReport(report, options.report && String(options.report));
+  if (!options.quiet) await emitReport(report, reportPath);
+  else if (reportPath) await writeJson(reportPath, report);
+  return report;
 }
 
-async function createSelfTestWorkbook() {
-  const workbook = createWorkbook();
-  const inputs = workbook.addWorksheet("输入数据", { views: [{ showGridLines: false }] });
-  inputs.addRows([
-    ["假设 / Assumption", "数值 / Value"],
-    ["收入", 100000],
-    ["增长率", 0.1],
-  ]);
-  styleHeader(inputs, "A1:B1");
-  inputs.getCell("B2").numFmt = '"$"#,##0';
-  inputs.getCell("B3").numFmt = "0.0%";
-  autoFitColumns(inputs, { min: 12, max: 24 });
-
-  const summary = workbook.addWorksheet("汇总", {
-    views: [{ state: "frozen", ySplit: 3, showGridLines: false }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
-  summary.mergeCells("A1:D1");
-  summary.getCell("A1").value = "PilotDeck 表格能力自测";
-  summary.getCell("A1").font = { size: 18, bold: true, color: { argb: "FF0F172A" } };
-  summary.getRow(1).height = 28;
-  summary.addRows([
-    [],
-    ["月份", "收入", "成本"],
-    ["1月", 100000, 70000],
-    ["2月", 120000, 78000],
-    ["3月", 135000, 85000],
-  ]);
-  addTableFromRange(summary, { name: "SelfTestTable", range: "A3:C6" });
-  summary.getCell("D3").value = "利润率";
-  styleHeader(summary, "D3:D3");
-  for (let row = 4; row <= 6; row += 1) {
-    summary.getCell(`D${row}`).value = { formula: `IFERROR((B${row}-C${row})/B${row},0)`, result: 0 };
-    summary.getCell(`D${row}`).numFmt = "0.0%";
-  }
-  summary.getCell("A8").value = "预计收入";
-  summary.getCell("B8").value = { formula: "'输入数据'!B2*(1+'输入数据'!B3)", result: 0 };
-  summary.getCell("B8").numFmt = '"$"#,##0';
-  summary.getCell("F3").value = "状态";
-  summary.getCell("F4").value = "正常";
-  addListValidation(summary, "F4:F6", ["正常", "风险", "阻塞"], { allowBlank: false });
-  addConditionalFormatting(summary, {
-    range: "D4:D6",
-    rules: [{ type: "cellIs", operator: "lessThan", formulae: [0.25], style: { font: { color: { argb: "FFB91C1C" } } } }],
-  });
-  setNumberFormat(summary, "B4:C6", '"$"#,##0');
-  autoFitColumns(summary, { min: 11, max: 26 });
-  applyChineseTypography(inputs, { platform: "cross-platform" });
-  applyChineseTypography(summary, { platform: "cross-platform", titleRanges: ["A1:D1"] });
-
-  const types = workbook.addWorksheet("类型回归", {
-    views: [{ state: "frozen", ySplit: 1, showGridLines: false }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 },
-  });
-  types.addRows([
-    ["行动项编号", "完成率", "截止日期", "状态"],
-    ["A-001", 0.5, new Date("2026-04-30T00:00:00Z"), "进行中"],
-    ["A-002", 0.8, new Date("2026-05-31T00:00:00Z"), "已完成"],
-  ]);
-  applyStyle(types, "A1:D3", { alignment: { vertical: "middle" } });
-  styleHeader(types, "A1:D1");
-  setNumberFormat(types, "B2:B3", "0.0%");
-  setNumberFormat(types, "C2:C3", "yyyy-mm-dd");
-  addTableFromRange(types, { name: "TypeRegressionTable", range: "A1:D3" });
-  addListValidation(types, "D2:D3", ["未开始", "进行中", "已完成"], { allowBlank: false });
-  addConditionalFormatting(types, {
-    range: "B2:B3",
-    rules: [{ type: "cellIs", operator: "lessThan", formulae: [0.6], style: { font: { color: { argb: "FFB91C1C" } } } }],
-  });
-  autoFitColumns(types, { min: 12, max: 24 });
-  applyChineseTypography(types, { platform: "cross-platform" });
-  NATIVE_CHART_SPECS.set(workbook, [{
-    sheet: "汇总",
-    type: "line",
-    title: "收入与成本趋势",
-    minPoints: 3,
-    categories: "A4:A6",
-    series: [{ name: "收入", values: "B4:B6" }, { name: "成本", values: "C4:C6" }],
-    anchor: { from: "A10", to: "H25" },
-    valueFormat: "¥#,##0",
-  }]);
-  return workbook;
+async function commandDeliver(options) {
+  return commandDirectDeliver(options);
 }
 
 async function commandSelfTest(options) {
-  const outputDir = options.out ? String(options.out) : path.join(os.tmpdir(), `pilotdeck-spreadsheets-self-test-${Date.now()}`);
-  await fs.mkdir(outputDir, { recursive: true });
-  const steps = [];
-
-  const rawPath = path.join(outputDir, "raw.xlsx");
-  const finalPath = path.join(outputDir, "self-test.xlsx");
-  const workbook = await createSelfTestWorkbook();
-  const nativeCharts = NATIVE_CHART_SPECS.get(workbook) ?? [];
-  await workbook.xlsx.writeFile(rawPath);
-  steps.push({ name: "create", status: "ok", output: rawPath });
-
-  const recalculation = await recalculateWorkbook(rawPath, finalPath);
-  await injectNativeCharts(finalPath, nativeCharts, { JSZip, loadXlsx });
-  const recalculated = await loadXlsx(finalPath);
-  const margin = recalculated.getWorksheet("汇总").getCell("D4").result;
-  const projected = recalculated.getWorksheet("汇总").getCell("B8").result;
-  if (Math.abs(Number(margin) - 0.3) > 0.000001 || Math.abs(Number(projected) - 110000) > 0.01) {
-    throw new Error(`Formula recalculation failed: margin=${margin}, projected=${projected}`);
-  }
-  steps.push({ name: "recalculate", status: "ok", margin, projected, compatibilityNormalization: recalculation.compatibilityNormalization });
-
-  const inspection = await inspectXlsx(finalPath, { sheet: "汇总", range: "A1:F8", styles: true });
-  if (inspection.formulas.count < 4 || inspection.package.features.tables < 1 || inspection.package.features.charts !== 1) throw new Error("Inspection missed formulas, tables, or native charts");
-  if (inspection.package.compatibility.status !== "ok") throw new Error("Inspection missed invalid post-recalculation OOXML semantics");
-  if (inspection.package.features.drawingParts !== 1 || inspection.package.features.drawings !== 1) {
-    throw new Error(`Drawing cleanup or native chart injection left an unexpected package shape: ${inspection.package.features.drawingParts} parts, ${inspection.package.features.drawings} objects`);
-  }
-  steps.push({
-    name: "inspect",
-    status: "ok",
-    formulas: inspection.formulas.count,
-    tables: inspection.package.features.tables,
-    charts: inspection.package.features.charts,
-    drawingParts: inspection.package.features.drawingParts,
-    drawingObjects: inspection.package.features.drawings,
-  });
-
-  const invalidDrawingPath = path.join(outputDir, "invalid-drawing-anchor.xlsx");
-  const invalidDrawingZip = await JSZip.loadAsync(await fs.readFile(finalPath));
-  let invalidDrawingPart = null;
-  for (const [entryName, entry] of Object.entries(invalidDrawingZip.files)) {
-    if (entry.dir || !/^xl\/drawings\/[^/]+\.xml$/i.test(entryName) || invalidDrawingPart) continue;
-    const xml = await entry.async("string");
-    const malformed = xml.replace(
-      /<\/a:graphic>\s*<\/xdr:graphicFrame>\s*<xdr:clientData\s*\/>/i,
-      "</a:graphic><xdr:clientData/></xdr:graphicFrame>",
-    );
-    if (malformed === xml) continue;
-    invalidDrawingZip.file(entryName, malformed);
-    invalidDrawingPart = entryName;
-  }
-  if (!invalidDrawingPart) throw new Error("Self-test could not create a malformed DrawingML anchor fixture");
-  await fs.writeFile(invalidDrawingPath, await invalidDrawingZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const invalidDrawingAudit = await auditXlsx(invalidDrawingPath);
-  const invalidDrawingReasons = new Set(invalidDrawingAudit.hardFailures
-    .filter((failure) => failure.type === "invalid_drawing_anchor_structure")
-    .map((failure) => failure.reason));
-  if (!invalidDrawingReasons.has("missing_direct_client_data") || !invalidDrawingReasons.has("nested_client_data")) {
-    throw new Error("DrawingML audit did not reject a nested clientData element");
-  }
-
-  const missingChartPath = path.join(outputDir, "missing-chart-part.xlsx");
-  const missingChartZip = await JSZip.loadAsync(await fs.readFile(finalPath));
-  const removedChartPart = Object.keys(missingChartZip.files).find((entryName) => /^xl\/charts\/chart\d+\.xml$/i.test(entryName));
-  if (!removedChartPart) throw new Error("Self-test could not locate the native chart part");
-  missingChartZip.remove(removedChartPart);
-  await fs.writeFile(missingChartPath, await missingChartZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const missingChartAudit = await auditXlsx(missingChartPath);
-  if (!missingChartAudit.hardFailures.some((failure) => failure.type === "missing_chart_part" && failure.part === removedChartPart)) {
-    throw new Error("DrawingML audit did not reject a dangling chart relationship");
-  }
-  steps.push({
-    name: "drawingml-compatibility",
-    status: "ok",
-    malformedAnchorIssues: invalidDrawingAudit.package.compatibility.issues.length,
-    danglingRelationshipIssues: missingChartAudit.package.compatibility.issues.length,
-  });
-
-  const emptyDrawingPath = path.join(outputDir, "empty-drawing-part.xlsx");
-  const emptyDrawingZip = await JSZip.loadAsync(await fs.readFile(rawPath));
-  const emptyDrawingRelationshipId = "rIdPilotDeckEmptyDrawing";
-  const emptyDrawingPart = "xl/drawings/drawing999.xml";
-  const emptyDrawingSheetPart = "xl/worksheets/sheet1.xml";
-  const emptyDrawingSheetRelsPart = "xl/worksheets/_rels/sheet1.xml.rels";
-  const emptyDrawingSheetXml = await emptyDrawingZip.file(emptyDrawingSheetPart).async("string");
-  emptyDrawingZip.file(emptyDrawingSheetPart, emptyDrawingSheetXml.replace("</worksheet>", `<drawing r:id="${emptyDrawingRelationshipId}"/></worksheet>`));
-  const emptyDrawingRelationshipXml = emptyDrawingZip.file(emptyDrawingSheetRelsPart)
-    ? await emptyDrawingZip.file(emptyDrawingSheetRelsPart).async("string")
-    : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
-  emptyDrawingZip.file(emptyDrawingSheetRelsPart, emptyDrawingRelationshipXml.replace(
-    "</Relationships>",
-    `<Relationship Id="${emptyDrawingRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing999.xml"/></Relationships>`,
-  ));
-  emptyDrawingZip.file(emptyDrawingPart, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"></xdr:wsDr>');
-  const emptyDrawingContentTypes = await emptyDrawingZip.file("[Content_Types].xml").async("string");
-  emptyDrawingZip.file("[Content_Types].xml", emptyDrawingContentTypes.replace(
-    "</Types>",
-    `<Override PartName="/${emptyDrawingPart}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`,
-  ));
-  await fs.writeFile(emptyDrawingPath, await emptyDrawingZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const emptyDrawingNormalization = await normalizeLibreOfficeRoundTripPackage(emptyDrawingPath);
-  const cleanedEmptyDrawingZip = await JSZip.loadAsync(await fs.readFile(emptyDrawingPath));
-  const cleanedSheetXml = await cleanedEmptyDrawingZip.file(emptyDrawingSheetPart).async("string");
-  const cleanedSheetRelsXml = cleanedEmptyDrawingZip.file(emptyDrawingSheetRelsPart)
-    ? await cleanedEmptyDrawingZip.file(emptyDrawingSheetRelsPart).async("string")
-    : "";
-  const cleanedContentTypes = await cleanedEmptyDrawingZip.file("[Content_Types].xml").async("string");
-  if (emptyDrawingNormalization.removedEmptyDrawings !== 1
-    || cleanedEmptyDrawingZip.file(emptyDrawingPart)
-    || cleanedSheetXml.includes(emptyDrawingRelationshipId)
-    || cleanedSheetRelsXml.includes(emptyDrawingRelationshipId)
-    || cleanedContentTypes.includes(`/${emptyDrawingPart}`)) {
-    throw new Error("Empty DrawingML package cleanup left an orphan part or relationship");
-  }
-  steps.push({ name: "empty-drawing-cleanup", status: "ok", removed: emptyDrawingNormalization.removedEmptyDrawings });
-
-  const incompatibleValidationPath = path.join(outputDir, "invalid-list-validation.xlsx");
-  const incompatibleValidationZip = await JSZip.loadAsync(await fs.readFile(rawPath));
-  let injectedInvalidValidation = false;
-  for (const [entryName, entry] of Object.entries(incompatibleValidationZip.files)) {
-    if (entry.dir || !/^xl\/worksheets\/sheet\d+\.xml$/i.test(entryName) || injectedInvalidValidation) continue;
-    const xml = await entry.async("string");
-    const invalid = xml.replace(
-      /(<(?:(?:[A-Za-z_][\w.-]*):)?dataValidation\b)([^>]*\btype=(["'])list\3[^>]*>)([\s\S]*?)(<\/(?:(?:[A-Za-z_][\w.-]*):)?dataValidation\s*>)/i,
-      (_match, opening, attributes, _quote, body, closing) => `${opening} operator="between"${attributes}${body}<formula2>0</formula2>${closing}`,
-    );
-    if (invalid === xml) continue;
-    incompatibleValidationZip.file(entryName, invalid);
-    injectedInvalidValidation = true;
-  }
-  if (!injectedInvalidValidation) throw new Error("Self-test could not create an invalid list-validation fixture");
-  await fs.writeFile(incompatibleValidationPath, await incompatibleValidationZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const incompatibleValidationAudit = await auditXlsx(incompatibleValidationPath);
-  if (!incompatibleValidationAudit.hardFailures.some((failure) => failure.type === "invalid_data_validation_semantics")) {
-    throw new Error("Audit did not reject invalid list-validation OOXML semantics");
-  }
-  const fixtureNormalization = await normalizeLibreOfficeRoundTripPackage(incompatibleValidationPath);
-  const repairedValidationAudit = await auditXlsx(incompatibleValidationPath);
-  if (fixtureNormalization.normalizedValidations !== 1 || repairedValidationAudit.package.compatibility.status !== "ok") {
-    throw new Error("List-validation OOXML normalization did not repair the invalid fixture");
-  }
-  steps.push({
-    name: "list-validation-compatibility",
-    status: "ok",
-    detected: incompatibleValidationAudit.package.compatibility.issues.length,
-    normalized: fixtureNormalization.normalizedValidations,
-  });
-
-  const prefixedPath = path.join(outputDir, "prefixed-main-namespace.xlsx");
-  const prefixedZip = await JSZip.loadAsync(await fs.readFile(rawPath));
-  let prefixedPartCount = 0;
-  for (const [entryName, entry] of Object.entries(prefixedZip.files)) {
-    if (entry.dir || !entryName.endsWith(".xml")) continue;
-    const xml = await entry.async("string");
-    const defaultNamespace = `xmlns="${SPREADSHEET_MAIN_NAMESPACE}"`;
-    if (!xml.includes(defaultNamespace)) continue;
-    const prefixed = xml
-      .replace(defaultNamespace, `xmlns:x="${SPREADSHEET_MAIN_NAMESPACE}"`)
-      .replace(/(<\/?)([A-Za-z_][\w.-]*)(?=[\s/>])/g, "$1x:$2");
-    prefixedZip.file(entryName, prefixed);
-    prefixedPartCount += 1;
-  }
-  await fs.writeFile(prefixedPath, await prefixedZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const prefixedInspection = await inspectXlsx(prefixedPath, { sheet: "汇总", range: "A1:F8" });
-  if (prefixedPartCount === 0 || prefixedInspection.selection.cells.length === 0) {
-    throw new Error("Inspection failed for prefixed SpreadsheetML namespaces");
-  }
-  steps.push({ name: "inspect-prefixed-ooxml", status: "ok", normalizedParts: prefixedPartCount });
-
-  const selfTestRequirements = {
-    sourceBacked: true,
-    sourceFiles: [{ path: rawPath, sha256: await fileSha256(rawPath) }],
-    sourceBackedSheets: ["汇总", "类型回归"],
-    requiredSheets: ["输入数据", "汇总", "类型回归"],
-    minFormulaCount: 4,
-    requiredFormulaRanges: [{ sheet: "汇总", range: "D4:D6" }],
-    requiredNativeCharts: [{ sheet: "汇总", type: "line", minPoints: 3, sourceRanges: ["A4:A6", "B4:B6", "C4:C6"] }],
-    requiredTables: [{ sheet: "汇总", minCount: 1 }],
-    requiredConditionalFormatting: [{ sheet: "汇总", range: "D4:D6" }],
-    requiredDataValidations: [{ sheet: "汇总", cell: "F4" }],
-    requiredCellTypes: [
-      { sheet: "汇总", range: "A4:A6", type: "string" },
-      { sheet: "汇总", range: "B4:D6", type: "number" },
-      { sheet: "类型回归", range: "A2:A3", type: "string" },
-      { sheet: "类型回归", range: "B2:B3", type: "number" },
-      { sheet: "类型回归", range: "C2:C3", type: "date" },
-    ],
-    expectedCells: [{ sheet: "汇总", cell: "B8", value: 110000, tolerance: 0.01 }],
-    expectedRanges: [
-      { sheet: "汇总", range: "A4:C6", values: [["1月", 100000, 70000], ["2月", 120000, 78000], ["3月", 135000, 85000]] },
-      { sheet: "类型回归", range: "A2:D3", values: [["A-001", 0.5, "2026-04-30", "进行中"], ["A-002", 0.8, "2026-05-31", "已完成"]] },
-    ],
-  };
-  const audit = await auditXlsx(finalPath, selfTestRequirements);
-  if (audit.status === "error") throw new Error("Clean workbook failed audit");
-  if (audit.coverage.status !== "passed") throw new Error("Self-test requirement coverage failed");
-  if (audit.warnings.some((warning) => warning.type === "cjk_font_fallback")) throw new Error("Chinese font fallback remained unresolved after recalculation");
-  steps.push({ name: "audit-clean", status: audit.status, coverage: audit.coverage.status });
-
-  const wrongFactRequirements = structuredClone(selfTestRequirements);
-  wrongFactRequirements.expectedRanges[0].values[0][1] = 999999;
-  const wrongFactAudit = await auditXlsx(finalPath, wrongFactRequirements);
-  if (!wrongFactAudit.coverage.failures.some((failure) => failure.type === "expected_range" && failure.mismatches?.[0]?.address === "B4")) {
-    throw new Error("Expected-range coverage did not reject a source-fact mismatch");
-  }
-
-  const changedSourcePath = path.join(outputDir, "changed-source.xlsx");
-  await fs.copyFile(rawPath, changedSourcePath);
-  const changedSourceHash = await fileSha256(changedSourcePath);
-  await fs.appendFile(changedSourcePath, "changed");
-  const changedSourceRequirements = structuredClone(selfTestRequirements);
-  changedSourceRequirements.sourceFiles = [{ path: changedSourcePath, sha256: changedSourceHash }];
-  const changedSourceAudit = await auditXlsx(finalPath, changedSourceRequirements);
-  if (!changedSourceAudit.coverage.failures.some((failure) => failure.type === "source_file_integrity")) {
-    throw new Error("Source-file integrity coverage did not reject a changed input");
-  }
-  steps.push({ name: "source-fact-coverage", status: "ok", expectedRangeFailures: wrongFactAudit.coverage.failures.length, sourceHashFailures: changedSourceAudit.coverage.failures.length });
-  const failedCoverage = await auditXlsx(finalPath, { requiredNativeCharts: [{ sheet: "汇总", type: "bar", minCount: 1 }] });
-  if (failedCoverage.status !== "error" || failedCoverage.coverage.status !== "failed") throw new Error("Requirement coverage did not reject a missing native chart type");
-  steps.push({ name: "coverage-failure", status: "ok", detected: failedCoverage.coverage.failures.length });
-  const failedTypeCoverage = await auditXlsx(finalPath, { requiredCellTypes: [{ sheet: "类型回归", range: "B2:B3", type: "date" }] });
-  if (failedTypeCoverage.status !== "error" || failedTypeCoverage.coverage.failures[0]?.type !== "required_cell_type") {
-    throw new Error("Cell type coverage did not reject numeric KPI cells interpreted as dates");
-  }
-  steps.push({ name: "cell-type-coverage", status: "ok", detected: failedTypeCoverage.coverage.failures.length });
-
-  const editBuilderPath = path.join(outputDir, "edit-builder.mjs");
-  await fs.writeFile(editBuilderPath, `export default async function build({ inputPath, loadWorkbook }) {\n  const workbook = await loadWorkbook(inputPath);\n  workbook.getWorksheet("汇总").getCell("A1").value = "Edited workbook";\n  return workbook;\n}\n`, "utf8");
-  const editedProduct = await buildFromBuilder(editBuilderPath, finalPath);
-  const editedRawPath = path.join(outputDir, "edited-raw.xlsx");
-  const editedPath = path.join(outputDir, "edited.xlsx");
-  await editedProduct.workbook.xlsx.writeFile(editedRawPath);
-  await recalculateWorkbook(editedRawPath, editedPath);
-  const sourceAfterEdit = await loadXlsx(finalPath);
-  const editedWorkbook = await loadXlsx(editedPath);
-  if (displayCellText(sourceAfterEdit.getWorksheet("汇总").getCell("A1")) !== "PilotDeck 表格能力自测") {
-    throw new Error("Existing-workbook edit overwrote the source file");
-  }
-  if (editedWorkbook.getWorksheet("汇总").getCell("A1").value !== "Edited workbook") {
-    throw new Error("Existing-workbook edit did not reach the output file");
-  }
-  steps.push({ name: "edit-copy", status: "ok" });
-
-  const errorPath = path.join(outputDir, "formula-error.xlsx");
-  const errorWorkbook = createWorkbook();
-  const errorSheet = errorWorkbook.addWorksheet("Errors");
-  errorSheet.getCell("A1").value = { error: "#DIV/0!" };
-  await errorWorkbook.xlsx.writeFile(errorPath);
-  const errorAudit = await auditXlsx(errorPath);
-  if (errorAudit.status !== "error") throw new Error("Formula error scan did not catch #DIV/0!");
-  steps.push({ name: "audit-error", status: "ok", detected: errorAudit.hardFailures.length });
-
-  const invalidDatePath = path.join(outputDir, "invalid-date.xlsx");
-  const invalidDateWorkbook = createWorkbook();
-  const invalidDateSheet = invalidDateWorkbook.addWorksheet("InvalidDate");
-  invalidDateSheet.getCell("A1").value = 1e20;
-  invalidDateSheet.getCell("A1").numFmt = "yyyy-mm-dd";
-  await invalidDateWorkbook.xlsx.writeFile(invalidDatePath);
-  const invalidDateAudit = await auditXlsx(invalidDatePath);
-  if (!invalidDateAudit.hardFailures.some((failure) => failure.type === "invalid_date_value")) {
-    throw new Error("Invalid date scan did not catch an out-of-range date-formatted number");
-  }
-  steps.push({ name: "invalid-date-audit", status: "ok", detected: invalidDateAudit.invalidDates.length });
-
-  const blankPath = path.join(outputDir, "intentional-blank-sheet.xlsx");
-  const blankWorkbook = createWorkbook();
-  blankWorkbook.addWorksheet("Blank");
-  await blankWorkbook.xlsx.writeFile(blankPath);
-  const unresolvedWarningAudit = await auditXlsx(blankPath, { requiredSheets: ["Blank"] });
-  if (unresolvedWarningAudit.warningDispositions.status !== "failed") throw new Error("Unresolved warnings were not marked as blocking");
-  const disposedWarningAudit = await auditXlsx(blankPath, {
-    requiredSheets: ["Blank"],
-    warningDispositions: [{ type: "blank_sheets", rationale: "Self-test fixture intentionally verifies warning dispositions." }],
-  });
-  if (disposedWarningAudit.warningDispositions.status !== "passed") throw new Error("Explicit warning disposition was not accepted");
-  steps.push({ name: "warning-dispositions", status: "ok" });
-
-  const invalidRequirementMessages = [];
-  for (const invalid of [
-    { coverage: { status: "passed" } },
-    { warningDispositions: { cjk_font_fallback: "invalid shape" } },
-  ]) {
-    try {
-      validateRequirements(invalid, "self-test requirements");
-    } catch (error) {
-      invalidRequirementMessages.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  if (invalidRequirementMessages.length !== 2) throw new Error("Malformed requirements were not rejected deterministically");
-  steps.push({ name: "requirements-schema", status: "ok", detected: invalidRequirementMessages.length });
-
-  const invalidConditionalBuilderPath = path.join(outputDir, "invalid-conditional-builder.mjs");
-  await fs.writeFile(invalidConditionalBuilderPath, `export default async function build({ createWorkbook }) {\n  const workbook = createWorkbook();\n  const sheet = workbook.addWorksheet("行动项");\n  sheet.addConditionalFormatting({ ref: "A1:A2", rules: [{ type: "expression", formula: ["A1>0"], style: {} }] });\n  return { workbook, requirements: { requiredSheets: ["行动项"] } };\n}\n`, "utf8");
-  let conditionalValidationError;
-  try {
-    await commandBuild({ builder: invalidConditionalBuilderPath, out: path.join(outputDir, "invalid-conditional.xlsx") });
-  } catch (error) {
-    conditionalValidationError = error;
-  }
-  if (!(conditionalValidationError instanceof SpreadsheetStageError)
-    || conditionalValidationError.stage !== "builder_validation"
-    || !conditionalValidationError.message.includes(".formulae as an array")) {
-    throw new Error("Invalid conditional-formatting formulas did not produce an actionable builder-validation error");
-  }
-  steps.push({ name: "builder-validation", status: "ok", stage: conditionalValidationError.stage });
-
-  const nullFormulaPath = path.join(outputDir, "missing-formula-cache.xlsx");
-  const nullFormulaWorkbook = createWorkbook();
-  nullFormulaWorkbook.addWorksheet("Formula").getCell("A1").value = { formula: "1+1" };
-  await nullFormulaWorkbook.xlsx.writeFile(nullFormulaPath);
-  const nullFormulaAudit = await auditXlsx(nullFormulaPath);
-  if (!nullFormulaAudit.hardFailures.some((failure) => failure.type === "missing_cached_formula_result" && failure.address === "A1")) {
-    throw new Error("Missing formula cache was not reported as a hard failure");
-  }
-  steps.push({ name: "missing-formula-cache", status: "ok", detected: nullFormulaAudit.formulas.missingCachedResults.length });
-
-  const blankMergePath = path.join(outputDir, "blank-merge.xlsx");
-  const blankMergeWorkbook = createWorkbook();
-  const blankMergeSheet = blankMergeWorkbook.addWorksheet("Merged");
-  blankMergeSheet.mergeCells("A1:B1");
-  blankMergeSheet.getCell("C1").value = "keeps sheet populated";
-  await blankMergeWorkbook.xlsx.writeFile(blankMergePath);
-  const blankMergeAudit = await auditXlsx(blankMergePath);
-  if (blankMergeAudit.status === "error") throw new Error("Blank merged cells crashed or failed workbook audit");
-  steps.push({ name: "blank-merge-audit", status: "ok" });
-
-  const atomicCandidatePath = path.join(outputDir, "atomic-candidate.xlsx");
-  await fs.copyFile(finalPath, atomicCandidatePath);
-  const atomicCandidateHash = await fileSha256(atomicCandidatePath);
-  const failingBuilderPath = path.join(outputDir, "failing-builder.mjs");
-  await fs.writeFile(failingBuilderPath, `export default async function build({ createWorkbook }) {\n  const workbook = createWorkbook();\n  workbook.addWorksheet("Broken").getCell("A1").value = { error: "#DIV/0!" };\n  return { workbook, requirements: { requiredSheets: ["Broken"] } };\n}\n`, "utf8");
-  let buildRejected = false;
-  try {
-    await commandBuild({ builder: failingBuilderPath, out: atomicCandidatePath });
-  } catch {
-    buildRejected = true;
-  }
-  if (!buildRejected || await fileSha256(atomicCandidatePath) !== atomicCandidateHash) {
-    throw new Error("Failed build replaced the last valid candidate");
-  }
-  steps.push({ name: "atomic-failed-build", status: "ok" });
-
-  const csvPath = path.join(outputDir, "sample-gb18030.csv");
-  await fs.writeFile(csvPath, iconv.encode('名称,编号,数值\n"北京分公司",001234,10\n上海分公司,123456789012345678,20\n', "gb18030"));
-  const csvInspection = await inspectDelimited(csvPath, {});
-  if (csvInspection.rowCount !== 3 || csvInspection.preview[1][0] !== "北京分公司" || csvInspection.encoding !== "gb18030") throw new Error("Chinese CSV encoding detection failed");
-  const csvWorkbook = await loadDelimited(csvPath, { inferTypes: true });
-  if (typeof csvWorkbook.worksheets[0].getCell("B2").value !== "string" || typeof csvWorkbook.worksheets[0].getCell("B3").value !== "string") {
-    throw new Error("CSV identifier inference lost leading zeroes or long integer precision");
-  }
-  const tsvPath = path.join(outputDir, "sample.tsv");
-  await exportDelimited(csvWorkbook, tsvPath);
-  const tsvInspection = await inspectDelimited(tsvPath, {});
-  if (tsvInspection.format !== "tsv" || tsvInspection.preview[1][0] !== "北京分公司" || tsvInspection.encoding !== "utf8-bom") throw new Error("TSV export failed");
-  steps.push({ name: "csv-tsv", status: "ok", sourceEncoding: csvInspection.encoding, outputEncoding: tsvInspection.encoding });
-
-  const riskyPath = path.join(outputDir, "risky-chart-package.xlsx");
-  const riskyZip = await JSZip.loadAsync(await fs.readFile(rawPath));
-  riskyZip.file("xl/charts/chart1.xml", '<?xml version="1.0"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:lineChart/></c:plotArea></c:chart></c:chartSpace>');
-  await fs.writeFile(riskyPath, await riskyZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  const riskyInfo = await inspectPackage(riskyPath);
-  if (!riskyInfo.unsafeForRoundTrip || riskyInfo.features.charts !== 1) throw new Error("Chart compatibility preflight failed");
-  steps.push({ name: "compatibility-preflight", status: "ok", risks: riskyInfo.roundTripRisks });
-
-  const chartTypesPath = path.join(outputDir, "native-chart-types.xlsx");
-  const chartTypesWorkbook = createWorkbook();
-  const chartTypeSpecs = [];
-  for (const type of ["line", "column", "bar"]) {
-    const worksheet = chartTypesWorkbook.addWorksheet(type, { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });
-    worksheet.addRows([["月份", "实际", "目标"], ["1月", 10, 12], ["2月", 14, 13], ["3月", 16, 15]]);
-    styleHeader(worksheet, "A1:C1");
-    autoFitColumns(worksheet, { min: 10, max: 18 });
-    applyChineseTypography(worksheet, { platform: "cross-platform" });
-    chartTypeSpecs.push({ sheet: type, type, title: `${type} 原生图表`, minPoints: 3, categories: "A2:A4", series: [{ name: "实际", values: "B2:B4" }, { name: "目标", values: "C2:C4" }], anchor: { from: "A6", to: "H20" } });
-  }
-  await chartTypesWorkbook.xlsx.writeFile(chartTypesPath);
-  await injectNativeCharts(chartTypesPath, chartTypeSpecs, { JSZip, loadXlsx });
-  const chartTypesAudit = await auditXlsx(chartTypesPath, { requiredNativeCharts: chartTypeSpecs.map((spec) => ({ sheet: spec.sheet, type: spec.type, minCount: 1, minPoints: 3, sourceRanges: ["A2:A4", "B2:B4", "C2:C4"] })) });
-  const detectedTypes = new Set(chartTypesAudit.package.charts.flatMap((chart) => chart.types));
-  if (chartTypesAudit.status === "error" || !["line", "column", "bar"].every((type) => detectedTypes.has(type))) throw new Error("Native chart type regression");
-  const chartTypesRender = await renderWorkbook(chartTypesPath, path.join(outputDir, "chart-types-render"), { perSheet: true });
-  if (chartTypesRender.pageStats.some((page) => page.blank)) throw new Error("A native chart type rendered as a blank page");
-  steps.push({ name: "native-chart-types", status: "ok", types: [...detectedTypes], pages: chartTypesRender.pageCount });
-
-  const blankChartPath = path.join(outputDir, "blank-chart-source.xlsx");
-  const blankChartWorkbook = createWorkbook();
-  blankChartWorkbook.addWorksheet("趋势").addRows([["月份", "数值"], ["1月", 10], [null, null], ["3月", 14]]);
-  await blankChartWorkbook.xlsx.writeFile(blankChartPath);
-  let blankChartError = null;
-  try {
-    await injectNativeCharts(blankChartPath, [{
-      sheet: "趋势",
-      type: "line",
-      title: "空值回归",
-      minPoints: 3,
-      categories: "A2:A4",
-      series: [{ name: "数值", values: "B2:B4" }],
-      anchor: { from: "D2", to: "K16" },
-    }], { JSZip, loadXlsx });
-  } catch (error) {
-    blankChartError = error;
-  }
-  if (!(blankChartError instanceof Error) || !blankChartError.message.includes("blank categories")) {
-    throw new Error("Native chart injection did not reject blank categories and values");
-  }
-  steps.push({ name: "native-chart-data-quality", status: "ok", error: blankChartError.message });
-
-  const legacySourceDir = path.join(outputDir, "legacy-source");
-  const legacyProfileDir = path.join(outputDir, "legacy-profile");
-  await Promise.all([fs.mkdir(legacySourceDir, { recursive: true }), fs.mkdir(legacyProfileDir, { recursive: true })]);
-  const legacySeed = path.join(legacySourceDir, "legacy-seed.xlsx");
-  const legacySeedWorkbook = createWorkbook();
-  legacySeedWorkbook.addWorksheet("旧格式").addRows([["名称", "数值"], ["测试", 42]]);
-  await legacySeedWorkbook.xlsx.writeFile(legacySeed);
-  await runLibreOffice(["--convert-to", "xls:MS Excel 97", "--outdir", legacySourceDir, legacySeed], legacyProfileDir);
-  const legacyXls = path.join(legacySourceDir, "legacy-seed.xls");
-  if (!(await pathExists(legacyXls))) throw new Error("Self-test could not create a legacy XLS fixture");
-  const legacyConverted = path.join(outputDir, "legacy-converted.xlsx");
-  await convertLegacyXls(legacyXls, legacyConverted);
-  const legacyWorkbook = await loadXlsx(legacyConverted);
-  if (legacyWorkbook.getWorksheet("旧格式")?.getCell("B2").value !== 42) throw new Error("Legacy XLS conversion lost worksheet values");
-  steps.push({ name: "xls-conversion", status: "ok" });
-
-  const blankFixture = path.join(outputDir, "blank-page.png");
-  await sharp({ create: { width: 320, height: 240, channels: 3, background: "white" } }).png().toFile(blankFixture);
-  const blankAnalysis = await analyzeRenderedPage(blankFixture);
-  if (!blankAnalysis.blank) throw new Error("Blank-page detection regression");
-  steps.push({ name: "blank-page-detection", status: "ok" });
-
-  const rendered = await renderWorkbook(finalPath, path.join(outputDir, "render"), { perSheet: true });
-  if (rendered.pageStats.some((page) => page.blank)) throw new Error("Self-test workbook produced an unexpected blank print page");
-  steps.push({ name: "render", status: "ok", pageCount: rendered.pageCount, sheets: rendered.sheets.map((sheet) => ({ name: sheet.sheet, pages: sheet.pageCount })), montage: rendered.montage });
-
-  const sealedPath = path.join(outputDir, "sealed.xlsx");
-  const sealAudit = await auditXlsx(finalPath, selfTestRequirements);
-  if (sealAudit.status === "error") throw new Error("Candidate failed before seal self-test");
-  await fs.copyFile(finalPath, sealedPath);
-  if (await fileSha256(finalPath) !== await fileSha256(sealedPath)) throw new Error("Seal hash verification regression");
-  steps.push({ name: "seal-hash", status: "ok", sha256: await fileSha256(sealedPath) });
-
+  const outputDir = options.out
+    ? path.resolve(String(options.out))
+    : path.join(os.tmpdir(), "pilotdeck-spreadsheets-self-test-" + Date.now());
+  const workDir = path.join(outputDir, "work");
   const previousWorkDir = process.env.PILOTDECK_WORK_DIR;
-  const boundaryRoot = path.join(outputDir, "work-boundary");
-  const boundaryOutside = path.join(outputDir, "work-boundary-outside");
-  await fs.mkdir(boundaryRoot, { recursive: true });
-  await fs.mkdir(boundaryOutside, { recursive: true });
-  const boundaryLink = path.join(boundaryRoot, "escape-link");
-  await fs.symlink(
-    boundaryOutside,
-    boundaryLink,
-    process.platform === "win32" ? "junction" : "dir",
-  );
-  process.env.PILOTDECK_WORK_DIR = boundaryRoot;
-  let boundaryRejected = false;
-  let symlinkBoundaryRejected = false;
+  await fs.mkdir(workDir, { recursive: true });
+  process.env.PILOTDECK_WORK_DIR = workDir;
+
+  const steps = [];
+  const builderPath = path.join(workDir, "workbook.mjs");
+  const candidatePath = path.join(workDir, "candidate.xlsx");
+  const reviewDir = path.join(workDir, "review");
+  const evaluatorPath = path.join(workDir, "evaluator.mjs");
+  const evaluationPath = path.join(workDir, "evaluation.json");
+  const fallbackScriptPath = path.join(workDir, "break-chart.mjs");
+  const invalidFallbackPath = path.join(workDir, "invalid-fallback.xlsx");
+  const invalidFallbackManifestPath = path.join(workDir, "invalid-fallback.json");
+  const aliasFallbackPath = path.join(workDir, "alias-fallback.xlsx");
+  const validFallbackScriptPath = path.join(workDir, "patch-core-properties.mjs");
+  const validFallbackPath = path.join(workDir, "valid-fallback.xlsx");
+  const validFallbackManifestPath = path.join(workDir, "valid-fallback.json");
+  const finalPath = path.join(outputDir, "final-" + Date.now() + ".xlsx");
+
+  const builderSource = (label) => [
+    "export default async function build({ createWorkbook, helpers }) {",
+    "  const workbook = createWorkbook();",
+    "  const sheet = workbook.addWorksheet('销售', { views: [{ state: 'frozen', ySplit: 1, showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });",
+    "  sheet.addRows([['月份', '销售额', '状态'], ['1月', 100, '完成'], ['2月', 120, '完成'], ['3月', 135, '进行中'], ['合计', { formula: 'SUM(B2:B4)', result: 355 }, '']]);",
+    "  helpers.styleHeader(sheet, 'A1:C1');",
+    "  helpers.addTableFromRange(sheet, { name: 'SalesTable', range: 'A1:C4' });",
+    "  helpers.addListValidation(sheet, 'C2:C4', ['未开始', '进行中', '完成'], { allowBlank: false });",
+    "  helpers.addConditionalFormatting(sheet, { range: 'B2:B4', rules: [{ type: 'cellIs', operator: 'greaterThan', formulae: [110], style: { font: { bold: true } } }] });",
+    "  helpers.setNumberFormat(sheet, 'B2:B5', '#,##0');",
+    "  helpers.autoFitColumns(sheet, { min: 10, max: 22 });",
+    "  helpers.applyChineseTypography(sheet, { platform: 'cross-platform' });",
+    "  sheet.getCell('E1').value = " + JSON.stringify(label) + ";",
+    "  helpers.addNativeChart(workbook, { sheet: '销售', type: 'line', title: '销售趋势', categories: 'A2:A4', series: [{ name: '销售额', values: 'B2:B4' }], anchor: { from: 'E2', to: 'L16' } });",
+    "  const notes = workbook.addWorksheet('说明', { pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 1 } });",
+    "  notes.addRows([['说明'], [" + JSON.stringify(label) + "]]);",
+    "  helpers.styleHeader(notes, 'A1:A1');",
+    "  helpers.autoFitColumns(notes, { min: 12, max: 24 });",
+    "  return workbook;",
+    "}",
+    "",
+  ].join("\n");
+
   try {
-    assertInternalArtifactPath(
-      path.join(outputDir, "leaked-inspection.json"),
-      "Spreadsheet JSON report",
-    );
-  } catch (error) {
-    boundaryRejected = error instanceof Error
-      && error.message.includes("PILOTDECK_WORK_DIR");
-  }
-  try {
-    assertInternalArtifactPath(
-      path.join(boundaryLink, "leaked-through-symlink.json"),
-      "Spreadsheet JSON report",
-    );
-  } catch (error) {
-    symlinkBoundaryRejected = error instanceof Error
-      && error.message.includes("PILOTDECK_WORK_DIR");
+    await fs.writeFile(builderPath, builderSource("初版"), "utf8");
+    const firstBuild = await commandBuild({ builder: builderPath, out: candidatePath, quiet: true });
+    if (firstBuild.status === "error" || !(await pathExists(candidatePath))) {
+      throw new Error("Core build did not produce a candidate workbook");
+    }
+    if (firstBuild.audit.hardFailures.length > 0
+      || !Array.isArray(firstBuild.nativeCharts.charts)
+      || firstBuild.nativeCharts.charts.length < 1) {
+      throw new Error("Core build failed deterministic workbook or native-chart checks");
+    }
+    steps.push({ name: "build", status: "ok", formulas: firstBuild.formulaCount, charts: firstBuild.nativeCharts.charts.length });
+
+    const inspection = await inspectSpreadsheet(candidatePath, { sheet: "销售", range: "A1:E5", styles: true });
+    if (inspection.workbook.worksheetCount !== 2 || inspection.formulas.count < 1) {
+      throw new Error("Inspection did not return workbook structure and formulas");
+    }
+    steps.push({ name: "inspect", status: "ok", worksheets: inspection.workbook.worksheetCount });
+
+    const firstReview = await commandReview({ input: candidatePath, "out-dir": reviewDir, quiet: true });
+    if (firstReview.status !== "review_pending" || firstReview.render.pages.length === 0) {
+      throw new Error("Review did not return per-page visual evidence");
+    }
+
+    await fs.writeFile(builderPath, builderSource("复核版"), "utf8");
+    const secondBuild = await commandBuild({ builder: builderPath, out: candidatePath, quiet: true });
+    const secondReview = await commandReview({ input: candidatePath, "out-dir": reviewDir, quiet: true });
+    if (secondBuild.status === "error"
+      || secondReview.status !== "review_pending"
+      || firstReview.revision.sha256 === secondReview.revision.sha256
+      || firstReview.revision.directory === secondReview.revision.directory
+      || secondReview.render.pages.some((page) => !isInsidePath(page.path, secondReview.revision.directory))
+      || Object.hasOwn(secondReview.render, "montage")
+      || await pathExists(path.join(reviewDir, "montage.png"))) {
+      throw new Error("Review evidence is not clean, per-page, and revision-specific");
+    }
+    steps.push({ name: "review", status: "ok", revisions: [firstReview.revision.id, secondReview.revision.id], pages: secondReview.render.pageCount });
+
+    const salesReview = await commandReview({ input: candidatePath, "out-dir": reviewDir, sheet: "销售", quiet: true });
+    const salesPage = salesReview.render.pages[0];
+    const salesPageSha256 = await fileSha256(salesPage.path);
+    const notesReview = await commandReview({ input: candidatePath, "out-dir": reviewDir, sheet: "说明", quiet: true });
+    if (salesReview.revision.sha256 !== notesReview.revision.sha256
+      || salesReview.revision.directory === notesReview.revision.directory
+      || salesPage.path === notesReview.render.pages[0]?.path
+      || salesPage.sheet !== "销售"
+      || notesReview.render.pages[0]?.sheet !== "说明"
+      || !(await pathExists(salesPage.path))
+      || await fileSha256(salesPage.path) !== salesPageSha256) {
+      throw new Error("Selective review evidence was overwritten or assigned an unstable worksheet path");
+    }
+    steps.push({ name: "review-evidence-isolation", status: "ok", revision: salesReview.revision.id });
+
+    const fallbackScriptSource = [
+      "import fs from 'node:fs/promises';",
+      "import path from 'node:path';",
+      "const packageDir = process.argv[process.argv.indexOf('--package-dir') + 1];",
+      "await fs.writeFile(path.join(packageDir, 'xl', 'charts', 'chart1.xml'), '<broken', 'utf8');",
+      "",
+    ].join("\n");
+    await fs.writeFile(fallbackScriptPath, fallbackScriptSource, "utf8");
+    const candidateSha256BeforeFallback = await fileSha256(candidatePath);
+    let aliasBlocked = false;
+    try {
+      await commandFallbackPatch({
+        input: candidatePath,
+        script: fallbackScriptPath,
+        out: aliasFallbackPath,
+        manifest: aliasFallbackPath,
+        reason: "self-test path alias",
+        "allow-part": "xl/charts/chart*.xml",
+        quiet: true,
+      });
+    } catch (error) {
+      aliasBlocked = error instanceof SpreadsheetProtocolError && error.code === "artifact-path-conflict";
+    }
+    if (!aliasBlocked || await pathExists(aliasFallbackPath) || await fileSha256(candidatePath) !== candidateSha256BeforeFallback) {
+      throw new Error("Aliased fallback output and manifest paths were not blocked before mutation");
+    }
+
+    let invalidPackageBlocked = false;
+    try {
+      await commandFallbackPatch({
+        input: candidatePath,
+        script: fallbackScriptPath,
+        out: invalidFallbackPath,
+        manifest: invalidFallbackManifestPath,
+        reason: "self-test malformed chart XML",
+        "allow-part": "xl/charts/chart*.xml",
+        quiet: true,
+      });
+    } catch (error) {
+      invalidPackageBlocked = error instanceof SpreadsheetProtocolError && error.code === "fallback-invalid-package";
+    }
+    const invalidManifest = JSON.parse(await fs.readFile(invalidFallbackManifestPath, "utf8"));
+    if (!invalidPackageBlocked
+      || await pathExists(invalidFallbackPath)
+      || invalidManifest.status !== "blocked"
+      || !invalidManifest.validation?.issues?.some((issue) => issue.type === "malformed_package_xml")
+      || await fileSha256(candidatePath) !== candidateSha256BeforeFallback) {
+      throw new Error("Malformed fallback chart XML was not rejected without updating the candidate");
+    }
+    const validFallbackScriptSource = [
+      "import fs from 'node:fs/promises';",
+      "import path from 'node:path';",
+      "const packageDir = process.argv[process.argv.indexOf('--package-dir') + 1];",
+      "const target = path.join(packageDir, 'docProps', 'core.xml');",
+      "const xml = await fs.readFile(target, 'utf8');",
+      "await fs.writeFile(target, xml.replace('</cp:coreProperties>', '<cp:keywords>self-test</cp:keywords></cp:coreProperties>'), 'utf8');",
+      "",
+    ].join("\n");
+    await fs.writeFile(validFallbackScriptPath, validFallbackScriptSource, "utf8");
+    await commandFallbackPatch({
+      input: candidatePath,
+      script: validFallbackScriptPath,
+      out: validFallbackPath,
+      manifest: validFallbackManifestPath,
+      reason: "self-test valid core-properties patch",
+      "allow-part": "docProps/core.xml",
+      quiet: true,
+    });
+    const validManifest = JSON.parse(await fs.readFile(validFallbackManifestPath, "utf8"));
+    if (validManifest.status !== "ok"
+      || validManifest.validation?.status !== "ok"
+      || !(await pathExists(validFallbackPath))
+      || (await auditXlsx(validFallbackPath)).status === "error") {
+      throw new Error("A valid controlled fallback did not pass package validation");
+    }
+    steps.push({ name: "fallback-safety", status: "ok", checks: ["path-alias", "malformed-chart-xml", "valid-package"] });
+
+    const evaluatorSource = [
+      "export default async function evaluate({ candidate, helpers }) {",
+      "  const values = helpers.readRange(candidate, '销售', 'A1:B5');",
+      "  return { checks: [",
+      "    { name: 'sheet exists', passed: Boolean(candidate.getWorksheet('销售')) },",
+      "    { name: 'source values preserved', passed: values[1][1] === 100 && values[3][1] === 135 },",
+      "    { name: 'formula result', passed: values[4][1] === 355 },",
+      "  ] };",
+      "}",
+      "",
+    ].join("\n");
+    await fs.writeFile(evaluatorPath, evaluatorSource, "utf8");
+    const evaluation = await commandEvaluate({ input: candidatePath, script: evaluatorPath, out: evaluationPath, quiet: true });
+    if (evaluation.status !== "ok") throw new Error("Task-specific evaluator did not pass");
+    steps.push({ name: "evaluate", status: "ok", checks: evaluation.checks.length });
+
+    const delivery = await commandDeliver({ input: candidatePath, out: finalPath, quiet: true });
+    if (delivery.status !== "ok" || !(await pathExists(finalPath)) || await fileSha256(candidatePath) !== await fileSha256(finalPath)) {
+      throw new Error("Delivery did not preserve the reviewed candidate bytes");
+    }
+    steps.push({ name: "deliver", status: "ok", output: finalPath });
   } finally {
     if (previousWorkDir === undefined) delete process.env.PILOTDECK_WORK_DIR;
     else process.env.PILOTDECK_WORK_DIR = previousWorkDir;
   }
-  if (!boundaryRejected) throw new Error("Work-directory boundary did not reject a leaked spreadsheet artifact");
-  if (!symlinkBoundaryRejected) throw new Error("Work-directory boundary allowed a symlink escape");
-  steps.push({ name: "work-directory-boundary", status: "ok" });
 
-  const report = {
-    status: "ok",
-    outputDir: path.resolve(outputDir),
-    workbook: path.resolve(finalPath),
-    render: rendered,
-    steps,
-  };
+  const report = { status: "ok", outputDir, workbook: finalPath, steps };
   await writeJson(path.join(outputDir, "self-test-report.json"), report);
   await emitReport(report);
 }
 
 function printHelp() {
-  process.stdout.write(`PilotDeck spreadsheets skill\n\nCommands:\n  scaffold --out builder.mjs [--requirements-out requirements.json]\n  build --builder builder.mjs --out candidate.xlsx [--input source.xlsx] [--requirements requirements.json]\n  inspect --input book.xlsx [--sheet Sheet1 --range A1:H20 --styles --out report.json]\n  convert-legacy --input source.xls --out converted.xlsx\n  recalculate --input source.xlsx --out recalculated.xlsx\n  audit --input book.xlsx [--requirements requirements.json --out audit.json]\n  render --input book.xlsx --out-dir render [--pdf render.pdf --montage montage.png --per-sheet]\n  deliver --input candidate.xlsx --out final.xlsx --qa-dir qa --requirements requirements.json\n  self-test [--out directory]\n`);
+  process.stdout.write(`PilotDeck spreadsheets skill\n\nModel-guided workflow:\n  inspect --input book.xlsx [--sheet Sheet1 --range A1:H20 --styles --out report.json]\n  scaffold --out builder.mjs\n  build --builder builder.mjs --out candidate.xlsx [--input source.xlsx]\n  review --input candidate.xlsx --out-dir review [--sheet Sheet1 --report review.json]\n  evaluate --input candidate.xlsx --script evaluator.mjs [--out evaluation.json]\n  deliver --input candidate.xlsx --out final.xlsx [--report delivery.json]\n\nAdditional capabilities:\n  capabilities [--full]\n  schema --command <native-chart|image|fallback-patch>\n  convert-legacy --input source.xls --out converted.xlsx\n  recalculate --input source.xlsx --out recalculated.xlsx\n  audit --input book.xlsx [--out audit.json]\n  render --input book.xlsx --out-dir render [--pdf render.pdf --per-sheet]\n  fallback-patch --input candidate.xlsx --script patch.mjs --out patched.xlsx --manifest fallback.json --reason TEXT --allow-part PART\n  self-test [--out directory]\n`);
 }
 
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
   switch (command) {
+    case "capabilities": await commandCapabilities(options); break;
+    case "schema": await commandSchema(options); break;
     case "scaffold": await commandScaffold(options); break;
     case "build": await commandBuild(options); break;
+    case "fallback-patch": await commandFallbackPatch(options); break;
     case "inspect": await commandInspect(options); break;
+    case "evaluate": await commandEvaluate(options); break;
     case "convert-legacy": await commandConvertLegacy(options); break;
     case "recalculate": await commandRecalculate(options); break;
     case "audit": await commandAudit(options); break;
     case "render": await commandRender(options); break;
+    case "review": await commandReview(options); break;
     case "deliver": await commandDeliver(options); break;
     case "self-test": await commandSelfTest(options); break;
     case "help":
@@ -2819,8 +2985,16 @@ async function main() {
 }
 
 main().catch((error) => {
+  const protocolError = error instanceof SpreadsheetProtocolError
+    ? error
+    : error instanceof SpreadsheetStageError && error.cause instanceof SpreadsheetProtocolError
+      ? error.cause
+      : null;
   const payload = {
-    status: "error",
+    status: protocolError?.status ?? "error",
+    ...(protocolError?.code ? { code: protocolError.code } : {}),
+    ...(protocolError?.details && Object.keys(protocolError.details).length > 0 ? { details: protocolError.details } : {}),
+    ...(!protocolError && error instanceof SpreadsheetStageError && Object.keys(error.details ?? {}).length > 0 ? { details: error.details } : {}),
     error: error instanceof Error ? error.message : String(error),
     ...(error instanceof SpreadsheetStageError ? { stage: error.stage } : {}),
     ...(error instanceof Error && error.cause instanceof Error ? { cause: error.cause.message } : {}),

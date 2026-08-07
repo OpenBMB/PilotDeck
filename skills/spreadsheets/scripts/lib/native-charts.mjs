@@ -108,7 +108,7 @@ function removeContentTypeOverride(xml, partName) {
   return xml.replace(new RegExp(`<Override\\b(?=[^>]*\\bPartName=(["'])${escapedPart}\\1)[^>]*/\\s*>`, "gi"), "");
 }
 
-async function workbookSheetParts(zip) {
+export async function workbookSheetParts(zip) {
   const workbookPart = zip.file("xl/workbook.xml");
   const workbookRelsPart = zip.file("xl/_rels/workbook.xml.rels");
   if (!workbookPart || !workbookRelsPart) throw new Error("The XLSX package is missing workbook relationships");
@@ -163,12 +163,13 @@ function cellDisplayValue(cell) {
     return value.toISOString().slice(0, 10);
   }
   if (typeof value === "object") {
-    if ("result" in value) {
-      if (value.result instanceof Date) {
-        if (!Number.isFinite(value.result.getTime())) throw new Error(`Chart source cell ${cell.address} contains an invalid formula date result`);
-        return value.result.toISOString().slice(0, 10);
+    if ("formula" in value || "sharedFormula" in value || "result" in value) {
+      const result = Object.hasOwn(value, "result") ? value.result : cell.result;
+      if (result instanceof Date) {
+        if (!Number.isFinite(result.getTime())) throw new Error(`Chart source cell ${cell.address} contains an invalid formula date result`);
+        return result.toISOString().slice(0, 10);
       }
-      return value.result ?? "";
+      return result ?? "";
     }
     if (typeof value.text === "string") return value.text;
     if (Array.isArray(value.richText)) return value.richText.map((run) => run.text ?? "").join("");

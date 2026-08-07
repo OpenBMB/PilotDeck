@@ -4,7 +4,7 @@
 // Bump this token whenever a cached asset's contents change (icons, manifest).
 // The activate handler below purges every cache whose name doesn't match,
 // so existing PWAs pick up the new visuals on the next page load.
-const CACHE_NAME = 'politdeck-v1';
+const CACHE_NAME = 'pilotdeck-v2';
 const urlsToCache = [
   '/manifest.json'
 ];
@@ -18,7 +18,9 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Fetch event — network-first for everything except hashed assets
+// Fetch event — network-first. Hashed assets are safe to cache, but JS/CSS
+// chunks must still prefer the network so a long-lived desktop window does not
+// keep an old entry chunk that imports files removed by a newer build.
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
@@ -39,7 +41,23 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Hashed assets (JS/CSS in /assets/) — cache-first since filenames change per build
+  // Hashed JS/CSS chunks — network-first. If the app was rebuilt while the
+  // page stayed open, the old chunk may no longer exist; let the app-level
+  // dynamic import recovery reload into the fresh index.html.
+  if (url.includes('/assets/') && /\.(?:js|css)(?:\?|$)/.test(new URL(url).pathname)) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Other hashed assets (fonts/images) — cache-first since filenames change per build
   if (url.includes('/assets/')) {
     event.respondWith(
       caches.match(event.request).then(cached => {

@@ -27,6 +27,8 @@ export type CatalogProvider = {
   protocol: CatalogProviderProtocol;
   defaultUrl: string;
   modelListUrl?: string;
+  /** The provider rejects model-list requests until an API key is supplied. */
+  modelListRequiresApiKey?: boolean;
   requiresApiKey?: boolean;
   models: CatalogModel[];
 };
@@ -93,11 +95,10 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     protocol: 'openai',
     defaultUrl: 'https://api.deepseek.com/v1',
     modelListUrl: 'https://api.deepseek.com/models',
+    modelListRequiresApiKey: true,
     models: [
       { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', maxContextTokens: 1048576, maxOutputTokens: 393216 },
       { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', maxContextTokens: 1048576, maxOutputTokens: 393216 },
-      { id: 'deepseek-chat', displayName: 'DeepSeek Chat (V4 Flash)', maxContextTokens: 1048576, maxOutputTokens: 393216 },
-      { id: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner', maxContextTokens: 1048576, maxOutputTokens: 393216 },
     ],
   },
   {
@@ -151,9 +152,12 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Moonshot AI (Kimi)',
     protocol: 'openai',
     defaultUrl: 'https://api.moonshot.cn/v1',
+    modelListRequiresApiKey: true,
     models: [
-      { id: 'kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144 },
-      { id: 'kimi-k1.5', displayName: 'Kimi K1.5', supportsImage: true, maxContextTokens: 131072 },
+      { id: 'kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 8192 },
+      { id: 'kimi-k2.7-code', displayName: 'Kimi K2.7 Code' },
+      { id: 'kimi-k2.7-code-highspeed', displayName: 'Kimi K2.7 Code Highspeed' },
+      { id: 'kimi-k3', displayName: 'Kimi K3' },
     ],
   },
   {

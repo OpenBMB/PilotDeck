@@ -42,6 +42,32 @@ describe('config test-connection route', () => {
     expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
   });
 
+  it('allows enough completion tokens for reasoning models to return chat text', async () => {
+    let requestBody;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    }));
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerType: 'openai',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        apiKey: 'sk-test',
+        model: 'kimi-k3',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+    expect(requestBody).toMatchObject({
+      model: 'kimi-k3',
+      max_tokens: 8,
+      messages: [{ role: 'user', content: 'Reply exactly: OK' }],
+    });
+  });
+
   it('falls back to unversioned chat completions when protocol-versioned probing misses', async () => {
     const calls = [];
     vi.stubGlobal('fetch', vi.fn(async (url) => {
@@ -216,6 +242,25 @@ describe('config test-connection route', () => {
     expect(data.error).toContain('did not produce any chat text');
   });
 
+  it('accepts OpenAI-compatible reasoning output from a constrained probe', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      choices: [{ message: { content: '', reasoning_content: 'Brief reasoning' } }],
+    })));
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerType: 'openai',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        apiKey: 'sk-test',
+        model: 'kimi-k3',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+  });
+
   it('accepts Responses API output_text content parts', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
       object: 'response',
@@ -263,6 +308,29 @@ describe('config test-connection route', () => {
     expect(data.ok).toBe(true);
     expect(calls).toEqual(['http://localhost:11434/v1/chat/completions']);
     expect(authHeaders).toEqual([undefined]);
+  });
+});
+
+describe('config model-list route', () => {
+  it('preserves a non-JSON upstream authentication error status', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ...jsonResponse({}, { ok: false, status: 401, statusText: 'Unauthorized' }),
+      text: async () => 'Authentication Fails (governor)',
+    })));
+
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/models', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: 'deepseek',
+        providerType: 'openai',
+        baseUrl: 'https://api.deepseek.com/models',
+        apiKey: '',
+      }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ ok: false, error: 'Authentication Fails (governor)' });
   });
 });
 
@@ -660,6 +728,7 @@ async function createConfigApp({ config = {} } = {}) {
 
   return {
     request: (path, init) => requestBodyJson(app, path, init),
+    requestStatus: (path, init) => requestStatusJson(app, path, init),
     writePilotDeckConfig,
     writeRawPilotDeckYaml,
   };
