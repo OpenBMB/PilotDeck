@@ -442,7 +442,7 @@ function createIncompleteTurnStatusMessage(
     provider: "pilotdeck",
     role: "system",
     kind: "status",
-    text: "上次运行未正常结束或已中断，已恢复当时产生的工具调用和输出。",
+    text: "本轮记录尚未写入最终结果，已恢复当时产生的工具调用和输出。",
     payload: { incompleteTurnIds: turnIds },
     source: "history",
   };

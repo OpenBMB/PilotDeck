@@ -201,6 +201,25 @@ export interface SessionSlot {
   _serverLoadingGeneration: number | null;
 }
 
+export function cancelRunningAgentActivities(
+  activities: NormalizedMessage[],
+  endedAt: string,
+): NormalizedMessage[] {
+  let changed = false;
+  const updated = activities.map((activity) => {
+    if (activity.kind !== 'agent_activity' || ['completed', 'failed', 'cancelled'].includes(String(activity.state || ''))) {
+      return activity;
+    }
+    changed = true;
+    return {
+      ...activity,
+      state: 'cancelled',
+      endedAt,
+    };
+  });
+  return changed ? updated : activities;
+}
+
 const EMPTY: NormalizedMessage[] = [];
 
 function createEmptySlot(): SessionSlot {
@@ -1198,6 +1217,15 @@ export function useSessionStore() {
     notify(sessionId);
   }, [getSlot, notify]);
 
+  const cancelRunningActivities = useCallback((sessionId: string) => {
+    const slot = storeRef.current.get(sessionId);
+    if (!slot) return;
+    const activities = cancelRunningAgentActivities(slot.activityMessages, new Date().toISOString());
+    if (activities === slot.activityMessages) return;
+    slot.activityMessages = activities;
+    notify(sessionId);
+  }, [notify]);
+
   /**
    * Append multiple realtime messages at once (batch).
    */
@@ -1521,6 +1549,7 @@ export function useSessionStore() {
     appendRealtime,
     upsertActivity,
     setActivities,
+    cancelRunningActivities,
     appendRealtimeBatch,
     refreshFromServer,
     setActiveSession,
@@ -1544,7 +1573,7 @@ export function useSessionStore() {
     finalizeSubagentDetailThinking,
   }), [
     getSlot, has, fetchFromServer, fetchMore,
-    appendRealtime, upsertActivity, setActivities, appendRealtimeBatch, refreshFromServer,
+    appendRealtime, upsertActivity, setActivities, cancelRunningActivities, appendRealtimeBatch, refreshFromServer,
     setActiveSession, setStatus, isStale, updateStreaming, finalizeStreaming,
     updateStreamingThinking, finalizeStreamingThinking,
     clearRealtime, clearAssistantRealtime, getMessages, getActivityMessages, getSubagentDetailMessages, getSessionSlot,

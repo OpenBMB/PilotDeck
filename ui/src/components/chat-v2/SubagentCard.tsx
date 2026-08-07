@@ -41,13 +41,10 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail, thin
       if (state === 'failed') {
         return { icon: 'failed' as const, text: text || t('subagent.status.failed') };
       }
-      if (state === 'completed' || state === 'cancelled') {
-        if (!isSessionRunning && !hasToolResult) {
-          return { icon: 'failed' as const, text: t('subagent.status.stopped') };
-        }
+      if (state === 'completed') {
         return { icon: 'completed' as const, text: text || t('subagent.status.completed') };
       }
-      if (!isSessionRunning) {
+      if (state === 'cancelled') {
         return { icon: 'failed' as const, text: t('subagent.status.stopped') };
       }
       return { icon: 'running' as const, text: text || t('subagent.status.thinking') };
@@ -65,10 +62,10 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail, thin
       return { icon: 'running' as const, text: t('subagent.status.executingTool', { toolName: currentTool.toolName }) };
     }
     if (!isSessionRunning) {
-      return { icon: 'failed' as const, text: t('subagent.status.stopped') };
+      return { icon: 'running' as const, text: t('subagent.status.thinking') };
     }
     return { icon: 'running' as const, text: t('subagent.status.thinking') };
-  }, [isComplete, isFailed, hasToolResult, currentTool, liveActivity, isSessionRunning, t]);
+  }, [isComplete, isFailed, hasToolResult, currentTool, liveActivity, isSessionRunning, subagentId, t]);
 
   const handleClick = () => {
     if (subagentId && onOpenDetail) {

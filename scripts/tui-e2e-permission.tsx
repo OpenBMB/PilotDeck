@@ -91,6 +91,7 @@ class MockGateway implements Gateway {
   describeServer = stub({ mode: "in_process" as const });
   cronCreate = stub({ taskId: "c", task: {} as any, created: true }) as unknown as Gateway["cronCreate"];
   cronList = stub({ tasks: [] }) as Gateway["cronList"];
+  cronUpdate = stub({ updated: false, reason: "not_found" }) as Gateway["cronUpdate"];
   cronDelete = stub({ deleted: true }) as Gateway["cronDelete"];
   cronStop = stub({ stopped: true }) as Gateway["cronStop"];
   cronRunNow = stub({ triggered: true }) as unknown as Gateway["cronRunNow"];

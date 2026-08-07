@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    createAlwaysOnTurnEventForwarder,
     gatewayEventToFrames,
     isGatewayUnavailableError,
+    isTerminalAlwaysOnTurnEvent,
 } from './pilotdeck-bridge.js';
 
 describe('gatewayEventToFrames agent status errors', () => {
@@ -176,5 +178,49 @@ describe('isGatewayUnavailableError', () => {
 
     it('does not classify generic bridge failures as gateway unavailable', () => {
         expect(isGatewayUnavailableError(new Error('Unexpected frame payload'))).toBe(false);
+    });
+});
+
+describe('Always-On turn notification forwarding', () => {
+    it('cleans an aborted run so its next run receives session_created again', () => {
+        const forwarded = [];
+        const forward = createAlwaysOnTurnEventForwarder((sessionId, frame) => {
+            forwarded.push({ sessionId, frame });
+        });
+        const payload = (event) => ({
+            sessionKey: 'cron:task-1',
+            channelKey: 'cron',
+            event,
+        });
+
+        forward('always-on:turn-event', payload({
+            type: 'agent_status',
+            event: 'subagent_started',
+            detail: { subagentId: 'child-1', subagentType: 'general-purpose' },
+        }));
+        forward('always-on:turn-event', payload({
+            type: 'error',
+            code: 'agent_aborted',
+            message: 'The run was stopped.',
+            recoverable: true,
+        }));
+        forward('always-on:turn-event', payload({
+            type: 'agent_status',
+            event: 'subagent_started',
+            detail: { subagentId: 'child-2', subagentType: 'general-purpose' },
+        }));
+
+        expect(forwarded.filter(({ frame }) => frame.kind === 'session_created')).toHaveLength(2);
+        expect(forwarded.find(({ frame }) => frame.kind === 'error')?.frame).toMatchObject({
+            code: 'agent_aborted',
+        });
+    });
+
+    it('treats normal completion and top-level errors as terminal', () => {
+        expect(isTerminalAlwaysOnTurnEvent({ type: 'turn_completed' })).toBe(true);
+        expect(isTerminalAlwaysOnTurnEvent({ type: 'error', code: 'agent_aborted' })).toBe(true);
+        expect(isTerminalAlwaysOnTurnEvent({ type: 'error', code: 'session_busy', recoverable: true })).toBe(false);
+        expect(isTerminalAlwaysOnTurnEvent({ type: 'error', code: 'turn_failed', recoverable: false })).toBe(true);
+        expect(isTerminalAlwaysOnTurnEvent({ type: 'assistant_text_delta', text: 'still running' })).toBe(false);
     });
 });

@@ -760,6 +760,9 @@ export function useChatRealtimeHandlers({
       }
 
       case 'error': {
+        if (sid && msg.code === 'agent_aborted') {
+          sessionStore.cancelRunningActivities(sid);
+        }
         if (isForActiveView) {
           setIsLoading(false);
           setCanAbortSession(false);

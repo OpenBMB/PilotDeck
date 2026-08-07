@@ -33,4 +33,6 @@ export type {
   CronStopResult,
   CronTask,
   CronTaskStatus,
+  CronUpdateInput,
+  CronUpdateResult,
 } from "./protocol/types.js";

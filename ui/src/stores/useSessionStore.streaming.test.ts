@@ -7,6 +7,7 @@ import {
 } from '../components/chat/hooks/useChatRealtimeHandlers';
 import {
   computeMerged,
+  cancelRunningAgentActivities,
   createRafNotifyScheduler,
   getFinalizedSubagentThinkingId,
   getUnpersistedRealtimeTurnMessages,
@@ -84,6 +85,49 @@ describe('isSessionForActiveView', () => {
 
   it('accepts a pending new-session view when no saved session is selected', () => {
     expect(isSessionForActiveView('web:new-session', 'web:new-session')).toBe(true);
+  });
+});
+
+describe('cancelRunningAgentActivities', () => {
+  it('marks only unfinished agent activities as cancelled after a confirmed abort', () => {
+    const running = {
+      id: 'subagent-running',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity' as const,
+      activityId: 'subagent:running',
+      state: 'running',
+    };
+    const completed = {
+      ...running,
+      id: 'subagent-completed',
+      activityId: 'subagent:completed',
+      state: 'completed',
+      endedAt: '2026-08-05T00:01:00.000Z',
+    };
+    const text = textMessage('assistant-text', 'Already written', '2026-08-05T00:00:30.000Z');
+    const endedAt = '2026-08-05T00:02:00.000Z';
+
+    const activities = cancelRunningAgentActivities([running, completed, text], endedAt);
+
+    expect(activities[0]).toMatchObject({ state: 'cancelled', endedAt });
+    expect(activities[1]).toBe(completed);
+    expect(activities[2]).toBe(text);
+  });
+
+  it('keeps the same array when there are no running agent activities', () => {
+    const activities: NormalizedMessage[] = [{
+      id: 'subagent-completed',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity',
+      activityId: 'subagent:completed',
+      state: 'completed',
+    }];
+
+    expect(cancelRunningAgentActivities(activities, '2026-08-05T00:02:00.000Z')).toBe(activities);
   });
 });
 

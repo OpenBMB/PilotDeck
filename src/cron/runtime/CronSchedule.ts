@@ -43,6 +43,9 @@ export function computeNextCronRunAt(
   if (!parsed || !isValidCronTimezone(timezone)) return undefined;
   const formatter = createCronDateFormatter(timezone);
   let candidate = new Date(Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS);
+  if (isLeapDayOnlySchedule(parsed)) {
+    return computeNextLeapDayRunAt(candidate, parsed, formatter);
+  }
   for (let index = 0; index < MAX_SEARCH_MINUTES; index += 1) {
     if (matchesCron(candidate, parsed, formatter)) {
       return candidate;
@@ -50,6 +53,38 @@ export function computeNextCronRunAt(
     candidate = new Date(candidate.getTime() + MINUTE_MS);
   }
   return undefined;
+}
+
+function isLeapDayOnlySchedule(cron: ParsedCron): boolean {
+  return cron.daysOfMonth.size === 1
+    && cron.daysOfMonth.has(29)
+    && cron.months.size === 1
+    && cron.months.has(2)
+    && cron.daysOfWeek.size === 7;
+}
+
+function computeNextLeapDayRunAt(
+  after: Date,
+  cron: ParsedCron,
+  formatter: Intl.DateTimeFormat,
+): Date | undefined {
+  const startYear = after.getUTCFullYear();
+  for (let year = startYear; year <= startYear + 8; year += 1) {
+    if (!isLeapYear(year)) continue;
+    let candidate = new Date(Date.UTC(year, 1, 28));
+    const end = Date.UTC(year, 2, 2);
+    while (candidate.getTime() < end) {
+      if (candidate.getTime() >= after.getTime() && matchesCron(candidate, cron, formatter)) {
+        return candidate;
+      }
+      candidate = new Date(candidate.getTime() + MINUTE_MS);
+    }
+  }
+  return undefined;
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 type ParsedCron = {

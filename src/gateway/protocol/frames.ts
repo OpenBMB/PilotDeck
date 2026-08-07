@@ -29,6 +29,7 @@ export type WsGatewayMethod =
   | "active_turn_snapshot"
   | "cron_create"
   | "cron_list"
+  | "cron_update"
   | "cron_delete"
   | "cron_stop"
   | "cron_run_now"

@@ -88,6 +88,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         sessionOverrides,
         logger: cronLogger,
         telemetry,
+        onTurnEvent: (sessionKey, channelKey, event) => {
+          deferredBroadcast?.("always-on:turn-event", { sessionKey, channelKey, event });
+        },
         onResultDelivery: (delivery) => {
           void serverRef?.deliverCronResult(delivery)
             .then((delivered) => {
@@ -781,6 +784,9 @@ function createFallbackGateway(): Gateway {
       throw new Error("Cron runtime is not configured.");
     },
     cronList: async () => {
+      throw new Error("Cron runtime is not configured.");
+    },
+    cronUpdate: async () => {
       throw new Error("Cron runtime is not configured.");
     },
     cronDelete: async () => {
