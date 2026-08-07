@@ -24,8 +24,11 @@ import os from 'node:os';
 
 import {
     getPilotDeckGateway,
+    isGatewayUnavailableError,
 } from './pilotdeck-bridge.js';
 import { mapLegacySessionPresentation } from '../../src/web/server/legacySessionPresentation.js';
+import { describeWebProject, listWebProjects } from '../../src/web/server/listProjects.js';
+import { listProjectSessions } from '../../src/session/index.js';
 import {
     resolvePilotHome,
     createProjectId,
@@ -58,6 +61,12 @@ async function detectTaskMaster(projectPath) {
 }
 
 const directoryCache = new Map();
+const parsedProjectGatewayTimeoutMs =
+    Number.parseInt(process.env.PILOTDECK_PROJECTS_GATEWAY_TIMEOUT_MS ?? '', 10);
+const PROJECT_GATEWAY_TIMEOUT_MS = Number.isFinite(parsedProjectGatewayTimeoutMs)
+    ? parsedProjectGatewayTimeoutMs
+    : 2_500;
+let loggedGatewayFallback = false;
 
 function rememberProjectDirectory(name, fullPath) {
     if (!name || !fullPath) return;
@@ -135,9 +144,122 @@ async function readMarkedProjectPaths() {
     return result;
 }
 
+function createProjectGatewayTimeoutError() {
+    const error = new Error(
+        `[projects] gateway did not become ready within ${PROJECT_GATEWAY_TIMEOUT_MS}ms`,
+    );
+    error.code = 'project_gateway_timeout';
+    return error;
+}
+
+function isProjectGatewayFallbackError(error) {
+    return error?.code === 'project_gateway_timeout' || isGatewayUnavailableError(error);
+}
+
+function logProjectGatewayFallback(error, context) {
+    if (loggedGatewayFallback) return;
+    loggedGatewayFallback = true;
+    console.warn(
+        `[projects] gateway unavailable during ${context}; using local project/session index:`,
+        error?.message || error,
+    );
+}
+
+async function getGatewayForProjectReads(context) {
+    const gatewayPromise = getPilotDeckGateway();
+    const timeoutMs = PROJECT_GATEWAY_TIMEOUT_MS;
+    const boundedGatewayPromise = timeoutMs > 0
+        ? new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(createProjectGatewayTimeoutError()), timeoutMs);
+            gatewayPromise.then(
+                (gateway) => {
+                    clearTimeout(timer);
+                    resolve(gateway);
+                },
+                (error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                },
+            );
+        })
+        : gatewayPromise;
+
+    try {
+        return await boundedGatewayPromise;
+    } catch (error) {
+        if (!isProjectGatewayFallbackError(error)) {
+            throw error;
+        }
+        logProjectGatewayFallback(error, context);
+        return null;
+    }
+}
+
+async function listProjectsFromGatewayOrDisk(gateway) {
+    if (gateway) {
+        try {
+            const { projects = [] } = await gateway.listProjects();
+            return { gateway, projects };
+        } catch (error) {
+            if (!isProjectGatewayFallbackError(error)) {
+                throw error;
+            }
+            logProjectGatewayFallback(error, 'project list');
+        }
+    }
+
+    const pilotHome = resolvePilotHome(process.env);
+    const { projects = [] } = await listWebProjects({ pilotHome });
+    return { gateway: null, projects };
+}
+
+async function listSessionsFromGatewayOrDisk(gateway, projectKey, { limit = 5, cursor } = {}) {
+    if (gateway) {
+        try {
+            return await gateway.listSessions({ projectKey, limit, cursor });
+        } catch (error) {
+            if (!isProjectGatewayFallbackError(error)) {
+                throw error;
+            }
+            logProjectGatewayFallback(error, 'session list');
+        }
+    }
+
+    const offset = cursor ? Number.parseInt(cursor, 10) : 0;
+    const safeOffset = Number.isFinite(offset) ? offset : 0;
+    const sessions = await listProjectSessions({
+        projectRoot: projectKey,
+        pilotHome: resolvePilotHome(process.env),
+        limit,
+        offset: safeOffset,
+    });
+    const nextOffset = safeOffset + sessions.length;
+    return {
+        sessions,
+        nextCursor: limit && sessions.length === limit ? String(nextOffset) : undefined,
+    };
+}
+
+async function describeProjectFromGatewayOrDisk(gateway, projectKey) {
+    if (gateway) {
+        try {
+            return await gateway.describeProject({ projectKey });
+        } catch (error) {
+            if (!isProjectGatewayFallbackError(error)) {
+                throw error;
+            }
+            logProjectGatewayFallback(error, 'project summary');
+        }
+    }
+
+    return describeWebProject(projectKey, { pilotHome: resolvePilotHome(process.env) });
+}
+
 async function getProjects(progressCallback = null) {
-    const gateway = await getPilotDeckGateway();
-    const { projects: webProjects } = await gateway.listProjects();
+    let gateway = await getGatewayForProjectReads('project list');
+    const listedProjects = await listProjectsFromGatewayOrDisk(gateway);
+    gateway = listedProjects.gateway;
+    const webProjects = listedProjects.projects;
     const markedProjects = await readMarkedProjectPaths();
     const markedProjectIdsByPath = new Map(
         [...markedProjects.entries()].map(([id, cwd]) => [path.resolve(cwd), id]),
@@ -199,8 +321,7 @@ async function getProjects(progressCallback = null) {
             });
         }
 
-        const sessionsResult = await gateway
-            .listSessions({ projectKey: fullPath, limit: 5 })
+        const sessionsResult = await listSessionsFromGatewayOrDisk(gateway, fullPath, { limit: 5 })
             .catch(() => ({ sessions: [] }));
         const sessions = (sessionsResult.sessions || []).map((session) =>
             toLegacySession(session, name),
@@ -242,18 +363,15 @@ async function getProjects(progressCallback = null) {
     let generalTotal = 0;
     let generalLastActivity;
     try {
-        const generalGateway = await getPilotDeckGateway();
         // Pair the first page query with describeProject so the General
         // workspace gets the real session count instead of the page size.
         // Without this, sessionMeta.hasMore was hardcoded `false` and the
         // sidebar would silently truncate to the first 5 sessions even
         // when dozens existed under ~/.pilotdeck/projects/<encoded>/chats/.
         const [generalSessionsResult, generalSummary] = await Promise.all([
-            generalGateway
-                .listSessions({ projectKey: generalHome, limit: 5 })
+            listSessionsFromGatewayOrDisk(gateway, generalHome, { limit: 5 })
                 .catch(() => ({ sessions: [] })),
-            generalGateway
-                .describeProject({ projectKey: generalHome })
+            describeProjectFromGatewayOrDisk(gateway, generalHome)
                 .catch(() => null),
         ]);
         generalSessions = (generalSessionsResult.sessions || []).map((session) =>
@@ -288,7 +406,7 @@ async function getProjects(progressCallback = null) {
 }
 
 async function getSessions(projectName, limit = 5, offset = 0) {
-    const gateway = await getPilotDeckGateway();
+    const gateway = await getGatewayForProjectReads('session list');
     const projectPath = await extractProjectDirectory(projectName);
     const cursor = offset > 0 ? String(offset) : undefined;
     // Fan-out the page query and the project summary (for the authoritative
@@ -300,11 +418,9 @@ async function getSessions(projectName, limit = 5, offset = 0) {
     // to the user as a button that "doesn't react" once they've already
     // pulled in everything that exists.
     const [listResult, summary] = await Promise.all([
-        gateway
-            .listSessions({ projectKey: projectPath, limit, cursor })
+        listSessionsFromGatewayOrDisk(gateway, projectPath, { limit, cursor })
             .catch(() => ({ sessions: [] })),
-        gateway
-            .describeProject({ projectKey: projectPath })
+        describeProjectFromGatewayOrDisk(gateway, projectPath)
             .catch(() => null),
     ]);
     const sessions = (listResult.sessions || []).map((session) =>
