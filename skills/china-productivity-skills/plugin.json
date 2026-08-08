@@ -1,0 +1,69 @@
+{
+  "name": "china-productivity-skills",
+  "version": "1.0.0",
+  "description": "13 Agent Skills for Chinese internet data retrieval, AI research monitoring, and multimedia content production — filling the gap in PilotDeck's skill ecosystem for Chinese-language and domestic-platform workflows.",
+  "author": "",
+  "homepage": "",
+  "license": "MIT",
+  "skills": [
+    "wechat-mp-fetch",
+    "zhihu-answer-fetch",
+    "bilibili-video-info",
+    "douban-media-lookup",
+    "juejin-article-search",
+    "weibo-hot-search",
+    "github-trending",
+    "arxiv-cn-daily",
+    "hackernews-ai-trending",
+    "ai-papers-trending",
+    "html-report-cn",
+    "podcast-scriptwriter",
+    "voxcpm-tts"
+  ],
+  "categories": [
+    "chinese-internet",
+    "content-retrieval",
+    "ai-research",
+    "productivity",
+    "tts"
+  ],
+  "runtime_requirements": {
+    "curl": "any modern version",
+    "python3": ">=3.8 (standard library only — re, json, xml, html, zlib, hashlib, urllib)"
+  },
+  "optional_dependencies": {
+    "voxcpm": ">=2.0.0 (only for voxcpm-tts skill; requires Python 3.10-3.12 + GPU 5-8GB)"
+  },
+  "network_requirements": [
+    "mp.weixin.qq.com",
+    "www.zhihu.com",
+    "api.bilibili.com",
+    "comment.bilibili.com",
+    "api.douban.com",
+    "book.douban.com",
+    "api.juejin.cn",
+    "juejin.cn",
+    "weibo.com",
+    "tophub.today",
+    "api.github.com",
+    "export.arxiv.org",
+    "rss.arxiv.org",
+    "hn.algolia.com",
+    "api.openalex.org",
+    "api.semanticscholar.org",
+    "huggingface.co",
+    "pypi.org"
+  ],
+  "pilotdeck_compatibility": {
+    "min_version": "0.1.0",
+    "mcp_native": true,
+    "skill_format": "anthropic-skill-md"
+  },
+  "hooks": [],
+  "tested": {
+    "date": "2026-07-04",
+    "test_cases": 65,
+    "rounds": 3,
+    "result": "8 GO / 5 GO_WITH_CAUTION / 0 NO_GO"
+  }
+}
