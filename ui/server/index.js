@@ -62,8 +62,7 @@ import {
     abortViaGateway,
     decidePermissionViaGateway,
     grantSessionPermissionViaGateway,
-    isSessionActiveViaGateway,
-    getActiveTurnSnapshotFramesViaGateway,
+    getSessionActivityViaGateway,
     getActiveSessionIdsViaGateway,
     elicitationRespondViaGateway,
     getRouterDashboardData,
@@ -85,6 +84,7 @@ import skillsRoutes from './routes/skills.js';
 import settingsRoutes from './routes/settings.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
+import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import {
     OFFICE_PREVIEW_SERVICE_BUILTIN,
     OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
@@ -635,6 +635,8 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
         res.status(500).json({ error: error?.message || 'cron create failed' });
     }
 });
+
+app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
 
 app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, async (req, res) => {
     try {
@@ -2511,17 +2513,21 @@ function handleChatConnection(ws, request) {
                 if (normalizeSessionId(sessionId)) {
                     sessionWatchRegistry.watch(sessionId, ws);
                 }
-                const isProcessing = isSessionActiveViaGateway(sessionId);
                 const includeActiveTurnMessages = data.includeActiveTurnMessages !== false;
-                const activeTurnMessages = (isProcessing && includeActiveTurnMessages)
-                    ? await getActiveTurnSnapshotFramesViaGateway(sessionId, data.provider || 'pilotdeck')
-                    : [];
+                const activity = await getSessionActivityViaGateway(sessionId, data.provider || 'pilotdeck', includeActiveTurnMessages);
                 writer.send({
                     type: 'session-status',
                     sessionId,
                     provider: data.provider || 'pilotdeck',
-                    isProcessing,
-                    activeTurnMessages,
+                    isProcessing: activity.isProcessing,
+                    activeRunId: activity.activeRunId,
+                    expectedActiveRunId: typeof data.expectedActiveRunId === 'string' && data.expectedActiveRunId.trim()
+                        ? data.expectedActiveRunId.trim()
+                        : null,
+                    statusRequestId: Number.isSafeInteger(data.statusRequestId)
+                        ? data.statusRequestId
+                        : null,
+                    activeTurnMessages: includeActiveTurnMessages ? activity.activeTurnMessages : [],
                     tokenBudget: getSessionTokenBudget(sessionId),
                 });
             } else if (data.type === 'get-pending-permissions') {

@@ -44,6 +44,8 @@ type MessageComponentProps = {
   autoExpandTools?: boolean;
   showRawParameters?: boolean;
   showThinking?: boolean;
+  isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
+  onToolSectionExpandedChange?: (sectionKey: string, expanded: boolean) => void;
   selectedProject?: Project | null;
   provider: Provider | string;
   hideHeader?: boolean;
@@ -147,7 +149,7 @@ function attachmentToDocumentReference(attachment: ChatAttachment): ContentRefer
   } satisfies DocumentSelectionReference);
 }
 
-const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showRawParameters, showThinking, selectedProject, provider, hideHeader = false }: MessageComponentProps) => {
+const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showRawParameters, showThinking, isToolSectionExpanded, onToolSectionExpandedChange, selectedProject, provider, hideHeader = false }: MessageComponentProps) => {
   const { t } = useTranslation('chat');
   const isGrouped = prevMessage && prevMessage.type === message.type &&
     ((prevMessage.type === 'assistant') ||
@@ -209,6 +211,12 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   const shouldShowAssistantCopyControl = message.type === 'assistant' &&
     assistantCopyContent.trim().length > 0 &&
     !message.isToolUse;
+  const toolSectionBaseKey = `${String(message.turnId || message.runId || 'legacy-turn')}:${String(
+    message.toolId || message.toolCallId || message.id || message.toolName || 'tool',
+  )}`;
+  const toolSectionKey = (section: 'input' | 'result' | 'error') => {
+    return `${toolSectionBaseKey}:${section}`;
+  };
 
 
   useEffect(() => {
@@ -224,6 +232,14 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
         entries.forEach((entry) => {
           if (entry.isIntersecting && !isExpanded) {
             setIsExpanded(true);
+            if (onToolSectionExpandedChange) {
+              if (message.toolInput) {
+                onToolSectionExpandedChange(`${toolSectionBaseKey}:input`, true);
+              }
+              if (message.toolResult && !message.toolResult.isError) {
+                onToolSectionExpandedChange(`${toolSectionBaseKey}:result`, true);
+              }
+            }
             const details = node.querySelectorAll<HTMLDetailsElement>('details:not([data-auto-expand="false"])');
             details.forEach((detail) => {
               detail.open = true;
@@ -239,7 +255,15 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
     return () => {
       observer.unobserve(node);
     };
-  }, [autoExpandTools, isExpanded, message.isToolUse]);
+  }, [
+    autoExpandTools,
+    isExpanded,
+    message.isToolUse,
+    message.toolInput,
+    message.toolResult,
+    onToolSectionExpandedChange,
+    toolSectionBaseKey,
+  ]);
 
   const formattedTime = useMemo(() => new Date(message.timestamp).toLocaleTimeString(), [message.timestamp]);
   const shouldHideThinkingMessage = Boolean(message.isThinking && !showThinking);
@@ -435,6 +459,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                     autoExpandTools={autoExpandTools}
                     showRawParameters={showRawParameters}
                     rawToolInput={typeof message.toolInput === 'string' ? message.toolInput : undefined}
+                    expansionKey={toolSectionKey('input')}
+                    isToolSectionExpanded={isToolSectionExpanded}
+                    onToolSectionExpandedChange={onToolSectionExpandedChange}
                     isSubagentContainer={message.isSubagentContainer}
                     subagentState={message.subagentState}
                   />
@@ -551,6 +578,10 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                               toolId={message.toolId}
                               title={t('toolUseError.title', { defaultValue: 'Tool error' })}
                               defaultOpen={false}
+                              open={isToolSectionExpanded?.(toolSectionKey('error'), false)}
+                              onOpenChange={onToolSectionExpandedChange
+                                ? (expanded) => onToolSectionExpandedChange(toolSectionKey('error'), expanded)
+                                : undefined}
                               toolCategory="default"
                               autoExpandable={false}
                             >
@@ -564,8 +595,20 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
 
                         return (
                           <div className="my-1 border-l-2 border-l-red-500 py-0.5 pl-3 dark:border-l-red-400">
-                            <details className="group/details relative">
-                              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-red-600 transition-colors hover:text-red-700 dark:text-red-300 dark:hover:text-red-200 [&::-webkit-details-marker]:hidden">
+                            <details
+                              className="group/details relative"
+                              open={isToolSectionExpanded?.(toolSectionKey('error'), false)}
+                            >
+                              <summary
+                                onClick={onToolSectionExpandedChange
+                                  ? (event) => {
+                                      event.preventDefault();
+                                      const currentExpanded = isToolSectionExpanded?.(toolSectionKey('error'), false) ?? false;
+                                      onToolSectionExpandedChange(toolSectionKey('error'), !currentExpanded);
+                                    }
+                                  : undefined}
+                                className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-red-600 transition-colors hover:text-red-700 dark:text-red-300 dark:hover:text-red-200 [&::-webkit-details-marker]:hidden"
+                              >
                                 <svg
                                   className="h-3.5 w-3.5 transition-transform group-open/details:rotate-90"
                                   fill="none"
@@ -679,6 +722,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                         createDiff={createDiff}
                         selectedProject={selectedProject}
                         autoExpandTools={autoExpandTools}
+                        expansionKey={toolSectionKey('result')}
+                        isToolSectionExpanded={isToolSectionExpanded}
+                        onToolSectionExpandedChange={onToolSectionExpandedChange}
                         isSubagentContainer={message.isSubagentContainer}
                         subagentState={message.subagentState}
                       />

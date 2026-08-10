@@ -1,3 +1,5 @@
+import { buildSessionStatusRequestIfIdle } from '../chat/sessionStatusProtocol';
+
 export function shouldRefreshSessionOnReconnect({
   isLoading,
   processingSessions,
@@ -10,13 +12,13 @@ export function shouldRefreshSessionOnReconnect({
   return !(isLoading || processingSessions?.has(sessionId));
 }
 
-export function buildReconnectStatusMessage(sessionId: string) {
-  return {
-    type: 'check-session-status',
+export function buildReconnectStatusMessage(sessionId: string, expectedActiveRunId: string | null) {
+  return buildSessionStatusRequestIfIdle({
     sessionId,
     provider: 'pilotdeck',
+    expectedActiveRunId,
     includeActiveTurnMessages: true,
-  };
+  });
 }
 
 export async function refreshSessionAfterReconnect(refresh: () => Promise<unknown>): Promise<void> {

@@ -419,6 +419,7 @@ export function createRouterRuntime(
           config: config.tokenSaver,
           messages: input.request.messages,
           judgeRuntime,
+          abortSignal: input.abortSignal,
           previousTier: input.metadata?.previousTier,
           sessionId: input.sessionId,
           telemetry,
@@ -430,6 +431,11 @@ export function createRouterRuntime(
               sessionId: input.sessionId,
               reason: tokenSaver.failureReason,
               fallbackTier: tokenSaver.tier,
+              judgeProvider: config.tokenSaver.judge.provider,
+              judgeModel: config.tokenSaver.judge.model,
+              attempts: tokenSaver.failure?.attempts ?? 1,
+              ...(tokenSaver.failure?.code ? { errorCode: tokenSaver.failure.code } : {}),
+              ...(tokenSaver.failure?.message ? { errorMessage: tokenSaver.failure.message } : {}),
             });
           }
           if (tokenSaver.selection) {
@@ -998,6 +1004,7 @@ export function createRouterRuntime(
       request,
       sessionId: ctx.sessionId,
       isMainAgent: ctx.isMainAgent,
+      abortSignal: ctx.abortSignal,
       metadata: ctx.previousTier ? { previousTier: ctx.previousTier } : undefined,
     });
     yield* execute(decision, request, ctx);

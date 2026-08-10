@@ -104,6 +104,13 @@ const visibleFailureAgentStatusEvents = new Set([
     'content_filter_stop',
     'unknown_finish_reason',
 ]);
+const nonTerminalParentErrorCodes = new Set([
+    'session_busy',
+]);
+
+function isTerminalParentError(code) {
+    return !nonTerminalParentErrorCodes.has(String(code || ''));
+}
 
 function normalizeToolDisplayName(name) {
     const aliases = {
@@ -180,6 +187,8 @@ const WEB_DEFAULT_PERMISSION_MODE =
 // ESM rewriting on fresh installs.
 /** @type {ReturnType<typeof createRemoteGateway> | null} */
 let gatewayPromise = null;
+/** @type {Awaited<ReturnType<typeof createRemoteGateway>> | null} */
+let gatewayInstance = null;
 
 async function readGatewayToken() {
     try {
@@ -223,19 +232,31 @@ async function connectWithRetry() {
 
 function ensureGateway() {
     if (!gatewayPromise) {
-        gatewayPromise = connectWithRetry().catch((error) => {
-            // Reset so the next caller retries instead of cementing the
-            // failure forever. The deadline inside connectWithRetry()
-            // already bounds individual attempts.
-            gatewayPromise = null;
-            throw error;
-        });
+        const pending = connectWithRetry()
+            .then((gateway) => {
+                if (gatewayPromise === pending) {
+                    gatewayInstance = gateway;
+                }
+                return gateway;
+            })
+            .catch((error) => {
+                // Reset only if this failed attempt is still current. A newer
+                // caller may already have started a replacement connection.
+                if (gatewayPromise === pending) {
+                    gatewayPromise = null;
+                    gatewayInstance = null;
+                }
+                throw error;
+            });
+        gatewayPromise = pending;
     }
     return gatewayPromise;
 }
 
-function resetGatewayConnection() {
+function resetGatewayConnection(expectedGateway) {
+    if (expectedGateway && gatewayInstance !== expectedGateway) return;
     gatewayPromise = null;
+    gatewayInstance = null;
 }
 
 export function isGatewayUnavailableError(error) {
@@ -687,6 +708,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 createNormalizedMessage({
                     ...base,
                     kind: 'error',
+                    terminal: isTerminalParentError(event.code),
                     content: event.message,
                     code: event.code,
                     recoverable: event.recoverable,
@@ -700,6 +722,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
             const detail = event.detail || {};
             if (event.event === 'compact_started') {
                 const compactProgress = {
+                    compaction_id: detail.compactionId,
                     level: detail.level || 1,
                     stage: detail.stage || 'compacting',
                     label: detail.label || detail.stage || 'Compacting',
@@ -723,6 +746,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     createNormalizedMessage({
                         ...base,
                         kind: 'compact_boundary',
+                        compactionId: detail.compactionId,
                         trigger: detail.trigger || 'auto',
                         preTokens: detail.preTokens,
                         postTokens: detail.postTokens,
@@ -764,6 +788,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     createNormalizedMessage({
                         ...base,
                         kind: 'error',
+                        terminal: isTerminalParentError(event.event),
                         content: detail.message || 'The model returned empty content repeatedly, so this turn has stopped. Try again later or increase max output tokens.',
                         contentI18n: detail.messageI18n,
                         code: event.event,
@@ -778,6 +803,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     createNormalizedMessage({
                         ...base,
                         kind: 'error',
+                        terminal: isTerminalParentError(event.event),
                         content: detail.message || 'Reached the maximum number of turns, so this turn has stopped. Increase maxTurns or split the task into smaller steps and try again.',
                         contentI18n: detail.messageI18n,
                         code: event.event,
@@ -792,6 +818,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     createNormalizedMessage({
                         ...base,
                         kind: 'error',
+                        terminal: isTerminalParentError(event.event),
                         content: detail.message || 'Agent execution stopped before producing a complete response. Please retry or adjust the task.',
                         contentI18n: detail.messageI18n,
                         code: event.event,
@@ -851,7 +878,7 @@ function createSubagentStatusFrames(event, base) {
     const durationMs = Number.isFinite(reportedDurationMs) && reportedDurationMs >= 0
         ? reportedDurationMs
         : Math.max(0, nowMs - startedAtMs);
-    const isDone = status === 'completed' || status === 'failed';
+    const isDone = status === 'completed' || status === 'failed' || status === 'cancelled';
     const title = formatSubagentActivityTitle(subagentType, status);
     const activityDetail = formatSubagentActivityDetail(event.event, detail, status);
     const activity = createNormalizedMessage({
@@ -859,6 +886,7 @@ function createSubagentStatusFrames(event, base) {
         id: `subagent_activity_${sanitizeMessageId(base.sessionId)}_${sanitizeMessageId(subagentId)}`,
         kind: 'agent_activity',
         activityId: `subagent:${subagentId}`,
+        parentRunId: base.runId,
         runId: `subagent:${subagentId}`,
         phase: 'subagent',
         state: status,
@@ -975,6 +1003,9 @@ function formatSubagentActivityDetail(eventName, detail, status) {
     if (status === 'failed') {
         return '执行失败';
     }
+    if (status === 'cancelled') {
+        return '已停止';
+    }
     if (status === 'completed') {
         return '已完成';
     }
@@ -997,11 +1028,15 @@ function formatSubagentActivityTitle(subagentType, status) {
     if (status === 'failed') {
         return `Subagent ${subagentType} failed`;
     }
+    if (status === 'cancelled') {
+        return `Subagent ${subagentType} stopped`;
+    }
     return `Subagent ${subagentType} running`;
 }
 
 function normalizeSubagentStatus(eventName, detail) {
     if (eventName === 'subagent_completed') {
+        if (detail.aborted === true) return 'cancelled';
         return detail.success === false ? 'failed' : 'completed';
     }
     return 'running';
@@ -1095,9 +1130,11 @@ export async function runChatViaGateway(
     }
 
     const runId = randomUUID();
-    state.runId = runId;
-    state.active = true;
-    state.hasVisibleFailureStatus = false;
+    if (!staleRunId) {
+        state.runId = runId;
+        state.active = true;
+        state.hasVisibleFailureStatus = false;
+    }
 
     const attachments = [
         ...(uiImagesToAttachments(options?.images) || []),
@@ -1132,15 +1169,19 @@ export async function runChatViaGateway(
                             sessionId: sessionKey,
                             kind: 'error',
                             code: 'force_start_abort_failed',
+                            terminal: false,
                             content: message,
                             userHint: message,
                         }),
                     );
-                    clearActiveRunIfCurrent(state, staleRunId);
                     return;
                 }
                 console.warn('[pilotdeck-bridge] stale abort failed (continuing):', err?.message || err);
             }
+
+            state.runId = runId;
+            state.active = true;
+            state.hasVisibleFailureStatus = false;
         }
 
         const stream = gw.submitTurn({
@@ -1247,8 +1288,8 @@ export async function runChatViaGateway(
     } catch (error) {
         const rawMessage = error instanceof Error ? error.message : String(error);
         const gatewayUnavailable = !gw || isGatewayUnavailableError(error);
-        if (gatewayUnavailable) {
-            resetGatewayConnection();
+        if (gatewayUnavailable && gw) {
+            resetGatewayConnection(gw);
         }
         const message = gatewayUnavailable ? 'PilotDeck gateway is unavailable.' : rawMessage;
         const statusEvent = gatewayUnavailable
@@ -1369,13 +1410,48 @@ export function isSessionActiveViaGateway(sessionId) {
     return Boolean(sessionState.get(sessionId)?.active);
 }
 
-export async function getActiveTurnSnapshotFramesViaGateway(sessionId, provider = 'pilotdeck') {
-    if (!isPilotDeckSessionKey(sessionId)) return [];
-    const gw = await ensureGateway();
-    if (typeof gw.getActiveTurnSnapshot !== 'function') return [];
-    const snapshot = await gw.getActiveTurnSnapshot({ sessionKey: sessionId });
-    if (!snapshot?.active || !Array.isArray(snapshot.events)) return [];
-    return snapshot.events.flatMap((event) => gatewayEventToFrames(event, sessionId, provider) || []);
+export function getFallbackSessionActivity(localState) {
+    return {
+        isProcessing: null,
+        activeRunId: localState?.active === true && typeof localState?.runId === 'string'
+            ? localState.runId
+            : null,
+        activeTurnMessages: [],
+    };
+}
+
+export async function getSessionActivityViaGateway(sessionId, provider = 'pilotdeck', includeActiveTurnMessages = true) {
+    if (!isPilotDeckSessionKey(sessionId)) {
+        return { isProcessing: false, activeRunId: null, activeTurnMessages: [] };
+    }
+
+    const localState = sessionState.get(sessionId);
+    let gw = null;
+    try {
+        gw = await ensureGateway();
+        if (typeof gw.getActiveTurnSnapshot !== 'function') {
+            return getFallbackSessionActivity(localState);
+        }
+        const snapshot = await gw.getActiveTurnSnapshot({ sessionKey: sessionId, includeEvents: includeActiveTurnMessages });
+        if (!snapshot || typeof snapshot.active !== 'boolean') {
+            return getFallbackSessionActivity(localState);
+        }
+        return {
+            isProcessing: snapshot.active,
+            activeRunId: snapshot.active && typeof snapshot.runId === 'string'
+                ? snapshot.runId
+                : null,
+            activeTurnMessages: includeActiveTurnMessages && snapshot.active && Array.isArray(snapshot.events)
+                ? snapshot.events.flatMap((event) => gatewayEventToFrames(event, sessionId, provider) || [])
+                : [],
+        };
+    } catch (error) {
+        console.warn('[pilotdeck-bridge] failed to read active turn snapshot:', error?.message || error);
+        if (gw && isGatewayUnavailableError(error)) {
+            resetGatewayConnection(gw);
+        }
+        return getFallbackSessionActivity(localState);
+    }
 }
 
 export function getActiveSessionIdsViaGateway() {
@@ -2236,6 +2312,80 @@ export function getRouterStatsSummary() {
     };
 }
 
+export function isTerminalAlwaysOnTurnEvent(event) {
+    return event?.type === 'turn_completed'
+        || (event?.type === 'error' && isTerminalParentError(event.code));
+}
+
+/**
+ * Creates the notification callback used by the UI server for Always-On
+ * runs. Kept separate so terminal notification handling can be tested
+ * without opening a Gateway socket.
+ *
+ * @param {(sessionId: string, frame: object) => void} forwardFrame
+ */
+export function createAlwaysOnTurnEventForwarder(forwardFrame) {
+    const knownSessions = new Set();
+
+    return (name, payload) => {
+        if (name !== 'always-on:turn-event') return;
+        const { sessionKey, channelKey, event } = payload ?? {};
+        if (!sessionKey || !event) return;
+
+        const provider = 'pilotdeck';
+
+        if (!knownSessions.has(sessionKey)) {
+            knownSessions.add(sessionKey);
+            const createdFrame = createNormalizedMessage({
+                provider,
+                sessionId: sessionKey,
+                kind: 'session_created',
+                newSessionId: sessionKey,
+                sessionKey,
+                channelKey,
+            });
+            forwardFrame(sessionKey, createdFrame);
+        }
+
+        if (event.type === 'context_budget') {
+            const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
+            aoState.tokenBudget = {
+                used: event.used,
+                displayUsed: event.displayUsed,
+                budgetUsed: event.budgetUsed,
+                total: event.total,
+                effectiveTotal: event.effectiveTotal,
+                reservedOutputTokens: event.reservedOutputTokens,
+                ratio: event.ratio,
+                state: event.state,
+            };
+        }
+        const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
+        const compactTokenBudget = event.type === 'agent_status' && event.event === 'compact_completed'
+            ? tokenBudgetFromCompact(aoState.tokenBudget, event.detail)
+            : null;
+        const eventForFrames = compactTokenBudget
+            ? {
+                ...event,
+                detail: {
+                    ...(event.detail || {}),
+                    tokenBudget: compactTokenBudget,
+                },
+            }
+            : event;
+        if (compactTokenBudget) {
+            aoState.tokenBudget = compactTokenBudget;
+        }
+        for (const frame of gatewayEventToFrames(eventForFrames, sessionKey, provider)) {
+            forwardFrame(sessionKey, frame);
+        }
+
+        if (isTerminalAlwaysOnTurnEvent(event)) {
+            knownSessions.delete(sessionKey);
+        }
+    };
+}
+
 /**
  * Register a notification handler that forwards Always-On turn events as
  * NormalizedMessage frames. The UI server can provide a session-scoped
@@ -2248,8 +2398,6 @@ export function getRouterStatsSummary() {
  * @param {(sessionId: string, frame: object) => void} [forwardToSessionWatchers]
  */
 export function registerAlwaysOnNotificationForwarding(clients, forwardToSessionWatchers) {
-    const knownSessions = new Set();
-
     const forwardFrame = (sessionId, frame) => {
         if (typeof forwardToSessionWatchers === 'function') {
             forwardToSessionWatchers(sessionId, frame);
@@ -2263,65 +2411,10 @@ export function registerAlwaysOnNotificationForwarding(clients, forwardToSession
             if (client.readyState === 1) client.send(msg);
         }
     };
+    const onNotification = createAlwaysOnTurnEventForwarder(forwardFrame);
 
     ensureGateway().then((gw) => {
-        gw.onNotification((name, payload) => {
-            if (name !== 'always-on:turn-event') return;
-            const { sessionKey, channelKey, event } = payload ?? {};
-            if (!sessionKey || !event) return;
-
-            const provider = 'pilotdeck';
-
-            if (!knownSessions.has(sessionKey)) {
-                knownSessions.add(sessionKey);
-                const createdFrame = createNormalizedMessage({
-                    provider,
-                    sessionId: sessionKey,
-                    kind: 'session_created',
-                    newSessionId: sessionKey,
-                    sessionKey,
-                    channelKey,
-                });
-                forwardFrame(sessionKey, createdFrame);
-            }
-
-            if (event.type === 'context_budget') {
-                const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
-                aoState.tokenBudget = {
-                    used: event.used,
-                    displayUsed: event.displayUsed,
-                    budgetUsed: event.budgetUsed,
-                    total: event.total,
-                    effectiveTotal: event.effectiveTotal,
-                    reservedOutputTokens: event.reservedOutputTokens,
-                    ratio: event.ratio,
-                    state: event.state,
-                };
-            }
-            const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
-            const compactTokenBudget = event.type === 'agent_status' && event.event === 'compact_completed'
-                ? tokenBudgetFromCompact(aoState.tokenBudget, event.detail)
-                : null;
-            const eventForFrames = compactTokenBudget
-                ? {
-                    ...event,
-                    detail: {
-                        ...(event.detail || {}),
-                        tokenBudget: compactTokenBudget,
-                    },
-                }
-                : event;
-            if (compactTokenBudget) {
-                aoState.tokenBudget = compactTokenBudget;
-            }
-            for (const frame of gatewayEventToFrames(eventForFrames, sessionKey, provider)) {
-                forwardFrame(sessionKey, frame);
-            }
-
-            if (event.type === 'turn_completed') {
-                knownSessions.delete(sessionKey);
-            }
-        });
+        gw.onNotification(onNotification);
     }).catch((err) => {
         console.warn('[pilotdeck-bridge] failed to register always-on notification forwarding:', err?.message || err);
     });

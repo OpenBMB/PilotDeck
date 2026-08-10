@@ -133,6 +133,10 @@ function ChatInterfaceV2({
     rewindMessages,
     isLoading,
     setIsLoading,
+    sessionRuntimeState,
+    setSessionRuntimeState,
+    activeRunId,
+    setActiveRunId,
     currentSessionId,
     setCurrentSessionId,
     isLoadingSessionMessages,
@@ -297,8 +301,10 @@ function ChatInterfaceV2({
     // loading indicator, Stop button, and active turn replay reflect reality
     // after reconnect. The session-status handler consumes activeTurnMessages
     // and dedupes replay chunks against existing realtime state.
-    sendMessage(buildReconnectStatusMessage(selectedSession.id));
+    const statusMessage = buildReconnectStatusMessage(selectedSession.id, activeRunId);
+    if (statusMessage) sendMessage(statusMessage);
   }, [
+    activeRunId,
     isLoading,
     processingSessions,
     selectedProject,
@@ -318,6 +324,9 @@ function ChatInterfaceV2({
     currentSessionId,
     setCurrentSessionId,
     setIsLoading,
+    setSessionRuntimeState,
+    activeRunId,
+    setActiveRunId,
     setCanAbortSession,
     setIsAborting,
     setClaudeStatus,
@@ -641,6 +650,8 @@ function ChatInterfaceV2({
         inlineThinking={inlineThinking}
         setInput={setInput}
         isAssistantWorking={isLoading}
+        sessionRuntimeState={sessionRuntimeState}
+        activeRunId={activeRunId}
         workingStatus={claudeStatus || pilotDeckStatus}
         runMode={runMode}
         planModeActive={effectivePermissionMode === 'plan'}

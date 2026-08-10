@@ -99,7 +99,7 @@ export const PROMPT_TOO_LONG_OPENAI_PATTERN = /input length and max_tokens excee
 export const REQUEST_TOO_LARGE_PATTERN = /request too large/i;
 export const MAX_OUTPUT_REACHED_PATTERN = /max(?:imum)? (?:output|completion) tokens? (?:exceeded|reached)/i;
 export const MULTIMODAL_PROCESSOR_PATTERN =
-  /failed to apply.*processor|failed to load image|cannot identify image file|image decoding failed|invalid image/i;
+  /failed to apply.*processor|failed to load image|cannot identify image file|image decoding failed|invalid image|is not an? multimodal model|does not support (?:image|vision)(?: input)?|(?:image|vision) input (?:is )?not supported/i;
 
 export const CONTEXT_OVERFLOW_PATTERN =
   /context length|context size|maximum context|too many tokens|context window|prompt exceeds max length|maximum number of tokens|exceeds the max_model_len|max_model_len|input is too long|maximum model length|context length exceeded|slot context|n_ctx_slot|超过最大长度|上下文长度|input tokens? exceed|exceeds the maximum number of input tokens/i;

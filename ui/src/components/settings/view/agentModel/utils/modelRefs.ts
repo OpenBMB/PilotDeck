@@ -42,6 +42,41 @@ export function ensureModelRefsConfigured<T extends PilotDeckConfig>(
   return refs.reduce((next, ref) => ensureModelRefConfigured(next, ref), config);
 }
 
+export function setModelImageInput<T extends PilotDeckConfig>(
+  config: T,
+  ref: string | undefined,
+  enabled: boolean,
+): T {
+  const parsed = splitModelRef(ref);
+  if (!parsed) return config;
+
+  const provider = config.model?.providers?.[parsed.providerId];
+  if (!provider) return config;
+
+  const models = { ...(provider.models ?? {}) };
+  const existingDef = models[parsed.modelId];
+  const definition: Record<string, unknown> =
+    existingDef && typeof existingDef === "object"
+      ? { ...(existingDef as Record<string, unknown>) }
+      : {};
+  const existingMultimodal =
+    definition.multimodal && typeof definition.multimodal === "object"
+      ? { ...(definition.multimodal as Record<string, unknown>) }
+      : {};
+
+  definition.multimodal = {
+    ...existingMultimodal,
+    input: enabled ? ["text", "image"] : ["text"],
+  };
+  models[parsed.modelId] = definition;
+
+  return patch(
+    config,
+    ["model", "providers", parsed.providerId, "models"],
+    models,
+  );
+}
+
 export function buildModelRefOptions(
   config: PilotDeckConfig,
 ): Array<{ value: string; label: string }> {

@@ -5,6 +5,7 @@ import {
   didLoadedSessionChange,
   getStreamContentKey,
   isScrollNearBottom,
+  selectVisibleMessages,
   shouldRenderPendingBubble,
 } from './useChatSessionState';
 
@@ -122,5 +123,45 @@ describe('shouldRenderPendingBubble', () => {
     // session_created arrived. pendingTargetSessionId is still null because
     // session_created hasn't run yet — bubble must stay invisible in B.
     expect(shouldRenderPendingBubble('B', null)).toBe(false);
+  });
+});
+
+describe('selectVisibleMessages', () => {
+  const user = (id: string): ChatMessage => ({
+    id,
+    type: 'user',
+    content: `User ${id}`,
+    timestamp: '2026-08-05T00:00:00.000Z',
+  });
+  const process = (index: number): ChatMessage => ({
+    id: `tool-${index}`,
+    type: 'assistant',
+    content: '',
+    timestamp: '2026-08-05T00:00:01.000Z',
+    isToolUse: true,
+    toolName: 'Read',
+    toolId: `tool-${index}`,
+  });
+
+  it('keeps the latest user anchor when a live turn exceeds the window', () => {
+    const messages = [user('current'), ...Array.from({ length: 146 }, (_, index) => process(index))];
+
+    const visible = selectVisibleMessages(messages, 100);
+
+    expect(visible).toHaveLength(100);
+    expect(visible[0].id).toBe('current');
+    expect(visible.at(-1)?.id).toBe('tool-145');
+  });
+
+  it('does not alter a window that already contains its latest user anchor', () => {
+    const messages = [
+      ...Array.from({ length: 40 }, (_, index) => process(index)),
+      user('current'),
+      ...Array.from({ length: 80 }, (_, index) => process(index + 40)),
+    ];
+
+    const visible = selectVisibleMessages(messages, 100);
+
+    expect(visible).toEqual(messages.slice(-100));
   });
 });

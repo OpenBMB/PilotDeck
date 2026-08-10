@@ -128,6 +128,7 @@ export type WebGatewayMethod =
   | "active_turn_snapshot"
   | "cron_create"
   | "cron_list"
+  | "cron_update"
   | "cron_delete"
   | "cron_stop"
   | "cron_run_now"
@@ -310,6 +311,8 @@ export type WebForkSessionResult = {
 
 export type WebActiveTurnSnapshotInput = {
   sessionKey: string;
+  /** Defaults to true. Set false for status-only polling. */
+  includeEvents?: boolean;
 };
 
 export type WebActiveTurnSnapshot = {

@@ -90,6 +90,7 @@ export default function SubagentDetailMessageFlow({
   const { t } = useTranslation('chat');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
+  const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
 
   const streamingThinkingContent = useMemo(() => {
     if (!showThinking || !isRunning) return null;
@@ -240,6 +241,19 @@ export default function SubagentDetailMessageFlow({
     });
   }, []);
 
+  const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (
+    expandedToolSections.get(sectionKey) ?? defaultExpanded
+  ), [expandedToolSections]);
+
+  const handleToolSectionExpandedChange = useCallback((sectionKey: string, expanded: boolean) => {
+    setExpandedToolSections((currentSections) => {
+      if (currentSections.get(sectionKey) === expanded) return currentSections;
+      const nextSections = new Map(currentSections);
+      nextSections.set(sectionKey, expanded);
+      return nextSections;
+    });
+  }, []);
+
   const chatHistorySearch = useChatHistorySearch({
     scrollContainerRef,
     keyedMessages: keyedMessagesForSearch,
@@ -265,12 +279,16 @@ export default function SubagentDetailMessageFlow({
         showThinking={showThinking}
         isProcessExpanded={isProcessExpanded}
         onProcessExpandedChange={handleProcessExpandedChange}
+        isToolSectionExpanded={isToolSectionExpanded}
+        onToolSectionExpandedChange={handleToolSectionExpandedChange}
       />
     ));
   }, [
     createDiff,
     handleProcessExpandedChange,
+    handleToolSectionExpandedChange,
     isProcessExpanded,
+    isToolSectionExpanded,
     onFileOpen,
     provider,
     selectedProject,
@@ -376,6 +394,8 @@ export default function SubagentDetailMessageFlow({
                     showThinking={showThinking}
                     isProcessExpanded={isProcessExpanded}
                     onProcessExpandedChange={handleProcessExpandedChange}
+                    isToolSectionExpanded={isToolSectionExpanded}
+                    onToolSectionExpandedChange={handleToolSectionExpandedChange}
                   />
                 </div>
                 {anchoredLiveGroups.length > 0 ? (

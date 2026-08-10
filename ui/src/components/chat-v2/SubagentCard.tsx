@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Loader2, XCircle, Bot } from 'lucide-react';
-import type { ChatMessage } from '../chat/types/types';
+import type { ChatMessage, SessionRuntimeState } from '../chat/types/types';
 
 function parseToolInput(toolInput: unknown): Record<string, unknown> {
   if (typeof toolInput === 'string') {
@@ -17,10 +17,16 @@ interface SubagentCardProps {
   liveActivity?: ChatMessage;
   onOpenDetail?: (subagentId: string) => void;
   thinkingContent?: string;
-  isSessionRunning?: boolean;
+  sessionRuntimeState?: SessionRuntimeState;
 }
 
-export default function SubagentCard({ message, liveActivity, onOpenDetail, thinkingContent, isSessionRunning }: SubagentCardProps) {
+export default function SubagentCard({
+  message,
+  liveActivity,
+  onOpenDetail,
+  thinkingContent,
+  sessionRuntimeState = 'synchronizing',
+}: SubagentCardProps) {
   const { t } = useTranslation('chat');
   const parsed = useMemo(() => parseToolInput(message.toolInput), [message.toolInput]);
 
@@ -41,34 +47,34 @@ export default function SubagentCard({ message, liveActivity, onOpenDetail, thin
       if (state === 'failed') {
         return { icon: 'failed' as const, text: text || t('subagent.status.failed') };
       }
-      if (state === 'completed' || state === 'cancelled') {
-        if (!isSessionRunning && !hasToolResult) {
-          return { icon: 'failed' as const, text: t('subagent.status.stopped') };
-        }
+      if (state === 'completed') {
         return { icon: 'completed' as const, text: text || t('subagent.status.completed') };
       }
-      if (!isSessionRunning) {
+      if (state === 'cancelled') {
         return { icon: 'failed' as const, text: t('subagent.status.stopped') };
       }
-      return { icon: 'running' as const, text: text || t('subagent.status.thinking') };
     }
     if (isFailed) {
       return { icon: 'failed' as const, text: t('subagent.status.stopped') };
     }
-    if (isSessionRunning && !subagentId) {
-      return { icon: 'running' as const, text: t('subagent.status.connecting', '连接中…') };
-    }
     if (isComplete || hasToolResult) {
       return { icon: 'completed' as const, text: t('subagent.status.completed') };
+    }
+    if (sessionRuntimeState === 'inactive') {
+      return { icon: 'failed' as const, text: t('subagent.status.stopped') };
+    }
+    if (liveActivity) {
+      const text = String(liveActivity.detail || liveActivity.content || '');
+      return { icon: 'running' as const, text: text || t('subagent.status.thinking') };
+    }
+    if (sessionRuntimeState === 'running' && !subagentId) {
+      return { icon: 'running' as const, text: t('subagent.status.connecting', '连接中…') };
     }
     if (currentTool) {
       return { icon: 'running' as const, text: t('subagent.status.executingTool', { toolName: currentTool.toolName }) };
     }
-    if (!isSessionRunning) {
-      return { icon: 'failed' as const, text: t('subagent.status.stopped') };
-    }
     return { icon: 'running' as const, text: t('subagent.status.thinking') };
-  }, [isComplete, isFailed, hasToolResult, currentTool, liveActivity, isSessionRunning, t]);
+  }, [isComplete, isFailed, hasToolResult, currentTool, liveActivity, sessionRuntimeState, subagentId, t]);
 
   const handleClick = () => {
     if (subagentId && onOpenDetail) {

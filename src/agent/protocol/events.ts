@@ -29,11 +29,20 @@ export type AgentEvent =
   | { type: "mode_change_requested"; sessionId: string; turnId: string; mode: string }
   | { type: "stop_requested"; sessionId: string; turnId: string }
   | { type: "stop_failure"; sessionId: string; turnId: string; error: string }
-  | { type: "compact_started"; sessionId: string; turnId: string; trigger: string; preTokens: number }
+  | {
+      type: "compact_started";
+      sessionId: string;
+      turnId: string;
+      compactionId: string;
+      trigger: string;
+      preTokens: number;
+    }
   | {
       type: "compact_completed";
       sessionId: string;
       turnId: string;
+      compactionId: string;
+      trigger: string;
       status: string;
       preTokens: number;
       postTokens?: number;
@@ -68,7 +77,16 @@ export type AgentEvent =
     }
   | { type: "model_recovery_failed"; sessionId: string; turnId: string; provider: string; model: string; error: CanonicalModelError }
   | { type: "subagent_started"; sessionId: string; turnId: string; subagentId: string; subagentType: string; toolCallId?: string }
-  | { type: "subagent_completed"; sessionId: string; turnId: string; subagentId: string; subagentType: string; success: boolean; durationMs: number }
+  | {
+      type: "subagent_completed";
+      sessionId: string;
+      turnId: string;
+      subagentId: string;
+      subagentType: string;
+      success: boolean;
+      aborted?: boolean;
+      durationMs: number;
+    }
   | {
       type: "subagent_status";
       sessionId: string;

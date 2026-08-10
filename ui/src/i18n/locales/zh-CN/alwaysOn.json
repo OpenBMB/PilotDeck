@@ -122,8 +122,17 @@
     },
     "actions": {
       "delete": "删除",
+      "edit": "编辑",
       "runNow": "立即运行",
       "stop": "停止"
+    },
+    "deleteConfirm": {
+      "title": "删除定时任务？",
+      "description": "该定时任务将被永久删除，且无法恢复。",
+      "cancel": "取消",
+      "confirm": "删除",
+      "deleting": "正在删除…",
+      "failed": "删除定时任务失败。"
     },
     "status": {
       "scheduled": "已安排",
@@ -139,15 +148,66 @@
         "scheduleType": "任务类型",
         "date": "日期",
         "time": "时间",
-        "timezone": "时区"
+        "timezone": "时区",
+        "repeatPeriod": "重复周期",
+        "executionDay": "执行日",
+        "weekday": "星期",
+        "monthDay": "日期",
+        "month": "月份",
+        "expression": "Cron 表达式"
       },
       "placeholders": {
         "prompt": "描述 PilotDeck 在任务运行时应该做什么。",
-        "workspace": "选择工作区"
+        "workspace": "选择工作区",
+        "expression": "30 8 * * 1"
       },
       "schedule": {
         "once": "一次性",
-        "cron": "周期"
+        "cron": "周期",
+        "advanced": "高级 Cron 表达式",
+        "daily": "每天",
+        "weekly": "每周",
+        "monthly": "每月",
+        "yearly": "每年"
+      },
+      "options": {
+        "everyDay": "每天"
+      },
+      "weekdays": {
+        "monday": "周一",
+        "tuesday": "周二",
+        "wednesday": "周三",
+        "thursday": "周四",
+        "friday": "周五",
+        "saturday": "周六",
+        "sunday": "周日"
+      },
+      "months": {
+        "january": "一月",
+        "february": "二月",
+        "march": "三月",
+        "april": "四月",
+        "may": "五月",
+        "june": "六月",
+        "july": "七月",
+        "august": "八月",
+        "september": "九月",
+        "october": "十月",
+        "november": "十一月",
+        "december": "十二月"
+      },
+      "help": {
+        "expressionFormat": "格式：分钟 小时 日期 月份 星期",
+        "monthlyDateMayBeSkipped": "不存在该日期的月份不会触发任务。",
+        "yearlyLeapDay": "仅在闰年触发任务。"
+      },
+      "plan": {
+        "label": "计划：",
+        "currentLabel": "当前计划：",
+        "daily": "每天 {{time}}",
+        "weekly": "每{{weekday}} {{time}}",
+        "monthly": "每月 {{day}} 日 {{time}}",
+        "yearly": "每年 {{month}} 月 {{day}} 日 {{time}}"
       },
       "validation": {
         "messageRequired": "请填写提示词。",
@@ -155,10 +215,33 @@
         "dateRequired": "请选择日期。",
         "timeRequired": "请选择时间。",
         "timezoneRequired": "请填写时区。",
-        "runAtFuture": "运行时间必须晚于当前时间。"
+        "timezoneInvalid": "时区无效，请输入有效的 IANA 时区。",
+        "runAtInvalid": "所选运行时间在该时区中不存在。",
+        "runAtFuture": "运行时间必须晚于当前时间。",
+        "expressionInvalid": "Cron 表达式格式无效。"
       },
       "actions": {
+        "expandAdvanced": "展开",
+        "collapseAdvanced": "收起",
         "submit": "创建任务"
+      }
+    },
+    "edit": {
+      "title": "编辑 Cron 任务",
+      "subtitle": "修改该任务的提示词或执行计划。",
+      "disabled": {
+        "running": "请先停止正在运行的任务，再进行编辑。",
+        "unsupported": "该任务使用了当前页面不支持编辑的计划规则。",
+        "incomplete": "该任务缺少编辑所需的完整信息。"
+      },
+      "errors": {
+        "running": "该任务正在运行，请先停止后再保存。",
+        "conflict": "该任务已发生变化，请刷新列表后重新编辑。",
+        "saveFailed": "保存 Cron 任务修改失败。"
+      },
+      "actions": {
+        "cancel": "取消",
+        "save": "保存修改"
       }
     }
   }

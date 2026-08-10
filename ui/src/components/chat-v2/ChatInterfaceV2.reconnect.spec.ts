@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetSessionStatusProtocolForTests } from '../chat/sessionStatusProtocol';
 import {
   buildReconnectStatusMessage,
   refreshSessionAfterReconnect,
@@ -6,12 +7,18 @@ import {
 } from './reconnectRecovery';
 
 describe('ChatInterfaceV2 reconnect recovery helpers', () => {
+  beforeEach(() => {
+    resetSessionStatusProtocolForTests();
+  });
+
   it('requests active turn messages when checking session status after reconnect', () => {
-    expect(buildReconnectStatusMessage('session-1')).toEqual({
+    expect(buildReconnectStatusMessage('session-1', 'run-current')).toEqual({
       type: 'check-session-status',
       sessionId: 'session-1',
       provider: 'pilotdeck',
+      expectedActiveRunId: 'run-current',
       includeActiveTurnMessages: true,
+      statusRequestId: 1,
     });
   });
 

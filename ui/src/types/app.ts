@@ -116,10 +116,24 @@ export interface DiscoveryContextPlanItem {
 
 export type CronJobOverviewStatus = 'scheduled' | 'running' | 'completed' | 'failed';
 
+export type CronJobSchedule =
+  | {
+      type: 'once';
+      runAt: string;
+    }
+  | {
+      type: 'cron';
+      expression: string;
+      timezone?: string;
+    };
+
 export interface CronJobOverview {
   id: string;
   projectKey: string | null;
   cron: string;
+  schedule?: CronJobSchedule;
+  timezone?: string | null;
+  revision?: number;
   prompt: string;
   createdAt: string;
   nextRunAt?: string;

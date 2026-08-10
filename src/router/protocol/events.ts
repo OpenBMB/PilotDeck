@@ -36,6 +36,15 @@ export type RouterTokenSaverFailedEvent = {
   turnId?: string;
   reason: "timeout" | "model_error" | "parse_error";
   fallbackTier: string;
+  /** Judge model that failed or produced an unparsable response. */
+  judgeProvider?: string;
+  judgeModel?: string;
+  /** Number of classification attempts made before falling back. */
+  attempts?: number;
+  /** Provider-normalized error code, when applicable. */
+  errorCode?: string;
+  /** Sanitized provider message, when applicable. */
+  errorMessage?: string;
 };
 
 export type RouterCustomFailedEvent = {

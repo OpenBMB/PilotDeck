@@ -55,6 +55,8 @@ export type AgentFileArtifactsTranscriptEntry = AgentTranscriptEntryBase & {
 };
 
 export type CompactBoundaryMetadata = {
+  /** Stable identity shared by live and persisted representations. */
+  compactionId?: string;
   trigger: "manual" | "auto" | "reactive";
   preTokens: number;
   postTokens?: number;

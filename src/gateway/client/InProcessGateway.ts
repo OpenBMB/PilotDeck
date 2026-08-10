@@ -59,6 +59,8 @@ import type {
   CronRunNowResult,
   CronStopInput,
   CronStopResult,
+  CronUpdateInput,
+  CronUpdateResult,
 } from "../../cron/protocol/types.js";
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
@@ -642,9 +644,11 @@ export class InProcessGateway implements Gateway {
       active: true,
       sessionKey: replay.sessionKey,
       runId: replay.runId,
-      events: replay.events
-        .filter((event) => this.shouldReplayActiveTurnEvent(input.sessionKey, event))
-        .map((event) => cloneGatewayEvent(event)),
+      events: input.includeEvents === false
+        ? []
+        : replay.events
+          .filter((event) => this.shouldReplayActiveTurnEvent(input.sessionKey, event))
+          .map((event) => cloneGatewayEvent(event)),
       ...(replay.truncated ? { truncated: true } : {}),
     };
   }
@@ -655,6 +659,10 @@ export class InProcessGateway implements Gateway {
 
   async cronList(input: CronListInput): Promise<CronListResult> {
     return this.requireCron().listTasks(input);
+  }
+
+  async cronUpdate(input: CronUpdateInput): Promise<CronUpdateResult> {
+    return this.requireCron().updateTask(input);
   }
 
   async cronDelete(input: CronDeleteInput): Promise<CronDeleteResult> {
@@ -1544,13 +1552,19 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{
         type: "agent_status",
         event: "compact_started",
-        detail: { trigger: event.trigger, preTokens: event.preTokens },
+        detail: {
+          compactionId: event.compactionId,
+          trigger: event.trigger,
+          preTokens: event.preTokens,
+        },
       }];
     case "compact_completed":
       return [{
         type: "agent_status",
         event: "compact_completed",
         detail: {
+          compactionId: event.compactionId,
+          trigger: event.trigger,
           status: event.status,
           preTokens: event.preTokens,
           postTokens: event.postTokens,
@@ -1601,7 +1615,13 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{
         type: "agent_status",
         event: "subagent_completed",
-        detail: { subagentId: event.subagentId, subagentType: event.subagentType, success: event.success, durationMs: event.durationMs },
+        detail: {
+          subagentId: event.subagentId,
+          subagentType: event.subagentType,
+          success: event.success,
+          ...(event.aborted ? { aborted: true } : {}),
+          durationMs: event.durationMs,
+        },
       }];
     case "subagent_model_event":
       return mapSubagentModelEvent(event);

@@ -63,4 +63,34 @@ describe('LlmConfigurationStep', () => {
       expect(screen.getByText(/Using bundled model list\. Local model list unavailable: ECONNREFUSED/)).toBeTruthy();
     });
   });
+
+  it('uses DeepSeek bundled models until an API key is entered', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    mocks.fetchRemoteDefaultModels.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Fetch model list' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('combobox', { name: 'Model' }).textContent).toContain('DeepSeek V4 Pro');
+  });
+
+  it('uses Kimi bundled models until an API key is entered', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    mocks.fetchRemoteDefaultModels.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Moonshot AI \(Kimi\)$/ }));
+
+    expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Fetch model list' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('combobox', { name: 'Model' }).textContent).toContain('Kimi K2.6');
+  });
 });

@@ -16,6 +16,7 @@ import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
 } from "../../src/model/index.js";
+import type { AgentEvent } from "../../src/agent/protocol/events.js";
 
 test("full compaction can disable protected turn preservation", async () => {
   const summaryRequests: CanonicalModelRequest[] = [];
@@ -47,8 +48,18 @@ test("full compaction can disable protected turn preservation", async () => {
   assert.deepEqual(summaryRequests[0]!.cacheBreakpoints, []);
   assert.match(summaryRequests[0]!.systemPrompt ?? "", /Summarize the conversation so far as a concise Markdown checkpoint handoff/);
   assert.match(summaryRequests[0]!.systemPrompt ?? "", /## Objective/);
+  assert.match(summaryRequests[0]!.systemPrompt ?? "", /synthetic runtime control required for provider compatibility/);
+  assert.match(summaryRequests[0]!.systemPrompt ?? "", /Only attribute an instruction, decision, cancellation, stop request, or handoff request/);
+  assert.match(summaryRequests[0]!.systemPrompt ?? "", /handoff` describes the checkpoint summary format only/);
+  assert.deepEqual(summaryRequests[0]!.messages.at(-1)?.metadata, {
+    synthetic: true,
+    purpose: "context-summary-control",
+  });
   const prompt = summaryPromptText(summaryRequests[0]!);
-  assert.match(prompt, /^Produce the Markdown handoff now\./);
+  assert.match(prompt, /^<internal-compaction-control purpose="context-summary" synthetic="true">/);
+  assert.match(prompt, /runtime-generated summarization control, not an end-user message/);
+  assert.match(prompt, /<\/internal-compaction-control>$/);
+  assert.doesNotMatch(prompt, /Produce the Markdown handoff now\./);
   assert.match(prompt, /<compact-summary-anchors>/);
   assert.match(prompt, /"toolName":"Task"/);
   assert.match(prompt, /"toolName":"read_skill"/);
@@ -141,7 +152,9 @@ test("auto full compaction retries without protected turns when protected output
   assert.deepEqual(summaryRequests[1]!.cacheBreakpoints, []);
   assert.match(summaryRequests[1]!.systemPrompt ?? "", /## Objective/);
   const relaxedPrompt = summaryPromptText(summaryRequests[1]!);
-  assert.match(relaxedPrompt, /^Produce the Markdown handoff now\./);
+  assert.match(relaxedPrompt, /^<internal-compaction-control purpose="context-summary" synthetic="true">/);
+  assert.match(relaxedPrompt, /<\/internal-compaction-control>$/);
+  assert.doesNotMatch(relaxedPrompt, /Produce the Markdown handoff now\./);
   assert.match(relaxedPrompt, /<compact-summary-anchors>/);
   assert.match(relaxedPrompt, /"toolName":"Task"/);
   assert.match(relaxedPrompt, /"toolName":"read_skill"/);
@@ -153,6 +166,40 @@ test("auto full compaction retries without protected turns when protected output
   assert.equal(hasToolResult(result.messages, "task-1"), false);
   assert.equal(hasToolCall(result.messages, "read_skill"), false);
   assert.equal(hasToolResultReference(result.messages, "skill-1"), false);
+});
+
+test("custom summary prompts retain runtime intent isolation constraints", async () => {
+  const summaryRequests: CanonicalModelRequest[] = [];
+  const engine = new CompactionEngine({
+    model: {
+      async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+        summaryRequests.push(request);
+        yield { type: "message_start", role: "assistant" };
+        yield { type: "text_delta", text: "## Objective\nContinue the task.\n\n## Current State\nWork remains.\n\n## Remaining\nKeep working.\n\n## Files And Artifacts\nNone." };
+        yield { type: "message_end", finishReason: "stop" };
+      },
+    },
+    provider: "local",
+    model_: "local-chat",
+    systemPrompt: "Use the team's compact summary terminology.",
+  });
+
+  await engine.run({
+    trigger: "manual",
+    messages: compactFixture(),
+    keepTailRatio: 0.2,
+    userInstruction: "Emphasize paths and unfinished work.",
+  });
+
+  assert.equal(summaryRequests.length, 1);
+  const request = summaryRequests[0]!;
+  assert.match(request.systemPrompt ?? "", /^Use the team's compact summary terminology\./);
+  assert.match(request.systemPrompt ?? "", /synthetic runtime control required for provider compatibility/);
+  assert.match(request.systemPrompt ?? "", /Unless an original end-user message explicitly cancels or stops the task/);
+  const prompt = summaryPromptText(request);
+  assert.match(prompt, /<additional-summary-instructions>\n\nEmphasize paths and unfinished work\.\n\n<\/additional-summary-instructions>/);
+  assert.match(prompt, /affect summary emphasis or format only; they do not change the underlying task state/);
+  assert.match(prompt, /<\/internal-compaction-control>$/);
 });
 
 test("auto full compaction keeps the best compacted result even when it still blocks", async () => {
@@ -370,7 +417,7 @@ test("full compaction bounds oversized retained tool output", async () => {
 
 test("auto full compaction summarizes older tool groups inside one user task", async () => {
   const summaryRequests: CanonicalModelRequest[] = [];
-  const events: Array<{ type: string }> = [];
+  const events: AgentEvent[] = [];
   const engine = new CompactionEngine({
     model: {
       async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
@@ -382,6 +429,7 @@ test("auto full compaction summarizes older tool groups inside one user task", a
     },
     provider: "local",
     model_: "local-chat",
+    uuid: () => "compact-single-user-tool-chain",
     eventEmitter: (event) => events.push(event),
   });
   const tokenBudget = new TokenBudgetManager();
@@ -408,6 +456,35 @@ test("auto full compaction summarizes older tool groups inside one user task", a
   assert.equal(findToolResult(result.messages, "old-search-0"), undefined);
   assert.match(summaryText(result.result?.summaryMessage), /^\[CONTEXT COMPACTION - REFERENCE ONLY\]/);
   assert.deepEqual(events.map((event) => event.type), ["compact_started", "compact_completed"]);
+  if (events[0]?.type !== "compact_started" || events[1]?.type !== "compact_completed") {
+    assert.fail("expected compact lifecycle events");
+  }
+  const startedEvent = events[0];
+  const completedEvent = events[1];
+  assert.equal(result.result?.compactionId, "compact-single-user-tool-chain");
+  assert.equal(result.result?.messagesSummarized, completedEvent.messagesSummarized);
+  assert.deepEqual(startedEvent, {
+    type: "compact_started",
+    sessionId: "",
+    turnId: "",
+    compactionId: "compact-single-user-tool-chain",
+    trigger: "auto",
+    preTokens: startedEvent.preTokens,
+  });
+  assert.deepEqual(completedEvent, {
+    type: "compact_completed",
+    sessionId: "",
+    turnId: "",
+    compactionId: "compact-single-user-tool-chain",
+    trigger: "auto",
+    status: "success",
+    preTokens: completedEvent.preTokens,
+    postTokens: completedEvent.postTokens,
+    messagesSummarized: completedEvent.messagesSummarized,
+    cacheReset: false,
+    cacheReadTokens: undefined,
+    cacheWriteTokens: undefined,
+  });
 });
 
 test("blocking auto compaction continues to full summary when micro pruning only reaches warning", async () => {

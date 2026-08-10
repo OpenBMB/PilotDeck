@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntimeConfig.js";
+import {
+  AgentLoop,
+  type AgentLoopInput,
+} from "../../../src/agent/loop/AgentLoop.js";
+import type { AgentEvent } from "../../../src/agent/protocol/events.js";
 import type {
   AgentRouterRuntime,
   AgentRuntimeDependencies,
@@ -24,9 +29,11 @@ import { createExecuteCodeTool } from "../../../src/tool/builtin/executeCode.js"
 import { ToolRuntime } from "../../../src/tool/execution/ToolRuntime.js";
 import {
   ToolRegistry,
+  type PilotDeckSubagentForkApi,
   type PilotDeckToolDefinition,
   type PilotDeckToolRuntimeContext,
 } from "../../../src/tool/index.js";
+import type { CanonicalMessage } from "../../../src/model/index.js";
 
 const FINAL_REPORT = [
   "Scope: inspected inputs",
@@ -39,6 +46,13 @@ const FINAL_REPORT = [
 type TestableSubAgentSession = {
   buildScopedRegistry(): ToolRegistry;
   buildConfig(): AgentRuntimeConfig;
+};
+
+type TestableAgentLoop = {
+  buildSubagentForkApi(
+    input: AgentLoopInput,
+    messages: CanonicalMessage[],
+  ): PilotDeckSubagentForkApi;
 };
 
 function createNoopTool(
@@ -87,6 +101,27 @@ function createRouter(): AgentRouterRuntime {
   } as AgentRouterRuntime;
 }
 
+function createBlockingRouter(onStarted?: () => void): AgentRouterRuntime {
+  return {
+    ...createRouter(),
+    execute: async function* (_decision, _request, context) {
+      onStarted?.();
+      await new Promise<void>((_resolve, reject) => {
+        const signal = context.abortSignal;
+        if (!signal) {
+          reject(new Error("blocking test router requires an abort signal"));
+          return;
+        }
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  } as AgentRouterRuntime;
+}
+
 function parentConfig(): AgentRuntimeConfig {
   return {
     provider: "test",
@@ -103,6 +138,29 @@ function parentConfig(): AgentRuntimeConfig {
       rules: { allow: [], deny: [], ask: [] },
     },
   };
+}
+
+function createSubagentForkHarness(router: AgentRouterRuntime): {
+  events: AgentEvent[];
+  fork: PilotDeckSubagentForkApi;
+} {
+  const events: AgentEvent[] = [];
+  const loop = new AgentLoop(parentConfig(), {
+    router,
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: {} as never,
+    },
+    eventEmitter: (event) => {
+      events.push(event);
+    },
+  }) as unknown as TestableAgentLoop;
+  const fork = loop.buildSubagentForkApi({
+    sessionId: "parent-session",
+    turnId: "parent-turn",
+    messages: [],
+  }, []);
+  return { events, fork };
 }
 
 function sessionFor(
@@ -185,6 +243,49 @@ test("explore subagent does not probe tool safety before execution", async () =>
   assert.equal(report.definitionId, "explore");
   assert.equal(report.markdown, FINAL_REPORT);
   assert.deepEqual(readOnlyChecks, []);
+});
+
+test("parent abort emits an aborted subagent completion event", async () => {
+  let markStarted: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const { events, fork } = createSubagentForkHarness(
+    createBlockingRouter(() => markStarted?.()),
+  );
+  const controller = new AbortController();
+
+  const running = fork.fork({
+    definitionId: "explore",
+    directive: "Wait until the parent stops.",
+    subagentId: "subagent-aborted",
+    abortSignal: controller.signal,
+    timeoutMs: 60_000,
+  });
+  await started;
+  controller.abort("parent stopped");
+  await assert.rejects(running, /subagent turn aborted/);
+
+  const completed = events.find((event) => event.type === "subagent_completed");
+  assert.ok(completed && completed.type === "subagent_completed");
+  assert.equal(completed.success, false);
+  assert.equal(completed.aborted, true);
+});
+
+test("subagent timeout remains a failure instead of a cancellation", async () => {
+  const { events, fork } = createSubagentForkHarness(createBlockingRouter());
+
+  await assert.rejects(fork.fork({
+    definitionId: "explore",
+    directive: "Wait until timeout.",
+    subagentId: "subagent-timeout",
+    timeoutMs: 5,
+  }), /Subagent timed out after 5ms/);
+
+  const completed = events.find((event) => event.type === "subagent_completed");
+  assert.ok(completed && completed.type === "subagent_completed");
+  assert.equal(completed.success, false);
+  assert.equal(completed.aborted, false);
 });
 
 test("explore registry ignores an unallowed dynamic execute_code tool without probing it", () => {

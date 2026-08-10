@@ -7,11 +7,13 @@ import {
 } from '../components/chat/hooks/useChatRealtimeHandlers';
 import {
   computeMerged,
+  cancelRunningAgentActivities,
   createRafNotifyScheduler,
   getFinalizedSubagentThinkingId,
   getUnpersistedRealtimeTurnMessages,
   isRealtimeMessageRepresentedOnServer,
   patchMergedStreamingMessage,
+  preserveTerminalAgentActivity,
   shouldKeepRealtimeAfterServerRefresh,
   upsertRealtimeMessages,
   type NormalizedMessage,
@@ -84,6 +86,91 @@ describe('isSessionForActiveView', () => {
 
   it('accepts a pending new-session view when no saved session is selected', () => {
     expect(isSessionForActiveView('web:new-session', 'web:new-session')).toBe(true);
+  });
+});
+
+describe('cancelRunningAgentActivities', () => {
+  it('marks only unfinished agent activities as cancelled after a confirmed abort', () => {
+    const running = {
+      id: 'subagent-running',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity' as const,
+      activityId: 'subagent:running',
+      state: 'running',
+    };
+    const completed = {
+      ...running,
+      id: 'subagent-completed',
+      activityId: 'subagent:completed',
+      state: 'completed',
+      endedAt: '2026-08-05T00:01:00.000Z',
+    };
+    const text = textMessage('assistant-text', 'Already written', '2026-08-05T00:00:30.000Z');
+    const endedAt = '2026-08-05T00:02:00.000Z';
+
+    const activities = cancelRunningAgentActivities([running, completed, text], endedAt);
+
+    expect(activities[0]).toMatchObject({ state: 'cancelled', endedAt });
+    expect(activities[1]).toBe(completed);
+    expect(activities[2]).toBe(text);
+  });
+
+  it('keeps the same array when there are no running agent activities', () => {
+    const activities: NormalizedMessage[] = [{
+      id: 'subagent-completed',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity',
+      activityId: 'subagent:completed',
+      state: 'completed',
+    }];
+
+    expect(cancelRunningAgentActivities(activities, '2026-08-05T00:02:00.000Z')).toBe(activities);
+  });
+});
+
+describe('preserveTerminalAgentActivity', () => {
+  it('does not reopen a cancelled activity when an older running update is replayed', () => {
+    const cancelled: NormalizedMessage = {
+      id: 'subagent-activity',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:02:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity',
+      activityId: 'subagent:one',
+      state: 'cancelled',
+      endedAt: '2026-08-05T00:02:00.000Z',
+    };
+    const replayedRunning: NormalizedMessage = {
+      ...cancelled,
+      timestamp: '2026-08-05T00:00:00.000Z',
+      state: 'running',
+      endedAt: undefined,
+    };
+
+    expect(preserveTerminalAgentActivity(cancelled, replayedRunning)).toBe(cancelled);
+  });
+
+  it('accepts a newer explicit terminal result', () => {
+    const cancelled: NormalizedMessage = {
+      id: 'subagent-activity',
+      sessionId: 'cron:task-1',
+      timestamp: '2026-08-05T00:02:00.000Z',
+      provider: PROVIDER,
+      kind: 'agent_activity',
+      activityId: 'subagent:one',
+      state: 'cancelled',
+    };
+    const completed: NormalizedMessage = {
+      ...cancelled,
+      timestamp: '2026-08-05T00:03:00.000Z',
+      state: 'completed',
+    };
+
+    expect(preserveTerminalAgentActivity(cancelled, completed)).toBe(completed);
   });
 });
 
@@ -287,6 +374,7 @@ describe('turn-scoped server reconciliation', () => {
       provider: PROVIDER,
       kind: 'compact_boundary',
       runId: 'run-current',
+      compactionId: 'compact-current',
       trigger: 'auto',
       preTokens: 120,
       postTokens: 40,
@@ -302,6 +390,8 @@ describe('turn-scoped server reconciliation', () => {
       ...liveBoundary,
       id: 'persisted-compact',
       turnId: 'run-current',
+      trigger: 'reactive',
+      messagesSummarized: 3,
     };
 
     expect(shouldKeepRealtimeAfterServerRefresh(liveBoundary, staleServer)).toBe(true);
@@ -312,8 +402,81 @@ describe('turn-scoped server reconciliation', () => {
 
     expect(isRealtimeMessageRepresentedOnServer(liveBoundary, [persistedBoundary])).toBe(true);
     expect(shouldKeepRealtimeAfterServerRefresh(liveBoundary, [persistedBoundary])).toBe(false);
+    expect(getUnpersistedRealtimeTurnMessages(
+      [liveBoundary],
+      [persistedBoundary],
+      'run-current',
+    )).toEqual([]);
     expect(computeMerged([persistedBoundary], [liveBoundary]).map((message) => message.id)).toEqual([
       'persisted-compact',
+    ]);
+  });
+
+  it('dedupes legacy compact boundaries despite historical metadata drift', () => {
+    const liveBoundary: NormalizedMessage = {
+      id: 'live-compact',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'compact_boundary',
+      runId: 'run-current',
+      trigger: 'auto',
+      preTokens: 22994,
+      postTokens: 7290,
+      messagesSummarized: 28,
+    };
+    const persistedBoundary: NormalizedMessage = {
+      ...liveBoundary,
+      id: 'persisted-compact',
+      turnId: 'run-current',
+      runId: undefined,
+      trigger: 'reactive',
+      messagesSummarized: 27,
+    };
+    const finalAnswer = textMessage(
+      'final-answer',
+      'Workbook delivered.',
+      '2026-05-28T00:00:05.000Z',
+      { turnId: 'run-current', runId: 'run-current' },
+    );
+
+    expect(computeMerged(
+      [persistedBoundary, finalAnswer],
+      [liveBoundary],
+    ).map((message) => message.id)).toEqual([
+      'persisted-compact',
+      'final-answer',
+    ]);
+    expect(getUnpersistedRealtimeTurnMessages(
+      [liveBoundary],
+      [persistedBoundary, finalAnswer],
+      'run-current',
+    )).toEqual([]);
+  });
+
+  it('does not merge distinct compactions in the same turn', () => {
+    const firstBoundary: NormalizedMessage = {
+      id: 'compact-1-live',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'compact_boundary',
+      runId: 'run-current',
+      compactionId: 'compact-1',
+      preTokens: 120,
+      postTokens: 40,
+    };
+    const secondBoundary: NormalizedMessage = {
+      ...firstBoundary,
+      id: 'compact-2-history',
+      turnId: 'run-current',
+      compactionId: 'compact-2',
+    };
+
+    expect(isRealtimeMessageRepresentedOnServer(firstBoundary, [secondBoundary])).toBe(false);
+    expect(computeMerged([secondBoundary], [firstBoundary]).map((message) => message.id)).toEqual([
+      'compact-2-history',
+      'compact-1-live',
     ]);
   });
 });

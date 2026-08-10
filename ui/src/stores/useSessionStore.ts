@@ -97,6 +97,8 @@ export interface NormalizedMessage {
    */
   toolResultImages?: Array<{ data: string; mimeType?: string; name?: string }>;
   isError?: boolean;
+  /** True only when an error confirms that the parent turn has ended. */
+  terminal?: boolean;
   /**
    * `PilotDeckToolErrorCode` from the gateway when `kind === 'tool_result'`
    * and `isError === true` — flat on the frame because the bridge merges
@@ -125,6 +127,7 @@ export interface NormalizedMessage {
   taskId?: string;
   outputFile?: string;
   taskResult?: string;
+  compactionId?: string;
   trigger?: string;
   preTokens?: number;
   postTokens?: number;
@@ -134,6 +137,8 @@ export interface NormalizedMessage {
   compactStageLabel?: string;
   compactMetadata?: unknown;
   runId?: string;
+  /** Parent turn identity for activity rows whose own runId identifies a child. */
+  parentRunId?: string;
   /** Stable transcript turn identity; history maps this to runId as well. */
   turnId?: string;
   activityId?: string;
@@ -199,6 +204,42 @@ export interface SessionSlot {
   _serverAppliedGeneration: number;
   /** Explicit full-history load currently responsible for `status=loading`. */
   _serverLoadingGeneration: number | null;
+}
+
+const TERMINAL_AGENT_ACTIVITY_STATES = new Set(['completed', 'failed', 'cancelled']);
+
+function isTerminalAgentActivity(activity: NormalizedMessage): boolean {
+  return activity.kind === 'agent_activity'
+    && TERMINAL_AGENT_ACTIVITY_STATES.has(String(activity.state || ''));
+}
+
+export function preserveTerminalAgentActivity(
+  existing: NormalizedMessage | undefined,
+  incoming: NormalizedMessage,
+): NormalizedMessage {
+  if (existing && isTerminalAgentActivity(existing) && !isTerminalAgentActivity(incoming)) {
+    return existing;
+  }
+  return incoming;
+}
+
+export function cancelRunningAgentActivities(
+  activities: NormalizedMessage[],
+  endedAt: string,
+): NormalizedMessage[] {
+  let changed = false;
+  const updated = activities.map((activity) => {
+    if (activity.kind !== 'agent_activity' || isTerminalAgentActivity(activity)) {
+      return activity;
+    }
+    changed = true;
+    return {
+      ...activity,
+      state: 'cancelled',
+      endedAt,
+    };
+  });
+  return changed ? updated : activities;
 }
 
 const EMPTY: NormalizedMessage[] = [];
@@ -414,13 +455,30 @@ function hasEquivalentCompactBoundary(
   realtimeMessage: NormalizedMessage,
   candidates: NormalizedMessage[],
 ): boolean {
-  return candidates.some((candidate) => (
-    candidate.kind === 'compact_boundary'
-    && candidate.trigger === realtimeMessage.trigger
-    && candidate.preTokens === realtimeMessage.preTokens
-    && candidate.postTokens === realtimeMessage.postTokens
-    && candidate.messagesSummarized === realtimeMessage.messagesSummarized
-  ));
+  return candidates.some((candidate) => {
+    if (candidate.kind !== 'compact_boundary') return false;
+
+    if (candidate.compactionId && realtimeMessage.compactionId) {
+      return candidate.compactionId === realtimeMessage.compactionId;
+    }
+
+    // Backward compatibility for transcripts written before compactionId was
+    // introduced. Trigger and messagesSummarized are intentionally excluded:
+    // older live/history producers derived those fields differently.
+    if (
+      !Number.isFinite(candidate.preTokens)
+      || candidate.preTokens !== realtimeMessage.preTokens
+      || candidate.postTokens !== realtimeMessage.postTokens
+    ) {
+      return false;
+    }
+
+    const candidateTime = parseTimestampMs(candidate.timestamp);
+    const realtimeTime = parseTimestampMs(realtimeMessage.timestamp);
+    return candidateTime != null
+      && realtimeTime != null
+      && Math.abs(candidateTime - realtimeTime) <= 30_000;
+  });
 }
 
 /**
@@ -1002,7 +1060,8 @@ export function useSessionStore() {
 
     if (existingIndex >= 0) {
       const updated = [...slot.activityMessages];
-      updated[existingIndex] = msg;
+      updated[existingIndex] = preserveTerminalAgentActivity(updated[existingIndex], msg);
+      if (updated[existingIndex] === slot.activityMessages[existingIndex]) return;
       slot.activityMessages = updated;
     } else {
       slot.activityMessages = [...slot.activityMessages, msg];
@@ -1188,15 +1247,28 @@ export function useSessionStore() {
   const setActivities = useCallback((sessionId: string, msgs: NormalizedMessage[]) => {
     const slot = getSlot(sessionId);
     const byKey = new Map<string, NormalizedMessage>();
+    const existingByKey = new Map(
+      slot.activityMessages.map((activity) => [activity.activityId || activity.id, activity]),
+    );
 
     for (const msg of msgs) {
       if (msg.kind !== 'agent_activity') continue;
-      byKey.set(msg.activityId || msg.id, msg);
+      const key = msg.activityId || msg.id;
+      byKey.set(key, preserveTerminalAgentActivity(existingByKey.get(key), msg));
     }
 
     slot.activityMessages = Array.from(byKey.values());
     notify(sessionId);
   }, [getSlot, notify]);
+
+  const cancelRunningActivities = useCallback((sessionId: string) => {
+    const slot = storeRef.current.get(sessionId);
+    if (!slot) return;
+    const activities = cancelRunningAgentActivities(slot.activityMessages, new Date().toISOString());
+    if (activities === slot.activityMessages) return;
+    slot.activityMessages = activities;
+    notify(sessionId);
+  }, [notify]);
 
   /**
    * Append multiple realtime messages at once (batch).
@@ -1521,6 +1593,7 @@ export function useSessionStore() {
     appendRealtime,
     upsertActivity,
     setActivities,
+    cancelRunningActivities,
     appendRealtimeBatch,
     refreshFromServer,
     setActiveSession,
@@ -1544,7 +1617,7 @@ export function useSessionStore() {
     finalizeSubagentDetailThinking,
   }), [
     getSlot, has, fetchFromServer, fetchMore,
-    appendRealtime, upsertActivity, setActivities, appendRealtimeBatch, refreshFromServer,
+    appendRealtime, upsertActivity, setActivities, cancelRunningActivities, appendRealtimeBatch, refreshFromServer,
     setActiveSession, setStatus, isStale, updateStreaming, finalizeStreaming,
     updateStreamingThinking, finalizeStreamingThinking,
     clearRealtime, clearAssistantRealtime, getMessages, getActivityMessages, getSubagentDetailMessages, getSessionSlot,

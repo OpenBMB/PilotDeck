@@ -122,8 +122,17 @@
     },
     "actions": {
       "delete": "Delete",
+      "edit": "Edit",
       "runNow": "Run Now",
       "stop": "Stop"
+    },
+    "deleteConfirm": {
+      "title": "Delete cron task?",
+      "description": "This cron task will be permanently deleted and cannot be recovered.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "deleting": "Deleting…",
+      "failed": "Failed to delete cron task."
     },
     "status": {
       "scheduled": "Scheduled",
@@ -139,15 +148,66 @@
         "scheduleType": "Schedule Type",
         "date": "Date",
         "time": "Time",
-        "timezone": "Timezone"
+        "timezone": "Timezone",
+        "repeatPeriod": "Repeat period",
+        "executionDay": "Execution day",
+        "weekday": "Day of week",
+        "monthDay": "Day of month",
+        "month": "Month",
+        "expression": "Cron expression"
       },
       "placeholders": {
         "prompt": "Describe what PilotDeck should do when this task runs.",
-        "workspace": "Select a workspace"
+        "workspace": "Select a workspace",
+        "expression": "30 8 * * 1"
       },
       "schedule": {
         "once": "One-time",
-        "cron": "Recurring"
+        "cron": "Recurring",
+        "advanced": "Advanced Cron expression",
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "yearly": "Yearly"
+      },
+      "options": {
+        "everyDay": "Every day"
+      },
+      "weekdays": {
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday",
+        "sunday": "Sunday"
+      },
+      "months": {
+        "january": "January",
+        "february": "February",
+        "march": "March",
+        "april": "April",
+        "may": "May",
+        "june": "June",
+        "july": "July",
+        "august": "August",
+        "september": "September",
+        "october": "October",
+        "november": "November",
+        "december": "December"
+      },
+      "help": {
+        "expressionFormat": "Format: minute hour day month weekday",
+        "monthlyDateMayBeSkipped": "Months without this date will not trigger the task.",
+        "yearlyLeapDay": "This task will only trigger in leap years."
+      },
+      "plan": {
+        "label": "Plan:",
+        "currentLabel": "Current plan:",
+        "daily": "Daily at {{time}}",
+        "weekly": "Every {{weekday}} at {{time}}",
+        "monthly": "Monthly on day {{day}} at {{time}}",
+        "yearly": "Yearly on {{month}}/{{day}} at {{time}}"
       },
       "validation": {
         "messageRequired": "Prompt is required.",
@@ -155,10 +215,33 @@
         "dateRequired": "Date is required.",
         "timeRequired": "Time is required.",
         "timezoneRequired": "Timezone is required.",
-        "runAtFuture": "Run time must be in the future."
+        "timezoneInvalid": "Timezone is invalid.",
+        "runAtInvalid": "Run time does not exist in the selected timezone.",
+        "runAtFuture": "Run time must be in the future.",
+        "expressionInvalid": "Cron expression format is invalid."
       },
       "actions": {
+        "expandAdvanced": "Expand",
+        "collapseAdvanced": "Collapse",
         "submit": "Create Task"
+      }
+    },
+    "edit": {
+      "title": "Edit Cron Task",
+      "subtitle": "Update the prompt or schedule for this task.",
+      "disabled": {
+        "running": "Stop the running task before editing.",
+        "unsupported": "This task uses a schedule that cannot be edited on this page.",
+        "incomplete": "This task is missing the details required for editing."
+      },
+      "errors": {
+        "running": "Stop the running task before saving changes.",
+        "conflict": "This task has changed. Refresh the list and edit it again.",
+        "saveFailed": "Failed to save cron task changes."
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save Changes"
       }
     }
   }

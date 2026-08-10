@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { ClaudeWorkStatus, CompactProgress, PendingPermissionRequest, PilotDeckWorkStatus } from '../types/types';
+import type {
+  ClaudeWorkStatus,
+  CompactProgress,
+  PendingPermissionRequest,
+  PilotDeckWorkStatus,
+  SessionRuntimeState,
+} from '../types/types';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import {
   getUnpersistedRealtimeTurnMessages,
@@ -8,6 +14,11 @@ import {
   type NormalizedMessage,
 } from '../../../stores/useSessionStore';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
+import {
+  buildSessionStatusRequestIfIdle,
+  invalidateSessionStatusResponses,
+  shouldAcceptSessionStatusResponse,
+} from '../sessionStatusProtocol';
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -22,6 +33,7 @@ type LatestChatMessage = {
   delta?: string;
   sessionId?: string;
   session_id?: string;
+  runId?: string;
   requestId?: string;
   toolName?: string;
   input?: unknown;
@@ -31,7 +43,10 @@ type LatestChatMessage = {
   toolId?: string;
   result?: any;
   exitCode?: number;
-  isProcessing?: boolean;
+  isProcessing?: boolean | null;
+  activeRunId?: string | null;
+  expectedActiveRunId?: string | null;
+  statusRequestId?: number | null;
   actualSessionId?: string;
   event?: string;
   status?: any;
@@ -52,6 +67,7 @@ type LatestChatMessage = {
   tokenBudget?: unknown;
   newSessionId?: string;
   aborted?: boolean;
+  terminal?: boolean;
   [key: string]: any;
 };
 
@@ -63,6 +79,18 @@ function getMessageRunId(message: { runId?: unknown }): string | undefined {
   return typeof message.runId === 'string' && message.runId.trim()
     ? message.runId.trim()
     : undefined;
+}
+
+function getSessionStatusActiveRunId(message: LatestChatMessage): string | undefined {
+  if (typeof message.activeRunId === 'string' && message.activeRunId.trim()) {
+    return message.activeRunId.trim();
+  }
+  if (!Array.isArray(message.activeTurnMessages)) return undefined;
+  const activeFrame = message.activeTurnMessages.find((frame) => {
+    const runId = getMessageRunId(frame);
+    return Boolean(runId && !runId.startsWith('subagent:'));
+  });
+  return activeFrame ? getMessageRunId(activeFrame) : undefined;
 }
 
 function parseAssistantStreamTimestamp(value?: string): number | null {
@@ -270,6 +298,9 @@ interface UseChatRealtimeHandlersArgs {
   currentSessionId: string | null;
   setCurrentSessionId: (sessionId: string | null) => void;
   setIsLoading: (loading: boolean) => void;
+  setSessionRuntimeState: (state: SessionRuntimeState) => void;
+  activeRunId: string | null;
+  setActiveRunId: (runId: string | null) => void;
   setCanAbortSession: (canAbort: boolean) => void;
   setIsAborting: (aborting: boolean) => void;
   setClaudeStatus: (status: ClaudeWorkStatus | null) => void;
@@ -296,6 +327,9 @@ export function useChatRealtimeHandlers({
   currentSessionId,
   setCurrentSessionId,
   setIsLoading,
+  setSessionRuntimeState,
+  activeRunId,
+  setActiveRunId,
   setCanAbortSession,
   setIsAborting,
   setClaudeStatus,
@@ -312,12 +346,49 @@ export function useChatRealtimeHandlers({
   onWebSocketReconnect,
   sessionStore,
 }: UseChatRealtimeHandlersArgs) {
-  const { subscribe } = useWebSocket();
+  const { sendMessage, subscribe } = useWebSocket();
 
   // Track which sessions have active thinking (just a boolean flag now)
   const thinkingBySessionRef = useRef<Map<string, boolean>>(new Map());
   // Dedup volatile active-turn replay chunks across reconnect/status polls.
   const activeTurnReplaySignatureRef = useRef<Map<string, string>>(new Map());
+  const sessionStatusRetryTimersRef = useRef<Map<string, number>>(new Map());
+  const activeRunIdRef = useRef<string | null>(activeRunId);
+  activeRunIdRef.current = activeRunId;
+  const updateActiveRunId = useCallback((runId: string | null) => {
+    activeRunIdRef.current = runId;
+    setActiveRunId(runId);
+  }, [setActiveRunId]);
+  const clearSessionStatusRetry = useCallback((sessionId: string) => {
+    const timer = sessionStatusRetryTimersRef.current.get(sessionId);
+    if (timer === undefined) return;
+    window.clearTimeout(timer);
+    sessionStatusRetryTimersRef.current.delete(sessionId);
+  }, []);
+  const scheduleSessionStatusRetry = useCallback((
+    sessionId: string,
+    expectedActiveRunId: string | null,
+  ) => {
+    if (sessionStatusRetryTimersRef.current.has(sessionId)) return;
+    const timer = window.setTimeout(() => {
+      sessionStatusRetryTimersRef.current.delete(sessionId);
+      const request = buildSessionStatusRequestIfIdle({
+        sessionId,
+        provider,
+        expectedActiveRunId,
+        includeActiveTurnMessages: true,
+      });
+      if (request) sendMessage(request);
+    }, 1200);
+    sessionStatusRetryTimersRef.current.set(sessionId, timer);
+  }, [provider, sendMessage]);
+
+  useEffect(() => () => {
+    for (const timer of sessionStatusRetryTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    sessionStatusRetryTimersRef.current.clear();
+  }, []);
 
   const handleMessage = useCallback((latestMessage: LatestChatMessage, fallbackSessionId?: string | null) => {
     if (!latestMessage) return;
@@ -332,7 +403,7 @@ export function useChatRealtimeHandlers({
     /*  Legacy messages (no `kind` field) — handle and return           */
     /* ---------------------------------------------------------------- */
 
-    const msg = latestMessage as any;
+    const msg: LatestChatMessage = latestMessage;
     const clearAccumulators = () => {
       thinkingBySessionRef.current.clear();
     };
@@ -343,6 +414,13 @@ export function useChatRealtimeHandlers({
       switch (messageType) {
         case 'websocket-reconnected':
           clearAccumulators();
+          for (const timer of sessionStatusRetryTimersRef.current.values()) {
+            window.clearTimeout(timer);
+          }
+          sessionStatusRetryTimersRef.current.clear();
+          if (activeViewSessionId) {
+            invalidateSessionStatusResponses(activeViewSessionId);
+          }
           onWebSocketReconnect?.();
           return;
 
@@ -358,7 +436,30 @@ export function useChatRealtimeHandlers({
         case 'session-status': {
           const statusSessionId = msg.sessionId;
           if (!statusSessionId) return;
+          if (!shouldAcceptSessionStatusResponse(statusSessionId, msg.statusRequestId)) return;
           const isCurrentSession = isSessionForActiveView(statusSessionId, activeViewSessionId);
+          if (
+            isCurrentSession
+            && activeRunIdRef.current
+            && msg.expectedActiveRunId !== activeRunIdRef.current
+          ) {
+            return;
+          }
+          if (msg.isProcessing === null && isCurrentSession) {
+            scheduleSessionStatusRetry(
+              statusSessionId,
+              typeof msg.expectedActiveRunId === 'string' && msg.expectedActiveRunId.trim()
+                ? msg.expectedActiveRunId.trim()
+                : null,
+            );
+          } else {
+            clearSessionStatusRetry(statusSessionId);
+          }
+          const statusActiveRunId = getSessionStatusActiveRunId(msg);
+
+          if (isCurrentSession && (msg.status || msg.isProcessing === true) && statusActiveRunId) {
+            updateActiveRunId(statusActiveRunId);
+          }
 
           if (isCurrentSession && Array.isArray(msg.activeTurnMessages) && msg.activeTurnMessages.length > 0) {
             clearAccumulators();
@@ -431,6 +532,7 @@ export function useChatRealtimeHandlers({
             };
             setClaudeStatus(statusInfo);
             setPilotDeckStatus(statusInfo);
+            setSessionRuntimeState('running');
             setIsLoading(true);
             setCanAbortSession(statusInfo.can_interrupt);
             return;
@@ -441,14 +543,28 @@ export function useChatRealtimeHandlers({
           }
 
           // Legacy isProcessing format from check-session-status
-          if (msg.isProcessing) {
+          if (msg.isProcessing === true) {
             onSessionProcessing?.(statusSessionId);
-            if (isCurrentSession) { setIsLoading(true); setCanAbortSession(true); }
+            if (isCurrentSession) {
+              setSessionRuntimeState('running');
+              setIsLoading(true);
+              setCanAbortSession(true);
+            }
             return;
           }
+          if (msg.isProcessing === null) {
+            if (isCurrentSession) {
+              setSessionRuntimeState('synchronizing');
+            }
+            return;
+          }
+          if (msg.isProcessing !== false) return;
+          sessionStore.cancelRunningActivities(statusSessionId);
           onSessionInactive?.(statusSessionId);
           onSessionNotProcessing?.(statusSessionId);
           if (isCurrentSession) {
+            updateActiveRunId(null);
+            setSessionRuntimeState('inactive');
             setIsLoading(false);
             setCanAbortSession(false);
             setClaudeStatus(null);
@@ -480,6 +596,14 @@ export function useChatRealtimeHandlers({
     }
 
     const isForActiveView = isSessionForActiveView(sid, activeViewSessionId);
+    const isTerminalError = msg.kind === 'error' && msg.terminal === true;
+    const isTerminalForSupersededRun = Boolean(
+      isForActiveView &&
+      activeRunIdRef.current &&
+      msgRunId &&
+      activeRunIdRef.current !== msgRunId &&
+      (msg.kind === 'complete' || isTerminalError),
+    );
 
     // Ensure the store's activeSession matches so notify() triggers re-renders.
     // Without this, the RAF scheduler silently drops notifications for
@@ -597,13 +721,13 @@ export function useChatRealtimeHandlers({
     const flushKinds = new Set([
       'tool_use', 'tool_result', 'text', 'complete', 'error', 'permission_request',
     ]);
-    if (flushKinds.has(msg.kind as string)) {
+    if (flushKinds.has(msg.kind as string) && (msg.kind !== 'error' || isTerminalError)) {
       // Finalize thinking if still active (model moved past thinking)
-      if (thinkingBySessionRef.current.has(sid)) {
+      if (!isTerminalForSupersededRun && thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
         sessionStore.finalizeStreamingThinking(sid, msgRunId);
       }
-      // Finalize content stream on tool_use / complete / error.
+      // Finalize content stream on tool_use / complete / terminal error.
       // The gateway may not send stream_end, so tool_use is the
       // reliable signal that the text block has ended.
       if (msg.kind === 'tool_use' || msg.kind === 'complete' || msg.kind === 'error') {
@@ -675,7 +799,10 @@ export function useChatRealtimeHandlers({
       }
 
       case 'complete': {
+        if (isTerminalForSupersededRun) break;
         if (sid) {
+          clearSessionStatusRetry(sid);
+          invalidateSessionStatusResponses(sid);
           activeTurnReplaySignatureRef.current.delete(sid);
           // Finalize both thinking and content streams
           if (thinkingBySessionRef.current.has(sid)) {
@@ -683,9 +810,12 @@ export function useChatRealtimeHandlers({
           }
           sessionStore.finalizeStreamingThinking(sid, msgRunId);
           sessionStore.finalizeStreaming(sid, msgRunId);
+          sessionStore.cancelRunningActivities(sid);
         }
 
         if (isForActiveView) {
+          updateActiveRunId(null);
+          setSessionRuntimeState('inactive');
           setIsLoading(false);
           setCanAbortSession(false);
           setIsAborting(false);
@@ -760,7 +890,29 @@ export function useChatRealtimeHandlers({
       }
 
       case 'error': {
+        if (!isTerminalError) {
+          if (isForActiveView) {
+            setSessionRuntimeState('synchronizing');
+          }
+          invalidateSessionStatusResponses(sid);
+          const request = buildSessionStatusRequestIfIdle({
+            sessionId: sid,
+            provider,
+            expectedActiveRunId: activeRunIdRef.current,
+            includeActiveTurnMessages: true,
+          });
+          if (request) sendMessage(request);
+          break;
+        }
+        if (isTerminalForSupersededRun) break;
+        if (sid) {
+          clearSessionStatusRetry(sid);
+          invalidateSessionStatusResponses(sid);
+          sessionStore.cancelRunningActivities(sid);
+        }
         if (isForActiveView) {
+          updateActiveRunId(null);
+          setSessionRuntimeState('inactive');
           setIsLoading(false);
           setCanAbortSession(false);
           setIsAborting(false);
@@ -777,14 +929,15 @@ export function useChatRealtimeHandlers({
       }
 
       case 'permission_request': {
-        if (!msg.requestId) break;
+        const requestId = msg.requestId;
+        if (!requestId) break;
         const isForCurrentSession = isForActiveView;
         if (!isForCurrentSession) break;
         onSessionProcessing?.(sid);
         setPendingPermissionRequests((prev) => {
-          if (prev.some((r: PendingPermissionRequest) => r.requestId === msg.requestId)) return prev;
+          if (prev.some((r: PendingPermissionRequest) => r.requestId === requestId)) return prev;
           return [...prev, {
-            requestId: msg.requestId,
+            requestId,
             toolName: msg.toolName || 'UnknownTool',
             input: msg.input,
             context: msg.context,
@@ -808,6 +961,13 @@ export function useChatRealtimeHandlers({
       }
 
       case 'status': {
+        if (msg.text === 'started' && msgRunId) {
+          clearSessionStatusRetry(sid);
+          invalidateSessionStatusResponses(sid);
+          if (isForActiveView) {
+            updateActiveRunId(msgRunId);
+          }
+        }
         if (msg.text && msg.text !== 'token_budget' && msg.text !== 'clear_status') {
           onSessionProcessing?.(sid);
         }
@@ -858,10 +1018,15 @@ export function useChatRealtimeHandlers({
     }
   }, [
     provider,
+    sendMessage,
+    clearSessionStatusRetry,
+    scheduleSessionStatusRetry,
     selectedSession,
     currentSessionId,
     setCurrentSessionId,
     setIsLoading,
+    setSessionRuntimeState,
+    updateActiveRunId,
     setCanAbortSession,
     setIsAborting,
     setClaudeStatus,

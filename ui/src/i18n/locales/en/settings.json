@@ -863,7 +863,7 @@
         },
         "capabilities": {
           "title": "Model Settings",
-          "imageInput": "Image input",
+          "imageInput": "Model supports image input",
           "enabled": "Enabled",
           "disabled": "Disabled",
           "overrideActive": "Image input is set manually.",

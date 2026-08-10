@@ -303,9 +303,11 @@ test("agent loop records a compact boundary when auto compaction fires", async (
       ],
       snapshot: tokenBudget.snapshotFromTokens(40, 32_768, { reservedOutputTokens: 32_768 }),
       result: {
+        compactionId: "compact-auto-1",
         trigger: "auto",
         preTokens: 120,
         postTokens: 40,
+        messagesSummarized: 1,
         summaryMessage: {
           role: "assistant",
           content: [{ type: "text", text: "summary" }],
@@ -426,6 +428,7 @@ test("agent loop records a compact boundary when auto compaction fires", async (
     kind: "compact",
     subtype: "compact_boundary",
     compactMetadata: {
+      compactionId: "compact-auto-1",
       trigger: "auto",
       preTokens: 120,
       postTokens: 40,
@@ -469,9 +472,11 @@ test("agent loop persists a full compaction after recovering from a context erro
         messages: [{ role: "user", content: [{ type: "text", text: "compacted tail" }] }],
         snapshot: tokenBudget.snapshotFromTokens(20, 100),
         result: {
+          compactionId: "compact-reactive-1",
           trigger: "reactive",
           preTokens: 90,
           postTokens: 20,
+          messagesSummarized: 1,
           summaryMessage: { role: "assistant", content: [{ type: "text", text: "summary" }] },
           boundaryMarker: { role: "user", content: [{ type: "text", text: "boundary" }] },
           messagesToKeep: [{ role: "user", content: [{ type: "text", text: "compacted tail" }] }],

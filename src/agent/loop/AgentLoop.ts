@@ -251,6 +251,8 @@ export class AgentLoop {
     let jsonSelfCorrectCount = 0;
     let hasAttemptedToolCallRetry = false;
     let hasAttemptedReasoningContentRetry = false;
+    /** Prevent a provider that keeps rejecting text-only retries from looping forever. */
+    let hasAttemptedImageStrip = false;
     const largeFileRepair = new LargeFileRepair();
 
     /**
@@ -412,9 +414,8 @@ export class AgentLoop {
             }),
           });
           if (compact.type === "compacted") {
-            const preCompactMessages = messages;
             messages = compact.messages;
-            await this.persistCompactSnapshot(input, compact, preCompactMessages);
+            await this.persistCompactSnapshot(input, compact);
             yield {
               type: "turn_continued",
               sessionId: input.sessionId,
@@ -512,11 +513,10 @@ export class AgentLoop {
               }),
             });
             if (recompact.type === "compacted") {
-              const preCompactMessages = messages;
               messages = recompact.messages;
               request = await this.createModelRequest(messages, input);
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
-              await this.persistCompactSnapshot(input, recompact, preCompactMessages);
+              await this.persistCompactSnapshot(input, recompact);
               yield {
                 type: "turn_continued",
                 sessionId: input.sessionId,
@@ -1080,9 +1080,8 @@ export class AgentLoop {
                 allowFallbackOnFailure: true,
               });
               if (compact.type === "compacted") {
-                const preCompactMessages = messages;
                 messages = compact.messages;
-                await this.persistCompactSnapshot(input, compact, preCompactMessages);
+                await this.persistCompactSnapshot(input, compact);
                 if (compact.error) {
                   const failure = await contextOverflowAfterEmergency(compact);
                   yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: failure.error.message };
@@ -1128,7 +1127,8 @@ export class AgentLoop {
           continue;
         }
 
-        if (reactive && reactive.type === "strip_images_and_retry") {
+        if (reactive && reactive.type === "strip_images_and_retry" && !hasAttemptedImageStrip) {
+          hasAttemptedImageStrip = true;
           messages = stripTrailingErrorPair(messages);
           messages = stripImagesFromMessages(messages);
           yield {
@@ -1710,6 +1710,7 @@ export class AgentLoop {
         hasAttemptedOutputRetry = false;
         hasAttemptedEmptyRetry = false;
         hasAttemptedToolCallRetry = false;
+        hasAttemptedImageStrip = false;
       }
 
       if (this.config.stopOnStructuredOutput && structuredOutput !== undefined) {
@@ -1993,7 +1994,6 @@ export class AgentLoop {
   private async persistCompactSnapshot(
     input: AgentLoopInput,
     compact: Extract<Awaited<ReturnType<NonNullable<AgentContextRuntime["tryAutoCompact"]>>>, { type: "compacted" }>,
-    preCompactMessages: CanonicalMessage[],
   ): Promise<void> {
     if (!input.onCompactPersisted || !compact.result) {
       return;
@@ -2002,10 +2002,11 @@ export class AgentLoop {
       kind: "compact",
       subtype: "compact_boundary",
       compactMetadata: {
+        compactionId: compact.result.compactionId,
         trigger: compact.result.trigger,
         preTokens: compact.result.preTokens,
         ...(compact.result.postTokens !== undefined ? { postTokens: compact.result.postTokens } : {}),
-        messagesSummarized: Math.max(0, preCompactMessages.length - compact.result.messagesToKeep.length),
+        messagesSummarized: compact.result.messagesSummarized,
         extra: {
           tier: compact.tier,
           summarySucceeded: compact.result.error === undefined,
@@ -2226,7 +2227,15 @@ export class AgentLoop {
           if (composedAbort.timedOut()) {
             throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
           }
+          if (abortSignal?.aborted) {
+            throw new Error("Subagent aborted before completion.");
+          }
         } catch (err) {
+          const timedOut = composedAbort.timedOut();
+          const aborted = Boolean(abortSignal?.aborted && !timedOut);
+          const failure = timedOut
+            ? new Error(`Subagent timed out after ${timeoutMs}ms.`)
+            : err;
           composedAbort.cleanup();
           errored = true;
           await transcriptHooks?.recordSubagentCompleted?.({
@@ -2234,7 +2243,7 @@ export class AgentLoop {
             turnId: input.turnId,
             subagentId,
             subagentType: def.id,
-            summary: err instanceof Error ? err.message : String(err),
+            summary: failure instanceof Error ? failure.message : String(failure),
             turns: 0,
             durationMs: 0,
             errored: true,
@@ -2251,9 +2260,10 @@ export class AgentLoop {
             subagentId,
             subagentType: def.id,
             success: false,
+            aborted,
             durationMs: 0,
           });
-          throw err;
+          throw failure;
         }
         composedAbort.cleanup();
 

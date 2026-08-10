@@ -27,3 +27,87 @@ test("catalog provider resolves api key from default env var when apiKey is blan
 
   assert.equal(config.providers.google.apiKey, "gemini-env");
 });
+
+test("unknown custom models default to text-only input", () => {
+  const config = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        models: { "text-model": {} },
+      },
+    },
+  });
+
+  assert.deepEqual(config.providers.custom.models["text-model"].multimodal.input, ["text"]);
+});
+
+test("custom providers do not infer image input from a cross-provider model name", () => {
+  const config = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        models: { "gpt-4o-mini": {} },
+      },
+    },
+  });
+
+  assert.deepEqual(config.providers.custom.models["gpt-4o-mini"].multimodal.input, ["text"]);
+});
+
+test("custom models use explicitly configured image input", () => {
+  const config = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        models: {
+          "vision-model": {
+            multimodal: { input: ["text", "image"] },
+          },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    config.providers.custom.models["vision-model"].multimodal.input,
+    ["text", "image"],
+  );
+});
+
+test("catalog models keep their catalog image capability when no override is set", () => {
+  const config = parseModelConfig({
+    providers: {
+      openai: {
+        apiKey: "test-key",
+        models: { "gpt-4o-mini": {} },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    config.providers.openai.models["gpt-4o-mini"].multimodal.input,
+    ["text", "image"],
+  );
+});
+
+test("catalog model aliases keep their declared provider image capability", () => {
+  const config = parseModelConfig({
+    providers: {
+      openai: {
+        apiKey: "test-key",
+        models: { "gpt-4o-2024-11-20": {} },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    config.providers.openai.models["gpt-4o-2024-11-20"].multimodal.input,
+    ["text", "image"],
+  );
+});

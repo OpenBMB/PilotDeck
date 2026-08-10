@@ -46,6 +46,17 @@ function thinking(id: string, content = 'Thinking through the next step.', offse
   };
 }
 
+function compact(id: string, offsetMs = 500): ChatMessage {
+  return {
+    id,
+    type: 'system',
+    content: 'Context compacted',
+    timestamp: timestamp(offsetMs),
+    isCompactBoundary: true,
+    compactionId: id,
+  };
+}
+
 function tool(
   id: string,
   toolName: string,
@@ -304,6 +315,25 @@ describe('processGrouping', () => {
     expect(assistantItem?.beforeProcessAttachments).toHaveLength(1);
     expect(assistantItem?.beforeProcessAttachments[0].processSummary.exploredFileCount).toBe(1);
     expect(assistantItem?.afterProcessAttachments).toHaveLength(0);
+  });
+
+  it('keeps a mid-turn compact boundary folded with the process before the final answer', () => {
+    const messages = [
+      user('u1'),
+      tool('bash-1', 'Bash', { command: 'build workbook' }, 100),
+      compact('compact-1', 200),
+      tool('bash-2', 'Bash', { command: 'deliver workbook' }, 300),
+      assistant('a-final', 'Workbook delivered.', 400),
+    ];
+
+    const items = buildRenderableMessageItems(messages);
+    const finalAssistant = items.find((item) => item.message.id === 'a-final');
+
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-final']);
+    expect(finalAssistant?.beforeProcessAttachments).toHaveLength(1);
+    expect(finalAssistant?.beforeProcessAttachments[0].processSummary.compactCount).toBe(1);
+    expect(finalAssistant?.beforeProcessAttachments[0].processSummary.commandCount).toBe(2);
+    expect(finalAssistant?.afterProcessAttachments).toHaveLength(0);
   });
 
   it('does not hide user-visible prompts, plan exits, permissions, or errors', () => {

@@ -283,6 +283,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       return createNormalizedMessage({
         ...base,
         kind: 'compact_boundary',
+        compactionId: payload.compactionId,
         trigger: payload.trigger || 'auto',
         preTokens: payload.preTokens,
         postTokens: payload.postTokens,

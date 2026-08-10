@@ -89,6 +89,7 @@ test("web history restores structured records around a visible compact boundary"
       kind: "compact",
       subtype: "compact_boundary",
       compactMetadata: {
+        compactionId: "compact-turn-1",
         trigger: "auto",
         preTokens: 120,
         postTokens: 40,
@@ -135,6 +136,7 @@ test("web history restores structured records around a visible compact boundary"
     assert.ok(compactBoundary);
     assert.equal(compactBoundary.turnId, "turn-compact");
     assert.deepEqual(compactBoundary.payload, {
+      compactionId: "compact-turn-1",
       trigger: "auto",
       preTokens: 120,
       postTokens: 40,

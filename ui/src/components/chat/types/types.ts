@@ -9,6 +9,7 @@ export type Provider = SessionProvider;
 
 export type PermissionMode = 'default' | 'bypassPermissions' | 'plan';
 export type ChatRunMode = 'agent' | 'plan' | 'ask';
+export type SessionRuntimeState = 'synchronizing' | 'running' | 'inactive';
 
 export interface ChatImage {
   data: string;
@@ -111,7 +112,9 @@ export interface ChatMessage {
   isCompactBoundary?: boolean;
   activityId?: string;
   runId?: string;
+  parentRunId?: string;
   turnId?: string;
+  compactionId?: string;
   compactTrigger?: string;
   preTokens?: number;
   postTokens?: number;
@@ -148,6 +151,7 @@ export interface ChatMessage {
 }
 
 export interface CompactProgress {
+  compaction_id?: string;
   level: number;
   stage: string;
   label: string;

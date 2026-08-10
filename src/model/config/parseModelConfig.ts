@@ -1,15 +1,6 @@
-import {
-  ANTHROPIC_DEFAULT_CAPABILITIES,
-  ANTHROPIC_DEFAULT_MULTIMODAL,
-} from "../providers/anthropic/defaults.js";
-import {
-  OPENAI_DEFAULT_CAPABILITIES,
-  OPENAI_DEFAULT_MULTIMODAL,
-} from "../providers/openai/defaults.js";
-import {
-  GOOGLE_DEFAULT_CAPABILITIES,
-  GOOGLE_DEFAULT_MULTIMODAL,
-} from "../providers/google/defaults.js";
+import { ANTHROPIC_DEFAULT_CAPABILITIES } from "../providers/anthropic/defaults.js";
+import { OPENAI_DEFAULT_CAPABILITIES } from "../providers/openai/defaults.js";
+import { GOOGLE_DEFAULT_CAPABILITIES } from "../providers/google/defaults.js";
 import type {
   ModelConfig,
   ModelDefinition,
@@ -178,7 +169,13 @@ function parseModelDefinition(
   const catalogModel = catalogHit.model;
 
   const capabilities = parseCapabilities(protocol, model.capabilities, catalogModel?.capabilities);
-  const multimodal = parseMultimodal(protocol, model.multimodal, catalogModel?.multimodal);
+  // Cross-provider model-name matches are useful for token/capability hints,
+  // but they must not silently opt a custom model into image delivery. Aliases
+  // declared by the selected catalog provider are trusted like exact matches.
+  const catalogMultimodal = catalogHit.matchType === "exact" || catalogHit.matchType === "alias"
+    ? catalogModel?.multimodal
+    : undefined;
+  const multimodal = parseMultimodal(model.multimodal, catalogMultimodal);
 
   return {
     id: modelId,
@@ -254,17 +251,13 @@ function parseCapabilities(
 }
 
 function parseMultimodal(
-  protocol: ModelProtocol,
   rawMultimodal: unknown,
   catalogMultimodal?: MultimodalConstraints,
 ): MultimodalConstraints {
-  const protocolDefaults =
-    protocol === "anthropic"
-      ? ANTHROPIC_DEFAULT_MULTIMODAL
-      : protocol === "google"
-        ? GOOGLE_DEFAULT_MULTIMODAL
-        : OPENAI_DEFAULT_MULTIMODAL;
-  const defaults = catalogMultimodal ?? { ...DEFAULT_MULTIMODAL_CONSTRAINTS, ...protocolDefaults };
+  // Unknown/custom models are text-only until their model definition explicitly
+  // opts into additional modalities. Protocol compatibility alone does not imply
+  // that the upstream model accepts images.
+  const defaults = catalogMultimodal ?? DEFAULT_MULTIMODAL_CONSTRAINTS;
 
   if (rawMultimodal === undefined) {
     return defaults;

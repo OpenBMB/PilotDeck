@@ -164,6 +164,11 @@ export class SubAgentSession {
     if (!last) {
       throw new Error("SubAgentSession: AgentLoop returned no result");
     }
+    if (last.result.type === "aborted") {
+      throw new Error(
+        `SubAgentSession: subagent turn aborted (${last.result.stopReason})`,
+      );
+    }
     if (last.result.type === "error") {
       const details = last.result.errors?.map((error) => error.message).join("; ");
       throw new Error(

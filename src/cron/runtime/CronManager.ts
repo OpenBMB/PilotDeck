@@ -20,6 +20,8 @@ import type {
   CronStopInput,
   CronStopResult,
   CronTask,
+  CronUpdateInput,
+  CronUpdateResult,
 } from "../protocol/types.js";
 import { resolveCronPaths } from "../storage/CronPaths.js";
 import { createCronCreateTool } from "../tool/CronCreateTool.js";
@@ -28,6 +30,7 @@ import { createCronListTool } from "../tool/CronListTool.js";
 import { createCronStopTool } from "../tool/CronStopTool.js";
 import { migrateCronStores } from "../storage/CronStoreMigration.js";
 import { CronRuntime, type CronRuntimeLogger } from "./CronRuntime.js";
+import type { CronTurnEventHandler } from "./CronFire.js";
 
 export type CreateCronManagerOptions = {
   config: CronConfig;
@@ -38,6 +41,7 @@ export type CreateCronManagerOptions = {
   logger?: CronRuntimeLogger;
   telemetry?: TelemetryClient;
   onResultDelivery?: CronResultDeliveryHandler;
+  onTurnEvent?: CronTurnEventHandler;
 };
 
 export class CronManager {
@@ -131,6 +135,12 @@ export class CronManager {
     return result;
   }
 
+  async updateTask(input: CronUpdateInput): Promise<CronUpdateResult> {
+    const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
+    if (!runtime) return { updated: false, reason: "not_found" };
+    return runtime.updateTask(input);
+  }
+
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { deleted: false };
@@ -180,6 +190,7 @@ export class CronManager {
       logger: this.options.logger,
       telemetry: this.options.telemetry,
       onResultDelivery: this.options.onResultDelivery,
+      onTurnEvent: this.options.onTurnEvent,
       activeRunCount: () => this.activeRunCount(),
       skipToolCreation: true,
     });

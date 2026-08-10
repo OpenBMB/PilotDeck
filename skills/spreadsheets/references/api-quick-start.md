@@ -1,6 +1,6 @@
 # JavaScript builder API
 
-Use one executable `.mjs` builder. The builder exports a default async function and returns an ExcelJS workbook or `{ workbook, requirements }`.
+Use one executable `.mjs` builder and return an ExcelJS workbook or `{ workbook, sheetName? }`.
 
 ## Builder contract
 
@@ -17,34 +17,19 @@ export default async function build({
   const workbook = inputPath
     ? await loadWorkbook(inputPath)
     : createWorkbook();
-  const requirements = { requiredSheets: ["Summary"] };
 
-  // Modify the workbook here.
-  return { workbook, requirements };
+  // Understand the task, then create or modify the workbook here.
+  return workbook;
 }
 ```
 
-Use `createWorkbook()` for a new XLSX. It initializes workbook metadata and requests full calculation. Use `loadWorkbook(inputPath)` for `.xlsx`, `.csv`, or `.tsv` input.
-
-## Create worksheets
-
-```js
-const sheet = workbook.addWorksheet("Summary", {
-  views: [{ state: "frozen", ySplit: 2, showGridLines: false }],
-  pageSetup: {
-    orientation: "landscape",
-    fitToPage: true,
-    fitToWidth: 1,
-    fitToHeight: 0,
-  },
-});
-```
+Use `createWorkbook()` for a new XLSX. Use `loadWorkbook(inputPath)` for the workbook being edited. Use `loadXlsx(path)` or `loadDelimited(path, options)` to read additional source files without mutating them.
 
 Create all sheets referenced by formulas before assigning those formulas.
 
-## Write blocks of values
+## Write typed data
 
-Prefer arrays and row blocks over scattered one-cell writes:
+Prefer row or range writes over scattered one-cell assignments:
 
 ```js
 sheet.addRows([
@@ -54,7 +39,7 @@ sheet.addRows([
 ]);
 ```
 
-Use real JavaScript numbers, booleans, and `Date` objects. Keep identifiers such as ZIP codes and SKUs as strings.
+Use JavaScript numbers, booleans, and `Date` objects. Keep ZIP codes, account numbers, SKUs, and other identifiers as strings when their exact digits matter.
 
 ## Write formulas
 
@@ -65,89 +50,62 @@ sheet.getCell("D2").value = {
   formula: "IFERROR((B2-C2)/B2,0)",
   result: 0,
 };
-
-sheet.getCell("B8").value = {
-  formula: "'Inputs'!B2*(1+'Inputs'!B3)",
-  result: 0,
-};
 ```
 
-The placeholder `result` is removed before LibreOffice recalculation. Do not treat it as a verified result.
+The placeholder result is removed before LibreOffice recalculation. Do not treat it as a verified result.
 
-## Format cells
+## Apply formatting
 
-```js
-sheet.getCell("A1").font = {
-  name: "Arial",
-  size: 18,
-  bold: true,
-  color: { argb: "FF0F172A" },
-};
-
-sheet.getColumn("B").numFmt = '"$"#,##0';
-sheet.getColumn("C").numFmt = "0.0%";
-sheet.getColumn("A").width = 24;
-sheet.getRow(1).height = 28;
-```
-
-ARGB colors contain alpha plus RGB, normally `FF` followed by six hexadecimal digits.
-
-Never assign one reusable object to `cell.style` across a range. ExcelJS style objects are mutable and may be shared by reference; changing one cell's number format later can silently turn unrelated numbers into dates. Use the helpers, which clone styles per cell:
+Use helpers that clone style objects per cell:
 
 ```js
-helpers.applyStyle(sheet, "A3:E20", {
+helpers.styleHeader(sheet, "A1:D1");
+helpers.applyStyle(sheet, "A2:D20", {
   alignment: { vertical: "middle" },
-  border: { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } },
 });
-helpers.setNumberFormat(sheet, "B4:C20", '¥#,##0');
-helpers.setNumberFormat(sheet, "D4:D20", "0.0%");
-```
-
-Apply the bundled header baseline when no stronger style exists:
-
-```js
-helpers.styleHeader(sheet, "A3:D3");
+helpers.setNumberFormat(sheet, "B2:C20", "#,##0");
+helpers.setNumberFormat(sheet, "D2:D20", "0.0%");
 helpers.autoFitColumns(sheet, { min: 10, max: 30 });
 helpers.autoFitRows(sheet);
-helpers.applyChineseTypography(sheet, {
-  platform: "cross-platform",
-  titleRanges: ["A1:H1"],
-});
 ```
 
-Do not use `autoFitColumns` to restyle an established workbook unless the requested edit needs it.
+The default header is neutral light gray with dark text and can be overridden when the task calls for another design. Avoid assigning one mutable style object to multiple cells directly.
 
-## Tables and filters
+Use `helpers.applyChineseTypography` for Chinese or bilingual content when the surrounding workbook does not already establish a suitable font.
+
+## Add tables and filters
+
+Populate the range first, then create the table:
 
 ```js
-sheet.addRows([
-  ["Month", "Revenue", "Cost"],
-  ["Jan", 100000, 70000],
-  ["Feb", 120000, 78000],
-]);
 helpers.addTableFromRange(sheet, {
   name: "RevenueTable",
   range: "A1:C3",
 });
 ```
 
-Use unique table names. Do not overlap tables.
+The helper preserves populated values, keeps filter buttons visible, and defaults to a light table style. Use unique names and do not overlap tables.
 
-## Data validation
+Raw `worksheet.addTable()` writes its `columns` and `rows` into the target range. The runtime rejects raw table calls that would replace different populated values.
+
+## Add data validation
 
 ```js
-helpers.addListValidation(sheet, "F4:F100", ["On Track", "At Risk", "Blocked"], {
-  allowBlank: false,
-});
+helpers.addListValidation(
+  sheet,
+  "F2:F1000",
+  ["On Track", "At Risk", "Blocked"],
+  { allowBlank: false },
+);
 ```
 
-Prefer a hidden or clearly labeled source range for long validation lists.
+The helper stores range-level validation without materializing every empty cell. Use a worksheet range as the validation source when an inline list exceeds Excel's limit.
 
-## Conditional formatting
+## Add conditional formatting
 
 ```js
 helpers.addConditionalFormatting(sheet, {
-  range: "D4:D100",
+  range: "D2:D100",
   rules: [{
     type: "cellIs",
     operator: "lessThan",
@@ -157,41 +115,37 @@ helpers.addConditionalFormatting(sheet, {
 });
 ```
 
-Use conditional formatting for states that must respond to future edits.
+Use `formulae` for `expression` and `cellIs` rules.
 
-Use `formulae` (plural) for `expression` and `cellIs` rules. The build preflight rejects `formula` before ExcelJS serialization and reports the worksheet, range, and rule index.
-
-## Native charts
-
-Use a native chart instead of inserting a rendered SVG or PNG:
+## Add native charts
 
 ```js
 helpers.addNativeChart(workbook, {
   sheet: "Summary",
   type: "column",
   title: "Revenue by month",
-  categories: "A4:A15",
-  series: [{ name: "Revenue", values: "B4:B15" }],
-  anchor: { from: "F3", to: "N20" },
-  valueFormat: '"$"#,##0',
+  categories: "A2:A13",
+  series: [{ name: "Revenue", values: "B2:B13" }],
+  anchor: { from: "F2", to: "N20" },
+  valueFormat: "#,##0",
 });
 ```
 
-Supported types are `line`, `column`, and `bar`. Add the chart to `requirements.json`; the audit must confirm its native OOXML part and source ranges.
+Supported standard chart types are line, column, and bar. Use an image only when the user wants an image; an image is not an editable Excel chart.
 
-## Comments and sources
-
-ExcelJS supports legacy cell notes:
+## Add raster images
 
 ```js
-sheet.getCell("B3").note = "Source: https://example.com/data";
+await helpers.addImage(workbook, {
+  sheet: "Summary",
+  path: "/absolute/path/to/illustration.png",
+  anchor: { from: "F2", to: "N18" },
+});
 ```
 
-For row-wise researched data, include a visible source URL column instead of hiding all provenance in notes.
+The helper accepts local PNG, JPEG, WebP, and TIFF sources and records the inserted asset.
 
-## CSV and TSV
-
-Load delimited input without unwanted type conversion. Encoding defaults to automatic UTF-8/GB18030 detection:
+## Work with CSV and TSV
 
 ```js
 const workbook = await loadDelimited(inputPath, {
@@ -201,22 +155,20 @@ const workbook = await loadDelimited(inputPath, {
 });
 ```
 
-Return a workbook and choose `.csv` or `.tsv` as the `build --out` extension. The first worksheet is exported unless `--sheet` is specified. Formulas export their calculated result because delimited files cannot store formulas.
+Choose `.csv` or `.tsv` as the candidate extension. Delimited files store formula results rather than formulas.
 
-## Common commands
-
-Keep every builder, candidate, conversion, render, and report under the turn work directory. Only `FINAL_XLSX` is user-facing.
+## Model-guided commands
 
 ```bash
-WORKSPACE="${PILOTDECK_WORK_DIR:-$PWD/.pilotdeck/work/manual/<task-slug>}/spreadsheets"
-FINAL_XLSX="$PWD/<requested-output>.xlsx"
-mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/qa"
-bash "$SHEET" scaffold --out "$WORKSPACE/tmp/workbook.mjs" --requirements-out "$WORKSPACE/tmp/requirements.json"
-bash "$SHEET" build --builder "$WORKSPACE/tmp/workbook.mjs" --requirements "$WORKSPACE/tmp/requirements.json" --out "$WORKSPACE/tmp/candidate.xlsx"
-bash "$SHEET" build --builder "$WORKSPACE/tmp/workbook.mjs" --input "$INPUT_XLSX" --requirements "$WORKSPACE/tmp/requirements.json" --out "$WORKSPACE/tmp/candidate.xlsx"
-bash "$SHEET" convert-legacy --input "$INPUT_XLS" --out "$WORKSPACE/tmp/converted.xlsx"
-bash "$SHEET" inspect --input "$INPUT_XLSX" --sheet Summary --range A1:H20 --styles --out "$WORKSPACE/tmp/inspection.json"
-bash "$SHEET" audit --input "$WORKSPACE/tmp/candidate.xlsx" --requirements "$WORKSPACE/tmp/requirements.json" --out "$WORKSPACE/qa/audit.json"
-bash "$SHEET" render --input "$WORKSPACE/tmp/candidate.xlsx" --out-dir "$WORKSPACE/qa/render" --per-sheet
-bash "$SHEET" deliver --input "$WORKSPACE/tmp/candidate.xlsx" --out "$FINAL_XLSX" --qa-dir "$WORKSPACE/qa/final" --requirements "$WORKSPACE/tmp/requirements.json"
+WORKSPACE="${PILOTDECK_WORK_DIR:?PILOTDECK_WORK_DIR is required}/spreadsheets"
+mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/review"
+
+bash "$SHEET" scaffold --out "$WORKSPACE/tmp/workbook.mjs"
+bash "$SHEET" build --builder "$WORKSPACE/tmp/workbook.mjs" --out "$WORKSPACE/tmp/candidate.xlsx"
+bash "$SHEET" build --builder "$WORKSPACE/tmp/workbook.mjs" --input "$INPUT_XLSX" --out "$WORKSPACE/tmp/candidate.xlsx"
+bash "$SHEET" inspect --input "$INPUT_XLSX" --sheet Summary --range A1:H20 --styles
+bash "$SHEET" review --input "$WORKSPACE/tmp/candidate.xlsx" --out-dir "$WORKSPACE/review"
+bash "$SHEET" deliver --input "$WORKSPACE/tmp/candidate.xlsx" --out "$FINAL_XLSX"
 ```
+
+Use the optional `audit`, `evaluate`, and fallback capabilities when they provide useful evidence for the current task. They are not mandatory phases of every build.
