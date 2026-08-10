@@ -160,8 +160,37 @@ export type PilotWebSearchConfig = {
   customProvider?: PilotWebSearchCustomProviderConfig;
 };
 
+export type PilotTransSpeechGenerateConfig = {
+  polish: boolean;
+  minutes: boolean;
+  actions: boolean;
+};
+
+/**
+ * Runtime configuration for the locally deployed Trans-Speech service.
+ * This deliberately lives under `tools` rather than model providers: the
+ * service owns ASR and its downstream LLM calls, while PilotDeck exposes one
+ * bounded tool surface to the agent.
+ */
+export type PilotTransSpeechEnabledConfig = {
+  enabled: true;
+  baseUrl: string;
+  language: string;
+  asrProfile: string;
+  diarize: boolean;
+  timeoutMs: number;
+  /** Maximum active recording tasks for a single workspace. */
+  maxConcurrentTasks: number;
+  generate: PilotTransSpeechGenerateConfig;
+};
+
+export type PilotTransSpeechConfig =
+  | PilotTransSpeechEnabledConfig
+  | { enabled: false };
+
 export type PilotToolsConfig = {
   webSearch?: PilotWebSearchConfig;
+  transSpeech?: PilotTransSpeechConfig;
 };
 
 export type PilotProxyConfig = {

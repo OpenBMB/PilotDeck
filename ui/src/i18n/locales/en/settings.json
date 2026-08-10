@@ -67,6 +67,7 @@
       "agentResident": "Always-On",
       "agentSearch": "Search",
       "agentSchedule": "Scheduled Tasks",
+      "agentTranscription": "Recording Transcription",
       "integrations": "Integrations",
       "extensions": "Extensions",
       "mcpServers": "MCP Servers",
@@ -85,6 +86,7 @@
       "agentResident": "Agents / Always-On",
       "agentSearch": "Agents / Search",
       "agentSchedule": "Agents / Scheduled Tasks",
+      "agentTranscription": "Agents / Recording Transcription",
       "integrations": "Integrations",
       "extensions": "Extensions",
       "mcpServers": "Extensions / MCP Servers",
@@ -122,6 +124,7 @@
       "agentResident": "The config file is not valid YAML, so the Agents / Always-On form is unavailable.",
       "agentSearch": "The config file is not valid YAML, so the Agents / Search form is unavailable.",
       "agentSchedule": "The config file is not valid YAML, so the Agents / Scheduled Tasks form is unavailable.",
+      "agentTranscription": "The config file is not valid YAML, so the Agents / Recording Transcription form is unavailable.",
       "integrations": "The config file is not valid YAML, so the Integrations form is unavailable.",
       "officePreview": "The config file is not valid YAML, so the Office Preview form is unavailable.",
       "modelPool": "The config file is not valid YAML, so the Model Pool form is unavailable."
@@ -1077,6 +1080,52 @@
           "needsKey": "Enter an API key first.",
           "success": "Connected: {{count}} result(s), {{latency}}ms.",
           "failedPrefix": "Connection failed: {{error}}"
+        }
+      },
+      "transSpeech": {
+        "title": "Recording Transcription",
+        "description": "Configure the Trans-Speech service used for uploaded recordings. Saving reloads the configuration; new tasks use the latest settings.",
+        "enabled": {
+          "label": "Enable recording transcription",
+          "description": "When enabled, agents can process WAV, MP3, M4A, and FLAC files uploaded in chat."
+        },
+        "baseUrl": {
+          "label": "Service address",
+          "description": "Private HTTP address for Trans-Speech that the PilotDeck container can reach. Port must be 8090."
+        },
+        "language": {
+          "label": "Default language",
+          "description": "Language code sent to the transcription service, such as zh."
+        },
+        "asrProfile": {
+          "label": "ASR profile",
+          "description": "Speech-recognition profile used by the transcription service, such as sensevoice."
+        },
+        "diarize": {
+          "label": "Speaker diarization",
+          "description": "When enabled, identify speakers where possible and include them in the transcript."
+        },
+        "timeoutMs": {
+          "label": "Per-request timeout (ms)",
+          "description": "Maximum wait for one health, transcription, or enhancement request. Must be greater than 0."
+        },
+        "maxConcurrentTasks": {
+          "label": "Max concurrent tasks per workspace",
+          "description": "Maximum recordings processed at once within one workspace. Must be greater than 0."
+        },
+        "generate": {
+          "polish": {
+            "label": "Generate polished transcript by default",
+            "description": "Create a machine-generated, readable draft after transcription succeeds."
+          },
+          "minutes": {
+            "label": "Generate meeting minutes by default",
+            "description": "Create a meeting-minutes draft after transcription succeeds; it still needs human review."
+          },
+          "actions": {
+            "label": "Generate action items by default",
+            "description": "Action items are included in meeting minutes. Meeting minutes must be enabled; turning them off also turns this option off."
+          }
         }
       },
       "router": {

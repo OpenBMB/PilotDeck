@@ -16,6 +16,7 @@ export function mapInitialTabToMenuKey(
     customEnv: "advanced",
     alwaysOn: "agentResident",
     cron: "agentSchedule",
+    transSpeech: "agentTranscription",
     advanced: "advanced",
   };
 

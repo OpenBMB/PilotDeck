@@ -1,6 +1,8 @@
 import { isRecord } from "../../model/config/schema.js";
 import type {
   PilotConfigDiagnostic,
+  PilotTransSpeechConfig,
+  PilotTransSpeechEnabledConfig,
   PilotToolsConfig,
   PilotWebSearchConfig,
   PilotWebSearchCustomAuth,
@@ -41,9 +43,10 @@ export function parseToolsConfig(
   }
 
   const webSearch = parseWebSearch(rawTools.webSearch, diagnostics);
+  const transSpeech = parseTransSpeech(rawTools.transSpeech, diagnostics);
 
   for (const key of Object.keys(rawTools)) {
-    if (key !== "webSearch") {
+    if (key !== "webSearch" && key !== "transSpeech") {
       diagnostics.push({
         code: "TOOLS_UNKNOWN_FIELD",
         severity: "warning",
@@ -54,10 +57,164 @@ export function parseToolsConfig(
     }
   }
 
-  if (!webSearch) {
+  if (!webSearch && !transSpeech) {
     return undefined;
   }
-  return { webSearch };
+  return {
+    ...(webSearch ? { webSearch } : {}),
+    ...(transSpeech ? { transSpeech } : {}),
+  };
+}
+
+function parseTransSpeech(
+  raw: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+): PilotTransSpeechConfig | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "TOOLS_TRANS_SPEECH_INVALID",
+      severity: "fatal",
+      message: "tools.transSpeech must be an object.",
+      path: "tools.transSpeech",
+      recoverable: false,
+    });
+    return undefined;
+  }
+
+  const enabled = parseRequiredBoolean(raw.enabled, "tools.transSpeech.enabled", "TOOLS_TRANS_SPEECH_ENABLED_INVALID", diagnostics);
+  if (enabled === false) {
+    return { enabled: false };
+  }
+
+  const baseUrl = parseRequiredTransSpeechUrl(raw.baseUrl, "tools.transSpeech.baseUrl", "TOOLS_TRANS_SPEECH_BASE_URL_INVALID", diagnostics);
+  const language = parseRequiredString(raw.language, "tools.transSpeech.language", "TOOLS_TRANS_SPEECH_LANGUAGE_INVALID", diagnostics);
+  const asrProfile = parseRequiredString(raw.asrProfile, "tools.transSpeech.asrProfile", "TOOLS_TRANS_SPEECH_ASR_PROFILE_INVALID", diagnostics);
+  const diarize = parseRequiredBoolean(raw.diarize, "tools.transSpeech.diarize", "TOOLS_TRANS_SPEECH_DIARIZE_INVALID", diagnostics);
+  const timeoutMs = parseRequiredPositiveInteger(raw.timeoutMs, "tools.transSpeech.timeoutMs", "TOOLS_TRANS_SPEECH_TIMEOUT_INVALID", diagnostics);
+  const maxConcurrentTasks = parseRequiredPositiveInteger(raw.maxConcurrentTasks, "tools.transSpeech.maxConcurrentTasks", "TOOLS_TRANS_SPEECH_CONCURRENCY_INVALID", diagnostics);
+  const generate = parseTransSpeechGenerate(raw.generate, diagnostics);
+
+  const known = new Set([
+    "enabled",
+    "baseUrl",
+    "language",
+    "asrProfile",
+    "diarize",
+    "timeoutMs",
+    "maxConcurrentTasks",
+    "generate",
+  ]);
+  for (const key of Object.keys(raw)) {
+    if (!known.has(key)) {
+      diagnostics.push({
+        code: "TOOLS_TRANS_SPEECH_UNKNOWN_FIELD",
+        severity: "warning",
+        message: `Unknown tools.transSpeech field ${key}.`,
+        path: `tools.transSpeech.${key}`,
+        recoverable: true,
+      });
+    }
+  }
+
+  if (enabled === undefined || baseUrl === undefined || language === undefined || asrProfile === undefined
+    || diarize === undefined || timeoutMs === undefined || maxConcurrentTasks === undefined || !generate) {
+    return undefined;
+  }
+  return { enabled, baseUrl, language, asrProfile, diarize, timeoutMs, maxConcurrentTasks, generate };
+}
+
+function parseTransSpeechGenerate(
+  raw: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+): PilotTransSpeechEnabledConfig["generate"] | undefined {
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "TOOLS_TRANS_SPEECH_GENERATE_INVALID",
+      severity: "fatal",
+      message: "tools.transSpeech.generate must be an object.",
+      path: "tools.transSpeech.generate",
+      recoverable: false,
+    });
+    return undefined;
+  }
+  const polish = parseRequiredBoolean(raw.polish, "tools.transSpeech.generate.polish", "TOOLS_TRANS_SPEECH_GENERATE_POLISH_INVALID", diagnostics);
+  const minutes = parseRequiredBoolean(raw.minutes, "tools.transSpeech.generate.minutes", "TOOLS_TRANS_SPEECH_GENERATE_MINUTES_INVALID", diagnostics);
+  const actions = parseRequiredBoolean(raw.actions, "tools.transSpeech.generate.actions", "TOOLS_TRANS_SPEECH_GENERATE_ACTIONS_INVALID", diagnostics);
+  for (const key of Object.keys(raw)) {
+    if (key !== "polish" && key !== "minutes" && key !== "actions") {
+      diagnostics.push({
+        code: "TOOLS_TRANS_SPEECH_GENERATE_UNKNOWN_FIELD",
+        severity: "warning",
+        message: `Unknown tools.transSpeech.generate field ${key}.`,
+        path: `tools.transSpeech.generate.${key}`,
+        recoverable: true,
+      });
+    }
+  }
+  if (polish === undefined || minutes === undefined || actions === undefined) return undefined;
+  return { polish, minutes, actions };
+}
+
+function parseRequiredBoolean(
+  raw: unknown,
+  path: string,
+  code: string,
+  diagnostics: PilotConfigDiagnostic[],
+): boolean | undefined {
+  if (typeof raw === "boolean") return raw;
+  diagnostics.push({ code, severity: "fatal", message: `${path} must be a boolean.`, path, recoverable: false });
+  return undefined;
+}
+
+function parseRequiredPositiveInteger(
+  raw: unknown,
+  path: string,
+  code: string,
+  diagnostics: PilotConfigDiagnostic[],
+): number | undefined {
+  if (typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0) return raw;
+  diagnostics.push({ code, severity: "fatal", message: `${path} must be a positive integer.`, path, recoverable: false });
+  return undefined;
+}
+
+function parseRequiredString(
+  raw: unknown,
+  path: string,
+  code: string,
+  diagnostics: PilotConfigDiagnostic[],
+): string | undefined {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  diagnostics.push({ code, severity: "fatal", message: `${path} must be a non-empty string.`, path, recoverable: false });
+  return undefined;
+}
+
+function parseRequiredTransSpeechUrl(
+  raw: unknown,
+  path: string,
+  code: string,
+  diagnostics: PilotConfigDiagnostic[],
+): string | undefined {
+  const value = parseRequiredString(raw, path, code, diagnostics);
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" || parsed.port !== "8090" || !isAllowedTransSpeechHost(parsed.hostname)
+      || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      throw new Error("unsupported Trans-Speech address");
+    }
+    return `http://${parsed.host}`;
+  } catch {
+    diagnostics.push({ code, severity: "fatal", message: `${path} must be an approved private HTTP service address on port 8090.`, path, recoverable: false });
+    return undefined;
+  }
+}
+
+function isAllowedTransSpeechHost(hostname: string): boolean {
+  if (hostname === "trans-speech") return true;
+  const parts = hostname.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 || parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31 || parts[0] === 192 && parts[1] === 168;
 }
 
 function parseWebSearch(

@@ -177,6 +177,12 @@ export {
   type WebSearchOutput,
 } from "./builtin/webSearch.js";
 export {
+  createTransSpeechTool,
+  type CreateTransSpeechToolOptions,
+  type TransSpeechToolInput,
+  type TransSpeechToolOutput,
+} from "./builtin/transSpeech.js";
+export {
   buildMcpToolWireName,
   createMcpTool,
   type CreateMcpToolOptions,

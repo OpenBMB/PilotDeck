@@ -8,6 +8,7 @@ export type SettingsMenuKey =
   | 'agentResident'
   | 'agentSearch'
   | 'agentSchedule'
+  | 'agentTranscription'
   | 'integrations'
   | 'extensions'
   | 'mcpServers'

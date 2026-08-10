@@ -79,6 +79,36 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
 });
 
 describe('validatePilotDeckConfig gateway validation', () => {
+    it('accepts a complete Trans-Speech configuration from Settings', () => {
+        const validation = validatePilotDeckConfig({
+            tools: {
+                transSpeech: {
+                    enabled: true,
+                    baseUrl: 'http://172.16.21.9:8090',
+                    language: 'zh',
+                    asrProfile: 'sensevoice',
+                    diarize: true,
+                    timeoutMs: 330000,
+                    maxConcurrentTasks: 1,
+                    generate: { polish: true, minutes: true, actions: false },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+    });
+
+    it('rejects an incomplete enabled Trans-Speech configuration before saving', () => {
+        const validation = validatePilotDeckConfig({
+            tools: { transSpeech: { enabled: true } },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'tools.transSpeech.baseUrl: tools.transSpeech.baseUrl must be a non-empty string.',
+        );
+    });
+
     it('migrates the legacy interactive spreadsheet mode to built-in preview', () => {
         const validation = validatePilotDeckConfig({
             webui: {

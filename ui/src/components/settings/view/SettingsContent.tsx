@@ -9,6 +9,7 @@ import AgentMemorySections from "./agentMemory";
 import AgentResidentSections from "./agentResident";
 import AgentRouteSections from "./agentRoute";
 import AgentScheduleSections from "./agentSchedule";
+import AgentTranscriptionSections from "./agentTranscription";
 import AgentSearchSections from "./agentSearch";
 import AdvancedSections from "./advanced";
 import McpServersSection from "./extensions";
@@ -38,6 +39,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
   agentSchedule: "settingsPage.titles.agentSchedule",
+  agentTranscription: "settingsPage.titles.agentTranscription",
   integrations: "settingsPage.titles.integrations",
   extensions: "settingsPage.titles.extensions",
   mcpServers: "settingsPage.titles.mcpServers",
@@ -89,6 +91,8 @@ export default function SettingsContent({
           <AgentSearchSections title={title} />
         ) : selectedKey === "agentSchedule" ? (
           <AgentScheduleSections title={title} />
+        ) : selectedKey === "agentTranscription" ? (
+          <AgentTranscriptionSections title={title} />
         ) : selectedKey === "integrations" ? (
           <IntegrationsSections title={title} />
         ) : selectedKey === "mcpServers" ? (

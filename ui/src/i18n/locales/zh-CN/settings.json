@@ -67,6 +67,7 @@
       "agentResident": "常驻",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
+      "agentTranscription": "录音转写",
       "integrations": "外部集成",
       "extensions": "扩展",
       "mcpServers": "MCP 服务器",
@@ -85,6 +86,7 @@
       "agentResident": "智能体 / 常驻",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
+      "agentTranscription": "智能体 / 录音转写",
       "integrations": "外部集成",
       "extensions": "扩展",
       "mcpServers": "扩展 / MCP 服务器",
@@ -122,6 +124,7 @@
       "agentResident": "配置文件当前不是有效 YAML，暂时无法加载智能体常驻表单。",
       "agentSearch": "配置文件当前不是有效 YAML，暂时无法加载智能体搜索表单。",
       "agentSchedule": "配置文件当前不是有效 YAML，暂时无法加载智能体定时任务表单。",
+      "agentTranscription": "配置文件当前不是有效 YAML，暂时无法加载智能体录音转写表单。",
       "integrations": "配置文件当前不是有效 YAML，暂时无法加载网关配置表单。",
       "officePreview": "配置文件当前不是有效 YAML，暂时无法加载 Office 预览表单。",
       "modelPool": "配置文件当前不是有效 YAML，暂时无法加载模型池表单。"
@@ -1077,6 +1080,52 @@
           "needsKey": "请先填写 API Key。",
           "success": "连接正常：{{count}} 条结果，{{latency}}ms。",
           "failedPrefix": "连接失败：{{error}}"
+        }
+      },
+      "transSpeech": {
+        "title": "录音转写",
+        "description": "配置上传音频后使用的 Trans-Speech 服务。保存后会重新加载配置；新任务使用最新设置。",
+        "enabled": {
+          "label": "启用录音转写",
+          "description": "开启后，智能体可处理聊天中上传的 WAV、MP3、M4A 和 FLAC 文件。"
+        },
+        "baseUrl": {
+          "label": "服务地址",
+          "description": "PilotDeck 容器可访问的 Trans-Speech 内网 HTTP 地址，端口必须为 8090。"
+        },
+        "language": {
+          "label": "默认语言",
+          "description": "传给转写服务的语言代码，例如 zh。"
+        },
+        "asrProfile": {
+          "label": "ASR Profile",
+          "description": "转写服务使用的语音识别模型配置，例如 sensevoice。"
+        },
+        "diarize": {
+          "label": "说话人分离",
+          "description": "开启后，尽可能区分不同说话人并写入逐字稿。"
+        },
+        "timeoutMs": {
+          "label": "单次请求超时（毫秒）",
+          "description": "每次健康检查、转写或整理请求可等待的最长时间，必须大于 0。"
+        },
+        "maxConcurrentTasks": {
+          "label": "每工作区最大并发任务数",
+          "description": "同一工作区同时处理录音的上限，必须大于 0。"
+        },
+        "generate": {
+          "polish": {
+            "label": "默认生成逐字整理稿",
+            "description": "转写成功后生成便于阅读的机器整理初稿。"
+          },
+          "minutes": {
+            "label": "默认生成会议纪要",
+            "description": "转写成功后生成会议纪要初稿，仍需人工审核。"
+          },
+          "actions": {
+            "label": "默认生成待办事项",
+            "description": "待办事项写入会议纪要。需先开启“默认生成会议纪要”；关闭纪要时会自动关闭此项。"
+          }
         }
       },
       "router": {

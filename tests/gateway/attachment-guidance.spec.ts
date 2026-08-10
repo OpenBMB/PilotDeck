@@ -75,6 +75,33 @@ test("registered Office attachments are still described as not directly inspecta
   }
 });
 
+test("registered audio attachments retain their exact path for the recording transcription skill", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const audioPath = join(root, "meeting.m4a");
+    await writeFile(audioPath, "audio bytes");
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "web",
+      message: "请整理这段录音",
+      attachments: [{ type: "file", path: audioPath, name: "meeting.m4a", metadata: { channelKey: "web" } }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /meeting\.m4a/);
+    assert.match(text, new RegExp(audioPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function createGateway(onInput: (input: AgentInput) => void): InProcessGateway {
   const router = new SessionRouter({
     idleSweepIntervalMs: 0,
