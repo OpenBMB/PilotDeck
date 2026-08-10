@@ -711,6 +711,7 @@ class ProjectRuntimeRegistry {
       onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
     });
     const webSearchConfig = snapshot.config.tools?.webSearch;
+    const transSpeechConfig = snapshot.config.tools?.transSpeech;
     const tools = createBuiltinRegistry({
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
@@ -732,6 +733,9 @@ class ProjectRuntimeRegistry {
               },
             }
           : {}),
+      ...(transSpeechConfig?.enabled ? {
+        transSpeech: { config: transSpeechConfig },
+      } : {}),
     });
     for (const tool of this._extraTools) {
       tools.register(tool);

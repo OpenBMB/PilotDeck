@@ -18,6 +18,7 @@ describe("mapInitialTabToMenuKey", () => {
     expect(mapInitialTabToMenuKey("config:gateway")).toBe("integrations");
     expect(mapInitialTabToMenuKey("config:alwaysOn")).toBe("agentResident");
     expect(mapInitialTabToMenuKey("config:cron")).toBe("agentSchedule");
+    expect(mapInitialTabToMenuKey("config:transSpeech")).toBe("agentTranscription");
     expect(mapInitialTabToMenuKey("config:customEnv")).toBe("advanced");
   });
 

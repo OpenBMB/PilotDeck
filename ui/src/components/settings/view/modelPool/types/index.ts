@@ -84,6 +84,20 @@ export type PilotDeckConfig = {
         publishedAtField?: string;
       };
     };
+    transSpeech?: {
+      enabled?: boolean;
+      baseUrl?: string;
+      language?: string;
+      asrProfile?: string;
+      diarize?: boolean;
+      timeoutMs?: number;
+      maxConcurrentTasks?: number;
+      generate?: {
+        polish?: boolean;
+        minutes?: boolean;
+        actions?: boolean;
+      };
+    };
   };
   gateway?: {
     enabled?: boolean;

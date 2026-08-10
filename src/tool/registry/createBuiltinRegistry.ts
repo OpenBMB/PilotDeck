@@ -23,6 +23,7 @@ import {
 import { createWebFetchTool, type CreateWebFetchToolOptions } from "../builtin/webFetch.js";
 import { createWebSearchTool, type CreateWebSearchToolOptions } from "../builtin/webSearch.js";
 import { createReadSkillTool, type ReadSkillDeps } from "../builtin/readSkill.js";
+import { createTransSpeechTool, type CreateTransSpeechToolOptions } from "../builtin/transSpeech.js";
 import { createWriteFileTool } from "../builtin/writeFile.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 
@@ -80,6 +81,8 @@ export type CreateBuiltinRegistryOptions = {
    * names for the "not found" diagnostic message.
    */
   readSkill?: ReadSkillDeps | false;
+  /** Configured local recording transcription service. Omitted when disabled. */
+  transSpeech?: CreateTransSpeechToolOptions | false;
   /**
    * `enter_plan_mode` / `exit_plan_mode` builtins. Registered by default —
    * these lightweight skeleton tools let the model request a permission-mode
@@ -133,6 +136,9 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   registry.register(createTodoWriteTool());
   if (options?.readSkill) {
     registry.register(createReadSkillTool(options.readSkill));
+  }
+  if (options?.transSpeech) {
+    registry.register(createTransSpeechTool(options.transSpeech));
   }
   return registry;
 }

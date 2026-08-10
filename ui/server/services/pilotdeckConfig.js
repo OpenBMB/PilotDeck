@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { parseGatewayConfig } from '../../../src/pilot/config/parseGatewayConfig.js';
+import { parseToolsConfig } from '../../../src/pilot/config/parseToolsConfig.js';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -274,6 +275,19 @@ function validateGatewayConfig(config, errors, warnings) {
   }
 }
 
+function validateToolsConfig(config, errors, warnings) {
+  const diagnostics = [];
+  parseToolsConfig(config.tools, diagnostics);
+  for (const diagnostic of diagnostics) {
+    const message = diagnostic.path ? `${diagnostic.path}: ${diagnostic.message}` : diagnostic.message;
+    if (diagnostic.severity === 'warning') {
+      warnings.push(message);
+    } else {
+      errors.push(message);
+    }
+  }
+}
+
 export function validatePilotDeckConfig(config) {
   const normalized = normalizePilotDeckConfig(config);
   const errors = [];
@@ -303,6 +317,7 @@ export function validatePilotDeckConfig(config) {
 
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
+  validateToolsConfig(normalized, errors, warnings);
 
   if (normalized.webui?.runtime?.contextWindow !== undefined) {
     warnings.push(

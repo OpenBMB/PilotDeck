@@ -23,6 +23,7 @@ const MENU_ITEMS: SettingsMenuItemI18n[] = [
       { key: "agentResident", labelKey: "settingsPage.menu.agentResident" },
       { key: "agentSearch", labelKey: "settingsPage.menu.agentSearch" },
       { key: "agentSchedule", labelKey: "settingsPage.menu.agentSchedule" },
+      { key: "agentTranscription", labelKey: "settingsPage.menu.agentTranscription" },
     ],
   },
   { key: "integrations", labelKey: "settingsPage.menu.integrations" },

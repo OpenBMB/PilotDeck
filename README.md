@@ -458,6 +458,26 @@ model:
         qwen3:0.6b: {}
 ```
 
+### Optional: Trans-Speech recording processing
+
+When the Trans-Speech service is reachable from the PilotDeck container, add the following to `~/.pilotdeck/pilotdeck.yaml`. `baseUrl` can use the Docker Compose service name (`http://trans-speech:8090`) or the approved private deployment address supplied by operations. This enables the `trans_speech` Tool for `.wav`, `.mp3`, `.m4a`, and `.flac` files uploaded in chat. It does not add a separate upload page.
+
+```yaml
+tools:
+  transSpeech:
+    enabled: true
+    baseUrl: http://trans-speech:8090
+    language: zh
+    asrProfile: sensevoice
+    diarize: true
+    timeoutMs: 330000
+    maxConcurrentTasks: 1
+    generate:
+      polish: true
+      minutes: true
+      actions: false
+```
+
 **3. Start the services**
 
 ```bash
