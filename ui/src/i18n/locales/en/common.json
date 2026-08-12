@@ -57,6 +57,10 @@
     "collapseAssistant": "Collapse assistant",
     "openAssistant": "Open assistant",
     "resizeAssistant": "Resize assistant",
+    "panelControls": "Workbench panels",
+    "smartChat": "Smart Chat",
+    "fileDirectory": "Files",
+    "resizeVerticalPanels": "Resize upper and lower panels",
     "conversations": {
       "switchConversation": "Switch conversation",
       "newConversation": "New conversation",

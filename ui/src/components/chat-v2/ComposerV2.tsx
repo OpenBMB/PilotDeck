@@ -10,7 +10,6 @@ import type {
   RefObject,
 } from 'react';
 import {
-  ArrowUp,
   AtSign,
   Brain,
   Bot,
@@ -593,7 +592,7 @@ export default function ComposerV2({
                         type="button"
                         onClick={() => setIsRunModeMenuOpen((open) => !open)}
                         className={cn(
-                          'pd-composer-icon-button inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
+                          'hover-brand-text hover-brand-surface pd-composer-icon-button inline-flex h-7 max-w-[108px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
                           'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
                         )}
                         title={t('input.runModes.change', {
@@ -694,7 +693,7 @@ export default function ComposerV2({
                     <button
                       type="button"
                       onClick={openImagePicker}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    className="hover-brand-text hover-brand-surface inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                     title={t('input.attachFiles', { defaultValue: 'Attach photos or files' }) as string}
                   >
                     <Paperclip className="h-4 w-4" strokeWidth={1.75} />
@@ -702,7 +701,7 @@ export default function ComposerV2({
                   <button
                     type="button"
                     onClick={onInsertMention}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    className="hover-brand-text hover-brand-surface inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                     title={t('input.mentionFile', { defaultValue: 'Mention a file' }) as string}
                   >
                     <AtSign className="h-4 w-4" strokeWidth={1.75} />
@@ -724,7 +723,7 @@ export default function ComposerV2({
                         setIsPermissionMenuOpen((open) => !open);
                       }}
                       className={cn(
-                        'pd-composer-icon-button inline-flex h-7 max-w-[132px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px]',
+                        'hover-brand-text hover-brand-surface pd-composer-icon-button inline-flex h-7 max-w-[132px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[190px]',
                         permissionSelectorDisabled
                           ? 'cursor-not-allowed text-neutral-400 opacity-45 dark:text-neutral-500'
                           : permissionMode === 'bypassPermissions'
@@ -848,7 +847,7 @@ export default function ComposerV2({
                         type="button"
                         onClick={() => setIsContextPopoverOpen((open) => !open)}
                         className={cn(
-                          'pd-composer-icon-button inline-flex h-7 min-w-[44px] items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition',
+                          'hover-brand-text hover-brand-surface pd-composer-icon-button inline-flex h-7 min-w-[44px] items-center justify-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition',
                           contextStatus.tone === 'red'
                             ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30'
                             : contextStatus.tone === 'amber'
@@ -924,7 +923,7 @@ export default function ComposerV2({
                         type="button"
                         onClick={() => setIsThinkingModeMenuOpen((open) => !open)}
                         className={cn(
-                          'pd-composer-icon-button inline-flex h-7 max-w-[116px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
+                          'hover-brand-text hover-brand-surface pd-composer-icon-button inline-flex h-7 max-w-[116px] items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition sm:max-w-[140px]',
                           effectiveThinkingMode === 'default'
                             ? 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
                             : 'text-purple-600 hover:bg-purple-50 dark:text-purple-300 dark:hover:bg-purple-950/30',
@@ -1012,9 +1011,10 @@ export default function ComposerV2({
                     <button
                       type="submit"
                       disabled={disabled}
+                      aria-label={sendTitle}
                       aria-busy={isSubmitPending || hasUploadingImages || isBusySendConfirmed}
                       className={cn(
-                        'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:opacity-90 disabled:opacity-40 dark:bg-neutral-50 dark:text-neutral-900',
+                        'home-send-button disabled:opacity-40',
                         isBusySendQueued && 'bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-400 dark:text-neutral-950 dark:hover:bg-amber-300',
                         isBusySendConfirmed && 'cursor-wait',
                         (isSubmitPending || hasUploadingImages) && 'cursor-wait',
@@ -1028,7 +1028,10 @@ export default function ComposerV2({
                       ) : isBusySendQueued ? (
                         <Check className="h-4 w-4" strokeWidth={2.25} />
                       ) : (
-                        <ArrowUp className="h-4 w-4" strokeWidth={2} />
+                        <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+                          <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+                          <path d="m21.854 2.147-10.94 10.939" />
+                        </svg>
                       )}
                     </button>
                   </div>

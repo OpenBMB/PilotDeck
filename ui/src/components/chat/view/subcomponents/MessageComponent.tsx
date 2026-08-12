@@ -280,8 +280,8 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
     >
       {message.type === 'user' ? (
         /* User message bubble on the right */
-        <div className="flex w-full items-end space-x-0 sm:w-auto sm:max-w-[85%] sm:space-x-3 md:max-w-md lg:max-w-lg xl:max-w-xl">
-          <div className="group flex-1 rounded-2xl rounded-br-md bg-blue-600 px-3 py-2 text-white shadow-sm sm:flex-initial sm:px-4">
+        <div className="flex w-full items-end justify-end space-x-0 sm:w-auto sm:space-x-3">
+          <div className="user-message-bubble group">
             {documentReferenceAttachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {documentReferenceAttachments.map((reference) => (
@@ -317,7 +317,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                 ))}
               </div>
             )}
-            <div className="whitespace-pre-wrap break-words text-sm">
+            <div className="whitespace-pre-wrap break-words">
               {messageContent}
             </div>
             {messageImages.length > 0 && (
@@ -339,7 +339,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                 ))}
               </div>
             )}
-            <div className="mt-1 flex items-center justify-end gap-1 text-xs text-blue-100">
+            <div className="mt-1 flex items-center justify-end gap-1 text-xs text-neutral-500">
               {shouldShowUserCopyControl && (
                 <MessageCopyControl content={userCopyContent} messageType="user" />
               )}

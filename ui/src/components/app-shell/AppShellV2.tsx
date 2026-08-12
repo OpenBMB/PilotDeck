@@ -596,6 +596,7 @@ export default function AppShellV2() {
       selectedSession={selectedSession}
       activeTab={activeTab}
       isLoading={isLoadingProjects}
+      isMobile={isMobile}
       processingSessions={processingSessions}
       unreadSessionIds={unreadSessionIds}
       onSelectProject={handleSelectProject}
@@ -614,9 +615,13 @@ export default function AppShellV2() {
   );
 
   return (
-    <div className="ui-v2 fixed inset-0 flex flex-col bg-white font-sans text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="app-root ui-v2 fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
-      <div className="flex min-h-0 flex-1">
+      <div
+        className={`app-shell min-h-0 flex-1 ${
+          !isMobile && desktopSidebarOpen ? '' : 'sidebar-hidden'
+        }`}
+      >
       {!isMobile ? (
         desktopSidebarOpen ? sidebar : null
       ) : (
@@ -642,7 +647,7 @@ export default function AppShellV2() {
         </div>
       )}
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white">
         <MainAreaV2
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../types/app';
@@ -48,20 +48,25 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('SidebarV2 default section', () => {
-  it('starts on Projects even when an old General preference remains in storage', () => {
-    localStorage.setItem('sidebar-v2-active-section', 'general');
+describe('SidebarV2 layout', () => {
+  it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByRole('tab', { name: 'Projects' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByText('PILOTDECK')).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Quick actions' })).toBeTruthy();
+    expect(screen.getByText('New Chat')).toBeTruthy();
+    expect(screen.getByText('Skills')).toBeTruthy();
+    expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
+    expect(screen.getByText('Projects')).toBeTruthy();
+    expect(screen.getByText('Conversations')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
   });
 
-  it('still shows General when an explicit General project is selected', async () => {
+  it('keeps both projects and conversations visible when general is selected', () => {
     renderSidebar(general);
 
-    await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true');
-    });
+    expect(screen.getByText('Projects')).toBeTruthy();
+    expect(screen.getByText('Conversations')).toBeTruthy();
+    expect(screen.getByText('PilotDeck')).toBeTruthy();
   });
 });

@@ -1320,6 +1320,19 @@ function MessagesPaneV2({
               ) : null}
             </>
           ) : null}
+
+          {isAssistantWorking && liveProcessHeaderIndex > 0 ? (
+            <div
+              aria-hidden="true"
+              className="chat-response-reserved-space"
+              style={{
+                height: Math.min(
+                  520,
+                  Math.max(220, Math.round(scrollViewport.height * 0.52)),
+                ),
+              }}
+            />
+          ) : null}
         </div>
       )}
 

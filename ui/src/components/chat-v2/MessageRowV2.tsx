@@ -286,7 +286,7 @@ function MessageRowV2({
   const isUser = message.type === 'user';
   const isError = message.type === 'error';
 
-  // User: right-aligned grey bubble.
+  // User: right-aligned bubble.
   if (isUser) {
     const lightboxImages: LightboxImage[] = messageImages.map((image) => ({
       data: image.data,
@@ -310,7 +310,7 @@ function MessageRowV2({
             t={t}
           />
         ) : null}
-        <div className="min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
+        <div className="user-message-bubble min-w-0 overflow-hidden">
           {message.isStreaming && !formattedContent ? (
             <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
           ) : (
@@ -360,7 +360,7 @@ function MessageRowV2({
                 </div>
               ) : null}
               {formattedContent ? (
-                <Markdown className="prose prose-sm prose-neutral min-w-0 max-w-none break-words [overflow-wrap:anywhere] dark:prose-invert prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0" projectName={selectedProject?.name}
+                <Markdown className="prose prose-neutral min-w-0 max-w-none break-words [overflow-wrap:anywhere] dark:prose-invert prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0" projectName={selectedProject?.name}
           onFileOpen={onFileOpen}>{formattedContent}</Markdown>
               ) : null}
             </>
@@ -401,7 +401,7 @@ function MessageRowV2({
       return withProcessRows(
         <div className="min-w-0 text-[14px] leading-relaxed">
           <details className="group" open={(isThinkingStreaming ? thinkingDisplayText.length > 12 : false) || undefined}>
-            <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
+            <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
               {isThinkingStreaming
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
                 : <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />}
@@ -430,7 +430,7 @@ function MessageRowV2({
     return withProcessRows(
       <div className="min-w-0 text-[14px] leading-relaxed">
         <details className="group">
-          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+          <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
             <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
             <span>{t('thinking.completed', { defaultValue: 'Thought process' })}</span>
           </summary>
@@ -469,7 +469,7 @@ function MessageRowV2({
         />
       ) : null}
       {shouldRenderAssistantActions ? (
-        <div className="mt-1.5 flex justify-end gap-1">
+        <div className="message-actions mt-1.5">
           {canRenderAssistantForkButton ? (
             <ForkMessageButton
               carriedMessageCount={forkCarriedMessageCount}

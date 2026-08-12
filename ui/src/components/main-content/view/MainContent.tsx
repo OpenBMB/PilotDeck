@@ -4,11 +4,6 @@ import {
   BarChart3,
   Database,
   FileText,
-  FolderOpen,
-  MessageSquare,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Radio,
   Sparkles,
   type LucideIcon,
@@ -67,13 +62,13 @@ type TasksSettingsContextValue = {
 
 type MainContentToast = { kind: 'error' | 'info'; text: string } | null;
 
-const FILES_EXPLORER_DEFAULT_WIDTH = 300;
-const FILES_EXPLORER_MIN_WIDTH = 240;
-const FILES_EXPLORER_MAX_WIDTH = 420;
 const FILES_ASSISTANT_DEFAULT_WIDTH = 380;
 const FILES_ASSISTANT_MIN_WIDTH = 320;
 const FILES_ASSISTANT_MAX_WIDTH = 480;
 const FILES_ARTIFACT_MIN_WIDTH = 480;
+const FILES_PANEL_RAIL_WIDTH = 68;
+const FILES_PANEL_SPLITTER_HEIGHT = 7;
+const FILES_PANEL_SECTION_MIN_HEIGHT = 330;
 const FILES_NARROW_BREAKPOINT = 1040;
 const FILES_ASSISTANT_STORAGE_KEY = 'pilotdeck:files-assistant-width';
 const TOOL_PANEL_STORAGE_KEY = 'pilotdeck:dashboard-panel-width';
@@ -590,10 +585,15 @@ function SplitBody(props: SplitBodyProps) {
   const renderTasksAsTool = activeTab === 'tasks' && shouldShowTasksTab;
   const isFiles = activeTab === 'files';
   const filesSplitContainerRef = useRef<HTMLDivElement | null>(null);
-  const [filesExplorerWidth, setFilesExplorerWidth] = useState(FILES_EXPLORER_DEFAULT_WIDTH);
+  const filesSidePanelRef = useRef<HTMLDivElement | null>(null);
   const [filesAssistantWidth, setFilesAssistantWidth] = useState(readStoredFilesAssistantWidth);
-  const [filesResizeTarget, setFilesResizeTarget] = useState<'explorer' | 'assistant' | null>(null);
-  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const [filesResizeTarget, setFilesResizeTarget] = useState<'assistant' | null>(null);
+  const [filesPanelSplitRatio, setFilesPanelSplitRatio] = useState(0.5);
+  const [filesPanelVerticalResizing, setFilesPanelVerticalResizing] = useState(false);
+  const [filesPanelOrder, setFilesPanelOrder] = useState<'explorer-first' | 'assistant-first'>(
+    'explorer-first',
+  );
+  const [explorerCollapsed, setExplorerCollapsed] = useState(true);
   const [assistantCollapsed, setAssistantCollapsed] = useState(false);
   const [assistantOverlayOpen, setAssistantOverlayOpen] = useState(false);
   const [workbenchWidth, setWorkbenchWidth] = useState(0);
@@ -606,6 +606,13 @@ function SplitBody(props: SplitBodyProps) {
         Math.min(TOOL_PANEL_MAX_WIDTH, workbenchWidth * TOOL_PANEL_MAX_LAYOUT_RATIO),
       )
     : TOOL_PANEL_MAX_WIDTH;
+
+  useEffect(() => {
+    if (!isFiles) return;
+    setExplorerCollapsed(true);
+    setAssistantCollapsed(false);
+    setAssistantOverlayOpen(false);
+  }, [isFiles]);
 
   useEffect(() => {
     const container = filesSplitContainerRef.current;
@@ -643,16 +650,15 @@ function SplitBody(props: SplitBodyProps) {
   }, [filesAssistantWidth]);
 
   const clampFilesAssistantWidth = useCallback((width: number) => {
-    const explorerWidth = explorerCollapsed ? 44 : filesExplorerWidth;
     const availableWidth = workbenchWidth > 0
-      ? workbenchWidth - explorerWidth - FILES_ARTIFACT_MIN_WIDTH
+      ? workbenchWidth - FILES_PANEL_RAIL_WIDTH - FILES_ARTIFACT_MIN_WIDTH
       : FILES_ASSISTANT_MAX_WIDTH;
     const maxWidth = Math.max(
       FILES_ASSISTANT_MIN_WIDTH,
       Math.min(FILES_ASSISTANT_MAX_WIDTH, availableWidth),
     );
     return Math.min(Math.max(width, FILES_ASSISTANT_MIN_WIDTH), maxWidth);
-  }, [explorerCollapsed, filesExplorerWidth, workbenchWidth]);
+  }, [workbenchWidth]);
 
   const handleFilesAssistantResizeBy = useCallback((delta: number) => {
     setFilesAssistantWidth((width) => clampFilesAssistantWidth(width + delta));
@@ -663,7 +669,7 @@ function SplitBody(props: SplitBodyProps) {
   }, [clampFilesAssistantWidth]);
 
   const handleFilesResizeStart = useCallback((
-    target: 'explorer' | 'assistant',
+    target: 'assistant',
     event: React.MouseEvent<HTMLDivElement>,
   ) => {
     if (!isFiles) return;
@@ -679,20 +685,9 @@ function SplitBody(props: SplitBodyProps) {
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      if (filesResizeTarget === 'explorer') {
-        const available = rect.width - filesAssistantWidth - FILES_ARTIFACT_MIN_WIDTH;
-        const maxWidth = Math.max(
-          FILES_EXPLORER_MIN_WIDTH,
-          Math.min(FILES_EXPLORER_MAX_WIDTH, available),
-        );
-        setFilesExplorerWidth(Math.min(
-          Math.max(event.clientX - rect.left, FILES_EXPLORER_MIN_WIDTH),
-          maxWidth,
-        ));
-        return;
-      }
-
-      setFilesAssistantWidth(clampFilesAssistantWidth(rect.right - event.clientX));
+      setFilesAssistantWidth(clampFilesAssistantWidth(
+        rect.right - event.clientX - FILES_PANEL_RAIL_WIDTH,
+      ));
     };
 
     const handleMouseUp = () => {
@@ -710,7 +705,43 @@ function SplitBody(props: SplitBodyProps) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [clampFilesAssistantWidth, filesAssistantWidth, filesExplorerWidth, filesResizeTarget]);
+  }, [clampFilesAssistantWidth, filesResizeTarget]);
+
+  const clampFilesPanelSplitRatio = useCallback((ratio: number) => {
+    const panelHeight = filesSidePanelRef.current?.getBoundingClientRect().height ?? 0;
+    const availableHeight = Math.max(1, panelHeight - FILES_PANEL_SPLITTER_HEIGHT);
+    const minRatio = Math.min(0.5, FILES_PANEL_SECTION_MIN_HEIGHT / availableHeight);
+    const maxRatio = Math.max(0.5, 1 - minRatio);
+    return Math.min(Math.max(ratio, minRatio), maxRatio);
+  }, []);
+
+  useEffect(() => {
+    if (!filesPanelVerticalResizing) return undefined;
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      const panel = filesSidePanelRef.current;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const availableHeight = Math.max(1, rect.height - FILES_PANEL_SPLITTER_HEIGHT);
+      const pointerRatio = (event.clientY - rect.top) / availableHeight;
+      setFilesPanelSplitRatio(clampFilesPanelSplitRatio(
+        filesPanelOrder === 'explorer-first' ? pointerRatio : 1 - pointerRatio,
+      ));
+    };
+    const handleMouseUp = () => setFilesPanelVerticalResizing(false);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [clampFilesPanelSplitRatio, filesPanelOrder, filesPanelVerticalResizing]);
 
   const clampToolPanelWidth = useCallback((width: number) => (
     Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth)
@@ -794,18 +825,70 @@ function SplitBody(props: SplitBodyProps) {
 
   const showFullScreenTool = isFullScreenTool && (activeTab !== 'tasks' || shouldShowTasksTab);
   const showChat = !showFullScreenTool;
+  const explorerVisible = isFiles
+    && showChat
+    && !editorExpanded
+    && !isMobile
+    && !explorerCollapsed
+    && (!isNarrowWorkbench || assistantOverlayOpen);
   const assistantVisible = isFiles
     && showChat
     && !editorExpanded
     && !isMobile
     && !assistantCollapsed
     && (!isNarrowWorkbench || assistantOverlayOpen);
-  const assistantIsOverlay = assistantVisible && isNarrowWorkbench;
-  const showAssistantRail = isFiles
-    && showChat
-    && !editorExpanded
-    && !isMobile
-    && !assistantVisible;
+  const filesPanelVisible = explorerVisible || assistantVisible;
+  const assistantIsOverlay = filesPanelVisible && isNarrowWorkbench;
+
+  const toggleExplorer = () => {
+    if (isNarrowWorkbench && !assistantOverlayOpen && !explorerCollapsed) {
+      setAssistantOverlayOpen(true);
+      return;
+    }
+    setExplorerCollapsed((collapsed) => {
+      const next = !collapsed;
+      if (!next && isNarrowWorkbench) setAssistantOverlayOpen(true);
+      return next;
+    });
+  };
+
+  const toggleAssistant = () => {
+    if (isNarrowWorkbench && !assistantOverlayOpen && !assistantCollapsed) {
+      setAssistantOverlayOpen(true);
+      return;
+    }
+    setAssistantCollapsed((collapsed) => {
+      const next = !collapsed;
+      if (!next && isNarrowWorkbench) setAssistantOverlayOpen(true);
+      return next;
+    });
+  };
+
+  const handlePanelHeaderDragStart = (
+    event: React.DragEvent<HTMLElement>,
+    panel: 'explorer' | 'assistant',
+  ) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', panel);
+  };
+
+  const handlePanelHeaderDragOver = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  };
+
+  const handlePanelHeaderDrop = (
+    event: React.DragEvent<HTMLElement>,
+    target: 'explorer' | 'assistant',
+  ) => {
+    event.preventDefault();
+    const source = event.dataTransfer.getData('text/plain');
+    if ((source !== 'explorer' && source !== 'assistant') || source === target) return;
+    setFilesPanelOrder((order) => (
+      order === 'explorer-first' ? 'assistant-first' : 'explorer-first'
+    ));
+  };
+
   return (
     <div
       ref={filesSplitContainerRef}
@@ -820,52 +903,21 @@ function SplitBody(props: SplitBodyProps) {
         </div>
       )}
 
-      {/* Files workbench explorer. On mobile it yields to the opened artifact. */}
-      {isFiles && showChat && !editorExpanded && (!isMobile || !hasEditor) ? (
-        explorerCollapsed && !isMobile ? (
-          <div className="flex h-full w-11 flex-shrink-0 flex-col items-center border-r border-neutral-200 bg-neutral-50/60 py-2 dark:border-neutral-800 dark:bg-neutral-900/40">
-            <button
-              type="button"
-              onClick={() => setExplorerCollapsed(false)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-              title={t('filesWorkbench.openExplorer')}
-              aria-label={t('filesWorkbench.openExplorer')}
-            >
-              <PanelLeftOpen className="h-4 w-4" strokeWidth={1.8} />
-            </button>
-            <FolderOpen className="mt-3 h-4 w-4 text-neutral-400 dark:text-neutral-500" strokeWidth={1.7} />
-          </div>
-        ) : (
-          <>
-            <div
-              className="flex h-full min-w-0 flex-shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
-              style={isMobile ? { width: '100%' } : { width: filesExplorerWidth }}
-            >
-              <Suspense fallback={<TabSkeleton />}>
-                <FilesV2
-                  key={selectedProject?.name ?? ''}
-                  selectedProject={selectedProject}
-                  onFileOpen={handleFileOpen}
-                  activeFilePath={activeFilePath}
-                  onFileRename={onFileRename}
-                  onFileDelete={onFileDelete}
-                  onClose={isMobile ? () => setActiveTab('chat') : () => setExplorerCollapsed(true)}
-                  canAddToChat={!isReadOnlySession(selectedSession)}
-                />
-              </Suspense>
-            </div>
-            {!isMobile ? (
-              <div
-                onMouseDown={(event) => handleFilesResizeStart('explorer', event)}
-                className="group relative z-20 w-px flex-shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-neutral-400 dark:bg-neutral-800 dark:hover:bg-neutral-600"
-                title={t('filesWorkbench.resizeExplorer')}
-              >
-                <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
-                <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-neutral-600" />
-              </div>
-            ) : null}
-          </>
-        )
+      {/* Mobile keeps the existing full-width explorer flow. */}
+      {isFiles && showChat && !editorExpanded && isMobile && !hasEditor ? (
+        <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-neutral-950">
+          <Suspense fallback={<TabSkeleton />}>
+            <FilesV2
+              key={selectedProject?.name ?? ''}
+              selectedProject={selectedProject}
+              onFileOpen={handleFileOpen}
+              activeFilePath={activeFilePath}
+              onFileRename={onFileRename}
+              onFileDelete={onFileDelete}
+              canAddToChat={!isReadOnlySession(selectedSession)}
+            />
+          </Suspense>
+        </div>
       ) : null}
 
       {/* Artifact canvas — the visual center and primary surface in Files. */}
@@ -891,20 +943,131 @@ function SplitBody(props: SplitBodyProps) {
 
       {/* Agent surface stays mounted so streaming state survives tab switches. */}
       <div
+        ref={filesSidePanelRef}
         key="agent-surface"
         className={cn(
           'flex min-h-0 min-w-0 flex-col bg-white dark:bg-neutral-950',
           !showChat && 'invisible absolute h-0 w-0 overflow-hidden',
           showChat && !isFiles && 'flex-1',
-          assistantVisible && !assistantIsOverlay && 'flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800',
-          assistantIsOverlay && 'absolute inset-y-0 right-0 z-40 border-l border-neutral-200 shadow-2xl dark:border-neutral-800',
-          isFiles && !assistantVisible && 'invisible absolute h-0 w-0 overflow-hidden',
+          filesPanelVisible && !assistantIsOverlay && 'flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800',
+          assistantIsOverlay && 'absolute inset-y-0 right-[68px] z-40 border-l border-neutral-200 shadow-2xl dark:border-neutral-800',
+          isFiles && !filesPanelVisible && 'invisible absolute h-0 w-0 overflow-hidden',
         )}
-        style={assistantVisible ? { width: filesAssistantWidth } : undefined}
-        aria-hidden={!showChat || (isFiles && !assistantVisible)}
+        style={filesPanelVisible ? { width: filesAssistantWidth } : undefined}
+        aria-hidden={!showChat || (isFiles && !filesPanelVisible)}
       >
-        {isFiles ? (
-          <div className="relative z-50 flex h-12 flex-shrink-0 items-center gap-1 border-b border-neutral-200 px-2 dark:border-neutral-800">
+        {isFiles && explorerVisible ? (
+          <div
+            className={cn(
+              'flex min-h-0 flex-col overflow-hidden',
+              assistantVisible ? 'shrink-0' : 'flex-1',
+            )}
+            style={{
+              order: filesPanelOrder === 'explorer-first' ? 0 : 2,
+              ...(assistantVisible
+                ? {
+                  height: `calc(${filesPanelSplitRatio * 100}% - ${
+                    FILES_PANEL_SPLITTER_HEIGHT * filesPanelSplitRatio
+                  }px)`,
+                  minHeight: FILES_PANEL_SECTION_MIN_HEIGHT,
+                }
+                : {}),
+            }}
+          >
+            <Suspense fallback={<TabSkeleton />}>
+              <FilesV2
+                key={selectedProject?.name ?? ''}
+                selectedProject={selectedProject}
+                onFileOpen={handleFileOpen}
+                activeFilePath={activeFilePath}
+                onFileRename={onFileRename}
+                onFileDelete={onFileDelete}
+                canAddToChat={!isReadOnlySession(selectedSession)}
+                onHeaderDragStart={assistantVisible
+                  ? (event) => handlePanelHeaderDragStart(event, 'explorer')
+                  : undefined}
+                onHeaderDragOver={assistantVisible ? handlePanelHeaderDragOver : undefined}
+                onHeaderDrop={assistantVisible
+                  ? (event) => handlePanelHeaderDrop(event, 'explorer')
+                  : undefined}
+              />
+            </Suspense>
+          </div>
+        ) : null}
+
+        {isFiles && explorerVisible && assistantVisible ? (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('filesWorkbench.resizeVerticalPanels', {
+              defaultValue: 'Resize upper and lower panels',
+            })}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(filesPanelSplitRatio * 100)}
+            tabIndex={0}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setFilesPanelVerticalResizing(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
+                  ratio + (filesPanelOrder === 'explorer-first' ? -0.05 : 0.05),
+                ));
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
+                  ratio + (filesPanelOrder === 'explorer-first' ? 0.05 : -0.05),
+                ));
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                setFilesPanelSplitRatio(clampFilesPanelSplitRatio(0));
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                setFilesPanelSplitRatio(clampFilesPanelSplitRatio(1));
+              }
+            }}
+            className={cn(
+              'panel-splitter horizontal',
+              filesPanelVerticalResizing && 'active',
+            )}
+            style={{ order: 1 }}
+          >
+            <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
+              <circle cx="12" cy="9" r="1" />
+              <circle cx="19" cy="9" r="1" />
+              <circle cx="5" cy="9" r="1" />
+              <circle cx="12" cy="15" r="1" />
+              <circle cx="19" cy="15" r="1" />
+              <circle cx="5" cy="15" r="1" />
+            </svg>
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            'flex min-h-0 flex-col',
+            !isFiles && 'flex-1',
+            isFiles && assistantVisible && 'flex-1',
+            isFiles && explorerVisible && assistantVisible && 'min-h-[330px]',
+            isFiles && !assistantVisible && 'invisible absolute h-0 w-0 overflow-hidden',
+          )}
+          style={{ order: filesPanelOrder === 'explorer-first' ? 2 : 0 }}
+        >
+        {isFiles && assistantVisible ? (
+          <header
+            className="dock-panel-header chat"
+            draggable={explorerVisible}
+            onDragStart={explorerVisible
+              ? (event) => handlePanelHeaderDragStart(event, 'assistant')
+              : undefined}
+            onDragOver={explorerVisible ? handlePanelHeaderDragOver : undefined}
+            onDrop={explorerVisible
+              ? (event) => handlePanelHeaderDrop(event, 'assistant')
+              : undefined}
+          >
             {selectedProject ? (
               <ConversationSwitcher
                 project={selectedProject}
@@ -925,19 +1088,7 @@ function SplitBody(props: SplitBodyProps) {
                 })}
               />
             ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                if (isNarrowWorkbench) setAssistantOverlayOpen(false);
-                else setAssistantCollapsed(true);
-              }}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-              title={t('filesWorkbench.collapseAssistant')}
-              aria-label={t('filesWorkbench.collapseAssistant')}
-            >
-              <PanelRightClose className="h-4 w-4" strokeWidth={1.8} />
-            </button>
-          </div>
+          </header>
         ) : null}
         <ErrorBoundary showDetails>
           <ChatInterfaceV2
@@ -970,6 +1121,7 @@ function SplitBody(props: SplitBodyProps) {
             compact={isFiles}
           />
         </ErrorBoundary>
+        </div>
       </div>
 
       {dashboardPanelTab ? (
@@ -998,7 +1150,7 @@ function SplitBody(props: SplitBodyProps) {
         </ToolSidePanel>
       ) : null}
 
-      {assistantVisible && !assistantIsOverlay ? (
+      {filesPanelVisible && !assistantIsOverlay ? (
         <div
           onMouseDown={(event) => handleFilesResizeStart('assistant', event)}
           onKeyDown={(event) => {
@@ -1016,8 +1168,8 @@ function SplitBody(props: SplitBodyProps) {
               setFilesAssistantWidth(clampFilesAssistantWidth(FILES_ASSISTANT_MAX_WIDTH));
             }
           }}
-          className="group absolute inset-y-0 z-30 w-px cursor-col-resize bg-neutral-200 outline-none transition-colors hover:bg-neutral-400 focus:bg-blue-500 dark:bg-neutral-800 dark:hover:bg-neutral-600 dark:focus:bg-blue-400"
-          style={{ right: filesAssistantWidth }}
+          className={cn('files-panel-resizer', filesResizeTarget === 'assistant' && 'active')}
+          style={{ right: filesAssistantWidth + FILES_PANEL_RAIL_WIDTH }}
           title={t('filesWorkbench.resizeAssistant')}
           role="separator"
           aria-orientation="vertical"
@@ -1027,30 +1179,41 @@ function SplitBody(props: SplitBodyProps) {
           aria-valuenow={Math.round(filesAssistantWidth)}
           tabIndex={0}
         >
-          <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
-          <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-neutral-600" />
+          <span />
         </div>
       ) : null}
 
-      {showAssistantRail ? (
-        <div className="flex h-full w-11 flex-shrink-0 flex-col items-center border-l border-neutral-200 bg-neutral-50/60 py-2 dark:border-neutral-800 dark:bg-neutral-900/40">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+      {isFiles && showChat && !editorExpanded && !isMobile ? (
+        <nav
+          className="right-rail flex h-full w-[68px] flex-shrink-0 flex-col items-center gap-2 border-l border-neutral-200 bg-[#f7f5ff] px-1.5 py-3 dark:border-neutral-800"
+          aria-label={t('filesWorkbench.panelControls', { defaultValue: 'Workbench panels' })}
+        >
+          <button
+            type="button"
+            aria-label={t('filesWorkbench.smartChat', { defaultValue: 'Smart Chat' })}
+            aria-pressed={!assistantCollapsed}
+            onClick={toggleAssistant}
+            className={cn(!assistantCollapsed && 'active')}
           >
-            <button
-              type="button"
-              onClick={() => {
-                if (isNarrowWorkbench) setAssistantOverlayOpen(true);
-                else setAssistantCollapsed(false);
-              }}
-              title={t('filesWorkbench.openAssistant')}
-              aria-label={t('filesWorkbench.openAssistant')}
-            >
-              <PanelRightOpen className="h-4 w-4" strokeWidth={1.8} />
-            </button>
-          </div>
-          <MessageSquare className="mt-3 h-4 w-4 text-neutral-400 dark:text-neutral-500" strokeWidth={1.7} />
-        </div>
+            <svg aria-hidden="true" className="icon" fill="none" height="19" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="19">
+              <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
+            </svg>
+            <span>智能<br />对话</span>
+          </button>
+          <button
+            type="button"
+            aria-label={t('filesWorkbench.fileDirectory', { defaultValue: 'Files' })}
+            aria-pressed={!explorerCollapsed}
+            onClick={toggleExplorer}
+            className={cn(!explorerCollapsed && 'active')}
+          >
+            <svg aria-hidden="true" className="icon" fill="none" height="19" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="19">
+              <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+            </svg>
+            <span>文件<br />目录</span>
+          </button>
+        </nav>
       ) : null}
 
     </div>

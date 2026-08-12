@@ -19,12 +19,26 @@
     "tryDifferentSearch": "Try adjusting your search term",
     "runPilotDeckCli": "Run PilotDeck CLI in a project directory to get started",
     "collapseAll": "Collapse all projects",
-    "expandAll": "Expand all projects"
+    "expandAll": "Expand all projects",
+    "recent": "Recently opened"
   },
   "general": {
     "title": "General",
     "name": "General",
     "missing": "No general workspace found"
+  },
+  "conversations": {
+    "title": "Conversations",
+    "collapse": "Collapse conversations",
+    "expand": "Expand conversations"
+  },
+  "quickActions": {
+    "label": "Quick actions",
+    "newChat": "New Chat",
+    "newProject": "New Project",
+    "skills": "Skills",
+    "skillsCompact": "Skill Tools",
+    "scheduledTasks": "Scheduled Tasks"
   },
   "sectionToggle": {
     "label": "Sidebar section"
@@ -59,6 +73,7 @@
   "tooltips": {
     "viewEnvironments": "View Environments",
     "hideSidebar": "Hide sidebar",
+    "expandSidebar": "Expand project sidebar",
     "createProject": "Create new project",
     "refresh": "Refresh projects and sessions (Ctrl+R)",
     "renameProject": "Rename project (F2)",
