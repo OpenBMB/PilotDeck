@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildAnthropicRequest } from "../../../src/model/providers/anthropic/request.js";
+import { buildOpenAIResponsesRequest } from "../../../src/model/providers/openai-responses/request.js";
 import {
   buildOpenAIRequest,
 } from "../../../src/model/providers/openai/request.js";
@@ -35,15 +37,31 @@ test("video input is validated, routed, and serialized for compatible models", (
 
   const { provider, model } = validateModelRequest(request, config);
   const required = collectRequiredInputModalities(request.messages);
-  const body = buildOpenAIRequest(request, model, provider);
+  const openAIBody = buildOpenAIRequest(request, model, provider);
+  const responsesBody = buildOpenAIResponsesRequest(request, model, provider);
+  const anthropicBody = buildAnthropicRequest(request, model);
 
   assert.deepEqual(required, ["video"]);
   assert.equal(supportsRequiredModalities(model.multimodal, required), true);
-  assert.deepEqual(body.messages, [{
+  assert.deepEqual(openAIBody.messages, [{
     role: "user",
     content: [{
       type: "video_url",
       video_url: { url: "https://example.com/input.mp4" },
+    }],
+  }]);
+  assert.deepEqual(responsesBody.input, [{
+    role: "user",
+    content: [{
+      type: "input_video",
+      video_url: "https://example.com/input.mp4",
+    }],
+  }]);
+  assert.deepEqual(anthropicBody.messages, [{
+    role: "user",
+    content: [{
+      type: "video",
+      source: { type: "url", url: "https://example.com/input.mp4" },
     }],
   }]);
 });
