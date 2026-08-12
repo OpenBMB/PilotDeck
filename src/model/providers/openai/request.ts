@@ -324,6 +324,13 @@ function toOpenAIContent(blocks: CanonicalContentBlock[]): string | unknown[] {
         return block.source === "url"
           ? { type: "input_audio", audio_url: block.data }
           : { type: "input_audio", input_audio: { data: block.data, format: block.mimeType } };
+      case "video":
+        return {
+          type: "video_url",
+          video_url: {
+            url: block.source === "url" ? block.data : `data:${block.mimeType};base64,${block.data}`,
+          },
+        };
       case "pdf":
         return {
           type: "image_url",

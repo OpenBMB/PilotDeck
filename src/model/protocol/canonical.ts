@@ -51,6 +51,15 @@ export type CanonicalAudioBlock = {
   durationSeconds?: number;
 };
 
+export type CanonicalVideoBlock = {
+  type: "video";
+  source: "base64" | "url";
+  data: string;
+  mimeType: string;
+  bytes?: number;
+  durationSeconds?: number;
+};
+
 export type CanonicalToolCall = {
   id: string;
   name: string;
@@ -114,7 +123,7 @@ export type CanonicalMediaReferenceBlock = {
   preview: string;
   hasMore: boolean;
   mimeType: string;
-  mediaType: "image" | "pdf" | "audio";
+  mediaType: "image" | "pdf" | "audio" | "video";
   pages?: number;
   detail?: "auto" | "low" | "high";
   reason?: string;
@@ -128,6 +137,7 @@ export type CanonicalContentBlock =
   | CanonicalImageBlock
   | CanonicalPdfBlock
   | CanonicalAudioBlock
+  | CanonicalVideoBlock
   | CanonicalToolCallBlock
   | CanonicalToolResultBlock
   | CanonicalToolResultReferenceBlock
