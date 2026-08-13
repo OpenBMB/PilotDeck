@@ -219,16 +219,25 @@ async function callGateway(method, params) {
 
 router.post('/list', async (req, res) => {
   try {
-    const { projectPath } = req.body || {};
-    const generalCwd = isGeneralCwd(projectPath);
-    const effectiveProjectPath = generalCwd ? null : projectPath || null;
-    const data = await callGateway('skillsList', { projectKey: effectiveProjectPath });
+    const { projectPath, projectKey, query, scope, cursor, limit } = req.body || {};
+    const requestedProject = projectKey || projectPath;
+    const generalCwd = isGeneralCwd(requestedProject);
+    const effectiveProjectPath = generalCwd ? null : requestedProject || null;
+    const data = await callGateway('skillsList', {
+      projectKey: effectiveProjectPath,
+      query,
+      scope,
+      cursor,
+      limit,
+    });
     res.json({
       builtin: data.builtin,
       user: data.user,
       project: data.project,
       projectPath: data.projectPath,
       isGeneralCwd: generalCwd,
+      items: data.items,
+      nextCursor: data.nextCursor,
     });
   } catch (e) {
     sendGatewayError(res, e);

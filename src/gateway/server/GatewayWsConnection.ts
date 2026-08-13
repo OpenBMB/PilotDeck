@@ -3,6 +3,7 @@ import type { WsHelloFrame, WsRequestFrame } from "../protocol/frames.js";
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
 import { TextWebSocketConnection } from "./websocket.js";
 import { SkillManagerError, SkillValidationError } from "../../extension/skills/index.js";
+import { DialogGatewayError } from "../dialog/errors.js";
 
 export type GatewayWsConnectionOptions = {
   gateway: Gateway;
@@ -153,6 +154,21 @@ export class GatewayWsConnection {
         );
         return;
       }
+      if (error instanceof DialogGatewayError || hasStructuredErrorCode(error)) {
+        this.ws.sendText(
+          JSON.stringify({
+            type: "response",
+            id: frame.id,
+            ok: false,
+            error: {
+              code: error.code,
+              message: error instanceof Error ? error.message : String(error),
+              ...("details" in error && error.details !== undefined ? { details: error.details } : {}),
+            },
+          }),
+        );
+        return;
+      }
       this.ws.sendText(
         JSON.stringify({
           type: "response",
@@ -186,6 +202,18 @@ export class GatewayWsConnection {
         return Promise.resolve({ recorded: false });
       case "describe_server":
         return this.options.gateway.describeServer();
+      case "project_files_list":
+        return this.requireCapability("project_files_list", "projectFilesList", frame.params);
+      case "commands_list":
+        return this.requireCapability("commands_list", "commandsList", frame.params);
+      case "model_catalog_list":
+        return this.requireCapability("model_catalog_list", "modelCatalogList", frame.params);
+      case "session_model_get":
+        return this.requireCapability("session_model_get", "sessionModelGet", frame.params);
+      case "session_model_set":
+        return this.requireCapability("session_model_set", "sessionModelSet", frame.params);
+      case "session_model_clear":
+        return this.requireCapability("session_model_clear", "sessionModelClear", frame.params);
       case "active_turn_snapshot":
         if (this.options.gateway.getActiveTurnSnapshot) {
           return this.options.gateway.getActiveTurnSnapshot(frame.params as never);
@@ -272,6 +300,25 @@ export class GatewayWsConnection {
         throw new Error(`Unknown gateway method ${(frame as { method?: string }).method}.`);
     }
   }
+
+  private requireCapability(
+    capability: string,
+    method: "projectFilesList" | "commandsList" | "modelCatalogList" | "sessionModelGet" | "sessionModelSet" | "sessionModelClear",
+    params: unknown,
+  ): Promise<unknown> {
+    const handler = this.options.gateway[method] as ((input: never) => Promise<unknown>) | undefined;
+    if (!handler) {
+      return Promise.reject(Object.assign(new Error(`Gateway capability ${capability} is unavailable.`), {
+        code: "CAPABILITY_UNAVAILABLE",
+      }));
+    }
+    return handler.call(this.options.gateway, params as never);
+  }
+}
+
+function hasStructuredErrorCode(error: unknown): error is Error & { code: string; details?: unknown } {
+  return error instanceof Error
+    && typeof (error as Error & { code?: unknown }).code === "string";
 }
 
 /**

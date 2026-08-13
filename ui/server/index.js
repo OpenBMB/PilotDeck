@@ -81,6 +81,8 @@ import memoryRoutes, { MEMORY_DASHBOARD_DIR } from './routes/memory.js';
 import mcpUtilsRoutes from './routes/mcp-utils.js';
 import commandsRoutes from './routes/commands.js';
 import skillsRoutes from './routes/skills.js';
+import uploadsRoutes from './routes/uploads.js';
+import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
@@ -484,6 +486,49 @@ app.use('/api', validateApiKey);
 // Authentication routes (public)
 app.use('/api/auth', authRoutes);
 
+// Gateway-owned project file discovery. Keep this before the generic project
+// router so `/files` cannot be consumed as a project name.
+app.get('/api/projects/files', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const serverInfo = await gateway.describeServer();
+        if (!serverInfo.capabilities?.includes('project_files_list')) {
+            return res.status(501).json({
+                error: { code: 'CAPABILITY_UNAVAILABLE', message: 'project_files_list is unavailable.' },
+            });
+        }
+        const result = await gateway.projectFilesList({
+            projectKey: typeof req.query.projectKey === 'string' ? req.query.projectKey : '',
+            query: typeof req.query.query === 'string' ? req.query.query : undefined,
+            cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+            limit: req.query.limit === undefined ? undefined : Number(req.query.limit),
+            includeDirs: req.query.includeDirs === undefined
+                ? undefined
+                : String(req.query.includeDirs) !== 'false',
+        });
+        return res.json(result);
+    } catch (error) {
+        const code = typeof error?.code === 'string' ? error.code : 'gateway_request_failed';
+        const statuses = {
+            PROJECT_NOT_FOUND: 404,
+            PROJECT_PATH_FORBIDDEN: 403,
+            INVALID_CURSOR: 400,
+            INVALID_LIMIT: 400,
+            INVALID_QUERY: 400,
+            FILE_INDEX_LIMIT: 422,
+            CAPABILITY_UNAVAILABLE: 501,
+        };
+        return res.status(statuses[code] || 500).json({
+            error: {
+                code,
+                message: error instanceof Error ? error.message : String(error),
+                ...(error?.details ? { details: error.details } : {}),
+                ...(req.id ? { requestId: req.id } : {}),
+            },
+        });
+    }
+});
+
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
 
@@ -509,6 +554,8 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 // top-right Skills tab. Backed by bundled skills, ~/.pilotdeck/skills/, and
 // project-level .pilotdeck/skills/ via PilotDeck plugin runtime.
 app.use('/api/skills', authenticateToken, skillsRoutes);
+app.use('/api/uploads', authenticateToken, uploadsRoutes);
+app.use('/api/models', authenticateToken, modelsRoutes);
 
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
@@ -526,6 +573,10 @@ app.use('/api/user', authenticateToken, userRoutes);
 app.use('/api/plugins', authenticateToken, pluginsRoutes);
 
 // Unified session messages route (protected) — PilotDeck-only.
+const sessionModelHandlers = createSessionModelHandlers();
+app.get('/api/sessions/model', authenticateToken, sessionModelHandlers.get);
+app.put('/api/sessions/model', authenticateToken, sessionModelHandlers.set);
+app.delete('/api/sessions/model', authenticateToken, sessionModelHandlers.clear);
 app.use('/api/sessions', authenticateToken, messagesRoutes);
 
 // Agent API Routes (uses API key authentication)

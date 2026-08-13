@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent, AgentInput, AgentTurnResult } from "../../agent/index.js";
 import {
@@ -47,6 +47,16 @@ import type {
   WebReadSubagentMessagesResult,
   WebForkSessionInput,
   WebForkSessionResult,
+  ProjectFilesListInput,
+  ProjectFilesListResult,
+  CommandsListInput,
+  CommandsListResult,
+  ModelCatalogListInput,
+  ModelCatalogListResult,
+  SessionModelInput,
+  SessionModelSetInput,
+  SessionModelResult,
+  UploadedAttachmentRef,
 } from "../protocol/types.js";
 import type {
   CronCreateInput,
@@ -65,6 +75,7 @@ import type {
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
 import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
+import { getPilotDeckInstallCommand } from "../../mcp/runtime/projectMcpSpec.js";
 import { AttachmentResolver, type AttachmentRequest } from "../../context/attachments/AttachmentResolver.js";
 import type {
   SkillAddressInput,
@@ -87,12 +98,16 @@ import type {
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
+import { DialogGatewayError } from "../dialog/errors.js";
+import { listProjectFiles } from "../dialog/projectFiles.js";
 
 const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个新功能";
 const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
 const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 
 export type InProcessGatewayOptions = {
+  /** Absolute command used by the model to install bundled FunASR assets. */
+  funasrInstallCommand?: string;
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
@@ -111,6 +126,19 @@ export type InProcessGatewayOptions = {
    */
   listProjects?: () => Promise<WebListProjectsResult>;
   describeProject?: (input: WebDescribeProjectInput) => Promise<WebProjectSummary>;
+  commandsList?: (input: CommandsListInput) => Promise<CommandsListResult>;
+  modelCatalogList?: (input: ModelCatalogListInput) => Promise<ModelCatalogListResult>;
+  sessionModelGet?: (input: SessionModelInput) => Promise<SessionModelResult>;
+  sessionModelSet?: (input: SessionModelSetInput) => Promise<SessionModelResult>;
+  sessionModelClear?: (input: SessionModelInput) => Promise<void>;
+  resolveUploadedAttachments?: (input: {
+    projectKey: string;
+    uploads: UploadedAttachmentRef[];
+  }) => Promise<ChannelAttachment[]>;
+  resolveTurnModelSelection?: (input: GatewaySubmitTurnInput) => Promise<{
+    selection?: import("../protocol/types.js").ExplicitModelSelection;
+    source: "turn" | "session" | "router" | "default";
+  }>;
   /**
    * Pluggable config-reload handler wired by `createLocalGateway`.
    * When set, `reloadConfig()` delegates to this callback which owns
@@ -276,6 +304,16 @@ export class InProcessGateway implements Gateway {
   }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+    const invalidPermission = validateGatewayPermissionModes(input);
+    if (invalidPermission) {
+      yield {
+        type: "error",
+        code: "INVALID_PERMISSION_MODE",
+        message: invalidPermission,
+        recoverable: true,
+      };
+      return;
+    }
     const plannedInput = normalizePlanCommandInput(input);
     if (!plannedInput) {
       yield {
@@ -434,17 +472,43 @@ export class InProcessGateway implements Gateway {
         // Promote a text-only turn to blocks when the host channel attached
         // files/images. UI uploads come through this path; resolving them here
         // keeps attachment semantics in the gateway for every client.
-        const allowedReadFiles = await collectRegisteredAttachmentReadFiles(input.attachments);
+        const uploaded = input.uploadedAttachments?.length
+          ? await this.resolveUploadedAttachments(input)
+          : [];
+        const attachments = [...(input.attachments ?? []), ...uploaded];
+        const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
         const agentInput = await buildAgentInputWithAttachments(
           input.message,
-          input.attachments,
+          attachments,
           allowedReadFiles,
+          input.projectKey,
+          this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
         );
         const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
           role: "user" as const,
           content: [{ type: "text" as const, text: s.text }],
           metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
         }));
+        const modelSelection = this.options.resolveTurnModelSelection
+          ? await this.options.resolveTurnModelSelection(input)
+          : input.modelOverride
+            ? { selection: input.modelOverride, source: "turn" as const }
+            : { source: "default" as const };
+        let lastEmittedModel: string | undefined;
+        if (modelSelection.selection) {
+          const event: GatewayEvent = {
+            type: "model_selection_changed",
+            provider: modelSelection.selection.provider,
+            model: modelSelection.selection.model,
+            source: modelSelection.source,
+            reasoning: modelSelection.selection.reasoning,
+            temperature: modelSelection.selection.temperature,
+            runId,
+          };
+          this.recordActiveTurnEvent(input.sessionKey, event);
+          queue.enqueue(event);
+          lastEmittedModel = `${modelSelection.selection.provider}\0${modelSelection.selection.model}`;
+        }
         for await (const event of session.submit(
           agentInput,
           {
@@ -461,6 +525,19 @@ export class InProcessGateway implements Gateway {
               allow: [...sessionAllowRules, ...persistedRules.allow],
             },
             ...(syntheticMessages.length > 0 ? { syntheticMessages } : {}),
+            ...(modelSelection.selection ? {
+              modelOverride: {
+                provider: modelSelection.selection.provider,
+                model: modelSelection.selection.model,
+                temperature: modelSelection.selection.temperature,
+                ...(modelSelection.selection.reasoning !== undefined ? {
+                  thinking: {
+                    enabled: modelSelection.selection.reasoning > 0,
+                    mode: reasoningValueToMode(modelSelection.selection.reasoning),
+                  },
+                } : {}),
+              },
+            } : {}),
           },
         )) {
           if (this.turnCompletions.get(input.sessionKey) !== turnDone) {
@@ -475,6 +552,19 @@ export class InProcessGateway implements Gateway {
             executionKind: telemetryContext.executionKind,
             phase: telemetryContext.phase,
           });
+          if (event.type === "model_event" && event.event.type === "request_started"
+            && lastEmittedModel !== `${event.event.provider}\0${event.event.model}`) {
+            const selectionEvent: GatewayEvent = {
+              type: "model_selection_changed",
+              provider: event.event.provider,
+              model: event.event.model,
+              source: modelSelection.source,
+              runId,
+            };
+            this.recordActiveTurnEvent(input.sessionKey, selectionEvent);
+            queue.enqueue(selectionEvent);
+            lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
+          }
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
             if (gatewayEvent.type === "context_budget") {
               this.recordGatewayStatusMessage({
@@ -624,11 +714,62 @@ export class InProcessGateway implements Gateway {
   }
 
   async describeServer(): Promise<GatewayServerInfo> {
+    const capabilities = [
+      ...(this.options.listProjects ? ["project_files_list" as const] : []),
+      ...(this.options.commandsList ? ["commands_list" as const] : []),
+      ...(this.options.modelCatalogList ? ["model_catalog_list" as const] : []),
+      ...(this.options.sessionModelGet ? ["session_model_get" as const] : []),
+      ...(this.options.sessionModelSet ? ["session_model_set" as const] : []),
+      ...(this.options.sessionModelClear ? ["session_model_clear" as const] : []),
+    ] as GatewayServerInfo["capabilities"];
     return {
       mode: "in_process",
       sessionCount: this.router.sessionCount(),
       ...this.options.serverInfo,
+      capabilities,
     };
+  }
+
+  async projectFilesList(input: ProjectFilesListInput): Promise<ProjectFilesListResult> {
+    if (!this.options.listProjects) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "project_files_list is unavailable.");
+    const projects = await this.listProjects();
+    const requested = resolve(input.projectKey);
+    const registered = projects.projects.find((project) => resolve(project.projectKey) === requested);
+    if (!registered) {
+      throw new DialogGatewayError("PROJECT_NOT_FOUND", `Unknown projectKey: ${input.projectKey}`);
+    }
+    return listProjectFiles({ ...input, projectKey: registered.projectKey });
+  }
+
+  async commandsList(input: CommandsListInput): Promise<CommandsListResult> {
+    if (!this.options.commandsList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "commands_list is unavailable.");
+    return this.options.commandsList(input);
+  }
+
+  async modelCatalogList(input: ModelCatalogListInput): Promise<ModelCatalogListResult> {
+    if (!this.options.modelCatalogList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "model_catalog_list is unavailable.");
+    return this.options.modelCatalogList(input);
+  }
+
+  async sessionModelGet(input: SessionModelInput): Promise<SessionModelResult> {
+    if (!this.options.sessionModelGet) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_get is unavailable.");
+    return this.options.sessionModelGet(input);
+  }
+
+  async sessionModelSet(input: SessionModelSetInput): Promise<SessionModelResult> {
+    if (!this.options.sessionModelSet) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_set is unavailable.");
+    return this.options.sessionModelSet(input);
+  }
+
+  async sessionModelClear(input: SessionModelInput): Promise<void> {
+    if (!this.options.sessionModelClear) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_clear is unavailable.");
+    await this.options.sessionModelClear(input);
+  }
+
+  private async resolveUploadedAttachments(input: GatewaySubmitTurnInput): Promise<ChannelAttachment[]> {
+    if (!input.projectKey) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploaded attachments.");
+    if (!this.options.resolveUploadedAttachments) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Uploaded attachments are unavailable.");
+    return this.options.resolveUploadedAttachments({ projectKey: input.projectKey, uploads: input.uploadedAttachments ?? [] });
   }
 
   async getActiveTurnSnapshot(input: GatewayActiveTurnSnapshotInput): Promise<GatewayActiveTurnSnapshot> {
@@ -976,7 +1117,30 @@ export function normalizeGatewayModeForLegacyInput(value: unknown): GatewaySubmi
   if (value === "default" || value === "plan" || value === "bypassPermissions") {
     return value;
   }
-  return "default";
+  return undefined;
+}
+
+function validateGatewayPermissionModes(input: GatewaySubmitTurnInput): string | undefined {
+  const mode = (input as { mode?: unknown }).mode;
+  if (mode !== undefined && mode !== null && mode !== ""
+    && mode !== "default" && mode !== "plan" && mode !== "bypassPermissions") {
+    return `Invalid mode: ${String(mode)}.`;
+  }
+  const baseMode = (input as { basePermissionMode?: unknown }).basePermissionMode;
+  if (baseMode !== undefined && baseMode !== null && baseMode !== ""
+    && baseMode !== "default" && baseMode !== "bypassPermissions") {
+    return `Invalid basePermissionMode: ${String(baseMode)}.`;
+  }
+  return undefined;
+}
+
+function reasoningValueToMode(value: number): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" {
+  const modes = new Map<number, "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max">([
+    [0, "off"], [0.2, "minimal"], [0.4, "low"], [0.6, "medium"], [0.8, "high"], [0.9, "xhigh"], [1, "max"],
+  ]);
+  const mode = modes.get(value);
+  if (!mode) throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", `Unsupported reasoning value: ${value}`);
+  return mode;
 }
 
 export function normalizeGatewayRunMode(value: unknown): GatewaySubmitTurnInput["runMode"] | undefined {
@@ -1898,6 +2062,8 @@ async function buildAgentInputWithAttachments(
   message: string,
   attachments: ChannelAttachment[] | undefined,
   allowedReadFiles: string[],
+  projectRoot?: string,
+  funasrInstallCommand?: string,
 ): Promise<AgentInput> {
   const resolvedAttachments = await attachmentsToContentBlocks(attachments);
   const attachmentBlocks = resolvedAttachments.blocks;
@@ -1906,6 +2072,8 @@ async function buildAgentInputWithAttachments(
     new Set(allowedReadFiles),
     resolvedAttachments.directContentPaths,
     resolvedAttachments.hasDiagnostics,
+    projectRoot,
+    funasrInstallCommand,
   );
   if (attachmentBlocks.length === 0 && !pathNote) {
     return { type: "text", text: message };
@@ -1928,6 +2096,8 @@ function buildAttachmentPathNote(
   allowedReadFiles: Set<string>,
   directContentPaths: Set<string>,
   hasDiagnostics: boolean,
+  projectRoot?: string,
+  installCommand = "npm run install:asr",
 ): CanonicalContentBlock | undefined {
   if (!attachments || attachments.length === 0) return undefined;
   const seen = new Set<string>();
@@ -1946,8 +2116,8 @@ function buildAttachmentPathNote(
   }
 
   if (lines.length === 0) return undefined;
-  const guidance = hasDiagnostics
-    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles)
+  const guidance = hasDiagnostics || attachments.some(isAudioAttachment)
+    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot, installCommand)
     : "These are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.";
   return {
     type: "text",
@@ -1958,7 +2128,20 @@ function buildAttachmentPathNote(
 function attachmentDiagnosticsGuidance(
   attachments: ChannelAttachment[],
   allowedReadFiles: Set<string>,
+  projectRoot?: string,
+  installCommand = "npm run install:asr",
 ): string {
+  const audioAttachments = attachments.filter((attachment) => isAudioAttachment(attachment));
+  if (audioAttachments.length > 0) {
+    const audioPaths = audioAttachments
+      .map((attachment) => attachment.path && mapAudioPathForFunAsr(attachment.path, projectRoot))
+      .filter((path): path is string => Boolean(path));
+    const mappedHint = audioPaths.length > 0
+      ? ` Pass the registered project-local path${audioPaths.length === 1 ? ` ${audioPaths[0]}` : "s " + audioPaths.join(", ")} to transcribe_audio.`
+      : " Pass a project-local host path to transcribe_audio; paths outside this project are rejected.";
+    return `Audio attachments are not readable with read_file. When the user asks for transcription, subtitles, or audio analysis, use the funasr MCP server's mcp__funasr__transcribe_audio tool.${mappedHint} If that tool reports that its runtime is missing, run ${installCommand} and retry the tool in this session.`;
+  }
+
   const hasInspectableAttachment = attachments.some((attachment) => {
     if (!attachment.path) return false;
     if (!safeAllowedAttachmentPath(attachment.path, allowedReadFiles)) return false;
@@ -2042,6 +2225,12 @@ async function attachmentsToContentBlocks(
     }
 
     if (!att.path) continue;
+    if (isAudioAttachment(att)) {
+      // Keep audio as a registered path reference. The ASR Skill invokes the
+      // FunASR MCP tool on demand, so audio should not be sent through the
+      // text/image/PDF attachment resolver.
+      continue;
+    }
     if (att.type === "image" || att.mimeType?.startsWith("image/")) {
       resolverRequests.push({ type: "image", path: att.path, mimeType: att.mimeType });
       resolverRequestPaths.push(resolve(att.path));
@@ -2077,6 +2266,23 @@ async function attachmentsToContentBlocks(
   }
 
   return { blocks, directContentPaths, hasDiagnostics: diagnostics.length > 0 };
+}
+
+function isAudioAttachment(attachment: ChannelAttachment): boolean {
+  if (attachment.mimeType?.toLowerCase().startsWith("audio/")) return true;
+  const pathOrName = attachment.path || attachment.name || "";
+  return /\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/iu.test(pathOrName);
+}
+
+function mapAudioPathForFunAsr(audioPath: string, projectRoot?: string): string | undefined {
+  if (!projectRoot) return undefined;
+  const absoluteRoot = resolve(projectRoot);
+  const absolutePath = resolve(audioPath);
+  const relativePath = relative(absoluteRoot, absolutePath);
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    return undefined;
+  }
+  return absolutePath;
 }
 
 function sanitizeAttachmentName(name: string): string {

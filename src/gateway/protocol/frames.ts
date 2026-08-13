@@ -26,6 +26,12 @@ export type WsGatewayMethod =
   | "close_session"
   | "record_agent_status_message"
   | "describe_server"
+  | "project_files_list"
+  | "commands_list"
+  | "model_catalog_list"
+  | "session_model_get"
+  | "session_model_set"
+  | "session_model_clear"
   | "active_turn_snapshot"
   | "cron_create"
   | "cron_list"
@@ -73,7 +79,7 @@ export type WsResponseFrame =
       type: "response";
       id: string;
       ok: false;
-      error: { code: string; message: string };
+      error: { code: string; message: string; validation?: unknown; details?: unknown };
     };
 
 export type WsEventFrame = {

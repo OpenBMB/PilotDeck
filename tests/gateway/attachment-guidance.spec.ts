@@ -75,6 +75,45 @@ test("registered Office attachments are still described as not directly inspecta
   }
 });
 
+test("registered audio attachments advertise FunASR paths instead of read_file conversion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const audioPath = join(root, "meeting.wav");
+    await writeFile(audioPath, Buffer.from("RIFF"));
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "feishu",
+      projectKey: root,
+      message: "please transcribe this recording",
+      attachments: [{
+        type: "file",
+        path: audioPath,
+        name: "meeting.wav",
+        mimeType: "audio/wav",
+        metadata: { channelKey: "feishu" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /meeting\.wav/);
+    assert.match(text, /transcribe_audio/);
+    assert.match(text, new RegExp(audioPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(text, /retry the tool in this session/);
+    assert.match(text, /npm --prefix/);
+    assert.doesNotMatch(text, /not directly inspectable with read_file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function createGateway(onInput: (input: AgentInput) => void): InProcessGateway {
   const router = new SessionRouter({
     idleSweepIntervalMs: 0,

@@ -172,6 +172,30 @@ export class GatewayBrowserClient {
     );
   }
 
+  projectFilesList(input: import("./protocol.js").WebProjectFilesListInput) {
+    return this.request<import("./protocol.js").WebProjectFilesListResult>("project_files_list", input);
+  }
+
+  commandsList(input: import("./protocol.js").WebCommandsListInput) {
+    return this.request<import("./protocol.js").WebCommandsListResult>("commands_list", input);
+  }
+
+  modelCatalogList(input: import("./protocol.js").WebModelCatalogListInput) {
+    return this.request<import("./protocol.js").WebModelCatalogListResult>("model_catalog_list", input);
+  }
+
+  sessionModelGet(input: import("./protocol.js").WebSessionModelInput) {
+    return this.request<import("./protocol.js").WebSessionModelResult>("session_model_get", input);
+  }
+
+  sessionModelSet(input: import("./protocol.js").WebSessionModelInput & { selection: import("./protocol.js").WebSessionModelSelection }) {
+    return this.request<import("./protocol.js").WebSessionModelResult>("session_model_set", input);
+  }
+
+  sessionModelClear(input: import("./protocol.js").WebSessionModelInput) {
+    return this.request<{ ok: boolean }>("session_model_clear", input);
+  }
+
   getActiveTurnSnapshot(input: import("./protocol.js").WebActiveTurnSnapshotInput) {
     return this.request<import("./protocol.js").WebActiveTurnSnapshot>(
       "active_turn_snapshot",
@@ -322,7 +346,7 @@ export class GatewayBrowserClient {
         pending.resolve(frame.result);
       } else {
         pending.reject(
-          Object.assign(new Error(frame.error.message), { code: frame.error.code }),
+          Object.assign(new Error(frame.error.message), { code: frame.error.code, details: frame.error.details }),
         );
       }
       return;

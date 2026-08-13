@@ -1,6 +1,6 @@
 import { agentError, normalizeAgentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
-import type { AgentInput } from "../protocol/input.js";
+import type { AgentInput, AgentModelOverride } from "../protocol/input.js";
 import type { AgentRunMode } from "../protocol/input.js";
 import type { AgentTurnResult } from "../protocol/result.js";
 import type { AgentLoop, AgentLoopSeedState } from "../loop/AgentLoop.js";
@@ -33,6 +33,7 @@ export type TurnRunnerOptions = {
   abortSignal?: AbortSignal;
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
   syntheticMessages?: CanonicalMessage[];
+  modelOverride?: AgentModelOverride;
 };
 
 export type TurnRunnerResult = {
@@ -201,6 +202,7 @@ export class TurnRunner {
           allowPlanModeTools: options.allowPlanModeTools,
           canPrompt: options.canPrompt,
           permissionRules: options.permissionRules,
+          modelOverride: options.modelOverride,
           abortSignal: options.abortSignal,
           onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
           onAgentStatusMessage: async (status) => {

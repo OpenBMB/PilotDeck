@@ -422,7 +422,7 @@ function uiImagesToAttachments(images) {
     return out.length > 0 ? out : undefined;
 }
 
-function uiFilesToAttachments(files) {
+export function uiFilesToAttachments(files) {
     if (!Array.isArray(files) || files.length === 0) return undefined;
     const out = [];
     for (const file of files) {
@@ -436,6 +436,7 @@ function uiFilesToAttachments(files) {
             path: filePath,
             mimeType: typeof file.mimeType === 'string' ? file.mimeType : undefined,
             ...(typeof file.size === 'number' ? { bytes: file.size } : {}),
+            metadata: { channelKey: 'web' },
         });
     }
     return out.length > 0 ? out : undefined;
@@ -1192,7 +1193,8 @@ export async function runChatViaGateway(
             runMode,
             mode: resolvedMode,
             runId,
-            ...(options?.thinking ? { thinking: options.thinking } : {}),
+            ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
+            ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
             ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),

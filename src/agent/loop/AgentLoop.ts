@@ -124,6 +124,7 @@ export type AgentLoopInput = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
@@ -475,7 +476,15 @@ export class AgentLoop {
       // Split decide + execute so we can insert a post-routing compact pass
       // when the routed model's context window differs from the agent's
       // default model (the window used by the first tryAutoCompact above).
-      const decision = await this.dependencies.router.decide({
+      const decision = input.modelOverride ? {
+        provider: input.modelOverride.provider,
+        model: input.modelOverride.model,
+        scenarioType: "explicit" as const,
+        isSubagent: Boolean(this.config.isSubagent),
+        orchestrating: false,
+        resolvedFrom: "explicit" as const,
+        mutations: {},
+      } : await this.dependencies.router.decide({
         request,
         sessionId: input.sessionId,
         isMainAgent: !this.config.isSubagent,
@@ -1851,8 +1860,8 @@ export class AgentLoop {
     }
 
     return {
-      provider: this.config.provider,
-      model: this.config.model,
+      provider: input.modelOverride?.provider ?? this.config.provider,
+      model: input.modelOverride?.model ?? this.config.model,
       messages: this.config.permissionMode === "plan"
         ? appendPlanModeReminder(materialized.messages)
         : materialized.messages,
@@ -1860,8 +1869,8 @@ export class AgentLoop {
       tools: prepared.tools,
       toolChoice: this.config.toolChoice,
       maxOutputTokens: this.config.maxOutputTokens,
-      temperature: this.config.temperature,
-      thinking: this.config.thinking,
+      temperature: input.modelOverride?.temperature ?? this.config.temperature,
+      thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
       metadata: this.config.metadata,
       cacheBreakpoints: prepared.cacheBreakpoints,

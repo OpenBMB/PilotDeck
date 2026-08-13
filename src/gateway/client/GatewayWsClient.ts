@@ -18,11 +18,15 @@ export type GatewayWsNotificationHandler = (name: string, payload: unknown) => v
  */
 export class GatewayRequestError extends Error {
   public readonly validation?: unknown;
-  constructor(public readonly code: string, message: string, extra?: { validation?: unknown }) {
+  public readonly details?: unknown;
+  constructor(public readonly code: string, message: string, extra?: { validation?: unknown; details?: unknown }) {
     super(message);
     this.name = "GatewayRequestError";
     if (extra?.validation !== undefined) {
       this.validation = extra.validation;
+    }
+    if (extra?.details !== undefined) {
+      this.details = extra.details;
     }
   }
 }
@@ -158,12 +162,14 @@ export class GatewayWsClient {
         // payload (e.g. `validation` for SkillValidationError) so
         // hosts can route on a stable identifier instead of parsing
         // the message string.
-        const envelope = frame.error as { code?: string; message?: string; validation?: unknown };
+        const envelope = frame.error as { code?: string; message?: string; validation?: unknown; details?: unknown };
         pending.reject(
           new GatewayRequestError(
             envelope.code ?? "gateway_request_failed",
             envelope.message ?? "Gateway request failed.",
-            envelope.validation !== undefined ? { validation: envelope.validation } : undefined,
+            envelope.validation !== undefined || envelope.details !== undefined
+              ? { validation: envelope.validation, details: envelope.details }
+              : undefined,
           ),
         );
       }

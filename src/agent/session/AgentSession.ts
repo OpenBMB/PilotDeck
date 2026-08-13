@@ -85,6 +85,7 @@ export class AgentSession {
       canPrompt: submitOptions.canPrompt,
       permissionRules: submitOptions.permissionRules,
       syntheticMessages: submitOptions.syntheticMessages,
+      modelOverride: submitOptions.modelOverride,
       abortSignal: this.state.abortController.signal,
     });
 

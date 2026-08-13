@@ -6,7 +6,23 @@ import {
     getFallbackSessionActivity,
     isGatewayUnavailableError,
     isTerminalAlwaysOnTurnEvent,
+    uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+describe('web attachment conversion', () => {
+    it('marks uploaded files with the web channel key', () => {
+        expect(uiFilesToAttachments([{
+            name: 'meeting.wav',
+            path: '/tmp/meeting.wav',
+            mimeType: 'audio/wav',
+            size: 42,
+        }])).toEqual([expect.objectContaining({
+            type: 'file',
+            path: '/tmp/meeting.wav',
+            metadata: { channelKey: 'web' },
+        })]);
+    });
+});
 
 describe('session activity fallback', () => {
     it('reports unknown while preserving a locally known run id', () => {

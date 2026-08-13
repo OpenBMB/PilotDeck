@@ -3,6 +3,13 @@ import type { PermissionMode, PermissionRuleSet } from "../../permission/index.j
 
 export type AgentRunMode = "agent" | "plan" | "ask";
 
+export type AgentModelOverride = {
+  provider: string;
+  model: string;
+  temperature?: number;
+  thinking?: import("../../model/index.js").CanonicalThinkingConfig;
+};
+
 export type AgentInput =
   | { type: "text"; text: string; isMeta?: boolean }
   | { type: "blocks"; content: CanonicalContentBlock[]; isMeta?: boolean };
@@ -26,4 +33,5 @@ export type AgentSubmitOptions = {
    * visible to the model but filtered out of the Web UI display.
    */
   syntheticMessages?: import("../../model/index.js").CanonicalMessage[];
+  modelOverride?: AgentModelOverride;
 };

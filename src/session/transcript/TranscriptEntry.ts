@@ -111,6 +111,11 @@ export type SessionMetadataValue = {
   lastPrompt?: string;
   gitBranch?: string;
   mode?: "normal" | "coordinator";
+  /** Persisted dialog model preference. Null is an explicit clear tombstone. */
+  modelSelection?:
+    | { mode: "auto" }
+    | { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number }
+    | null;
   linkedPullRequest?: {
     number: number;
     url: string;

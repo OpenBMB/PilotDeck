@@ -93,6 +93,9 @@ export type GatewaySubmitTurnInput = {
   /** Override the agent session's working directory for this session. */
   workspaceCwd?: string;
   attachments?: ChannelAttachment[];
+  uploadedAttachments?: UploadedAttachmentRef[];
+  /** A one-turn model override. Persisted session preferences are managed separately. */
+  modelOverride?: ExplicitModelSelection;
   runMode?: AgentRunMode;
   mode?: GatewayMode;
   /** The user's actual permission preference before plan-mode override. */
@@ -140,6 +143,14 @@ type GatewayTurnScopedEventMetadata = {
 export type GatewayEvent = GatewayTurnScopedEventMetadata & (
   | { type: "turn_started"; runId: string }
   | { type: "model_request_started"; model?: string; provider?: string }
+  | {
+      type: "model_selection_changed";
+      provider: string;
+      model: string;
+      source: "turn" | "session" | "router" | "default";
+      reasoning?: number;
+      temperature?: number;
+    }
   | { type: "assistant_text_delta"; text: string }
   | { type: "assistant_attachment"; attachment: GatewayOutboundAttachment }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
@@ -328,6 +339,132 @@ export type GatewayServerInfo = {
   protocolVersion?: string;
   projectKey?: string;
   sessionCount?: number;
+  capabilities?: GatewayCapability[];
+};
+
+export type GatewayCapability =
+  | "project_files_list"
+  | "commands_list"
+  | "model_catalog_list"
+  | "session_model_get"
+  | "session_model_set"
+  | "session_model_clear";
+
+export type MatchRange = {
+  field: string;
+  start: number;
+  end: number;
+};
+
+export type ProjectFileEntry = {
+  id: string;
+  name: string;
+  relativePath: string;
+  kind: "file" | "directory";
+  size: number;
+  mtimeMs: number;
+  matches?: MatchRange[];
+};
+
+export type ProjectFilesListInput = {
+  projectKey: string;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  includeDirs?: boolean;
+};
+
+export type ProjectFilesListResult = {
+  items: ProjectFileEntry[];
+  nextCursor?: string;
+  projectKey: string;
+};
+
+export type CommandListItem = {
+  name: string;
+  description?: string;
+  namespace: string;
+  type: string;
+  argumentHint?: string;
+  path?: string;
+  relativePath?: string;
+  metadata?: Record<string, unknown>;
+  matches?: MatchRange[];
+};
+
+export type CommandsListInput = {
+  projectKey: string;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+export type CommandsListResult = {
+  pinned: CommandListItem[];
+  builtIn: CommandListItem[];
+  custom: CommandListItem[];
+  nextCursor?: string;
+};
+
+export type ModelNumericCapability = {
+  type: "range" | "enum";
+  min?: number;
+  max?: number;
+  step?: number;
+  values?: number[];
+  default?: number;
+};
+
+export type ModelCatalogItem = {
+  id: string;
+  provider: string;
+  model: string;
+  displayName: string;
+  available: boolean;
+  capabilities: {
+    reasoning?: ModelNumericCapability;
+    temperature?: ModelNumericCapability;
+  };
+};
+
+export type ModelCatalogListInput = {
+  projectKey: string;
+  query?: string;
+  provider?: string;
+  includeAuto?: boolean;
+};
+
+export type ModelCatalogListResult = {
+  items: ModelCatalogItem[];
+  router: { enabled: boolean; autoAvailable: boolean };
+};
+
+export type ExplicitModelSelection = {
+  mode: "model";
+  provider: string;
+  model: string;
+  reasoning?: number;
+  temperature?: number;
+};
+
+export type SessionModelSelection = { mode: "auto" } | ExplicitModelSelection;
+
+export type SessionModelInput = { sessionKey: string; projectKey: string };
+export type SessionModelSetInput = SessionModelInput & { selection: SessionModelSelection };
+export type SessionModelResult = SessionModelInput & {
+  saved?: SessionModelSelection;
+  effective: {
+    provider: string;
+    model: string;
+    source: "session" | "router" | "default";
+    reasoning?: number;
+    temperature?: number;
+  };
+};
+
+export type UploadedAttachmentRef = {
+  uploadId: string;
+  attachmentIds?: string[];
 };
 
 export type GatewayCronController = {
@@ -393,6 +530,12 @@ export interface Gateway {
   closeSession(input: { sessionKey: string; reason?: string }): Promise<void>;
   recordAgentStatusMessage?(input: GatewayRecordAgentStatusMessageInput): Promise<{ recorded: boolean }>;
   describeServer(): Promise<GatewayServerInfo>;
+  projectFilesList?(input: ProjectFilesListInput): Promise<ProjectFilesListResult>;
+  commandsList?(input: CommandsListInput): Promise<CommandsListResult>;
+  modelCatalogList?(input: ModelCatalogListInput): Promise<ModelCatalogListResult>;
+  sessionModelGet?(input: SessionModelInput): Promise<SessionModelResult>;
+  sessionModelSet?(input: SessionModelSetInput): Promise<SessionModelResult>;
+  sessionModelClear?(input: SessionModelInput): Promise<void>;
   getActiveTurnSnapshot?(input: GatewayActiveTurnSnapshotInput): Promise<GatewayActiveTurnSnapshot>;
   cronCreate(input: CronCreateInput): Promise<CronCreateResult>;
   cronList(input: CronListInput): Promise<CronListResult>;

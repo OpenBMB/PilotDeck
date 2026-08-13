@@ -9,6 +9,15 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  ProjectFilesListInput,
+  ProjectFilesListResult,
+  CommandsListInput,
+  CommandsListResult,
+  ModelCatalogListInput,
+  ModelCatalogListResult,
+  SessionModelInput,
+  SessionModelSetInput,
+  SessionModelResult,
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
@@ -98,6 +107,30 @@ export class RemoteGateway implements Gateway {
 
   async describeServer(): Promise<GatewayServerInfo> {
     return (await this.client.request("describe_server", {})) as GatewayServerInfo;
+  }
+
+  async projectFilesList(input: ProjectFilesListInput): Promise<ProjectFilesListResult> {
+    return (await this.client.request("project_files_list", input)) as ProjectFilesListResult;
+  }
+
+  async commandsList(input: CommandsListInput): Promise<CommandsListResult> {
+    return (await this.client.request("commands_list", input)) as CommandsListResult;
+  }
+
+  async modelCatalogList(input: ModelCatalogListInput): Promise<ModelCatalogListResult> {
+    return (await this.client.request("model_catalog_list", input)) as ModelCatalogListResult;
+  }
+
+  async sessionModelGet(input: SessionModelInput): Promise<SessionModelResult> {
+    return (await this.client.request("session_model_get", input)) as SessionModelResult;
+  }
+
+  async sessionModelSet(input: SessionModelSetInput): Promise<SessionModelResult> {
+    return (await this.client.request("session_model_set", input)) as SessionModelResult;
+  }
+
+  async sessionModelClear(input: SessionModelInput): Promise<void> {
+    await this.client.request("session_model_clear", input);
   }
 
   async getActiveTurnSnapshot(input: import("../protocol/types.js").GatewayActiveTurnSnapshotInput): Promise<import("../protocol/types.js").GatewayActiveTurnSnapshot> {
