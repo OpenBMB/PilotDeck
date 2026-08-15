@@ -48,6 +48,9 @@ export default defineConfig(({ mode }) => {
     server: {
       host,
       port: parseInt(env.VITE_PORT) || 5173,
+      hmr: {
+        path: '/__vite_hmr'
+      },
       proxy: {
         '/api': `http://${proxyHost}:${serverPort}`,
         '/memory-dashboard': `http://${proxyHost}:${serverPort}`,
