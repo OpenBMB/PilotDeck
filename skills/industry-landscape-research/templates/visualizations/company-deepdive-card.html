@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<!-- 单家公司深度卡 1 页骨架。结构对应 company.schema.json -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{COMPANY_NAME}} 深度卡</title>
+<style>
+  body { background:#0F1115; color:#E5E0D8; font-family:'Inter','Noto Sans SC',sans-serif; margin:0; padding:40px; }
+  .card { max-width: 1200px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #C9A87C; padding-bottom: 16px; }
+  .name { font-family: 'Playfair Display', serif; font-size: 40px; color: #E5E0D8; margin: 0; }
+  .tagline { color: #C9A87C; font-size: 14px; font-style: italic; margin-top: 8px; }
+  .meta { color: #8B8680; font-size: 12px; text-align: right; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 32px; margin-top: 32px; }
+  h3 { font-family: 'Playfair Display', serif; font-size: 16px; color: #C9A87C; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1px; }
+  .kv { font-size: 13px; line-height: 1.7; }
+  .kv strong { color: #8B8680; min-width: 100px; display: inline-block; }
+  .source { color: #4A90E2; font-size: 10px; }
+  .grade { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
+  .L1 { background: #1E3A1E; color: #6BE06B; }
+  .L2 { background: #2A2A1A; color: #C9A87C; }
+  .L3 { background: #3A2A1A; color: #E89060; }
+  .L4 { background: #3A1A1A; color: #E07070; }
+  ul { padding-left: 18px; }
+  li { font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
+  .thesis { background: #1A1C20; border-left: 3px solid #C9A87C; padding: 16px 20px; margin-top: 24px; font-style: italic; color: #E5E0D8; font-size: 14px; line-height: 1.6; }
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #2A2A2E; color: #8B8680; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="card">
+
+    <div class="header">
+      <div>
+        <h1 class="name">{{COMPANY_NAME}}</h1>
+        <div class="tagline">{{TAGLINE}}</div>
+      </div>
+      <div class="meta">
+        {{RACETRACK}} · {{GEO}} · Tier {{TIER}}<br>
+        创立 {{FOUNDED}} · 总部 {{HQ}}<br>
+        状态：{{STATUS}}
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <h3>核心数据</h3>
+        <div class="kv">
+          <strong>最新估值</strong> {{VALUATION}} <span class="grade L1">L1</span><br>
+          <strong>IPO 首日</strong> {{IPO_DAY1_MCAP}} <span class="grade L1">L1</span><br>
+          <strong>当前市值</strong> {{CURRENT_MCAP}} <span class="grade L1">L1</span><br>
+          <strong>ARR / 营收</strong> {{ARR}} <span class="grade L2">L2</span><br>
+          <strong>NRR / 留存</strong> {{NRR}} <span class="grade L3">L3</span><br>
+          <strong>CAC Payback</strong> {{CAC_PAYBACK}} <span class="grade L3">L3</span><br>
+          <strong>员工数</strong> {{EMPLOYEES}} <span class="grade L1">L1</span><br>
+          <strong>累计融资</strong> {{TOTAL_FUNDING}} <span class="grade L1">L1</span><br>
+        </div>
+
+        <h3 style="margin-top:24px;">产品矩阵</h3>
+        <ul>
+          <li>{{PRODUCT_1}}</li>
+          <li>{{PRODUCT_2}}</li>
+          <li>{{PRODUCT_3}}</li>
+        </ul>
+
+        <h3 style="margin-top:24px;">关键里程碑</h3>
+        <ul>
+          <li>{{MILESTONE_1}}</li>
+          <li>{{MILESTONE_2}}</li>
+          <li>{{MILESTONE_3}}</li>
+        </ul>
+      </div>
+
+      <div>
+        <h3>客户与生态</h3>
+        <ul>
+          <li>头部客户 1: {{TOP_CUSTOMER_1}}</li>
+          <li>头部客户 2: {{TOP_CUSTOMER_2}}</li>
+          <li>头部客户 3: {{TOP_CUSTOMER_3}}</li>
+        </ul>
+
+        <h3 style="margin-top:24px;">关键合作 / 集成</h3>
+        <ul>
+          <li>{{PARTNER_1}}</li>
+          <li>{{PARTNER_2}}</li>
+        </ul>
+
+        <h3 style="margin-top:24px;">7 Powers 评分</h3>
+        <div class="kv" style="font-size:11px;">
+          <strong>规模</strong> {{P_SCALE}}/5 ｜ <strong>网络</strong> {{P_NET}}/5<br>
+          <strong>反向定位</strong> {{P_COUNTER}}/5 ｜ <strong>切换成本</strong> {{P_SWITCH}}/5<br>
+          <strong>品牌</strong> {{P_BRAND}}/5 ｜ <strong>资源</strong> {{P_RES}}/5<br>
+          <strong>流程</strong> {{P_PROC}}/5
+        </div>
+      </div>
+
+      <div>
+        <h3>护城河 (Why winning)</h3>
+        <ul>
+          <li>{{MOAT_1}}</li>
+          <li>{{MOAT_2}}</li>
+        </ul>
+
+        <h3 style="margin-top:24px;">风险 (Why losing)</h3>
+        <ul>
+          <li>{{RISK_1}}</li>
+          <li>{{RISK_2}}</li>
+        </ul>
+
+        <h3 style="margin-top:24px;">12 月领先指标</h3>
+        <ul>
+          <li>{{LEADING_INDICATOR_1}}</li>
+          <li>{{LEADING_INDICATOR_2}}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="thesis">
+      Thesis：{{THESIS}}
+    </div>
+
+    <div class="footer">
+      来源：{{SOURCE_URLS}} · 抓取日期 {{AS_OF_DATE}} · 数据等级见各字段标注
+    </div>
+  </div>
+</body>
+</html>

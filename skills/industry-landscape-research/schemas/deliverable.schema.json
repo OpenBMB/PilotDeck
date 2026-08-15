@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "deliverable.schema.json",
+  "title": "Deliverable Manifest",
+  "description": "Index of all output artifacts for one research engagement.",
+  "type": "object",
+  "required": ["engagement_id", "deliverables", "sign_off"],
+  "properties": {
+    "engagement_id": {"type": "string"},
+    "racetracks": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "as_of_date": {"type": "string", "format": "date"},
+    "currency_snapshot": {
+      "type": "object",
+      "properties": {
+        "fx_date": {"type": "string", "format": "date"},
+        "usd_cny": {"type": "number"},
+        "hkd_cny": {"type": "number"},
+        "eur_cny": {"type": "number"}
+      }
+    },
+    "deliverables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "path", "status"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "executive-summary",
+              "landscape-overview",
+              "timeline",
+              "valuation-leaderboard",
+              "company-deep-card",
+              "stack-map",
+              "value-chain-journey",
+              "profit-pool",
+              "stakeholder-stance",
+              "porter-five-canvas",
+              "seven-powers-canvas",
+              "wardley-map",
+              "scurve-chart",
+              "tam-sam-som",
+              "unit-economics-table",
+              "scenario-forecast",
+              "house-view",
+              "pre-mortem",
+              "data-table",
+              "methodology-appendix",
+              "research-log",
+              "snapshot-aliases-fx"
+            ]
+          },
+          "path": {"type": "string"},
+          "format": {
+            "type": "string",
+            "enum": ["pptx", "xlsx", "csv", "jsonl", "md", "html", "svg", "pdf"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "in-review", "final", "blocked"]
+          },
+          "coverage_dimensions": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "owner": {"type": "string"}
+        }
+      }
+    },
+    "coverage_audit": {
+      "type": "object",
+      "description": "8-dimension audit (see workflows/04-coverage-audit.md).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "star_rating": {"type": "integer", "minimum": 1, "maximum": 5},
+          "gap_grade": {"type": "string", "enum": ["green", "yellow", "red"]},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "data_quality_stats": {
+      "type": "object",
+      "properties": {
+        "total_sources": {"type": "integer"},
+        "l1_l2_ratio_pct": {"type": "number"},
+        "company_coverage": {"type": "integer"},
+        "field_coverage_pct": {"type": "number"},
+        "cross_validated_pct": {"type": "number"}
+      }
+    },
+    "sign_off": {
+      "type": "object",
+      "required": ["charter_signed", "audit_passed"],
+      "properties": {
+        "charter_signed": {"type": "boolean"},
+        "charter_signed_date": {"type": "string", "format": "date"},
+        "audit_passed": {"type": "boolean"},
+        "audit_passed_date": {"type": "string", "format": "date"},
+        "devil_advocate_reviewed": {"type": "boolean"}
+      }
+    }
+  }
+}
