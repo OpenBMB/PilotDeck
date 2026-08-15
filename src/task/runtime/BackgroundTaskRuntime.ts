@@ -288,7 +288,7 @@ export class BackgroundTaskRuntime {
     if (!child) return;
     task.interrupted = true;
     try {
-      child.kill("SIGTERM");
+      killChildProcessGroup(child, "SIGTERM");
     } catch {
       // child already exited
     }
@@ -299,7 +299,7 @@ export class BackgroundTaskRuntime {
       new Promise<void>((resolve) => {
         timer = setTimeout(() => {
           try {
-            child.kill("SIGKILL");
+            killChildProcessGroup(child, "SIGKILL");
           } catch {
             // already exited between the timer firing and kill()
           }
@@ -323,6 +323,15 @@ export class BackgroundTaskRuntime {
   async killAll(): Promise<void> {
     const targets = [...this.entries.values()].filter((e) => e.task.status === "running");
     await Promise.all(targets.map((e) => this.stop(e.task.taskId)));
+  }
+
+  /** Kill all running tasks and release retained output buffers. */
+  async dispose(): Promise<void> {
+    await this.killAll();
+    for (const entry of this.entries.values()) {
+      entry.output.close();
+    }
+    this.entries.clear();
   }
 
   getOutput(taskId: string, offset: number, maxBytes?: number): PilotDeckTaskOutputSlice {
@@ -361,4 +370,12 @@ export class BackgroundTaskRuntime {
       // Completion notifications are best-effort and must never break task cleanup.
     }
   }
+}
+
+function killChildProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" && typeof child.pid === "number") {
+    process.kill(-child.pid, signal);
+    return;
+  }
+  child.kill(signal);
 }
