@@ -23,7 +23,12 @@ export const TasksSettingsProvider = ({ children }) => {
   const [tasksEnabled, setTasksEnabled] = useState(() => {
     // Load from localStorage on initialization
     const saved = localStorage.getItem('tasks-enabled');
-    return saved !== null ? JSON.parse(saved) : true; // Default to true
+    if (saved === null) return true; // Default to true
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return true;
+    }
   });
   
   const [isTaskMasterInstalled, setIsTaskMasterInstalled] = useState(null);
