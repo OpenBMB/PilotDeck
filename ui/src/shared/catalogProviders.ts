@@ -126,6 +126,21 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     ],
   },
   {
+    id: 'orcarouter',
+    displayName: 'OrcaRouter',
+    protocol: 'openai',
+    defaultUrl: 'https://api.orcarouter.ai/v1',
+    modelListUrl: 'https://api.orcarouter.ai/v1/models',
+    modelListRequiresApiKey: true,
+    models: [
+      { id: 'orcarouter/fusion', displayName: 'OrcaRouter Fusion', maxContextTokens: 200000 },
+      { id: 'orcarouter/auto', displayName: 'OrcaRouter Auto', maxContextTokens: 200000 },
+      { id: 'anthropic/claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', supportsImage: true, maxContextTokens: 200000 },
+      { id: 'deepseek/deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', maxContextTokens: 1048576 },
+      { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportsImage: true, maxContextTokens: 1048576 },
+    ],
+  },
+  {
     id: 'ollama',
     displayName: 'Ollama',
     protocol: 'openai',
