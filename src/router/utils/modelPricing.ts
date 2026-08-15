@@ -47,6 +47,9 @@ const DEFAULT_PRICING: Array<{ pattern: RegExp; input: number; output: number; c
   { pattern: /yi-/i, input: 0.30, output: 0.30 },
   // Moonshot / Kimi
   { pattern: /moonshot|kimi/i, input: 1.00, output: 2.00 },
+  // MiniMax
+  { pattern: /minimax.*m3/i, input: 0.60, output: 2.40, cacheRead: 0.12 },
+  { pattern: /minimax.*m2\.7/i, input: 0.30, output: 1.20, cacheRead: 0.06 },
   // Doubao / ByteDance
   { pattern: /doubao/i, input: 0.40, output: 0.80 },
 ];
