@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ──────────────────────────────────────────────────
-FROM node:22-bookworm AS builder
+FROM node:26-bookworm AS builder
 
 WORKDIR /build
 
@@ -41,7 +41,7 @@ RUN cd ui && npm run build
 
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 WORKDIR /app
 
