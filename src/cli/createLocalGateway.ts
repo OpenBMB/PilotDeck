@@ -91,6 +91,7 @@ import { createTelemetryCollector, type TelemetryClient } from "../telemetry/ind
 import { UploadStore } from "../gateway/dialog/UploadStore.js";
 import { DialogGatewayError } from "../gateway/dialog/errors.js";
 import { listModelCatalog, validateExplicitModelSelection, validateModelSelection } from "../gateway/dialog/modelCatalog.js";
+import { createDialogProjectRegistry } from "../gateway/dialog/projectRegistry.js";
 import type { SessionModelSelection } from "../gateway/protocol/types.js";
 import { listCommands } from "../gateway/dialog/commands.js";
 
@@ -287,23 +288,14 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       : undefined,
   });
   const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot });
-  const uploadStore = new UploadStore({
-    async listProjects() {
-      return (await listWebProjects({ pilotHome })).projects.map((project) => project.projectKey);
-    },
-    async resolveProject(projectKey) {
-      const projects = (await listWebProjects({ pilotHome })).projects;
-      const match = projects.find((project) => resolve(project.projectKey) === resolve(projectKey));
-      if (!match) throw new DialogGatewayError("PROJECT_NOT_FOUND", `Unknown projectKey: ${projectKey}`);
-      return match.projectKey;
-    },
+  const dialogProjects = createDialogProjectRegistry({
+    pilotHome,
+    listProjects: async () => (await listWebProjects({ pilotHome })).projects,
   });
-  const requireRegisteredProject = async (projectKey: string): Promise<string> => {
-    const projects = (await listWebProjects({ pilotHome })).projects;
-    const match = projects.find((project) => resolve(project.projectKey) === resolve(projectKey));
-    if (!match) throw new DialogGatewayError("PROJECT_NOT_FOUND", `Unknown projectKey: ${projectKey}`);
-    return match.projectKey;
-  };
+  const uploadStore = new UploadStore({
+    listProjects: dialogProjects.listProjectKeys,
+    resolveProject: dialogProjects.resolveProjectKey,
+  });
   const readSavedModel = async (projectKey: string, sessionKey: string): Promise<SessionModelSelection | undefined> => {
     if (!sessionKey?.trim()) throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey is required.");
     const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: sessionKey, now });
@@ -339,19 +331,19 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     cron: options.cron,
     skillManager,
     async commandsList(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       return listCommands({ ...input, projectKey }, pilotHome);
     },
     async modelCatalogList(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       return listModelCatalog({ ...input, projectKey }, env);
     },
     async sessionModelGet(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       return modelResult(projectKey, input.sessionKey, await readSavedModel(projectKey, input.sessionKey));
     },
     async sessionModelSet(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       if (router.hasActiveTurn(input.sessionKey)) throw new DialogGatewayError("SESSION_BUSY", "Cannot change the model during an active turn.");
       if (!input.selection || typeof input.selection !== "object") throw new DialogGatewayError("INVALID_MODEL_OVERRIDE", "selection is required.");
       validateModelSelection(projectKey, input.selection, env);
@@ -364,7 +356,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       return modelResult(projectKey, input.sessionKey, input.selection);
     },
     async sessionModelClear(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       if (!input.sessionKey?.trim()) throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey is required.");
       if (router.hasActiveTurn(input.sessionKey)) throw new DialogGatewayError("SESSION_BUSY", "Cannot clear the model during an active turn.");
       const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
@@ -375,7 +367,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       await router.close(input.sessionKey);
     },
     async resolveTurnModelSelection(input) {
-      const projectKey = await requireRegisteredProject(input.projectKey ?? fallbackProjectRoot);
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
       if (input.modelOverride) {
         validateExplicitModelSelection(projectKey, input.modelOverride, env);
         return { selection: input.modelOverride, source: "turn" as const };

@@ -860,8 +860,19 @@ export function buildRenderableMessageItems(
       const nextHost = segment.nextHostIndex == null
         ? null
         : itemsByIndex.get(segment.nextHostIndex);
+      const isTrailingCompactOnlySegment = Boolean(
+        previousHost
+        && !nextHost
+        && segment.messages.every((message) => message.isCompactBoundary),
+      );
 
-      if (previousHost) {
+      if (isTrailingCompactOnlySegment && previousHost) {
+        // A compact boundary is turn-scoped process metadata, never a new
+        // conversational reply. Reconnect/history races can leave a recovered
+        // boundary after the persisted final answer in the raw merged array;
+        // keep the completed-turn UI invariant by folding it before that host.
+        pushProcessAttachment(previousHost, 'before', attachment);
+      } else if (previousHost) {
         pushProcessAttachment(previousHost, 'after', attachment);
       } else if (nextHost) {
         pushProcessAttachment(nextHost, 'before', attachment);

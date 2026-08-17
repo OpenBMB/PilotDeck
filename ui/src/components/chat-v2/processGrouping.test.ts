@@ -336,6 +336,22 @@ describe('processGrouping', () => {
     expect(finalAssistant?.afterProcessAttachments).toHaveLength(0);
   });
 
+  it('folds a recovered trailing compact boundary before the completed final answer', () => {
+    const messages = [
+      user('u1'),
+      assistant('a-final', 'Workbook delivered.', 300),
+      compact('compact-recovered', 400),
+    ];
+
+    const items = buildRenderableMessageItems(messages);
+    const finalAssistant = items.find((item) => item.message.id === 'a-final');
+
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-final']);
+    expect(finalAssistant?.beforeProcessAttachments).toHaveLength(1);
+    expect(finalAssistant?.beforeProcessAttachments[0].processSummary.compactCount).toBe(1);
+    expect(finalAssistant?.afterProcessAttachments).toHaveLength(0);
+  });
+
   it('does not hide user-visible prompts, plan exits, permissions, or errors', () => {
     const permissionError = {
       content: 'Permission required',

@@ -177,6 +177,7 @@ describe('gatewayEventToFrames agent status errors', () => {
 
         expect(frames).toHaveLength(1);
         expect(frames[0]).toMatchObject({
+            id: 'compact_boundary:web:s_test:unknown-run:compact-reactive-1',
             kind: 'compact_boundary',
             compactionId: 'compact-reactive-1',
             trigger: 'reactive',
@@ -188,6 +189,26 @@ describe('gatewayEventToFrames agent status errors', () => {
                 source: 'compact',
             },
         });
+    });
+
+    it('gives replayed compact boundaries a stable id', () => {
+        const event = {
+            type: 'agent_status',
+            event: 'compact_completed',
+            runId: 'run-1',
+            detail: {
+                compactionId: 'compact-1',
+                trigger: 'auto',
+                preTokens: 100,
+                postTokens: 40,
+            },
+        };
+
+        const first = gatewayEventToFrames(event, 'web:s_test', 'pilotdeck')[0];
+        const replayed = gatewayEventToFrames(event, 'web:s_test', 'pilotdeck')[0];
+
+        expect(first.id).toBe('compact_boundary:web:s_test:run-1:compact-1');
+        expect(replayed.id).toBe(first.id);
     });
 
     it('preserves the parent run on subagent activity frames', () => {

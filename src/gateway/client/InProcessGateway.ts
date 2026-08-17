@@ -390,6 +390,7 @@ export class InProcessGateway implements Gateway {
       });
       const statusEvent: GatewayEvent = {
         type: "agent_status",
+        runId,
         event: status.event,
         detail: status.detail,
       };

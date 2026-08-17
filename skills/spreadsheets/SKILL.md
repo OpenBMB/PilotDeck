@@ -23,7 +23,8 @@ Adapt the depth of inspection and verification to the task. Use judgment instead
 Resolve the CLI entry point once:
 
 ```bash
-SHEET="$SPREADSHEET_SKILL_ROOT/scripts/spreadsheet.sh"
+SKILL_ROOT={{SKILL_ROOT_SHELL}}
+SHEET="$SKILL_ROOT/scripts/spreadsheet.sh"
 WORKSPACE="${PILOTDECK_WORK_DIR:?PILOTDECK_WORK_DIR is required}/spreadsheets"
 mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/review"
 ```

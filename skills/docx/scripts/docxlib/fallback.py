@@ -5,24 +5,18 @@ import hashlib
 import os
 import subprocess
 import sys
-import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .common import (
     DocxSkillError,
-    active_content_parts,
-    assert_internal_candidate_path,
     assert_safe_mutation,
     assert_valid_docx,
-    digital_signature_parts,
-    effective_document_protection_details,
     pack_docx,
     prepare_json_artifact_path,
     prepare_output_docx_path,
     require_docx_path,
-    temporary_sibling,
     unpacked_copy,
     write_json,
 )
@@ -158,7 +152,7 @@ def fallback_patch(
     input_path: str | Path,
     script_path: str | Path,
     output_path: str | Path,
-    manifest_path: str | Path,
+    report_path: str | Path,
     *,
     allow_parts: list[str] | None = None,
     reason: str,
@@ -168,10 +162,10 @@ def fallback_patch(
     source = require_docx_path(input_path)
     output = require_docx_path(output_path, must_exist=False)
     script = Path(script_path).expanduser().resolve()
-    manifest_output = prepare_json_artifact_path(
-        manifest_path,
+    report_output = prepare_json_artifact_path(
+        report_path,
         protected_paths=(source, output, script),
-        purpose="Fallback manifest",
+        purpose="Fallback report",
     )
     if source == output:
         raise DocxSkillError("Fallback input and output must be different paths")
@@ -207,8 +201,7 @@ def fallback_patch(
         )
         disallowed = sorted(path for path in changed if not _matches(path, patterns))
         forbidden = sorted(path for path in changed if _matches_forbidden_part(path))
-        manifest: dict[str, Any] = {
-            "protocol_version": 1,
+        report: dict[str, Any] = {
             "mode": "targeted-ooxml-patch",
             "created_at": _utc_now(),
             "status": "ok",
@@ -228,31 +221,31 @@ def fallback_patch(
             "script_stderr": process.stderr[-4000:],
         }
         if process.returncode != 0:
-            manifest["status"] = "error"
-            write_json(manifest_output, manifest)
+            report["status"] = "error"
+            write_json(report_output, report)
             raise DocxSkillError(
-                "Fallback script failed; see the manifest for stderr",
+                "Fallback script failed; see the report for stderr",
                 code="fallback-script-failed",
-                details={"manifest": str(manifest_output)},
+                details={"report": str(report_output)},
             )
         if not changed:
-            manifest["status"] = "partial"
-            write_json(manifest_output, manifest)
+            report["status"] = "partial"
+            write_json(report_output, report)
             raise DocxSkillError(
                 "Fallback script did not change any package part",
                 status="partial",
                 code="fallback-no-change",
-                details={"manifest": str(manifest_output)},
+                details={"report": str(report_output)},
             )
         if forbidden or disallowed:
-            manifest["status"] = "blocked"
-            write_json(manifest_output, manifest)
+            report["status"] = "blocked"
+            write_json(report_output, report)
             raise DocxSkillError(
                 "Fallback changed forbidden or non-allowlisted package parts",
                 status="blocked",
                 code="fallback-scope-violation",
                 details={
-                    "manifest": str(manifest_output),
+                    "report": str(report_output),
                     "disallowed_parts": disallowed,
                     "forbidden_parts": forbidden,
                 },
@@ -260,145 +253,23 @@ def fallback_patch(
         try:
             pack_docx(package, output)
         except DocxSkillError as exc:
-            manifest["status"] = "error"
-            manifest["validation_error"] = str(exc)
-            write_json(manifest_output, manifest)
+            report["status"] = "error"
+            report["validation_error"] = str(exc)
+            write_json(report_output, report)
             raise DocxSkillError(
-                "Fallback produced an invalid DOCX package; see the manifest",
+                "Fallback produced an invalid DOCX package; see the report",
                 code="fallback-validation-failed",
-                details={"manifest": str(manifest_output)},
+                details={"report": str(report_output)},
             ) from exc
-        manifest["output_sha256"] = _sha256(output)
-        manifest["validation"] = assert_valid_docx(output)
-        write_json(manifest_output, manifest)
+        report["output_sha256"] = _sha256(output)
+        report["validation"] = assert_valid_docx(output)
+        write_json(report_output, report)
         return {
             "status": "ok",
-            "mode": manifest["mode"],
+            "mode": report["mode"],
             "input": str(source),
             "out": str(output),
-            "manifest": str(manifest_output),
+            "report": str(report_output),
             "changed_parts": changed,
-            "validation": manifest["validation"],
+            "validation": report["validation"],
         }
-
-
-def fallback_create(
-    script_path: str | Path,
-    output_path: str | Path,
-    manifest_path: str | Path,
-    *,
-    reason: str,
-    timeout_seconds: int = 120,
-) -> dict[str, Any]:
-    output = assert_internal_candidate_path(
-        require_docx_path(output_path, must_exist=False)
-    )
-    script = Path(script_path).expanduser().resolve()
-    manifest_output = prepare_json_artifact_path(
-        manifest_path,
-        protected_paths=(output, script),
-        purpose="Fallback manifest",
-    )
-    if not script.is_file():
-        raise DocxSkillError(f"Fallback script not found: {script}")
-    _require_scoped_script(script)
-    if not reason.strip():
-        raise DocxSkillError("--reason is required for a controlled fallback")
-    if output.exists():
-        raise DocxSkillError(
-            "Full-create fallback only creates a new document and will not overwrite an existing file",
-            status="blocked",
-            code="fallback-output-exists",
-            details={"out": str(output)},
-        )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    environment = _fallback_environment("full-create")
-    with temporary_sibling(output, suffix=".tmp.docx") as temporary:
-        temporary.unlink()
-        process = _run_script(
-            script,
-            ["--out", str(temporary)],
-            timeout_seconds=timeout_seconds,
-            environment=environment,
-        )
-        manifest: dict[str, Any] = {
-            "protocol_version": 1,
-            "mode": "full-create",
-            "created_at": _utc_now(),
-            "status": "ok",
-            "reason": reason.strip(),
-            "out": str(output),
-            "script": str(script),
-            "script_sha256": _sha256(script),
-            "script_cwd": str(script.parent),
-            "environment_policy": "safe-allowlist",
-            "script_exit_code": process.returncode,
-            "script_stdout": process.stdout[-4000:],
-            "script_stderr": process.stderr[-4000:],
-        }
-        if process.returncode != 0 or not temporary.is_file():
-            manifest["status"] = "error"
-            write_json(manifest_output, manifest)
-            raise DocxSkillError(
-                "Full-create fallback did not produce a DOCX; see the manifest",
-                code="fallback-script-failed",
-                details={"manifest": str(manifest_output)},
-            )
-        if zipfile.is_zipfile(temporary):
-            signature_parts = digital_signature_parts(temporary)
-            if signature_parts:
-                manifest["status"] = "blocked"
-                manifest["signature_parts"] = signature_parts
-                write_json(manifest_output, manifest)
-                raise DocxSkillError(
-                    "Full-create fallback produced a package containing digital "
-                    "signature parts that cannot be verified",
-                    status="blocked",
-                    code="fallback-signature-blocked",
-                    details={"manifest": str(manifest_output)},
-                )
-            active_content = active_content_parts(temporary)
-            if active_content:
-                manifest["status"] = "blocked"
-                manifest["active_content_parts"] = active_content
-                write_json(manifest_output, manifest)
-                raise DocxSkillError(
-                    "Full-create fallback produced a package containing active content",
-                    status="blocked",
-                    code="fallback-active-content-blocked",
-                    details={"manifest": str(manifest_output)},
-                )
-        try:
-            validation = assert_valid_docx(temporary)
-        except DocxSkillError as exc:
-            manifest["status"] = "error"
-            manifest["validation_error"] = str(exc)
-            write_json(manifest_output, manifest)
-            raise DocxSkillError(
-                "Full-create fallback produced an invalid DOCX; see the manifest",
-                code="fallback-validation-failed",
-                details={"manifest": str(manifest_output)},
-            ) from exc
-        protection = effective_document_protection_details(temporary)
-        if protection:
-            manifest["status"] = "blocked"
-            manifest["document_protection"] = protection
-            write_json(manifest_output, manifest)
-            raise DocxSkillError(
-                "Full-create fallback produced a protected document whose "
-                "credentials and enforcement cannot be verified",
-                status="blocked",
-                code="fallback-protection-blocked",
-                details={"manifest": str(manifest_output)},
-            )
-        os.replace(temporary, output)
-    manifest["output_sha256"] = _sha256(output)
-    manifest["validation"] = validation
-    write_json(manifest_output, manifest)
-    return {
-        "status": "ok",
-        "mode": manifest["mode"],
-        "out": str(output),
-        "manifest": str(manifest_output),
-        "validation": validation,
-    }

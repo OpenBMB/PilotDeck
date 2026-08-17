@@ -10,6 +10,7 @@ import type {
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import {
   getUnpersistedRealtimeTurnMessages,
+  isRealtimeMessageRepresentedOnServer,
   type SessionStore,
   type NormalizedMessage,
 } from '../../../stores/useSessionStore';
@@ -187,6 +188,21 @@ function hasRenderedVolatileReplayBlock(
   return messages.some((message) => isRenderedVolatileBlockCandidate(block, message));
 }
 
+function hasRenderedNonVolatileReplayMessage(
+  message: LatestChatMessage,
+  state: ActiveTurnReplayState,
+): boolean {
+  const renderedMessages = [
+    ...(state.realtimeMessages || []),
+    ...(state.serverMessages || []),
+  ];
+  if (renderedMessages.length === 0) return false;
+  return isRealtimeMessageRepresentedOnServer(
+    message as NormalizedMessage,
+    renderedMessages,
+  );
+}
+
 export function getActiveTurnReplayMessagesToApply(
   activeTurnMessages: LatestChatMessage[],
   state: ActiveTurnReplayState = {},
@@ -237,7 +253,9 @@ export function getActiveTurnReplayMessagesToApply(
     }
 
     flushBlock();
-    output.push(message);
+    if (!hasRenderedNonVolatileReplayMessage(message, state)) {
+      output.push(message);
+    }
   }
 
   flushBlock();

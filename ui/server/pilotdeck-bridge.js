@@ -741,11 +741,18 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 ];
             }
             if (event.event === 'compact_completed') {
+                const compactionId = typeof detail.compactionId === 'string' && detail.compactionId.trim()
+                    ? detail.compactionId.trim()
+                    : null;
+                const compactBoundaryId = compactionId
+                    ? `compact_boundary:${sessionId}:${event.runId || 'unknown-run'}:${compactionId}`
+                    : undefined;
                 return [
                     createNormalizedMessage({
                         ...base,
+                        ...(compactBoundaryId ? { id: compactBoundaryId } : {}),
                         kind: 'compact_boundary',
-                        compactionId: detail.compactionId,
+                        compactionId: compactionId || undefined,
                         trigger: detail.trigger || 'auto',
                         preTokens: detail.preTokens,
                         postTokens: detail.postTokens,

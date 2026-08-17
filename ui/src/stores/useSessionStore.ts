@@ -620,6 +620,10 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
 }
 
 function getUpsertKey(message: NormalizedMessage): string {
+  if (message.kind === 'compact_boundary' && message.compactionId) {
+    const turnId = getMessageTurnId(message) || 'unknown-turn';
+    return `compact_boundary::${turnId}::${message.compactionId}`;
+  }
   if ((message.kind === 'tool_use' || message.kind === 'tool_result') && message.toolId) {
     return `${message.id}::${message.kind}::${message.toolId}`;
   }
