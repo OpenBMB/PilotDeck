@@ -13,7 +13,6 @@ import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
-import { getThinkingModeAvailability } from '../chat/constants/thinkingModeAvailability';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { getDraftInputStorageKey, safeLocalStorage } from '../chat/utils/chatStorage';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
@@ -94,17 +93,16 @@ function ChatInterfaceV2({
 
   const {
     model,
+    modelCatalog,
+    modelSelection,
+    setModelSelection,
+    isModelCatalogLoading,
+    modelCatalogError,
     permissionMode,
     setPermissionMode: setPermissionModeRaw,
-    thinkingModelContext,
     pendingPermissionRequests,
     setPendingPermissionRequests,
-  } = useChatProviderState({ selectedSession });
-
-  const thinkingModeAvailability = React.useMemo(
-    () => getThinkingModeAvailability(thinkingModelContext),
-    [thinkingModelContext],
-  );
+  } = useChatProviderState({ selectedProject, selectedSession });
 
   const cycleRunMode = useCallback(() => {
     setRunMode((currentMode) => {
@@ -187,8 +185,6 @@ function ChatInterfaceV2({
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded: _isTextareaExpanded,
-    thinkingMode,
-    setThinkingMode,
     slashCommandsCount: _slashCommandsCount,
     filteredCommands,
     frequentCommands,
@@ -200,12 +196,25 @@ function ChatInterfaceV2({
     handleCommandSelect,
     handleToggleCommandMenu,
     showFileDropdown,
+    fileMentionQuery,
     filteredFiles,
     selectedFileIndex,
+    isLoadingFiles,
+    fileListError,
+    hasMoreFiles,
+    loadMoreFiles,
+    selectedFileMentions,
+    removeFileMention,
+    selectedSkills,
+    selectSkill,
+    removeSkill,
+    selectedCommands,
+    removeSelectedCommand,
     renderInputWithMentions,
     selectFile,
     attachedImages,
-    setAttachedImages,
+    removeAttachedImage,
+    retryAttachmentUpload,
     documentReferences,
     removeDocumentReference,
     uploadingImages,
@@ -214,6 +223,7 @@ function ChatInterfaceV2({
     getInputProps,
     isDragActive,
     openImagePicker,
+    addAttachmentFiles,
     handleSubmit,
     handleInputChange,
     insertAtCursor,
@@ -235,6 +245,7 @@ function ChatInterfaceV2({
     selectedSession,
     currentSessionId,
     model,
+    modelSelection,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
@@ -242,7 +253,6 @@ function ChatInterfaceV2({
     isLoading,
     canAbortSession,
     tokenBudget,
-    thinkingModeAvailability,
     sendMessage,
     subscribe,
     sendByCtrlEnter,
@@ -502,9 +512,7 @@ function ChatInterfaceV2({
   ) : (
     <ComposerV2
       input={input}
-      placeholder={t('composer.placeholder', {
-        defaultValue: 'Tell PilotDeck what you want to get done…',
-      }) as string}
+      placeholder="告诉PilotDeck你想完成什么。@引用项目内容，/调用技能与指令。"
       textareaRef={textareaRef}
       inputHighlightRef={inputHighlightRef}
       renderInputWithMentions={renderInputWithMentions}
@@ -518,29 +526,39 @@ function ChatInterfaceV2({
       onSubmit={wrappedSubmit as typeof handleSubmit}
       onAbortSession={handleAbortWithPending}
       openImagePicker={openImagePicker}
+      onAddAttachmentFiles={addAttachmentFiles}
       attachedImages={attachedImages}
-      onRemoveImage={(index) =>
-        setAttachedImages((previous) =>
-          previous.filter((_, currentIndex) => currentIndex !== index),
-        )
-      }
+      onRemoveImage={removeAttachedImage}
+      onRetryImage={retryAttachmentUpload}
       documentReferences={documentReferences}
       onRemoveDocumentReference={removeDocumentReference}
         onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
+      fileMentionQuery={fileMentionQuery}
       filteredFiles={filteredFiles}
       selectedFileIndex={selectedFileIndex}
+      isLoadingFiles={isLoadingFiles}
+      fileListError={fileListError}
+      hasMoreFiles={hasMoreFiles}
+      onLoadMoreFiles={loadMoreFiles}
       onSelectFile={selectFile}
+      selectedFileMentions={selectedFileMentions}
+      onRemoveFileMention={removeFileMention}
+      selectedSkills={selectedSkills}
+      onSelectSkill={selectSkill}
+      onRemoveSkill={removeSkill}
+      selectedCommands={selectedCommands}
+      onRemoveCommand={removeSelectedCommand}
       filteredCommands={filteredCommands}
+      commandQuery={commandQuery}
       selectedCommandIndex={selectedCommandIndex}
       onCommandSelect={handleCommandSelect}
       onCloseCommandMenu={dismissCommandMenu}
       isCommandMenuOpen={showCommandMenu}
       frequentCommands={commandQuery ? [] : frequentCommands}
       onToggleCommandMenu={handleToggleCommandMenu}
-      onInsertMention={() => insertAtCursor('@')}
       onInsertSlash={() => insertAtCursor('/')}
       getRootProps={getRootProps as (...args: unknown[]) => Record<string, unknown>}
       getInputProps={getInputProps as (...args: unknown[]) => Record<string, unknown>}
@@ -551,18 +569,22 @@ function ChatInterfaceV2({
       isBusySendQueued={isBusySendQueued}
       isBusySendConfirmed={isBusySendConfirmed}
       onCancelBusySendQueue={cancelBusySendQueue}
-      tokenBudget={tokenBudget}
-      thinkingMode={thinkingMode}
-      thinkingModeAvailability={thinkingModeAvailability}
-      onThinkingModeChange={setThinkingMode}
+      modelCatalog={modelCatalog}
+      modelSelection={modelSelection}
+      isModelCatalogLoading={isModelCatalogLoading}
+      modelCatalogError={modelCatalogError}
+      projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
+      onModelSelectionChange={(selection) => {
+        void setModelSelection(selection).catch((error) => {
+          addToast('error', error instanceof Error ? error.message : String(error));
+        });
+      }}
       pendingPermissionRequests={pendingPermissionRequests}
       handlePermissionDecision={handlePermissionDecision}
       handleGrantToolPermission={handleGrantToolPermission}
       permissionMode={permissionMode}
       onPermissionModeChange={selectPermissionMode}
       runMode={runMode}
-      onRunModeChange={setRunMode}
-      planModeAvailable={true}
       onPlanExecutionApproved={handlePlanExecutionApproved}
       sendByCtrlEnter={sendByCtrlEnter}
       chromeless={isWelcomeMode && !compact}

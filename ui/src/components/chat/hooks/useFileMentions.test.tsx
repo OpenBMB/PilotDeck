@@ -1,18 +1,20 @@
-import { act, renderHook } from '@testing-library/react';
-import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../../types/app';
 import { ADD_WORKSPACE_FILE_MENTION_EVENT } from '../../../utils/workspaceFileMention';
 import { useFileMentions } from './useFileMentions';
 
-const { getFilesMock } = vi.hoisted(() => ({
+const { getFilesMock, authenticatedFetchMock } = vi.hoisted(() => ({
   getFilesMock: vi.fn(),
+  authenticatedFetchMock: vi.fn(),
 }));
 
 vi.mock('../../../utils/api', () => ({
   api: {
     getFiles: getFilesMock,
   },
+  authenticatedFetch: authenticatedFetchMock,
 }));
 
 const project = {
@@ -30,10 +32,61 @@ describe('useFileMentions conversation scope', () => {
       ok: true,
       json: async () => [],
     });
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [],
+        projectKey: project.fullPath,
+      }),
+    });
+  });
+
+  it('opens on @ and loads project entries from the dialog file API', async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [{
+          id: 'sha256:docs',
+          name: 'docs',
+          relativePath: 'docs',
+          kind: 'directory',
+          size: 0,
+          mtimeMs: 1,
+        }, {
+          id: 'sha256:readme',
+          name: 'README.md',
+          relativePath: 'README.md',
+          kind: 'file',
+          size: 10,
+          mtimeMs: 2,
+        }],
+        projectKey: project.fullPath,
+      }),
+    });
+    const setInput = vi.fn();
+    const { result } = renderHook(() => useFileMentions({
+      selectedProject: project,
+      mentionScopeKey: 'draft_input_project-a:session-a',
+      input: '@',
+      setInput,
+      textareaRef,
+    }));
+
+    act(() => result.current.setCursorPosition(1));
+
+    await waitFor(() => {
+      expect(result.current.showFileDropdown).toBe(true);
+      expect(result.current.filteredFiles).toHaveLength(2);
+    });
+    const requestedUrl = String(authenticatedFetchMock.mock.calls[0]?.[0] || '');
+    expect(requestedUrl).toContain('/api/projects/files?');
+    expect(requestedUrl).toContain('projectKey=%2Fworkspace%2Fproject-a');
+    expect(requestedUrl).toContain('includeDirs=true');
+    expect(requestedUrl).toContain('limit=100');
   });
 
   it('does not reuse the previous conversation cursor for an external mention', () => {
-    const setInput = vi.fn() as Dispatch<SetStateAction<string>>;
+    const setInput = vi.fn();
     const { result, rerender } = renderHook(
       (props: { mentionScopeKey: string; input: string }) => useFileMentions({
         selectedProject: project,
@@ -66,45 +119,35 @@ describe('useFileMentions conversation scope', () => {
       }));
     });
 
-    expect(setInput).toHaveBeenCalledWith('xyz docs/report.docx ');
+    expect(setInput).not.toHaveBeenCalled();
+    expect(result.current.selectedFileMentions).toEqual([
+      expect.objectContaining({
+        name: 'report.docx',
+        path: 'docs/report.docx',
+      }),
+    ]);
   });
 
-  it('deletes a highlighted file mention as one token with Backspace', () => {
+  it('removes a selected file mention from the context row', () => {
     const setInput = vi.fn() as Dispatch<SetStateAction<string>>;
-    const textarea = document.createElement('textarea');
-    const localTextareaRef = { current: textarea } as RefObject<HTMLTextAreaElement>;
-    const { result, rerender } = renderHook(
-      (props: { input: string }) => useFileMentions({
-        selectedProject: project,
-        mentionScopeKey: 'draft_input_project-a:session-a',
-        input: props.input,
-        setInput,
-        textareaRef: localTextareaRef,
-      }),
-      { initialProps: { input: '' } },
-    );
+    const { result } = renderHook(() => useFileMentions({
+      selectedProject: project,
+      mentionScopeKey: 'draft_input_project-a:session-a',
+      input: '',
+      setInput,
+      textareaRef,
+    }));
 
     act(() => {
       window.dispatchEvent(new CustomEvent(ADD_WORKSPACE_FILE_MENTION_EVENT, {
         detail: { projectName: project.name, relativePath: 'docs/report.docx' },
       }));
     });
-    const inserted = 'docs/report.docx ';
-    rerender({ input: inserted });
-    textarea.value = inserted;
-    textarea.selectionStart = inserted.length;
-    textarea.selectionEnd = inserted.length;
-    setInput.mockClear();
 
-    const preventDefault = vi.fn();
     act(() => {
-      result.current.handleFileMentionsKeyDown({
-        key: 'Backspace',
-        preventDefault,
-      } as unknown as KeyboardEvent<HTMLTextAreaElement>);
+      result.current.removeFileMention('docs/report.docx');
     });
 
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(setInput).toHaveBeenCalledWith('');
+    expect(result.current.selectedFileMentions).toEqual([]);
   });
 });

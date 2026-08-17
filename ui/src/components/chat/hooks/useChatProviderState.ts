@@ -3,9 +3,10 @@ import { authenticatedFetch } from '../../../utils/api';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { CLAUDE_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode } from '../types/types';
-import type { ProjectSession } from '../../../types/app';
+import type { Project, ProjectSession } from '../../../types/app';
 
 interface UseChatProviderStateArgs {
+  selectedProject: Project | null;
   selectedSession: ProjectSession | null;
 }
 
@@ -21,6 +22,36 @@ type ThinkingModelContext = {
   modelId?: string;
   supportsThinking?: boolean;
 };
+
+export type ModelNumericCapability = {
+  type: 'range' | 'enum';
+  min?: number;
+  max?: number;
+  step?: number;
+  values?: number[];
+};
+
+export type ChatModelCatalogItem = {
+  id: string;
+  provider: string;
+  model: string;
+  displayName: string;
+  available: boolean;
+  capabilities: {
+    reasoning?: ModelNumericCapability;
+    temperature?: ModelNumericCapability;
+  };
+};
+
+export type ChatModelSelection =
+  | { mode: 'auto' }
+  | {
+      mode: 'model';
+      provider: string;
+      model: string;
+      reasoning?: number;
+      temperature?: number;
+    };
 
 const DEFAULT_MODEL_OPTIONS: ModelOption[] = CLAUDE_MODELS.OPTIONS.map((option) => ({
   ...option,
@@ -75,7 +106,7 @@ function readThinkingModelContext(config: unknown): ThinkingModelContext | null 
   };
 }
 
-export function useChatProviderState({ selectedSession }: UseChatProviderStateArgs) {
+export function useChatProviderState({ selectedProject, selectedSession }: UseChatProviderStateArgs) {
   const { subscribe } = useWebSocket();
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(() => {
     return readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY) || 'default';
@@ -86,6 +117,10 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(DEFAULT_MODEL_OPTIONS);
   const [thinkingModelContext, setThinkingModelContext] = useState<ThinkingModelContext | null>(null);
+  const [modelCatalog, setModelCatalog] = useState<ChatModelCatalogItem[]>([]);
+  const [modelSelection, setModelSelectionState] = useState<ChatModelSelection | null>(null);
+  const [isModelCatalogLoading, setIsModelCatalogLoading] = useState(false);
+  const [modelCatalogError, setModelCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     const defaultMode = readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY);
@@ -173,6 +208,128 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   }, []);
 
   useEffect(() => {
+    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
+    if (!projectKey) {
+      setModelCatalog([]);
+      setModelSelectionState(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+    const loadModels = async () => {
+      setIsModelCatalogLoading(true);
+      setModelCatalogError(null);
+      try {
+        const catalogResponse = await authenticatedFetch(
+          `/api/models?projectKey=${encodeURIComponent(projectKey)}&includeAuto=true`,
+          { signal: abortController.signal },
+        );
+        const catalogData = await catalogResponse.json().catch(() => ({}));
+        if (!catalogResponse.ok) {
+          throw new Error(catalogData?.error?.message || 'Failed to load models');
+        }
+
+        const items = Array.isArray(catalogData?.items)
+          ? catalogData.items.filter((item: unknown): item is ChatModelCatalogItem => (
+            Boolean(item)
+            && typeof item === 'object'
+            && typeof (item as ChatModelCatalogItem).id === 'string'
+            && typeof (item as ChatModelCatalogItem).provider === 'string'
+            && typeof (item as ChatModelCatalogItem).model === 'string'
+          ))
+          : [];
+        setModelCatalog(items);
+
+        let storedSelection: ChatModelSelection | null = null;
+        const stored = localStorage.getItem(`composer-model-${projectKey}`);
+        if (stored) {
+          try {
+            storedSelection = JSON.parse(stored) as ChatModelSelection;
+            let isValidStoredSelection = false;
+            if (storedSelection.mode === 'auto') {
+              isValidStoredSelection = catalogData?.router?.autoAvailable === true;
+            } else if (storedSelection.mode === 'model') {
+              const { provider, model: modelId } = storedSelection;
+              isValidStoredSelection = items.some((item: ChatModelCatalogItem) => (
+                item.provider === provider && item.model === modelId && item.available
+              ));
+            }
+            if (!isValidStoredSelection) {
+              storedSelection = null;
+              localStorage.removeItem(`composer-model-${projectKey}`);
+            }
+          } catch {
+            localStorage.removeItem(`composer-model-${projectKey}`);
+          }
+        }
+
+        let nextSelection: ChatModelSelection | null = null;
+        if (selectedSession?.id) {
+          const params = new URLSearchParams({
+            sessionKey: selectedSession.id,
+            projectKey,
+          });
+          const sessionResponse = await authenticatedFetch(`/api/sessions/model?${params}`, {
+            signal: abortController.signal,
+          });
+          if (sessionResponse.ok) {
+            const sessionData = await sessionResponse.json();
+            nextSelection = sessionData?.saved || storedSelection || (
+              sessionData?.effective?.provider && sessionData?.effective?.model
+                ? {
+                    mode: 'model',
+                    provider: sessionData.effective.provider,
+                    model: sessionData.effective.model,
+                    ...(typeof sessionData.effective.reasoning === 'number'
+                      ? { reasoning: sessionData.effective.reasoning }
+                      : {}),
+                    ...(typeof sessionData.effective.temperature === 'number'
+                      ? { temperature: sessionData.effective.temperature }
+                      : {}),
+                  }
+                : null
+            );
+            if (!sessionData?.saved && storedSelection) {
+              void authenticatedFetch('/api/sessions/model', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  projectKey,
+                  sessionKey: selectedSession.id,
+                  selection: storedSelection,
+                }),
+              });
+            }
+          }
+        }
+
+        if (!nextSelection) {
+          nextSelection = storedSelection;
+        }
+        if (!nextSelection && catalogData?.router?.autoAvailable) {
+          nextSelection = { mode: 'auto' };
+        }
+        if (!nextSelection) {
+          const current = items.find((item: ChatModelCatalogItem) => item.available);
+          if (current) {
+            nextSelection = { mode: 'model', provider: current.provider, model: current.model };
+          }
+        }
+        setModelSelectionState(nextSelection);
+      } catch (error) {
+        if ((error as { name?: string })?.name !== 'AbortError') {
+          setModelCatalogError(error instanceof Error ? error.message : 'Failed to load models');
+        }
+      } finally {
+        if (!abortController.signal.aborted) setIsModelCatalogLoading(false);
+      }
+    };
+
+    void loadModels();
+    return () => abortController.abort();
+  }, [selectedProject?.fullPath, selectedProject?.path, selectedSession?.id]);
+
+  useEffect(() => {
     return subscribe((message: any) => {
       if (message?.type !== 'config:reloaded') return;
       setThinkingModelContext(readThinkingModelContext(message?.config));
@@ -199,10 +356,41 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     setPermissionMode(nextMode);
   }, [permissionMode, setPermissionMode]);
 
+  const setModelSelection = useCallback(async (selection: ChatModelSelection) => {
+    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
+    setModelSelectionState(selection);
+    if (projectKey) {
+      localStorage.setItem(`composer-model-${projectKey}`, JSON.stringify(selection));
+    }
+    if (selection.mode === 'model') {
+      setModel(`${selection.provider}/${selection.model}`);
+    }
+    if (!projectKey || !selectedSession?.id) return;
+
+    const response = await authenticatedFetch('/api/sessions/model', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectKey,
+        sessionKey: selectedSession.id,
+        selection,
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error?.message || 'Failed to save model selection');
+    }
+  }, [selectedProject?.fullPath, selectedProject?.path, selectedSession?.id]);
+
   return {
     model,
     setModel,
     modelOptions,
+    modelCatalog,
+    modelSelection,
+    setModelSelection,
+    isModelCatalogLoading,
+    modelCatalogError,
     thinkingModelContext,
     permissionMode,
     setPermissionMode,

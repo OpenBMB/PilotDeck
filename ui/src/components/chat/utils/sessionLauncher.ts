@@ -1,6 +1,6 @@
 import type { Project, ProjectSession } from '../../../types/app';
-import type { ChatAttachment, ChatRunMode, PilotDeckSettings, PermissionMode } from '../types/types';
-import { getPilotDeckSettings, safeLocalStorage } from './chatStorage';
+import type { ChatAttachment, ChatRunMode, PermissionMode } from '../types/types';
+import { safeLocalStorage } from './chatStorage';
 
 type StartSessionOptions = {
   sendMessage: (message: unknown) => void;
@@ -12,14 +12,16 @@ type StartSessionOptions = {
   permissionMode?: PermissionMode | string;
   basePermissionMode?: PermissionMode | string;
   runMode?: ChatRunMode | string;
-  model?: string;
-  thinking?: unknown;
-  sessionSummary?: string | null;
-  toolsSettings?: PilotDeckSettings;
+  modelOverride?: {
+    mode: 'model';
+    provider: string;
+    model: string;
+    reasoning?: number;
+    temperature?: number;
+  };
   images?: unknown[];
   attachments?: ChatAttachment[];
-  alwaysOnPlanId?: string;
-  alwaysOnExecutionToken?: string;
+  uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   workspaceCwd?: string;
   forceStart?: boolean;
 };
@@ -35,29 +37,6 @@ export const isTemporarySessionId = (sessionId: string | null | undefined) =>
 
 export function createTemporarySessionId(): string {
   return `new-session-${Date.now()}`;
-}
-
-export function getNotificationSessionSummary(
-  selectedSession: ProjectSession | null,
-  fallbackInput: string,
-): string | null {
-  const sessionSummary =
-    selectedSession?.summary || selectedSession?.name || selectedSession?.title;
-  if (typeof sessionSummary === 'string' && sessionSummary.trim()) {
-    const normalized = sessionSummary.replace(/\s+/g, ' ').trim();
-    return normalized.length > 80
-      ? `${normalized.slice(0, 77)}...`
-      : normalized;
-  }
-
-  const normalizedFallback = fallbackInput.replace(/\s+/g, ' ').trim();
-  if (!normalizedFallback) {
-    return null;
-  }
-
-  return normalizedFallback.length > 80
-    ? `${normalizedFallback.slice(0, 77)}...`
-    : normalizedFallback;
 }
 
 export function getStoredPermissionMode(
@@ -89,14 +68,10 @@ export function startSessionCommand({
   permissionMode = 'default',
   basePermissionMode,
   runMode,
-  model,
-  thinking,
-  sessionSummary,
-  toolsSettings = getPilotDeckSettings(),
+  modelOverride,
   images,
   attachments,
-  alwaysOnPlanId,
-  alwaysOnExecutionToken,
+  uploadedAttachments,
   workspaceCwd,
   forceStart,
 }: StartSessionOptions): string {
@@ -108,23 +83,20 @@ export function startSessionCommand({
     type: 'pilotdeck-command',
     command,
     options: {
-      ...(sessionId ? { sessionId, resume: true } : {}),
+      ...(sessionId ? { sessionId } : {}),
       projectPath: resolvedProjectPath,
-      cwd: resolvedProjectPath,
-      toolsSettings,
       ...(runMode ? { runMode } : {}),
       permissionMode,
       ...(basePermissionMode ? { basePermissionMode } : {}),
-      ...(model ? { model } : {}),
-      ...(thinking ? { thinking } : {}),
-      sessionSummary,
+      ...(modelOverride ? { modelOverride } : {}),
       ...(typeof userVisibleInput === 'string' && userVisibleInput.trim()
         ? { userVisibleInput: userVisibleInput.trim() }
         : {}),
-      ...(alwaysOnPlanId ? { alwaysOnPlanId } : {}),
-      ...(alwaysOnExecutionToken ? { alwaysOnExecutionToken } : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+      ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
+        ? { uploadedAttachments }
+        : {}),
       ...(workspaceCwd ? { workspaceCwd } : {}),
       ...(forceStart ? { forceStart: true } : {}),
     },

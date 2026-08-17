@@ -456,12 +456,10 @@ function normalizeRunMode(value) {
 
 function resolvePermissionMode(options) {
     const explicit = normalizePermissionMode(options?.permissionMode || options?.mode);
-    // A literal "default" from the chat composer is the implicit
-    // no-special-mode position of the per-turn picker, not a real
-    // per-turn override. Let the user-level skipPermissions toggle
-    // win over it. Genuine non-default picks (plan / bypassPermissions)
-    // still take precedence — they're a deliberate per-turn decision.
-    if (explicit && explicit !== 'default') return explicit;
+    // The composer permission picker is a per-turn choice. In particular,
+    // selecting "default" must be able to turn off a persisted full-access
+    // preference for this turn.
+    if (explicit) return explicit;
     const persisted = readPermissionSettings();
     if (persisted.skipPermissions === true) {
         return 'bypassPermissions';

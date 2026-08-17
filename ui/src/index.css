@@ -2046,4 +2046,24 @@
       max-width: 100%;
     }
   }
+
+  .temperature-range::-webkit-slider-thumb {
+    width: 12px;
+    height: 12px;
+    margin-top: -4px;
+    appearance: none;
+    border: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #665ee8 0 3px, #fff 3.25px 100%);
+    box-shadow: 0 0 0 1px rgba(102, 94, 232, 0.18);
+  }
+
+  .temperature-range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #665ee8 0 3px, #fff 3.25px 100%);
+    box-shadow: 0 0 0 1px rgba(102, 94, 232, 0.18);
+  }
 }
