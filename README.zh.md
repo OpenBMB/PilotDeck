@@ -420,6 +420,20 @@ model:
       apiKey: sk-your-api-key
 ```
 
+Atlas Cloud 已内置于 Web UI 的 Provider 目录，也可以使用默认端点和环境变量手动配置：
+
+```yaml
+schemaVersion: 1
+agent:
+  model: atlas_cloud/qwen/qwen3.8-max
+model:
+  providers:
+    atlas_cloud:
+      apiKey: ${ATLASCLOUD_API_KEY}
+      models:
+        qwen/qwen3.8-max: {}
+```
+
 原生 Gemini 可以使用 `protocol: google`：
 
 ```yaml
