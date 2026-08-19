@@ -23,6 +23,7 @@ ui/server/assets/onboarding/image-capability-probe.png !filter !diff !merge -tex
 ui/public/pilotdeck-logo-lockup-transparent.png !filter !diff !merge -text
 ui/public/pilotdeck-p-mark-transparent.png !filter !diff !merge -text
 ui/public/pilotdeck-p-mark-transparent-v2.png !filter !diff !merge -text
+ui/public/pilotdeck-p-mark-compact.png !filter !diff !merge -text
 
 # Shell scripts MUST stay LF — CRLF breaks the Docker entrypoint (`bash\r` not found)
 *.sh text eol=lf

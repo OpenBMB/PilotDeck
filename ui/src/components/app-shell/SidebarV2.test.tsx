@@ -52,7 +52,10 @@ describe('SidebarV2 layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByText('PILOTDECK')).toBeTruthy();
+    expect(screen.getByAltText('PILOTDECK')).toHaveAttribute(
+      'src',
+      '/pilotdeck-logo-lockup-transparent.png',
+    );
     expect(screen.getByRole('navigation', { name: 'Quick actions' })).toBeTruthy();
     expect(screen.getByText('New Chat')).toBeTruthy();
     expect(screen.getByText('Skills')).toBeTruthy();
@@ -68,5 +71,17 @@ describe('SidebarV2 layout', () => {
     expect(screen.getByText('Projects')).toBeTruthy();
     expect(screen.getByText('Conversations')).toBeTruthy();
     expect(screen.getByText('PilotDeck')).toBeTruthy();
+  });
+
+  it('shows the P mark logo when the sidebar is compact', () => {
+    localStorage.setItem('sidebar-v2-width', '76');
+    renderSidebar(null);
+
+    expect(screen.queryByAltText('PILOTDECK')).toBeNull();
+    const mark = document.querySelector('.brand-mark');
+    expect(mark).toBeInstanceOf(HTMLImageElement);
+    expect((mark as HTMLImageElement).getAttribute('src')).toBe(
+      '/pilotdeck-p-mark-compact.png',
+    );
   });
 });

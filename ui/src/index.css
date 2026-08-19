@@ -1421,29 +1421,20 @@
     border-bottom: 1px solid rgba(100, 86, 189, 0.12);
   }
 
-  .brand-wordmark {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 9px;
-    color: #2b3150;
-    font-size: 16px;
-    font-weight: 750;
-    letter-spacing: 0.1em;
-    white-space: nowrap;
+  .brand-lockup {
+    display: block;
+    height: 36px;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
   }
 
-  .brand-p {
-    display: grid;
+  .brand-mark {
+    display: block;
     width: 34px;
     height: 34px;
-    place-items: center;
-    border-radius: 9px;
-    background: linear-gradient(145deg, #32488f, #625ce8);
-    color: #fff;
-    font: 700 23px / 1 Georgia, serif;
-    letter-spacing: 0;
-    box-shadow: 0 5px 12px #2c3e843b;
+    object-fit: contain;
   }
 
   .primary-actions {

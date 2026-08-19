@@ -988,20 +988,20 @@ export default function SidebarV2({
           className="compact-brand tooltip tooltip-right"
           onClick={expandCompactSidebar}
         >
-          <span aria-hidden="true" className="brand-p">
-            P
-          </span>
+          <img
+            alt=""
+            aria-hidden="true"
+            className="brand-mark"
+            src="/pilotdeck-p-mark-compact.png"
+          />
         </button>
       ) : (
         <header className="sidebar-brand-row">
-          <div className="brand-wordmark">
-            <span aria-hidden="true" className="brand-p">
-              P
-            </span>
-          <span className="truncate">
-            PILOTDECK
-          </span>
-          </div>
+          <img
+            alt="PILOTDECK"
+            className="brand-lockup"
+            src="/pilotdeck-logo-lockup-transparent.png"
+          />
         </header>
       )}
 
