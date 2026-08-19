@@ -62,6 +62,14 @@ export type CompactBoundaryMetadata = {
   postTokens?: number;
   /** Number of messages summarized into the boundary's summary section. */
   messagesSummarized?: number;
+  /** Desired post-compaction prompt size. */
+  targetTokens?: number;
+  /** Whether this compaction emitted a summary message. */
+  summaryGenerated?: boolean;
+  /** Whether prior checkpoint summaries were consolidated. */
+  checkpointMerged?: boolean;
+  /** Final prompt usage divided by the effective input budget. */
+  finalRatio?: number;
   /** Logical parent uuid before compact (for resume relink). */
   logicalParentUuid?: string;
   /** Optional verbatim segment that was preserved across the boundary. */
@@ -104,6 +112,8 @@ export type AgentControlBoundaryTranscriptEntry = AgentTranscriptEntryBase & {
 };
 
 export type SessionMetadataValue = {
+  /** Marks a metadata entry written by `reappendTail()` as a full snapshot. */
+  isSnapshot?: true;
   title?: string;
   aiTitle?: string;
   tag?: string;

@@ -11,6 +11,7 @@ import type { LifecycleRuntime } from "../../lifecycle/index.js";
 import type { PermissionMode, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentStatusMessageInput, AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
+import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import { FileArtifactCollector, type FileArtifact } from "../../session/artifacts/index.js";
@@ -51,6 +52,7 @@ export type TurnRunnerRuntimeContext = {
 export type TurnRunnerRuntimeReloadSnapshot = {
   runtimeContext: TurnRunnerRuntimeContext;
   transcriptWriterState?: AgentTranscriptWriterState;
+  metadata?: SessionMetadataValue;
 };
 
 export type TurnRunnerDependencies = {
@@ -67,6 +69,8 @@ type PendingSessionTitle = {
   /** Settles when the title generation finishes (success, failure, or timeout). */
   promise: Promise<void>;
 };
+
+const SESSION_LISTING_PROMPT_MAX_CHARS = 1_200;
 
 export class TurnRunner {
   private pendingSessionTitle: PendingSessionTitle | undefined;
@@ -133,6 +137,7 @@ export class TurnRunner {
         return { result, messages: options.messages };
       }
 
+      await this.persistListingPromptMetadata(options, accepted.messages);
       yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
 
       const prompt = inputToPromptText(options.input);
@@ -161,6 +166,7 @@ export class TurnRunner {
         }
         const status = await this.recordTurnFailureStatus(options, error);
         yield this.toAgentStatusEvent(options, status);
+        await this.finalizeSessionMetadata(options);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
@@ -182,7 +188,7 @@ export class TurnRunner {
         }
         const status = await this.recordTurnFailureStatus(options, error);
         yield this.toAgentStatusEvent(options, status);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
@@ -253,7 +259,7 @@ export class TurnRunner {
           yield turnCompletedEvent;
         }
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         return runResult;
       } catch (error) {
         const normalized = normalizeAgentError(error);
@@ -265,7 +271,7 @@ export class TurnRunner {
         await Promise.resolve(this.transcript.recordTurnResult(options.sessionId, options.turnId, result)).catch(() => {});
         const status = await this.recordTurnFailureStatus(options, normalized);
         yield this.toAgentStatusEvent(options, status);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
@@ -279,6 +285,7 @@ export class TurnRunner {
     return {
       runtimeContext: { ...this.runtimeContext },
       transcriptWriterState: this.transcript.snapshotState?.(),
+      metadata: this.turnDependencies.metadataStore?.getSnapshot(),
     };
   }
 
@@ -420,6 +427,33 @@ export class TurnRunner {
       return;
     }
     await metadataStore.saveAiTitle(pending.title, options.turnId);
+  }
+
+  private async finalizeSessionMetadata(
+    options: TurnRunnerOptions,
+    pending?: PendingSessionTitle,
+  ): Promise<void> {
+    await this.flushReadySessionTitle(options, pending);
+    await this.turnDependencies.metadataStore?.reappendTail(options.turnId).catch(() => {});
+  }
+
+  private async persistListingPromptMetadata(
+    options: TurnRunnerOptions,
+    acceptedMessages: CanonicalMessage[],
+  ): Promise<void> {
+    const metadataStore = this.turnDependencies.metadataStore;
+    if (!metadataStore) return;
+
+    const snapshot = metadataStore.getSnapshot();
+    const prompt = allHumanText(acceptedMessages);
+    if (!prompt) return;
+
+    const boundedPrompt = prompt.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
+    await metadataStore.record(options.turnId, {
+      ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
+      lastPrompt: boundedPrompt,
+      updatedAt: this.now().toISOString(),
+    }).catch(() => {});
   }
 }
 

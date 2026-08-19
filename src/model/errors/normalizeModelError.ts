@@ -288,6 +288,15 @@ function resolveUserHint(
         userHint: "Model output hit the token limit. Increase max output tokens in Settings → Model Provider or ask the agent to split the answer into smaller parts.",
       };
     case "timeout":
+      if (/stream idle timeout|no data received/i.test(message)) {
+        return {
+          userHint: `Stream stalled${provider ? ` for provider \"${provider}\"` : ""}. Increase retry.streamIdleTimeoutMs in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`,
+          settingsFix: {
+            description: "Increase stream idle timeout for this provider.",
+            configPath: "model.providers.<id>.retry.streamIdleTimeoutMs",
+          },
+        };
+      }
       return {
         userHint: `Request timed out${provider ? ` for provider \"${provider}\"` : ""}. Increase provider.timeoutMs in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`,
         settingsFix: {

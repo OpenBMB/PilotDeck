@@ -16,6 +16,7 @@ import { grantPilotDeckToolPermission } from '../utils/chatPermissions';
 import { getDraftInputStorageKey, safeLocalStorage } from '../utils/chatStorage';
 import {
   createTemporarySessionId,
+  createUserTurnRunId,
   isTemporarySessionId,
   startSessionCommand,
 } from '../utils/sessionLauncher';
@@ -1215,12 +1216,14 @@ export function useChatComposerState({
 
       const effectiveSessionId = submitTargetSessionId;
       const sessionToActivate = effectiveSessionId || optimisticSessionId;
+      const runId = createUserTurnRunId();
 
       const userMessage: ChatMessage = {
         type: 'user',
         content: userVisibleInput,
         images: uploadedImages as any,
         attachments: [...uploadedFiles, ...turnAttachments] as any,
+        runId,
         timestamp: new Date(),
       };
 
@@ -1252,6 +1255,7 @@ export function useChatComposerState({
         sendMessage,
         selectedProject,
         command: messageContent,
+        runId,
         userVisibleInput,
         sessionId: effectiveSessionId,
         temporarySessionId: sessionToActivate,

@@ -62,9 +62,11 @@ export {
   type TokenWarningState,
 } from "./budget/TokenBudgetManager.js";
 export {
+  actualInputTokensFromUsage,
   TokenAccountingRuntime,
   type CountRequestInputOptions,
   type EvaluateRequestBudgetOptions,
+  type TokenCalibrationBaseline,
   type TokenAccountingRuntimeOptions,
   type TokenCountResult,
   type TokenCountSource,

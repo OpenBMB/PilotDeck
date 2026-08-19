@@ -1,4 +1,4 @@
-import type { CanonicalMessage, CanonicalUsage } from "../model/index.js";
+import type { CanonicalMessage } from "../model/index.js";
 import { ToolResultBudget } from "./budget/ToolResultBudget.js";
 import type { TokenBudgetManager, TokenBudgetSnapshot } from "./budget/TokenBudgetManager.js";
 import type { AutoCompactionPolicy } from "./compaction/AutoCompactionPolicy.js";
@@ -94,6 +94,7 @@ const DEFAULT_MAX_CONTEXT_TOKENS = 8192;
 const DEFAULT_TRUNCATE_FIRST_RATIO = 0.5;
 const DEFAULT_TRUNCATE_SECOND_RATIO = 0.25;
 const DEFAULT_MEMORY_RETRIEVAL_TIMEOUT_MS = 30_000;
+const POST_COMPACTION_TARGET_RATIO = 0.60;
 // Keep the emergency tail at the lower end of the plan's 5%-10% range. This
 // matches the previous relaxed compaction behaviour and leaves enough room
 // for large, stable system/tool definitions in small model contexts.
@@ -315,9 +316,8 @@ export class DefaultContextRuntime implements ContextRuntime {
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
     reservedOutputTokens?: number;
-    lastUsage?: CanonicalUsage;
     allowFallbackOnFailure?: boolean;
-    budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
+    budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult> {
     const sessionId = input.sessionId ?? "";
     const turnId = input.turnId ?? "";
@@ -345,15 +345,13 @@ export class DefaultContextRuntime implements ContextRuntime {
     }
     let messages = input.messages;
     const budgetOptions = { reservedOutputTokens: input.reservedOutputTokens };
-    const evaluateBudget = (candidate: CanonicalMessage[], lastUsage?: CanonicalUsage) =>
+    const evaluateBudget = (candidate: CanonicalMessage[]) =>
       input.budgetEvaluator
-        ? input.budgetEvaluator(candidate, lastUsage)
+        ? input.budgetEvaluator(candidate)
         : Promise.resolve(this.tokenBudget!.evaluate(candidate, effectiveMaxContextTokens, {
-            usePadding: true,
             ...budgetOptions,
-            lastUsage,
           }));
-    const initialSnapshot = await evaluateBudget(messages, input.lastUsage);
+    const initialSnapshot = await evaluateBudget(messages);
     let currentSnapshot = initialSnapshot;
     const decision = this.autoCompactionPolicy.evaluateSnapshot(initialSnapshot);
     if (decision.type !== "trigger") {
@@ -410,18 +408,23 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: messages.length,
       snapshot: describeTokenBudgetSnapshot(currentSnapshot),
     });
+    const effectiveContextTokens = Math.max(
+      1,
+      Math.floor(currentSnapshot.effectiveContextTokens ?? currentSnapshot.maxContextTokens),
+    );
+    const targetPostTokens = Math.max(1, Math.floor(effectiveContextTokens * POST_COMPACTION_TARGET_RATIO));
     const result = await this.compactionEngine.run({
       trigger: "auto",
       messages,
+      effectiveContextTokens,
+      targetPostTokens,
       signal: input.abortSignal,
       sessionId,
       turnId,
     });
+    const summarySucceeded = compactionSummarySucceeded(result);
     if (result.error) {
       log("full_compaction_no_summary", { error: result.error, preTokens: result.preTokens });
-      if (!input.allowFallbackOnFailure) {
-        return { type: "skipped", snapshot: currentSnapshot };
-      }
     } else if (!result.summaryMessage) {
       // A protected early turn can legitimately leave the normal summary
       // prefix empty. That is not a successful compaction: keep going through
@@ -433,53 +436,96 @@ export class DefaultContextRuntime implements ContextRuntime {
       });
     }
 
-    let finalResult = result;
-    let postMessages = ensureTrailingUserMessage(buildPostCompactMessages(result));
+    let finalResult: CompactionResult | undefined = summarySucceeded ? result : undefined;
+    let postMessages = summarySucceeded
+      ? ensureTrailingUserMessage(buildPostCompactMessages(result))
+      : messages;
+    // A failed summary leaves the transcript byte-for-byte unchanged. Recount
+    // that same request before deciding whether the 90% emergency tier is needed.
     let snapshot = await evaluateBudget(postMessages);
-    if (snapshot.ratio >= 0.90 && this.snipEngine) {
+    let snipApplied = false;
+    if (summarySucceeded && snapshot.ratio > POST_COMPACTION_TARGET_RATIO && this.snipEngine) {
+      const messageTokens = this.tokenBudget?.estimateMessagesTokens(postMessages);
+      const nonMessageTokens = messageTokens === undefined
+        ? 0
+        : Math.max(0, snapshot.tokens - messageTokens);
+      const messageTarget = Math.max(1, targetPostTokens - nonMessageTokens);
+      const snipTargetTokens = messageTokens !== undefined
+        ? Math.min(messageTokens, messageTarget)
+        : targetPostTokens;
       const snip = this.snipEngine.snip(postMessages, {
-        targetTokens: Math.max(1, Math.floor((snapshot.effectiveContextTokens ?? snapshot.maxContextTokens) * 0.80)),
+        targetTotalTokens: snipTargetTokens,
       });
       postMessages = snip.messages;
       snapshot = await evaluateBudget(postMessages);
+      snipApplied = snip.applied;
       log("post_summary_snip", {
         applied: snip.applied,
         turnsSnipped: snip.turnsSnipped,
+        targetPostTokens,
+        snipTargetTokens,
         snapshot: describeTokenBudgetSnapshot(snapshot),
       });
     }
 
+    let emergencyApplied = false;
     if (snapshot.ratio >= 0.90) {
       const emergency = await this.runEmergencyCompaction({
         messages: postMessages,
         input,
         evaluateBudget,
+        effectiveContextTokens,
+        targetPostTokens,
         sessionId,
         turnId,
         log,
       });
       if (emergency) {
+        emergencyApplied = emergency.changed;
         finalResult = emergency.result ?? finalResult;
         postMessages = emergency.messages;
         snapshot = emergency.snapshot;
-        if (emergency.diagnostics) {
+        if (emergency.diagnostics && finalResult) {
           finalResult.diagnostics.push(...emergency.diagnostics);
         }
       }
     }
 
+    const overflowAfterEmergency = snapshot.ratio >= 1;
+    if (!summarySucceeded && !snipApplied && !emergencyApplied && !overflowAfterEmergency) {
+      log("full_compaction_skipped", {
+        reason: "no_effective_change",
+        targetPostTokens,
+        snapshot: describeTokenBudgetSnapshot(currentSnapshot),
+      });
+      return { type: "skipped", snapshot: currentSnapshot };
+    }
+
+    if (snapshot.ratio > POST_COMPACTION_TARGET_RATIO && finalResult) {
+      finalResult.diagnostics.push({
+        code: "compaction_target_not_reached",
+        severity: "warning",
+        message:
+          `Compaction remained above the ${Math.round(POST_COMPACTION_TARGET_RATIO * 100)}% target ` +
+          `(tokens=${snapshot.tokens}, target=${targetPostTokens}, ratio=${snapshot.ratio.toFixed(3)}). ` +
+          "Protected checkpoints, tool turns, or the required recent tail may account for the remainder.",
+      });
+    }
+
     log("full_compaction_completed", {
       snapshot: describeTokenBudgetSnapshot(snapshot),
-      summarySucceeded: finalResult.error === undefined,
-      preTokens: finalResult.preTokens,
-      postTokens: finalResult.postTokens,
+      summarySucceeded: finalResult ? compactionSummarySucceeded(finalResult) : false,
+      summaryGenerated: finalResult?.summaryGenerated === true,
+      checkpointMerged: finalResult?.checkpointMerged === true,
+      targetPostTokens,
+      preTokens: finalResult?.preTokens ?? result.preTokens,
+      postTokens: finalResult?.postTokens,
     });
     // 90% is the protection threshold that triggers emergency work, not a
     // hard provider overflow. If the final prompt is still below the actual
     // effective input budget, it remains sendable and should not be converted
     // into a fatal context error merely because static tool definitions consume
     // the remaining safety margin.
-    const overflowAfterEmergency = snapshot.ratio >= 1;
     if (overflowAfterEmergency) {
       const diagnostic: ContextDiagnostic = {
         code: "context_overflow_after_emergency_compaction",
@@ -489,7 +535,7 @@ export class DefaultContextRuntime implements ContextRuntime {
           `(tokens=${snapshot.tokens}, max=${snapshot.maxContextTokens}, ratio=${snapshot.ratio.toFixed(3)}). ` +
           "The stable checkpoint, current request, tool protocol, and required tail are the remaining sources.",
       };
-      finalResult.diagnostics.push(diagnostic);
+      finalResult?.diagnostics.push(diagnostic);
       log("context_overflow_after_emergency_compaction", {
         snapshot: describeTokenBudgetSnapshot(snapshot),
         diagnostic: diagnostic.message,
@@ -500,35 +546,42 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: postMessages,
       tier: snapshot.ratio >= 0.90 ? "emergency" : "full",
       snapshot,
-      result: finalResult,
+      ...(finalResult ? { result: finalResult } : {}),
       ...(overflowAfterEmergency ? { error: "context_overflow_after_emergency_compaction" as const } : {}),
     };
   }
 
   private async runEmergencyCompaction(options: {
     messages: CanonicalMessage[];
-    input: { abortSignal?: AbortSignal; allowFallbackOnFailure?: boolean };
-    evaluateBudget: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
+    input: { abortSignal?: AbortSignal };
+    evaluateBudget: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
+    effectiveContextTokens: number;
+    targetPostTokens: number;
     sessionId: string;
     turnId: string;
     log: (stage: string, details?: Record<string, unknown>) => void;
   }): Promise<{
     messages: CanonicalMessage[];
     snapshot: TokenBudgetSnapshot;
+    changed: boolean;
     result?: CompactionResult;
     diagnostics?: ContextDiagnostic[];
   } | undefined> {
     let messages = options.messages;
     let snapshot = await options.evaluateBudget(messages);
-    if (snapshot.ratio < 0.90) return { messages, snapshot };
+    let changed = false;
+    let emergencyResult: CompactionResult | undefined;
+    if (snapshot.ratio < 0.90) return { messages, snapshot, changed };
 
     // Emergency summary is the only normal path allowed to rewrite the
     // checkpoint prefix. It is intentionally short and marked as a cache reset.
     if (this.compactionEngine) {
-      const emergencyResult = await this.compactionEngine.run({
+      emergencyResult = await this.compactionEngine.run({
         trigger: "reactive",
         messages,
         keepTailRatio: EMERGENCY_KEEP_TAIL_RATIO,
+        effectiveContextTokens: options.effectiveContextTokens,
+        targetPostTokens: options.targetPostTokens,
         protectedToolNames: null,
         maxOutputTokens: EMERGENCY_SUMMARY_MAX_OUTPUT_TOKENS,
         cacheReset: true,
@@ -542,15 +595,19 @@ export class DefaultContextRuntime implements ContextRuntime {
           cacheReset: true,
           stablePrefix: [],
         }));
+        changed = true;
         snapshot = await options.evaluateBudget(messages);
         options.log("emergency_summary", {
           snapshot: describeTokenBudgetSnapshot(snapshot),
           cacheReset: true,
         });
-        if (snapshot.ratio < 0.90) return { messages, snapshot, result: emergencyResult };
+        if (snapshot.ratio < 0.90) return { messages, snapshot, changed, result: emergencyResult };
       }
     }
 
+    const persistedEmergencyResult = emergencyResult?.summaryMessage && emergencyResult.error === undefined
+      ? emergencyResult
+      : undefined;
     const projected = this.microCompaction?.apply({
       messages,
       trimToTokens: EMERGENCY_TOOL_RESULT_TOKENS,
@@ -559,15 +616,25 @@ export class DefaultContextRuntime implements ContextRuntime {
     });
     if (projected) {
       messages = projected.messages;
+      changed ||= projected.rewritten > 0;
       snapshot = await options.evaluateBudget(messages);
       options.log("emergency_tool_projection", {
         rewritten: projected.rewritten,
         snapshot: describeTokenBudgetSnapshot(snapshot),
       });
-      if (snapshot.ratio < 0.90) return { messages, snapshot };
+      if (snapshot.ratio < 0.90) {
+        return {
+          messages,
+          snapshot,
+          changed,
+          result: persistedEmergencyResult,
+        };
+      }
     }
 
-    messages = truncateHeadPreservingCheckpoint(messages, EMERGENCY_HEAD_KEEP_RATIO);
+    const truncated = truncateHeadPreservingCheckpoint(messages, EMERGENCY_HEAD_KEEP_RATIO);
+    changed ||= !sameMessageSequence(messages, truncated);
+    messages = truncated;
     snapshot = await options.evaluateBudget(messages);
     const diagnostics: ContextDiagnostic[] = [{
       code: "context_hard_truncate",
@@ -581,7 +648,13 @@ export class DefaultContextRuntime implements ContextRuntime {
       snapshot: describeTokenBudgetSnapshot(snapshot),
       keepRatio: EMERGENCY_HEAD_KEEP_RATIO,
     });
-    return { messages, snapshot, diagnostics };
+    return {
+      messages,
+      snapshot,
+      changed,
+      result: persistedEmergencyResult,
+      diagnostics,
+    };
   }
 
   async recoverFromModelError(input: ContextRecoveryInput): Promise<ContextRecoveryDecision> {
@@ -663,6 +736,10 @@ function extractRecentUserText(messages: CanonicalMessage[]): string | undefined
   return undefined;
 }
 
+function sameMessageSequence(left: CanonicalMessage[], right: CanonicalMessage[]): boolean {
+  return left.length === right.length && left.every((message, index) => message === right[index]);
+}
+
 function logAutoCompactEvent(
   stage: string,
   context: { sessionId?: string; turnId?: string },
@@ -684,9 +761,11 @@ function describeTokenBudgetSnapshot(snapshot: TokenBudgetSnapshot): Record<stri
   return {
     tokens: snapshot.tokens,
     displayTokens: snapshot.displayTokens,
-    budgetTokens: snapshot.budgetTokens,
     estimateSource: snapshot.estimateSource,
     usageTokens: snapshot.usageTokens,
+    localEstimateTokens: snapshot.localEstimateTokens,
+    calibrationActualInputTokens: snapshot.calibrationActualInputTokens,
+    calibrationEstimatedInputTokens: snapshot.calibrationEstimatedInputTokens,
     totalContextTokens: snapshot.totalContextTokens,
     maxContextTokens: snapshot.maxContextTokens,
     effectiveContextTokens: snapshot.effectiveContextTokens,
@@ -699,4 +778,9 @@ function describeTokenBudgetSnapshot(snapshot: TokenBudgetSnapshot): Record<stri
     exact: snapshot.exact,
     reservedOutputTokens: snapshot.reservedOutputTokens,
   };
+}
+
+function compactionSummarySucceeded(result: CompactionResult): boolean {
+  return result.error === undefined
+    && result.summaryMessage !== undefined;
 }

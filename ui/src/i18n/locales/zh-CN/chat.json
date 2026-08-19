@@ -460,6 +460,7 @@
         "auth": "请在“设置 → 模型 Provider”中更新 {{provider}} 的 API Key 或访问权限，或运行 pilotdeck setup。",
         "modelNotFound": "请在“设置 → 模型 Provider”中为 {{provider}} 选择有效模型，或在 pilotdeck.yaml 的 model.providers.<id>.models 下添加该模型。",
         "timeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 timeoutMs，或检查本机网络、代理和 provider 状态。",
+        "streamIdleTimeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 streamIdleTimeoutMs，或检查本机网络、代理和 provider 状态。",
         "rateLimit": "请等待 provider 限流窗口恢复、减少并发请求，或在设置中切换 provider/model。",
         "billing": "请在 provider API 侧充值或恢复 quota，或在设置中切换 provider/model。",
         "contextOverflow": "请运行 /compact、开启新会话、移除大型附件，或在设置中切换到更大上下文模型。",

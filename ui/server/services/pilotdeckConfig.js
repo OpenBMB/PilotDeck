@@ -30,6 +30,15 @@ const MASK = '********';
 
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|auth[_-]?token|access[_-]?token|bot[_-]?token|app[_-]?token|encoding[_-]?aes[_-]?key)$/i;
 const SECRET_EXACT_KEYS = new Set(['key', 'apiKey', 'api_key', 'authToken', 'accessToken']);
+let configWriteQueue = Promise.resolve();
+
+// Serialize every read-modify-write caller against the same local YAML file.
+// The callback must read the config inside this critical section.
+export function withPilotDeckConfigWrite(operation) {
+  const run = configWriteQueue.then(operation, operation);
+  configWriteQueue = run.catch(() => undefined);
+  return run;
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -190,13 +199,22 @@ export function resolveModel(config, ref, options = {}) {
     if (options.allowMissing) return null;
     throw new Error(`Provider not found for model "${effective}": ${parts.providerId}`);
   }
-  const def = isRecord(provider.models) ? provider.models[parts.modelId] : null;
+  const models = isRecord(provider.models) ? provider.models : {};
+  if (!Object.prototype.hasOwnProperty.call(models, parts.modelId)) {
+    if (options.allowMissing) return null;
+    throw new Error(`Model not found for provider "${parts.providerId}": ${parts.modelId}`);
+  }
+  const rawDef = models[parts.modelId];
+  if (rawDef !== null && rawDef !== undefined && !isRecord(rawDef)) {
+    if (options.allowMissing) return null;
+    throw new Error(`Model definition for provider "${parts.providerId}" must be an object: ${parts.modelId}`);
+  }
   return {
     id: effective,
     providerId: parts.providerId,
     provider,
     model: parts.modelId,
-    def: isRecord(def) ? def : {},
+    def: isRecord(rawDef) ? rawDef : {},
   };
 }
 
@@ -227,6 +245,16 @@ function validateModelRef(config, ref, label, errors) {
   if (!modelRef) return;
   if (!resolveModel(config, modelRef, { allowMissing: true })) {
     errors.push(`${label}="${modelRef}" doesn't resolve to a configured provider/model`);
+  }
+}
+
+function validateOptionalSubagentDefault(config, warnings) {
+  const modelRef = normalizeString(config.agent?.subagents?.default);
+  if (!modelRef || modelRef === 'inherit') return;
+  if (!resolveModel(config, modelRef, { allowMissing: true })) {
+    warnings.push(
+      `agent.subagents.default="${modelRef}" doesn't resolve to a configured provider/model; subagents will inherit agent.model`,
+    );
   }
 }
 
@@ -301,6 +329,7 @@ export function validatePilotDeckConfig(config) {
     }
   }
 
+  validateOptionalSubagentDefault(normalized, warnings);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
 
@@ -601,6 +630,11 @@ function purgeBootstrapPlaceholder(config) {
         config.agent.model = `${firstProvider}/${models[0]}`;
       }
     }
+  }
+
+  const subagentDefault = normalizeString(config?.agent?.subagents?.default);
+  if (subagentDefault && subagentDefault !== 'inherit' && !resolveModel(config, subagentDefault, { allowMissing: true })) {
+    config.agent.subagents.default = 'inherit';
   }
 
   const router = config?.router;

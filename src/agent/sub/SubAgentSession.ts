@@ -278,6 +278,12 @@ export class SubAgentSession {
 
   private buildConfig(): AgentRuntimeConfig {
     const parent = this.options.parentConfig;
+    const subagentModel = parent.subagentModel;
+    const {
+      maxContextTokens: _parentMaxContextTokens,
+      maxOutputTokens: _parentMaxOutputTokens,
+      ...parentWithoutTokenCaps
+    } = parent;
     const subagentSystem = buildSubagentSystemPrompt(this.options.definition);
     const filteredParentSystem = applySystemPromptFilters(
       parent.systemPrompt ?? "",
@@ -287,11 +293,21 @@ export class SubAgentSession {
       ? `${subagentSystem}\n\n${filteredParentSystem}`
       : subagentSystem;
     return {
-      ...parent,
+      ...(subagentModel ? parentWithoutTokenCaps : parent),
+      ...(subagentModel
+        ? {
+            provider: subagentModel.provider,
+            model: subagentModel.model,
+            ...(subagentModel.modelMultimodal
+              ? { modelMultimodal: subagentModel.modelMultimodal }
+              : {}),
+          }
+        : {}),
       // Ask mode performs read-only checks against each tool call's real
       // input. Do not probe dynamic isReadOnly implementations with a dummy
       // object while constructing the registry.
       runMode: this.isReadOnlySession() ? "ask" : parent.runMode,
+      isSubagent: true,
       permissionContext: {
         ...parent.permissionContext,
         rules: {

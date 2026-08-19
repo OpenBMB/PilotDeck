@@ -74,6 +74,7 @@ export type PilotAgentConfig = {
   maxOutputTokens?: number;
   thinking?: { enabled: boolean; budgetTokens?: number };
   subagents?: {
+    default?: PilotAgentModelSelection;
     timeoutMs?: number;
   };
 };

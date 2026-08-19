@@ -47,6 +47,19 @@ describe('getContextStatus', () => {
     expect(status.state).toBe('blocking');
     expect(status.tone).toBe('red');
   });
+
+  it('prefers the resolved token count over a stale display estimate', () => {
+    const status = getContextStatus({
+      used: 12_080,
+      displayUsed: 11_928,
+      total: 12_000,
+      effectiveTotal: 12_000,
+      state: 'blocking',
+    });
+
+    expect(status.used).toBe(12_080);
+    expect(status.percentLabel).toBe('100%+');
+  });
 });
 
 function makeMessage(index: number): ChatMessage {

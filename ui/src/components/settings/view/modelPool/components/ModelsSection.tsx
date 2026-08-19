@@ -9,7 +9,11 @@ import type {
 } from "../../../../../hooks/usePilotDeckConfig";
 import { patch } from "../utils/patch";
 import type { PilotDeckConfig, V2Provider } from "../types";
-import { rewriteProviderRefs } from "../utils/providerRefs";
+import {
+  clearSubagentDefaultForRemovedModel,
+  clearSubagentDefaultForRemovedProvider,
+  rewriteProviderRefs,
+} from "../utils/providerRefs";
 import { PageSectionHeader } from "../../../shared/view";
 import CatalogPicker from "./CatalogPicker";
 import ProviderCard from "./ProviderCard";
@@ -39,7 +43,12 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
   const removeProvider = async (id: string) => {
     const next = { ...providers };
     delete next[id];
-    await applyChange(patch(config, ["model", "providers"], next));
+    await applyChange(
+      clearSubagentDefaultForRemovedProvider(
+        patch(config, ["model", "providers"], next),
+        id,
+      ),
+    );
   };
 
   const buildRenamedConfig = (oldId: string, newId: string) => {
@@ -67,7 +76,16 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
       return { ok: false, error: t("pilotDeckConfig.panels.models.providerIdDuplicate") };
     }
     const targetId = trimmed || oldId;
-    const nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
+    let nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
+    if (targetId === oldId) {
+      const previousModels = providers[oldId]?.models ?? {};
+      const nextModels = provider.models ?? {};
+      for (const modelId of Object.keys(previousModels)) {
+        if (!(modelId in nextModels)) {
+          nextConfig = clearSubagentDefaultForRemovedModel(nextConfig, targetId, modelId);
+        }
+      }
+    }
     return applyChange(
       nextConfig,
       targetId !== oldId

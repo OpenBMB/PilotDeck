@@ -17,6 +17,13 @@ design-qa/** !filter !diff !merge -text
 # Desktop app icon sources are tiny; avoid LFS (OpenBMB budget) and release-time smudge failures
 apps/desktop/assets/** !filter !diff !merge text=auto
 
+# Onboarding ships these small runtime assets inside the Docker image. Keep
+# them as normal blobs so a checkout does not require the repository LFS quota.
+ui/server/assets/onboarding/image-capability-probe.png !filter !diff !merge -text
+ui/public/pilotdeck-logo-lockup-transparent.png !filter !diff !merge -text
+ui/public/pilotdeck-p-mark-transparent.png !filter !diff !merge -text
+ui/public/pilotdeck-p-mark-transparent-v2.png !filter !diff !merge -text
+
 # Shell scripts MUST stay LF — CRLF breaks the Docker entrypoint (`bash\r` not found)
 *.sh text eol=lf
 docker-entrypoint.sh text eol=lf

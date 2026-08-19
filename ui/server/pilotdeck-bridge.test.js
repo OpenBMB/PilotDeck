@@ -6,8 +6,21 @@ import {
     getFallbackSessionActivity,
     isGatewayUnavailableError,
     isTerminalAlwaysOnTurnEvent,
+    resolveTurnRunId,
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+describe('turn run identity', () => {
+    it('reuses a non-empty client run id', () => {
+        expect(resolveTurnRunId('  run-user-1  ')).toBe('run-user-1');
+    });
+
+    it('generates a UUID when a legacy client omits the run id', () => {
+        expect(resolveTurnRunId(undefined)).toMatch(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        );
+    });
+});
 
 describe('web attachment conversion', () => {
     it('marks uploaded files with the web channel key', () => {

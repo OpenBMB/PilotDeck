@@ -50,6 +50,7 @@ function createMessagesFromEffects(effects: LifecycleDispatchResult["effects"]):
             text: `<hook_context source="${effect.source}">\n${effect.content}\n</hook_context>`,
           },
         ],
+        metadata: { synthetic: true, purpose: "hook_context" },
       });
     }
   }

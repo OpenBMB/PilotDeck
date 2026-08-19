@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { validatePilotDeckConfig } from '../services/pilotdeckConfig.js';
 
 const nativeFetch = globalThis.fetch;
 const tempDirs = [];
@@ -17,6 +18,17 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe('pilotdeck config model validation', () => {
+  it('rejects an agent model missing from an existing provider', () => {
+    const validation = validatePilotDeckConfig({
+      agent: { model: 'ollama/missing' },
+      model: { providers: { ollama: { protocol: 'openai', url: 'http://localhost:11434/v1', models: { known: {} } } } },
+    });
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join('\n')).toContain('agent.model="ollama/missing"');
+  });
 });
 
 describe('config test-connection route', () => {
@@ -64,7 +76,7 @@ describe('config test-connection route', () => {
     expect(requestBody).toMatchObject({
       model: 'kimi-k3',
       max_tokens: 8,
-      messages: [{ role: 'user', content: 'Reply exactly: OK' }],
+      messages: [{ role: 'user', content: 'Reply exactly: 1' }],
     });
   });
 
@@ -224,7 +236,7 @@ describe('config test-connection route', () => {
     expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
   });
 
-  it('fails when the provider returns no chat text', async () => {
+  it('fails when the provider returns no chat text or reasoning output', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ choices: [{ message: { content: '' } }] })));
 
     const { request } = await createConfigApp();

@@ -845,7 +845,7 @@
         "providerRetry": {
           "requestMaxRetries": { "label": "请求最大重试次数", "description": "非流式请求的最大重试次数。" },
           "streamMaxRetries": { "label": "流式最大重试次数", "description": "流式请求的最大重试次数。" },
-          "streamIdleTimeoutMs": { "label": "流式空闲超时（毫秒）", "description": "在此时间内没有收到数据则中止流。" },
+          "streamIdleTimeoutMs": { "label": "流式空闲超时（毫秒）", "description": "在此时间内没有收到数据则中止流。默认 600000 毫秒。" },
           "baseDelayMs": { "label": "基础延迟（毫秒）", "description": "首次重试前的初始等待时间。" },
           "maxDelayMs": { "label": "最大延迟（毫秒）", "description": "两次重试之间的最长等待时间。" }
         }

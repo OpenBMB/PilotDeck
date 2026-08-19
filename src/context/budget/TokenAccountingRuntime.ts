@@ -1,24 +1,34 @@
 import { createHash } from "node:crypto";
 import {
   buildAnthropicRequest,
-  buildOpenAIRequest,
   normalizeProviderBaseUrl,
   type CanonicalMessage,
   type CanonicalModelEvent,
   type CanonicalModelRequest,
   type CanonicalToolSchema,
+  type CanonicalUsage,
   type ModelConfig,
   type ProviderConfig,
 } from "../../model/index.js";
+import { buildOpenAIResponsesRequest } from "../../model/providers/openai-responses/request.js";
 import { buildProviderHeaders } from "../../model/streaming/streamModel.js";
-import { TokenBudgetManager, type TokenBudgetEvaluateOptions, type TokenBudgetSnapshot } from "./TokenBudgetManager.js";
+import { TokenBudgetManager, type TokenBudgetSnapshot } from "./TokenBudgetManager.js";
 
-export type TokenCountSource = "provider" | "local";
+export type TokenCountSource = "provider" | "calibrated" | "local";
+
+export type TokenCalibrationBaseline = {
+  provider: string;
+  model: string;
+  actualInputTokens: number;
+  estimatedInputTokens: number;
+};
 
 export type TokenCountResult = {
   tokens: number;
   source: TokenCountSource;
   exact: boolean;
+  localEstimateTokens: number;
+  calibration?: TokenCalibrationBaseline;
   estimatorError?: string;
 };
 
@@ -33,12 +43,12 @@ export type TokenAccountingRuntimeOptions = {
 export type CountRequestInputOptions = {
   signal?: AbortSignal;
   useProviderCount?: boolean;
+  calibration?: TokenCalibrationBaseline;
 };
 
 export type EvaluateRequestBudgetOptions = CountRequestInputOptions & {
   maxContextTokens: number;
   reservedOutputTokens?: number;
-  usePadding?: boolean;
 };
 
 const DEFAULT_COUNT_TIMEOUT_MS = 1_500;
@@ -64,29 +74,44 @@ export class TokenAccountingRuntime {
     request: CanonicalModelRequest,
     options: CountRequestInputOptions = {},
   ): Promise<TokenCountResult> {
+    const localEstimateTokens = this.estimateRequestInput(request);
+    let estimatorError: string | undefined;
     if (options.useProviderCount !== false) {
       const cached = this.getCachedProviderCount(request);
-      if (cached) return cached;
+      if (cached) return { ...cached, localEstimateTokens };
       try {
         const counted = await this.countWithProvider(request, options.signal);
         if (counted) {
           this.setCachedProviderCount(request, counted);
-          return counted;
+          return { ...counted, localEstimateTokens };
         }
       } catch (error) {
-        return {
-          tokens: this.estimateRequestInput(request, { usePadding: true }),
-          source: "local",
-          exact: false,
-          estimatorError: error instanceof Error ? error.message : String(error),
-        };
+        estimatorError = error instanceof Error ? error.message : String(error);
       }
     }
 
+    const calibration = matchingCalibration(request, options.calibration);
+    if (calibration) {
+      const correction = calibration.actualInputTokens - calibration.estimatedInputTokens;
+      // A compaction or provider-side prompt transformation can substantially
+      // change the request's composition. Never let one previous absolute
+      // delta overwhelm the current request estimate.
+      const maximumCorrection = Math.max(1, Math.floor(localEstimateTokens * 0.5));
+      return {
+        tokens: Math.max(1, Math.round(localEstimateTokens + clamp(correction, -maximumCorrection, maximumCorrection))),
+        source: "calibrated",
+        exact: false,
+        localEstimateTokens,
+        calibration,
+        estimatorError,
+      };
+    }
     return {
-      tokens: this.estimateRequestInput(request, { usePadding: true }),
+      tokens: localEstimateTokens,
       source: "local",
       exact: false,
+      localEstimateTokens,
+      estimatorError,
     };
   }
 
@@ -100,8 +125,10 @@ export class TokenAccountingRuntime {
       source: counted.source,
       exact: counted.exact,
       estimatorError: counted.estimatorError,
-      displayTokens: counted.exact ? undefined : this.estimateRequestInput(request),
-      budgetTokens: options.usePadding ? this.estimateRequestInput(request, { usePadding: true }) : undefined,
+      usageTokens: counted.source === "local" ? undefined : counted.tokens,
+      localEstimateTokens: counted.localEstimateTokens,
+      calibrationActualInputTokens: counted.calibration?.actualInputTokens,
+      calibrationEstimatedInputTokens: counted.calibration?.estimatedInputTokens,
     });
   }
 
@@ -114,17 +141,17 @@ export class TokenAccountingRuntime {
       exact?: boolean;
       estimatorError?: string;
       usageTokens?: number;
+      localEstimateTokens?: number;
       displayTokens?: number;
-      budgetTokens?: number;
+      calibrationActualInputTokens?: number;
+      calibrationEstimatedInputTokens?: number;
     } = {},
   ): TokenBudgetSnapshot {
     return this.tokenBudget.snapshotFromTokens(tokens, maxContextTokens, metadata);
   }
 
-  estimateMessages(messages: CanonicalMessage[], options: TokenBudgetEvaluateOptions = {}): number {
-    return options.usePadding
-      ? this.tokenBudget.estimateForMessagesWithPadding(messages)
-      : this.tokenBudget.estimateMessagesTokens(messages);
+  estimateMessages(messages: CanonicalMessage[]): number {
+    return this.tokenBudget.estimateMessagesTokens(messages);
   }
 
   estimateResponseEvents(events: CanonicalModelEvent[]): number {
@@ -140,10 +167,8 @@ export class TokenAccountingRuntime {
     return this.tokenBudget.estimateTextTokens(chunks.join(""));
   }
 
-  estimateRequestInput(request: CanonicalModelRequest, options: TokenBudgetEvaluateOptions = {}): number {
-    const messages = options.usePadding
-      ? this.tokenBudget.estimateForMessagesWithPadding(request.messages)
-      : this.tokenBudget.estimateMessagesTokens(request.messages);
+  estimateRequestInput(request: CanonicalModelRequest): number {
+    const messages = this.tokenBudget.estimateMessagesTokens(request.messages);
     const system = request.systemPrompt ? this.tokenBudget.estimateTextTokens(request.systemPrompt) : 0;
     const tools = estimateToolSchemas(this.tokenBudget, request.tools ?? []);
     return messages + system + tools;
@@ -161,7 +186,7 @@ export class TokenAccountingRuntime {
     if (provider.protocol === "anthropic") {
       return this.countAnthropic(provider, request, signal);
     }
-    if (isOfficialOpenAIProvider(provider)) {
+    if (isOfficialOpenAIResponsesProvider(provider)) {
       return this.countOpenAI(provider, request, signal);
     }
     return undefined;
@@ -184,7 +209,7 @@ export class TokenAccountingRuntime {
       thinking: fullBody.thinking,
     };
     const raw = await this.postProviderCount(provider, "v1/messages/count_tokens", body, signal);
-    return { tokens: readTokenCount(raw), source: "provider", exact: true };
+    return { tokens: readTokenCount(raw), source: "provider", exact: true, localEstimateTokens: 0 };
   }
 
   private async countOpenAI(
@@ -196,7 +221,7 @@ export class TokenAccountingRuntime {
     const raw = await this.postProviderCount(provider, "v1/responses/input_tokens", body, signal, {
       useOriginBase: true,
     });
-    return { tokens: readTokenCount(raw), source: "provider", exact: true };
+    return { tokens: readTokenCount(raw), source: "provider", exact: true, localEstimateTokens: 0 };
   }
 
   private async postProviderCount(
@@ -248,144 +273,62 @@ export class TokenAccountingRuntime {
   }
 }
 
+export function actualInputTokensFromUsage(usage: CanonicalUsage | undefined): number | undefined {
+  if (!usage) return undefined;
+  let total = 0;
+  for (const tokens of [usage.inputTokens, usage.cacheReadTokens, usage.cacheWriteTokens]) {
+    if (typeof tokens === "number" && Number.isFinite(tokens) && tokens > 0) {
+      total += tokens;
+    }
+  }
+  return total > 0 ? Math.ceil(total) : undefined;
+}
+
+function matchingCalibration(
+  request: CanonicalModelRequest,
+  calibration: TokenCalibrationBaseline | undefined,
+): TokenCalibrationBaseline | undefined {
+  if (!calibration || calibration.provider !== request.provider || calibration.model !== request.model) {
+    return undefined;
+  }
+  if (!Number.isFinite(calibration.actualInputTokens) || calibration.actualInputTokens <= 0) {
+    return undefined;
+  }
+  if (!Number.isFinite(calibration.estimatedInputTokens) || calibration.estimatedInputTokens <= 0) {
+    return undefined;
+  }
+  return calibration;
+}
+
 function toOpenAIResponsesTokenCountBody(
   provider: ProviderConfig,
   request: CanonicalModelRequest,
 ): Record<string, unknown> {
   const model = provider.models[request.model];
   if (!model) throw new Error(`Model ${request.model} does not exist in provider ${provider.id}.`);
-  const chatBody = buildOpenAIRequest({ ...request, stream: false }, model);
-  return {
-    model: chatBody.model,
-    input: toOpenAIResponsesInput(chatBody.messages),
-    tools: toOpenAIResponsesTools(chatBody.tools),
-    tool_choice: toOpenAIResponsesToolChoice(chatBody.tool_choice),
-    text: toOpenAIResponsesTextFormat(chatBody.response_format),
-  };
-}
-
-function toOpenAIResponsesInput(messages: Array<Record<string, unknown>>): unknown[] {
-  const input: unknown[] = [];
-  for (const message of messages) {
-    const role = typeof message.role === "string" ? message.role : undefined;
-    if (role === "tool") {
-      const callId = typeof message.tool_call_id === "string" ? message.tool_call_id : undefined;
-      input.push({
-        type: "function_call_output",
-        call_id: callId,
-        output: contentToText(message.content),
-      });
-      continue;
-    }
-
-    if (role === "system" || role === "user" || role === "assistant") {
-      if (message.content !== undefined) {
-        input.push({
-          role,
-          content: toOpenAIResponsesContent(message.content),
-        });
-      }
-      if (role === "assistant" && Array.isArray(message.tool_calls)) {
-        for (const toolCall of message.tool_calls) {
-          input.push(toOpenAIResponsesFunctionCall(toolCall));
-        }
-      }
-    }
-  }
-  return input;
-}
-
-function toOpenAIResponsesContent(content: unknown): unknown {
-  if (!Array.isArray(content)) {
-    return content;
-  }
-  return content.map((part) => {
-    if (!isRecord(part)) {
-      return part;
-    }
-    if (part.type === "text") {
-      return { type: "input_text", text: part.text };
-    }
-    if (part.type === "image_url" && isRecord(part.image_url)) {
-      return {
-        type: "input_image",
-        image_url: part.image_url.url,
-        detail: part.image_url.detail,
-      };
-    }
-    return part;
+  const fullBody = buildOpenAIResponsesRequest({ ...request, stream: false }, model, provider);
+  const {
+    model: responseModel,
+    input,
+    instructions,
+    tools,
+    tool_choice: toolChoice,
+    text,
+    reasoning,
+    enable_thinking: enableThinking,
+    thinking_budget: thinkingBudget,
+  } = fullBody;
+  return omitUndefined({
+    model: responseModel,
+    input,
+    instructions,
+    tools,
+    tool_choice: toolChoice,
+    text,
+    reasoning,
+    enable_thinking: enableThinking,
+    thinking_budget: thinkingBudget,
   });
-}
-
-function toOpenAIResponsesFunctionCall(toolCall: unknown): Record<string, unknown> {
-  const call = isRecord(toolCall) ? toolCall : {};
-  const fn = isRecord(call.function) ? call.function : {};
-  return {
-    type: "function_call",
-    call_id: call.id,
-    name: fn.name,
-    arguments: typeof fn.arguments === "string" ? fn.arguments : safeJsonStringify(fn.arguments ?? {}),
-  };
-}
-
-function toOpenAIResponsesTools(tools: unknown): unknown {
-  if (!Array.isArray(tools)) {
-    return undefined;
-  }
-  return tools.map((tool) => {
-    if (!isRecord(tool) || tool.type !== "function" || !isRecord(tool.function)) {
-      return tool;
-    }
-    return {
-      type: "function",
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: tool.function.parameters,
-    };
-  });
-}
-
-function toOpenAIResponsesToolChoice(toolChoice: unknown): unknown {
-  if (!isRecord(toolChoice) || toolChoice.type !== "function" || !isRecord(toolChoice.function)) {
-    return toolChoice;
-  }
-  return {
-    type: "function",
-    name: toolChoice.function.name,
-  };
-}
-
-function toOpenAIResponsesTextFormat(responseFormat: unknown): unknown {
-  if (!isRecord(responseFormat) || responseFormat.type !== "json_schema" || !isRecord(responseFormat.json_schema)) {
-    return undefined;
-  }
-  return {
-    format: {
-      type: "json_schema",
-      name: responseFormat.json_schema.name,
-      description: responseFormat.json_schema.description,
-      schema: responseFormat.json_schema.schema,
-      strict: responseFormat.json_schema.strict,
-    },
-  };
-}
-
-function contentToText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return safeJsonStringify(content);
-  }
-  return content.map((part) => {
-    if (typeof part === "string") {
-      return part;
-    }
-    if (isRecord(part) && typeof part.text === "string") {
-      return part.text;
-    }
-    return safeJsonStringify(part);
-  }).join("\n");
 }
 
 function estimateToolSchemas(tokenBudget: TokenBudgetManager, tools: CanonicalToolSchema[]): number {
@@ -413,9 +356,9 @@ function cacheKeyForRequest(request: CanonicalModelRequest): string {
     .digest("hex");
 }
 
-function isOfficialOpenAIProvider(provider: ProviderConfig): boolean {
+function isOfficialOpenAIResponsesProvider(provider: ProviderConfig): boolean {
   const normalized = normalizeProviderBaseUrl(provider.url);
-  return provider.protocol === "openai" && (
+  return provider.protocol === "openai-responses" && (
     normalized === "https://api.openai.com" ||
     normalized === "https://api.openai.com/v1"
   );
@@ -440,6 +383,14 @@ function readTokenCount(raw: unknown): number {
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function omitUndefined(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
 }
 
 function forwardAbort(source: AbortSignal, target: AbortController): () => void {

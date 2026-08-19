@@ -1,11 +1,11 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { inspectPptx } from './ooxml.mjs';
-import { compareRenderedDirectories, renderPptx, renderingAvailability } from './render.mjs';
+import { fileSha256, writeJson } from './paths.mjs';
+import { renderPptx, renderingAvailability } from './render.mjs';
 
 const OLE_MAGIC = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
 
@@ -19,18 +19,6 @@ function run(command, args) {
     throw new Error(`${command} exited with ${result.status}: ${(result.stderr || result.stdout || '').trim()}`);
   }
   return result;
-}
-
-async function writeJson(file, value) {
-  const output = path.resolve(file);
-  await fs.mkdir(path.dirname(output), { recursive: true });
-  await fs.writeFile(output, `${JSON.stringify(value, null, 2)}\n`);
-  return output;
-}
-
-async function sha256File(file) {
-  const buffer = await fs.readFile(file);
-  return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
 async function findConvertedFile(outputDir, extension) {
@@ -140,7 +128,7 @@ export async function convertLegacyPpt(inputPath, outputPath, options = {}) {
       throw new Error('Verified .ppt conversion requires LibreOffice plus pdftoppm, mutool, or ImageMagick');
     }
     report.conversion.engine = availability.soffice;
-    const sourceHashBefore = await sha256File(input);
+    const sourceHashBefore = await fileSha256(input);
     const format = await detectPresentationFormat(input);
     report.source.format = format;
     report.source.sha256 = sourceHashBefore;
@@ -167,27 +155,16 @@ export async function convertLegacyPpt(inputPath, outputPath, options = {}) {
     }
 
     const candidateManifest = await inspectPptx(candidate);
-    const sourceRender = await renderPptx(input, path.join(qaDir, 'source-slides'), {
-      dpi: options.dpi ?? 120,
-      montage: path.join(qaDir, 'source-montage.png'),
-      pdf: path.join(qaDir, 'source.pdf'),
-    });
-    const convertedRender = await renderPptx(candidate, path.join(qaDir, 'converted-slides'), {
-      dpi: options.dpi ?? 120,
-      montage: path.join(qaDir, 'converted-montage.png'),
-      pdf: path.join(qaDir, 'converted.pdf'),
-    });
-    const fidelity = await compareRenderedDirectories(sourceRender.output, convertedRender.output, {
-      threshold: options.fidelityThreshold ?? 0.01,
-    });
+    const sourceRender = await renderPptx(input, path.join(qaDir, 'source-slides'), { dpi: 120 });
+    const convertedRender = await renderPptx(candidate, path.join(qaDir, 'converted-slides'), { dpi: 120 });
     report.validation = {
-      status: 'passed',
+      status: 'review_pending',
       sourceSlideCount: sourceRender.slideCount,
       convertedSlideCount: candidateManifest.slideCount,
       renderedConvertedSlideCount: convertedRender.slideCount,
-      fidelity,
       sourceRender,
       convertedRender,
+      instruction: 'Compare relevant source and converted slide images. Rendering evidence does not decide whether the conversion is visually acceptable.',
     };
     if (sourceRender.slideCount !== candidateManifest.slideCount
       || convertedRender.slideCount !== candidateManifest.slideCount) {
@@ -196,15 +173,7 @@ export async function convertLegacyPpt(inputPath, outputPath, options = {}) {
         message: `Conversion changed the slide count (${sourceRender.slideCount} source, ${candidateManifest.slideCount} converted)`,
       });
     }
-    if (fidelity.status !== 'passed') {
-      report.warnings.push({
-        code: 'conversion_visual_difference',
-        maxDifference: fidelity.maxDifference,
-        threshold: fidelity.threshold,
-        message: 'Converted pages differ from the LibreOffice rendering of the source .ppt; inspect the paired PNGs.',
-      });
-    }
-    const sourceHashAfter = await sha256File(input);
+    const sourceHashAfter = await fileSha256(input);
     report.source.preserved = sourceHashBefore === sourceHashAfter;
     if (!report.source.preserved) {
       report.errors.push({ code: 'source_changed', message: 'The source presentation changed during conversion' });
@@ -232,7 +201,7 @@ export async function convertLegacyPpt(inputPath, outputPath, options = {}) {
       bytes: sealedManifest.bytes,
       slideCount: sealedManifest.slideCount,
     };
-    report.status = report.warnings.length ? 'passed_with_warnings' : 'passed';
+    report.status = report.warnings.length ? 'converted_with_warnings' : 'converted';
     await writeJson(reportFile, report);
     return report;
   } catch (error) {

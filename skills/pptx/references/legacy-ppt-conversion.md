@@ -2,16 +2,16 @@
 
 ## Supported contract
 
-Accept a binary PowerPoint 97–2003 `.ppt` only as a preserved source. Convert it with LibreOffice to a distinct `.pptx`, then use the normal OOXML inspection, template, audit, render, and delivery workflow. Never promise native `.ppt` editing, `.ppt` output, or lossless migration.
+Accept a binary PowerPoint 97–2003 `.ppt` only as a preserved source. Convert it with LibreOffice to a distinct internal `.pptx`, then use the normal inspect, build, review, and delivery workflow. Never promise native `.ppt` editing, `.ppt` output, or lossless migration.
 
 ```bash
-bash "$PPTX" convert \
+bash "$PPTX" convert-legacy \
   --input source.ppt \
   --out "$WORKSPACE/tmp/source-converted.pptx" \
   --qa-dir "$WORKSPACE/legacy-conversion-qa"
 ```
 
-The command detects the format from file bytes rather than trusting the extension. A renamed PPTX is normalized without legacy conversion. An invalid or corrupt binary file fails closed and does not create the requested output.
+The command detects the format from file bytes rather than trusting the extension. A renamed PPTX is normalized without legacy conversion. An invalid or corrupt binary file fails without creating the requested output.
 
 ## Verification
 
@@ -21,11 +21,11 @@ The conversion command:
 2. Renders the source `.ppt` with LibreOffice.
 3. Converts through the `Impress MS PowerPoint 2007 XML` filter.
 4. Parses the converted OOXML and verifies a non-empty slide manifest.
-5. Renders the converted `.pptx` at the same DPI.
-6. Compares page counts and paired raster output.
-7. Atomically writes the requested `.pptx` only after structural checks pass.
+5. Renders source and converted slides into separate per-page image directories.
+6. Verifies source preservation and matching structural page counts.
+7. Atomically writes the internal `.pptx` candidate after structural checks.
 
-Page-count mismatch, source mutation, invalid OOXML, missing render output, or conversion failure blocks the result. A visual-difference warning requires full-size review and a compatibility note.
+Page-count mismatch, source mutation, invalid OOXML, missing render output, or conversion failure blocks the result. The images are evidence for model review; the command does not use an arbitrary pixel threshold to declare visual fidelity.
 
 ## Known limitations
 

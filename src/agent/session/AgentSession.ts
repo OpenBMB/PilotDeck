@@ -14,6 +14,7 @@ import {
 } from "./AgentSessionState.js";
 import type { AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { AgentLoopSeedState } from "../loop/AgentLoop.js";
+import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
 
 export type AgentSessionOptions = {
   sessionId: string;
@@ -32,6 +33,7 @@ export type AgentSessionRuntimeReloadSnapshot = {
   transcriptPath: string;
   transcriptWriterState?: AgentTranscriptWriterState;
   fileState?: AgentLoopSeedState;
+  metadata?: SessionMetadataValue;
 };
 
 export class AgentSession {
@@ -129,6 +131,7 @@ export class AgentSession {
       transcriptPath: runtime.runtimeContext.transcriptPath,
       transcriptWriterState: runtime.transcriptWriterState,
       fileState: this.options.turnRunner.snapshotFileState(),
+      metadata: runtime.metadata,
     };
   }
 

@@ -349,15 +349,10 @@ function formatContextPercentLabel(percent: number): string {
   return `${percent}%`;
 }
 
-export function getContextStatus(
-  tokenBudget?: Record<string, unknown> | null,
-): ContextStatus {
-  const used =
-    readNumber(tokenBudget?.displayUsed) ?? readNumber(tokenBudget?.used) ?? 0;
-  const budgetUsed =
-    readNumber(tokenBudget?.budgetUsed) ??
-    readNumber(tokenBudget?.used) ??
-    used;
+export function getContextStatus(tokenBudget?: Record<string, unknown> | null): ContextStatus {
+  // `used` is the resolved provider/calibrated count that drives compaction.
+  // Keep displayUsed only as a fallback for older persisted gateway events.
+  const used = readNumber(tokenBudget?.used) ?? readNumber(tokenBudget?.displayUsed) ?? 0;
   const total = readNumber(tokenBudget?.total) ?? 0;
   const effectiveTotal = readNumber(tokenBudget?.effectiveTotal);
   const displayTotal =
@@ -377,11 +372,7 @@ export function getContextStatus(
     };
   }
 
-  // The visible count and percent must describe the same quantity. `budgetUsed`
-  // includes the conservative request padding used by the compaction policy;
-  // using it for the badge while showing `displayUsed` below produced confusing
-  // combinations such as “100%+” beside “11,928 / 12,000”. Policy state still
-  // uses the padded budget and can correctly remain blocking.
+  // The visible count and percent must describe the resolved request budget.
   const percent = Math.max(0, Math.round((used / displayTotal) * 100));
   const snapshotState =
     typeof tokenBudget?.state === "string" ? tokenBudget.state : null;

@@ -1,8 +1,8 @@
 # Charts and data
 
-## Validate before authoring
+## Reconcile before authoring
 
-For each chart, verify:
+For each important chart, reason about and verify:
 
 - Category labels and series values have matching lengths.
 - Units, date ranges, currencies, and percentage bases are explicit.
@@ -10,17 +10,11 @@ For each chart, verify:
 - Sorting and axis choices do not distort the intended comparison.
 - Zero baselines are used when the comparison requires them.
 
-Do not invent missing values. Record transformations and assumptions in source notes.
+Do not invent missing values. Record transformations and assumptions in source notes. When values matter to the decision, use a task-specific evaluator to reread the authoritative source and compare it with the generated chart data.
 
-## Choose the simplest chart
+## Present data for the intended comparison
 
-- Bar: compare categories or rankings.
-- Column: compare a small number of periods or categories.
-- Line: show ordered change over time.
-- Scatter: show the relationship between two numeric variables.
-- Pie or doughnut: use sparingly for a few parts of a meaningful whole.
-
-Prefer one chart and one takeaway per slide. Directly label important values when that removes legend lookup. Avoid 3D effects and decorative chart elements.
+Choose a chart only when it communicates the relationship more clearly than text or a table. Make the takeaway, scale, labels, units, and source understandable without relying on narration. Avoid decorative chart treatment and misleading axes.
 
 ## Tables
 

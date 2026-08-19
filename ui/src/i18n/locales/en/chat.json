@@ -472,6 +472,7 @@
         "auth": "Update the API key or access permissions for {{provider}} in Settings → Model Provider, or run pilotdeck setup.",
         "modelNotFound": "Choose a valid model for {{provider}} in Settings → Model Provider, or add it under model.providers.<id>.models in pilotdeck.yaml.",
         "timeout": "Increase timeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
+        "streamIdleTimeout": "Increase streamIdleTimeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
         "rateLimit": "Wait for the provider rate limit to reset, reduce concurrency, or switch to another provider/model in Settings.",
         "billing": "Top up billing/quota on the provider API side, or switch to another provider/model in Settings.",
         "contextOverflow": "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.",

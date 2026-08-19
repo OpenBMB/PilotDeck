@@ -42,7 +42,7 @@ model:
       models:
         _placeholder:
           capabilities:
-            maxOutputTokens: 65536
+            maxOutputTokens: 32768
 adapters:
   feishu:
     enabled: false

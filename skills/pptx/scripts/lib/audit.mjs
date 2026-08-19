@@ -1,8 +1,6 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { evaluateRequirements } from './coverage.mjs';
 import { inspectPptx } from './ooxml.mjs';
 import { analyzeTypography } from './typography.mjs';
+import { writeJson } from './paths.mjs';
 
 const PLACEHOLDER_PATTERNS = [
   /lorem ipsum/i,
@@ -64,68 +62,6 @@ function textFitRisk(object) {
     estimatedHeight: Math.round(estimatedHeight * 100) / 100,
     textFit: object.textFit,
     requiredScale: Math.round(requiredScale * 1000) / 1000,
-  };
-}
-
-function issueIds(issues) {
-  const counts = new Map();
-  return issues.map((issue) => {
-    const target = issue.object
-      || issue.requirement
-      || issue.objects?.join('-')
-      || 'deck';
-    const slug = String(target).toLocaleLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fff]+/gu, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 64) || 'item';
-    const base = `${issue.code}:slide-${issue.slide ?? 'all'}:${slug}`;
-    const occurrence = (counts.get(base) ?? 0) + 1;
-    counts.set(base, occurrence);
-    return { id: occurrence === 1 ? base : `${base}:${occurrence}`, ...issue };
-  });
-}
-
-async function applyDispositions(warnings, source, artifactSha256) {
-  if (!source) {
-    return {
-      source: null,
-      artifactSha256: null,
-      warnings: warnings.map((item) => ({ ...item, resolved: false, disposition: null })),
-    };
-  }
-  const specification = typeof source === 'object'
-    ? source
-    : JSON.parse(await fs.readFile(path.resolve(source), 'utf8'));
-  if (!specification.artifactSha256) {
-    throw new Error('Disposition file must include artifactSha256');
-  }
-  if (specification.artifactSha256 !== artifactSha256) {
-    throw new Error(`Disposition artifactSha256 does not match the audited PPTX (${artifactSha256})`);
-  }
-  const entries = specification.warnings ?? specification.dispositions;
-  if (!Array.isArray(entries)) throw new Error('Disposition file must contain a warnings or dispositions array');
-  const allowed = new Set(['accepted', 'intentional', 'false_positive']);
-  const byId = new Map();
-  for (const entry of entries) {
-    if (!entry?.id || typeof entry.id !== 'string') throw new Error('Every disposition must include a warning id');
-    if (byId.has(entry.id)) throw new Error(`Duplicate disposition warning id: ${entry.id}`);
-    byId.set(entry.id, entry);
-  }
-  const warningIds = new Set(warnings.map((item) => item.id));
-  const unknownIds = [...byId.keys()].filter((id) => !warningIds.has(id));
-  if (unknownIds.length) throw new Error(`Disposition file contains stale or unknown warning ids: ${unknownIds.join(', ')}`);
-  return {
-    source: typeof source === 'string' ? path.resolve(source) : 'inline',
-    artifactSha256: specification.artifactSha256,
-    warnings: warnings.map((item) => {
-      const disposition = byId.get(item.id) ?? null;
-      const reason = String(disposition?.reason ?? '').trim();
-      const evidence = Array.isArray(disposition?.evidence)
-        ? disposition.evidence.filter(Boolean).join('; ').trim()
-        : String(disposition?.evidence ?? '').trim();
-      const resolved = Boolean(disposition && allowed.has(disposition.decision) && reason && evidence);
-      return { ...item, resolved, disposition };
-    }),
   };
 }
 
@@ -215,56 +151,30 @@ export async function auditPptx(inputPath, options = {}) {
     }
   }
 
-  const coverage = await evaluateRequirements(manifest, options.requirements);
-  errors.push(...coverage.errors);
-  warnings.push(...coverage.warnings);
-  const typography = analyzeTypography(manifest, { targetPlatform: options.targetPlatform });
+  const typography = analyzeTypography(manifest);
   warnings.push(...typography.warnings.map((item) => ({ ...item, category: 'typography' })));
-  if (options.strictOverlap) {
-    errors.push(...warnings
-      .filter((item) => item.code === 'overlap')
-      .map((item) => ({
-        code: 'strict_overlap',
-        slide: item.slide,
-        objects: item.objects,
-        message: 'Object overlap is a blocker because strict overlap mode is enabled',
-      })));
-  }
-
-  const identifiedErrors = issueIds(errors);
-  const dispositionResult = await applyDispositions(issueIds(warnings), options.dispositions, manifest.sha256);
-  const identifiedWarnings = dispositionResult.warnings;
-  const unresolvedWarnings = identifiedWarnings.filter((item) => !item.resolved);
 
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     file: manifest.file,
     sha256: manifest.sha256,
     slideCount: manifest.slideCount,
     slideSize: manifest.slideSize,
-    status: identifiedErrors.length ? 'failed' : unresolvedWarnings.length ? 'passed_with_warnings' : 'passed',
+    status: errors.length || warnings.length ? 'issues_found' : 'ok',
     counts: {
-      errors: identifiedErrors.length,
-      warnings: identifiedWarnings.length,
-      resolvedWarnings: identifiedWarnings.filter((item) => item.resolved).length,
-      unresolvedWarnings: identifiedWarnings.filter((item) => !item.resolved).length,
-      overlaps: identifiedWarnings.filter((item) => item.code === 'overlap').length,
-      textFitRisks: identifiedWarnings.filter((item) => item.code === 'text_fit_risk').length,
-      typographyWarnings: identifiedWarnings.filter((item) => item.category === 'typography').length,
+      errors: errors.length,
+      warnings: warnings.length,
+      overlaps: warnings.filter((item) => item.code === 'overlap').length,
+      textFitRisks: warnings.filter((item) => item.code === 'text_fit_risk').length,
+      typographyWarnings: warnings.filter((item) => item.category === 'typography').length,
     },
-    coverage,
     typography,
-    dispositions: {
-      source: dispositionResult.source,
-      artifactSha256: dispositionResult.artifactSha256,
-    },
-    errors: identifiedErrors,
-    warnings: identifiedWarnings,
+    errors,
+    warnings,
+    judgment: 'These findings are evidence for model review. Visual heuristics are not automatic design verdicts.',
   };
   if (options.output) {
-    const output = path.resolve(options.output);
-    await fs.mkdir(path.dirname(output), { recursive: true });
-    await fs.writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
+    await writeJson(options.output, report);
   }
   return report;
 }

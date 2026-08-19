@@ -129,7 +129,7 @@ case "${1:-}" in
     cmd_fix "$@"
     ;;
   ""|-h|--help|help)
-    printf 'Usage: pptx.sh <check|fix|convert|scaffold|build|deliver|inspect|render|audit|validate-map|prepare-starter|apply-template|fidelity|self-test> [options]\n'
+    printf 'Usage: pptx.sh <check|fix|inspect|scaffold|build|fallback-patch|review|evaluate|deliver|convert-legacy> [options]\n'
     ;;
   *)
     if ! runtime_ready; then

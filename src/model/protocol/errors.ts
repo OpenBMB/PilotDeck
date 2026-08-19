@@ -28,6 +28,19 @@ export type SettingsFix = {
   url?: string;
 };
 
+/**
+ * Safe metadata about a stream that ended before the provider completed its
+ * response. Tool argument text is deliberately never retained here.
+ */
+export type StreamInterruption = {
+  phase: "empty" | "text" | "reasoning" | "tool_call";
+  activeToolCalls?: Array<{
+    id: string;
+    name: string;
+    argumentChars: number;
+  }>;
+};
+
 export type CanonicalModelError = {
   provider: string;
   model?: string;
@@ -53,6 +66,8 @@ export type CanonicalModelError = {
   maxOutputTokens?: number;
   /** Provider-reported output space available for this prompt. */
   availableOutputTokens?: number;
+  /** Streaming response ended before its completion sentinel. */
+  streamInterruption?: StreamInterruption;
 };
 
 /**

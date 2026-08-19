@@ -7,6 +7,7 @@ import {
 } from '../../../src/context/memory/edgeclaw-memory-core/lib/index.js';
 import {
   readPilotDeckConfigFile,
+  withPilotDeckConfigWrite,
   writePilotDeckConfig,
 } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
@@ -76,39 +77,28 @@ function getGlobalMemorySettings() {
 }
 
 async function saveGlobalMemorySettings(partial = {}) {
-  const record = readPilotDeckConfigFile();
-  if (record.parseError) {
-    const error = new Error('Invalid config YAML; repair raw YAML before updating memory settings');
-    error.validation = {
-      valid: false,
-      errors: [`Invalid YAML: ${record.parseError}`],
-      warnings: [],
+  const saved = await withPilotDeckConfigWrite(async () => {
+    const record = readPilotDeckConfigFile();
+    if (record.parseError) {
+      const error = new Error('Invalid config YAML; repair raw YAML before updating memory settings');
+      error.validation = {
+        valid: false,
+        errors: [`Invalid YAML: ${record.parseError}`],
+        warnings: [],
+      };
+      throw error;
+    }
+    const { config } = record;
+    const current = getGlobalMemorySettingsFromConfig(config);
+    const reasoningMode = validateReasoningMode(partial.reasoningMode);
+    const next = {
+      reasoningMode: reasoningMode ?? current.reasoningMode,
+      autoIndexIntervalMinutes: normalizeMemoryInterval(partial.autoIndexIntervalMinutes, current.autoIndexIntervalMinutes),
+      autoDreamIntervalMinutes: normalizeMemoryInterval(partial.autoDreamIntervalMinutes, current.autoDreamIntervalMinutes),
     };
-    throw error;
-  }
-  const { config } = record;
-  const current = getGlobalMemorySettingsFromConfig(config);
-  const reasoningMode = validateReasoningMode(partial.reasoningMode);
-  const next = {
-    reasoningMode: reasoningMode ?? current.reasoningMode,
-    autoIndexIntervalMinutes: normalizeMemoryInterval(
-      partial.autoIndexIntervalMinutes,
-      current.autoIndexIntervalMinutes,
-    ),
-    autoDreamIntervalMinutes: normalizeMemoryInterval(
-      partial.autoDreamIntervalMinutes,
-      current.autoDreamIntervalMinutes,
-    ),
-  };
-  const nextConfig = {
-    ...config,
-    memory: {
-      ...(config.memory ?? {}),
-      ...next,
-    },
-  };
-  suppressNextWatchEvent();
-  const saved = await writePilotDeckConfig(nextConfig);
+    suppressNextWatchEvent();
+    return writePilotDeckConfig({ ...config, memory: { ...(config.memory ?? {}), ...next } });
+  });
   await reloadPilotDeckConfig(saved.config);
   return getGlobalMemorySettingsFromConfig(saved.config);
 }

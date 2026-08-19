@@ -19,7 +19,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilities = {
   supportsSystemPrompt: true,
   supportsPromptCache: false,
   maxContextTokens: 8192,
-  maxOutputTokens: 65_536,
+  maxOutputTokens: 32_768,
 };
 
 export function mergeCapabilities(

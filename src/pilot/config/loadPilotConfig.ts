@@ -346,7 +346,7 @@ function parseAgent(
   }
 
   const model = parseAgentModelSelection(rawAgent.model, "agent.model", modelConfig, diagnostics);
-  const subagents = parseAgentSubagents(rawAgent.subagents, diagnostics);
+  const subagents = parseAgentSubagents(rawAgent.subagents, modelConfig, diagnostics);
   const maxContextTokens = readOptionalPositiveInteger(rawAgent.maxContextTokens, "agent.maxContextTokens");
   const maxOutputTokens = readOptionalPositiveInteger(rawAgent.maxOutputTokens, "agent.maxOutputTokens");
   const thinking = parseAgentThinking(rawAgent.thinking);
@@ -383,6 +383,7 @@ function parseAgentThinking(value: unknown): PilotAgentConfig["thinking"] | unde
 
 function parseAgentSubagents(
   value: unknown,
+  modelConfig: ReturnType<typeof parseModel>,
   diagnostics: PilotConfigDiagnostic[],
 ): PilotAgentConfig["subagents"] | undefined {
   if (value === undefined) {
@@ -392,7 +393,18 @@ function parseAgentSubagents(
     throw new PilotConfigError("CONFIG_AGENT_SUBAGENTS_INVALID", "agent.subagents must be an object.");
   }
   for (const key of Object.keys(value)) {
-    if (key !== "timeoutMs") {
+    if (
+      key === "params" &&
+      !(isRecord(value.params) && Object.keys(value.params).length === 0)
+    ) {
+      diagnostics.push({
+        code: "CONFIG_AGENT_SUBAGENTS_PARAMS_UNSUPPORTED",
+        severity: "warning",
+        message: "agent.subagents.params is not supported and will be ignored.",
+        path: "agent.subagents.params",
+        recoverable: true,
+      });
+    } else if (key !== "timeoutMs" && key !== "default" && key !== "params") {
       diagnostics.push({
         code: "CONFIG_AGENT_UNKNOWN_FIELD",
         severity: "warning",
@@ -402,8 +414,83 @@ function parseAgentSubagents(
       });
     }
   }
+  let defaultModel: PilotAgentModelSelection | undefined;
+  if (value.default !== undefined && value.default !== null) {
+    if (typeof value.default === "string" && value.default.trim() === "inherit") {
+      defaultModel = undefined;
+    } else {
+      defaultModel = parseSubagentDefaultModelSelection(
+        value.default,
+        modelConfig,
+        diagnostics,
+      );
+    }
+  }
   return {
+    ...(defaultModel ? { default: defaultModel } : {}),
     timeoutMs: readOptionalPositiveInteger(value.timeoutMs, "agent.subagents.timeoutMs"),
+  };
+}
+
+function parseSubagentDefaultModelSelection(
+  value: unknown,
+  modelConfig: ReturnType<typeof parseModel>,
+  diagnostics: PilotConfigDiagnostic[],
+): PilotAgentModelSelection | undefined {
+  const path = "agent.subagents.default";
+  if (typeof value !== "string" || value.trim().length === 0) {
+    diagnostics.push({
+      code: "CONFIG_AGENT_SUBAGENT_MODEL_INVALID",
+      severity: "warning",
+      message: `${path} must be inherit or a provider/model string. Inheriting agent.model instead.`,
+      path,
+      recoverable: true,
+    });
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  const separatorIndex = trimmed.indexOf("/");
+  const providerId = separatorIndex >= 0 ? trimmed.slice(0, separatorIndex) : "";
+  const modelId = separatorIndex >= 0 ? trimmed.slice(separatorIndex + 1) : "";
+  if (!providerId || !modelId) {
+    diagnostics.push({
+      code: "CONFIG_AGENT_SUBAGENT_MODEL_INVALID",
+      severity: "warning",
+      message: `${path} must use provider/model format. Inheriting agent.model instead.`,
+      path,
+      recoverable: true,
+    });
+    return undefined;
+  }
+
+  const provider = modelConfig.providers[providerId];
+  if (!provider) {
+    diagnostics.push({
+      code: "CONFIG_AGENT_SUBAGENT_PROVIDER_NOT_FOUND",
+      severity: "warning",
+      message: `${path} references unknown provider ${providerId}. Inheriting agent.model instead.`,
+      path,
+      recoverable: true,
+    });
+    return undefined;
+  }
+
+  if (!provider.models[modelId]) {
+    diagnostics.push({
+      code: "CONFIG_AGENT_SUBAGENT_MODEL_NOT_FOUND",
+      severity: "warning",
+      message: `${path} references unknown model ${modelId} for provider ${providerId}. Inheriting agent.model instead.`,
+      path,
+      recoverable: true,
+    });
+    return undefined;
+  }
+
+  return {
+    id: trimmed,
+    provider: providerId,
+    model: modelId,
   };
 }
 

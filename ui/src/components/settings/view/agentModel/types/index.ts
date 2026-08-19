@@ -11,4 +11,6 @@ export type ActiveModelCapabilities = {
   catalogProvider?: CatalogProvider;
   multimodalInput: string[] | null;
   maxOutputTokensOverride: number | undefined;
+  defaultMaxContextTokens: number;
+  defaultMaxOutputTokens: number;
 };

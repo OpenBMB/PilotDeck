@@ -2,7 +2,6 @@ import {
   flattenToolResultBlockText,
   type CanonicalContentBlock,
   type CanonicalMessage,
-  type CanonicalUsage,
 } from "../../model/index.js";
 import { countTokens } from "./tokenizer.js";
 import { effectiveInputContextTokens } from "./effectiveContext.js";
@@ -11,10 +10,13 @@ export type TokenWarningState = "ok" | "warning" | "blocking";
 
 export type TokenBudgetSnapshot = {
   tokens: number;
+  /** Local tokenizer estimate retained for diagnostics, never UI display. */
+  localEstimateTokens?: number;
   displayTokens?: number;
-  budgetTokens?: number;
   estimateSource?: "estimator" | "usage";
   usageTokens?: number;
+  calibrationActualInputTokens?: number;
+  calibrationEstimatedInputTokens?: number;
   /** Original provider/model context window before subtracting output reserve. */
   totalContextTokens?: number;
   /** Prompt/input budget after subtracting any explicit output reserve. */
@@ -25,16 +27,14 @@ export type TokenBudgetSnapshot = {
   blockingRatio: number;
   state: TokenWarningState;
   ratio: number;
-  source?: "provider" | "local";
+  source?: "provider" | "calibrated" | "local";
   exact?: boolean;
   reservedOutputTokens?: number;
   estimatorError?: string;
 };
 
 export type TokenBudgetEvaluateOptions = {
-  usePadding?: boolean;
   reservedOutputTokens?: number;
-  lastUsage?: CanonicalUsage;
 };
 
 export type TokenBudgetManagerOptions = {
@@ -56,14 +56,6 @@ export const IMAGE_MAX_TOKEN_SIZE = 2_000;
 const DEFAULT_WARNING_RATIO = 0.8;
 const DEFAULT_BLOCKING_RATIO = 0.90;
 const DEFAULT_PER_MESSAGE_OVERHEAD = 4;
-
-/**
- * Padding factor applied by `estimateForMessagesWithPadding`. Multiplies
- * by 4/3 to reserve headroom for drift between our tiktoken estimator
- * and the provider's actual tokenizer.
- */
-const ROUGH_PADDING_NUMERATOR = 4;
-const ROUGH_PADDING_DENOMINATOR = 3;
 
 /**
  * Token budget estimator backed by o200k_base tiktoken encoding.
@@ -174,34 +166,16 @@ export class TokenBudgetManager {
     return this.estimateForMessages(messages);
   }
 
-  /**
-   * T12: padded estimate (4/3 multiplier, ceil) used by warning / compaction
-   * gates. Conservative upper bound that survives drift between our
-   * estimator and the provider's tokenizer.
-   */
-  estimateForMessagesWithPadding(messages: CanonicalMessage[]): number {
-    const raw = this.estimateForMessages(messages);
-    if (raw === 0) return 0;
-    return Math.ceil((raw * ROUGH_PADDING_NUMERATOR) / ROUGH_PADDING_DENOMINATOR);
-  }
-
   evaluate(
     messages: CanonicalMessage[],
     maxContextTokens: number,
     optionsOrMaxOutputTokens: TokenBudgetEvaluateOptions | number = {},
-    lastUsage?: CanonicalUsage,
   ): TokenBudgetSnapshot {
     const options = typeof optionsOrMaxOutputTokens === "number"
-      ? { reservedOutputTokens: optionsOrMaxOutputTokens, lastUsage }
+      ? { reservedOutputTokens: optionsOrMaxOutputTokens }
       : optionsOrMaxOutputTokens;
-    const estimatedTokens = options.usePadding
-      ? this.estimateForMessagesWithPadding(messages)
-      : this.estimateMessagesTokens(messages);
-    const usageTokens = tokensFromUsage(options.lastUsage);
-    const tokens = usageTokens !== undefined ? Math.max(usageTokens, estimatedTokens) : estimatedTokens;
-    return this.snapshotFromTokens(tokens, maxContextTokens, {
+    return this.snapshotFromTokens(this.estimateMessagesTokens(messages), maxContextTokens, {
       reservedOutputTokens: options.reservedOutputTokens,
-      usageTokens,
     });
   }
 
@@ -210,19 +184,20 @@ export class TokenBudgetManager {
     maxContextTokens: number,
     options: {
       reservedOutputTokens?: number;
-      source?: "provider" | "local";
+      source?: "provider" | "calibrated" | "local";
       exact?: boolean;
       estimatorError?: string;
       usageTokens?: number;
+      localEstimateTokens?: number;
       displayTokens?: number;
-      budgetTokens?: number;
+      calibrationActualInputTokens?: number;
+      calibrationEstimatedInputTokens?: number;
     } = {},
   ): TokenBudgetSnapshot {
-    const budgetTokens = options.budgetTokens !== undefined ? Math.max(options.budgetTokens, tokens) : tokens;
     const reserved = Math.max(0, Math.floor(options.reservedOutputTokens ?? 0));
     const totalContextTokens = Math.max(1, Math.floor(maxContextTokens));
     const promptBudget = effectiveInputContextTokens(maxContextTokens, reserved);
-    const ratio = promptBudget > 0 ? budgetTokens / promptBudget : 0;
+    const ratio = promptBudget > 0 ? tokens / promptBudget : 0;
     let state: TokenWarningState = "ok";
     if (ratio >= this.blockingRatio) {
       state = "blocking";
@@ -231,10 +206,16 @@ export class TokenBudgetManager {
     }
     return {
       tokens,
+      ...(options.localEstimateTokens !== undefined ? { localEstimateTokens: options.localEstimateTokens } : {}),
       ...(options.displayTokens !== undefined && options.displayTokens !== tokens ? { displayTokens: options.displayTokens } : {}),
-      ...(budgetTokens !== tokens ? { budgetTokens } : {}),
       estimateSource: options.usageTokens !== undefined ? "usage" : "estimator",
       ...(options.usageTokens !== undefined ? { usageTokens: options.usageTokens } : {}),
+      ...(options.calibrationActualInputTokens !== undefined
+        ? { calibrationActualInputTokens: options.calibrationActualInputTokens }
+        : {}),
+      ...(options.calibrationEstimatedInputTokens !== undefined
+        ? { calibrationEstimatedInputTokens: options.calibrationEstimatedInputTokens }
+        : {}),
       totalContextTokens,
       maxContextTokens: promptBudget,
       effectiveContextTokens: promptBudget,
@@ -249,17 +230,6 @@ export class TokenBudgetManager {
       estimatorError: options.estimatorError,
     };
   }
-}
-
-function tokensFromUsage(usage: CanonicalUsage | undefined): number | undefined {
-  if (!usage) return undefined;
-  const input = usage.inputTokens;
-  const output = usage.outputTokens;
-  if (typeof input === "number" && Number.isFinite(input) && input > 0) {
-    const safeOutput = typeof output === "number" && Number.isFinite(output) && output > 0 ? output : 0;
-    return Math.ceil(input + safeOutput);
-  }
-  return undefined;
 }
 
 /**

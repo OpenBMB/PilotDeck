@@ -1,56 +1,58 @@
-export default async function build({ createDeck, layouts, resolveDesignTokens }) {
-  const tokens = await resolveDesignTokens({ lang: 'en-US', profile: 'cross-platform-en' });
-  const pptx = await createDeck({
-    title: 'PilotDeck PPTX Skill',
-    subject: 'A self-test presentation generated from an executable ES module',
-    lang: 'en-US',
-    tokens,
+export default async function build({ createDeck }) {
+  const pptx = await createDeck({ title: 'Presentation' });
+  const fontFace = 'Arial';
+
+  const cover = pptx.addSlide();
+  cover.background = { color: 'FFFFFF' };
+  cover.addText('A clear presentation title', {
+    objectName: 'Deck Title',
+    x: 0.9, y: 1.6, w: 11.4, h: 1.1,
+    fontFace,
+    fontSize: 36,
+    bold: true,
+    color: '1F2937',
+    margin: 0,
+    fit: 'shrink',
+  });
+  cover.addText('Use one sentence to frame the purpose, audience, or decision.', {
+    objectName: 'Deck Subtitle',
+    x: 0.92, y: 2.95, w: 9.5, h: 0.7,
+    fontFace,
+    fontSize: 18,
+    color: '667085',
+    margin: 0,
+    fit: 'shrink',
+  });
+  cover.addShape(pptx.ShapeType.line, {
+    objectName: 'Title Rule',
+    x: 0.92, y: 4.25, w: 2.1, h: 0,
+    line: { color: '94A3B8', width: 2 },
   });
 
-  layouts.titleSlide(pptx, tokens, {
-    eyebrow: 'PilotDeck presentation runtime',
-    title: 'Native PowerPoint, built as code',
-    subtitle: 'Editable output with rendering and quality gates built into the workflow.',
-    meta: 'PilotDeck · JavaScript · PPTX',
+  const content = pptx.addSlide();
+  content.background = { color: 'FFFFFF' };
+  content.addText('One slide, one communication job', {
+    objectName: 'Slide Title',
+    x: 0.78, y: 0.62, w: 11.7, h: 0.55,
+    fontFace,
+    fontSize: 28,
+    bold: true,
+    color: '1F2937',
+    margin: 0,
+    fit: 'shrink',
   });
-
-  layouts.sectionSlide(pptx, tokens, {
-    number: 1,
-    title: 'A repeatable production path',
-    subtitle: 'Narrative planning, native authoring, full rendering, and structural validation.',
-    footer: 'PilotDeck PPTX Skill',
-    page: 2,
-  });
-
-  layouts.metricSlide(pptx, tokens, {
-    kicker: 'Quality gates',
-    title: 'Verification is part of generation',
-    metrics: [
-      { value: '100%', label: 'slides rendered', detail: 'Every page becomes a PNG.' },
-      { value: '0', label: 'canvas overflows', detail: 'Bounds are checked in OOXML.' },
-      { value: '1×', label: 'reproducible build', detail: 'The source .mjs stays with the work.' },
-    ],
-    source: 'PilotDeck self-test',
-    page: 3,
-  });
-
-  layouts.timelineSlide(pptx, tokens, {
-    kicker: 'Workflow',
-    title: 'From brief to verified presentation',
-    steps: [
-      { label: 'Plan', detail: 'Define the audience and takeaway.' },
-      { label: 'Build', detail: 'Generate native PowerPoint objects.' },
-      { label: 'Render', detail: 'Inspect every slide as an image.' },
-      { label: 'Audit', detail: 'Fix overflow, overlap, and data issues.' },
-    ],
-    footer: 'PilotDeck PPTX Skill',
-    page: 4,
-  });
-
-  layouts.closingSlide(pptx, tokens, {
-    title: 'Build once. Inspect everything.',
-    action: 'Keep the deck editable, the source reproducible, and the quality visible.',
-    contact: 'PilotDeck PPTX Skill',
+  content.addText([
+    { text: 'Replace this example with the content and visual structure that best serves the request.', options: { bullet: { indent: 18 }, breakLine: true } },
+    { text: 'Use the complete PptxGenJS API or optional helpers; this starter is not a required layout.', options: { bullet: { indent: 18 } } },
+  ], {
+    objectName: 'Body',
+    x: 1.0, y: 1.65, w: 8.9, h: 2.4,
+    fontFace,
+    fontSize: 18,
+    color: '344054',
+    margin: 0.08,
+    breakLine: false,
+    valign: 'mid',
   });
 
   return pptx;

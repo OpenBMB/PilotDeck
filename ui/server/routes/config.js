@@ -15,6 +15,7 @@ import {
   preserveMaskedSecrets,
   rawYamlToMaskedString,
   readPilotDeckConfigFile,
+  withPilotDeckConfigWrite,
   validatePilotDeckConfig,
   writePilotDeckConfig,
   writeRawPilotDeckYaml,
@@ -23,12 +24,11 @@ import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import {
-  buildProviderChatEndpointCandidates,
   buildProviderModelsEndpointCandidates,
   isExpectedProviderModelsResponseShape,
-  isExpectedProviderResponseShape,
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
+import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
@@ -45,7 +45,6 @@ async function notifyGatewayConfigReload() {
 }
 
 const router = express.Router();
-let configWriteQueue = Promise.resolve();
 
 const MASKED_SECRET = '********';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
@@ -237,58 +236,6 @@ function broadcastConfigEvent(payload) {
   process.emit('pilotdeck:config-broadcast', payload);
 }
 
-function extractProbeText(body, providerKind) {
-  if (!body || typeof body !== 'object') return '';
-
-  if (providerKind === 'anthropic') {
-    const content = Array.isArray(body.content) ? body.content : [];
-    return content
-      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
-      .join('')
-      .trim();
-  }
-
-  if (providerKind === 'google') {
-    const candidates = Array.isArray(body.candidates) ? body.candidates : [];
-    return candidates
-      .flatMap((candidate) => Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [])
-      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
-      .join('')
-      .trim();
-  }
-
-  if (providerKind === 'responses') {
-    if (typeof body.output_text === 'string' && body.output_text.trim()) return body.output_text.trim();
-    const output = Array.isArray(body.output) ? body.output : [];
-    return output
-      .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
-      .map((part) => {
-        if (typeof part?.text === 'string') return part.text;
-        if (typeof part?.output_text === 'string') return part.output_text;
-        return '';
-      })
-      .join('')
-      .trim();
-  }
-
-  const choices = Array.isArray(body.choices) ? body.choices : [];
-  return choices
-    .map((choice) => {
-      const content = choice?.message?.content;
-      if (typeof content === 'string' && content.trim()) return content;
-      if (Array.isArray(content)) {
-        const text = content.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('');
-        if (text.trim()) return text;
-      }
-      const reasoning = choice?.message?.reasoning_content ?? choice?.message?.reasoning;
-      if (typeof reasoning === 'string') return reasoning;
-      if (typeof choice?.text === 'string') return choice.text;
-      return '';
-    })
-    .join('')
-    .trim();
-}
-
 function normalizeModelListItem(item) {
   if (!item || typeof item !== 'object') return null;
   const rawId = typeof item.id === 'string'
@@ -360,14 +307,6 @@ async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null)
   return lastResult;
 }
 
-function isExpectedJsonBody(protocol, responseText) {
-  try {
-    return isExpectedProviderResponseShape(protocol, responseText ? JSON.parse(responseText) : {});
-  } catch {
-    return false;
-  }
-}
-
 function isExpectedModelsJsonBody(protocol, responseText) {
   try {
     return isExpectedProviderModelsResponseShape(protocol, responseText ? JSON.parse(responseText) : {});
@@ -425,14 +364,8 @@ router.get('/office-preview/status', async (req, res) => {
 });
 
 router.put('/', async (req, res) => {
-  const previousWrite = configWriteQueue;
-  let releaseWrite;
-  configWriteQueue = new Promise((resolve) => {
-    releaseWrite = resolve;
-  });
-  await previousWrite;
-
-  try {
+  await withPilotDeckConfigWrite(async () => {
+    try {
     // Two submission shapes coexist:
     //
     //   • `{ raw: "..." }` from the Raw YAML editor → write the
@@ -552,14 +485,13 @@ router.put('/', async (req, res) => {
     const response = serializeConfigResponse(freshRecord, reloadResult);
     broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
     res.json(response);
-  } catch (error) {
-    if (error?.validation) {
-      return res.status(400).json({ error: error.message, validation: error.validation });
+    } catch (error) {
+      if (error?.validation) {
+        return res.status(400).json({ error: error.message, validation: error.validation });
+      }
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  } finally {
-    releaseWrite();
-  }
+  });
 });
 
 router.post('/reload', async (_req, res) => {
@@ -720,151 +652,28 @@ router.post('/test-connection', async (req, res) => {
   const isGoogle = normalizedType === 'google';
   const isOpenAIResponses = normalizedType === 'openai-responses' || normalizedType === 'responses';
   const normalizedBaseUrl = String(baseUrl).trim().replace(/\/+$/, '');
-  const timeout = 10_000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', `Connection timed out after ${timeout / 1000}s.`)), timeout);
+  const protocol = isGoogle
+    ? 'google'
+    : isAnthropic
+      ? 'anthropic'
+      : isOpenAIResponses
+        ? 'openai-responses'
+        : 'openai';
 
-  try {
-    let url;
-    let fetchOptions;
-
-    if (isGoogle) {
-      url = buildProviderChatEndpointCandidates({ protocol: 'google', baseUrl: normalizedBaseUrl, model });
-      fetchOptions = {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': effectiveApiKey,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
-          generationConfig: { maxOutputTokens: 8 },
-        }),
-        signal: controller.signal,
-      };
-    } else if (isAnthropic) {
-      url = buildProviderChatEndpointCandidates({ protocol: 'anthropic', baseUrl: normalizedBaseUrl });
-      fetchOptions = {
-        method: 'POST',
-        headers: {
-          'x-api-key': effectiveApiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 8,
-          messages: [{ role: 'user', content: 'Hi' }],
-        }),
-        signal: controller.signal,
-      };
-    } else if (isOpenAIResponses) {
-      url = buildProviderChatEndpointCandidates({ protocol: 'openai-responses', baseUrl: normalizedBaseUrl });
-      fetchOptions = {
-        method: 'POST',
-        headers: {
-          ...(effectiveApiKey ? { Authorization: `Bearer ${effectiveApiKey}` } : {}),
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          max_output_tokens: 16,
-          input: 'Hi',
-          store: false,
-        }),
-        signal: controller.signal,
-      };
-    } else {
-      url = buildProviderChatEndpointCandidates({ protocol: 'openai', baseUrl: normalizedBaseUrl });
-      fetchOptions = {
-        method: 'POST',
-        headers: {
-          ...(effectiveApiKey ? { Authorization: `Bearer ${effectiveApiKey}` } : {}),
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 8,
-          messages: [{ role: 'user', content: 'Reply exactly: OK' }],
-        }),
-        signal: controller.signal,
-      };
-    }
-
-    const responseProtocol = isGoogle
-      ? 'google'
-      : isAnthropic
-        ? 'anthropic'
-        : isOpenAIResponses
-          ? 'openai-responses'
-          : 'openai';
-    const result = await fetchWithEndpointFallback(url, fetchOptions, (responseText) => isExpectedJsonBody(responseProtocol, responseText));
-    const { response, responseText } = result;
-    url = result.url;
-    clearTimeout(timer);
-    const expectedShape = isAnthropic
-      ? 'Anthropic message'
-      : isGoogle
-        ? 'Google Gemini generateContent response'
-        : isOpenAIResponses
-          ? 'OpenAI Responses response'
-          : 'OpenAI chat completion';
-    const baseUrlHint = isGoogle
-      ? 'For native Google Gemini, the base URL is usually https://generativelanguage.googleapis.com.'
-      : 'For OpenAI-compatible and Responses API endpoints, the base URL usually ends with /v1.';
-
-    if (response.ok) {
-      let body;
-      try {
-        body = JSON.parse(responseText);
-      } catch {
-        return res.json({
-          ok: false,
-          error: `Expected a JSON ${expectedShape} but received non-JSON content from ${url}. ${baseUrlHint}`,
-        });
-      }
-
-      const hasCompletionShape = isAnthropic
-        ? Array.isArray(body?.content) || body?.type === 'message'
-        : isGoogle
-          ? Array.isArray(body?.candidates)
-          : isOpenAIResponses
-            ? body?.object === 'response' || Array.isArray(body?.output) || typeof body?.output_text === 'string'
-            : Array.isArray(body?.choices);
-      if (!hasCompletionShape) {
-        return res.json({
-          ok: false,
-          error: `Endpoint returned HTTP ${response.status}, but the response was not a valid ${expectedShape}. Check the base URL path.`,
-        });
-      }
-
-      const providerKind = isAnthropic ? 'anthropic' : isGoogle ? 'google' : isOpenAIResponses ? 'responses' : 'openai';
-      const probeText = extractProbeText(body, providerKind);
-      if (!probeText) {
-        return res.json({
-          ok: false,
-          error: `Endpoint returned a valid ${expectedShape}, but the model did not produce any chat text. Check that ${model} supports chat completions.`,
-        });
-      }
-
-      return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
-    }
-
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = JSON.parse(responseText);
-      if (body?.error?.message) detail = body.error.message;
-      else if (body?.error?.type) detail = `${body.error.type}: ${body.error.message || ''}`;
-    } catch { /* ignore parse errors */ }
-
-    return res.json({ ok: false, error: `${detail}` });
-  } catch (err) {
-    clearTimeout(timer);
-    if (isNetworkTimeout(err)) {
-      return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s. Check your network and API URL.` });
-    }
-    return res.json({ ok: false, error: err.message || String(err) });
+  // Keep the long-standing response body while sharing the protocol request
+  // construction and endpoint fallback logic with the versioned onboarding API.
+  const probe = await probeModelConnection({
+    protocol,
+    baseUrl: normalizedBaseUrl,
+    apiKey: effectiveApiKey,
+    model,
+    maxTokens: isOpenAIResponses ? 16 : 8,
+  });
+  if (probe.ok) {
+    return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
   }
+  return res.json({ ok: false, error: probe.error });
+
 });
 
 /**

@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { resolveConversationScrollTop } from './useChatSessionState';
+import type { SessionProvider } from '../../../types/app';
+import type { ChatMessage } from '../types/types';
+import { chatMessageToNormalized, resolveConversationScrollTop } from './useChatSessionState';
+
+describe('chatMessageToNormalized', () => {
+  it('preserves user turn identity on optimistic rows', () => {
+    const message: ChatMessage = {
+      type: 'user',
+      content: 'Continue.',
+      runId: 'run-user-1',
+      turnId: 'turn-user-1',
+      timestamp: new Date('2026-08-18T00:00:00.000Z'),
+    };
+
+    expect(chatMessageToNormalized(
+      message,
+      'web:session-1',
+      'pilotdeck' as SessionProvider,
+    )).toMatchObject({
+      kind: 'text',
+      role: 'user',
+      runId: 'run-user-1',
+      turnId: 'turn-user-1',
+    });
+  });
+});
 
 describe('resolveConversationScrollTop', () => {
   it('keeps a conversation pinned to the bottom when it was near the bottom', () => {

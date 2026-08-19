@@ -182,6 +182,7 @@ async function createMemoryApp() {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config: {} })),
+    withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
     writePilotDeckConfig: vi.fn(async (config) => ({ config })),
   }));
   vi.doMock('../services/pilotdeckConfigReloader.js', () => ({
@@ -230,6 +231,7 @@ async function createMemorySettingsApp(initialConfig) {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config })),
+    withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
     writePilotDeckConfig,
   }));
   vi.doMock('../services/pilotdeckConfigReloader.js', () => ({
