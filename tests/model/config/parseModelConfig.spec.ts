@@ -43,6 +43,20 @@ test("unknown custom models default to text-only input", () => {
   assert.deepEqual(config.providers.custom.models["text-model"].multimodal.input, ["text"]);
 });
 
+test("Codex subscription provider does not require an API key", () => {
+  const config = parseModelConfig({
+    providers: {
+      codex: {
+        models: { "gpt-5.6-sol": {} },
+      },
+    },
+  });
+
+  assert.equal(config.providers.codex.protocol, "openai-responses");
+  assert.equal(config.providers.codex.url, "https://chatgpt.com/backend-api/codex");
+  assert.equal(config.providers.codex.apiKey, "");
+});
+
 test("custom providers do not infer image input from a cross-provider model name", () => {
   const config = parseModelConfig({
     providers: {

@@ -85,6 +85,7 @@ import uploadsRoutes from './routes/uploads.js';
 import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import configRoutes from './routes/config.js';
+import codexAuthRoutes from './routes/codex-auth.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import {
@@ -562,6 +563,7 @@ app.use('/api/settings', authenticateToken, settingsRoutes);
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+app.use('/api/codex-auth', authenticateToken, codexAuthRoutes);
 
 // Gateway IM channel setup routes (protected)
 app.use('/api/gateway', authenticateToken, gatewayRoutes);

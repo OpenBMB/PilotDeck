@@ -1,0 +1,14 @@
+export const CODEX_PROVIDER_ID = "codex";
+export const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
+export const CODEX_MODELS_URL = `${CODEX_BASE_URL}/models?client_version=1.0.0`;
+export const CODEX_OAUTH_ISSUER = "https://auth.openai.com";
+export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+export const CODEX_OAUTH_TOKEN_URL = `${CODEX_OAUTH_ISSUER}/oauth/token`;
+export const CODEX_DEVICE_CODE_URL = `${CODEX_OAUTH_ISSUER}/api/accounts/deviceauth/usercode`;
+export const CODEX_DEVICE_TOKEN_URL = `${CODEX_OAUTH_ISSUER}/api/accounts/deviceauth/token`;
+export const CODEX_DEVICE_VERIFICATION_URL = `${CODEX_OAUTH_ISSUER}/codex/device`;
+export const CODEX_DEVICE_REDIRECT_URI = `${CODEX_OAUTH_ISSUER}/deviceauth/callback`;
+export const CODEX_ACCESS_TOKEN_REFRESH_SKEW_MS = 120_000;
+export const CODEX_DEVICE_LOGIN_TIMEOUT_MS = 15 * 60_000;
+export const CODEX_AUTH_REQUEST_TIMEOUT_MS = 15_000;
+export const CODEX_CATALOG_REQUEST_TIMEOUT_MS = 10_000;

@@ -212,7 +212,7 @@ export function resolveModel(config, ref, options = {}) {
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 function allowsMissingApiKey(providerId) {
-  return providerId === 'ollama';
+  return providerId === 'ollama' || providerId === 'codex';
 }
 
 function validateProvider(id, provider, errors) {
@@ -226,6 +226,15 @@ function validateProvider(id, provider, errors) {
     errors.push(`model.providers.${id}.protocol must be "openai", "openai-responses", "anthropic", or "google"`);
   }
   if (!normalizeString(provider.url)) errors.push(`model.providers.${id}.url is required`);
+  if (
+    id === 'codex'
+    && (
+      protocol !== 'openai-responses'
+      || normalizeString(provider.url).replace(/\/+$/, '') !== 'https://chatgpt.com/backend-api/codex'
+    )
+  ) {
+    errors.push('model.providers.codex must use protocol "openai-responses" and url "https://chatgpt.com/backend-api/codex"');
+  }
   if (!allowsMissingApiKey(id) && !normalizeString(provider.apiKey)) {
     errors.push(`model.providers.${id}.apiKey is required`);
   }

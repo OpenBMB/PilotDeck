@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { authenticatedFetch } from '../../../../utils/api';
+import CodexAuthControl from '../../../provider-auth/CodexAuthControl';
 import {
   CATALOG_PROVIDERS,
   findCatalogProviderByUrl,
@@ -64,6 +65,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
   const [apiModels, setApiModels] = useState<ApiModelListItem[] | null>(null);
   const [modelListStatus, setModelListStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [modelListMessage, setModelListMessage] = useState('');
+  const [codexAuthenticated, setCodexAuthenticated] = useState(false);
 
   // Inputs that are only relevant when the user picks the "+" (custom) tile.
   const [customProviderId, setCustomProviderId] = useState('');
@@ -82,15 +84,14 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         if (!data.exists || !data.provider) return;
 
         const p = data.provider;
-        const existingKeyIsUsable = hasUsableApiKey(p.apiKey);
-        if (!existingKeyIsUsable) return;
-        setApiKey(p.apiKey);
         if (p.baseUrl) {
           const match = findCatalogProviderByUrl(p.baseUrl);
-          if (match) {
-            setSelectedProvider(match);
-            setSelectedModelId(p.model || defaultModelForProvider(match));
-          }
+          if (!match) return;
+          const existingKeyIsUsable = hasUsableApiKey(p.apiKey);
+          if (requiresApiKey(match) && !existingKeyIsUsable) return;
+          if (existingKeyIsUsable) setApiKey(p.apiKey);
+          setSelectedProvider(match);
+          setSelectedModelId(p.model || defaultModelForProvider(match));
         }
       } catch { /* no existing config */ }
     })();
@@ -102,17 +103,22 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     ? customProtocol
     : (selectedProvider?.protocol ?? 'openai');
   const effectiveProviderId = isCustomMode ? customProviderId.trim() : (selectedProvider?.id ?? '');
+  const isCodexProvider = !isCustomMode
+    && effectiveProviderId === 'codex'
+    && effectiveProtocol === 'openai-responses';
   const selectedProviderRequiresApiKey = requiresApiKey(selectedProvider);
   const modelListRequiresApiKey = selectedProvider?.modelListRequiresApiKey === true;
   const canFetchModels = Boolean(
     selectedProvider
       && effectiveProviderId
       && effectiveUrl
-      && (!modelListRequiresApiKey || hasUsableApiKey(apiKey)),
+      && (!modelListRequiresApiKey || hasUsableApiKey(apiKey))
+      && (!isCodexProvider || codexAuthenticated),
   );
   const canTest = Boolean(
     selectedProvider &&
     (!selectedProviderRequiresApiKey || apiKey.trim()) &&
+    (!isCodexProvider || codexAuthenticated) &&
     effectiveModelId &&
     effectiveProviderId &&
     (!isCustomMode || effectiveUrl.trim()),
@@ -156,6 +162,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
   useEffect(() => {
     const key = apiKey.trim();
     if (!selectedProvider || !effectiveProviderId || !effectiveUrl) return;
+    if (isCodexProvider && !codexAuthenticated) return;
     if (!hasUsableApiKey(key) && !isCustomMode && selectedProviderRequiresApiKey) return;
     const controller = new AbortController();
     setModelListStatus('loading');
@@ -185,7 +192,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         setModelListMessage(error instanceof Error ? error.message : String(error));
       });
     return () => controller.abort();
-  }, [apiKey, effectiveProviderId, effectiveProtocol, effectiveUrl, isCustomMode, selectedModelId, selectedProvider, selectedProviderRequiresApiKey]);
+  }, [apiKey, codexAuthenticated, effectiveProviderId, effectiveProtocol, effectiveUrl, isCodexProvider, isCustomMode, selectedProvider, selectedProviderRequiresApiKey]);
 
   const handleFetchModels = useCallback(async () => {
     if (!canFetchModels) return;
@@ -193,7 +200,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     setModelListMessage('');
     try {
       const key = apiKey.trim();
-      const models = !isCustomMode && !hasUsableApiKey(key)
+      const models = !isCodexProvider && !isCustomMode && !hasUsableApiKey(key)
         ? await fetchRemoteDefaultModels(effectiveProviderId)
         : await fetchProviderModels({
             protocol: effectiveProtocol,
@@ -215,7 +222,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
       setModelListStatus('error');
       setModelListMessage(error instanceof Error ? error.message : String(error));
     }
-  }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, isCustomMode, selectedProvider]);
+  }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, isCodexProvider, isCustomMode, selectedProvider]);
 
   const handleProviderSelect = useCallback((provider: CatalogProvider) => {
     setSelectedProvider((prev) => {
@@ -224,6 +231,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
       // provider re-save their Anthropic key under OpenAI).
       if (prev?.id !== provider.id) {
         setApiKey('');
+        setCodexAuthenticated(false);
       }
       return provider;
     });
@@ -250,7 +258,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
           providerType: effectiveProtocol,
           providerId: effectiveProviderId,
           baseUrl: effectiveUrl,
-          apiKey: apiKey.trim(),
+          apiKey: isCodexProvider ? '' : apiKey.trim(),
           model: effectiveModelId,
         }),
       });
@@ -266,7 +274,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
       setTestStatus('error');
       setTestMessage(err instanceof Error ? err.message : 'Connection failed.');
     }
-  }, [canTest, selectedProvider, effectiveUrl, apiKey, effectiveModelId, effectiveProtocol, effectiveProviderId]);
+  }, [canTest, selectedProvider, effectiveUrl, apiKey, effectiveModelId, effectiveProtocol, effectiveProviderId, isCodexProvider]);
 
   const handleSave = useCallback(async () => {
     if (!selectedProvider) return;
@@ -310,7 +318,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         ...existingProvider,
         protocol: effectiveProtocol,
         url: effectiveUrl,
-        apiKey: apiKey.trim(),
+        apiKey: isCodexProvider ? '' : apiKey.trim(),
         timeoutMs: typeof existingProvider.timeoutMs === 'number' ? existingProvider.timeoutMs : 120000,
         models: {
           ...existingModels,
@@ -344,7 +352,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
     } finally {
       setSaving(false);
     }
-  }, [selectedProvider, effectiveUrl, effectiveModelId, apiKey, effectiveProtocol, effectiveProviderId, onSaved]);
+  }, [selectedProvider, effectiveUrl, effectiveModelId, apiKey, effectiveProtocol, effectiveProviderId, isCodexProvider, onSaved]);
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-8">
@@ -475,22 +483,26 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
             </div>
           )}
 
-          {/* API Key */}
-          <div>
-            <label htmlFor="llm-api-key" className="mb-1 block text-sm font-medium text-foreground">
-              API Key{selectedProviderRequiresApiKey ? '' : ' (optional)'}
-            </label>
-            <input
-              id="llm-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e) => { setApiKey(e.target.value); setTestStatus('idle'); setTestMessage(''); }}
-              placeholder={selectedProviderRequiresApiKey ? 'sk-...' : 'Not required for this provider'}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-foreground/40 focus:outline-none"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </div>
+          {/* Provider credentials */}
+          {isCodexProvider ? (
+            <CodexAuthControl onStatusChange={setCodexAuthenticated} />
+          ) : (
+            <div>
+              <label htmlFor="llm-api-key" className="mb-1 block text-sm font-medium text-foreground">
+                API Key{selectedProviderRequiresApiKey ? '' : ' (optional)'}
+              </label>
+              <input
+                id="llm-api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); setTestStatus('idle'); setTestMessage(''); }}
+                placeholder={selectedProviderRequiresApiKey ? 'sk-...' : 'Not required for this provider'}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-foreground/40 focus:outline-none"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          )}
 
           {/* Model picker */}
           <div>
@@ -560,7 +572,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
           </div>
 
           {/* Advanced (catalog providers only — custom already shows URL above) */}
-          {!isCustomMode && (
+          {!isCustomMode && !isCodexProvider && (
           <div>
             <button
               type="button"

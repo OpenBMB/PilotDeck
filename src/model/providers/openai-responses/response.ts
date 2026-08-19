@@ -7,6 +7,7 @@ import type {
 } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
+import { classifyOpenAIResponsesTerminal } from "./terminal.js";
 
 type ToolCallIdState = {
   baseId: string;
@@ -30,21 +31,32 @@ export function parseOpenAIResponsesResponse(
     const item = asRecord(output[index]);
     if (item.type === "message") {
       content.push(...textBlocksFromMessageItem(item));
+    } else if (item.type === "output_refusal" || item.type === "refusal") {
+      const refusal = readTextPart(item);
+      if (refusal) content.push({ type: "text", text: refusal });
     } else if (item.type === "function_call") {
       content.push(toCanonicalToolCall(item, provider, idState, index));
     } else if (item.type === "reasoning") {
       const reasoning = reasoningText(item);
-      if (reasoning.length > 0) {
-        content.push({ type: "thinking", text: reasoning });
+      const responsesItemId = readNonEmptyString(item.id);
+      const encryptedReasoningContent = readNonEmptyString(item.encrypted_content);
+      if (reasoning.length > 0 || responsesItemId || encryptedReasoningContent) {
+        content.push({
+          type: "thinking",
+          text: reasoning,
+          ...(responsesItemId ? { responsesItemId } : {}),
+          ...(encryptedReasoningContent ? { encryptedReasoningContent } : {}),
+        });
       }
     }
   }
 
+  const sawToolCall = output.some((item) => asRecord(item).type === "function_call");
   return {
     role: "assistant",
     content: dedupeInitialOutputText(content, response.output_text),
     usage: normalizeOpenAIUsage(response.usage),
-    finishReason: normalizeResponsesFinishReason(response, output),
+    finishReason: classifyOpenAIResponsesTerminal(response, { provider, sawToolCall }).finishReason,
     raw,
   };
 }
@@ -68,6 +80,9 @@ function readTextPart(part: Record<string, unknown>): string | undefined {
   }
   if (typeof part.output_text === "string" && part.output_text.length > 0) {
     return part.output_text;
+  }
+  if (typeof part.refusal === "string" && part.refusal.length > 0) {
+    return part.refusal;
   }
   return undefined;
 }
@@ -111,18 +126,9 @@ function toCanonicalToolCall(
     id: chooseToolCallId(idState, readNonEmptyString(item.call_id) ?? readNonEmptyString(item.id), index),
     name: typeof item.name === "string" ? item.name : "",
     input,
+    ...(readNonEmptyString(item.id) ? { responsesItemId: readNonEmptyString(item.id) } : {}),
     raw: item,
   };
-}
-
-function normalizeResponsesFinishReason(response: Record<string, unknown>, output: unknown[]) {
-  if (output.some((item) => asRecord(item).type === "function_call")) return "tool_call";
-  if (response.status === "completed") return "stop";
-  if (response.status === "incomplete") return "length";
-  if (response.status === "failed") return "error";
-  if (response.status === "cancelled") return "error";
-  if (response.status === "queued" || response.status === "in_progress") return "unknown";
-  return "unknown";
 }
 
 function dedupeInitialOutputText(

@@ -22,6 +22,10 @@ export type CanonicalThinkingBlock = {
   signature?: string;
   /** Provider-native reasoning_content that should be replayed when present. */
   reasoningContent?: string;
+  /** OpenAI Responses native reasoning item identifier, preserved for Codex replay. */
+  responsesItemId?: string;
+  /** Opaque OpenAI Responses encrypted reasoning payload, preserved for Codex replay. */
+  encryptedReasoningContent?: string;
 };
 
 export type CanonicalImageBlock = {
@@ -55,6 +59,8 @@ export type CanonicalToolCall = {
   id: string;
   name: string;
   input: unknown;
+  /** OpenAI Responses native function_call item identifier, preserved for Codex replay. */
+  responsesItemId?: string;
   raw?: unknown;
 };
 
@@ -260,7 +266,15 @@ export type CanonicalModelEvent =
     }
   | { type: "message_start"; role: "assistant"; raw?: unknown }
   | { type: "text_delta"; text: string; raw?: unknown }
-  | { type: "thinking_delta"; text: string; signature?: string; reasoningContent?: string; raw?: unknown }
+  | {
+      type: "thinking_delta";
+      text: string;
+      signature?: string;
+      reasoningContent?: string;
+      responsesItemId?: string;
+      encryptedReasoningContent?: string;
+      raw?: unknown;
+    }
   | { type: "tool_call_start"; id: string; name: string; raw?: unknown }
   | { type: "tool_call_delta"; id: string; delta: string; raw?: unknown }
   | { type: "tool_call_end"; toolCall: CanonicalToolCall; wasRepaired?: boolean; raw?: unknown }

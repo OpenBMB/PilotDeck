@@ -21,6 +21,8 @@ export type ModelMessageAssemblerState = {
   thinkingBuffer: string;
   thinkingReasoningContentBuffer: string;
   thinkingSignature?: string;
+  thinkingResponsesItemId?: string;
+  thinkingEncryptedReasoningContent?: string;
   usage: CanonicalUsage;
   finishReason?: CanonicalFinishReason;
   error?: CanonicalModelError;
@@ -78,6 +80,12 @@ export function applyModelEventToAssembler(
       }
       if (event.signature !== undefined && event.signature.length > 0) {
         state.thinkingSignature = event.signature;
+      }
+      if (event.responsesItemId !== undefined && event.responsesItemId.length > 0) {
+        state.thinkingResponsesItemId = event.responsesItemId;
+      }
+      if (event.encryptedReasoningContent !== undefined && event.encryptedReasoningContent.length > 0) {
+        state.thinkingEncryptedReasoningContent = event.encryptedReasoningContent;
       }
       return;
     case "tool_call_end":
@@ -194,7 +202,9 @@ function flushTextBuffers(state: ModelMessageAssemblerState): void {
   if (
     state.thinkingBuffer.length > 0 ||
     state.thinkingReasoningContentBuffer.length > 0 ||
-    state.thinkingSignature !== undefined
+    state.thinkingSignature !== undefined ||
+    state.thinkingResponsesItemId !== undefined ||
+    state.thinkingEncryptedReasoningContent !== undefined
   ) {
     const block: CanonicalThinkingBlock = {
       type: "thinking",
@@ -206,10 +216,18 @@ function flushTextBuffers(state: ModelMessageAssemblerState): void {
     if (state.thinkingSignature !== undefined) {
       block.signature = state.thinkingSignature;
     }
+    if (state.thinkingResponsesItemId !== undefined) {
+      block.responsesItemId = state.thinkingResponsesItemId;
+    }
+    if (state.thinkingEncryptedReasoningContent !== undefined) {
+      block.encryptedReasoningContent = state.thinkingEncryptedReasoningContent;
+    }
     state.content.push(block);
     state.thinkingBuffer = "";
     state.thinkingReasoningContentBuffer = "";
     state.thinkingSignature = undefined;
+    state.thinkingResponsesItemId = undefined;
+    state.thinkingEncryptedReasoningContent = undefined;
   }
 
   if (state.textBuffer.length > 0) {

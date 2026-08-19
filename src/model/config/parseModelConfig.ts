@@ -17,6 +17,7 @@ import {
 } from "../protocol/multimodal.js";
 import { lookupCatalogModel, lookupCatalogProvider } from "../catalog/index.js";
 import { resolveApiKey, type CredentialEnv } from "./resolveCredentials.js";
+import { CODEX_BASE_URL } from "../providers/codex/constants.js";
 import {
   isModelProtocol,
   isRecord,
@@ -79,6 +80,19 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     throw new ModelConfigError("invalid_config_value", `Provider ${providerId} requires a url.`, { providerId });
   }
   assertValidUrl(rawUrl, providerId);
+  if (
+    providerId === "codex"
+    && (
+      protocol !== "openai-responses"
+      || rawUrl.replace(/\/+$/, "") !== CODEX_BASE_URL
+    )
+  ) {
+    throw new ModelConfigError(
+      "invalid_config_value",
+      `Provider codex must use protocol openai-responses and URL ${CODEX_BASE_URL}.`,
+      { providerId, protocol, url: rawUrl },
+    );
+  }
 
   if (!isRecord(provider.models) || Object.keys(provider.models).length === 0) {
     throw new ModelConfigError("empty_models", `Provider ${providerId} must contain at least one model.`, {
@@ -110,10 +124,13 @@ function resolveProviderApiKey(
   env?: CredentialEnv,
   catalogEnvVar?: string,
 ): string {
-  if (providerId === "ollama" && value === undefined) {
-    return "ollama";
+  if ((providerId === "ollama" || providerId === "codex") && value === undefined) {
+    return providerId === "ollama" ? "ollama" : "";
   }
   const hasBlankString = typeof value === "string" && value.trim().length === 0;
+  if (providerId === "codex" && hasBlankString) {
+    return "";
+  }
   const hasConfigValue = value !== undefined && value !== null && !hasBlankString;
   const effectiveValue = hasConfigValue
     ? value

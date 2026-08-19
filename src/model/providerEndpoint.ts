@@ -1,3 +1,6 @@
+import type { ProviderConfig } from "./protocol/canonical.js";
+import { CODEX_PROVIDER_ID } from "./providers/codex/constants.js";
+
 export type ProviderEndpointProtocol = "openai" | "openai-responses" | "anthropic" | "google";
 
 const VERSION_SEGMENT_PATTERN = /^v\d+(?:beta\d*)?$/i;
@@ -79,26 +82,46 @@ export function normalizeGoogleProbeModel(model: string): string {
   return withoutProvider;
 }
 
-export function buildProviderChatEndpoint(input: {
+export type ProviderEndpointInput = {
   protocol: ProviderEndpointProtocol;
   baseUrl: string;
+  providerId?: string;
   model?: string;
   googleMethod?: string;
-}): string {
+};
+
+export function isCodexSubscriptionProvider(
+  provider: Pick<ProviderConfig, "id" | "protocol" | "url">,
+): boolean {
+  if (provider.id.toLowerCase() !== CODEX_PROVIDER_ID) return false;
+  if (provider.protocol !== "openai-responses") return false;
+  try {
+    const url = new URL(provider.url);
+    return url.protocol === "https:"
+      && url.hostname.toLowerCase() === "chatgpt.com"
+      && url.pathname.replace(/\/+$/, "") === "/backend-api/codex";
+  } catch {
+    return false;
+  }
+}
+
+export function buildProviderChatEndpoint(input: ProviderEndpointInput): string {
   return buildProviderChatEndpointCandidates(input)[0] || "";
 }
 
-export function buildProviderChatEndpointCandidates(input: {
-  protocol: ProviderEndpointProtocol;
-  baseUrl: string;
-  model?: string;
-  googleMethod?: string;
-}): string[] {
+export function buildProviderChatEndpointCandidates(input: ProviderEndpointInput): string[] {
   const normalizedProtocol = input.protocol;
   if (normalizedProtocol === "anthropic") {
     return buildEndpointCandidates(input.baseUrl, "v1", "messages");
   }
   if (normalizedProtocol === "openai-responses") {
+    if (isCodexSubscriptionProvider({
+      id: input.providerId || "",
+      protocol: input.protocol,
+      url: input.baseUrl,
+    })) {
+      return [joinUrl(input.baseUrl, "responses")];
+    }
     return buildEndpointCandidates(input.baseUrl, "v1", "responses");
   }
   if (normalizedProtocol === "google") {
@@ -110,19 +133,20 @@ export function buildProviderChatEndpointCandidates(input: {
   return buildEndpointCandidates(input.baseUrl, "v1", "chat/completions");
 }
 
-export function buildProviderModelsEndpoint(input: {
-  protocol: ProviderEndpointProtocol;
-  baseUrl: string;
-}): string {
+export function buildProviderModelsEndpoint(input: ProviderEndpointInput): string {
   return buildProviderModelsEndpointCandidates(input)[0] || "";
 }
 
-export function buildProviderModelsEndpointCandidates(input: {
-  protocol: ProviderEndpointProtocol;
-  baseUrl: string;
-}): string[] {
+export function buildProviderModelsEndpointCandidates(input: ProviderEndpointInput): string[] {
   if (input.protocol === "google") {
     return buildEndpointCandidates(input.baseUrl, "v1beta", "models");
+  }
+  if (isCodexSubscriptionProvider({
+    id: input.providerId || "",
+    protocol: input.protocol,
+    url: input.baseUrl,
+  })) {
+    return [joinUrl(input.baseUrl, "models")];
   }
   return buildEndpointCandidates(input.baseUrl, "v1", "models");
 }

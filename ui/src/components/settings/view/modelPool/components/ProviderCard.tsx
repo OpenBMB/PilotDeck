@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "../../../../../shared/view/ui";
+import CodexAuthControl from "../../../../provider-auth/CodexAuthControl";
 import { isImeEnterEvent } from "../../../../../utils/ime";
 import { cn } from "../../../../../lib/utils";
 import type {
@@ -55,6 +56,10 @@ export default function ProviderCard({
   const [saving, setSaving] = useState(false);
   const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
   const protocol = draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
+  const isCodexProvider =
+    catalogEntry?.id === "codex" &&
+    draftProvider.protocol === "openai-responses" &&
+    String(draftProvider.url || "").trim().replace(/\/+$/, "") === catalogEntry.defaultUrl;
   const effectiveUrl = draftProvider.url || catalogEntry?.defaultUrl || "";
   const enabledModels = Object.keys(draftProvider.models ?? {});
   const [newModelId, setNewModelId] = useState("");
@@ -66,6 +71,7 @@ export default function ProviderCard({
     "idle" | "loading" | "error"
   >("idle");
   const [apiModelsError, setApiModelsError] = useState("");
+  const [codexAuthenticated, setCodexAuthenticated] = useState(false);
   const displayName = providerDisplayName(
     providerIdDraft || providerId,
     catalogEntry,
@@ -91,11 +97,21 @@ export default function ProviderCard({
   };
 
   const saveEditing = async () => {
-    const nextId = providerIdDraft.trim() || providerId;
+    const nextId = isCodexProvider
+      ? "codex"
+      : providerIdDraft.trim() || providerId;
     setSaving(true);
     setProviderIdError("");
     try {
-      const result = await onSave(nextId, draftProvider);
+      const nextProvider = isCodexProvider
+        ? {
+            ...draftProvider,
+            protocol: "openai-responses" as const,
+            url: effectiveUrl,
+            apiKey: "",
+          }
+        : draftProvider;
+      const result = await onSave(nextId, nextProvider);
       if (!result.ok) {
         setProviderIdError(
           result.error || t("pilotDeckConfig.panels.models.providerIdDuplicate"),
@@ -135,7 +151,10 @@ export default function ProviderCard({
     apiModels ?? catalogEntry?.models ?? [];
   const providerRequiresApiKey = catalogEntry?.requiresApiKey !== false;
   const canFetchModels = Boolean(
-    effectiveUrl && (!providerRequiresApiKey || draftProvider.apiKey),
+    effectiveUrl &&
+      (isCodexProvider
+        ? codexAuthenticated
+        : !providerRequiresApiKey || draftProvider.apiKey),
   );
 
   const refreshModels = async () => {
@@ -176,7 +195,7 @@ export default function ProviderCard({
                 setProviderIdDraft(e.target.value);
                 setProviderIdError("");
               }}
-              readOnly={!editing}
+              readOnly={!editing || isCodexProvider}
               className={cn(
                 "rounded-md border border-border px-2 py-0.5 font-mono text-[11px] outline-none",
                 editing
@@ -217,6 +236,10 @@ export default function ProviderCard({
         </Button>
       </div>
 
+      {isCodexProvider && (
+        <CodexAuthControl onStatusChange={setCodexAuthenticated} />
+      )}
+
       <fieldset
         disabled={!editing || saving}
         className={cn(!editing && "opacity-95")}
@@ -229,6 +252,7 @@ export default function ProviderCard({
           <Select
             value={protocol}
             onChange={(v) => update({ protocol: v as CatalogProviderProtocol })}
+            disabled={isCodexProvider}
             options={[
               {
                 value: "openai",
@@ -257,14 +281,22 @@ export default function ProviderCard({
           <span className="mb-1 block">
             {t("pilotDeckConfig.panels.models.baseUrl")}
           </span>
-          <TextInput
-            value={draftProvider.url}
-            placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
-            monospace
-            onChange={(v) => update({ url: v })}
-          />
+          {isCodexProvider ? (
+            <div className="w-full rounded-md border border-border bg-muted/40 px-2 py-1.5 font-mono text-xs leading-5 text-muted-foreground">
+              {effectiveUrl}
+            </div>
+          ) : (
+            <TextInput
+              value={draftProvider.url}
+              placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
+              monospace
+              onChange={(v) => update({ url: v })}
+            />
+          )}
           <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-            {t("pilotDeckConfig.panels.models.baseUrlHint")}
+            {isCodexProvider
+              ? t("pilotDeckConfig.panels.models.codexAuth.baseUrlHint")
+              : t("pilotDeckConfig.panels.models.baseUrlHint")}
           </span>
           {!draftProvider.url && catalogEntry && (
             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
@@ -282,26 +314,28 @@ export default function ProviderCard({
         </label>
       </div>
 
-      <label className="block text-xs text-muted-foreground">
-        <span className="mb-1 block">
-          {t("pilotDeckConfig.panels.models.apiKey")}
-          {!providerRequiresApiKey
-            ? ` (${t("pilotDeckConfig.panels.models.optional")})`
-            : ""}
-        </span>
-        <SecretTextInput
-          value={draftProvider.apiKey}
-          emptyPlaceholder={providerRequiresApiKey ? "sk-..." : ""}
-          maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
-          onChange={(v) => update({ apiKey: v })}
-        />
-        {isMaskedKey && (
-          <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Info className="h-3 w-3" />
-            {t("pilotDeckConfig.panels.models.keyHidden")}
+      {!isCodexProvider && (
+        <label className="block text-xs text-muted-foreground">
+          <span className="mb-1 block">
+            {t("pilotDeckConfig.panels.models.apiKey")}
+            {!providerRequiresApiKey
+              ? ` (${t("pilotDeckConfig.panels.models.optional")})`
+              : ""}
           </span>
-        )}
-      </label>
+          <SecretTextInput
+            value={draftProvider.apiKey}
+            emptyPlaceholder={providerRequiresApiKey ? "sk-..." : ""}
+            maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
+            onChange={(v) => update({ apiKey: v })}
+          />
+          {isMaskedKey && (
+            <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Info className="h-3 w-3" />
+              {t("pilotDeckConfig.panels.models.keyHidden")}
+            </span>
+          )}
+        </label>
+      )}
 
       <div>
         <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">

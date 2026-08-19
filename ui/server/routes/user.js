@@ -3,6 +3,7 @@ import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
 import { readPilotDeckConfigFile } from '../services/pilotdeckConfig.js';
+import { getCodexAuthStatus } from '../../../src/model/providers/codex/auth.js';
 import { spawn } from 'child_process';
 
 const router = express.Router();
@@ -10,12 +11,19 @@ const router = express.Router();
 // Sentinel api-key written by scripts/bootstrap-pilotdeck-config.mjs so the
 // engine can boot. Treated as "not configured" so the UI routes to onboarding.
 const PLACEHOLDER_API_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
+const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 
 function providerAllowsMissingApiKey(providerId) {
   return providerId === 'ollama';
 }
 
-function hasUsablePilotDeckConfig() {
+function isCodexTransport(providerId, provider) {
+  return providerId === 'codex'
+    && String(provider?.protocol || '').trim().toLowerCase() === 'openai-responses'
+    && String(provider?.url || '').trim().replace(/\/+$/, '') === CODEX_BASE_URL;
+}
+
+async function hasUsablePilotDeckConfig() {
   const record = readPilotDeckConfigFile();
   if (!record.exists) return false;
 
@@ -34,9 +42,18 @@ function hasUsablePilotDeckConfig() {
 
   const hasUrl = typeof provider.url === 'string' && provider.url.trim();
   const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : '';
-  const hasRequiredCredential = providerAllowsMissingApiKey(providerId)
-    ? apiKey !== PLACEHOLDER_API_KEY
-    : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
+  let hasRequiredCredential;
+  const usesCodexTransport = isCodexTransport(providerId, provider);
+  if (usesCodexTransport) {
+    const status = await getCodexAuthStatus();
+    hasRequiredCredential = status.authenticated;
+  } else if (providerId === 'codex') {
+    hasRequiredCredential = false;
+  } else {
+    hasRequiredCredential = providerAllowsMissingApiKey(providerId)
+      ? apiKey !== PLACEHOLDER_API_KEY
+      : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
+  }
   const hasModel = provider.models && typeof provider.models === 'object' && modelId in provider.models;
 
   return Boolean(hasUrl && hasRequiredCredential && hasModel);
@@ -144,7 +161,7 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const hasCompleted = hasUsablePilotDeckConfig();
+    const hasCompleted = await hasUsablePilotDeckConfig();
 
     res.json({
       success: true,

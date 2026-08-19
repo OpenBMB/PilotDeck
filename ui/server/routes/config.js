@@ -30,6 +30,10 @@ import {
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import {
+  fetchCodexModels,
+  probeCodexModel,
+} from '../../../src/model/providers/codex/client.js';
+import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
   getConfiguredOfficePreviewSettings,
@@ -48,6 +52,9 @@ const router = express.Router();
 let configWriteQueue = Promise.resolve();
 
 const MASKED_SECRET = '********';
+const CODEX_PROVIDER_ID = 'codex';
+const CODEX_PROTOCOL = 'openai-responses';
+const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
 const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
 
@@ -119,6 +126,12 @@ function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
 
 function isRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCodexTransport(providerId, protocol, baseUrl) {
+  return String(providerId || '').trim().toLowerCase() === CODEX_PROVIDER_ID
+    && String(protocol || '').trim().toLowerCase() === CODEX_PROTOCOL
+    && String(baseUrl || '').trim().replace(/\/+$/, '') === CODEX_BASE_URL;
 }
 
 function containsMaskedValue(value) {
@@ -640,6 +653,7 @@ router.get('/provider', (_req, res) => {
 
 router.post('/models', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey } = req.body || {};
+  const normalizedProviderId = String(providerId || '').trim().toLowerCase();
   let effectiveApiKey = typeof apiKey === 'string' ? apiKey : '';
   if ((!effectiveApiKey || effectiveApiKey === '********') && typeof providerId === 'string' && providerId.trim()) {
     try {
@@ -650,6 +664,32 @@ router.post('/models', async (req, res) => {
   }
   if (!baseUrl) {
     return res.status(400).json({ ok: false, error: 'baseUrl is required' });
+  }
+
+  const codexTransport = isCodexTransport(providerId, providerType, baseUrl);
+  if (normalizedProviderId === CODEX_PROVIDER_ID && !codexTransport) {
+    return res.status(400).json({ ok: false, error: 'Codex requires the openai-responses protocol and canonical Codex URL.' });
+  }
+
+  if (codexTransport) {
+    try {
+      const models = await fetchCodexModels();
+      return res.json({
+        ok: true,
+        models: models.map((model) => ({
+          id: model.id,
+          displayName: model.displayName,
+          contextWindow: model.contextWindow,
+          maxOutputTokens: model.maxOutputTokens,
+        })),
+      });
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 401;
+      return res.status(status).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   const normalizedType = String(providerType || '').toLowerCase();
@@ -705,12 +745,29 @@ router.post('/test-connection', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey, model } = req.body || {};
   const normalizedProviderId = String(providerId || '').trim().toLowerCase();
   const effectiveApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-  const apiKeyRequired = normalizedProviderId !== 'ollama';
+  const codexTransport = isCodexTransport(providerId, providerType, baseUrl);
+  if (normalizedProviderId === CODEX_PROVIDER_ID && !codexTransport) {
+    return res.status(400).json({ ok: false, error: 'Codex requires the openai-responses protocol and canonical Codex URL.' });
+  }
+  const apiKeyRequired = normalizedProviderId !== 'ollama' && !codexTransport;
   if (!baseUrl || !model || (apiKeyRequired && !effectiveApiKey)) {
     return res.status(400).json({
       ok: false,
       error: apiKeyRequired ? 'baseUrl, apiKey, and model are required' : 'baseUrl and model are required',
     });
+  }
+
+  if (codexTransport) {
+    try {
+      await probeCodexModel(String(model).trim());
+      return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 400;
+      return res.status(status).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // Accept V2 protocols ('openai' | 'openai-responses' | 'anthropic' | 'google')

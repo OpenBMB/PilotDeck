@@ -7,6 +7,7 @@ import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CanonicalModelResponse,
   ModelConfig,
   ModelProtocol,
   ProviderConfig,
@@ -14,6 +15,11 @@ import type {
 import { ModelProviderError, parseRetryAfterHeader } from "../protocol/errors.js";
 import { parseModelResponse } from "../response/parseModelResponse.js";
 import { createStreamNormalizerState, normalizeStreamEvent } from "./normalizeStreamEvent.js";
+import {
+  applyModelEventToAssembler,
+  assembleAssistantMessage,
+  createModelMessageAssemblerState,
+} from "./assembleModelMessage.js";
 import { createGoogleStreamState, normalizeGoogleStreamEvent } from "../providers/google/stream.js";
 import { normalizeProviderBaseUrl } from "../normalizeProviderBaseUrl.js";
 import { buildProviderChatEndpointCandidates, isExpectedProviderResponseShape } from "../providerEndpoint.js";
@@ -21,6 +27,14 @@ import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { requestFingerprint } from "./requestFingerprint.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
+import {
+  buildCodexResponsesRequestHeaders,
+  isCodexSubscriptionProvider,
+} from "../providers/codex/client.js";
+import {
+  resolveCodexRuntimeCredentials,
+  type CodexRuntimeCredentials,
+} from "../providers/codex/auth.js";
 
 export type ModelTransport = typeof fetch;
 
@@ -30,6 +44,9 @@ export type ModelRuntimeOptions = {
   signal?: AbortSignal;
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
+  codexCredentialResolver?: (options?: {
+    forceRefresh?: boolean;
+  }) => Promise<CodexRuntimeCredentials>;
 };
 
 export type ModelStreamRetryProgress = {
@@ -70,6 +87,9 @@ export async function complete(
 ) {
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
+  if (isCodexSubscriptionProvider(provider)) {
+    return completeCodexStreaming(nonStreamingRequest, config, options);
+  }
   const maxRetries = provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
@@ -100,7 +120,7 @@ export async function complete(
     const body = buildModelRequest(nonStreamingRequest, config);
     let response: Response;
     try {
-      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
+      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal, options);
     } catch (error) {
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const delayMs = retryBaseDelay * (attempt + 1);
@@ -222,7 +242,12 @@ export async function* streamModel(
     const streamGuard = createStreamGuard(provider);
 
     try {
-      for await (const sseEvent of readServerSentEvents(response.body, options.signal, streamIdleTimeoutMs)) {
+      for await (const sseEvent of readServerSentEvents(
+        response.body,
+        provider,
+        options.signal,
+        streamIdleTimeoutMs,
+      )) {
         streamGuard.checkDuration();
         if (sseEvent.type === "done") {
           sawCompletionSentinel = true;
@@ -608,18 +633,26 @@ async function sendProviderRequest(
     ? setTimeout(() => controller.abort(new NetworkFetchError("network_timeout", `Model request timed out after ${effectiveTimeoutMs}ms.`)), effectiveTimeoutMs)
     : undefined;
 
-  const finalBody = provider.extraBody
+  const finalBody = !isCodexSubscriptionProvider(provider) && provider.extraBody
     ? { ...(body as Record<string, unknown>), ...provider.extraBody }
     : body;
 
   try {
-    const fetchOptions: RequestInit = {
-      method: "POST",
-      headers: buildProviderHeaders(provider),
-      body: JSON.stringify(finalBody),
-      signal: controller.signal,
+    const send = async (forceRefresh = false) => {
+      const fetchOptions: RequestInit = {
+        method: "POST",
+        headers: await buildProviderRequestHeaders(provider, options, forceRefresh),
+        body: JSON.stringify(finalBody),
+        signal: controller.signal,
+      };
+      return sendWithEndpointFallback(provider, stream, transport, fetchOptions);
     };
-    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions);
+    let response = await send();
+    if (response.status === 401 && isCodexSubscriptionProvider(provider)) {
+      await response.body?.cancel().catch(() => undefined);
+      response = await send(true);
+    }
+    return response;
   } catch (error) {
     if (signal?.aborted) {
       throw createAbortError(signal.reason);
@@ -650,7 +683,11 @@ async function sendWithEndpointFallback(
   transport: ModelTransport,
   fetchOptions: RequestInit,
 ): Promise<Response> {
-  const endpoints = buildProviderChatEndpointCandidates({ protocol: provider.protocol, baseUrl: provider.url });
+  const endpoints = buildProviderChatEndpointCandidates({
+    protocol: provider.protocol,
+    baseUrl: provider.url,
+    providerId: provider.id,
+  });
   let lastResponse: Response | undefined;
   for (const endpoint of endpoints) {
     const response = await networkFetch(endpoint, fetchOptions, {
@@ -709,6 +746,48 @@ export function buildProviderHeaders(provider: ProviderConfig): HeadersInit {
   return headers;
 }
 
+async function buildProviderRequestHeaders(
+  provider: ProviderConfig,
+  options: ModelRuntimeOptions | undefined,
+  forceRefresh: boolean,
+): Promise<HeadersInit> {
+  if (!isCodexSubscriptionProvider(provider)) {
+    return buildProviderHeaders(provider);
+  }
+  const credentials = await (
+    options?.codexCredentialResolver
+      ? options.codexCredentialResolver({ forceRefresh })
+      : resolveCodexRuntimeCredentials({ forceRefresh })
+  );
+  return {
+    "content-type": "application/json",
+    ...buildCodexResponsesRequestHeaders(credentials.accessToken, provider.headers),
+  };
+}
+
+async function completeCodexStreaming(
+  request: CanonicalModelRequest,
+  config: ModelConfig,
+  options: ModelRuntimeOptions,
+): Promise<CanonicalModelResponse> {
+  const assembler = createModelMessageAssemblerState();
+
+  for await (const event of streamModel({ ...request, stream: true }, config, options)) {
+    if (event.type === "error") {
+      throw new ModelProviderError(event.error);
+    }
+    applyModelEventToAssembler(assembler, event);
+  }
+
+  const assembled = assembleAssistantMessage(assembler);
+  return {
+    role: "assistant",
+    content: assembled.message.content,
+    usage: assembled.usage,
+    finishReason: assembled.finishReason,
+  };
+}
+
 async function safeReadJson(response: Response): Promise<unknown> {
   const text = await response.text();
   try {
@@ -754,15 +833,47 @@ type ServerSentEvent =
 
 async function* readServerSentEvents(
   body: ReadableStream<Uint8Array>,
+  provider: ProviderConfig,
   signal?: AbortSignal,
   idleTimeoutMs?: number,
 ): AsyncIterable<ServerSentEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let dataLines: string[] = [];
   const effectiveIdleMs = idleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
   const cancelReader = () => {
     reader.cancel(signal?.reason).catch(() => undefined);
+  };
+  const dispatch = (): ServerSentEvent | undefined => {
+    if (dataLines.length === 0) return undefined;
+    const data = dataLines.join("\n");
+    dataLines = [];
+    if (data === "") return undefined;
+    if (data === "[DONE]") return { type: "done" };
+    try {
+      return { type: "data", data: JSON.parse(data) };
+    } catch {
+      throw new ModelProviderError({
+        provider: provider.id,
+        protocol: provider.protocol,
+        code: "provider_error",
+        message: "Provider stream contained malformed JSON in an SSE data event.",
+        retryable: false,
+        raw: data,
+      });
+    }
+  };
+  const processLine = (line: string): ServerSentEvent | undefined => {
+    if (line === "") return dispatch();
+    if (line.startsWith(":")) return undefined;
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    if (field !== "data") return undefined;
+    let value = separator === -1 ? "" : line.slice(separator + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+    dataLines.push(value);
+    return undefined;
   };
 
   if (signal?.aborted) {
@@ -783,40 +894,29 @@ async function* readServerSentEvents(
       }
 
       buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split(/\n\n/);
-      buffer = chunks.pop() ?? "";
-
-      for (const chunk of chunks) {
-        yield* parseServerSentEventChunk(chunk);
+      let lineStart = 0;
+      for (let index = 0; index < buffer.length; index += 1) {
+        const char = buffer[index];
+        if (char !== "\n" && char !== "\r") continue;
+        if (char === "\r" && index === buffer.length - 1) break;
+        const event = processLine(buffer.slice(lineStart, index));
+        if (event) yield event;
+        if (char === "\r" && buffer[index + 1] === "\n") index += 1;
+        lineStart = index + 1;
       }
+      buffer = buffer.slice(lineStart);
     }
 
-    if (buffer.trim().length > 0) {
-      for (const event of parseServerSentEventChunk(buffer)) {
-        yield event;
-      }
+    const trailingLines = buffer.split(/\r\n|\r|\n/);
+    for (const line of trailingLines) {
+      const event = processLine(line);
+      if (event) yield event;
     }
+    const trailingEvent = dispatch();
+    if (trailingEvent) yield trailingEvent;
   } finally {
     signal?.removeEventListener("abort", cancelReader);
     await reader.cancel().catch(() => undefined);
-  }
-}
-
-function* parseServerSentEventChunk(chunk: string): Iterable<ServerSentEvent> {
-  const dataLines = chunk
-    .split(/\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trim());
-
-  for (const data of dataLines) {
-    if (!data) {
-      continue;
-    }
-    if (data === "[DONE]") {
-      yield { type: "done" };
-      continue;
-    }
-    yield { type: "data", data: JSON.parse(data) };
   }
 }
 
