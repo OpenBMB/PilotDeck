@@ -9,6 +9,9 @@ type ProtectedRouteProps = {
   children: ReactNode;
 };
 
+/** TEMP for onboarding UI work. Set back to false when done. */
+const FORCE_ONBOARDING_FOR_DEV = true;
+
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, isLoading, needsSetup, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
 
@@ -24,7 +27,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <LoginForm />;
   }
 
-  if (!hasCompletedOnboarding) {
+  if (FORCE_ONBOARDING_FOR_DEV || !hasCompletedOnboarding) {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
   }
 

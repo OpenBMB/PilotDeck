@@ -9,6 +9,24 @@ const mocks = vi.hoisted(() => ({
   fetchRemoteDefaultModels: vi.fn(),
 }));
 
+vi.mock('react-i18next', async () => {
+  const enOnboarding = (await import('../../../../i18n/locales/en/onboarding.json')).default as Record<string, unknown>;
+  const lookupTranslation = (key: string) => {
+    const value = key.split('.').reduce<unknown>(
+      (current, segment) => (current && typeof current === 'object' ? (current as Record<string, unknown>)[segment] : undefined),
+      enOnboarding,
+    );
+    return typeof value === 'string' ? value : key;
+  };
+
+  return {
+    useTranslation: () => ({
+      t: lookupTranslation,
+      i18n: { language: 'en', changeLanguage: vi.fn() },
+    }),
+  };
+});
+
 vi.mock('../../../../utils/api', () => ({
   authenticatedFetch: mocks.authenticatedFetch,
 }));

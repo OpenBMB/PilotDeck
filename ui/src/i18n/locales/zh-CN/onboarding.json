@@ -1,0 +1,84 @@
+{
+  "brand": "PilotDeck",
+  "sidebar": {
+    "kicker": "首次使用设置",
+    "title": "准备好你的 AI 工作空间",
+    "privacyTitle": "配置只保存在本地",
+    "privacyBody": "PilotDeck 不会将你的 API 密钥上传到云端。"
+  },
+  "steps": {
+    "language": "语言",
+    "provider": "模型服务商",
+    "connection": "模型接入配置",
+    "workspace": "工作区"
+  },
+  "language": {
+    "eyebrow": "欢迎使用 PilotDeck",
+    "title": "连接你的模型，开始真正的智能协作",
+    "intro": "只需几步完成模型配置。之后你可以随时在设置中更换服务商、模型或密钥。",
+    "legend": "选择界面语言",
+    "zh": {
+      "name": "简体中文",
+      "hint": "Chinese · 简体"
+    },
+    "en": {
+      "name": "English",
+      "hint": "English · US"
+    },
+    "start": "开始配置"
+  },
+  "provider": {
+    "title": "选择模型服务商",
+    "intro": "选择你已经在使用的服务。也支持自定义 OpenAI 兼容接口。",
+    "customTitle": "自定义",
+    "customHint": "OpenAI / Anthropic / Google"
+  },
+  "connection": {
+    "title": "配置模型接入",
+    "intro": "填写凭证并选择模型。继续前请先测试连接。",
+    "providerId": "服务商 ID",
+    "providerIdHint": "会作为 YAML 键名。请使用小写、不含空格。",
+    "protocol": "协议",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyOptional": "API Key（可选）",
+    "apiKeyPlaceholder": "sk-...",
+    "apiKeyOptionalPlaceholder": "此服务商不需要密钥",
+    "model": "模型",
+    "modelPlaceholder": "输入模型 ID…",
+    "customModelPlaceholder": "或输入自定义模型 ID…",
+    "fetchModels": "获取模型列表",
+    "fetchingModels": "正在获取远程模型列表…",
+    "openaiUrlHint": "OpenAI 兼容地址应包含 API 版本路径，例如以 /v1 结尾。",
+    "responsesUrlHint": "OpenAI Responses API 地址应包含 API 版本路径，例如以 /v1 结尾。",
+    "googleUrlHint": "原生 Google Gemini 使用 https://generativelanguage.googleapis.com，除非你需要自定义端点。",
+    "advanced": "高级设置",
+    "hideAdvanced": "收起高级设置",
+    "defaultUrl": "默认 URL",
+    "test": "测试连接",
+    "testing": "测试中…",
+    "testHint": "请先测试连接。",
+    "testSuccess": "连接成功。",
+    "testFailed": "连接失败"
+  },
+  "workspace": {
+    "title": "设置工作区",
+    "intro": "选择已有文件夹，或新建一个。PilotDeck 将在这里读写文件。",
+    "typeHeading": "工作区类型",
+    "existingTitle": "已有文件夹",
+    "existingHint": "添加这台机器上已经存在的目录。",
+    "newTitle": "新建文件夹",
+    "newHint": "创建新目录，也可以从 GitHub 仓库克隆。",
+    "pathLabel": "工作区路径",
+    "pathHint": "工作区目录的完整路径",
+    "browse": "浏览文件夹",
+    "githubLabel": "GitHub 地址（可选）",
+    "githubPlaceholder": "https://github.com/username/repository",
+    "githubHint": "可选。公开仓库无需 Token 即可克隆。"
+  },
+  "actions": {
+    "back": "上一步",
+    "next": "继续",
+    "finish": "完成设置"
+  }
+}
