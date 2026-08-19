@@ -195,6 +195,11 @@ function toResponsesContentPart(block: CanonicalContentBlock): Record<string, un
       return block.source === "url"
         ? [{ type: "input_text", text: `[Audio URL: ${block.data}]` }]
         : [{ type: "input_text", text: "[Audio content omitted]" }];
+    case "video":
+      return [{
+        type: "input_video",
+        video_url: block.source === "url" ? block.data : `data:${block.mimeType};base64,${block.data}`,
+      }];
     case "media_reference":
       return [{ type: "input_text", text: block.preview }];
     case "tool_call":

@@ -79,6 +79,7 @@ export type {
   CanonicalTextBlock,
   CanonicalThinkingBlock,
   CanonicalThinkingConfig,
+  CanonicalVideoBlock,
   CanonicalToolCall,
   CanonicalToolCallBlock,
   CanonicalToolChoice,
