@@ -61,6 +61,7 @@
     "smartChat": "Smart Chat",
     "fileDirectory": "Files",
     "resizeVerticalPanels": "Resize upper and lower panels",
+    "resizeHorizontalPanels": "Resize left and right panels",
     "conversations": {
       "switchConversation": "Switch conversation",
       "newConversation": "New conversation",

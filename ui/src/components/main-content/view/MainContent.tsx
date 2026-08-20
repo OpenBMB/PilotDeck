@@ -65,10 +65,76 @@ type MainContentToast = { kind: 'error' | 'info'; text: string } | null;
 const FILES_ASSISTANT_DEFAULT_WIDTH = 380;
 const FILES_ASSISTANT_MIN_WIDTH = 320;
 const FILES_ASSISTANT_MAX_WIDTH = 480;
+const FILES_ASSISTANT_HORIZONTAL_MIN_WIDTH = 520;
+const FILES_ASSISTANT_HORIZONTAL_MAX_WIDTH = 800;
 const FILES_ARTIFACT_MIN_WIDTH = 480;
 const FILES_PANEL_RAIL_WIDTH = 68;
 const FILES_PANEL_SPLITTER_HEIGHT = 7;
+const FILES_PANEL_SPLITTER_WIDTH = 7;
 const FILES_PANEL_SECTION_MIN_HEIGHT = 330;
+const FILES_PANEL_SECTION_MIN_WIDTH = 220;
+const FILES_PANEL_LAYOUT_STORAGE_KEY = 'pilotdeck:files-panel-layout';
+const FILES_PANEL_ORDER_STORAGE_KEY = 'pilotdeck:files-panel-order';
+
+type FilesDockPanel = 'explorer' | 'assistant';
+type FilesPanelLayout = 'vertical' | 'horizontal';
+type FilesPanelOrder = 'explorer-first' | 'assistant-first';
+type FilesDockEdge = 'top' | 'right' | 'bottom' | 'left';
+
+function readStoredFilesPanelLayout(): FilesPanelLayout {
+  try {
+    return localStorage.getItem(FILES_PANEL_LAYOUT_STORAGE_KEY) === 'horizontal'
+      ? 'horizontal'
+      : 'vertical';
+  } catch {
+    return 'vertical';
+  }
+}
+
+function readStoredFilesPanelOrder(): FilesPanelOrder {
+  try {
+    return localStorage.getItem(FILES_PANEL_ORDER_STORAGE_KEY) === 'assistant-first'
+      ? 'assistant-first'
+      : 'explorer-first';
+  } catch {
+    return 'explorer-first';
+  }
+}
+
+function resolveFilesDockEdge(
+  event: { clientX: number; clientY: number },
+  rect: DOMRect,
+  fromHeader: boolean,
+): FilesDockEdge | null {
+  const x = (event.clientX - rect.left) / Math.max(rect.width, 1);
+  if (fromHeader) {
+    if (x < 0.28) return 'left';
+    if (x > 0.72) return 'right';
+    return null;
+  }
+  const distLeft = event.clientX - rect.left;
+  const distRight = rect.right - event.clientX;
+  const distTop = event.clientY - rect.top;
+  const distBottom = rect.bottom - event.clientY;
+  const min = Math.min(distLeft, distRight, distTop, distBottom);
+  if (min === distLeft) return 'left';
+  if (min === distRight) return 'right';
+  if (min === distTop) return 'top';
+  return 'bottom';
+}
+
+function dockArrangementFromDrop(
+  source: FilesDockPanel,
+  edge: FilesDockEdge,
+): { layout: FilesPanelLayout; order: FilesPanelOrder } {
+  const layout: FilesPanelLayout = edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
+  const sourceFirst = edge === 'top' || edge === 'left';
+  const explorerFirst = source === 'explorer' ? sourceFirst : !sourceFirst;
+  return {
+    layout,
+    order: explorerFirst ? 'explorer-first' : 'assistant-first',
+  };
+}
 const FILES_NARROW_BREAKPOINT = 1040;
 const FILES_ASSISTANT_STORAGE_KEY = 'pilotdeck:files-assistant-width';
 const TOOL_PANEL_STORAGE_KEY = 'pilotdeck:dashboard-panel-width';
@@ -586,13 +652,17 @@ function SplitBody(props: SplitBodyProps) {
   const isFiles = activeTab === 'files';
   const filesSplitContainerRef = useRef<HTMLDivElement | null>(null);
   const filesSidePanelRef = useRef<HTMLDivElement | null>(null);
+  const dockDragSourceRef = useRef<FilesDockPanel | null>(null);
   const [filesAssistantWidth, setFilesAssistantWidth] = useState(readStoredFilesAssistantWidth);
   const [filesResizeTarget, setFilesResizeTarget] = useState<'assistant' | null>(null);
   const [filesPanelSplitRatio, setFilesPanelSplitRatio] = useState(0.5);
-  const [filesPanelVerticalResizing, setFilesPanelVerticalResizing] = useState(false);
-  const [filesPanelOrder, setFilesPanelOrder] = useState<'explorer-first' | 'assistant-first'>(
-    'explorer-first',
-  );
+  const [filesPanelSplitResizing, setFilesPanelSplitResizing] = useState(false);
+  const [filesPanelLayout, setFilesPanelLayout] = useState<FilesPanelLayout>(readStoredFilesPanelLayout);
+  const [filesPanelOrder, setFilesPanelOrder] = useState<FilesPanelOrder>(readStoredFilesPanelOrder);
+  const [filesPanelDropPreview, setFilesPanelDropPreview] = useState<{
+    panel: FilesDockPanel;
+    edge: FilesDockEdge | 'swap';
+  } | null>(null);
   const [explorerCollapsed, setExplorerCollapsed] = useState(true);
   const [assistantCollapsed, setAssistantCollapsed] = useState(false);
   const [assistantOverlayOpen, setAssistantOverlayOpen] = useState(false);
@@ -649,16 +719,33 @@ function SplitBody(props: SplitBodyProps) {
     }
   }, [filesAssistantWidth]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILES_PANEL_LAYOUT_STORAGE_KEY, filesPanelLayout);
+      localStorage.setItem(FILES_PANEL_ORDER_STORAGE_KEY, filesPanelOrder);
+    } catch {
+      // Layout remains usable when persistent storage is unavailable.
+    }
+  }, [filesPanelLayout, filesPanelOrder]);
+
+  const dockedHorizontally = filesPanelLayout === 'horizontal'
+    && !explorerCollapsed
+    && !assistantCollapsed
+    && !isNarrowWorkbench;
+
   const clampFilesAssistantWidth = useCallback((width: number) => {
+    const minWidth = dockedHorizontally
+      ? FILES_ASSISTANT_HORIZONTAL_MIN_WIDTH
+      : FILES_ASSISTANT_MIN_WIDTH;
+    const layoutMax = dockedHorizontally
+      ? FILES_ASSISTANT_HORIZONTAL_MAX_WIDTH
+      : FILES_ASSISTANT_MAX_WIDTH;
     const availableWidth = workbenchWidth > 0
       ? workbenchWidth - FILES_PANEL_RAIL_WIDTH - FILES_ARTIFACT_MIN_WIDTH
-      : FILES_ASSISTANT_MAX_WIDTH;
-    const maxWidth = Math.max(
-      FILES_ASSISTANT_MIN_WIDTH,
-      Math.min(FILES_ASSISTANT_MAX_WIDTH, availableWidth),
-    );
-    return Math.min(Math.max(width, FILES_ASSISTANT_MIN_WIDTH), maxWidth);
-  }, [workbenchWidth]);
+      : layoutMax;
+    const maxWidth = Math.max(minWidth, Math.min(layoutMax, availableWidth));
+    return Math.min(Math.max(width, minWidth), maxWidth);
+  }, [dockedHorizontally, workbenchWidth]);
 
   const handleFilesAssistantResizeBy = useCallback((delta: number) => {
     setFilesAssistantWidth((width) => clampFilesAssistantWidth(width + delta));
@@ -708,31 +795,38 @@ function SplitBody(props: SplitBodyProps) {
   }, [clampFilesAssistantWidth, filesResizeTarget]);
 
   const clampFilesPanelSplitRatio = useCallback((ratio: number) => {
-    const panelHeight = filesSidePanelRef.current?.getBoundingClientRect().height ?? 0;
-    const availableHeight = Math.max(1, panelHeight - FILES_PANEL_SPLITTER_HEIGHT);
+    const rect = filesSidePanelRef.current?.getBoundingClientRect();
+    if (filesPanelLayout === 'horizontal') {
+      const availableWidth = Math.max(1, (rect?.width ?? 0) - FILES_PANEL_SPLITTER_WIDTH);
+      const minRatio = Math.min(0.5, FILES_PANEL_SECTION_MIN_WIDTH / availableWidth);
+      const maxRatio = Math.max(0.5, 1 - minRatio);
+      return Math.min(Math.max(ratio, minRatio), maxRatio);
+    }
+    const availableHeight = Math.max(1, (rect?.height ?? 0) - FILES_PANEL_SPLITTER_HEIGHT);
     const minRatio = Math.min(0.5, FILES_PANEL_SECTION_MIN_HEIGHT / availableHeight);
     const maxRatio = Math.max(0.5, 1 - minRatio);
     return Math.min(Math.max(ratio, minRatio), maxRatio);
-  }, []);
+  }, [filesPanelLayout]);
 
   useEffect(() => {
-    if (!filesPanelVerticalResizing) return undefined;
+    if (!filesPanelSplitResizing) return undefined;
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       const panel = filesSidePanelRef.current;
       if (!panel) return;
       const rect = panel.getBoundingClientRect();
-      const availableHeight = Math.max(1, rect.height - FILES_PANEL_SPLITTER_HEIGHT);
-      const pointerRatio = (event.clientY - rect.top) / availableHeight;
+      const pointerRatio = filesPanelLayout === 'horizontal'
+        ? (event.clientX - rect.left) / Math.max(1, rect.width - FILES_PANEL_SPLITTER_WIDTH)
+        : (event.clientY - rect.top) / Math.max(1, rect.height - FILES_PANEL_SPLITTER_HEIGHT);
       setFilesPanelSplitRatio(clampFilesPanelSplitRatio(
         filesPanelOrder === 'explorer-first' ? pointerRatio : 1 - pointerRatio,
       ));
     };
-    const handleMouseUp = () => setFilesPanelVerticalResizing(false);
+    const handleMouseUp = () => setFilesPanelSplitResizing(false);
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'row-resize';
+    document.body.style.cursor = filesPanelLayout === 'horizontal' ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
 
     return () => {
@@ -741,7 +835,7 @@ function SplitBody(props: SplitBodyProps) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [clampFilesPanelSplitRatio, filesPanelOrder, filesPanelVerticalResizing]);
+  }, [clampFilesPanelSplitRatio, filesPanelLayout, filesPanelOrder, filesPanelSplitResizing]);
 
   const clampToolPanelWidth = useCallback((width: number) => (
     Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth)
@@ -839,6 +933,10 @@ function SplitBody(props: SplitBodyProps) {
     && (!isNarrowWorkbench || assistantOverlayOpen);
   const filesPanelVisible = explorerVisible || assistantVisible;
   const assistantIsOverlay = filesPanelVisible && isNarrowWorkbench;
+  const stackedHorizontally = filesPanelLayout === 'horizontal'
+    && explorerVisible
+    && assistantVisible
+    && !assistantIsOverlay;
 
   const toggleExplorer = () => {
     if (isNarrowWorkbench && !assistantOverlayOpen && !explorerCollapsed) {
@@ -866,27 +964,75 @@ function SplitBody(props: SplitBodyProps) {
 
   const handlePanelHeaderDragStart = (
     event: React.DragEvent<HTMLElement>,
-    panel: 'explorer' | 'assistant',
+    panel: FilesDockPanel,
   ) => {
+    dockDragSourceRef.current = panel;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', panel);
+    const clearPreview = () => {
+      dockDragSourceRef.current = null;
+      setFilesPanelDropPreview(null);
+    };
+    window.addEventListener('dragend', clearPreview, { once: true });
   };
 
-  const handlePanelHeaderDragOver = (event: React.DragEvent<HTMLElement>) => {
+  const updateDropPreview = (
+    event: React.DragEvent<HTMLElement>,
+    target: FilesDockPanel,
+    fromHeader: boolean,
+  ) => {
+    if (!dockDragSourceRef.current) return;
+    if (dockDragSourceRef.current === target) {
+      setFilesPanelDropPreview(null);
+      return;
+    }
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
+    const panelEl = event.currentTarget.closest('[data-files-dock-panel]');
+    const rect = (panelEl instanceof HTMLElement ? panelEl : event.currentTarget).getBoundingClientRect();
+    const edge = resolveFilesDockEdge(event, rect, fromHeader);
+    setFilesPanelDropPreview({ panel: target, edge: edge ?? 'swap' });
+  };
+
+  const handlePanelHeaderDragOver = (
+    event: React.DragEvent<HTMLElement>,
+    target: FilesDockPanel,
+  ) => {
+    updateDropPreview(event, target, true);
+  };
+
+  const handlePanelBodyDragOver = (
+    event: React.DragEvent<HTMLElement>,
+    target: FilesDockPanel,
+  ) => {
+    updateDropPreview(event, target, false);
   };
 
   const handlePanelHeaderDrop = (
     event: React.DragEvent<HTMLElement>,
-    target: 'explorer' | 'assistant',
+    target: FilesDockPanel,
+    fromHeader = true,
   ) => {
     event.preventDefault();
-    const source = event.dataTransfer.getData('text/plain');
+    event.stopPropagation();
+    setFilesPanelDropPreview(null);
+    const source = dockDragSourceRef.current
+      || event.dataTransfer.getData('text/plain');
+    dockDragSourceRef.current = null;
     if ((source !== 'explorer' && source !== 'assistant') || source === target) return;
-    setFilesPanelOrder((order) => (
-      order === 'explorer-first' ? 'assistant-first' : 'explorer-first'
-    ));
+    const panelEl = event.currentTarget.closest('[data-files-dock-panel]');
+    const rect = (panelEl instanceof HTMLElement ? panelEl : event.currentTarget).getBoundingClientRect();
+    const edge = resolveFilesDockEdge(event, rect, fromHeader);
+    if (!edge) {
+      setFilesPanelLayout('vertical');
+      setFilesPanelOrder((order) => (
+        order === 'explorer-first' ? 'assistant-first' : 'explorer-first'
+      ));
+      return;
+    }
+    const next = dockArrangementFromDrop(source, edge);
+    setFilesPanelLayout(next.layout);
+    setFilesPanelOrder(next.order);
   };
 
   return (
@@ -946,7 +1092,8 @@ function SplitBody(props: SplitBodyProps) {
         ref={filesSidePanelRef}
         key="agent-surface"
         className={cn(
-          'flex min-h-0 min-w-0 flex-col bg-white dark:bg-neutral-950',
+          'flex min-h-0 min-w-0 bg-white dark:bg-neutral-950',
+          stackedHorizontally ? 'flex-row' : 'flex-col',
           !showChat && 'invisible absolute h-0 w-0 overflow-hidden',
           showChat && !isFiles && 'flex-1',
           filesPanelVisible && !assistantIsOverlay && 'flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800',
@@ -958,22 +1105,43 @@ function SplitBody(props: SplitBodyProps) {
       >
         {isFiles && explorerVisible ? (
           <div
+            data-files-dock-panel="explorer"
             className={cn(
-              'flex min-h-0 flex-col overflow-hidden',
+              'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
               assistantVisible ? 'shrink-0' : 'flex-1',
             )}
             style={{
               order: filesPanelOrder === 'explorer-first' ? 0 : 2,
               ...(assistantVisible
-                ? {
-                  height: `calc(${filesPanelSplitRatio * 100}% - ${
-                    FILES_PANEL_SPLITTER_HEIGHT * filesPanelSplitRatio
-                  }px)`,
-                  minHeight: FILES_PANEL_SECTION_MIN_HEIGHT,
-                }
+                ? stackedHorizontally
+                  ? {
+                    width: `calc(${filesPanelSplitRatio * 100}% - ${
+                      FILES_PANEL_SPLITTER_WIDTH * filesPanelSplitRatio
+                    }px)`,
+                    minWidth: FILES_PANEL_SECTION_MIN_WIDTH,
+                    height: '100%',
+                  }
+                  : {
+                    height: `calc(${filesPanelSplitRatio * 100}% - ${
+                      FILES_PANEL_SPLITTER_HEIGHT * filesPanelSplitRatio
+                    }px)`,
+                    minHeight: FILES_PANEL_SECTION_MIN_HEIGHT,
+                  }
                 : {}),
             }}
+            onDragOverCapture={assistantVisible
+              ? (event) => handlePanelBodyDragOver(event, 'explorer')
+              : undefined}
+            onDrop={assistantVisible
+              ? (event) => handlePanelHeaderDrop(event, 'explorer', false)
+              : undefined}
           >
+            {filesPanelDropPreview?.panel === 'explorer' ? (
+              <span
+                aria-hidden="true"
+                className={cn('files-dock-drop-preview', filesPanelDropPreview.edge)}
+              />
+            ) : null}
             <Suspense fallback={<TabSkeleton />}>
               <FilesV2
                 key={selectedProject?.name ?? ''}
@@ -986,7 +1154,9 @@ function SplitBody(props: SplitBodyProps) {
                 onHeaderDragStart={assistantVisible
                   ? (event) => handlePanelHeaderDragStart(event, 'explorer')
                   : undefined}
-                onHeaderDragOver={assistantVisible ? handlePanelHeaderDragOver : undefined}
+                onHeaderDragOver={assistantVisible
+                  ? (event) => handlePanelHeaderDragOver(event, 'explorer')
+                  : undefined}
                 onHeaderDrop={assistantVisible
                   ? (event) => handlePanelHeaderDrop(event, 'explorer')
                   : undefined}
@@ -998,25 +1168,35 @@ function SplitBody(props: SplitBodyProps) {
         {isFiles && explorerVisible && assistantVisible ? (
           <div
             role="separator"
-            aria-orientation="horizontal"
-            aria-label={t('filesWorkbench.resizeVerticalPanels', {
-              defaultValue: 'Resize upper and lower panels',
-            })}
+            aria-orientation={stackedHorizontally ? 'vertical' : 'horizontal'}
+            aria-label={stackedHorizontally
+              ? t('filesWorkbench.resizeHorizontalPanels', {
+                defaultValue: 'Resize left and right panels',
+              })
+              : t('filesWorkbench.resizeVerticalPanels', {
+                defaultValue: 'Resize upper and lower panels',
+              })}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(filesPanelSplitRatio * 100)}
             tabIndex={0}
             onMouseDown={(event) => {
               event.preventDefault();
-              setFilesPanelVerticalResizing(true);
+              setFilesPanelSplitResizing(true);
             }}
             onKeyDown={(event) => {
-              if (event.key === 'ArrowUp') {
+              const shrinkExplorer = stackedHorizontally
+                ? event.key === 'ArrowLeft'
+                : event.key === 'ArrowUp';
+              const growExplorer = stackedHorizontally
+                ? event.key === 'ArrowRight'
+                : event.key === 'ArrowDown';
+              if (shrinkExplorer) {
                 event.preventDefault();
                 setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
                   ratio + (filesPanelOrder === 'explorer-first' ? -0.05 : 0.05),
                 ));
-              } else if (event.key === 'ArrowDown') {
+              } else if (growExplorer) {
                 event.preventDefault();
                 setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
                   ratio + (filesPanelOrder === 'explorer-first' ? 0.05 : -0.05),
@@ -1030,8 +1210,9 @@ function SplitBody(props: SplitBodyProps) {
               }
             }}
             className={cn(
-              'panel-splitter horizontal',
-              filesPanelVerticalResizing && 'active',
+              'panel-splitter',
+              stackedHorizontally ? 'vertical' : 'horizontal',
+              filesPanelSplitResizing && 'active',
             )}
             style={{ order: 1 }}
           >
@@ -1047,15 +1228,29 @@ function SplitBody(props: SplitBodyProps) {
         ) : null}
 
         <div
+          data-files-dock-panel="assistant"
           className={cn(
-            'flex min-h-0 flex-col',
+            'relative flex min-h-0 min-w-0 flex-col',
             !isFiles && 'flex-1',
-            isFiles && assistantVisible && 'flex-1',
-            isFiles && explorerVisible && assistantVisible && 'min-h-[330px]',
+            isFiles && assistantVisible && 'flex-1 overflow-x-hidden',
+            isFiles && explorerVisible && assistantVisible && !stackedHorizontally && 'min-h-[330px]',
+            isFiles && explorerVisible && assistantVisible && stackedHorizontally && 'min-w-[220px]',
             isFiles && !assistantVisible && 'invisible absolute h-0 w-0 overflow-hidden',
           )}
           style={{ order: filesPanelOrder === 'explorer-first' ? 2 : 0 }}
+          onDragOverCapture={isFiles && explorerVisible && assistantVisible
+            ? (event) => handlePanelBodyDragOver(event, 'assistant')
+            : undefined}
+          onDrop={isFiles && explorerVisible && assistantVisible
+            ? (event) => handlePanelHeaderDrop(event, 'assistant', false)
+            : undefined}
         >
+        {filesPanelDropPreview?.panel === 'assistant' ? (
+          <span
+            aria-hidden="true"
+            className={cn('files-dock-drop-preview', filesPanelDropPreview.edge)}
+          />
+        ) : null}
         {isFiles && assistantVisible ? (
           <header
             className="dock-panel-header chat"
@@ -1063,7 +1258,9 @@ function SplitBody(props: SplitBodyProps) {
             onDragStart={explorerVisible
               ? (event) => handlePanelHeaderDragStart(event, 'assistant')
               : undefined}
-            onDragOver={explorerVisible ? handlePanelHeaderDragOver : undefined}
+            onDragOver={explorerVisible
+              ? (event) => handlePanelHeaderDragOver(event, 'assistant')
+              : undefined}
             onDrop={explorerVisible
               ? (event) => handlePanelHeaderDrop(event, 'assistant')
               : undefined}

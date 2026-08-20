@@ -61,6 +61,7 @@
     "smartChat": "智能对话",
     "fileDirectory": "文件目录",
     "resizeVerticalPanels": "调整上下区域大小",
+    "resizeHorizontalPanels": "调整左右区域大小",
     "conversations": {
       "switchConversation": "切换对话",
       "newConversation": "新建对话",

@@ -166,6 +166,7 @@ export type ComposerV2Props = {
   sendByCtrlEnter?: boolean;
 
   chromeless?: boolean;
+  compact?: boolean;
 };
 
 type ContextStatus = {
@@ -476,6 +477,7 @@ export default function ComposerV2({
   runMode,
   onPlanExecutionApproved,
   chromeless = false,
+  compact = false,
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
@@ -610,7 +612,7 @@ export default function ComposerV2({
         chromeless ? "" : "bg-white px-6 pb-6 pt-3 dark:bg-neutral-950",
       )}
     >
-      <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[720px]")}>
+      <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[860px]")}>
         {pendingPermissionRequests.length > 0 ? (
           <div className="mb-3">
             <PermissionRequestsBanner
@@ -625,7 +627,10 @@ export default function ComposerV2({
         {!hasBlockingPermissionPanel ? (
           <form
             onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void}
-            className="pd-composer-container relative"
+            className={cn(
+              "pd-composer-container relative",
+              compact && "pd-composer-compact",
+            )}
           >
             {attachedImages.length > 0 || documentReferences.length > 0 ? (
               <div className="pd-composer-attachment-panel mb-2 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
@@ -807,7 +812,7 @@ export default function ComposerV2({
               selectedSkills.length > 0 ||
               selectedCommands.length > 0 ? (
                 <div
-                  className="-mt-0.5 mb-1.5 flex min-h-[26px] flex-wrap items-center gap-1.5 px-1"
+                  className="pd-composer-selection-chips -mt-0.5 mb-1.5 flex min-h-[26px] flex-wrap items-center gap-1.5 px-1"
                   aria-label={
                     t("input.selectedFilesAndSkills", {
                       defaultValue: "已选文件、技能与命令",
@@ -817,7 +822,7 @@ export default function ComposerV2({
                   {selectedFileMentions.map((mention) => (
                     <span
                       key={mention.id || mention.path}
-                      className="group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">{mention.name}</span>
                       <button
@@ -840,7 +845,7 @@ export default function ComposerV2({
                   {selectedSkills.map((skill) => (
                     <span
                       key={`${skill.slug}-${skill.command || ""}`}
-                      className="group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">
                         {skill.name || skill.slug}
@@ -865,7 +870,7 @@ export default function ComposerV2({
                   {selectedCommands.map((command) => (
                     <span
                       key={command.name}
-                      className="group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">{command.name}</span>
                       <button
@@ -1241,9 +1246,14 @@ export default function ComposerV2({
                   </div>
                 ) : null}
 
-                <div className="pd-composer-toolbar-right ml-auto flex shrink-0 items-center gap-3">
+                <div
+                  className={cn(
+                    "pd-composer-toolbar-right ml-auto flex shrink-0 items-center gap-3",
+                    compact && "relative",
+                  )}
+                >
                   <div
-                    className="relative"
+                    className={cn(!compact && "relative")}
                     onBlur={(event) => {
                       const nextTarget = event.relatedTarget as Node | null;
                       if (
@@ -1288,7 +1298,12 @@ export default function ComposerV2({
                             defaultValue: "选择模型",
                           }) as string
                         }
-                        className="absolute bottom-full left-1/2 z-50 mb-2 w-64 max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-visible rounded-xl border border-violet-200 bg-white text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        className={cn(
+                          "pd-composer-model-menu absolute bottom-full z-50 mb-2 overflow-visible rounded-xl border border-violet-200 bg-white text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900",
+                          compact
+                            ? "right-0 left-auto w-[min(16rem,calc(100cqw-1.5rem))] max-w-[calc(100cqw-1.5rem)]"
+                            : "left-1/2 w-64 max-w-[calc(100vw-32px)] -translate-x-1/2",
+                        )}
                       >
                         <div className="min-w-0 p-2">
                           <div className="relative mb-1.5">
@@ -1411,7 +1426,12 @@ export default function ComposerV2({
                                 defaultValue: "模型高级设置",
                               }) as string
                             }
-                            className="absolute left-[calc(100%+8px)] top-6 w-[212px] min-w-[212px] overflow-hidden rounded-[10px] border border-violet-300 bg-white p-[9px] text-[#505260] shadow-xl shadow-violet-950/10 dark:border-violet-800 dark:bg-neutral-900 dark:text-neutral-300"
+                            className={cn(
+                              "overflow-hidden rounded-[10px] border border-violet-300 bg-white p-[9px] text-[#505260] shadow-xl shadow-violet-950/10 dark:border-violet-800 dark:bg-neutral-900 dark:text-neutral-300",
+                              compact
+                                ? "relative mt-2 w-full min-w-0"
+                                : "absolute left-[calc(100%+8px)] top-6 w-[212px] min-w-[212px]",
+                            )}
                           >
                             {advancedModel.capabilities.reasoning ? (
                               <div>

@@ -35,6 +35,10 @@ import {
   type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
+import {
+  getChatResponseReserveTarget,
+  shouldKeepChatResponseReservedSpace,
+} from './chatResponseReservedSpace';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
@@ -595,15 +599,24 @@ function MessagesPaneV2({
       (group) => !renderedAnchorIndices.has(group.afterOriginalIndex),
     );
   }, [keyedMessageItems, liveProcessGroups]);
+  const latestUserRenderIndex = useMemo(() => {
+    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
+      if (keyedMessageItems[index].message.type === 'user') return index;
+    }
+    return -1;
+  }, [keyedMessageItems]);
+  const shouldReserveResponseSpace = shouldKeepChatResponseReservedSpace(
+    latestUserRenderIndex,
+    isAssistantWorking,
+  );
+  const reservedSpaceTarget = getChatResponseReserveTarget(scrollViewport.height);
   const liveProcessHeaderIndex = useMemo(() => {
     if (!isAssistantWorking) return -1;
-    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
-      if (keyedMessageItems[index].message.type === 'user') {
-        return Math.min(index + 1, keyedMessageItems.length);
-      }
+    if (latestUserRenderIndex >= 0) {
+      return Math.min(latestUserRenderIndex + 1, keyedMessageItems.length);
     }
     return keyedMessageItems.length > 0 ? 0 : -1;
-  }, [isAssistantWorking, keyedMessageItems]);
+  }, [isAssistantWorking, keyedMessageItems.length, latestUserRenderIndex]);
   const openSubagentContainerItem = openSubagentId
     ? keyedMessageItems.find((item) => (
         item.message.isSubagentContainer && item.message.subagentId === openSubagentId
@@ -1130,7 +1143,7 @@ function MessagesPaneV2({
         data-chat-search-surface
         onWheel={onWheel}
         onTouchMove={onTouchMove}
-        className="h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
+        className="dock-panel-scrollbar h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
       >
       {hasSessionLoadError ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
@@ -1286,53 +1299,54 @@ function MessagesPaneV2({
             <div aria-hidden="true" style={{ height: virtualWindow.topPadding }} />
           ) : null}
 
-          {windowedMessageItems.map(renderMessageItem)}
+          {windowedMessageItems
+            .filter((item) => latestUserRenderIndex < 0 || item.renderIndex <= latestUserRenderIndex)
+            .map(renderMessageItem)}
 
-          {shouldVirtualizeMessages && virtualWindow.bottomPadding > 0 ? (
-            <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
-          ) : null}
+          <div
+            className={shouldReserveResponseSpace ? 'chat-current-turn-reserve' : undefined}
+            data-chat-response-reserved-space={shouldReserveResponseSpace ? 'true' : undefined}
+            style={shouldReserveResponseSpace ? { minHeight: reservedSpaceTarget } : undefined}
+          >
+            {latestUserRenderIndex >= 0
+              ? windowedMessageItems
+                  .filter((item) => item.renderIndex > latestUserRenderIndex)
+                  .map(renderMessageItem)
+              : null}
 
-          {unanchoredLiveProcessGroups.length > 0 ? (
-            <div className="flex min-w-0 flex-col gap-2">
-              {unanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
-            </div>
-          ) : null}
+            {shouldVirtualizeMessages && virtualWindow.bottomPadding > 0 ? (
+              <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
+            ) : null}
 
-          {isAssistantWorking &&
-          liveProcessHeaderIndex === keyedMessageItems.length &&
-          keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
-            <LiveProcessHeader
-              activities={nonSubagentLiveActivities}
-              startedAtMs={liveProcessStartedAtMs}
-              t={t}
-            />
-          ) : null}
+            {unanchoredLiveProcessGroups.length > 0 ? (
+              <div className="flex min-w-0 flex-col gap-2">
+                {unanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
+              </div>
+            ) : null}
 
-          {shouldRenderBottomLiveStatus ? (
-            <>
-              <ProcessLiveStatus step={liveStatusStep}>
-                {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
-                  ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
-                  : null}
-              </ProcessLiveStatus>
-              {!inlineThinking && streamingThinkingContent ? (
-                <StreamingThinkingPreview content={streamingThinkingContent} />
-              ) : null}
-            </>
-          ) : null}
+            {isAssistantWorking &&
+            liveProcessHeaderIndex === keyedMessageItems.length &&
+            keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
+              <LiveProcessHeader
+                activities={nonSubagentLiveActivities}
+                startedAtMs={liveProcessStartedAtMs}
+                t={t}
+              />
+            ) : null}
 
-          {isAssistantWorking && liveProcessHeaderIndex > 0 ? (
-            <div
-              aria-hidden="true"
-              className="chat-response-reserved-space"
-              style={{
-                height: Math.min(
-                  520,
-                  Math.max(220, Math.round(scrollViewport.height * 0.52)),
-                ),
-              }}
-            />
-          ) : null}
+            {shouldRenderBottomLiveStatus ? (
+              <>
+                <ProcessLiveStatus step={liveStatusStep}>
+                  {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
+                    ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
+                    : null}
+                </ProcessLiveStatus>
+                {!inlineThinking && streamingThinkingContent ? (
+                  <StreamingThinkingPreview content={streamingThinkingContent} />
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       )}
 

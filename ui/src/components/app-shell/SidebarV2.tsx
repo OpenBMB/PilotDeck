@@ -275,6 +275,20 @@ export default function SidebarV2({
   const sidebarRootRef = useRef<HTMLElement | null>(null);
 
   const [conversationsExpanded, setConversationsExpanded] = useState(true);
+  const projectsConversationsSplitRef = useRef<HTMLDivElement | null>(null);
+  const SIDEBAR_SPLITTER_HEIGHT = 7;
+  const SIDEBAR_SECTION_MIN_HEIGHT = 120;
+  const SIDEBAR_SPLIT_STORAGE_KEY = 'sidebar-v2-projects-conversations-split';
+  const [projectsSplitRatio, setProjectsSplitRatio] = useState(() => {
+    if (typeof window === 'undefined') return 0.5;
+    try {
+      const stored = Number(window.localStorage.getItem(SIDEBAR_SPLIT_STORAGE_KEY));
+      return Number.isFinite(stored) && stored > 0.15 && stored < 0.85 ? stored : 0.5;
+    } catch {
+      return 0.5;
+    }
+  });
+  const [projectsSplitResizing, setProjectsSplitResizing] = useState(false);
 
   // Resizable sidebar width — clamped to a sensible range and persisted across
   // reloads. Drag-handle on the right edge mutates this on the fly.
@@ -307,6 +321,48 @@ export default function SidebarV2({
       // localStorage may be unavailable.
     }
   }, []);
+
+  const clampProjectsSplitRatio = useCallback((ratio: number) => {
+    const height = projectsConversationsSplitRef.current?.getBoundingClientRect().height ?? 0;
+    const availableHeight = Math.max(1, height - SIDEBAR_SPLITTER_HEIGHT);
+    const minRatio = Math.min(0.5, SIDEBAR_SECTION_MIN_HEIGHT / availableHeight);
+    const maxRatio = Math.max(0.5, 1 - minRatio);
+    return Math.min(Math.max(ratio, minRatio), maxRatio);
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_SPLIT_STORAGE_KEY, String(projectsSplitRatio));
+    } catch {
+      // Split remains usable when persistent storage is unavailable.
+    }
+  }, [projectsSplitRatio]);
+
+  useEffect(() => {
+    if (!projectsSplitResizing) return undefined;
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      const panel = projectsConversationsSplitRef.current;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const pointerRatio = (event.clientY - rect.top)
+        / Math.max(1, rect.height - SIDEBAR_SPLITTER_HEIGHT);
+      setProjectsSplitRatio(clampProjectsSplitRatio(pointerRatio));
+    };
+    const handleMouseUp = () => setProjectsSplitResizing(false);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [clampProjectsSplitRatio, projectsSplitResizing]);
 
   const handleResizeStart = useCallback((event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -735,7 +791,8 @@ export default function SidebarV2({
                 <div className="min-w-0">
                   <div
                     className={cn(
-                      'flex min-w-0 items-center gap-1 truncate text-[12.5px] font-semibold',
+                      'flex min-w-0 items-center gap-1 truncate text-[12.5px]',
+                      isSessionActive ? 'font-bold' : 'font-medium',
                       isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
                     )}
                   >
@@ -1091,7 +1148,22 @@ export default function SidebarV2({
         </nav>
       ) : (
       <div className="flex min-h-0 flex-1 flex-col">
-        <section className="tree-section flex min-h-0 flex-1 flex-col border-t border-neutral-200/80 dark:border-neutral-800">
+        <div
+          ref={projectsConversationsSplitRef}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+        <section
+          className="tree-section flex min-h-0 flex-col border-t border-neutral-200/80 dark:border-neutral-800"
+          style={conversationsExpanded
+            ? {
+              height: `calc(${projectsSplitRatio * 100}% - ${
+                SIDEBAR_SPLITTER_HEIGHT * projectsSplitRatio
+              }px)`,
+              minHeight: SIDEBAR_SECTION_MIN_HEIGHT,
+              flex: '0 0 auto',
+            }
+            : { minHeight: 0, flex: '1 1 0%' }}
+        >
           <div className="tree-heading shrink-0">
             <span>
               {t('sidebar:projects.title', { defaultValue: 'Projects' })}
@@ -1110,7 +1182,7 @@ export default function SidebarV2({
             </button>
           </div>
 
-          <div className="tree-list project-tree-list scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+          <div className="tree-list project-tree-list dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">
             {isLoading && safeProjects.length === 0 ? (
               <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
                 {t('sidebar:sessions.loading', { defaultValue: 'Loading...' })}
@@ -1127,7 +1199,58 @@ export default function SidebarV2({
           </div>
         </section>
 
-          <section className="tree-section conversations flex min-h-0 flex-1 flex-col border-t border-neutral-200/80 dark:border-neutral-800">
+        {conversationsExpanded ? (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('sidebar:tooltips.resizeProjectsConversations', {
+              defaultValue: 'Resize projects and conversations',
+            }) as string}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(projectsSplitRatio * 100)}
+            tabIndex={0}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setProjectsSplitResizing(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setProjectsSplitRatio((ratio) => clampProjectsSplitRatio(ratio - 0.05));
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setProjectsSplitRatio((ratio) => clampProjectsSplitRatio(ratio + 0.05));
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                setProjectsSplitRatio(clampProjectsSplitRatio(0));
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                setProjectsSplitRatio(clampProjectsSplitRatio(1));
+              }
+            }}
+            className={cn('panel-splitter horizontal', projectsSplitResizing && 'active')}
+          >
+            <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
+              <circle cx="12" cy="9" r="1" />
+              <circle cx="19" cy="9" r="1" />
+              <circle cx="5" cy="9" r="1" />
+              <circle cx="12" cy="15" r="1" />
+              <circle cx="19" cy="15" r="1" />
+              <circle cx="5" cy="15" r="1" />
+            </svg>
+          </div>
+        ) : null}
+
+          <section
+            className={cn(
+              'tree-section conversations flex min-h-0 flex-col',
+              !conversationsExpanded && 'border-t border-neutral-200/80 dark:border-neutral-800',
+            )}
+            style={conversationsExpanded
+              ? { minHeight: SIDEBAR_SECTION_MIN_HEIGHT, flex: '1 1 0%' }
+              : { flex: '0 0 auto' }}
+          >
           <button
             type="button"
             onClick={() => setConversationsExpanded((previous) => !previous)}
@@ -1164,7 +1287,7 @@ export default function SidebarV2({
           </button>
 
           {conversationsExpanded ? (
-            <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+            <div className="dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">
               {generalProject ? (
                 renderSessionRows(generalProject, { flat: true })
               ) : (
@@ -1177,6 +1300,7 @@ export default function SidebarV2({
             </div>
           ) : null}
           </section>
+        </div>
       </div>
       )}
 

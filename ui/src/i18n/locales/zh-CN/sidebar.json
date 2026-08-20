@@ -87,7 +87,8 @@
     "save": "保存",
     "cancel": "取消",
     "clearSearch": "清除搜索",
-    "resize": "调整侧边栏宽度"
+    "resize": "调整侧边栏宽度",
+    "resizeProjectsConversations": "调整项目与对话区域大小"
   },
   "navigation": {
     "chat": "智能体",

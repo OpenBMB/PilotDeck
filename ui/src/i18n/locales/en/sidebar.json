@@ -87,7 +87,8 @@
     "save": "Save",
     "cancel": "Cancel",
     "clearSearch": "Clear search",
-    "resize": "Resize sidebar"
+    "resize": "Resize sidebar",
+    "resizeProjectsConversations": "Resize projects and conversations"
   },
   "navigation": {
     "chat": "Agent",
