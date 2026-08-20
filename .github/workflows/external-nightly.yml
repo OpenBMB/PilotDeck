@@ -1,0 +1,96 @@
+name: External Nightly
+
+on:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  external:
+    name: External / ${{ matrix.provider }} / ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - openai
+          - anthropic
+          - google
+        group:
+          - model-protocol
+          - agent-context-web
+          - router-classify
+          - wcb-docker
+    env:
+      PILOT_HOME: ${{ runner.temp }}/pilotdeck-home
+      PILOTDECK_RUN_EXTERNAL: '1'
+      PILOTDECK_EXTERNAL_PROVIDER: ${{ matrix.provider }}
+      PILOTDECK_EXTERNAL_GROUP: ${{ matrix.group }}
+      PILOTDECK_EXTERNAL_DOCKER_IMAGE: pilotdeck-nightly:${{ github.sha }}
+      PILOTDECK_EXTERNAL_CONFIG_OPENAI_B64: ${{ secrets.PILOTDECK_EXTERNAL_CONFIG_OPENAI_B64 }}
+      PILOTDECK_EXTERNAL_CONFIG_ANTHROPIC_B64: ${{ secrets.PILOTDECK_EXTERNAL_CONFIG_ANTHROPIC_B64 }}
+      PILOTDECK_EXTERNAL_CONFIG_GOOGLE_B64: ${{ secrets.PILOTDECK_EXTERNAL_CONFIG_GOOGLE_B64 }}
+      TAVILY_API_KEY: ${{ secrets.PILOTDECK_E2E_TAVILY_API_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create isolated external-test config
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${PILOTDECK_EXTERNAL_PROVIDER}" in
+            openai) config_b64="${PILOTDECK_EXTERNAL_CONFIG_OPENAI_B64}" ;;
+            anthropic) config_b64="${PILOTDECK_EXTERNAL_CONFIG_ANTHROPIC_B64}" ;;
+            google) config_b64="${PILOTDECK_EXTERNAL_CONFIG_GOOGLE_B64}" ;;
+            *) echo "Unsupported external provider: ${PILOTDECK_EXTERNAL_PROVIDER}" >&2; exit 1 ;;
+          esac
+          if [[ -z "${config_b64}" ]]; then
+            echo "Provider config secret is required for ${PILOTDECK_EXTERNAL_PROVIDER}." >&2
+            exit 1
+          fi
+          if [[ "${PILOTDECK_EXTERNAL_GROUP}" == "agent-context-web" && -z "${TAVILY_API_KEY}" ]]; then
+            echo "PILOTDECK_E2E_TAVILY_API_KEY is required for agent-context-web." >&2
+            exit 1
+          fi
+          mkdir -p "${PILOT_HOME}"
+          printf '%s' "${config_b64}" | base64 --decode > "${PILOT_HOME}/pilotdeck.yaml"
+          chmod 600 "${PILOT_HOME}/pilotdeck.yaml"
+
+      - name: Build Docker image
+        if: matrix.group == 'wcb-docker'
+        run: docker build --tag "${PILOTDECK_EXTERNAL_DOCKER_IMAGE}" .
+
+      - name: Run selected external group
+        run: pnpm test:external
+
+      - name: Upload sanitized external report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: external-${{ matrix.provider }}-${{ matrix.group }}
+          path: artifacts/external
+          if-no-files-found: ignore
+          retention-days: 14

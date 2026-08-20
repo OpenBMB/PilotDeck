@@ -10,6 +10,7 @@ export function createWebSocketAcceptValue(key: string): string {
 export class TextWebSocketConnection {
   private buffer = Buffer.alloc(0);
   private closed = false;
+  private closeEmitted = false;
   private readonly messageHandlers: Array<(message: string) => void> = [];
   private readonly closeHandlers: Array<() => void> = [];
 
@@ -46,6 +47,7 @@ export class TextWebSocketConnection {
     payload.write(reason, 2);
     this.socket.write(Buffer.concat([createServerFrameHeader(payload.length, 0x8), payload]));
     this.socket.end();
+    this.emitClose();
   }
 
   private handleData(chunk: Buffer): void {
@@ -74,10 +76,11 @@ export class TextWebSocketConnection {
   }
 
   private emitClose(): void {
-    if (this.closed) {
+    if (this.closeEmitted) {
       return;
     }
     this.closed = true;
+    this.closeEmitted = true;
     for (const handler of this.closeHandlers) {
       handler();
     }

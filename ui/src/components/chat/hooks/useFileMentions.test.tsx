@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
+import type { KeyboardEvent, RefObject, SetStateAction } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../../types/app';
 import { ADD_WORKSPACE_FILE_MENTION_EVENT } from '../../../utils/workspaceFileMention';
@@ -33,7 +33,7 @@ describe('useFileMentions conversation scope', () => {
   });
 
   it('does not reuse the previous conversation cursor for an external mention', () => {
-    const setInput = vi.fn() as Dispatch<SetStateAction<string>>;
+    const setInput = vi.fn<(value: SetStateAction<string>) => void>();
     const { result, rerender } = renderHook(
       (props: { mentionScopeKey: string; input: string }) => useFileMentions({
         selectedProject: project,
@@ -70,7 +70,7 @@ describe('useFileMentions conversation scope', () => {
   });
 
   it('deletes a highlighted file mention as one token with Backspace', () => {
-    const setInput = vi.fn() as Dispatch<SetStateAction<string>>;
+    const setInput = vi.fn<(value: SetStateAction<string>) => void>();
     const textarea = document.createElement('textarea');
     const localTextareaRef = { current: textarea } as RefObject<HTMLTextAreaElement>;
     const { result, rerender } = renderHook(

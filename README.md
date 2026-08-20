@@ -396,6 +396,21 @@ corepack pnpm install --frozen-lockfile
 
 PilotDeck uses the committed `pnpm-lock.yaml` for reproducible source installs. Prefer the `corepack pnpm ...` command above instead of `npm install`; on macOS, this also avoids unnecessary native rebuild fallbacks when matching prebuilt packages are available.
 
+**Development checks**
+
+Use Node.js 22 and the pinned pnpm version before handing off a change:
+
+```bash
+corepack pnpm check
+corepack pnpm test:contract
+corepack pnpm test:artifact
+```
+
+See [Quality Gates](docs/quality-gates.md) for browser smoke, mutation proof,
+external nightly commands, and the current non-required CI policy. Durable
+behavior contracts and the phased coverage plan are documented in
+[Agent Notes](docs/agent-notes/README.md) and the [test quality roadmap](docs/test-quality-roadmap.md).
+
 **2. Configure a model provider**
 
 PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. You can create it manually, let the bootstrap script generate one, **or just open the Web UI and configure providers visually in the settings panel.**

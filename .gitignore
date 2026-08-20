@@ -193,11 +193,11 @@ package-lock.json
 
 # Test output
 test-results/
+playwright-report/
 
-# Local test drafts (force-add intentional new tests with git add -f)
-test/
-test.ts
-*.test.ts
+# Local test drafts. Keep real tests visible to Git so a new `*.test.ts`
+# regression cannot be silently omitted from a change.
+.test-drafts/
 
 # Auto-Research-Skills (local-only)
 Auto-Research-Skills/

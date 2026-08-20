@@ -59,7 +59,10 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     wsUrl: `ws://${host}:${port}/ws`,
     token: auth.token,
     tokenPath: auth.tokenPath,
-    close: () => close(server),
+    close: async () => {
+      for (const connection of connections) connection.close();
+      await close(server);
+    },
     broadcastNotification(name: string, payload?: unknown) {
       for (const conn of connections) {
         conn.sendNotification(name, payload);

@@ -41,6 +41,10 @@ export class GatewayWsConnection {
     this.ws.onClose(callback);
   }
 
+  close(code = 1001, reason = "server_shutdown"): void {
+    this.ws.close(code, reason);
+  }
+
   private async handleMessage(message: string): Promise<void> {
     let frame: unknown;
     try {

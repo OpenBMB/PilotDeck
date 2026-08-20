@@ -1182,6 +1182,10 @@ export async function runChatViaGateway(
                             userHint: message,
                         }),
                     );
+                    if (state.runId === runId) {
+                        state.runId = staleRunId;
+                        state.active = true;
+                    }
                     return;
                 }
                 console.warn('[pilotdeck-bridge] stale abort failed (continuing):', err?.message || err);

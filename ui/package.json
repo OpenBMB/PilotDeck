@@ -26,6 +26,8 @@
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pree2e": "pnpm --dir .. run build && pnpm run build",
+    "e2e": "node e2e/run-stack.mjs",
     "start": "npm run build && npm run start:built",
     "start:built": "concurrently --kill-others-on-fail --names gateway,server \"npm:gateway\" \"npm:server\"",
     "postinstall": "node scripts/fix-node-pty.js"

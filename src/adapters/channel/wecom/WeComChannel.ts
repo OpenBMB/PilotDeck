@@ -294,6 +294,7 @@ export class WeComChannel implements ChannelAdapter {
     this.ws.on("close", () => {
       this.stopHeartbeat();
       this.failPending(new Error("WeCom connection interrupted"));
+      void this.abortActiveTurns("wecom websocket closed");
       if (!this.intentionalStop) {
         this.logger?.warn?.("wecom: WebSocket closed");
         this.scheduleReconnect();
@@ -386,6 +387,14 @@ export class WeComChannel implements ChannelAdapter {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private async abortActiveTurns(reason: string): Promise<void> {
+    if (!this.gateway || this.activeChats.size === 0) return;
+    const sessionKeys = [...this.activeChats];
+    await Promise.allSettled(sessionKeys.map((sessionKey) =>
+      this.gateway!.abortTurn({ sessionKey, reason }),
+    ));
   }
 
   private clearReconnectTimer(): void {

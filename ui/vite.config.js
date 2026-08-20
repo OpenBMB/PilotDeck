@@ -1,5 +1,6 @@
 import path from 'path'
 import { defineConfig, loadEnv } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
@@ -89,9 +90,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      exclude: [...configDefaults.exclude, 'e2e/**'],
       server: {
         deps: {
-          inline: ['react', 'react-dom']
+          inline: ['react', 'react-dom'],
+          external: [/edgeclaw-memory-core\/lib/]
         }
       }
     }

@@ -55,7 +55,10 @@ export function resolveGoogleEndpoint(rawUrl: string): { baseUrl?: string; apiVe
     url.pathname = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
     url.search = "";
     url.hash = "";
-    return { baseUrl: url.toString(), apiVersion: "" };
+    // Custom Google-compatible endpoints still use the native v1beta path.
+    // Keep the configured URL as the host/prefix and let the SDK append
+    // /v1beta/models/{model}:{method}.
+    return { baseUrl: url.toString(), apiVersion: "v1beta" };
   } catch {
     return { baseUrl: trimmed, apiVersion: "" };
   }
