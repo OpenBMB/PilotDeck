@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { cp, lstat, mkdir, opendir, rm, stat } from "node:fs/promises";
 import { platform } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { AlwaysOnError } from "../protocol/errors.js";
 import type { WorkspaceHandle } from "../protocol/types.js";
@@ -116,44 +116,56 @@ async function tryReflinkCopy(source: string, target: string): Promise<boolean> 
 
 function isIgnored(filePath: string, root: string, ignores: Set<string>): boolean {
   if (filePath === root) return false;
-  const rel = filePath.startsWith(root) ? filePath.slice(root.length).replace(/^[/\\]+/, "") : filePath;
+  const rel = relative(root, filePath);
+  if (!rel || rel === "." || rel.startsWith("..") || isAbsolute(rel)) return false;
   if (rel.length === 0) return false;
-  const head = rel.split(/[/\\]/)[0];
-  if (ignores.has(head)) return true;
-  return false;
+  return rel.split(/[/\\]/).some((segment) => ignores.has(segment));
 }
 
 async function pruneIgnored(target: string, ignores: Set<string>): Promise<void> {
-  for (const entry of ignores) {
-    await rm(resolve(target, entry), { recursive: true, force: true }).catch(() => undefined);
+  let dir;
+  try {
+    dir = await opendir(target);
+  } catch {
+    return;
+  }
+
+  for await (const entry of dir) {
+    const entryPath = resolve(target, entry.name);
+    if (entry.isDirectory() && ignores.has(entry.name)) {
+      await rm(entryPath, { recursive: true, force: true }).catch(() => undefined);
+      continue;
+    }
+    if (entry.isDirectory()) {
+      await pruneIgnored(entryPath, ignores);
+    }
   }
 }
 
 async function estimateSize(root: string, ignores: Set<string>): Promise<number> {
-  // Quick best-effort estimate; if the OS command fails fall back to 0
-  // (caller still copies but skips the cap).
-  if (platform() === "win32") {
-    return estimateSizeWindows(root, ignores);
+  try {
+    return await estimateSizeWalk(root, root, ignores);
+  } catch {
+    return 0;
   }
-  return runCommand("du", ["-sk", root])
-    .then((result) => {
-      if (result.exitCode !== 0) return 0;
-      const tokens = result.stdout.trim().split(/\s+/);
-      const kb = Number.parseInt(tokens[0], 10);
-      return Number.isFinite(kb) ? kb * 1024 : 0;
-    })
-    .catch(() => 0);
 }
 
-async function estimateSizeWindows(root: string, _ignores: Set<string>): Promise<number> {
-  const script = `(Get-ChildItem -Path '${root.replace(/'/g, "''")}' -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum`;
-  return runCommand("powershell", ["-NoProfile", "-Command", script])
-    .then((result) => {
-      if (result.exitCode !== 0) return 0;
-      const bytes = Number.parseInt(result.stdout.trim(), 10);
-      return Number.isFinite(bytes) ? bytes : 0;
-    })
-    .catch(() => 0);
+async function estimateSizeWalk(root: string, filePath: string, ignores: Set<string>): Promise<number> {
+  if (isIgnored(filePath, root, ignores)) {
+    return 0;
+  }
+
+  const info = await lstat(filePath);
+  if (!info.isDirectory()) {
+    return info.size;
+  }
+
+  let total = 0;
+  const dir = await opendir(filePath);
+  for await (const entry of dir) {
+    total += await estimateSizeWalk(root, resolve(filePath, entry.name), ignores);
+  }
+  return total;
 }
 
 type CommandResult = { exitCode: number; stdout: string; stderr: string };
