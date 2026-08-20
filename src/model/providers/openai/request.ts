@@ -185,7 +185,7 @@ function toOpenAIMessages(
       role: message.role,
       content: normalContent.length > 0
         ? toOpenAIContent(normalContent)
-        : (message.role === "assistant" && thinkingBlocks.length > 0 ? "" : undefined),
+        : (message.role === "assistant" && (assistantToolCalls.length > 0 || thinkingBlocks.length > 0) ? "" : undefined),
       tool_calls: assistantToolCalls.length > 0 ? assistantToolCalls : undefined,
     };
     const reasoningContent = toOpenAIReasoningContent(thinkingBlocks);
