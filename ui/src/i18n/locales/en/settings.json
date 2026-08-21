@@ -136,7 +136,8 @@
       "appearance": "Appearance",
       "toolDisplay": "Tool Display",
       "viewOptions": "View Options",
-      "inputSettings": "Input Settings"
+      "inputSettings": "Input Settings",
+      "attachmentUpload": "Attachment Upload"
     },
     "darkMode": "Dark Mode",
     "autoExpandTools": "Auto-expand tools",
@@ -146,6 +147,9 @@
     "autoScrollToBottom": "Auto-scroll to bottom",
     "sendByCtrlEnter": "Send by Ctrl+Enter",
     "sendByCtrlEnterDescription": "When enabled, pressing Ctrl+Enter will send the message instead of just Enter. This is useful for IME users to avoid accidental sends.",
+    "attachmentMaxFileSize": "Maximum size per attachment (MB)",
+    "attachmentMaxFileSizeDescription": "Applies to the whole deployment. All chat attachments are validated against this size after it is saved.",
+    "attachmentConfigUnavailable": "The configuration file is invalid, so the attachment size limit cannot be changed right now.",
     "dragHandle": {
       "dragging": "Dragging handle",
       "closePanel": "Close settings panel",

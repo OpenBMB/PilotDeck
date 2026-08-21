@@ -232,28 +232,42 @@ export function NumberInput({
   value,
   onChange,
   placeholder,
+  min,
+  step,
+  allowEmpty = true,
+  isValid,
 }: {
   value: number | undefined;
   onChange: (next: number | undefined) => void;
   placeholder?: string;
+  min?: number;
+  step?: number;
+  allowEmpty?: boolean;
+  isValid?: (value: number) => boolean;
 }) {
   const stringValue = value === undefined ? "" : String(value);
   return (
     <EditableInputShell
       value={stringValue}
-      canCommit={(s) => s === "" || Number.isFinite(Number(s))}
+      canCommit={(s) => {
+        if (s === "") return allowEmpty;
+        const n = Number(s);
+        return Number.isFinite(n) && (!isValid || isValid(n));
+      }}
       onCommit={(s) => {
         if (s === "") {
-          onChange(undefined);
+          if (allowEmpty) onChange(undefined);
           return;
         }
         const n = Number(s);
-        if (Number.isFinite(n)) onChange(n);
+        if (Number.isFinite(n) && (!isValid || isValid(n))) onChange(n);
       }}
     >
       {({ editing, draft, setDraft, onEditKeyDown }) => (
         <input
           type="number"
+          min={min}
+          step={step}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onEditKeyDown}

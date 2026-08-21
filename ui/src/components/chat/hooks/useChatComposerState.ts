@@ -17,6 +17,14 @@ import { grantPilotDeckToolPermission } from '../utils/chatPermissions';
 import { getDraftInputStorageKey, safeLocalStorage } from '../utils/chatStorage';
 import { buildAttachmentPathNote } from '../utils/attachmentNotes';
 import {
+  ATTACHMENT_UPLOAD_LIMITS_CHANGED_EVENT,
+  attachmentSizeLimitError,
+  DEFAULT_ATTACHMENT_UPLOAD_LIMITS,
+  isAttachmentWithinSizeLimit,
+  normalizeAttachmentUploadLimits,
+  type AttachmentUploadLimits,
+} from '../utils/attachmentUploadLimits';
+import {
   createTemporarySessionId,
   getNotificationSessionSummary,
   isTemporarySessionId,
@@ -118,7 +126,6 @@ const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
 };
 
-const MAX_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 export const MAX_ATTACHMENTS_ERROR_KEY = '__max_attachments__';
 
@@ -217,6 +224,9 @@ export function useChatComposerState({
   const [documentReferences, setDocumentReferences] = useState<ContentReference[]>([]);
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
+  const [attachmentUploadLimits, setAttachmentUploadLimits] = useState<AttachmentUploadLimits>(
+    DEFAULT_ATTACHMENT_UPLOAD_LIMITS,
+  );
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [isBusySendQueued, setIsBusySendQueued] = useState(false);
   const [isBusySendConfirmed, setIsBusySendConfirmed] = useState(false);
@@ -254,6 +264,61 @@ export function useChatComposerState({
       ...(updates.forceStart ? { forceStart: true } : {}),
     };
   }, [attachedImages, documentReferences]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAttachmentUploadLimits = async () => {
+      try {
+        const response = await authenticatedFetch('/api/settings/attachment-upload-limits');
+        if (!response.ok) {
+          throw new Error(`Failed to load attachment upload limits (${response.status})`);
+        }
+        const limits = normalizeAttachmentUploadLimits(await response.json());
+        if (active) {
+          setAttachmentUploadLimits(limits);
+        }
+      } catch (error) {
+        console.warn('Failed to load attachment upload limits, using defaults:', error);
+        if (active) {
+          setAttachmentUploadLimits(DEFAULT_ATTACHMENT_UPLOAD_LIMITS);
+        }
+      }
+    };
+
+    const handleLimitsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      setAttachmentUploadLimits(normalizeAttachmentUploadLimits(detail));
+    };
+
+    void loadAttachmentUploadLimits();
+    window.addEventListener(ATTACHMENT_UPLOAD_LIMITS_CHANGED_EVENT, handleLimitsChanged);
+    return () => {
+      active = false;
+      window.removeEventListener(ATTACHMENT_UPLOAD_LIMITS_CHANGED_EVENT, handleLimitsChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    setImageErrors((previous) => {
+      const next = new Map(previous);
+      let changed = false;
+
+      for (const file of attachedImages) {
+        const error = isAttachmentWithinSizeLimit(file, attachmentUploadLimits)
+          ? undefined
+          : attachmentSizeLimitError(attachmentUploadLimits.maxFileSizeMB);
+        if (error && next.get(file.name) !== error) {
+          next.set(file.name, error);
+          changed = true;
+        } else if (!error && next.delete(file.name)) {
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }, [attachedImages, attachmentUploadLimits]);
 
   useEffect(() => {
     const handleAddDocumentReference = (event: Event) => {
@@ -696,23 +761,12 @@ export function useChatComposerState({
   }, []);
 
   const handleImageFiles = useCallback((files: File[]) => {
-    const validFiles = files.filter((file) => {
+    const attachmentFiles = files.filter((file) => {
       try {
         if (!file || typeof file !== 'object') {
           console.warn('Invalid file object:', file);
           return false;
         }
-
-        if (typeof file.size !== 'number' || file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-          const fileName = file.name || 'Unknown file';
-          setImageErrors((previous) => {
-            const next = new Map(previous);
-            next.set(fileName, 'File too large (max 20MB)');
-            return next;
-          });
-          return false;
-        }
-
         return true;
       } catch (error) {
         console.error('Error validating file:', error, file);
@@ -727,9 +781,20 @@ export function useChatComposerState({
       return next;
     });
 
-    if (validFiles.length > 0) {
+    if (attachmentFiles.length > 0) {
+      setImageErrors((previous) => {
+        const next = new Map(previous);
+        attachmentFiles.forEach((file) => {
+          if (isAttachmentWithinSizeLimit(file, attachmentUploadLimits)) {
+            next.delete(file.name);
+          } else {
+            next.set(file.name, attachmentSizeLimitError(attachmentUploadLimits.maxFileSizeMB));
+          }
+        });
+        return next;
+      });
       setAttachedImages((previous) => {
-        const result = addAttachmentFiles(previous, validFiles);
+        const result = addAttachmentFiles(previous, attachmentFiles);
         if (result.droppedCount > 0) {
           setImageErrors((previousErrors) => {
             const next = new Map(previousErrors);
@@ -741,7 +806,7 @@ export function useChatComposerState({
         return result.files;
       });
     }
-  }, []);
+  }, [attachmentUploadLimits, syncQueuedBusySendSnapshot]);
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -775,7 +840,6 @@ export function useChatComposerState({
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    maxSize: MAX_ATTACHMENT_SIZE_BYTES,
     multiple: true,
     onDrop: handleImageFiles,
     noClick: true,
@@ -794,6 +858,20 @@ export function useChatComposerState({
       const hasDocumentReferences = submitDocumentReferences.length > 0;
       const hasAttachments = submitAttachedImages.length > 0 || hasDocumentReferences;
       if ((!currentInput.trim() && !hasAttachments) || !selectedProject) {
+        return;
+      }
+
+      const oversizedAttachments = submitAttachedImages.filter(
+        (file) => !isAttachmentWithinSizeLimit(file, attachmentUploadLimits),
+      );
+      if (oversizedAttachments.length > 0) {
+        setImageErrors((previous) => {
+          const next = new Map(previous);
+          oversizedAttachments.forEach((file) => {
+            next.set(file.name, attachmentSizeLimitError(attachmentUploadLimits.maxFileSizeMB));
+          });
+          return next;
+        });
         return;
       }
 
@@ -1067,6 +1145,7 @@ export function useChatComposerState({
       runMode,
       permissionMode,
       basePermissionMode,
+      attachmentUploadLimits,
       resetCommandMenuState,
       scrollToBottom,
       selectedProject,
