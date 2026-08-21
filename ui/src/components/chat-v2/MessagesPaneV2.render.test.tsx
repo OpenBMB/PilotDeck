@@ -60,6 +60,21 @@ describe('getContextStatus', () => {
     expect(status.used).toBe(12_080);
     expect(status.percentLabel).toBe('100%+');
   });
+
+  it('shows the full context window while calculating percent against the effective budget', () => {
+    const status = getContextStatus({
+      used: 38_161,
+      total: 131_072,
+      effectiveTotal: 98_304,
+      reservedOutputTokens: 32_768,
+      state: 'ok',
+    });
+
+    expect(status.displayTotal).toBe(131_072);
+    expect(status.totalLabel).toBe('131k');
+    expect(status.percentLabel).toBe('39%');
+    expect(status.tone).toBe('normal');
+  });
 });
 
 function makeMessage(index: number): ChatMessage {
