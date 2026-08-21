@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { authenticatedFetch } from "../../../../utils/api";
+import { restartAndReload } from "../../../../utils/restartUi";
 import { cn } from "../../../../lib/utils";
 import type { DesktopVersionCheckResult } from "../../Settings";
 import { SettingsCard } from "../../shared/view";
@@ -30,6 +31,16 @@ type VersionStatus =
   | "upToDate"
   | "unavailable";
 
+type WebUpdateStatusPayload = {
+  updateInProgress?: boolean;
+  lastUpdateResult?: {
+    success?: boolean;
+    alreadyUpToDate?: boolean;
+    needsRestart?: boolean;
+    error?: unknown;
+  } | null;
+};
+
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   const d = new Date(value);
@@ -51,17 +62,88 @@ export default function AboutSections({
   const [installing, setInstalling] = useState(false);
   const [localUpdateResult, setLocalUpdateResult] = useState<LocalUpdateResult>(null);
   const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
+  const webStatusPollRef = useRef<number | null>(null);
   const isDesktop = versionInfo.mode === "desktop";
 
+  const stopWebStatusPolling = useCallback(() => {
+    if (webStatusPollRef.current !== null) {
+      window.clearInterval(webStatusPollRef.current);
+      webStatusPollRef.current = null;
+    }
+  }, []);
+
+  const applyWebUpdateStatus = useCallback((payload: WebUpdateStatusPayload): boolean => {
+    const result = payload.lastUpdateResult;
+    if (result?.needsRestart) {
+      setWebUpdating(false);
+      setLocalUpdateResult("webUpdated");
+      return false;
+    }
+    if (result?.alreadyUpToDate) {
+      setWebUpdating(false);
+      setLocalUpdateResult("webUpToDate");
+      return false;
+    }
+    if (result?.success === false || result?.error) {
+      setWebUpdating(false);
+      setLocalUpdateResult("failed");
+      return false;
+    }
+    if (payload.updateInProgress) {
+      setWebUpdating(true);
+      return true;
+    }
+    setWebUpdating(false);
+    return false;
+  }, []);
+
+  const refreshWebUpdateStatus = useCallback(async (): Promise<boolean> => {
+    if (isDesktop) return false;
+    try {
+      const res = await authenticatedFetch("/api/update/status");
+      if (!res.ok) return false;
+      const payload = await res.json() as WebUpdateStatusPayload;
+      return applyWebUpdateStatus(payload);
+    } catch {
+      return false;
+    }
+  }, [applyWebUpdateStatus, isDesktop]);
+
+  const startWebStatusPolling = useCallback(() => {
+    if (webStatusPollRef.current !== null) return;
+    webStatusPollRef.current = window.setInterval(() => {
+      void refreshWebUpdateStatus().then((shouldContinue) => {
+        if (!shouldContinue) stopWebStatusPolling();
+      });
+    }, 1000);
+  }, [refreshWebUpdateStatus, stopWebStatusPolling]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      stopWebStatusPolling();
+      return;
+    }
+
+    let active = true;
+    void refreshWebUpdateStatus().then((shouldPoll) => {
+      if (active && shouldPoll) startWebStatusPolling();
+    });
+
+    return () => {
+      active = false;
+      stopWebStatusPolling();
+    };
+  }, [isDesktop, refreshWebUpdateStatus, startWebStatusPolling, stopWebStatusPolling]);
+
   const status: VersionStatus = useMemo(() => {
-    if (checkingVersion) return "checking";
+    if (checkingVersion || webUpdating) return "checking";
     if (localUpdateResult === "installerLaunched") return "installerLaunched";
     if (localUpdateResult === "webUpToDate") return "upToDate";
     if (localUpdateResult === "failed") return "unavailable";
     if (versionInfo.checkUnavailable) return "unavailable";
     if (versionInfo.hasUpdate) return "updateAvailable";
     return "upToDate";
-  }, [checkingVersion, localUpdateResult, versionInfo.checkUnavailable, versionInfo.hasUpdate]);
+  }, [checkingVersion, localUpdateResult, versionInfo.checkUnavailable, versionInfo.hasUpdate, webUpdating]);
 
   const handleDownloadAndInstall = async () => {
     setDownloading(true);
@@ -125,6 +207,7 @@ export default function AboutSections({
             ? "webUpToDate"
             : "webUpdated",
       );
+      stopWebStatusPolling();
     } catch {
       setLocalUpdateResult("failed");
     } finally {
@@ -144,17 +227,21 @@ export default function AboutSections({
     }
   };
 
-  const handleWebRestart = async () => {
+  const handleWebRestart = () => {
     setInstalling(true);
-    try {
-      await authenticatedFetch("/api/update/restart", {
+    stopWebStatusPolling();
+    restartAndReload(
+      () => authenticatedFetch("/api/update/restart", {
         method: "POST",
-      });
-    } catch {
-      // best effort: server can drop connection while restarting
-    } finally {
-      setInstalling(false);
-    }
+        suppressServerErrorToast: true,
+      }),
+      {
+        copy: {
+          title: t("about.restartingTitle"),
+          description: t("about.restartingDescription"),
+        },
+      },
+    );
   };
 
   const showDownloadButton =
@@ -162,7 +249,7 @@ export default function AboutSections({
   const showRestartInstallButton = isDesktop && localUpdateResult === "downloaded";
   const showWebUpdateButton =
     !isDesktop
-    && versionInfo.hasUpdate
+    && (versionInfo.hasUpdate || webUpdating)
     && localUpdateResult !== "webUpdated"
     && localUpdateResult !== "webUpToDate";
   const showWebRestartButton = !isDesktop && localUpdateResult === "webUpdated";

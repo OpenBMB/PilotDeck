@@ -12,7 +12,10 @@ import {
   startDesktopUpdateDownload,
 } from '../services/desktopUpdateService.js';
 import {
+  isSupervisorRestartEnabled,
   normalizeUpdateRuntimeError,
+  requestSupervisorRestart,
+  RESTART_EXIT_CODE,
   resolveBashExecutable,
   resolveRestartCommand,
 } from '../services/updateRuntime.js';
@@ -359,8 +362,9 @@ router.post('/apply', async (req, res) => {
 
 /**
  * POST /api/update/restart
- * Restart PilotDeck by spawning a fresh process, then exiting.
- * Works in both Docker (process manager respawns) and local dev (self-respawn).
+ * Restart PilotDeck. In supervised source runtimes the outer supervisor
+ * relaunches the full process group; direct server runs fall back to
+ * self-respawn.
  */
 router.post('/restart', async (req, res) => {
   res.json({
@@ -372,7 +376,6 @@ router.post('/restart', async (req, res) => {
     try {
       console.log('[update] Spawning replacement process and exiting...');
 
-      // Spawn `npm run dev` (or the same entry point) as a detached process
       const isDocker = process.env.DOCKER === '1' || process.env.container === 'docker';
 
       if (isDocker) {
@@ -380,7 +383,13 @@ router.post('/restart', async (req, res) => {
         process.exit(0);
       }
 
-      // Local: spawn a new server process detached from this one
+      if (isSupervisorRestartEnabled(process.env)) {
+        requestSupervisorRestart({ env: process.env });
+        setTimeout(() => process.exit(RESTART_EXIT_CODE), 500);
+        return;
+      }
+
+      // Local: spawn a replacement process detached from this one.
       const projectRoot = PROJECT_ROOT;
       const restartCommand = await resolveRestartCommand({ projectRoot });
       const child = spawn(restartCommand.command, restartCommand.args, {

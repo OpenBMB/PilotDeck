@@ -1245,6 +1245,8 @@
     "updateComplete": "Update complete!",
     "updateFailed": "Update failed",
     "restartToApply": "Restart to Apply",
+    "restartingTitle": "Restarting PilotDeck...",
+    "restartingDescription": "Page will reload automatically when server is ready.",
     "downloadUpdate": "Download Update",
     "downloading": "Downloading... {{percent}}%",
     "downloadComplete": "Download complete",

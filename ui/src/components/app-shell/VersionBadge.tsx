@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { GitCommit, RefreshCw, X, Check, AlertCircle } from 'lucide-react';
 import { useGitVersion } from '../../hooks/useGitVersion';
 import { cn } from '../../lib/utils.js';
+import { restartAndReload } from '../../utils/restartUi';
 
 type UpdatePhase = 'idle' | 'updating' | 'success' | 'error';
 
@@ -41,29 +42,8 @@ export function VersionBadge() {
     }
   }, [triggerUpdate]);
 
-  const handleRestart = useCallback(async () => {
-    // Immediately blank the entire page with a restart splash
-    document.title = 'Restarting PilotDeck...';
-    document.body.innerHTML = '';
-    document.body.style.cssText = 'margin:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh';
-    document.body.innerHTML = `
-      <div style="text-align:center;font-family:system-ui,-apple-system,sans-serif">
-        <svg style="width:40px;height:40px;margin-bottom:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>
-        <p style="color:#ccc;font-size:1.1rem;margin:0 0 8px">Restarting PilotDeck...</p>
-        <p style="color:#666;font-size:0.8rem;margin:0">Page will reload automatically when server is ready.</p>
-      </div>
-      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
-
-    // Fire the restart request (don't await — server may die before responding)
-    triggerRestart().catch(() => {});
-
-    // Poll until server is back, then reload
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch('/health');
-        if (res.ok) { clearInterval(poll); window.location.reload(); }
-      } catch { /* still down */ }
-    }, 2000);
+  const handleRestart = useCallback(() => {
+    restartAndReload(() => triggerRestart());
   }, [triggerRestart]);
 
   const handleClose = useCallback(() => {

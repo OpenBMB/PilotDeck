@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "npm run build && npm run start:built",
-    "start:built": "concurrently --kill-others-on-fail --names gateway,server \"npm:gateway\" \"npm:server\"",
+    "start:built": "node server/webRuntimeSupervisor.js start-built",
     "postinstall": "node scripts/fix-node-pty.js"
   },
   "dependencies": {
