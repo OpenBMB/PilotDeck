@@ -420,6 +420,22 @@ model:
       apiKey: sk-your-api-key
 ```
 
+[OrcaRouter](https://www.orcarouter.ai) 通过单个 OpenAI 兼容端点提供来自 OpenAI、Anthropic、Google、DeepSeek、Qwen、MiniMax 等的 150+ 模型。使用 `orcarouter/auto` 自动路由每个请求，或使用带命名空间的模型 ID（如 `anthropic/claude-sonnet-4.6`）：
+
+```yaml
+schemaVersion: 1
+agent:
+  model: orcarouter/auto
+model:
+  providers:
+    orcarouter:
+      protocol: openai
+      url: https://api.orcarouter.ai/v1
+      apiKey: ${ORCAROUTER_API_KEY}
+      models:
+        orcarouter/auto: {}
+```
+
 原生 Gemini 可以使用 `protocol: google`：
 
 ```yaml

@@ -421,6 +421,25 @@ model:
       apiKey: sk-your-api-key
 ```
 
+[OrcaRouter](https://www.orcarouter.ai) exposes 150+ models from OpenAI, Anthropic,
+Google, DeepSeek, Qwen, MiniMax and others behind a single OpenAI-compatible
+endpoint. Use `orcarouter/auto` to auto-route each request, or a namespaced id
+such as `anthropic/claude-sonnet-4.6`:
+
+```yaml
+schemaVersion: 1
+agent:
+  model: orcarouter/auto
+model:
+  providers:
+    orcarouter:
+      protocol: openai
+      url: https://api.orcarouter.ai/v1
+      apiKey: ${ORCAROUTER_API_KEY}
+      models:
+        orcarouter/auto: {}
+```
+
 Native Gemini can be configured with `protocol: google`:
 
 ```yaml

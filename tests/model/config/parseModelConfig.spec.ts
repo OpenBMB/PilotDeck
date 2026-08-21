@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseModelConfig } from "../../../src/model/config/parseModelConfig.js";
+import { buildProviderChatEndpoint } from "../../../src/model/providerEndpoint.js";
 
 test("catalog provider resolves api key from default env var when apiKey is omitted", () => {
   const config = parseModelConfig({
@@ -110,4 +111,27 @@ test("catalog model aliases keep their declared provider image capability", () =
     config.providers.openai.models["gpt-4o-2024-11-20"].multimodal.input,
     ["text", "image"],
   );
+});
+
+test("orcarouter catalog provider resolves default URL, protocol and env api key", () => {
+  const config = parseModelConfig({
+    providers: {
+      orcarouter: {
+        models: { "orcarouter/fusion": {} },
+      },
+    },
+  }, { env: { ORCAROUTER_API_KEY: "sk-orca-test" } });
+
+  assert.equal(config.providers.orcarouter.url, "https://api.orcarouter.ai/v1");
+  assert.equal(config.providers.orcarouter.protocol, "openai");
+  assert.equal(config.providers.orcarouter.apiKey, "sk-orca-test");
+});
+
+test("orcarouter chat endpoint is built from the gateway base URL", () => {
+  const endpoint = buildProviderChatEndpoint({
+    protocol: "openai",
+    baseUrl: "https://api.orcarouter.ai/v1",
+  });
+
+  assert.equal(endpoint, "https://api.orcarouter.ai/v1/chat/completions");
 });
