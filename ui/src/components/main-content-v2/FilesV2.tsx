@@ -31,6 +31,12 @@ import {
   ADD_WORKSPACE_FILE_MENTION_EVENT,
   getWorkspaceRelativePath,
 } from '../../utils/workspaceFileMention';
+import {
+  allowExternalFileDrop,
+  isExternalFileDrag,
+  readExternalFileDropTarget,
+  resolveExternalFileDropTargetPath,
+} from '../../utils/externalFileDrop';
 
 type FilesV2Props = {
   selectedProject: Project | null;
@@ -123,6 +129,8 @@ export default function FilesV2({
   const [uploadingProject, setUploadingProject] = useState(false);
   const [downloadingProject, setDownloadingProject] = useState(false);
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const [isExternalFileDropActive, setIsExternalFileDropActive] = useState(false);
+  const externalFileDragDepthRef = useRef(0);
   const inlineInputRef = useRef<HTMLInputElement>(null);
   const escapePressedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -134,6 +142,8 @@ export default function FilesV2({
     setContextMenu(null);
     setInlineEdit(null);
     setUploadMenuOpen(false);
+    externalFileDragDepthRef.current = 0;
+    setIsExternalFileDropActive(false);
   }, [selectedProject?.name]);
 
   useEffect(() => {
@@ -422,7 +432,7 @@ export default function FilesV2({
   );
 
   const uploadSelectedFiles = useCallback(
-    async (fileList: FileList | null) => {
+    async (fileList: FileList | File[] | null, targetPath = '') => {
       if (!selectedProject?.name || !fileList || fileList.length === 0) return;
 
       const fileArray = Array.from(fileList);
@@ -432,7 +442,7 @@ export default function FilesV2({
       });
 
       const formData = new FormData();
-      formData.append('targetPath', '');
+      formData.append('targetPath', targetPath);
       formData.append('relativePaths', JSON.stringify(relativePaths));
       for (const file of fileArray) {
         formData.append('files', file);
@@ -454,6 +464,47 @@ export default function FilesV2({
       }
     },
     [refreshFiles, selectedProject?.name],
+  );
+
+  const resetExternalFileDrop = useCallback(() => {
+    externalFileDragDepthRef.current = 0;
+    setIsExternalFileDropActive(false);
+  }, []);
+
+  const handleExternalFileDragEnter = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!isExternalFileDrag(event)) return;
+    allowExternalFileDrop(event);
+    externalFileDragDepthRef.current += 1;
+    setIsExternalFileDropActive(true);
+  }, []);
+
+  const handleExternalFileDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!isExternalFileDrag(event)) return;
+    allowExternalFileDrop(event);
+  }, []);
+
+  const handleExternalFileDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!isExternalFileDrag(event)) return;
+    externalFileDragDepthRef.current = Math.max(0, externalFileDragDepthRef.current - 1);
+    if (externalFileDragDepthRef.current === 0) {
+      setIsExternalFileDropActive(false);
+    }
+  }, []);
+
+  const handleExternalFileDrop = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (!isExternalFileDrag(event)) return;
+      allowExternalFileDrop(event);
+      resetExternalFileDrop();
+
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      const { dropPath, dropType } = readExternalFileDropTarget(event);
+      const targetPath = resolveExternalFileDropTargetPath(dropPath, dropType, projectRoot);
+      void uploadSelectedFiles(files, targetPath);
+    },
+    [projectRoot, resetExternalFileDrop, uploadSelectedFiles],
   );
 
   const handleDownloadProject = useCallback(async () => {
@@ -579,7 +630,14 @@ export default function FilesV2({
   };
 
   return (
-    <section className="dock-panel file-panel" aria-label={t('filesWorkbench.fileDirectory')}>
+    <section
+      className={cn('dock-panel file-panel', isExternalFileDropActive && 'file-panel-drop-active')}
+      aria-label={t('filesWorkbench.fileDirectory')}
+      onDragEnter={handleExternalFileDragEnter}
+      onDragOver={handleExternalFileDragOver}
+      onDragLeave={handleExternalFileDragLeave}
+      onDrop={handleExternalFileDrop}
+    >
       <header
         className="dock-panel-header"
         draggable={Boolean(onHeaderDragStart)}
@@ -773,6 +831,8 @@ export default function FilesV2({
                   ) : (
                     <div
                       onClick={() => handleClick(node)}
+                      data-file-drop-path={node.path}
+                      data-file-drop-type={isDir ? 'directory' : 'file'}
                       style={{ marginLeft: `${depth * 20}px` }}
                       className={cn(
                         isDir ? 'folder-row' : 'file-row',

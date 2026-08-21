@@ -20,6 +20,8 @@
     "runPilotDeckCli": "在项目目录中运行 PilotDeck CLI 以开始使用",
     "collapseAll": "折叠全部项目",
     "expandAll": "展开全部项目",
+    "collapse": "折叠项目",
+    "expand": "展开项目",
     "recent": "最近打开"
   },
   "general": {

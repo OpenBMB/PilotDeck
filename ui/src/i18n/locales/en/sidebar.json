@@ -20,6 +20,8 @@
     "runPilotDeckCli": "Run PilotDeck CLI in a project directory to get started",
     "collapseAll": "Collapse all projects",
     "expandAll": "Expand all projects",
+    "collapse": "Collapse projects",
+    "expand": "Expand projects",
     "recent": "Recently opened"
   },
   "general": {

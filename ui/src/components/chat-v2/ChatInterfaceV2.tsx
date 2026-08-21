@@ -585,6 +585,7 @@ function ChatInterfaceV2({
       permissionMode={permissionMode}
       onPermissionModeChange={selectPermissionMode}
       runMode={runMode}
+      onRunModeChange={setRunMode}
       onPlanExecutionApproved={handlePlanExecutionApproved}
       sendByCtrlEnter={sendByCtrlEnter}
       chromeless={isWelcomeMode && !compact}

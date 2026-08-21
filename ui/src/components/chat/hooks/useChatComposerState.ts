@@ -909,6 +909,8 @@ export function useChatComposerState({
     onDrop: handleImageFiles,
     noClick: true,
     noKeyboard: true,
+    preventDropOnDocument: false,
+    noDragEventsBubbling: true,
   });
 
   const handleSubmit = useCallback(

@@ -28,7 +28,9 @@ import type { SessionNavigationOptions } from '../main-content/types/types';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
 import { chooseDefaultProject } from './appShellSelection';
+import { getDedicatedTabPath, SCHEDULED_TASKS_PATH, SKILLS_PATH } from './appRoutes';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { useRejectExternalFileDropOutsideTargets } from '../../utils/externalFileDrop';
 
 type TypedSettingsProps = {
   isOpen: boolean;
@@ -91,12 +93,21 @@ const isUnreadWorthyMessage = (message: unknown): boolean => {
 // auth, and project plumbing keep working unchanged — V2 just reorganizes the
 // outer chrome (sidebar + breadcrumb header per prototype/shadcn.html).
 export default function AppShellV2() {
+  useRejectExternalFileDropOutsideTargets();
   const navigate = useNavigate();
-  // Match the four V2 URL shapes and hoist params up. A single wildcard route
+  // Match the V2 URL shapes and hoist params up. A single wildcard route
   // owns this shell so state survives every URL transition.
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
   const matchProject = useMatch('/p/:projectName');
   const matchLegacySession = useMatch('/session/:sessionId');
+  const matchScheduledTasks = useMatch(SCHEDULED_TASKS_PATH);
+  const matchSkills = useMatch(SKILLS_PATH);
+  const dedicatedTab = matchSkills
+    ? 'skills' as const
+    : matchScheduledTasks
+      ? 'cron' as const
+      : null;
+  const isDedicatedRoute = dedicatedTab !== null;
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
@@ -152,6 +163,8 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
+  const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
+  const shellActiveTab = dedicatedTab ?? workspaceTab;
 
   const misroutedFileFromUrl = useMemo(() => {
     if (!sessionId) return null;
@@ -212,6 +225,11 @@ export default function AppShellV2() {
     }
     const target = chooseDefaultProject(sidebarSharedProps.projects);
     if (!target) return;
+    if (isDedicatedRoute) {
+      setSelectedProject(target);
+      didDefaultProjectRef.current = true;
+      return;
+    }
     handleProjectSelect(target);
     navigate(`/p/${encodeURIComponent(target.name)}`, { replace: true });
     didDefaultProjectRef.current = true;
@@ -220,9 +238,11 @@ export default function AppShellV2() {
     selectedProject,
     projectNameParam,
     sessionId,
+    isDedicatedRoute,
     sidebarSharedProps.projects,
     handleProjectSelect,
     navigate,
+    setSelectedProject,
   ]);
 
   useEffect(() => {
@@ -529,8 +549,21 @@ export default function AppShellV2() {
     [handleProjectSelect, handleSessionSelect, navigate, selectedProject?.name, setActiveTab],
   );
 
+  const workspacePath = selectedSession
+    ? `/session/${selectedSession.id}`
+    : selectedProject
+      ? `/p/${encodeURIComponent(selectedProject.name)}`
+      : '/';
+
   const handleSelectTab = useCallback(
     (tab: AppTab) => {
+      const dedicatedPath = getDedicatedTabPath(tab);
+      if (dedicatedPath) {
+        if (dedicatedTab !== tab) {
+          navigate(dedicatedPath);
+        }
+        return;
+      }
       // `home` is retained only for old persisted state / links. The Agent
       // surface now owns both the welcome/new-session state and transcripts.
       if (tab === 'home') {
@@ -544,9 +577,20 @@ export default function AppShellV2() {
         setActiveTab('chat');
         return;
       }
+      if (isDedicatedRoute) {
+        navigate(workspacePath);
+      }
       setActiveTab(tab);
     },
-    [navigate, selectedProject, setActiveTab, setSelectedSession],
+    [
+      dedicatedTab,
+      isDedicatedRoute,
+      navigate,
+      selectedProject,
+      setActiveTab,
+      setSelectedSession,
+      workspacePath,
+    ],
   );
 
   const handleStartNewSession = useCallback(
@@ -594,7 +638,7 @@ export default function AppShellV2() {
       projects={sidebarSharedProps.projects}
       selectedProject={selectedProject}
       selectedSession={selectedSession}
-      activeTab={activeTab}
+      activeTab={shellActiveTab}
       isLoading={isLoadingProjects}
       isMobile={isMobile}
       processingSessions={processingSessions}
@@ -605,6 +649,7 @@ export default function AppShellV2() {
 	      onCreateProject={handleOpenNewProject}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
+	      onSelectTab={handleSelectTab}
 	      onShowSettings={onShowSettings}
 	      onDeselectProject={handleDeselectProject}
 	      onResetProjectSessionPreview={handleResetProjectSessionPreview}
@@ -652,7 +697,7 @@ export default function AppShellV2() {
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
-          activeTab={activeTab}
+          activeTab={shellActiveTab}
           setActiveTab={handleSelectTab}
           ws={ws}
           sendMessage={sendMessage}

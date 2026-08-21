@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BarChart3,
-  Clock,
   Database,
   Folder,
   PanelLeftOpen,
   Radio,
-  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -36,6 +34,105 @@ import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 
+const CronV2 = lazy(() => import('../main-content-v2/CronV2'));
+const SkillsV2 = lazy(() => import('../main-content-v2/SkillsV2'));
+
+function DedicatedWorkspacePage({
+  title,
+  isSidebarCollapsed,
+  onOpenSidebar,
+  children,
+}: {
+  title: string;
+  isSidebarCollapsed?: boolean;
+  onOpenSidebar?: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      <header className="workspace-header relative z-[80] shrink-0 overflow-visible">
+        {isSidebarCollapsed ? (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            aria-label={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+            title={t('sidebar:tooltips.showSidebar', { defaultValue: 'Show sidebar' }) as string}
+            className="mr-4 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          >
+            <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        ) : null}
+        <div className="workspace-title flex-1">
+          <h1 className="min-w-0 truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50">
+            {title}
+          </h1>
+        </div>
+      </header>
+      <div className="relative z-0 min-h-0 flex-1 overflow-hidden">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PageFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600 dark:border-neutral-600 dark:border-t-neutral-300" />
+    </div>
+  );
+}
+
+function ScheduledTasksArea({
+  isSidebarCollapsed,
+  onOpenSidebar,
+}: {
+  isSidebarCollapsed?: boolean;
+  onOpenSidebar?: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <DedicatedWorkspacePage
+      title={t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}
+      isSidebarCollapsed={isSidebarCollapsed}
+      onOpenSidebar={onOpenSidebar}
+    >
+      <Suspense fallback={<PageFallback />}>
+        <CronV2 />
+      </Suspense>
+    </DedicatedWorkspacePage>
+  );
+}
+
+function SkillsArea({
+  isSidebarCollapsed,
+  onOpenSidebar,
+  selectedProject,
+  projects,
+}: {
+  isSidebarCollapsed?: boolean;
+  onOpenSidebar?: () => void;
+  selectedProject: Project | null;
+  projects: Project[];
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <DedicatedWorkspacePage
+      title={t('sidebar:quickActions.skills', { defaultValue: 'Skills' })}
+      isSidebarCollapsed={isSidebarCollapsed}
+      onOpenSidebar={onOpenSidebar}
+    >
+      <Suspense fallback={<PageFallback />}>
+        <SkillsV2 selectedProject={selectedProject} projects={projects} />
+      </Suspense>
+    </DedicatedWorkspacePage>
+  );
+}
+
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
 // Chat is the shell's default surface rather than a visible destination.
@@ -43,11 +140,9 @@ type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 // live behind the compact overflow trigger and open beside the conversation.
 const FILES_TAB: Tab = { id: 'files', labelKey: 'tabs.files', icon: Folder };
 const DASHBOARD_TABS: Tab[] = [
-  { id: 'skills',    labelKey: 'tabs.skills',    icon: Sparkles },
   { id: 'dashboard', labelKey: 'tabs.dashboard', icon: BarChart3 },
   { id: 'memory',    labelKey: 'tabs.memory',    icon: Database },
   { id: 'always-on', labelKey: 'tabs.alwaysOn',  icon: Radio },
-  { id: 'cron',      labelKey: 'tabs.cron',      icon: Clock },
 ];
 
 const ACTIVE_TOOL_BUTTON_CLASS =
@@ -433,6 +528,26 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
+  if (props.activeTab === 'cron') {
+    return (
+      <ScheduledTasksArea
+        isSidebarCollapsed={props.isSidebarCollapsed}
+        onOpenSidebar={props.onOpenSidebar}
+      />
+    );
+  }
+
+  if (props.activeTab === 'skills') {
+    return (
+      <SkillsArea
+        isSidebarCollapsed={props.isSidebarCollapsed}
+        onOpenSidebar={props.onOpenSidebar}
+        selectedProject={props.selectedProject}
+        projects={props.projects}
+      />
+    );
+  }
+
   return (
     <FindShortcutProvider activeScope={props.activeTab === 'files' ? 'file' : 'chat'}>
       <ChatHistorySearchControllerProvider>

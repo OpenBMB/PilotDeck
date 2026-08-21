@@ -14,6 +14,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  HelpCircle,
+  ListChecks,
   Loader2,
   File,
   Folder,
@@ -161,6 +163,7 @@ export type ComposerV2Props = {
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   runMode: ChatRunMode;
+  onRunModeChange: (mode: ChatRunMode) => void;
   onPlanExecutionApproved?: () => void;
 
   sendByCtrlEnter?: boolean;
@@ -232,6 +235,32 @@ const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
     defaultLabel: "Full Access",
     descriptionKey: "input.permissions.bypassPermissionsDescription",
     defaultDescription: "Skip confirmations and allow full access",
+  },
+];
+
+const COMPOSER_RUN_MODE_OPTIONS: Array<{
+  mode: Extract<ChatRunMode, "plan" | "ask">;
+  Icon: LucideIcon;
+  labelKey: string;
+  defaultLabel: string;
+  descriptionKey: string;
+  defaultDescription: string;
+}> = [
+  {
+    mode: "plan",
+    Icon: ListChecks,
+    labelKey: "input.runModes.plan",
+    defaultLabel: "Plan",
+    descriptionKey: "input.runModes.planDescription",
+    defaultDescription: "先产出计划，确认后再执行",
+  },
+  {
+    mode: "ask",
+    Icon: HelpCircle,
+    labelKey: "input.runModes.ask",
+    defaultLabel: "Ask",
+    descriptionKey: "input.runModes.askDescription",
+    defaultDescription: "仅回答问题，不修改文件",
   },
 ];
 
@@ -475,6 +504,7 @@ export default function ComposerV2({
   permissionMode,
   onPermissionModeChange,
   runMode,
+  onRunModeChange,
   onPlanExecutionApproved,
   chromeless = false,
   compact = false,
@@ -985,9 +1015,6 @@ export default function ComposerV2({
                         role="menu"
                         className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-xl border border-violet-200 bg-white p-2 text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
                       >
-                        <div className="px-2 pb-1 text-[11px] font-medium text-neutral-400">
-                          {t("input.add", { defaultValue: "添加" })}
-                        </div>
                         <button
                           type="button"
                           role="menuitem"
@@ -1024,6 +1051,45 @@ export default function ComposerV2({
                             })}
                           </span>
                         </button>
+                        {COMPOSER_RUN_MODE_OPTIONS.map((option) => {
+                          const Icon = option.Icon;
+                          const isSelected = runMode === option.mode;
+                          const label = t(option.labelKey, {
+                            defaultValue: option.defaultLabel,
+                          }) as string;
+                          const description = t(option.descriptionKey, {
+                            defaultValue: option.defaultDescription,
+                          }) as string;
+                          return (
+                            <button
+                              key={option.mode}
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={isSelected}
+                              onClick={() => {
+                                onRunModeChange(option.mode);
+                                setIsAddMenuOpen(false);
+                              }}
+                              className={cn(
+                                "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                isSelected
+                                  ? "bg-[#eeecff] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                  : "",
+                              )}
+                            >
+                              <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-inherit">
+                                <Icon
+                                  className="h-4 w-4 shrink-0 text-current"
+                                  strokeWidth={1.8}
+                                />
+                                <span className="truncate">{label}</span>
+                              </span>
+                              <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                                {description}
+                              </span>
+                            </button>
+                          );
+                        })}
                         <div className="mt-1 px-2 py-1 text-[11px] font-medium text-neutral-400">
                           {t("input.skills", { defaultValue: "技能" })}
                         </div>
@@ -1215,6 +1281,43 @@ export default function ComposerV2({
                       </div>
                     ) : null}
                   </div>
+                  {COMPOSER_RUN_MODE_OPTIONS.filter(
+                    (option) => option.mode === runMode,
+                  ).map((option) => {
+                    const Icon = option.Icon;
+                    const label = t(option.labelKey, {
+                      defaultValue: option.defaultLabel,
+                    }) as string;
+                    return (
+                      <span
+                        key={option.mode}
+                        className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      >
+                        <Icon
+                          className="h-3.5 w-3.5 shrink-0"
+                          strokeWidth={1.8}
+                        />
+                        <span className="min-w-0 truncate">{label}</span>
+                        <button
+                          type="button"
+                          className="pointer-events-none ml-0 grid h-[18px] w-0 flex-[0_0_0] place-items-center overflow-hidden border-0 bg-transparent p-0 text-[18px] font-normal leading-none text-current opacity-0 outline-none transition-[width,flex-basis,margin-left,opacity] duration-[140ms] group-focus-within/chip:pointer-events-auto group-focus-within/chip:ml-1 group-focus-within/chip:w-[18px] group-focus-within/chip:flex-[0_0_18px] group-focus-within/chip:opacity-100 group-hover/chip:pointer-events-auto group-hover/chip:ml-1 group-hover/chip:w-[18px] group-hover/chip:flex-[0_0_18px] group-hover/chip:opacity-100"
+                          aria-label={
+                            t("input.removeSelectedRunMode", {
+                              defaultValue: `删除 ${label}`,
+                            }) as string
+                          }
+                          title={
+                            t("common.remove", {
+                              defaultValue: "删除",
+                            }) as string
+                          }
+                          onClick={() => onRunModeChange("agent")}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
 
                 {isBusySendQueued ? (

@@ -204,6 +204,7 @@ export type SidebarV2Props = {
   onCreateProject: () => void;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
+  onSelectTab?: (tab: AppTab) => void;
   onShowSettings: () => void;
   onDeselectProject?: () => void;
   onResetProjectSessionPreview?: (projectName: string) => void;
@@ -240,6 +241,66 @@ const contextMenuPosition = (event: MouseEvent) => {
   };
 };
 
+function SectionHeading({
+  title,
+  addLabel,
+  onAdd,
+  expanded,
+  expandLabel,
+  collapseLabel,
+  onToggle,
+}: {
+  title: string;
+  addLabel: string;
+  onAdd: () => void;
+  expanded: boolean;
+  expandLabel: string;
+  collapseLabel: string;
+  onToggle: () => void;
+}) {
+  const toggleLabel = expanded ? collapseLabel : expandLabel;
+  return (
+    <div className="tree-heading shrink-0">
+      <span>{title}</span>
+      <div className="tree-heading-actions">
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-label={addLabel}
+          title={addLabel}
+        >
+          <svg aria-hidden="true" className="icon" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
+            <path d="M5 12h14" />
+            <path d="M12 5v14" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+        >
+          <svg
+            aria-hidden="true"
+            className={cn('icon transition-transform', !expanded && '-rotate-90')}
+            fill="none"
+            height="15"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+            width="15"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SidebarV2({
   projects,
   selectedProject,
@@ -255,6 +316,7 @@ export default function SidebarV2({
   onCreateProject,
   onRequestDeleteProject,
   onRequestDeleteSession,
+  onSelectTab,
   onShowSettings,
   onLoadMoreSessions,
   loadingMoreProjectIds,
@@ -275,8 +337,9 @@ export default function SidebarV2({
   const sidebarRootRef = useRef<HTMLElement | null>(null);
 
   const [conversationsExpanded, setConversationsExpanded] = useState(true);
+  const [projectsExpanded, setProjectsExpanded] = useState(true);
   const projectsConversationsSplitRef = useRef<HTMLDivElement | null>(null);
-  const SIDEBAR_SPLITTER_HEIGHT = 7;
+  const SIDEBAR_SPLITTER_HEIGHT = 1;
   const SIDEBAR_SECTION_MIN_HEIGHT = 120;
   const SIDEBAR_SPLIT_STORAGE_KEY = 'sidebar-v2-projects-conversations-split';
   const [projectsSplitRatio, setProjectsSplitRatio] = useState(() => {
@@ -540,8 +603,8 @@ export default function SidebarV2({
   );
 
   const handleNewSession = useCallback(
-    (event: MouseEvent, project: Project) => {
-      event.stopPropagation();
+    (event: MouseEvent | undefined, project: Project) => {
+      event?.stopPropagation();
       setDraftSessionProjectName(project.name);
       ensureExpanded(project);
       onStartNewSession(project);
@@ -1066,28 +1129,12 @@ export default function SidebarV2({
         className={isCompact ? 'compact-actions' : 'primary-actions'}
         aria-label={t('sidebar:quickActions.label', { defaultValue: 'Primary actions' }) as string}
       >
-        <button className={cn('primary-action', isCompact && 'compact')} type="button" onClick={() => {}}>
-          <span className="primary-action-icon">
-            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-              <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
-              <path d="M12 8v6" />
-              <path d="M9 11h6" />
-            </svg>
-          </span>
-          <span className="truncate">{t('sidebar:quickActions.newChat', { defaultValue: 'New Chat' })}</span>
-        </button>
-        <button className={cn('primary-action', isCompact && 'compact')} type="button" onClick={() => {}}>
-          <span className="primary-action-icon">
-            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-              <path d="M11.35 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v5.35" />
-              <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-              <path d="M14 19h6" />
-              <path d="M17 16v6" />
-            </svg>
-          </span>
-          <span className="truncate">{t('sidebar:quickActions.newProject', { defaultValue: 'New Project' })}</span>
-        </button>
-        <button className={cn('primary-action', isCompact && 'compact')} type="button" onClick={() => {}}>
+        <button
+          className={cn('primary-action', isCompact && 'compact', activeTab === 'skills' && 'active')}
+          type="button"
+          aria-pressed={activeTab === 'skills'}
+          onClick={() => onSelectTab?.('skills')}
+        >
           <span className="primary-action-icon">
             <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
@@ -1099,7 +1146,12 @@ export default function SidebarV2({
               : t('sidebar:quickActions.skills', { defaultValue: 'Skills' })}
           </span>
         </button>
-        <button className={cn('primary-action', isCompact && 'compact')} type="button" onClick={() => {}}>
+        <button
+          className={cn('primary-action', isCompact && 'compact', activeTab === 'cron' && 'active')}
+          type="button"
+          aria-pressed={activeTab === 'cron'}
+          onClick={() => onSelectTab?.('cron')}
+        >
           <span className="primary-action-icon">
             <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
               <path d="M16 14v2.2l1.6 1" />
@@ -1154,34 +1206,31 @@ export default function SidebarV2({
         >
         <section
           className="tree-section flex min-h-0 flex-col border-t border-neutral-200/80 dark:border-neutral-800"
-          style={conversationsExpanded
-            ? {
-              height: `calc(${projectsSplitRatio * 100}% - ${
-                SIDEBAR_SPLITTER_HEIGHT * projectsSplitRatio
-              }px)`,
-              minHeight: SIDEBAR_SECTION_MIN_HEIGHT,
-              flex: '0 0 auto',
-            }
-            : { minHeight: 0, flex: '1 1 0%' }}
+          style={
+            !projectsExpanded
+              ? { minHeight: 0, flex: '0 0 auto' }
+              : conversationsExpanded
+                ? {
+                  height: `calc(${projectsSplitRatio * 100}% - ${
+                    SIDEBAR_SPLITTER_HEIGHT * projectsSplitRatio
+                  }px)`,
+                  minHeight: SIDEBAR_SECTION_MIN_HEIGHT,
+                  flex: '0 0 auto',
+                }
+                : { minHeight: 0, flex: '1 1 0%' }
+          }
         >
-          <div className="tree-heading shrink-0">
-            <span>
-              {t('sidebar:projects.title', { defaultValue: 'Projects' })}
-            </span>
-            <button
-              type="button"
-              onClick={onCreateProject}
-              aria-label={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-              title={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-              className="grid place-items-center"
-            >
-              <svg aria-hidden="true" className="icon" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
-                <path d="M5 12h14" />
-                <path d="M12 5v14" />
-              </svg>
-            </button>
-          </div>
+          <SectionHeading
+            title={t('sidebar:projects.title', { defaultValue: 'Projects' })}
+            addLabel={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
+            onAdd={onCreateProject}
+            expanded={projectsExpanded}
+            expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
+            collapseLabel={t('sidebar:projects.collapse', { defaultValue: 'Collapse projects' }) as string}
+            onToggle={() => setProjectsExpanded((previous) => !previous)}
+          />
 
+          {projectsExpanded ? (
           <div className="tree-list project-tree-list dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">
             {isLoading && safeProjects.length === 0 ? (
               <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
@@ -1197,9 +1246,10 @@ export default function SidebarV2({
               </div>
             )}
           </div>
+          ) : null}
         </section>
 
-        {conversationsExpanded ? (
+        {projectsExpanded && conversationsExpanded ? (
           <div
             role="separator"
             aria-orientation="horizontal"
@@ -1230,16 +1280,7 @@ export default function SidebarV2({
               }
             }}
             className={cn('panel-splitter horizontal', projectsSplitResizing && 'active')}
-          >
-            <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
-              <circle cx="12" cy="9" r="1" />
-              <circle cx="19" cy="9" r="1" />
-              <circle cx="5" cy="9" r="1" />
-              <circle cx="12" cy="15" r="1" />
-              <circle cx="19" cy="15" r="1" />
-              <circle cx="5" cy="15" r="1" />
-            </svg>
-          </div>
+          />
         ) : null}
 
           <section
@@ -1251,40 +1292,18 @@ export default function SidebarV2({
               ? { minHeight: SIDEBAR_SECTION_MIN_HEIGHT, flex: '1 1 0%' }
               : { flex: '0 0 auto' }}
           >
-          <button
-            type="button"
-            onClick={() => setConversationsExpanded((previous) => !previous)}
-            aria-expanded={conversationsExpanded}
-            aria-label={
-              conversationsExpanded
-                ? t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string
-                : t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string
-            }
-            title={
-              conversationsExpanded
-                ? t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string
-                : t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string
-            }
-            className="tree-heading shrink-0"
-          >
-            <span>
-              {t('sidebar:conversations.title', { defaultValue: 'Conversations' })}
-            </span>
-            <svg
-              aria-hidden="true"
-              className={cn('icon transition-transform', !conversationsExpanded && '-rotate-90')}
-              fill="none"
-              height="15"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-              width="15"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
+          <SectionHeading
+            title={t('sidebar:conversations.title', { defaultValue: 'Conversations' })}
+            addLabel={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
+            onAdd={() => {
+              if (!generalProject) return;
+              handleNewSession(undefined, generalProject);
+            }}
+            expanded={conversationsExpanded}
+            expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}
+            collapseLabel={t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string}
+            onToggle={() => setConversationsExpanded((previous) => !previous)}
+          />
 
           {conversationsExpanded ? (
             <div className="dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">

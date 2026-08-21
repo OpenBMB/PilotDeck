@@ -1091,7 +1091,7 @@
   }
 
   .user-message-bubble {
-    max-width: 460px;
+    max-width: 730px;
     margin: 0;
     padding: 8px 14px;
     border-radius: 24px 24px 10px;
@@ -1156,26 +1156,32 @@
 
   .right-rail button {
     display: flex;
-    width: 44px;
-    min-height: 72px;
+    width: 28px;
+    min-height: 84px;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 5px;
-    padding: 7px 3px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: #ffffff47;
-    color: #858898;
+    gap: 0;
+    padding: 10px 0;
+    border: 1px solid #55586a;
+    border-radius: 6px;
+    background: transparent;
+    color: #55586a;
     font-size: 12px;
-    line-height: 1.25;
+    line-height: 1.35;
     box-shadow: none;
   }
 
+  .right-rail button span {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.18em;
+  }
+
   .right-rail button:hover {
-    border-color: #d7d5e7;
+    border-color: #3f4250;
     background: #fffc;
-    color: #65677a;
+    color: #3f4250;
   }
 
   .right-rail button.active {
@@ -1187,15 +1193,10 @@
       0 7px 16px #4b42a424;
   }
 
-  .right-rail .icon {
-    display: block;
-    flex: 0 0 auto;
-  }
-
   .app-shell {
     --sidebar-width: 248px;
     display: grid;
-    grid-template-columns: var(--sidebar-width) 6px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-width) 1px minmax(0, 1fr);
     grid-template-rows: 62px minmax(0, 1fr);
     width: 100%;
     height: 100%;
@@ -1322,9 +1323,15 @@
     grid-row: 1 / -1;
     place-items: center;
     cursor: col-resize;
-    background: linear-gradient(180deg, #f1effb, #e9effd);
+    background: rgba(100, 86, 189, 0.12);
     touch-action: none;
     user-select: none;
+  }
+
+  .sidebar-resizer::before {
+    position: absolute;
+    inset: 0 -4px;
+    content: '';
   }
 
   .files-panel-resizer {
@@ -1333,75 +1340,71 @@
     top: 0;
     bottom: 0;
     display: grid;
-    width: 6px;
+    width: 1px;
     place-items: center;
     cursor: col-resize;
-    background: linear-gradient(180deg, #f1effb, #e9effd);
+    background: rgba(100, 86, 189, 0.12);
     touch-action: none;
     user-select: none;
     outline: none;
   }
 
+  .files-panel-resizer::before {
+    position: absolute;
+    inset: 0 -4px;
+    content: '';
+  }
+
   .panel-splitter {
+    position: relative;
     z-index: 10;
     display: grid;
     place-items: center;
-    background: linear-gradient(90deg, #f0eff8, #e9edfb);
+    background: rgba(100, 86, 189, 0.12);
     color: #8b87ac;
     touch-action: none;
     outline: none;
   }
 
   .panel-splitter.horizontal {
-    height: 7px;
+    height: 1px;
     flex: 0 0 auto;
     cursor: row-resize;
   }
 
+  .panel-splitter.horizontal::before {
+    position: absolute;
+    inset: -4px 0;
+    content: '';
+  }
+
   .panel-splitter.vertical {
-    width: 7px;
+    width: 1px;
     flex: 0 0 auto;
     cursor: col-resize;
   }
 
-  .panel-splitter.vertical .icon {
-    transform: rotate(90deg);
+  .panel-splitter.vertical::before {
+    position: absolute;
+    inset: 0 -4px;
+    content: '';
   }
 
   .panel-splitter:hover,
   .panel-splitter.active,
-  .panel-splitter:focus-visible {
+  .panel-splitter:focus-visible,
+  .sidebar-resizer:hover,
+  .sidebar-resizer.active,
+  .files-panel-resizer:hover,
+  .files-panel-resizer.active,
+  .files-panel-resizer:focus-visible {
     background: #e2deff;
-    color: var(--brand-strong);
-  }
-
-  .panel-splitter .icon {
-    display: block;
-    flex: 0 0 auto;
-  }
-
-  .panel-splitter.horizontal .icon {
-    transform: translateY(-5px);
   }
 
   .sidebar-resizer span,
-  .files-panel-resizer span {
-    width: 2px;
-    height: 48px;
-    border-radius: 999px;
-    background: rgba(100, 86, 189, 0.2);
-    transition:
-      height 150ms ease,
-      background-color 150ms ease;
-  }
-
-  .sidebar-resizer:hover span,
-  .sidebar-resizer.active span,
-  .files-panel-resizer:hover span,
-  .files-panel-resizer.active span,
-  .files-panel-resizer:focus-visible span {
-    height: 64px;
-    background: var(--brand);
+  .files-panel-resizer span,
+  .panel-splitter .icon {
+    display: none;
   }
 
   @media (max-width: 767px) {
@@ -1568,6 +1571,27 @@
     cursor: pointer;
   }
 
+  .tree-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+  }
+
+  .tree-heading-actions button {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+  }
+
+  .tree-heading-actions button:hover {
+    background: #ffffffb8;
+  }
+
   .project-children {
     display: grid;
     gap: 2px;
@@ -1606,10 +1630,6 @@
   .project-conversation.active .truncate,
   .tree-row.chat-row.active .truncate {
     font-weight: 700;
-  }
-
-  .conversations > .tree-heading {
-    cursor: pointer;
   }
 
   .conversation-dot {
@@ -1779,6 +1799,11 @@
     color: var(--ink);
   }
 
+  .dock-panel.file-panel.file-panel-drop-active {
+    background: #f6f3ff;
+    box-shadow: inset 0 0 0 2px #7167ff;
+  }
+
   .files-dock-drop-preview {
     pointer-events: none;
     position: absolute;
@@ -1810,13 +1835,13 @@
   .dock-panel-header {
     position: relative;
     display: flex;
-    height: 48px;
+    height: 36px;
     min-width: 0;
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
     gap: 8px;
-    padding: 0 12px;
+    padding: 0 10px;
     border-bottom: 1px solid #e5e3ef;
     background: linear-gradient(110deg, #f1eefff5, #eef6ffe6);
     cursor: grab;
@@ -1835,10 +1860,10 @@
 
   .dock-panel-header .header-icon {
     display: grid;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     place-items: center;
-    border-radius: 7px;
+    border-radius: 6px;
     background: #efedff;
     color: var(--brand-strong);
   }
@@ -1891,7 +1916,7 @@
   .conversation-switch {
     display: flex;
     min-width: 0;
-    height: 34px;
+    height: 28px;
     align-items: center;
     gap: 7px;
     padding: 0 4px;
@@ -1924,6 +1949,8 @@
 
   .conversation-title-wrap > .icon-button {
     margin-left: auto;
+    width: 26px;
+    height: 26px;
   }
 
   .compact-file-actions {

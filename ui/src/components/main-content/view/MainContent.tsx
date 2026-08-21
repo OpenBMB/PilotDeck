@@ -1,45 +1,53 @@
-import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   Database,
   FileText,
   Radio,
-  Sparkles,
   type LucideIcon,
-} from 'lucide-react';
-import ChatInterfaceV2 from '../../chat-v2/ChatInterfaceV2';
-import PluginTabContent from '../../plugins/view/PluginTabContent';
-import { cn } from '../../../lib/utils.js';
-import type { MainContentProps } from '../types/types';
-import { useTaskMaster } from '../../../contexts/TaskMasterContext';
-import { useTasksSettings } from '../../../contexts/TasksSettingsContext';
-import { useUiPreferences } from '../../../hooks/useUiPreferences';
-import { useEditorSidebar } from '../../code-editor/hooks/useEditorSidebar';
-import EditorSidebar from '../../code-editor/view/EditorSidebar';
-import type { CodeEditorDiffInfo } from '../../code-editor/types/types';
+} from "lucide-react";
+import ChatInterfaceV2 from "../../chat-v2/ChatInterfaceV2";
+import PluginTabContent from "../../plugins/view/PluginTabContent";
+import { cn } from "../../../lib/utils.js";
+import type { MainContentProps } from "../types/types";
+import { useTaskMaster } from "../../../contexts/TaskMasterContext";
+import { useTasksSettings } from "../../../contexts/TasksSettingsContext";
+import { useUiPreferences } from "../../../hooks/useUiPreferences";
+import { useEditorSidebar } from "../../code-editor/hooks/useEditorSidebar";
+import EditorSidebar from "../../code-editor/view/EditorSidebar";
+import type { CodeEditorDiffInfo } from "../../code-editor/types/types";
 import type {
   AlwaysOnSessionTarget,
   AppTab,
   Project,
   ProjectSession,
-} from '../../../types/app';
-import { isReadOnlySession } from '../../../types/app';
-import { api } from '../../../utils/api';
-import MainContentStateView from './subcomponents/MainContentStateView';
-import ConversationSwitcher from './subcomponents/ConversationSwitcher';
-import ErrorBoundary from './ErrorBoundary';
-import ToolSidePanel from './subcomponents/ToolSidePanel';
+} from "../../../types/app";
+import { isReadOnlySession } from "../../../types/app";
+import { api } from "../../../utils/api";
+import { isExternalFileDrag } from "../../../utils/externalFileDrop";
+import MainContentStateView from "./subcomponents/MainContentStateView";
+import ConversationSwitcher from "./subcomponents/ConversationSwitcher";
+import ErrorBoundary from "./ErrorBoundary";
+import ToolSidePanel from "./subcomponents/ToolSidePanel";
 
-const AlwaysOnV2 = React.lazy(() => import('../../main-content-v2/AlwaysOnV2'));
-const CronV2 = React.lazy(() => import('../../main-content-v2/CronV2'));
-const FilesV2 = React.lazy(() => import('../../main-content-v2/FilesV2'));
-const ShellV2 = React.lazy(() => import('../../main-content-v2/ShellV2'));
-const GitV2 = React.lazy(() => import('../../main-content-v2/GitV2'));
-const DashboardV2 = React.lazy(() => import('../../main-content-v2/DashboardV2'));
-const TasksV2 = React.lazy(() => import('../../main-content-v2/TasksV2'));
-const MemoryPanel = React.lazy(() => import('./memory/MemoryPanel'));
-const SkillsV2 = React.lazy(() => import('../../main-content-v2/SkillsV2'));
+const AlwaysOnV2 = React.lazy(() => import("../../main-content-v2/AlwaysOnV2"));
+const CronV2 = React.lazy(() => import("../../main-content-v2/CronV2"));
+const FilesV2 = React.lazy(() => import("../../main-content-v2/FilesV2"));
+const ShellV2 = React.lazy(() => import("../../main-content-v2/ShellV2"));
+const GitV2 = React.lazy(() => import("../../main-content-v2/GitV2"));
+const DashboardV2 = React.lazy(
+  () => import("../../main-content-v2/DashboardV2"),
+);
+const TasksV2 = React.lazy(() => import("../../main-content-v2/TasksV2"));
+const MemoryPanel = React.lazy(() => import("./memory/MemoryPanel"));
+const SkillsV2 = React.lazy(() => import("../../main-content-v2/SkillsV2"));
 
 function TabSkeleton() {
   return (
@@ -60,7 +68,7 @@ type TasksSettingsContextValue = {
   isTaskMasterReady: boolean | null;
 };
 
-type MainContentToast = { kind: 'error' | 'info'; text: string } | null;
+type MainContentToast = { kind: "error" | "info"; text: string } | null;
 
 const FILES_ASSISTANT_DEFAULT_WIDTH = 380;
 const FILES_ASSISTANT_MIN_WIDTH = 320;
@@ -68,36 +76,37 @@ const FILES_ASSISTANT_MAX_WIDTH = 480;
 const FILES_ASSISTANT_HORIZONTAL_MIN_WIDTH = 520;
 const FILES_ASSISTANT_HORIZONTAL_MAX_WIDTH = 800;
 const FILES_ARTIFACT_MIN_WIDTH = 480;
-const FILES_PANEL_RAIL_WIDTH = 68;
-const FILES_PANEL_SPLITTER_HEIGHT = 7;
-const FILES_PANEL_SPLITTER_WIDTH = 7;
+const FILES_PANEL_RAIL_WIDTH = 40;
+const FILES_PANEL_SPLITTER_HEIGHT = 1;
+const FILES_PANEL_SPLITTER_WIDTH = 1;
 const FILES_PANEL_SECTION_MIN_HEIGHT = 330;
 const FILES_PANEL_SECTION_MIN_WIDTH = 220;
-const FILES_PANEL_LAYOUT_STORAGE_KEY = 'pilotdeck:files-panel-layout';
-const FILES_PANEL_ORDER_STORAGE_KEY = 'pilotdeck:files-panel-order';
+const FILES_PANEL_LAYOUT_STORAGE_KEY = "pilotdeck:files-panel-layout";
+const FILES_PANEL_ORDER_STORAGE_KEY = "pilotdeck:files-panel-order";
 
-type FilesDockPanel = 'explorer' | 'assistant';
-type FilesPanelLayout = 'vertical' | 'horizontal';
-type FilesPanelOrder = 'explorer-first' | 'assistant-first';
-type FilesDockEdge = 'top' | 'right' | 'bottom' | 'left';
+type FilesDockPanel = "explorer" | "assistant";
+type FilesPanelLayout = "vertical" | "horizontal";
+type FilesPanelOrder = "explorer-first" | "assistant-first";
+type FilesDockEdge = "top" | "right" | "bottom" | "left";
 
 function readStoredFilesPanelLayout(): FilesPanelLayout {
   try {
-    return localStorage.getItem(FILES_PANEL_LAYOUT_STORAGE_KEY) === 'horizontal'
-      ? 'horizontal'
-      : 'vertical';
+    return localStorage.getItem(FILES_PANEL_LAYOUT_STORAGE_KEY) === "horizontal"
+      ? "horizontal"
+      : "vertical";
   } catch {
-    return 'vertical';
+    return "vertical";
   }
 }
 
 function readStoredFilesPanelOrder(): FilesPanelOrder {
   try {
-    return localStorage.getItem(FILES_PANEL_ORDER_STORAGE_KEY) === 'assistant-first'
-      ? 'assistant-first'
-      : 'explorer-first';
+    return localStorage.getItem(FILES_PANEL_ORDER_STORAGE_KEY) ===
+      "assistant-first"
+      ? "assistant-first"
+      : "explorer-first";
   } catch {
-    return 'explorer-first';
+    return "explorer-first";
   }
 }
 
@@ -108,8 +117,8 @@ function resolveFilesDockEdge(
 ): FilesDockEdge | null {
   const x = (event.clientX - rect.left) / Math.max(rect.width, 1);
   if (fromHeader) {
-    if (x < 0.28) return 'left';
-    if (x > 0.72) return 'right';
+    if (x < 0.28) return "left";
+    if (x > 0.72) return "right";
     return null;
   }
   const distLeft = event.clientX - rect.left;
@@ -117,47 +126,57 @@ function resolveFilesDockEdge(
   const distTop = event.clientY - rect.top;
   const distBottom = rect.bottom - event.clientY;
   const min = Math.min(distLeft, distRight, distTop, distBottom);
-  if (min === distLeft) return 'left';
-  if (min === distRight) return 'right';
-  if (min === distTop) return 'top';
-  return 'bottom';
+  if (min === distLeft) return "left";
+  if (min === distRight) return "right";
+  if (min === distTop) return "top";
+  return "bottom";
 }
 
 function dockArrangementFromDrop(
   source: FilesDockPanel,
   edge: FilesDockEdge,
 ): { layout: FilesPanelLayout; order: FilesPanelOrder } {
-  const layout: FilesPanelLayout = edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
-  const sourceFirst = edge === 'top' || edge === 'left';
-  const explorerFirst = source === 'explorer' ? sourceFirst : !sourceFirst;
+  const layout: FilesPanelLayout =
+    edge === "left" || edge === "right" ? "horizontal" : "vertical";
+  const sourceFirst = edge === "top" || edge === "left";
+  const explorerFirst = source === "explorer" ? sourceFirst : !sourceFirst;
   return {
     layout,
-    order: explorerFirst ? 'explorer-first' : 'assistant-first',
+    order: explorerFirst ? "explorer-first" : "assistant-first",
   };
 }
 const FILES_NARROW_BREAKPOINT = 1040;
-const FILES_ASSISTANT_STORAGE_KEY = 'pilotdeck:files-assistant-width';
-const TOOL_PANEL_STORAGE_KEY = 'pilotdeck:dashboard-panel-width';
+const FILES_ASSISTANT_STORAGE_KEY = "pilotdeck:files-assistant-width";
+const TOOL_PANEL_STORAGE_KEY = "pilotdeck:dashboard-panel-width";
 const TOOL_PANEL_DEFAULT_WIDTH = 480;
 const TOOL_PANEL_MIN_WIDTH = 360;
 const TOOL_PANEL_MAX_WIDTH = 720;
 const TOOL_PANEL_MAX_LAYOUT_RATIO = 0.48;
 
-type DashboardPanelTab = Extract<AppTab, 'skills' | 'dashboard' | 'memory' | 'always-on'>;
+type DashboardPanelTab = Extract<AppTab, "dashboard" | "memory" | "always-on">;
 
-const DASHBOARD_PANEL_TABS = new Set<AppTab>(['skills', 'dashboard', 'memory', 'always-on']);
-const DASHBOARD_PANEL_META: Record<DashboardPanelTab, { labelKey: string; icon: LucideIcon }> = {
-  skills: { labelKey: 'tabs.skills', icon: Sparkles },
-  dashboard: { labelKey: 'tabs.dashboard', icon: BarChart3 },
-  memory: { labelKey: 'tabs.memory', icon: Database },
-  'always-on': { labelKey: 'tabs.alwaysOn', icon: Radio },
+const DASHBOARD_PANEL_TABS = new Set<AppTab>([
+  "dashboard",
+  "memory",
+  "always-on",
+]);
+const DASHBOARD_PANEL_META: Record<
+  DashboardPanelTab,
+  { labelKey: string; icon: LucideIcon }
+> = {
+  dashboard: { labelKey: "tabs.dashboard", icon: BarChart3 },
+  memory: { labelKey: "tabs.memory", icon: Database },
+  "always-on": { labelKey: "tabs.alwaysOn", icon: Radio },
 };
 
 function readStoredFilesAssistantWidth(): number {
   try {
     const stored = Number(localStorage.getItem(FILES_ASSISTANT_STORAGE_KEY));
     return Number.isFinite(stored) && stored > 0
-      ? Math.min(Math.max(stored, FILES_ASSISTANT_MIN_WIDTH), FILES_ASSISTANT_MAX_WIDTH)
+      ? Math.min(
+          Math.max(stored, FILES_ASSISTANT_MIN_WIDTH),
+          FILES_ASSISTANT_MAX_WIDTH,
+        )
       : FILES_ASSISTANT_DEFAULT_WIDTH;
   } catch {
     return FILES_ASSISTANT_DEFAULT_WIDTH;
@@ -167,7 +186,9 @@ function readStoredFilesAssistantWidth(): number {
 function readStoredToolPanelWidth(): number {
   try {
     const stored = Number(localStorage.getItem(TOOL_PANEL_STORAGE_KEY));
-    return Number.isFinite(stored) && stored > 0 ? stored : TOOL_PANEL_DEFAULT_WIDTH;
+    return Number.isFinite(stored) && stored > 0
+      ? stored
+      : TOOL_PANEL_DEFAULT_WIDTH;
   } catch {
     return TOOL_PANEL_DEFAULT_WIDTH;
   }
@@ -175,7 +196,7 @@ function readStoredToolPanelWidth(): number {
 
 async function readJsonPayload<T>(response: Response): Promise<T | null> {
   try {
-    return await response.json() as T;
+    return (await response.json()) as T;
   } catch {
     return null;
   }
@@ -187,7 +208,7 @@ function MainContent({
   selectedSession,
   activeTab,
   setActiveTab,
-  alwaysOnSubTab = 'dashboard',
+  alwaysOnSubTab = "dashboard",
   onAlwaysOnSubTabChange,
   ws,
   sendMessage,
@@ -215,10 +236,19 @@ function MainContent({
 }: MainContentProps) {
   const { i18n } = useTranslation();
   const { preferences } = useUiPreferences();
-  const { autoExpandTools, showRawParameters, showThinking, inlineThinking, autoScrollToBottom, sendByCtrlEnter } = preferences;
+  const {
+    autoExpandTools,
+    showRawParameters,
+    showThinking,
+    inlineThinking,
+    autoScrollToBottom,
+    sendByCtrlEnter,
+  } = preferences;
 
-  const { currentProject, setCurrentProject } = useTaskMaster() as TaskMasterContextValue;
-  const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings() as TasksSettingsContextValue;
+  const { currentProject, setCurrentProject } =
+    useTaskMaster() as TaskMasterContextValue;
+  const { tasksEnabled, isTaskMasterInstalled } =
+    useTasksSettings() as TasksSettingsContextValue;
   const [toast, setToast] = useState<MainContentToast>(null);
 
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
@@ -248,13 +278,13 @@ function MainContent({
     isMobile,
   });
 
-  const openFileInWorkspace = useCallback((
-    filePath: string,
-    diffInfo: CodeEditorDiffInfo | null = null,
-  ) => {
-    handleFileOpen(filePath, diffInfo);
-    setActiveTab('files');
-  }, [handleFileOpen, setActiveTab]);
+  const openFileInWorkspace = useCallback(
+    (filePath: string, diffInfo: CodeEditorDiffInfo | null = null) => {
+      handleFileOpen(filePath, diffInfo);
+      setActiveTab("files");
+    },
+    [handleFileOpen, setActiveTab],
+  );
 
   const handledMisroutedFileRef = useRef<string | null>(null);
   useEffect(() => {
@@ -286,8 +316,8 @@ function MainContent({
   }, [selectedProject, currentProject?.name, setCurrentProject]);
 
   useEffect(() => {
-    if (!shouldShowTasksTab && activeTab === 'tasks') {
-      setActiveTab('chat');
+    if (!shouldShowTasksTab && activeTab === "tasks") {
+      setActiveTab("chat");
     }
   }, [shouldShowTasksTab, activeTab, setActiveTab]);
 
@@ -297,23 +327,34 @@ function MainContent({
     }
   }, []);
 
-  const applyAndLaunchCycle = useCallback(async (
-    projectName: string,
-    cycleId: string,
-  ) => {
-    const response = await api.applyWorkCycle(projectName, cycleId);
-    const payload = await readJsonPayload<{ cycle?: { id: string }; sessionKey?: string; executionToken?: string; error?: { code: string; message: string } | string }>(response);
-    if (!response.ok || !payload) {
-      const errMsg = typeof payload?.error === 'string' ? payload.error : payload?.error?.message;
-      throw new Error(errMsg || 'Failed to queue discovery plan apply');
-    }
-    if (payload.error) {
-      const errMsg = typeof payload.error === 'string' ? payload.error : payload.error.message;
-      throw new Error(errMsg);
-    }
+  const applyAndLaunchCycle = useCallback(
+    async (projectName: string, cycleId: string) => {
+      const response = await api.applyWorkCycle(projectName, cycleId);
+      const payload = await readJsonPayload<{
+        cycle?: { id: string };
+        sessionKey?: string;
+        executionToken?: string;
+        error?: { code: string; message: string } | string;
+      }>(response);
+      if (!response.ok || !payload) {
+        const errMsg =
+          typeof payload?.error === "string"
+            ? payload.error
+            : payload?.error?.message;
+        throw new Error(errMsg || "Failed to queue discovery plan apply");
+      }
+      if (payload.error) {
+        const errMsg =
+          typeof payload.error === "string"
+            ? payload.error
+            : payload.error.message;
+        throw new Error(errMsg);
+      }
 
-    refreshProjectsSilently();
-  }, [refreshProjectsSilently]);
+      refreshProjectsSilently();
+    },
+    [refreshProjectsSilently],
+  );
 
   const flashToast = useCallback((toastValue: MainContentToast, ms = 2400) => {
     setToast(toastValue);
@@ -322,112 +363,143 @@ function MainContent({
     }
   }, []);
 
-  const getProjectSessions = useCallback((project: Project): ProjectSession[] =>
-    project.sessions ?? [],
-  []);
+  const getProjectSessions = useCallback(
+    (project: Project): ProjectSession[] => project.sessions ?? [],
+    [],
+  );
 
-  const findSessionInProject = useCallback((project: Project, sessionId: string) => (
-    getProjectSessions(project).find((session) => session.id === sessionId)
-  ), [getProjectSessions]);
+  const findSessionInProject = useCallback(
+    (project: Project, sessionId: string) =>
+      getProjectSessions(project).find((session) => session.id === sessionId),
+    [getProjectSessions],
+  );
 
-  const loadPilotDeckSession = useCallback(async (projectName: string, sessionId: string) => {
-    const response = await api.sessions(projectName, Number.MAX_SAFE_INTEGER, 0);
-    if (!response.ok) {
-      return null;
-    }
-    const payload = await readJsonPayload<{ sessions?: ProjectSession[] }>(response);
-    return payload?.sessions?.find((session) => session.id === sessionId) ?? null;
-  }, []);
+  const loadPilotDeckSession = useCallback(
+    async (projectName: string, sessionId: string) => {
+      const response = await api.sessions(
+        projectName,
+        Number.MAX_SAFE_INTEGER,
+        0,
+      );
+      if (!response.ok) {
+        return null;
+      }
+      const payload = await readJsonPayload<{ sessions?: ProjectSession[] }>(
+        response,
+      );
+      return (
+        payload?.sessions?.find((session) => session.id === sessionId) ?? null
+      );
+    },
+    [],
+  );
 
-  const handleOpenAlwaysOnSession = useCallback(async (target: AlwaysOnSessionTarget) => {
-    if (!selectedProject) {
-      return;
-    }
+  const handleOpenAlwaysOnSession = useCallback(
+    async (target: AlwaysOnSessionTarget) => {
+      if (!selectedProject) {
+        return;
+      }
 
-    const missingMessage = i18n.t('alwaysOn:sessionMissing', {
-      defaultValue: 'This chat record no longer exists.',
-    });
+      const missingMessage = i18n.t("alwaysOn:sessionMissing", {
+        defaultValue: "This chat record no longer exists.",
+      });
 
-    if (target.kind === 'origin') {
-      const lookupProjectName = target.projectName || selectedProject.name;
-      const targetProject =
-        target.projectName && target.projectName !== selectedProject.name
-          ? projects.find((p) => p.name === target.projectName) ?? selectedProject
-          : selectedProject;
+      if (target.kind === "origin") {
+        const lookupProjectName = target.projectName || selectedProject.name;
+        const targetProject =
+          target.projectName && target.projectName !== selectedProject.name
+            ? (projects.find((p) => p.name === target.projectName) ??
+              selectedProject)
+            : selectedProject;
+
+        const existingSession =
+          findSessionInProject(targetProject, target.sessionId) ??
+          (await loadPilotDeckSession(lookupProjectName, target.sessionId));
+
+        if (!existingSession) {
+          flashToast({ kind: "error", text: missingMessage });
+          return;
+        }
+
+        const fallbackSession: ProjectSession = {
+          ...existingSession,
+          isReadOnly: true,
+          __projectName: lookupProjectName,
+        };
+
+        setActiveTab("chat");
+        if (onSelectSession) {
+          onSelectSession(targetProject, target.sessionId, fallbackSession);
+          return;
+        }
+        onNavigateToSession(target.sessionId);
+        return;
+      }
 
       const existingSession =
-        findSessionInProject(targetProject, target.sessionId) ??
-        await loadPilotDeckSession(lookupProjectName, target.sessionId);
+        findSessionInProject(selectedProject, target.sessionId) ??
+        (await loadPilotDeckSession(selectedProject.name, target.sessionId));
 
       if (!existingSession) {
-        flashToast({ kind: 'error', text: missingMessage });
+        flashToast({ kind: "error", text: missingMessage });
         return;
       }
 
       const fallbackSession: ProjectSession = {
         ...existingSession,
+        id: target.sessionId,
+        title:
+          target.title ||
+          existingSession.title ||
+          existingSession.summary ||
+          target.summary,
+        summary:
+          target.summary ||
+          existingSession.summary ||
+          existingSession.title ||
+          target.title,
+        lastActivity: target.lastActivity || existingSession.lastActivity,
+        sessionKind: "background_task",
+        parentSessionId: target.parentSessionId,
+        relativeTranscriptPath: target.relativeTranscriptPath,
+        transcriptKey: target.transcriptKey || existingSession.transcriptKey,
+        taskId: target.taskId || existingSession.taskId,
+        taskStatus: target.taskStatus || existingSession.taskStatus,
+        outputFile: target.outputFile || existingSession.outputFile,
         isReadOnly: true,
-        __projectName: lookupProjectName,
+        __projectName: selectedProject.name,
       };
 
-      setActiveTab('chat');
+      setActiveTab("chat");
       if (onSelectSession) {
-        onSelectSession(targetProject, target.sessionId, fallbackSession);
+        onSelectSession(selectedProject, target.sessionId, fallbackSession);
         return;
       }
       onNavigateToSession(target.sessionId);
-      return;
-    }
-
-    const existingSession =
-      findSessionInProject(selectedProject, target.sessionId) ??
-      await loadPilotDeckSession(selectedProject.name, target.sessionId);
-
-    if (!existingSession) {
-      flashToast({ kind: 'error', text: missingMessage });
-      return;
-    }
-
-    const fallbackSession: ProjectSession = {
-      ...existingSession,
-      id: target.sessionId,
-      title: target.title || existingSession.title || existingSession.summary || target.summary,
-      summary: target.summary || existingSession.summary || existingSession.title || target.title,
-      lastActivity: target.lastActivity || existingSession.lastActivity,
-      sessionKind: 'background_task',
-      parentSessionId: target.parentSessionId,
-      relativeTranscriptPath: target.relativeTranscriptPath,
-      transcriptKey: target.transcriptKey || existingSession.transcriptKey,
-      taskId: target.taskId || existingSession.taskId,
-      taskStatus: target.taskStatus || existingSession.taskStatus,
-      outputFile: target.outputFile || existingSession.outputFile,
-      isReadOnly: true,
-      __projectName: selectedProject.name,
-    };
-
-    setActiveTab('chat');
-    if (onSelectSession) {
-      onSelectSession(selectedProject, target.sessionId, fallbackSession);
-      return;
-    }
-    onNavigateToSession(target.sessionId);
-  }, [
-    findSessionInProject,
-    flashToast,
-    i18n,
-    loadPilotDeckSession,
-    onNavigateToSession,
-    onSelectSession,
-    projects,
-    selectedProject,
-    setActiveTab,
-  ]);
+    },
+    [
+      findSessionInProject,
+      flashToast,
+      i18n,
+      loadPilotDeckSession,
+      onNavigateToSession,
+      onSelectSession,
+      projects,
+      selectedProject,
+      setActiveTab,
+    ],
+  );
 
   const handleOpenExecutionSession = useCallback(
     (projectKey: string, runId: string, projectName?: string) => {
       const rawId = `always-on/execute:project=${projectKey}:run=${runId}`;
-      const sessionId = rawId.replace(/[\\/]+/g, '-').replace(/^-+|-+$/g, '') || 'session';
-      void handleOpenAlwaysOnSession({ kind: 'origin', sessionId, projectName });
+      const sessionId =
+        rawId.replace(/[\\/]+/g, "-").replace(/^-+|-+$/g, "") || "session";
+      void handleOpenAlwaysOnSession({
+        kind: "origin",
+        sessionId,
+        projectName,
+      });
     },
     [handleOpenAlwaysOnSession],
   );
@@ -442,7 +514,7 @@ function MainContent({
     );
   }
 
-  if (!selectedProject && activeTab !== 'dashboard' && activeTab !== 'cron') {
+  if (!selectedProject && activeTab !== "dashboard" && activeTab !== "cron") {
     return (
       <MainContentStateView
         mode="empty"
@@ -521,9 +593,9 @@ function MainContent({
       {toast ? (
         <div
           className={cn(
-            'pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-1.5 text-[12px] shadow-lg',
-            toast.kind === 'error' && 'bg-red-600 text-white',
-            toast.kind === 'info' && 'bg-neutral-800 text-white',
+            "pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-1.5 text-[12px] shadow-lg",
+            toast.kind === "error" && "bg-red-600 text-white",
+            toast.kind === "info" && "bg-neutral-800 text-white",
           )}
         >
           {toast.text}
@@ -543,12 +615,15 @@ type SplitBodyProps = {
   shouldShowTasksTab: boolean;
   tasksEnabled: boolean;
   setActiveTab: (tab: any) => void;
-  alwaysOnSubTab: MainContentProps['alwaysOnSubTab'];
-  onAlwaysOnSubTabChange: MainContentProps['onAlwaysOnSubTabChange'];
+  alwaysOnSubTab: MainContentProps["alwaysOnSubTab"];
+  onAlwaysOnSubTabChange: MainContentProps["onAlwaysOnSubTabChange"];
   ws: any;
   sendMessage: any;
   latestMessage: any;
-  handleFileOpen: (filePath: string, diffInfo?: CodeEditorDiffInfo | null) => void;
+  handleFileOpen: (
+    filePath: string,
+    diffInfo?: CodeEditorDiffInfo | null,
+  ) => void;
   onInputFocusChange: any;
   onSessionActive: any;
   onSessionInactive: any;
@@ -563,8 +638,8 @@ type SplitBodyProps = {
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: any;
   onNavigateToSession: (sessionId: string) => void;
-  onStartNewSession: MainContentProps['onStartNewSession'];
-  onSelectSession: MainContentProps['onSelectSession'];
+  onStartNewSession: MainContentProps["onStartNewSession"];
+  onSelectSession: MainContentProps["onSelectSession"];
   onShowSettings: any;
   externalMessageUpdate: any;
   autoExpandTools: any;
@@ -574,7 +649,11 @@ type SplitBodyProps = {
   autoScrollToBottom: any;
   sendByCtrlEnter: any;
   applyAndLaunchCycle: (projectName: string, cycleId: string) => Promise<void>;
-  handleOpenExecutionSession: (projectKey: string, runId: string, projectName?: string) => void;
+  handleOpenExecutionSession: (
+    projectKey: string,
+    runId: string,
+    projectName?: string,
+  ) => void;
   editorExpanded: boolean;
   hasEditor: boolean;
   activeFilePath: string | null;
@@ -595,7 +674,7 @@ function SplitBody(props: SplitBodyProps) {
     shouldShowTasksTab,
     tasksEnabled,
     setActiveTab,
-    alwaysOnSubTab = 'dashboard',
+    alwaysOnSubTab = "dashboard",
     onAlwaysOnSubTabChange,
     ws,
     sendMessage,
@@ -636,46 +715,59 @@ function SplitBody(props: SplitBodyProps) {
   // Shell, Git, Tasks, and plugin tabs retain their legacy full-screen mode.
   // Skills, Routing, Memory, and Always-On are auxiliary dashboards paired
   // with chat. Files stays a separate explorer + artifact + assistant mode.
-  const isPlugin = typeof activeTab === 'string' && activeTab.startsWith('plugin:');
-  const fullScreenToolTabs = new Set([
-    'shell',
-    'git',
-    'cron',
-    'tasks',
-  ]);
+  const isPlugin =
+    typeof activeTab === "string" && activeTab.startsWith("plugin:");
+  const fullScreenToolTabs = new Set(["shell", "git", "cron", "tasks"]);
   const isFullScreenTool = fullScreenToolTabs.has(activeTab) || isPlugin;
   const isDashboardPanel = DASHBOARD_PANEL_TABS.has(activeTab);
-  const dashboardPanelTab = isDashboardPanel ? activeTab as DashboardPanelTab : null;
+  const dashboardPanelTab = isDashboardPanel
+    ? (activeTab as DashboardPanelTab)
+    : null;
   // Tasks tab is conditional — fall back to chat if the project hasn't
   // enabled it yet so we don't render a black hole.
-  const renderTasksAsTool = activeTab === 'tasks' && shouldShowTasksTab;
-  const isFiles = activeTab === 'files';
+  const renderTasksAsTool = activeTab === "tasks" && shouldShowTasksTab;
+  const isFiles = activeTab === "files";
   const filesSplitContainerRef = useRef<HTMLDivElement | null>(null);
   const filesSidePanelRef = useRef<HTMLDivElement | null>(null);
   const dockDragSourceRef = useRef<FilesDockPanel | null>(null);
-  const [filesAssistantWidth, setFilesAssistantWidth] = useState(readStoredFilesAssistantWidth);
-  const [filesResizeTarget, setFilesResizeTarget] = useState<'assistant' | null>(null);
+  const [filesAssistantWidth, setFilesAssistantWidth] = useState(
+    readStoredFilesAssistantWidth,
+  );
+  const [filesResizeTarget, setFilesResizeTarget] = useState<
+    "assistant" | null
+  >(null);
   const [filesPanelSplitRatio, setFilesPanelSplitRatio] = useState(0.5);
   const [filesPanelSplitResizing, setFilesPanelSplitResizing] = useState(false);
-  const [filesPanelLayout, setFilesPanelLayout] = useState<FilesPanelLayout>(readStoredFilesPanelLayout);
-  const [filesPanelOrder, setFilesPanelOrder] = useState<FilesPanelOrder>(readStoredFilesPanelOrder);
+  const [filesPanelLayout, setFilesPanelLayout] = useState<FilesPanelLayout>(
+    readStoredFilesPanelLayout,
+  );
+  const [filesPanelOrder, setFilesPanelOrder] = useState<FilesPanelOrder>(
+    readStoredFilesPanelOrder,
+  );
   const [filesPanelDropPreview, setFilesPanelDropPreview] = useState<{
     panel: FilesDockPanel;
-    edge: FilesDockEdge | 'swap';
+    edge: FilesDockEdge | "swap";
   } | null>(null);
   const [explorerCollapsed, setExplorerCollapsed] = useState(true);
   const [assistantCollapsed, setAssistantCollapsed] = useState(false);
   const [assistantOverlayOpen, setAssistantOverlayOpen] = useState(false);
   const [workbenchWidth, setWorkbenchWidth] = useState(0);
-  const [toolPanelWidth, setToolPanelWidth] = useState(readStoredToolPanelWidth);
+  const [toolPanelWidth, setToolPanelWidth] = useState(
+    readStoredToolPanelWidth,
+  );
   const [toolPanelResizing, setToolPanelResizing] = useState(false);
-  const isNarrowWorkbench = workbenchWidth > 0 && workbenchWidth < FILES_NARROW_BREAKPOINT;
-  const toolPanelMaxWidth = workbenchWidth > 0
-    ? Math.max(
-        TOOL_PANEL_MIN_WIDTH,
-        Math.min(TOOL_PANEL_MAX_WIDTH, workbenchWidth * TOOL_PANEL_MAX_LAYOUT_RATIO),
-      )
-    : TOOL_PANEL_MAX_WIDTH;
+  const isNarrowWorkbench =
+    workbenchWidth > 0 && workbenchWidth < FILES_NARROW_BREAKPOINT;
+  const toolPanelMaxWidth =
+    workbenchWidth > 0
+      ? Math.max(
+          TOOL_PANEL_MIN_WIDTH,
+          Math.min(
+            TOOL_PANEL_MAX_WIDTH,
+            workbenchWidth * TOOL_PANEL_MAX_LAYOUT_RATIO,
+          ),
+        )
+      : TOOL_PANEL_MAX_WIDTH;
 
   useEffect(() => {
     if (!isFiles) return;
@@ -688,7 +780,8 @@ function SplitBody(props: SplitBodyProps) {
     const container = filesSplitContainerRef.current;
     if (!container) return undefined;
 
-    const updateWidth = () => setWorkbenchWidth(container.getBoundingClientRect().width);
+    const updateWidth = () =>
+      setWorkbenchWidth(container.getBoundingClientRect().width);
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
     observer.observe(container);
@@ -696,12 +789,17 @@ function SplitBody(props: SplitBodyProps) {
   }, []);
 
   useEffect(() => {
-    setToolPanelWidth((width) => Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth));
+    setToolPanelWidth((width) =>
+      Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth),
+    );
   }, [toolPanelMaxWidth]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(TOOL_PANEL_STORAGE_KEY, String(Math.round(toolPanelWidth)));
+      localStorage.setItem(
+        TOOL_PANEL_STORAGE_KEY,
+        String(Math.round(toolPanelWidth)),
+      );
     } catch {
       // The panel remains usable when localStorage is unavailable.
     }
@@ -713,7 +811,10 @@ function SplitBody(props: SplitBodyProps) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(FILES_ASSISTANT_STORAGE_KEY, String(Math.round(filesAssistantWidth)));
+      localStorage.setItem(
+        FILES_ASSISTANT_STORAGE_KEY,
+        String(Math.round(filesAssistantWidth)),
+      );
     } catch {
       // Resizing remains available when persistent storage is unavailable.
     }
@@ -728,41 +829,51 @@ function SplitBody(props: SplitBodyProps) {
     }
   }, [filesPanelLayout, filesPanelOrder]);
 
-  const dockedHorizontally = filesPanelLayout === 'horizontal'
-    && !explorerCollapsed
-    && !assistantCollapsed
-    && !isNarrowWorkbench;
+  const dockedHorizontally =
+    filesPanelLayout === "horizontal" &&
+    !explorerCollapsed &&
+    !assistantCollapsed &&
+    !isNarrowWorkbench;
 
-  const clampFilesAssistantWidth = useCallback((width: number) => {
-    const minWidth = dockedHorizontally
-      ? FILES_ASSISTANT_HORIZONTAL_MIN_WIDTH
-      : FILES_ASSISTANT_MIN_WIDTH;
-    const layoutMax = dockedHorizontally
-      ? FILES_ASSISTANT_HORIZONTAL_MAX_WIDTH
-      : FILES_ASSISTANT_MAX_WIDTH;
-    const availableWidth = workbenchWidth > 0
-      ? workbenchWidth - FILES_PANEL_RAIL_WIDTH - FILES_ARTIFACT_MIN_WIDTH
-      : layoutMax;
-    const maxWidth = Math.max(minWidth, Math.min(layoutMax, availableWidth));
-    return Math.min(Math.max(width, minWidth), maxWidth);
-  }, [dockedHorizontally, workbenchWidth]);
+  const clampFilesAssistantWidth = useCallback(
+    (width: number) => {
+      const minWidth = dockedHorizontally
+        ? FILES_ASSISTANT_HORIZONTAL_MIN_WIDTH
+        : FILES_ASSISTANT_MIN_WIDTH;
+      const layoutMax = dockedHorizontally
+        ? FILES_ASSISTANT_HORIZONTAL_MAX_WIDTH
+        : FILES_ASSISTANT_MAX_WIDTH;
+      const availableWidth =
+        workbenchWidth > 0
+          ? workbenchWidth - FILES_PANEL_RAIL_WIDTH - FILES_ARTIFACT_MIN_WIDTH
+          : layoutMax;
+      const maxWidth = Math.max(minWidth, Math.min(layoutMax, availableWidth));
+      return Math.min(Math.max(width, minWidth), maxWidth);
+    },
+    [dockedHorizontally, workbenchWidth],
+  );
 
-  const handleFilesAssistantResizeBy = useCallback((delta: number) => {
-    setFilesAssistantWidth((width) => clampFilesAssistantWidth(width + delta));
-  }, [clampFilesAssistantWidth]);
+  const handleFilesAssistantResizeBy = useCallback(
+    (delta: number) => {
+      setFilesAssistantWidth((width) =>
+        clampFilesAssistantWidth(width + delta),
+      );
+    },
+    [clampFilesAssistantWidth],
+  );
 
   useEffect(() => {
     setFilesAssistantWidth((width) => clampFilesAssistantWidth(width));
   }, [clampFilesAssistantWidth]);
 
-  const handleFilesResizeStart = useCallback((
-    target: 'assistant',
-    event: React.MouseEvent<HTMLDivElement>,
-  ) => {
-    if (!isFiles) return;
-    setFilesResizeTarget(target);
-    event.preventDefault();
-  }, [isFiles]);
+  const handleFilesResizeStart = useCallback(
+    (target: "assistant", event: React.MouseEvent<HTMLDivElement>) => {
+      if (!isFiles) return;
+      setFilesResizeTarget(target);
+      event.preventDefault();
+    },
+    [isFiles],
+  );
 
   useEffect(() => {
     if (!filesResizeTarget) return undefined;
@@ -772,41 +883,58 @@ function SplitBody(props: SplitBodyProps) {
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      setFilesAssistantWidth(clampFilesAssistantWidth(
-        rect.right - event.clientX - FILES_PANEL_RAIL_WIDTH,
-      ));
+      setFilesAssistantWidth(
+        clampFilesAssistantWidth(
+          rect.right - event.clientX - FILES_PANEL_RAIL_WIDTH,
+        ),
+      );
     };
 
     const handleMouseUp = () => {
       setFilesResizeTarget(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [clampFilesAssistantWidth, filesResizeTarget]);
 
-  const clampFilesPanelSplitRatio = useCallback((ratio: number) => {
-    const rect = filesSidePanelRef.current?.getBoundingClientRect();
-    if (filesPanelLayout === 'horizontal') {
-      const availableWidth = Math.max(1, (rect?.width ?? 0) - FILES_PANEL_SPLITTER_WIDTH);
-      const minRatio = Math.min(0.5, FILES_PANEL_SECTION_MIN_WIDTH / availableWidth);
+  const clampFilesPanelSplitRatio = useCallback(
+    (ratio: number) => {
+      const rect = filesSidePanelRef.current?.getBoundingClientRect();
+      if (filesPanelLayout === "horizontal") {
+        const availableWidth = Math.max(
+          1,
+          (rect?.width ?? 0) - FILES_PANEL_SPLITTER_WIDTH,
+        );
+        const minRatio = Math.min(
+          0.5,
+          FILES_PANEL_SECTION_MIN_WIDTH / availableWidth,
+        );
+        const maxRatio = Math.max(0.5, 1 - minRatio);
+        return Math.min(Math.max(ratio, minRatio), maxRatio);
+      }
+      const availableHeight = Math.max(
+        1,
+        (rect?.height ?? 0) - FILES_PANEL_SPLITTER_HEIGHT,
+      );
+      const minRatio = Math.min(
+        0.5,
+        FILES_PANEL_SECTION_MIN_HEIGHT / availableHeight,
+      );
       const maxRatio = Math.max(0.5, 1 - minRatio);
       return Math.min(Math.max(ratio, minRatio), maxRatio);
-    }
-    const availableHeight = Math.max(1, (rect?.height ?? 0) - FILES_PANEL_SPLITTER_HEIGHT);
-    const minRatio = Math.min(0.5, FILES_PANEL_SECTION_MIN_HEIGHT / availableHeight);
-    const maxRatio = Math.max(0.5, 1 - minRatio);
-    return Math.min(Math.max(ratio, minRatio), maxRatio);
-  }, [filesPanelLayout]);
+    },
+    [filesPanelLayout],
+  );
 
   useEffect(() => {
     if (!filesPanelSplitResizing) return undefined;
@@ -815,41 +943,62 @@ function SplitBody(props: SplitBodyProps) {
       const panel = filesSidePanelRef.current;
       if (!panel) return;
       const rect = panel.getBoundingClientRect();
-      const pointerRatio = filesPanelLayout === 'horizontal'
-        ? (event.clientX - rect.left) / Math.max(1, rect.width - FILES_PANEL_SPLITTER_WIDTH)
-        : (event.clientY - rect.top) / Math.max(1, rect.height - FILES_PANEL_SPLITTER_HEIGHT);
-      setFilesPanelSplitRatio(clampFilesPanelSplitRatio(
-        filesPanelOrder === 'explorer-first' ? pointerRatio : 1 - pointerRatio,
-      ));
+      const pointerRatio =
+        filesPanelLayout === "horizontal"
+          ? (event.clientX - rect.left) /
+            Math.max(1, rect.width - FILES_PANEL_SPLITTER_WIDTH)
+          : (event.clientY - rect.top) /
+            Math.max(1, rect.height - FILES_PANEL_SPLITTER_HEIGHT);
+      setFilesPanelSplitRatio(
+        clampFilesPanelSplitRatio(
+          filesPanelOrder === "explorer-first"
+            ? pointerRatio
+            : 1 - pointerRatio,
+        ),
+      );
     };
     const handleMouseUp = () => setFilesPanelSplitResizing(false);
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = filesPanelLayout === 'horizontal' ? 'col-resize' : 'row-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor =
+      filesPanelLayout === "horizontal" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
-  }, [clampFilesPanelSplitRatio, filesPanelLayout, filesPanelOrder, filesPanelSplitResizing]);
+  }, [
+    clampFilesPanelSplitRatio,
+    filesPanelLayout,
+    filesPanelOrder,
+    filesPanelSplitResizing,
+  ]);
 
-  const clampToolPanelWidth = useCallback((width: number) => (
-    Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth)
-  ), [toolPanelMaxWidth]);
+  const clampToolPanelWidth = useCallback(
+    (width: number) =>
+      Math.min(Math.max(width, TOOL_PANEL_MIN_WIDTH), toolPanelMaxWidth),
+    [toolPanelMaxWidth],
+  );
 
-  const handleToolPanelResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!dashboardPanelTab || isMobile) return;
-    event.preventDefault();
-    setToolPanelResizing(true);
-  }, [dashboardPanelTab, isMobile]);
+  const handleToolPanelResizeStart = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!dashboardPanelTab || isMobile) return;
+      event.preventDefault();
+      setToolPanelResizing(true);
+    },
+    [dashboardPanelTab, isMobile],
+  );
 
-  const handleToolPanelResizeBy = useCallback((delta: number) => {
-    setToolPanelWidth((width) => clampToolPanelWidth(width + delta));
-  }, [clampToolPanelWidth]);
+  const handleToolPanelResizeBy = useCallback(
+    (delta: number) => {
+      setToolPanelWidth((width) => clampToolPanelWidth(width + delta));
+    },
+    [clampToolPanelWidth],
+  );
 
   useEffect(() => {
     if (!toolPanelResizing) return undefined;
@@ -862,21 +1011,21 @@ function SplitBody(props: SplitBodyProps) {
     };
     const handleMouseUp = () => setToolPanelResizing(false);
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [clampToolPanelWidth, toolPanelResizing]);
 
   const renderTool = () => {
-    if (activeTab === 'shell') {
+    if (activeTab === "shell") {
       return (
         <ShellV2
           selectedProject={selectedProject}
@@ -885,10 +1034,12 @@ function SplitBody(props: SplitBodyProps) {
         />
       );
     }
-    if (activeTab === 'git') {
-      return <GitV2 selectedProject={selectedProject} onFileOpen={handleFileOpen} />;
+    if (activeTab === "git") {
+      return (
+        <GitV2 selectedProject={selectedProject} onFileOpen={handleFileOpen} />
+      );
     }
-    if (activeTab === 'always-on') {
+    if (activeTab === "always-on") {
       return (
         <AlwaysOnV2
           selectedProject={selectedProject}
@@ -900,15 +1051,31 @@ function SplitBody(props: SplitBodyProps) {
         />
       );
     }
-    if (activeTab === 'cron') return <CronV2 />;
-    if (activeTab === 'dashboard') return <DashboardV2 projectFilter={selectedProject?.name} projectFullPath={selectedProject?.fullPath} onSelectProject={onSelectProjectByName} compact />;
-    if (activeTab === 'memory') return <MemoryPanel selectedProject={selectedProject} />;
-    if (activeTab === 'skills') return <SkillsV2 selectedProject={selectedProject} projects={projects} compact />;
+    if (activeTab === "cron") return <CronV2 />;
+    if (activeTab === "dashboard")
+      return (
+        <DashboardV2
+          projectFilter={selectedProject?.name}
+          projectFullPath={selectedProject?.fullPath}
+          onSelectProject={onSelectProjectByName}
+          compact
+        />
+      );
+    if (activeTab === "memory")
+      return <MemoryPanel selectedProject={selectedProject} />;
+    if (activeTab === "skills")
+      return (
+        <SkillsV2
+          selectedProject={selectedProject}
+          projects={projects}
+          compact
+        />
+      );
     if (renderTasksAsTool) return <TasksV2 isVisible />;
     if (isPlugin) {
       return (
         <PluginTabContent
-          pluginName={activeTab.replace('plugin:', '')}
+          pluginName={activeTab.replace("plugin:", "")}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
         />
@@ -917,26 +1084,30 @@ function SplitBody(props: SplitBodyProps) {
     return null;
   };
 
-  const showFullScreenTool = isFullScreenTool && (activeTab !== 'tasks' || shouldShowTasksTab);
+  const showFullScreenTool =
+    isFullScreenTool && (activeTab !== "tasks" || shouldShowTasksTab);
   const showChat = !showFullScreenTool;
-  const explorerVisible = isFiles
-    && showChat
-    && !editorExpanded
-    && !isMobile
-    && !explorerCollapsed
-    && (!isNarrowWorkbench || assistantOverlayOpen);
-  const assistantVisible = isFiles
-    && showChat
-    && !editorExpanded
-    && !isMobile
-    && !assistantCollapsed
-    && (!isNarrowWorkbench || assistantOverlayOpen);
+  const explorerVisible =
+    isFiles &&
+    showChat &&
+    !editorExpanded &&
+    !isMobile &&
+    !explorerCollapsed &&
+    (!isNarrowWorkbench || assistantOverlayOpen);
+  const assistantVisible =
+    isFiles &&
+    showChat &&
+    !editorExpanded &&
+    !isMobile &&
+    !assistantCollapsed &&
+    (!isNarrowWorkbench || assistantOverlayOpen);
   const filesPanelVisible = explorerVisible || assistantVisible;
   const assistantIsOverlay = filesPanelVisible && isNarrowWorkbench;
-  const stackedHorizontally = filesPanelLayout === 'horizontal'
-    && explorerVisible
-    && assistantVisible
-    && !assistantIsOverlay;
+  const stackedHorizontally =
+    filesPanelLayout === "horizontal" &&
+    explorerVisible &&
+    assistantVisible &&
+    !assistantIsOverlay;
 
   const toggleExplorer = () => {
     if (isNarrowWorkbench && !assistantOverlayOpen && !explorerCollapsed) {
@@ -967,13 +1138,13 @@ function SplitBody(props: SplitBodyProps) {
     panel: FilesDockPanel,
   ) => {
     dockDragSourceRef.current = panel;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', panel);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", panel);
     const clearPreview = () => {
       dockDragSourceRef.current = null;
       setFilesPanelDropPreview(null);
     };
-    window.addEventListener('dragend', clearPreview, { once: true });
+    window.addEventListener("dragend", clearPreview, { once: true });
   };
 
   const updateDropPreview = (
@@ -982,16 +1153,19 @@ function SplitBody(props: SplitBodyProps) {
     fromHeader: boolean,
   ) => {
     if (!dockDragSourceRef.current) return;
+    if (isExternalFileDrag(event)) return;
     if (dockDragSourceRef.current === target) {
       setFilesPanelDropPreview(null);
       return;
     }
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    const panelEl = event.currentTarget.closest('[data-files-dock-panel]');
-    const rect = (panelEl instanceof HTMLElement ? panelEl : event.currentTarget).getBoundingClientRect();
+    event.dataTransfer.dropEffect = "move";
+    const panelEl = event.currentTarget.closest("[data-files-dock-panel]");
+    const rect = (
+      panelEl instanceof HTMLElement ? panelEl : event.currentTarget
+    ).getBoundingClientRect();
     const edge = resolveFilesDockEdge(event, rect, fromHeader);
-    setFilesPanelDropPreview({ panel: target, edge: edge ?? 'swap' });
+    setFilesPanelDropPreview({ panel: target, edge: edge ?? "swap" });
   };
 
   const handlePanelHeaderDragOver = (
@@ -1013,21 +1187,25 @@ function SplitBody(props: SplitBodyProps) {
     target: FilesDockPanel,
     fromHeader = true,
   ) => {
+    if (isExternalFileDrag(event)) return;
     event.preventDefault();
     event.stopPropagation();
     setFilesPanelDropPreview(null);
-    const source = dockDragSourceRef.current
-      || event.dataTransfer.getData('text/plain');
+    const source =
+      dockDragSourceRef.current || event.dataTransfer.getData("text/plain");
     dockDragSourceRef.current = null;
-    if ((source !== 'explorer' && source !== 'assistant') || source === target) return;
-    const panelEl = event.currentTarget.closest('[data-files-dock-panel]');
-    const rect = (panelEl instanceof HTMLElement ? panelEl : event.currentTarget).getBoundingClientRect();
+    if ((source !== "explorer" && source !== "assistant") || source === target)
+      return;
+    const panelEl = event.currentTarget.closest("[data-files-dock-panel]");
+    const rect = (
+      panelEl instanceof HTMLElement ? panelEl : event.currentTarget
+    ).getBoundingClientRect();
     const edge = resolveFilesDockEdge(event, rect, fromHeader);
     if (!edge) {
-      setFilesPanelLayout('vertical');
-      setFilesPanelOrder((order) => (
-        order === 'explorer-first' ? 'assistant-first' : 'explorer-first'
-      ));
+      setFilesPanelLayout("vertical");
+      setFilesPanelOrder((order) =>
+        order === "explorer-first" ? "assistant-first" : "explorer-first",
+      );
       return;
     }
     const next = dockArrangementFromDrop(source, edge);
@@ -1043,9 +1221,7 @@ function SplitBody(props: SplitBodyProps) {
       {/* Legacy full-screen surfaces (Shell, Git, Tasks, plugin tabs). */}
       {showFullScreenTool && (
         <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-          <Suspense fallback={<TabSkeleton />}>
-            {renderTool()}
-          </Suspense>
+          <Suspense fallback={<TabSkeleton />}>{renderTool()}</Suspense>
         </div>
       )}
 
@@ -1054,7 +1230,7 @@ function SplitBody(props: SplitBodyProps) {
         <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-neutral-950">
           <Suspense fallback={<TabSkeleton />}>
             <FilesV2
-              key={selectedProject?.name ?? ''}
+              key={selectedProject?.name ?? ""}
               selectedProject={selectedProject}
               onFileOpen={handleFileOpen}
               activeFilePath={activeFilePath}
@@ -1077,10 +1253,10 @@ function SplitBody(props: SplitBodyProps) {
                 <FileText className="h-5 w-5" strokeWidth={1.6} />
               </div>
               <p className="text-[14px] font-medium text-neutral-700 dark:text-neutral-300">
-                {t('filesWorkbench.openFileTitle')}
+                {t("filesWorkbench.openFileTitle")}
               </p>
               <p className="mt-1 max-w-64 text-[12px] leading-5 text-neutral-400 dark:text-neutral-500">
-                {t('filesWorkbench.openFileDescription')}
+                {t("filesWorkbench.openFileDescription")}
               </p>
             </div>
           )}
@@ -1092,13 +1268,18 @@ function SplitBody(props: SplitBodyProps) {
         ref={filesSidePanelRef}
         key="agent-surface"
         className={cn(
-          'flex min-h-0 min-w-0 bg-white dark:bg-neutral-950',
-          stackedHorizontally ? 'flex-row' : 'flex-col',
-          !showChat && 'invisible absolute h-0 w-0 overflow-hidden',
-          showChat && !isFiles && 'flex-1',
-          filesPanelVisible && !assistantIsOverlay && 'flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800',
-          assistantIsOverlay && 'absolute inset-y-0 right-[68px] z-40 border-l border-neutral-200 shadow-2xl dark:border-neutral-800',
-          isFiles && !filesPanelVisible && 'invisible absolute h-0 w-0 overflow-hidden',
+          "flex min-h-0 min-w-0 bg-white dark:bg-neutral-950",
+          stackedHorizontally ? "flex-row" : "flex-col",
+          !showChat && "invisible absolute h-0 w-0 overflow-hidden",
+          showChat && !isFiles && "flex-1",
+          filesPanelVisible &&
+            !assistantIsOverlay &&
+            "flex-shrink-0 border-l border-neutral-200 dark:border-neutral-800",
+          assistantIsOverlay &&
+            "absolute inset-y-0 right-[40px] z-40 border-l border-neutral-200 shadow-2xl dark:border-neutral-800",
+          isFiles &&
+            !filesPanelVisible &&
+            "invisible absolute h-0 w-0 overflow-hidden",
         )}
         style={filesPanelVisible ? { width: filesAssistantWidth } : undefined}
         aria-hidden={!showChat || (isFiles && !filesPanelVisible)}
@@ -1107,59 +1288,72 @@ function SplitBody(props: SplitBodyProps) {
           <div
             data-files-dock-panel="explorer"
             className={cn(
-              'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
-              assistantVisible ? 'shrink-0' : 'flex-1',
+              "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
+              assistantVisible ? "shrink-0" : "flex-1",
             )}
             style={{
-              order: filesPanelOrder === 'explorer-first' ? 0 : 2,
+              order: filesPanelOrder === "explorer-first" ? 0 : 2,
               ...(assistantVisible
                 ? stackedHorizontally
                   ? {
-                    width: `calc(${filesPanelSplitRatio * 100}% - ${
-                      FILES_PANEL_SPLITTER_WIDTH * filesPanelSplitRatio
-                    }px)`,
-                    minWidth: FILES_PANEL_SECTION_MIN_WIDTH,
-                    height: '100%',
-                  }
+                      width: `calc(${filesPanelSplitRatio * 100}% - ${
+                        FILES_PANEL_SPLITTER_WIDTH * filesPanelSplitRatio
+                      }px)`,
+                      minWidth: FILES_PANEL_SECTION_MIN_WIDTH,
+                      height: "100%",
+                    }
                   : {
-                    height: `calc(${filesPanelSplitRatio * 100}% - ${
-                      FILES_PANEL_SPLITTER_HEIGHT * filesPanelSplitRatio
-                    }px)`,
-                    minHeight: FILES_PANEL_SECTION_MIN_HEIGHT,
-                  }
+                      height: `calc(${filesPanelSplitRatio * 100}% - ${
+                        FILES_PANEL_SPLITTER_HEIGHT * filesPanelSplitRatio
+                      }px)`,
+                      minHeight: FILES_PANEL_SECTION_MIN_HEIGHT,
+                    }
                 : {}),
             }}
-            onDragOverCapture={assistantVisible
-              ? (event) => handlePanelBodyDragOver(event, 'explorer')
-              : undefined}
-            onDrop={assistantVisible
-              ? (event) => handlePanelHeaderDrop(event, 'explorer', false)
-              : undefined}
+            onDragOverCapture={
+              assistantVisible
+                ? (event) => handlePanelBodyDragOver(event, "explorer")
+                : undefined
+            }
+            onDrop={
+              assistantVisible
+                ? (event) => handlePanelHeaderDrop(event, "explorer", false)
+                : undefined
+            }
           >
-            {filesPanelDropPreview?.panel === 'explorer' ? (
+            {filesPanelDropPreview?.panel === "explorer" ? (
               <span
                 aria-hidden="true"
-                className={cn('files-dock-drop-preview', filesPanelDropPreview.edge)}
+                className={cn(
+                  "files-dock-drop-preview",
+                  filesPanelDropPreview.edge,
+                )}
               />
             ) : null}
             <Suspense fallback={<TabSkeleton />}>
               <FilesV2
-                key={selectedProject?.name ?? ''}
+                key={selectedProject?.name ?? ""}
                 selectedProject={selectedProject}
                 onFileOpen={handleFileOpen}
                 activeFilePath={activeFilePath}
                 onFileRename={onFileRename}
                 onFileDelete={onFileDelete}
                 canAddToChat={!isReadOnlySession(selectedSession)}
-                onHeaderDragStart={assistantVisible
-                  ? (event) => handlePanelHeaderDragStart(event, 'explorer')
-                  : undefined}
-                onHeaderDragOver={assistantVisible
-                  ? (event) => handlePanelHeaderDragOver(event, 'explorer')
-                  : undefined}
-                onHeaderDrop={assistantVisible
-                  ? (event) => handlePanelHeaderDrop(event, 'explorer')
-                  : undefined}
+                onHeaderDragStart={
+                  assistantVisible
+                    ? (event) => handlePanelHeaderDragStart(event, "explorer")
+                    : undefined
+                }
+                onHeaderDragOver={
+                  assistantVisible
+                    ? (event) => handlePanelHeaderDragOver(event, "explorer")
+                    : undefined
+                }
+                onHeaderDrop={
+                  assistantVisible
+                    ? (event) => handlePanelHeaderDrop(event, "explorer")
+                    : undefined
+                }
               />
             </Suspense>
           </div>
@@ -1168,14 +1362,16 @@ function SplitBody(props: SplitBodyProps) {
         {isFiles && explorerVisible && assistantVisible ? (
           <div
             role="separator"
-            aria-orientation={stackedHorizontally ? 'vertical' : 'horizontal'}
-            aria-label={stackedHorizontally
-              ? t('filesWorkbench.resizeHorizontalPanels', {
-                defaultValue: 'Resize left and right panels',
-              })
-              : t('filesWorkbench.resizeVerticalPanels', {
-                defaultValue: 'Resize upper and lower panels',
-              })}
+            aria-orientation={stackedHorizontally ? "vertical" : "horizontal"}
+            aria-label={
+              stackedHorizontally
+                ? t("filesWorkbench.resizeHorizontalPanels", {
+                    defaultValue: "Resize left and right panels",
+                  })
+                : t("filesWorkbench.resizeVerticalPanels", {
+                    defaultValue: "Resize upper and lower panels",
+                  })
+            }
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(filesPanelSplitRatio * 100)}
@@ -1186,138 +1382,160 @@ function SplitBody(props: SplitBodyProps) {
             }}
             onKeyDown={(event) => {
               const shrinkExplorer = stackedHorizontally
-                ? event.key === 'ArrowLeft'
-                : event.key === 'ArrowUp';
+                ? event.key === "ArrowLeft"
+                : event.key === "ArrowUp";
               const growExplorer = stackedHorizontally
-                ? event.key === 'ArrowRight'
-                : event.key === 'ArrowDown';
+                ? event.key === "ArrowRight"
+                : event.key === "ArrowDown";
               if (shrinkExplorer) {
                 event.preventDefault();
-                setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
-                  ratio + (filesPanelOrder === 'explorer-first' ? -0.05 : 0.05),
-                ));
+                setFilesPanelSplitRatio((ratio) =>
+                  clampFilesPanelSplitRatio(
+                    ratio +
+                      (filesPanelOrder === "explorer-first" ? -0.05 : 0.05),
+                  ),
+                );
               } else if (growExplorer) {
                 event.preventDefault();
-                setFilesPanelSplitRatio((ratio) => clampFilesPanelSplitRatio(
-                  ratio + (filesPanelOrder === 'explorer-first' ? 0.05 : -0.05),
-                ));
-              } else if (event.key === 'Home') {
+                setFilesPanelSplitRatio((ratio) =>
+                  clampFilesPanelSplitRatio(
+                    ratio +
+                      (filesPanelOrder === "explorer-first" ? 0.05 : -0.05),
+                  ),
+                );
+              } else if (event.key === "Home") {
                 event.preventDefault();
                 setFilesPanelSplitRatio(clampFilesPanelSplitRatio(0));
-              } else if (event.key === 'End') {
+              } else if (event.key === "End") {
                 event.preventDefault();
                 setFilesPanelSplitRatio(clampFilesPanelSplitRatio(1));
               }
             }}
             className={cn(
-              'panel-splitter',
-              stackedHorizontally ? 'vertical' : 'horizontal',
-              filesPanelSplitResizing && 'active',
+              "panel-splitter",
+              stackedHorizontally ? "vertical" : "horizontal",
+              filesPanelSplitResizing && "active",
             )}
             style={{ order: 1 }}
-          >
-            <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
-              <circle cx="12" cy="9" r="1" />
-              <circle cx="19" cy="9" r="1" />
-              <circle cx="5" cy="9" r="1" />
-              <circle cx="12" cy="15" r="1" />
-              <circle cx="19" cy="15" r="1" />
-              <circle cx="5" cy="15" r="1" />
-            </svg>
-          </div>
+          />
         ) : null}
 
         <div
           data-files-dock-panel="assistant"
           className={cn(
-            'relative flex min-h-0 min-w-0 flex-col',
-            !isFiles && 'flex-1',
-            isFiles && assistantVisible && 'flex-1 overflow-x-hidden',
-            isFiles && explorerVisible && assistantVisible && !stackedHorizontally && 'min-h-[330px]',
-            isFiles && explorerVisible && assistantVisible && stackedHorizontally && 'min-w-[220px]',
-            isFiles && !assistantVisible && 'invisible absolute h-0 w-0 overflow-hidden',
+            "relative flex min-h-0 min-w-0 flex-col",
+            !isFiles && "flex-1",
+            isFiles && assistantVisible && "flex-1 overflow-x-hidden",
+            isFiles &&
+              explorerVisible &&
+              assistantVisible &&
+              !stackedHorizontally &&
+              "min-h-[330px]",
+            isFiles &&
+              explorerVisible &&
+              assistantVisible &&
+              stackedHorizontally &&
+              "min-w-[220px]",
+            isFiles &&
+              !assistantVisible &&
+              "invisible absolute h-0 w-0 overflow-hidden",
           )}
-          style={{ order: filesPanelOrder === 'explorer-first' ? 2 : 0 }}
-          onDragOverCapture={isFiles && explorerVisible && assistantVisible
-            ? (event) => handlePanelBodyDragOver(event, 'assistant')
-            : undefined}
-          onDrop={isFiles && explorerVisible && assistantVisible
-            ? (event) => handlePanelHeaderDrop(event, 'assistant', false)
-            : undefined}
+          style={{ order: filesPanelOrder === "explorer-first" ? 2 : 0 }}
+          onDragOverCapture={
+            isFiles && explorerVisible && assistantVisible
+              ? (event) => handlePanelBodyDragOver(event, "assistant")
+              : undefined
+          }
+          onDrop={
+            isFiles && explorerVisible && assistantVisible
+              ? (event) => handlePanelHeaderDrop(event, "assistant", false)
+              : undefined
+          }
         >
-        {filesPanelDropPreview?.panel === 'assistant' ? (
-          <span
-            aria-hidden="true"
-            className={cn('files-dock-drop-preview', filesPanelDropPreview.edge)}
-          />
-        ) : null}
-        {isFiles && assistantVisible ? (
-          <header
-            className="dock-panel-header chat"
-            draggable={explorerVisible}
-            onDragStart={explorerVisible
-              ? (event) => handlePanelHeaderDragStart(event, 'assistant')
-              : undefined}
-            onDragOver={explorerVisible
-              ? (event) => handlePanelHeaderDragOver(event, 'assistant')
-              : undefined}
-            onDrop={explorerVisible
-              ? (event) => handlePanelHeaderDrop(event, 'assistant')
-              : undefined}
-          >
-            {selectedProject ? (
-              <ConversationSwitcher
-                project={selectedProject}
-                selectedSession={selectedSession}
-                processingSessions={processingSessions}
-                unreadSessionIds={unreadSessionIds}
-                onSelectSession={(session) => {
-                  if (onSelectSession) {
-                    onSelectSession(selectedProject, session.id, session, {
+          {filesPanelDropPreview?.panel === "assistant" ? (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "files-dock-drop-preview",
+                filesPanelDropPreview.edge,
+              )}
+            />
+          ) : null}
+          {isFiles && assistantVisible ? (
+            <header
+              className="dock-panel-header chat"
+              draggable={explorerVisible}
+              onDragStart={
+                explorerVisible
+                  ? (event) => handlePanelHeaderDragStart(event, "assistant")
+                  : undefined
+              }
+              onDragOver={
+                explorerVisible
+                  ? (event) => handlePanelHeaderDragOver(event, "assistant")
+                  : undefined
+              }
+              onDrop={
+                explorerVisible
+                  ? (event) => handlePanelHeaderDrop(event, "assistant")
+                  : undefined
+              }
+            >
+              {selectedProject ? (
+                <ConversationSwitcher
+                  project={selectedProject}
+                  selectedSession={selectedSession}
+                  processingSessions={processingSessions}
+                  unreadSessionIds={unreadSessionIds}
+                  onSelectSession={(session) => {
+                    if (onSelectSession) {
+                      onSelectSession(selectedProject, session.id, session, {
+                        preserveActiveTab: true,
+                      });
+                      return;
+                    }
+                    onNavigateToSession(session.id);
+                  }}
+                  onNewSession={() =>
+                    onStartNewSession(selectedProject, {
                       preserveActiveTab: true,
-                    });
-                    return;
+                    })
                   }
-                  onNavigateToSession(session.id);
-                }}
-                onNewSession={() => onStartNewSession(selectedProject, {
-                  preserveActiveTab: true,
-                })}
-              />
-            ) : null}
-          </header>
-        ) : null}
-        <ErrorBoundary showDetails>
-          <ChatInterfaceV2
-            selectedProject={selectedProject}
-            selectedSession={selectedSession}
-            ws={ws}
-            sendMessage={sendMessage}
-            latestMessage={latestMessage}
-            onFileOpen={handleFileOpen}
-            onInputFocusChange={onInputFocusChange}
-            onSessionActive={onSessionActive}
-            onSessionInactive={onSessionInactive}
-            onSessionProcessing={onSessionProcessing}
-            onSessionNotProcessing={onSessionNotProcessing}
-            onSessionActivityBump={onSessionActivityBump}
-            processingSessions={processingSessions}
-            onReplaceTemporarySession={onReplaceTemporarySession}
-            onNavigateToSession={onNavigateToSession}
-            onShowSettings={onShowSettings}
-            autoExpandTools={autoExpandTools}
-            showRawParameters={showRawParameters}
-            showThinking={showThinking}
-            inlineThinking={inlineThinking}
-            autoScrollToBottom={autoScrollToBottom}
-            sendByCtrlEnter={sendByCtrlEnter}
-            externalMessageUpdate={externalMessageUpdate}
-            onShowAllTasks={tasksEnabled ? () => setActiveTab('tasks') : null}
-            forceWelcome={false}
-            onExitWelcome={isFiles ? undefined : () => setActiveTab('chat')}
-            compact={isFiles}
-          />
-        </ErrorBoundary>
+                />
+              ) : null}
+            </header>
+          ) : null}
+          <ErrorBoundary showDetails>
+            <ChatInterfaceV2
+              selectedProject={selectedProject}
+              selectedSession={selectedSession}
+              ws={ws}
+              sendMessage={sendMessage}
+              latestMessage={latestMessage}
+              onFileOpen={handleFileOpen}
+              onInputFocusChange={onInputFocusChange}
+              onSessionActive={onSessionActive}
+              onSessionInactive={onSessionInactive}
+              onSessionProcessing={onSessionProcessing}
+              onSessionNotProcessing={onSessionNotProcessing}
+              onSessionActivityBump={onSessionActivityBump}
+              processingSessions={processingSessions}
+              onReplaceTemporarySession={onReplaceTemporarySession}
+              onNavigateToSession={onNavigateToSession}
+              onShowSettings={onShowSettings}
+              autoExpandTools={autoExpandTools}
+              showRawParameters={showRawParameters}
+              showThinking={showThinking}
+              inlineThinking={inlineThinking}
+              autoScrollToBottom={autoScrollToBottom}
+              sendByCtrlEnter={sendByCtrlEnter}
+              externalMessageUpdate={externalMessageUpdate}
+              onShowAllTasks={tasksEnabled ? () => setActiveTab("tasks") : null}
+              forceWelcome={false}
+              onExitWelcome={isFiles ? undefined : () => setActiveTab("chat")}
+              compact={isFiles}
+            />
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -1329,48 +1547,53 @@ function SplitBody(props: SplitBodyProps) {
           minWidth={TOOL_PANEL_MIN_WIDTH}
           maxWidth={toolPanelMaxWidth}
           isMobile={isMobile}
-          closeLabel={t('dashboardSwitcher.closePanel', {
-            defaultValue: 'Close {{tool}} dashboard',
+          closeLabel={t("dashboardSwitcher.closePanel", {
+            defaultValue: "Close {{tool}} dashboard",
             tool: t(DASHBOARD_PANEL_META[dashboardPanelTab].labelKey),
           })}
-          resizeLabel={t('dashboardSwitcher.resizePanel', {
-            defaultValue: 'Resize {{tool}} dashboard',
+          resizeLabel={t("dashboardSwitcher.resizePanel", {
+            defaultValue: "Resize {{tool}} dashboard",
             tool: t(DASHBOARD_PANEL_META[dashboardPanelTab].labelKey),
           })}
-          onClose={() => setActiveTab('chat')}
+          onClose={() => setActiveTab("chat")}
           onResizeStart={handleToolPanelResizeStart}
           onResizeBy={handleToolPanelResizeBy}
         >
-          <Suspense fallback={<TabSkeleton />}>
-            {renderTool()}
-          </Suspense>
+          <Suspense fallback={<TabSkeleton />}>{renderTool()}</Suspense>
         </ToolSidePanel>
       ) : null}
 
       {filesPanelVisible && !assistantIsOverlay ? (
         <div
-          onMouseDown={(event) => handleFilesResizeStart('assistant', event)}
+          onMouseDown={(event) => handleFilesResizeStart("assistant", event)}
           onKeyDown={(event) => {
-            if (event.key === 'ArrowLeft') {
+            if (event.key === "ArrowLeft") {
               event.preventDefault();
               handleFilesAssistantResizeBy(16);
-            } else if (event.key === 'ArrowRight') {
+            } else if (event.key === "ArrowRight") {
               event.preventDefault();
               handleFilesAssistantResizeBy(-16);
-            } else if (event.key === 'Home') {
+            } else if (event.key === "Home") {
               event.preventDefault();
-              setFilesAssistantWidth(clampFilesAssistantWidth(FILES_ASSISTANT_MIN_WIDTH));
-            } else if (event.key === 'End') {
+              setFilesAssistantWidth(
+                clampFilesAssistantWidth(FILES_ASSISTANT_MIN_WIDTH),
+              );
+            } else if (event.key === "End") {
               event.preventDefault();
-              setFilesAssistantWidth(clampFilesAssistantWidth(FILES_ASSISTANT_MAX_WIDTH));
+              setFilesAssistantWidth(
+                clampFilesAssistantWidth(FILES_ASSISTANT_MAX_WIDTH),
+              );
             }
           }}
-          className={cn('files-panel-resizer', filesResizeTarget === 'assistant' && 'active')}
+          className={cn(
+            "files-panel-resizer",
+            filesResizeTarget === "assistant" && "active",
+          )}
           style={{ right: filesAssistantWidth + FILES_PANEL_RAIL_WIDTH }}
-          title={t('filesWorkbench.resizeAssistant')}
+          title={t("filesWorkbench.resizeAssistant")}
           role="separator"
           aria-orientation="vertical"
-          aria-label={t('filesWorkbench.resizeAssistant')}
+          aria-label={t("filesWorkbench.resizeAssistant")}
           aria-valuemin={FILES_ASSISTANT_MIN_WIDTH}
           aria-valuemax={FILES_ASSISTANT_MAX_WIDTH}
           aria-valuenow={Math.round(filesAssistantWidth)}
@@ -1382,37 +1605,39 @@ function SplitBody(props: SplitBodyProps) {
 
       {isFiles && showChat && !editorExpanded && !isMobile ? (
         <nav
-          className="right-rail flex h-full w-[68px] flex-shrink-0 flex-col items-center gap-2 border-l border-neutral-200 bg-[#f7f5ff] px-1.5 py-3 dark:border-neutral-800"
-          aria-label={t('filesWorkbench.panelControls', { defaultValue: 'Workbench panels' })}
+          className="right-rail flex h-full w-[40px] flex-shrink-0 flex-col items-center gap-2 border-l border-neutral-200 bg-[#f7f5ff] px-1.5 py-3 dark:border-neutral-800"
+          aria-label={t("filesWorkbench.panelControls", {
+            defaultValue: "Workbench panels",
+          })}
         >
           <button
             type="button"
-            aria-label={t('filesWorkbench.smartChat', { defaultValue: 'Smart Chat' })}
-            aria-pressed={!assistantCollapsed}
-            onClick={toggleAssistant}
-            className={cn(!assistantCollapsed && 'active')}
+            aria-label={t("filesWorkbench.fileDirectory", {
+              defaultValue: "Files",
+            })}
+            aria-pressed={!explorerCollapsed}
+            onClick={toggleExplorer}
+            className={cn(!explorerCollapsed && "active")}
           >
-            <svg aria-hidden="true" className="icon" fill="none" height="19" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="19">
-              <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
-            </svg>
-            <span>智能<br />对话</span>
+            <span>
+              {t("filesWorkbench.fileDirectory", { defaultValue: "Files" })}
+            </span>
           </button>
           <button
             type="button"
-            aria-label={t('filesWorkbench.fileDirectory', { defaultValue: 'Files' })}
-            aria-pressed={!explorerCollapsed}
-            onClick={toggleExplorer}
-            className={cn(!explorerCollapsed && 'active')}
+            aria-label={t("filesWorkbench.smartChat", {
+              defaultValue: "Smart Chat",
+            })}
+            aria-pressed={!assistantCollapsed}
+            onClick={toggleAssistant}
+            className={cn(!assistantCollapsed && "active")}
           >
-            <svg aria-hidden="true" className="icon" fill="none" height="19" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="19">
-              <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-            </svg>
-            <span>文件<br />目录</span>
+            <span>
+              {t("filesWorkbench.smartChat", { defaultValue: "Smart Chat" })}
+            </span>
           </button>
         </nav>
       ) : null}
-
     </div>
   );
 }
