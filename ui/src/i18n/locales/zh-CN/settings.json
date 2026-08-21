@@ -136,7 +136,8 @@
       "appearance": "外观",
       "toolDisplay": "工具显示",
       "viewOptions": "视图选项",
-      "inputSettings": "输入设置"
+      "inputSettings": "输入设置",
+      "attachmentUpload": "附件上传"
     },
     "darkMode": "深色模式",
     "autoExpandTools": "自动展开工具",
@@ -146,6 +147,9 @@
     "autoScrollToBottom": "自动滚动到底部",
     "sendByCtrlEnter": "使用 Ctrl+Enter 发送",
     "sendByCtrlEnterDescription": "启用后，按 Ctrl+Enter 发送消息，而不是仅按 Enter。这对于使用输入法的用户可以避免意外发送。",
+    "attachmentMaxFileSize": "单个附件最大大小（MB）",
+    "attachmentMaxFileSizeDescription": "全局生效。修改后，所有聊天附件都会按此大小校验。",
+    "attachmentConfigUnavailable": "配置文件无效，暂时无法修改附件大小限制。",
     "dragHandle": {
       "dragging": "正在拖拽手柄",
       "closePanel": "关闭设置面板",

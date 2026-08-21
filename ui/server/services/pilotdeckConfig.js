@@ -28,6 +28,10 @@ const CONFIG_VERSION = 1;
 const PILOT_HOME_DIR = process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
 const DEFAULT_CONFIG_PATH = path.join(PILOT_HOME_DIR, 'pilotdeck.yaml');
 const MASK = '********';
+export const DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB = 20;
+export const MAX_CHAT_ATTACHMENTS = 10;
+const BYTES_PER_MEGABYTE = 1024 * 1024;
+const MAX_SAFE_CHAT_ATTACHMENT_SIZE_MB = Math.floor(Number.MAX_SAFE_INTEGER / BYTES_PER_MEGABYTE);
 
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|auth[_-]?token|access[_-]?token|bot[_-]?token|app[_-]?token|encoding[_-]?aes[_-]?key)$/i;
 const SECRET_EXACT_KEYS = new Set(['key', 'apiKey', 'api_key', 'authToken', 'accessToken']);
@@ -42,6 +46,25 @@ function isRecord(value) {
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function isValidChatAttachmentSizeMB(value) {
+  return Number.isSafeInteger(value)
+    && value > 0
+    && value <= MAX_SAFE_CHAT_ATTACHMENT_SIZE_MB;
+}
+
+export function getChatAttachmentLimits(config) {
+  const configuredSizeMB = config?.webui?.attachments?.maxFileSizeMB;
+  const maxFileSizeMB = isValidChatAttachmentSizeMB(configuredSizeMB)
+    ? configuredSizeMB
+    : DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB;
+
+  return {
+    maxFileSizeMB,
+    maxFileSizeBytes: maxFileSizeMB * BYTES_PER_MEGABYTE,
+    maxAttachments: MAX_CHAT_ATTACHMENTS,
+  };
 }
 
 function deepMerge(base, override) {
@@ -94,6 +117,9 @@ export function buildDefaultPilotDeckConfig() {
       officePreview: {
         service: 'builtin',
         binaryPath: '',
+      },
+      attachments: {
+        maxFileSizeMB: DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB,
       },
     },
     telemetry: {
@@ -288,6 +314,15 @@ function validateToolsConfig(config, errors, warnings) {
   }
 }
 
+function validateChatAttachmentConfig(config, errors) {
+  const maxFileSizeMB = config.webui?.attachments?.maxFileSizeMB;
+  if (!isValidChatAttachmentSizeMB(maxFileSizeMB)) {
+    errors.push(
+      'webui.attachments.maxFileSizeMB must be a positive safe integer that can be converted to bytes.',
+    );
+  }
+}
+
 export function validatePilotDeckConfig(config) {
   const normalized = normalizePilotDeckConfig(config);
   const errors = [];
@@ -318,6 +353,7 @@ export function validatePilotDeckConfig(config) {
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
   validateToolsConfig(normalized, errors, warnings);
+  validateChatAttachmentConfig(normalized, errors);
 
   if (normalized.webui?.runtime?.contextWindow !== undefined) {
     warnings.push(

@@ -101,6 +101,7 @@ import {
     getSpreadsheetSheetPreviewPdf,
 } from './services/spreadsheetPreview.js';
 import { startPilotDeckConfigWatcher, stopPilotDeckConfigWatcher } from './services/pilotdeckConfigWatcher.js';
+import { getChatAttachmentLimits, readPilotDeckConfigFile } from './services/pilotdeckConfig.js';
 import { getAlwaysOnDashboardEvents } from './services/always-on-events.js';
 import agentRoutes from './routes/agent.js';
 import updateRoutes from './routes/update.js';
@@ -3008,6 +3009,12 @@ app.post('/api/projects/:projectName/upload-attachments', authenticateToken, asy
     let multerUpload;
     try {
         const multer = (await import('multer')).default;
+        let attachmentLimits = getChatAttachmentLimits();
+        try {
+            attachmentLimits = getChatAttachmentLimits(readPilotDeckConfigFile().config);
+        } catch (error) {
+            console.warn('Failed to read attachment upload limits, using defaults:', error);
+        }
         const uploadRoot = path.join(os.tmpdir(), 'pilotdeck-chat-attachments', String(req.user.id));
         const storage = multer.diskStorage({
             destination: async (_req, _file, cb) => {
@@ -3028,10 +3035,10 @@ app.post('/api/projects/:projectName/upload-attachments', authenticateToken, asy
         multerUpload = multer({
             storage,
             limits: {
-                fileSize: 20 * 1024 * 1024,
-                files: 10,
+                fileSize: attachmentLimits.maxFileSizeBytes,
+                files: attachmentLimits.maxAttachments,
             },
-        }).array('attachments', 10);
+        }).array('attachments', attachmentLimits.maxAttachments);
     } catch (error) {
         console.error('Error configuring attachment upload:', error);
         return res.status(500).json({ error: 'Internal server error' });

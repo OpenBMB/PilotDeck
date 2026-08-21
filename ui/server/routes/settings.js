@@ -6,8 +6,23 @@ import {
   readPermissionSettings,
   writePermissionSettings,
 } from '../services/permissionSettings.js';
+import { getChatAttachmentLimits, readPilotDeckConfigFile } from '../services/pilotdeckConfig.js';
 
 const router = express.Router();
+
+function readAttachmentUploadLimits() {
+  try {
+    return getChatAttachmentLimits(readPilotDeckConfigFile().config);
+  } catch (error) {
+    console.warn('Failed to read attachment upload limits, using defaults:', error);
+    return getChatAttachmentLimits();
+  }
+}
+
+// Shared deployment setting. This intentionally has no user-specific data.
+router.get('/attachment-upload-limits', (_req, res) => {
+  res.json(readAttachmentUploadLimits());
+});
 
 // ===============================
 // Tool Permission Settings

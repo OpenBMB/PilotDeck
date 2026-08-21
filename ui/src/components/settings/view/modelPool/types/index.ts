@@ -120,6 +120,9 @@ export type PilotDeckConfig = {
       service?: "builtin" | "libreoffice" | string;
       binaryPath?: string;
     };
+    attachments?: {
+      maxFileSizeMB?: number;
+    };
   };
   customEnv?: Record<string, string>;
   router?: {
