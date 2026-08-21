@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     buildDefaultPilotDeckConfig,
+    DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB,
+    getChatAttachmentLimits,
     readPilotDeckConfigFile,
     sanitizeProviderCredentials,
     validatePilotDeckConfig,
@@ -34,6 +36,16 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(buildDefaultPilotDeckConfig().webui.officePreview).toEqual({
             service: 'builtin',
             binaryPath: '',
+        });
+    });
+
+    it('uses a 20MB chat attachment limit by default', () => {
+        const limits = getChatAttachmentLimits(buildDefaultPilotDeckConfig());
+
+        expect(limits).toEqual({
+            maxFileSizeMB: DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB,
+            maxFileSizeBytes: 20 * 1024 * 1024,
+            maxAttachments: 10,
         });
     });
 
@@ -75,6 +87,32 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(record.parseError).toEqual(expect.any(String));
         expect(record.config.schemaVersion).toBe(1);
         expect(record.config.model.providers).toEqual({});
+    });
+});
+
+describe('chat attachment upload configuration', () => {
+    it('uses a configured positive size limit', () => {
+        expect(getChatAttachmentLimits({
+            webui: { attachments: { maxFileSizeMB: 100 } },
+        })).toMatchObject({
+            maxFileSizeMB: 100,
+            maxFileSizeBytes: 100 * 1024 * 1024,
+            maxAttachments: 10,
+        });
+    });
+
+    it('rejects invalid sizes and falls back to 20MB when read defensively', () => {
+        const validation = validatePilotDeckConfig({
+            webui: { attachments: { maxFileSizeMB: 0 } },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'webui.attachments.maxFileSizeMB must be a positive safe integer that can be converted to bytes.',
+        );
+        expect(getChatAttachmentLimits({
+            webui: { attachments: { maxFileSizeMB: 0 } },
+        }).maxFileSizeMB).toBe(20);
     });
 });
 

@@ -368,10 +368,13 @@ export default function ComposerV2({
 
   const hasDraftContent = input.trim().length > 0 || attachedImages.length > 0 || documentReferences.length > 0;
   const hasUploadingImages = uploadingImages.size > 0;
+  const hasInvalidAttachments = attachedImages.some((file) => imageErrors.has(file.name));
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
-  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
+  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || hasInvalidAttachments;
   const showAbortButton = isLoading && canAbortSession && !hasDraftContent;
-  const sendTitle = isSubmitPending || hasUploadingImages
+  const sendTitle = hasInvalidAttachments
+    ? (t('input.removeInvalidAttachments', { defaultValue: 'Remove attachments that exceed the configured size limit' }) as string)
+    : isSubmitPending || hasUploadingImages
     ? (t('input.sending', { defaultValue: 'Sending...' }) as string)
     : isBusySendConfirmed
       ? (t('input.queuedSendConfirmed', { defaultValue: 'Stopping current turn — sending next message' }) as string)
