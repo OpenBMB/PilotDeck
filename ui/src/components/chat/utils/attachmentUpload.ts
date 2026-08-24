@@ -1,3 +1,4 @@
+import { IS_PLATFORM } from '../../../constants/config';
 import { authenticatedFetch } from '../../../utils/api';
 
 export type AttachmentUploadStatus =
@@ -67,6 +68,74 @@ function uploadError(record: Partial<AttachmentUploadRecord>, fallback: string):
 
 async function readJson(response: Response): Promise<Record<string, any>> {
   return response.json().catch(() => ({}));
+}
+
+function applyAuthHeaders(xhr: XMLHttpRequest): void {
+  const token = localStorage.getItem('auth-token');
+  if (!IS_PLATFORM && token) {
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+  }
+}
+
+function postFormDataWithProgress({
+  url,
+  formData,
+  signal,
+  knownTotalBytes = 0,
+  onProgress,
+}: {
+  url: string;
+  formData: FormData;
+  signal: AbortSignal;
+  knownTotalBytes?: number;
+  onProgress: (percent: number, uploadedBytes: number, totalBytes: number) => void;
+}): Promise<{ ok: boolean; body: Record<string, any> }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    applyAuthHeaders(xhr);
+
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable && event.total > 0 ? event.total : knownTotalBytes;
+      if (total <= 0) return;
+      const rawPercent = Math.round((event.loaded / total) * 10000) / 100;
+      const percent = event.loaded >= total || rawPercent >= 99.5
+        ? 100
+        : Math.min(99, rawPercent);
+      onProgress(percent, event.loaded, total);
+    };
+    // Bytes have left the browser. Do not wait for the server JSON response
+    // (hashing / metadata drain) before showing 100%.
+    xhr.upload.onload = () => {
+      onProgress(100, knownTotalBytes, knownTotalBytes);
+    };
+
+    xhr.onload = () => {
+      const refreshedToken = xhr.getResponseHeader('X-Refreshed-Token');
+      if (refreshedToken) {
+        localStorage.setItem('auth-token', refreshedToken);
+      }
+      let body: Record<string, any> = {};
+      try {
+        body = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        body = {};
+      }
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        body,
+      });
+    };
+    xhr.onerror = () => reject(new Error('Failed to upload attachments'));
+    xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
+
+    if (signal.aborted) {
+      xhr.abort();
+      return;
+    }
+    signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(formData);
+  });
 }
 
 async function readSse(
@@ -154,7 +223,6 @@ export async function uploadAttachmentBatch({
 
   const uploadId = created.uploadId;
   onCreated?.(uploadId);
-  onStatus?.(created as AttachmentUploadRecord);
 
   let eventsTask: Promise<void> | undefined;
   try {
@@ -165,7 +233,16 @@ export async function uploadAttachmentBatch({
       suppressServerErrorToast: true,
     });
     if (eventsResponse.ok) {
-      eventsTask = readSse(eventsResponse, signal, onStatus);
+      eventsTask = readSse(eventsResponse, signal, (record) => {
+        if (
+          record.status === 'completed'
+          || record.status === 'failed'
+          || record.status === 'cancelled'
+          || record.status === 'expired'
+        ) {
+          onStatus?.(record);
+        }
+      });
     }
   } catch (error) {
     if (signal.aborted) throw error;
@@ -176,17 +253,33 @@ export async function uploadAttachmentBatch({
   files.forEach((file, index) => {
     formData.append(`files[${manifest[index].clientFileId}]`, file, file.name);
   });
-  const contentResponse = await fetcher(`/api/uploads/${encodeURIComponent(uploadId)}/content`, {
-    method: 'POST',
-    body: formData,
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const contentResponse = await postFormDataWithProgress({
+    url: `/api/uploads/${encodeURIComponent(uploadId)}/content`,
+    formData,
     signal,
-    suppressServerErrorToast: true,
+    knownTotalBytes: totalBytes,
+    onProgress: (percent, uploadedBytes, uploadedTotal) => {
+      onStatus?.({
+        uploadId,
+        status: 'uploading',
+        uploadedBytes,
+        totalBytes: uploadedTotal || totalBytes,
+        percent,
+      });
+    },
   });
-  const contentResult = await readJson(contentResponse);
   if (!contentResponse.ok) {
-    throw uploadError(contentResult.error || contentResult, 'Failed to upload attachments');
+    throw uploadError(contentResponse.body.error || contentResponse.body, 'Failed to upload attachments');
   }
-  onStatus?.(contentResult as AttachmentUploadRecord);
+  onStatus?.({
+    uploadId,
+    status: 'completed',
+    uploadedBytes: totalBytes,
+    totalBytes,
+    percent: 100,
+    attachments: contentResponse.body.attachments,
+  });
 
   const statusResponse = await fetcher(`/api/uploads/${encodeURIComponent(uploadId)}`, {
     method: 'GET',
@@ -197,10 +290,14 @@ export async function uploadAttachmentBatch({
   if (!statusResponse.ok) {
     throw uploadError(finalRecord, 'Failed to verify upload status');
   }
-  onStatus?.(finalRecord);
+  if (finalRecord.status === 'completed') {
+    onStatus?.({ ...finalRecord, percent: 100, status: 'completed' });
+  } else {
+    onStatus?.(finalRecord);
+  }
 
   if (eventsTask) {
-    await eventsTask.catch((error) => {
+    void eventsTask.catch((error) => {
       if (!signal.aborted) {
         console.warn('Upload progress stream ended unexpectedly.', error);
       }

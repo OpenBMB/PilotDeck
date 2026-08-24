@@ -580,12 +580,14 @@ export default function ComposerV2({
       ),
     [selectedSkills],
   );
-  const hasUploadingImages = uploadingImages.size > 0;
+  const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
   const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
   const showAbortButton = isLoading && canAbortSession && !hasDraftContent;
   const sendTitle =
-    isSubmitPending || hasUploadingImages
+    hasUploadingImages
+      ? (t("input.uploading", { defaultValue: "正在上传..." }) as string)
+      : isSubmitPending
       ? (t("input.sending", { defaultValue: "Sending..." }) as string)
       : isBusySendConfirmed
         ? (t("input.queuedSendConfirmed", {

@@ -58,6 +58,9 @@ const ImageAttachment = ({
     return () => URL.revokeObjectURL(url);
   }, [file, isImage]);
   
+  const isUploadComplete = uploadProgress !== undefined && uploadProgress >= 100 && !error;
+  const showProgressOverlay = uploadProgress !== undefined && uploadProgress < 100 && !error;
+
   return (
     <div className="group relative">
       {isImage ? (
@@ -78,7 +81,7 @@ const ImageAttachment = ({
           </div>
         </div>
       )}
-      {uploadProgress !== undefined && uploadProgress < 100 && !error ? (
+      {showProgressOverlay ? (
         <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b bg-black/55 px-2 pb-1.5 pt-1 text-white">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
             <span>正在上传</span>
@@ -90,6 +93,17 @@ const ImageAttachment = ({
               style={{ width: `${Math.max(0, Math.min(100, uploadProgress))}%` }}
             />
           </div>
+        </div>
+      ) : null}
+      {isUploadComplete ? (
+        <div
+          className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
+          title="上传完毕"
+          aria-label="上传完毕"
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
         </div>
       ) : null}
       {error ? (

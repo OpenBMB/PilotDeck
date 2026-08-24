@@ -148,11 +148,21 @@ type UploadedAttachmentRef = {
   attachmentIds?: string[];
 };
 
-type ActiveAttachmentUpload = {
-  controller: AbortController;
+type AttachmentUploadBatch = {
   files: File[];
+  controller: AbortController;
   uploadId?: string;
   cancelled: boolean;
+  promise: Promise<void>;
+};
+
+type CompletedAttachmentUpload = {
+  uploadId: string;
+  attachmentId: string;
+  name: string;
+  relativePath: string;
+  bytes?: number;
+  mimeType?: string;
 };
 
 type QueuedBusySendSnapshot = {
@@ -183,17 +193,41 @@ export type AttachmentAddResult = {
   droppedCount: number;
 };
 
+function attachmentPathForFile(file: File): string {
+  return file.webkitRelativePath || file.name;
+}
+
+function fileFingerprint(file: File): string {
+  return `${attachmentPathForFile(file)}::${file.size}::${file.lastModified}`;
+}
+
 export function addAttachmentFiles(
   currentFiles: File[],
   incomingFiles: File[],
   maxAttachments = MAX_ATTACHMENTS,
 ): AttachmentAddResult {
-  const mergedFiles = [...currentFiles, ...incomingFiles];
+  const seen = new Set(currentFiles.map(fileFingerprint));
+  const uniqueIncoming = incomingFiles.filter((file) => {
+    const key = fileFingerprint(file);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const mergedFiles = [...currentFiles, ...uniqueIncoming];
 
   return {
     files: mergedFiles.slice(0, maxAttachments),
     droppedCount: Math.max(0, mergedFiles.length - maxAttachments),
   };
+}
+
+function matchUploadedAttachment(
+  file: File,
+  attachments: NonNullable<AttachmentUploadRecord['attachments']>,
+) {
+  const relativePath = attachmentPathForFile(file);
+  return attachments.find((attachment) => attachment.relativePath === relativePath)
+    || attachments.find((attachment) => attachment.name === file.name);
 }
 
 export function useChatComposerState({
@@ -243,6 +277,8 @@ export function useChatComposerState({
     return '';
   });
   const [attachedImages, setAttachedImages] = useState<File[]>([]);
+  const attachedImagesRef = useRef<File[]>([]);
+  attachedImagesRef.current = attachedImages;
   const [documentReferences, setDocumentReferences] = useState<ContentReference[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<ComposerSelectedSkill[]>([]);
   const [uploadingImages, setUploadingImages] = useState<Map<File, number>>(new Map());
@@ -264,7 +300,11 @@ export function useChatComposerState({
   const queuedBusySendConfirmedRef = useRef(false);
   const queuedBusySendSnapshotRef = useRef<QueuedBusySendSnapshot | null>(null);
   const pendingSessionGrantResolversRef = useRef(new Map<string, (result: PermissionGrantResult) => void>());
-  const activeAttachmentUploadRef = useRef<ActiveAttachmentUpload | null>(null);
+  const activeAttachmentUploadsRef = useRef<AttachmentUploadBatch[]>([]);
+  const completedAttachmentUploadsRef = useRef<Map<File, CompletedAttachmentUpload>>(new Map());
+  const startedUploadKeysRef = useRef(new Set<string>());
+  const handleImageFilesRef = useRef<(files: File[]) => void>(() => undefined);
+  const lastDropKeyRef = useRef({ key: '', at: 0 });
 
   const cancelBusySendQueue = useCallback(() => {
     queuedBusySendRef.current = false;
@@ -278,12 +318,25 @@ export function useChatComposerState({
     files: File[],
     record: Pick<AttachmentUploadRecord, 'percent' | 'status' | 'errorMessage'>,
   ) => {
-    const percent = record.status === 'completed'
+    if (record.status === 'created') return;
+    if (record.status === 'completed') {
+      setUploadingImages((previous) => {
+        const next = new Map(previous);
+        files.forEach((file) => next.set(file, 100));
+        return next;
+      });
+      return;
+    }
+    const rawPercent = Number(record.percent);
+    const nextPercent = rawPercent >= 100
       ? 100
-      : Math.max(0, Math.min(100, Number(record.percent) || 0));
+      : Math.max(0, Math.min(99, Number.isFinite(rawPercent) ? rawPercent : 0));
     setUploadingImages((previous) => {
       const next = new Map(previous);
-      files.forEach((file) => next.set(file, percent));
+      files.forEach((file) => {
+        const current = next.get(file);
+        next.set(file, current === undefined ? nextPercent : Math.max(current, nextPercent));
+      });
       return next;
     });
     if (record.status === 'failed' || record.status === 'expired' || record.status === 'cancelled') {
@@ -299,26 +352,148 @@ export function useChatComposerState({
   }, []);
 
   const cancelActiveAttachmentUpload = useCallback(async () => {
-    const active = activeAttachmentUploadRef.current;
-    if (!active || active.cancelled) return;
-    active.cancelled = true;
-    if (active.uploadId) {
-      await cancelAttachmentUpload(active.uploadId).catch((error) => {
-        console.warn('Failed to cancel attachment upload cleanly:', error);
-      });
-    }
-    active.controller.abort();
+    const batches = activeAttachmentUploadsRef.current.splice(0);
+    if (batches.length === 0) return;
+    await Promise.all(batches.map(async (batch) => {
+      if (batch.cancelled) return;
+      batch.cancelled = true;
+      if (batch.uploadId) {
+        await cancelAttachmentUpload(batch.uploadId).catch((error) => {
+          console.warn('Failed to cancel attachment upload cleanly:', error);
+        });
+      }
+      batch.controller.abort();
+    }));
+    const files = batches.flatMap((batch) => batch.files);
+    files.forEach((file) => startedUploadKeysRef.current.delete(fileFingerprint(file)));
     setUploadingImages((previous) => {
       const next = new Map(previous);
-      active.files.forEach((file) => next.delete(file));
+      files.forEach((file) => next.delete(file));
       return next;
     });
     setImageErrors((previous) => {
       const next = new Map(previous);
-      active.files.forEach((file) => next.set(file, 'Upload cancelled'));
+      files.forEach((file) => next.set(file, 'Upload cancelled'));
       return next;
     });
   }, []);
+
+  const startAttachmentUploads = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+
+    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
+    if (!projectKey) {
+      setImageErrors((previous) => {
+        const next = new Map(previous);
+        files.forEach((file) => next.set(file, 'Select a project before uploading files'));
+        return next;
+      });
+      return;
+    }
+
+    const filesToUpload = files.filter((file) => {
+      const key = fileFingerprint(file);
+      if (startedUploadKeysRef.current.has(key)) return false;
+      if (completedAttachmentUploadsRef.current.has(file)) return false;
+      return !activeAttachmentUploadsRef.current.some((batch) => (
+        !batch.cancelled && batch.files.includes(file)
+      ));
+    });
+    if (filesToUpload.length === 0) return;
+    filesToUpload.forEach((file) => startedUploadKeysRef.current.add(fileFingerprint(file)));
+
+    const controller = new AbortController();
+    const batch: AttachmentUploadBatch = {
+      files: filesToUpload,
+      controller,
+      cancelled: false,
+      promise: Promise.resolve(),
+    };
+    activeAttachmentUploadsRef.current.push(batch);
+
+    setUploadingImages((previous) => {
+      const next = new Map(previous);
+      filesToUpload.forEach((file) => {
+        if (!next.has(file)) next.set(file, 0);
+      });
+      return next;
+    });
+    setImageErrors((previous) => {
+      const next = new Map(previous);
+      filesToUpload.forEach((file) => next.delete(file));
+      return next;
+    });
+
+    batch.promise = (async () => {
+      try {
+        const result = await uploadAttachmentBatch({
+          projectKey,
+          files: filesToUpload,
+          signal: controller.signal,
+          onCreated: (uploadId) => {
+            batch.uploadId = uploadId;
+          },
+          onStatus: (record) => {
+            if (!batch.cancelled) {
+              updateAttachmentUploadProgress(filesToUpload, record);
+            }
+          },
+        });
+        if (batch.cancelled) return;
+
+        const attachments = Array.isArray(result.attachments) ? result.attachments : [];
+        for (const file of filesToUpload) {
+          const attachment = matchUploadedAttachment(file, attachments);
+          if (!attachment) {
+            setImageErrors((previous) => {
+              const next = new Map(previous);
+              next.set(file, `Upload completed without attachment metadata: ${file.name}`);
+              return next;
+            });
+            continue;
+          }
+          completedAttachmentUploadsRef.current.set(file, {
+            uploadId: result.uploadId,
+            attachmentId: attachment.attachmentId,
+            name: attachment.name || file.name,
+            relativePath: attachment.relativePath || attachment.name || file.name,
+            bytes: attachment.bytes,
+            mimeType: attachment.mimeType,
+          });
+        }
+      } catch (error) {
+        const wasCancelled = batch.cancelled
+          || controller.signal.aborted
+          || (error instanceof DOMException && error.name === 'AbortError');
+        if (wasCancelled) return;
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Attachment upload failed:', error);
+        setImageErrors((previous) => {
+          const next = new Map(previous);
+          filesToUpload.forEach((file) => next.set(file, message));
+          return next;
+        });
+      } finally {
+        activeAttachmentUploadsRef.current = activeAttachmentUploadsRef.current.filter((item) => item !== batch);
+        setUploadingImages((previous) => {
+          const next = new Map(previous);
+          const stillUploading = new Set(
+            activeAttachmentUploadsRef.current.flatMap((item) => item.files),
+          );
+          filesToUpload.forEach((file) => {
+            if (stillUploading.has(file)) return;
+            if (completedAttachmentUploadsRef.current.has(file)) {
+              next.set(file, 100);
+            } else {
+              next.delete(file);
+              startedUploadKeysRef.current.delete(fileFingerprint(file));
+            }
+          });
+          return next;
+        });
+      }
+    })();
+  }, [selectedProject, updateAttachmentUploadProgress]);
 
   const syncQueuedBusySendSnapshot = useCallback((updates: Partial<QueuedBusySendSnapshot> = {}) => {
     if (!queuedBusySendRef.current) return;
@@ -857,21 +1032,35 @@ export function useChatComposerState({
       return next;
     });
 
-    if (validFiles.length > 0) {
-      setAttachedImages((previous) => {
-        const result = addAttachmentFiles(previous, validFiles);
-        if (result.droppedCount > 0) {
-          setImageErrors((previousErrors) => {
-            const next = new Map(previousErrors);
-            next.set(MAX_ATTACHMENTS_ERROR_KEY, `Only the first ${MAX_ATTACHMENTS} attachments were added; ${result.droppedCount} file${result.droppedCount === 1 ? '' : 's'} skipped.`);
-            return next;
-          });
-        }
-        syncQueuedBusySendSnapshot({ attachedImages: result.files });
-        return result.files;
+    if (validFiles.length === 0) return;
+
+    const dropKey = validFiles.map(fileFingerprint).sort().join('|');
+    const now = Date.now();
+    if (dropKey && dropKey === lastDropKeyRef.current.key && now - lastDropKeyRef.current.at < 2000) {
+      return;
+    }
+    lastDropKeyRef.current = { key: dropKey, at: now };
+
+    const previous = attachedImagesRef.current;
+    const result = addAttachmentFiles(previous, validFiles);
+    const addedFiles = result.files.filter((file) => !previous.includes(file));
+    attachedImagesRef.current = result.files;
+
+    if (result.droppedCount > 0) {
+      setImageErrors((previousErrors) => {
+        const next = new Map(previousErrors);
+        next.set(MAX_ATTACHMENTS_ERROR_KEY, `Only the first ${MAX_ATTACHMENTS} attachments were added; ${result.droppedCount} file${result.droppedCount === 1 ? '' : 's'} skipped.`);
+        return next;
       });
     }
-  }, []);
+    syncQueuedBusySendSnapshot({ attachedImages: result.files });
+
+    if (addedFiles.length === 0) return;
+
+    setAttachedImages(result.files);
+    startAttachmentUploads(addedFiles);
+  }, [startAttachmentUploads, syncQueuedBusySendSnapshot]);
+  handleImageFilesRef.current = handleImageFiles;
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -904,9 +1093,13 @@ export function useChatComposerState({
     [handleImageFiles],
   );
 
+  const onDropFiles = useCallback((files: File[]) => {
+    handleImageFilesRef.current(files);
+  }, []);
+
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     multiple: true,
-    onDrop: handleImageFiles,
+    onDrop: onDropFiles,
     noClick: true,
     noKeyboard: true,
     preventDropOnDocument: false,
@@ -1025,6 +1218,9 @@ export function useChatComposerState({
         clearFileMentions();
         clearSelectedSkills();
         clearSelectedCommands();
+        completedAttachmentUploadsRef.current.clear();
+    startedUploadKeysRef.current.clear();
+        void cancelActiveAttachmentUpload();
         setUploadingImages(new Map());
         setImageErrors(new Map());
         resetCommandMenuState();
@@ -1058,6 +1254,9 @@ export function useChatComposerState({
           clearFileMentions();
           clearSelectedSkills();
           clearSelectedCommands();
+          completedAttachmentUploadsRef.current.clear();
+    startedUploadKeysRef.current.clear();
+          void cancelActiveAttachmentUpload();
           setUploadingImages(new Map());
           setImageErrors(new Map());
           resetCommandMenuState();
@@ -1129,77 +1328,50 @@ export function useChatComposerState({
       let uploadedFiles: UploadedAttachmentFile[] = [];
       let uploadedAttachmentRefs: UploadedAttachmentRef[] = [];
       if (submitAttachedImages.length > 0) {
-        const controller = new AbortController();
-        const activeUpload: ActiveAttachmentUpload = {
-          controller,
-          files: submitAttachedImages,
-          cancelled: false,
-        };
-        activeAttachmentUploadRef.current = activeUpload;
-        setUploadingImages((previous) => {
-          const next = new Map(previous);
-          submitAttachedImages.forEach((file) => next.set(file, 0));
-          return next;
-        });
-        setImageErrors((previous) => {
-          const next = new Map(previous);
-          submitAttachedImages.forEach((file) => next.delete(file));
-          return next;
-        });
-        try {
-          const projectKey = selectedProject.fullPath || selectedProject.path || '';
-          const result = await uploadAttachmentBatch({
-            projectKey,
-            files: submitAttachedImages,
-            signal: controller.signal,
-            onCreated: (uploadId) => {
-              activeUpload.uploadId = uploadId;
-            },
-            onStatus: (record) => {
-              updateAttachmentUploadProgress(submitAttachedImages, record);
-            },
-          });
-          uploadedFiles = result.attachments.map((attachment) => ({
-            name: attachment.name || 'attachment',
-            path: attachment.relativePath || attachment.name || '',
-            size: attachment.bytes,
-            mimeType: attachment.mimeType,
-          }));
-          uploadedAttachmentRefs = [{
-            uploadId: result.uploadId,
-            ...(result.attachmentIds.length > 0 ? { attachmentIds: result.attachmentIds } : {}),
-          }];
-        } catch (error) {
-          const wasCancelled = activeUpload.cancelled
-            || controller.signal.aborted
-            || (error instanceof DOMException && error.name === 'AbortError');
-          if (wasCancelled) {
-            return;
-          }
-          controller.abort();
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Attachment upload failed:', error);
-          setUploadingImages((previous) => {
-            const next = new Map(previous);
-            submitAttachedImages.forEach((file) => next.delete(file));
-            return next;
-          });
-          setImageErrors((previous) => {
-            const next = new Map(previous);
-            submitAttachedImages.forEach((file) => next.set(file, message));
-            return next;
-          });
+        const pendingFiles = submitAttachedImages.filter((file) => (
+          !completedAttachmentUploadsRef.current.has(file)
+          && !activeAttachmentUploadsRef.current.some((batch) => batch.files.includes(file))
+        ));
+        if (pendingFiles.length > 0) {
+          startAttachmentUploads(pendingFiles);
+        }
+        const pendingBatches = activeAttachmentUploadsRef.current.filter((batch) => (
+          batch.files.some((file) => submitAttachedImages.includes(file))
+        ));
+        if (pendingBatches.length > 0) {
+          await Promise.all(pendingBatches.map((batch) => batch.promise));
+        }
+        const failedFiles = submitAttachedImages.filter((file) => (
+          !completedAttachmentUploadsRef.current.has(file)
+        ));
+        if (failedFiles.length > 0) {
+          const message = failedFiles.map((file) => file.name).join(', ');
           addMessage({
             type: 'error',
             content: `Failed to upload attachments: ${message}`,
             timestamp: new Date(),
           }, submitTargetSessionId);
           return;
-        } finally {
-          if (activeAttachmentUploadRef.current === activeUpload) {
-            activeAttachmentUploadRef.current = null;
-          }
         }
+
+        const refsByUploadId = new Map<string, string[]>();
+        uploadedFiles = submitAttachedImages.flatMap((file) => {
+          const completed = completedAttachmentUploadsRef.current.get(file);
+          if (!completed) return [];
+          const attachmentIds = refsByUploadId.get(completed.uploadId) ?? [];
+          attachmentIds.push(completed.attachmentId);
+          refsByUploadId.set(completed.uploadId, attachmentIds);
+          return [{
+            name: completed.name,
+            path: completed.relativePath,
+            size: completed.bytes,
+            mimeType: completed.mimeType,
+          }];
+        });
+        uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
+          uploadId,
+          attachmentIds,
+        }));
       }
 
       const referenceImages = submitDocumentReferences
@@ -1279,6 +1451,8 @@ export function useChatComposerState({
       clearFileMentions();
       clearSelectedSkills();
       clearSelectedCommands();
+      completedAttachmentUploadsRef.current.clear();
+    startedUploadKeysRef.current.clear();
       setUploadingImages(new Map());
       setImageErrors(new Map());
       setIsTextareaExpanded(false);
@@ -1328,7 +1502,8 @@ export function useChatComposerState({
       slashCommands,
       thinkingMode,
       referenceOnlyPrompt,
-      updateAttachmentUploadProgress,
+      startAttachmentUploads,
+      cancelActiveAttachmentUpload,
     ],
   );
 
@@ -1373,15 +1548,16 @@ export function useChatComposerState({
     }
 
     activeDraftStorageKeyRef.current = draftStorageKey;
-    const activeUpload = activeAttachmentUploadRef.current;
-    if (activeUpload) {
-      activeUpload.cancelled = true;
-      if (activeUpload.uploadId) {
-        void cancelAttachmentUpload(activeUpload.uploadId);
+    const batches = activeAttachmentUploadsRef.current.splice(0);
+    for (const batch of batches) {
+      batch.cancelled = true;
+      if (batch.uploadId) {
+        void cancelAttachmentUpload(batch.uploadId);
       }
-      activeUpload.controller.abort();
-      activeAttachmentUploadRef.current = null;
+      batch.controller.abort();
     }
+    completedAttachmentUploadsRef.current.clear();
+    startedUploadKeysRef.current.clear();
     const savedInput = draftStorageKey
       ? safeLocalStorage.getItem(draftStorageKey) || ''
       : '';
@@ -1397,13 +1573,14 @@ export function useChatComposerState({
   }, [draftStorageKey]);
 
   useEffect(() => () => {
-    const active = activeAttachmentUploadRef.current;
-    if (!active) return;
-    active.cancelled = true;
-    if (active.uploadId) {
-      void cancelAttachmentUpload(active.uploadId);
+    const batches = activeAttachmentUploadsRef.current.splice(0);
+    for (const batch of batches) {
+      batch.cancelled = true;
+      if (batch.uploadId) {
+        void cancelAttachmentUpload(batch.uploadId);
+      }
+      batch.controller.abort();
     }
-    active.controller.abort();
   }, []);
 
   useEffect(() => {
@@ -1547,10 +1724,22 @@ export function useChatComposerState({
   const removeAttachedImage = useCallback((index: number) => {
     const file = attachedImages[index];
     if (!file) return;
-    if (activeAttachmentUploadRef.current?.files.includes(file)) {
-      void cancelActiveAttachmentUpload();
-    }
     const next = attachedImages.filter((_, currentIndex) => currentIndex !== index);
+    const batch = activeAttachmentUploadsRef.current.find((item) => item.files.includes(file));
+    if (batch) {
+      const stillAttached = batch.files.some((item) => item !== file && next.includes(item));
+      if (!stillAttached && !batch.cancelled) {
+        batch.cancelled = true;
+        if (batch.uploadId) {
+          void cancelAttachmentUpload(batch.uploadId).catch((error) => {
+            console.warn('Failed to cancel attachment upload cleanly:', error);
+          });
+        }
+        batch.controller.abort();
+      }
+    }
+    completedAttachmentUploadsRef.current.delete(file);
+    startedUploadKeysRef.current.delete(fileFingerprint(file));
     setAttachedImages(next);
     syncQueuedBusySendSnapshot({ attachedImages: next });
     setUploadingImages((previous) => {
@@ -1563,7 +1752,7 @@ export function useChatComposerState({
       updated.delete(file);
       return updated;
     });
-  }, [attachedImages, cancelActiveAttachmentUpload, syncQueuedBusySendSnapshot]);
+  }, [attachedImages, syncQueuedBusySendSnapshot]);
 
   const retryAttachmentUpload = useCallback((file: File) => {
     setImageErrors((previous) => {
@@ -1571,10 +1760,12 @@ export function useChatComposerState({
       next.delete(file);
       return next;
     });
-    if (attachedImages.includes(file) && handleSubmitRef.current) {
-      void handleSubmitRef.current(createFakeSubmitEvent());
+    if (attachedImages.includes(file)) {
+      completedAttachmentUploadsRef.current.delete(file);
+      startedUploadKeysRef.current.delete(fileFingerprint(file));
+      startAttachmentUploads([file]);
     }
-  }, [attachedImages]);
+  }, [attachedImages, startAttachmentUploads]);
 
   const handleClearInput = useCallback(() => {
     setInput('');
