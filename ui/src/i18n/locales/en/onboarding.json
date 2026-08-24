@@ -1,0 +1,84 @@
+{
+  "brand": "PilotDeck",
+  "sidebar": {
+    "kicker": "First-time setup",
+    "title": "Prepare your AI workspace",
+    "privacyTitle": "Your setup stays local",
+    "privacyBody": "PilotDeck never uploads your API key to the cloud."
+  },
+  "steps": {
+    "language": "Language",
+    "provider": "Model provider",
+    "connection": "Model access",
+    "workspace": "Workspace"
+  },
+  "language": {
+    "eyebrow": "Welcome to PilotDeck",
+    "title": "Connect your model and start collaborating",
+    "intro": "Finish model setup in a few steps. You can change the provider, model, or key in Settings at any time.",
+    "legend": "Choose your interface language",
+    "zh": {
+      "name": "简体中文",
+      "hint": "Chinese · Simplified"
+    },
+    "en": {
+      "name": "English",
+      "hint": "English · US"
+    },
+    "start": "Start setup"
+  },
+  "provider": {
+    "title": "Choose a model provider",
+    "intro": "Pick the service you already use. Custom OpenAI-compatible endpoints are also supported.",
+    "customTitle": "Custom",
+    "customHint": "OpenAI / Anthropic / Google"
+  },
+  "connection": {
+    "title": "Configure model access",
+    "intro": "Enter credentials and pick a model. Test the connection before continuing.",
+    "providerId": "Provider ID",
+    "providerIdHint": "Used as the YAML key. Lowercase, no spaces.",
+    "protocol": "Protocol",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyOptional": "API Key (optional)",
+    "apiKeyPlaceholder": "sk-...",
+    "apiKeyOptionalPlaceholder": "Not required for this provider",
+    "model": "Model",
+    "modelPlaceholder": "Enter model ID...",
+    "customModelPlaceholder": "Or type a custom model ID...",
+    "fetchModels": "Fetch model list",
+    "fetchingModels": "Fetching remote model list...",
+    "openaiUrlHint": "OpenAI-compatible base URLs should include the API version path, for example ending in /v1.",
+    "responsesUrlHint": "OpenAI Responses API base URLs should include the API version path, for example ending in /v1.",
+    "googleUrlHint": "Native Google Gemini uses https://generativelanguage.googleapis.com unless you need a custom endpoint.",
+    "advanced": "Advanced settings",
+    "hideAdvanced": "Hide advanced settings",
+    "defaultUrl": "Default URL",
+    "test": "Test Connection",
+    "testing": "Testing...",
+    "testHint": "Test connection first.",
+    "testSuccess": "Connection succeeded.",
+    "testFailed": "Connection failed"
+  },
+  "workspace": {
+    "title": "Set up your workspace",
+    "intro": "Choose an existing folder or create a new one. This is where PilotDeck will read and write files.",
+    "typeHeading": "Workspace type",
+    "existingTitle": "Existing folder",
+    "existingHint": "Add a folder that already exists on this machine.",
+    "newTitle": "New folder",
+    "newHint": "Create a folder, optionally cloning a GitHub repository.",
+    "pathLabel": "Workspace path",
+    "pathHint": "Full path to the workspace directory",
+    "browse": "Browse folders",
+    "githubLabel": "GitHub URL (optional)",
+    "githubPlaceholder": "https://github.com/username/repository",
+    "githubHint": "Optional. Public repositories can be cloned without a token."
+  },
+  "actions": {
+    "back": "Back",
+    "next": "Continue",
+    "finish": "Finish setup"
+  }
+}
