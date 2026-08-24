@@ -35,11 +35,6 @@ import {
   type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
-import {
-  getChatResponseReserveTarget,
-  shouldKeepChatResponseReservedSpace,
-} from './chatResponseReservedSpace';
-
 type DiffLine = { type: string; content: string; lineNum: number };
 
 type MessagesPaneV2Props = {
@@ -594,24 +589,15 @@ function MessagesPaneV2({
       (group) => !renderedAnchorIndices.has(group.afterOriginalIndex),
     );
   }, [keyedMessageItems, liveProcessGroups]);
-  const latestUserRenderIndex = useMemo(() => {
-    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
-      if (keyedMessageItems[index].message.type === 'user') return index;
-    }
-    return -1;
-  }, [keyedMessageItems]);
-  const shouldReserveResponseSpace = shouldKeepChatResponseReservedSpace(
-    latestUserRenderIndex,
-    isAssistantWorking,
-  );
-  const reservedSpaceTarget = getChatResponseReserveTarget(scrollViewport.height);
   const liveProcessHeaderIndex = useMemo(() => {
     if (!isAssistantWorking) return -1;
-    if (latestUserRenderIndex >= 0) {
-      return Math.min(latestUserRenderIndex + 1, keyedMessageItems.length);
+    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
+      if (keyedMessageItems[index].message.type === 'user') {
+        return Math.min(index + 1, keyedMessageItems.length);
+      }
     }
     return keyedMessageItems.length > 0 ? 0 : -1;
-  }, [isAssistantWorking, keyedMessageItems.length, latestUserRenderIndex]);
+  }, [isAssistantWorking, keyedMessageItems]);
   const openSubagentContainerItem = openSubagentId
     ? keyedMessageItems.find((item) => (
         item.message.isSubagentContainer && item.message.subagentId === openSubagentId
@@ -1301,40 +1287,27 @@ function MessagesPaneV2({
             <div aria-hidden="true" style={{ height: virtualWindow.topPadding }} />
           ) : null}
 
-          {windowedMessageItems
-            .filter((item) => latestUserRenderIndex < 0 || item.renderIndex <= latestUserRenderIndex)
-            .map(renderMessageItem)}
+          {windowedMessageItems.map(renderMessageItem)}
 
-          <div
-            className={shouldReserveResponseSpace ? 'chat-current-turn-reserve' : undefined}
-            data-chat-response-reserved-space={shouldReserveResponseSpace ? 'true' : undefined}
-            style={shouldReserveResponseSpace ? { minHeight: reservedSpaceTarget } : undefined}
-          >
-            {latestUserRenderIndex >= 0
-              ? windowedMessageItems
-                  .filter((item) => item.renderIndex > latestUserRenderIndex)
-                  .map(renderMessageItem)
-              : null}
+          {shouldVirtualizeMessages && virtualWindow.bottomPadding > 0 ? (
+            <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
+          ) : null}
 
-            {shouldVirtualizeMessages && virtualWindow.bottomPadding > 0 ? (
-              <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
-            ) : null}
+          {unanchoredLiveProcessGroups.length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-2">
+              {unanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
+            </div>
+          ) : null}
 
-            {unanchoredLiveProcessGroups.length > 0 ? (
-              <div className="flex min-w-0 flex-col gap-2">
-                {unanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
-              </div>
-            ) : null}
-
-            {isAssistantWorking &&
-            liveProcessHeaderIndex === keyedMessageItems.length &&
-            keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
-              <LiveProcessHeader
-                activities={nonSubagentLiveActivities}
-                startedAtMs={liveProcessStartedAtMs}
-                t={t}
-              />
-            ) : null}
+          {isAssistantWorking &&
+          liveProcessHeaderIndex === keyedMessageItems.length &&
+          keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
+            <LiveProcessHeader
+              activities={nonSubagentLiveActivities}
+              startedAtMs={liveProcessStartedAtMs}
+              t={t}
+            />
+          ) : null}
 
           {shouldRenderBottomLiveStatus ? (
             <ProcessLiveStatus
