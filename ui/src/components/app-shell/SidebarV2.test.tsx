@@ -103,6 +103,34 @@ describe('SidebarV2 layout', () => {
     expect(onSelectTab).toHaveBeenCalledWith('skills');
   });
 
+  it('lists regular projects by lastActivity descending and excludes general', () => {
+    const older: Project = {
+      name: 'Users-wukai-test0806',
+      displayName: 'test0806',
+      fullPath: '/tmp/test0806',
+      lastActivity: 1787215786943,
+      sessions: [],
+    };
+    const newer: Project = {
+      name: 'Users-wukai-test0807',
+      displayName: 'test0807',
+      fullPath: '/tmp/test0807',
+      lastActivity: 1787570906592,
+      sessions: [],
+    };
+
+    renderSidebar(newer, { projects: [general, older, newer] });
+
+    const list = document.querySelector('.project-tree-list') as HTMLElement;
+    expect(list).toBeTruthy();
+    const labels = within(list)
+      .getAllByText(/test080[67]/)
+      .map((node) => node.textContent?.trim());
+    expect(labels).toEqual(['test0807', 'test0806']);
+    expect(within(list).queryByText('general')).toBeNull();
+    expect(within(list).queryByText('General')).toBeNull();
+  });
+
   it('toggles project and conversation lists only from the chevron buttons', () => {
     const onStartNewSession = vi.fn();
     const onCreateProject = vi.fn();

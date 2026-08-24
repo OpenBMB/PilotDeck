@@ -39,42 +39,6 @@ const asTimestamp = (value: unknown): number => {
   return 0;
 };
 
-type ProjectSortOrder = 'name' | 'date';
-
-// The Settings dialog persists `projectSortOrder` into the same
-// `pilotdeck-settings` localStorage blob the chat surface uses. Up to
-// this point nothing on the sidebar consumed it, so the dropdown
-// changed nothing. We read it here and re-render whenever the Settings
-// tab broadcasts a `pilotdeck-settings-changed` event.
-const readProjectSortOrder = (): ProjectSortOrder => {
-  if (typeof window === 'undefined') return 'name';
-  const raw = window.localStorage.getItem('pilotdeck-settings');
-  if (!raw) return 'name';
-  try {
-    const parsed = JSON.parse(raw) as { projectSortOrder?: unknown };
-    return parsed.projectSortOrder === 'date' ? 'date' : 'name';
-  } catch {
-    return 'name';
-  }
-};
-
-const useProjectSortOrder = (): ProjectSortOrder => {
-  const [order, setOrder] = useState<ProjectSortOrder>(() => readProjectSortOrder());
-  useEffect(() => {
-    const refresh = () => setOrder(readProjectSortOrder());
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === 'pilotdeck-settings') refresh();
-    };
-    window.addEventListener('pilotdeck-settings-changed', refresh);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('pilotdeck-settings-changed', refresh);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
-  return order;
-};
-
 // "Most recent activity" for a project = the project summary timestamp when
 // available, or the newest timestamp across previewed sessions. The summary
 // matters because the sidebar only keeps a capped session preview.
@@ -514,22 +478,17 @@ export default function SidebarV2({
   const generalProject =
     safeProjects.find((project) => project.name === 'general' || project.displayName === 'general') ?? null;
 
-  const projectSortOrder = useProjectSortOrder();
   const otherProjects = useMemo(() => {
+    // `general` lives in Conversations, so it is excluded from this list
+    // and from the lastActivity comparison. Remaining projects follow the
+    // projects API `lastActivity` descending (most recently updated first).
     const remaining = safeProjects.filter((project) => project !== generalProject);
-    if (projectSortOrder === 'date') {
-      // Most recent first. Tie-break on display name so the order is stable
-      // when two projects have no recorded activity (both 0).
-      return [...remaining].sort((a, b) => {
-        const diff = projectLastActivity(b) - projectLastActivity(a);
-        if (diff !== 0) return diff;
-        return projectDisplayName(a).localeCompare(projectDisplayName(b));
-      });
-    }
-    return [...remaining].sort((a, b) =>
-      projectDisplayName(a).localeCompare(projectDisplayName(b), undefined, { sensitivity: 'base' }),
-    );
-  }, [safeProjects, generalProject, projectSortOrder]);
+    return [...remaining].sort((a, b) => {
+      const diff = asTimestamp(b.lastActivity) - asTimestamp(a.lastActivity);
+      if (diff !== 0) return diff;
+      return projectDisplayName(a).localeCompare(projectDisplayName(b));
+    });
+  }, [safeProjects, generalProject]);
 
   const compactRecentItems = useMemo<CompactRecentItem[]>(() => {
     const items: CompactRecentItem[] = otherProjects.map((project) => ({
