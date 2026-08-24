@@ -315,6 +315,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         source: "session" as const,
         reasoning: explicit.reasoning,
         temperature: explicit.temperature,
+        speed: explicit.speed,
       } : {
         provider: snapshot.agent.model.provider,
         model: snapshot.agent.model.model,

@@ -2065,6 +2065,7 @@ export class AgentLoop {
       toolChoice: this.config.toolChoice,
       maxOutputTokens: this.config.maxOutputTokens,
       temperature: input.modelOverride?.temperature ?? this.config.temperature,
+      speed: input.modelOverride?.speed,
       thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
       metadata: this.config.metadata,

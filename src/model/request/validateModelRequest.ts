@@ -17,12 +17,20 @@ export function validateModelRequest(
     throw new ModelRequestError("provider_not_found", `Provider ${request.provider} does not exist.`);
   }
 
+  if (request.speed !== undefined && (!Number.isFinite(request.speed) || request.speed < 0 || request.speed > 1)) {
+    throw new ModelRequestError("invalid_speed", "speed must be between 0 and 1.");
+  }
+
   const model = provider.models[request.model];
   if (!model) {
     throw new ModelRequestError(
       "model_not_found",
       `Model ${request.model} does not exist in provider ${request.provider}.`,
     );
+  }
+
+  if (request.speed !== undefined && (model.capabilities.supportsSpeed !== true || provider.speedMapping === undefined)) {
+    throw new ModelRequestError("unsupported_speed", `Model ${request.model} does not support speed for provider ${request.provider}.`);
   }
 
   if (request.stream && !model.capabilities.supportsStreaming) {

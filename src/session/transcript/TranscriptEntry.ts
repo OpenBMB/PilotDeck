@@ -124,7 +124,7 @@ export type SessionMetadataValue = {
   /** Persisted dialog model preference. Null is an explicit clear tombstone. */
   modelSelection?:
     | { mode: "auto" }
-    | { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number }
+    | { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number }
     | null;
   linkedPullRequest?: {
     number: number;

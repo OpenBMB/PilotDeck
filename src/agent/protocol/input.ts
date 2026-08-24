@@ -7,6 +7,7 @@ export type AgentModelOverride = {
   provider: string;
   model: string;
   temperature?: number;
+  speed?: number;
   thinking?: import("../../model/index.js").CanonicalThinkingConfig;
 };
 

@@ -698,7 +698,7 @@ async function sendProviderRequest(
   try {
     const fetchOptions: RequestInit = {
       method: "POST",
-      headers: buildProviderHeaders(provider),
+      headers: buildProviderHeaders(provider, finalBody),
       body: JSON.stringify(finalBody),
       signal: controller.signal,
     };
@@ -771,7 +771,7 @@ async function shouldUseEndpointResponse(
   }
 }
 
-export function buildProviderHeaders(provider: ProviderConfig): HeadersInit {
+export function buildProviderHeaders(provider: ProviderConfig, body?: unknown): HeadersInit {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...provider.headers,
@@ -786,11 +786,30 @@ export function buildProviderHeaders(provider: ProviderConfig): HeadersInit {
   if (provider.protocol === "anthropic") {
     headers["x-api-key"] = apiKey;
     headers["anthropic-version"] = headers["anthropic-version"] ?? "2023-06-01";
+    if (provider.speedMapping === "anthropic_speed" && isFastAnthropicRequest(body)) {
+      appendAnthropicBeta(headers, "fast-mode-2026-02-01");
+    }
   } else {
     headers.authorization = headers.authorization ?? `Bearer ${apiKey}`;
   }
 
   return headers;
+}
+
+function isFastAnthropicRequest(body: unknown): boolean {
+  return typeof body === "object" && body !== null
+    && (body as { speed?: unknown }).speed === "fast";
+}
+
+function appendAnthropicBeta(headers: Record<string, string>, beta: string): void {
+  const existingKey = Object.keys(headers).find((key) => key.toLowerCase() === "anthropic-beta");
+  const key = existingKey ?? "anthropic-beta";
+  const values = (headers[key] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!values.includes(beta)) values.push(beta);
+  headers[key] = values.join(", ");
 }
 
 async function safeReadJson(response: Response): Promise<unknown> {

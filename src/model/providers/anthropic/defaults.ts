@@ -5,7 +5,7 @@ export const ANTHROPIC_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsToolUse: true,
   supportsStreaming: true,
   supportsParallelToolCalls: false,
-  supportsThinking: false,
+  supportsThinking: true,
   supportsJsonSchema: true,
   supportsSystemPrompt: true,
   supportsPromptCache: true,

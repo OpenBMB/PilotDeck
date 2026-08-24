@@ -93,6 +93,7 @@ export type {
   ModelProtocol,
   ProviderConfig,
   ProviderRetryConfig,
+  SpeedMapping,
 } from "./protocol/canonical.js";
 export {
   flattenToolResultBlockText,

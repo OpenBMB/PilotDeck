@@ -46,7 +46,7 @@ type WebGatewayEventMetadata = {
 
 export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "turn_started"; runId: string }
-  | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number }
+  | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number }
   | { type: "assistant_text_delta"; text: string }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
@@ -187,12 +187,12 @@ export type WebProjectFilesListResult = {
 };
 export type WebCommandsListInput = { projectKey: string; query?: string; cursor?: string; limit?: number };
 export type WebCommandsListResult = { pinned: unknown[]; builtIn: unknown[]; custom: unknown[]; nextCursor?: string };
-export type WebExplicitModelSelection = { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number };
+export type WebExplicitModelSelection = { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number };
 export type WebSessionModelSelection = { mode: "auto" } | WebExplicitModelSelection;
 export type WebModelCatalogListInput = { projectKey: string; query?: string; provider?: string; includeAuto?: boolean };
 export type WebModelCatalogListResult = { items: unknown[]; router: { enabled: boolean; autoAvailable: boolean } };
 export type WebSessionModelInput = { projectKey: string; sessionKey: string };
-export type WebSessionModelResult = WebSessionModelInput & { saved?: WebSessionModelSelection; effective: { provider: string; model: string; source: "session" | "router" | "default"; reasoning?: number; temperature?: number } };
+export type WebSessionModelResult = WebSessionModelInput & { saved?: WebSessionModelSelection; effective: { provider: string; model: string; source: "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number } };
 
 export type WebChannelAttachment = {
   type: "file" | "image" | "text" | "unknown";

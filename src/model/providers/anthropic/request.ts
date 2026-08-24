@@ -6,10 +6,12 @@ import type {
   CanonicalToolChoice,
   CanonicalToolSchema,
   ModelDefinition,
+  ProviderConfig,
 } from "../../protocol/canonical.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { messageContent } from "../../protocol/clone.js";
 import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
+import { hasSpeedMapping, mapSpeedToAnthropicSpeed } from "../../request/speedMapping.js";
 
 export type AnthropicRequestBody = {
   model: string;
@@ -19,6 +21,7 @@ export type AnthropicRequestBody = {
   tools?: AnthropicTool[];
   tool_choice?: Record<string, unknown>;
   temperature?: number;
+  speed?: "fast";
   thinking?: {
     type: "enabled" | "adaptive";
     budget_tokens?: number;
@@ -50,8 +53,9 @@ export const ANTHROPIC_STRUCTURED_OUTPUT_TOOL_NAME = "__output__";
 export function buildAnthropicRequest(
   request: CanonicalModelRequest,
   model: ModelDefinition,
+  provider?: ProviderConfig,
 ): AnthropicRequestBody {
-  const thinkingPlan = resolveThinkingPlan(request.thinking, { id: "anthropic", protocol: "anthropic", url: "", apiKey: "", headers: {}, models: {} }, model);
+  const thinkingPlan = resolveThinkingPlan(request.thinking, provider ?? { id: "anthropic", protocol: "anthropic", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
   // A3: lower outputSchema → forced hidden tool. This goes BEFORE the
   // user-supplied tools so the dispatch order is stable, but Anthropic
@@ -97,6 +101,10 @@ export function buildAnthropicRequest(
     tools: tools.length > 0 ? tools : undefined,
     tool_choice: toolChoice,
     temperature: request.temperature,
+    speed: request.speed !== undefined && model.capabilities.supportsSpeed === true
+      && hasSpeedMapping(provider?.speedMapping, "anthropic_speed")
+      ? mapSpeedToAnthropicSpeed(request.speed)
+      : undefined,
     thinking: thinkingPlan.enabled && thinkingPlan.thinkingType
       ? {
           type: thinkingPlan.thinkingType === "adaptive" ? "adaptive" : "enabled",

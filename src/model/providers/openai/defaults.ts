@@ -5,7 +5,7 @@ export const OPENAI_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsToolUse: true,
   supportsStreaming: true,
   supportsParallelToolCalls: true,
-  supportsThinking: false,
+  supportsThinking: true,
   supportsJsonSchema: true,
   supportsSystemPrompt: true,
   supportsPromptCache: false,

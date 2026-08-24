@@ -30,6 +30,7 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
           .filter(([, mode]) => !resolveThinkingPlan({ mode, enabled: mode !== "off" }, provider, model).unsupportedReason)
           .map(([value]) => value)
         : [];
+      const speed = model.capabilities.supportsSpeed === true && provider.speedMapping !== undefined;
       items.push({
         id: `${providerId}/${modelId}`,
         provider: providerId,
@@ -39,6 +40,7 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
         capabilities: {
           ...(reasoning.length > 0 ? { reasoning: { type: "enum" as const, values: reasoning } } : {}),
           temperature: { type: "range", min: 0, max: 1, step: 0.1 },
+          ...(speed ? { speed: { type: "range" as const, min: 0, max: 1, step: 0.1 } } : {}),
         },
       });
     }
@@ -71,6 +73,12 @@ export function validateExplicitModelSelection(projectKey: string, selection: Ex
   if (!item || !item.available) throw new DialogGatewayError("INVALID_MODEL_OVERRIDE", `Model is unavailable: ${selection.provider}/${selection.model}`);
   if (selection.temperature !== undefined && (!Number.isFinite(selection.temperature) || selection.temperature < 0 || selection.temperature > 1)) {
     throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", "temperature must be between 0 and 1.");
+  }
+  if (selection.speed !== undefined && (!Number.isFinite(selection.speed) || selection.speed < 0 || selection.speed > 1)) {
+    throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", "speed must be between 0 and 1.");
+  }
+  if (selection.speed !== undefined && !item.capabilities.speed) {
+    throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", `speed is not supported by ${item.id}.`);
   }
   if (selection.reasoning !== undefined && !item.capabilities.reasoning?.values?.includes(selection.reasoning)) {
     throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", `reasoning=${selection.reasoning} is not supported by ${item.id}.`);

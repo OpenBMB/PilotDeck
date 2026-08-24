@@ -3,6 +3,7 @@ export type ModelCapabilities = {
   supportsStreaming: boolean;
   supportsParallelToolCalls: boolean;
   supportsThinking: boolean;
+  supportsSpeed?: boolean;
   supportsJsonSchema: boolean;
   supportsSystemPrompt: boolean;
   supportsPromptCache: boolean;
@@ -14,7 +15,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilities = {
   supportsToolUse: false,
   supportsStreaming: true,
   supportsParallelToolCalls: false,
-  supportsThinking: false,
+  supportsThinking: true,
   supportsJsonSchema: false,
   supportsSystemPrompt: true,
   supportsPromptCache: false,

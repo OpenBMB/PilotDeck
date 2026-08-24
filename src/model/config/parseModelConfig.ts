@@ -7,6 +7,7 @@ import type {
   ModelProtocol,
   ProviderConfig,
   ProviderRetryConfig,
+  SpeedMapping,
 } from "../protocol/canonical.js";
 import { mergeCapabilities, type ModelCapabilities } from "../protocol/capabilities.js";
 import { ModelConfigError } from "../protocol/errors.js";
@@ -99,9 +100,33 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
     extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
+    speedMapping: parseSpeedMapping(provider.speedMapping, providerId, protocol, catalogProvider !== undefined),
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function parseSpeedMapping(
+  raw: unknown,
+  providerId: string,
+  protocol: ModelProtocol,
+  isCatalogProvider: boolean,
+): SpeedMapping | undefined {
+  if (raw !== undefined) {
+    if (raw === "openai_service_tier" && (protocol === "openai" || protocol === "openai-responses")) return raw;
+    if (raw === "anthropic_speed" && protocol === "anthropic") return raw;
+    throw new ModelConfigError(
+      "invalid_config_value",
+      "speedMapping must match the provider protocol: openai_service_tier for OpenAI or anthropic_speed for Anthropic.",
+      { providerId },
+    );
+  }
+  if (!isCatalogProvider) return undefined;
+  if (providerId === "openai" && (protocol === "openai" || protocol === "openai-responses")) {
+    return "openai_service_tier";
+  }
+  if (providerId === "anthropic" && protocol === "anthropic") return "anthropic_speed";
+  return undefined;
 }
 
 function resolveProviderApiKey(
@@ -217,6 +242,7 @@ function parseCapabilities(
     "supportsStreaming",
     "supportsParallelToolCalls",
     "supportsThinking",
+    "supportsSpeed",
     "supportsJsonSchema",
     "supportsSystemPrompt",
     "supportsPromptCache",

@@ -213,7 +213,11 @@ type UploadedAttachmentRef = {
 
 `GET /api/models?projectKey=&query=&provider=&includeAuto=`
 
-返回 provider、model、displayName、available 以及 reasoning（推理强度）和 temperature 的能力声明。对话框统一使用 0..1 的数值语义；每个模型可通过能力声明限制可用范围、步长或枚举值，后端负责把 0..1 值映射为 Provider 所需参数。temperature 统一范围为 0..1。
+返回 provider、model、displayName、available 以及 reasoning（推理强度）、temperature 和可选 speed 的能力声明。对话框统一使用 0..1 的数值语义；每个模型可通过能力声明限制可用范围、步长或枚举值，后端负责把 0..1 值映射为 Provider 所需参数。temperature 和 speed 统一范围为 0..1；speed 需要模型显式声明支持，且 Google Provider 当前不支持该字段。
+
+协议默认将未显式声明的模型视为支持 reasoning；模型可通过 `capabilities.supportsThinking: false` 关闭。speed 通过 `capabilities.supportsSpeed: true` 显式开启。
+
+自定义兼容 provider 还必须显式声明 `speedMapping`：OpenAI 使用 `openai_service_tier`，Anthropic 使用 `anthropic_speed`。统一 speed 在 adapter 层转换为 provider 原生字段；OpenAI 和 Anthropic 低档都省略对应字段、高档分别使用 `priority` 和 `fast`。Anthropic fast mode 自动合并 beta header `fast-mode-2026-02-01`。Google 不声明 speed。
 
 `includeAuto` 仅在 Router 开启时允许，返回虚拟模型 `router/auto`。
 
@@ -225,6 +229,7 @@ type SessionModelOverride = {
   model: string;
   reasoning?: number;
   temperature?: number;
+  speed?: number;
 };
 type GatewaySubmitTurnInput = ExistingGatewaySubmitTurnInput & {
   modelOverride?: SessionModelOverride;
@@ -244,7 +249,7 @@ type GatewaySubmitTurnInput = ExistingGatewaySubmitTurnInput & {
 
 `submit_turn.modelOverride` 只覆盖本轮，不修改会话保存值。模型解析顺序：本轮 `modelOverride` > 会话保存模型 > Router auto/路由决策 > `agent.model` 默认模型。
 
-`provider/model` 不存在或不可用返回 `INVALID_MODEL_OVERRIDE`；reasoning 或 temperature 不满足模型能力返回 `UNSUPPORTED_MODEL_PARAMETER`。未声明支持的参数不发送给 Provider。Provider 适配器负责映射统一字段到目标协议字段。
+`provider/model` 不存在或不可用返回 `INVALID_MODEL_OVERRIDE`；reasoning、temperature 或 speed 不满足模型能力返回 `UNSUPPORTED_MODEL_PARAMETER`。未声明支持的参数不发送给 Provider。speed 必须在 canonical request 入口通过 `0..1` 校验，再由支持 speed 的 Provider adapter 映射为原生字段；Google Provider 不声明或接收 speed。
 
 模型确定后发出 `model_selection_changed`，包含 provider、model、来源（session/router/default）和已生效参数。
 
