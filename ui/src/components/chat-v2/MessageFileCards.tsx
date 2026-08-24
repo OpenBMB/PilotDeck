@@ -3,13 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Download,
   Eye,
-  FileArchive,
-  FileCode2,
-  FileSpreadsheet,
-  FileText,
-  Image,
   MessageSquarePlus,
-  Presentation,
 } from 'lucide-react';
 import type { Project } from '../../types/app';
 import { api } from '../../utils/api';
@@ -19,6 +13,8 @@ import {
 } from '../../utils/workspaceFileMention';
 import type { ChatAttachment, ChatFileArtifact } from '../chat/types/types';
 import { cn } from '../../lib/utils.js';
+import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
+import { getFileIconData } from '../file-tree/constants/fileIcons';
 
 type CardFile = {
   id: string;
@@ -42,23 +38,7 @@ type MessageFileCardProps = {
 const extensionOf = (name: string) => name.split('.').pop()?.toLowerCase() || '';
 
 function fileVisual(file: CardFile) {
-  const ext = extensionOf(file.name);
-  if (['xls', 'xlsx', 'et', 'csv', 'tsv', 'ods'].includes(ext)) {
-    return { Icon: FileSpreadsheet, className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300' };
-  }
-  if (['ppt', 'pptx', 'dps', 'odp'].includes(ext)) {
-    return { Icon: Presentation, className: 'bg-orange-50 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300' };
-  }
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-    return { Icon: Image, className: 'bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300' };
-  }
-  if (['html', 'htm', 'xml', 'json', 'md', 'tex'].includes(ext)) {
-    return { Icon: FileCode2, className: 'bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300' };
-  }
-  if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) {
-    return { Icon: FileArchive, className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300' };
-  }
-  return { Icon: FileText, className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300' };
+  return getFileIconData(file.name, file.mimeType);
 }
 
 function formatBytes(bytes: number | undefined): string | null {
@@ -90,7 +70,7 @@ export function MessageFileCard({
   const { t } = useTranslation('chat');
   const relativePath = resolveRelativePath(file.path, project);
   const canUseWorkspaceActions = Boolean(project?.name && relativePath);
-  const { Icon, className: visualClassName } = fileVisual(file);
+  const { containerClass: visualClassName } = fileVisual(file);
   const sizeLabel = formatBytes(file.size);
   const typeLabel = extensionOf(file.name).toUpperCase() || 'FILE';
   const handleReference = () => {
@@ -151,7 +131,13 @@ export function MessageFileCard({
         )}
         aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
       >
-        <Icon className="h-5 w-5" strokeWidth={1.8} />
+        <FileTypeIcon
+          filename={file.name}
+          mimeType={file.mimeType}
+          className="h-5 w-5"
+          assetClassName="h-8 w-8"
+          strokeWidth={1.8}
+        />
       </button>
       <div className="min-w-0 flex-1 text-left">
         <button

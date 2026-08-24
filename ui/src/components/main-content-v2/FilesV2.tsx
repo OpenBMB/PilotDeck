@@ -22,13 +22,14 @@ import {
 import type { Project } from '../../types/app';
 import { useFileTreeData } from '../file-tree/hooks/useFileTreeData';
 import type { FileTreeNode } from '../file-tree/types/types';
-import { getFileIconData } from '../file-tree/constants/fileIcons';
+import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
 import { cn } from '../../lib/utils.js';
 import { api } from '../../utils/api';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
   ADD_WORKSPACE_FILE_MENTION_EVENT,
+  getWorkspaceFileIdentity,
   getWorkspaceRelativePath,
 } from '../../utils/workspaceFileMention';
 import {
@@ -170,6 +171,7 @@ export default function FilesV2({
   const flat = useMemo(() => flatten(files, expanded), [files, expanded]);
 
   const projectName = selectedProject?.name ?? '';
+  const projectRoot = selectedProject?.fullPath || selectedProject?.path || '';
 
   const toggle = useCallback((path: string) => {
     setExpanded((prev) => {
@@ -378,15 +380,19 @@ export default function FilesV2({
           type: node.type === 'directory' ? 'directory' : 'file',
         });
         onFileDelete?.(node.path);
+        const deletedIdentity = getWorkspaceFileIdentity(node.path, projectRoot);
         setActivePath((previous) => (
-          previous === node.path || previous?.startsWith(`${node.path}/`) ? null : previous
+          previous && (
+            getWorkspaceFileIdentity(previous, projectRoot) === deletedIdentity
+            || getWorkspaceFileIdentity(previous, projectRoot).startsWith(`${deletedIdentity}/`)
+          ) ? null : previous
         ));
         await refreshFiles();
       } catch (error) {
         console.error('Delete failed:', error);
       }
     },
-    [closeContextMenu, onFileDelete, projectName, refreshFiles, selectedProject],
+    [closeContextMenu, onFileDelete, projectName, projectRoot, refreshFiles, selectedProject],
   );
 
   const handleCopyPath = useCallback(
@@ -407,8 +413,6 @@ export default function FilesV2({
   );
 
   // --- Upload / Download / Preview ---
-
-  const projectRoot = selectedProject?.fullPath || selectedProject?.path || '';
 
   const handleAddToChat = useCallback(
     (node: FileTreeNode) => {
@@ -562,9 +566,12 @@ export default function FilesV2({
 
   const handleDeleteActive = useCallback(() => {
     if (!activePath) return;
-    const activeNode = flat.find((f) => pathsReferToSameFile(f.node.path, activePath));
+    const activeIdentity = getWorkspaceFileIdentity(activePath, projectRoot);
+    const activeNode = flat.find(
+      ({ node }) => getWorkspaceFileIdentity(node.path, projectRoot) === activeIdentity,
+    );
     if (activeNode) handleDelete(activeNode.node);
-  }, [activePath, flat, handleDelete]);
+  }, [activePath, flat, handleDelete, projectRoot]);
 
   // --- Depth lookup for context menu target ---
 
@@ -782,19 +789,15 @@ export default function FilesV2({
             {flat.map(({ node, depth }, idx) => {
               const isDir = node.type === 'directory';
               const isOpen = isDir && expanded.has(node.path);
-              const isActive = !isDir && pathsReferToSameFile(activePath, node.path);
+              const isActive = Boolean(
+                activePath
+                && getWorkspaceFileIdentity(activePath, projectRoot)
+                  === getWorkspaceFileIdentity(node.path, projectRoot),
+              );
               const isRenaming = inlineEdit?.kind === 'rename' && inlineEdit.path === node.path;
               const isHtmlFile = !isDir && /\.html?$/i.test(node.name);
 
-              let Icon = Folder;
-              let color = 'text-neutral-500 dark:text-neutral-400';
-              if (isDir) {
-                Icon = isOpen ? FolderOpen : Folder;
-              } else {
-                const iconData = getFileIconData(node.name);
-                Icon = iconData.icon;
-                color = iconData.color;
-              }
+              const DirectoryIcon = isOpen ? FolderOpen : Folder;
 
               const showCreateAfter =
                 inlineEdit?.kind === 'create' &&
@@ -815,7 +818,14 @@ export default function FilesV2({
                       ) : (
                         <span className="w-3.5" />
                       )}
-                      <Icon className={cn('h-3.5 w-3.5 shrink-0', color)} strokeWidth={1.75} />
+                      {isDir ? (
+                        <DirectoryIcon
+                          className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400"
+                          strokeWidth={1.75}
+                        />
+                      ) : (
+                        <FileTypeIcon filename={node.name} className="h-3.5 w-3.5" />
+                      )}
                       <input
                         ref={inlineInputRef}
                         defaultValue={inlineEdit.currentName}
@@ -855,7 +865,14 @@ export default function FilesV2({
                       ) : (
                         <span className="w-3.5" />
                       )}
-                      <Icon className={cn('h-3.5 w-3.5 shrink-0', color)} strokeWidth={1.75} />
+                      {isDir ? (
+                        <DirectoryIcon
+                          className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400"
+                          strokeWidth={1.75}
+                        />
+                      ) : (
+                        <FileTypeIcon filename={node.name} className="h-3.5 w-3.5" />
+                      )}
                       <span
                         className={cn(
                           'min-w-0 flex-1 truncate',

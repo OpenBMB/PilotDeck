@@ -122,11 +122,14 @@ describe('SubagentDetailMessageFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Explored 1 file|已探索 1 个文件/i }));
 
     const status = screen.getByRole('status');
+    const processRow = status.closest('.process-live-status');
 
     expect(screen.getAllByText('Completed thought one.')).toHaveLength(1);
     expect(screen.getAllByText('Completed thought two.')).toHaveLength(1);
-    expect(status.textContent).toContain('Completed thought one.');
-    expect(status.textContent).toContain('Completed thought two.');
+    expect(processRow?.textContent).toContain('Completed thought one.');
+    expect(processRow?.textContent).toContain('Completed thought two.');
+    expect(status.textContent).not.toContain('Completed thought one.');
+    expect(status.textContent).not.toContain('Completed thought two.');
     expect(screen.queryByText('Thought through next step')).toBeNull();
     expect(screen.getByText(/Explored 1 file|已探索 1 个文件/i)).toBeTruthy();
   });

@@ -112,14 +112,14 @@ function requestFor({ protocol, apiKey, model, image, maxTokens }) {
  */
 // Onboarding needs enough output budget for reasoning models to emit their
 // visible answer. The legacy config endpoint passes its historical 8/16 value.
-export async function probeModelConnection({ protocol, baseUrl, apiKey = '', model, image = false, maxTokens = 256, signal }) {
+export async function probeModelConnection({ protocol, baseUrl, endpointUrl, apiKey = '', model, image = false, maxTokens = 256, signal }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', 'Connection timed out.')), TIMEOUT_MS);
   const forwardAbort = () => controller.abort(signal.reason);
   if (signal?.aborted) forwardAbort();
   else signal?.addEventListener('abort', forwardAbort, { once: true });
   try {
-    const urls = buildProviderChatEndpointCandidates({ protocol, baseUrl, model });
+    const urls = endpointUrl ? [endpointUrl] : buildProviderChatEndpointCandidates({ protocol, baseUrl, model });
     const request = requestFor({ protocol, apiKey, model, image, maxTokens });
     let last = null;
     for (const url of urls) {
@@ -134,7 +134,7 @@ export async function probeModelConnection({ protocol, baseUrl, apiKey = '', mod
         let body;
         try { body = JSON.parse(responseText); } catch { body = null; }
         if (isExpectedProviderResponseShape(protocol, body) && !hasErrorFinish(body, protocol) && hasUsableOutput(body, protocol)) {
-          return { ok: true };
+          return { ok: true, endpointUrl: url };
         }
         last = { detail: isExpectedProviderResponseShape(protocol, body)
           ? hasErrorFinish(body, protocol)

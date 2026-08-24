@@ -17,10 +17,52 @@ describe('model connection probe request formats', () => {
         return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify(response) };
       }));
       const result = await probeModelConnection({ protocol, baseUrl: 'https://example.test/v1', apiKey: 'key', model: 'test-model', image: true });
-      expect(result).toEqual({ ok: true });
+      expect(result).toMatchObject({ ok: true });
       assertBody(requestBody);
     });
   }
+
+  it('returns the endpoint URL that passed the text probe after fallback', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      calls.push(String(url));
+      if (String(url) === 'https://example.test/v1/chat/completions') {
+        return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ ok: true }) };
+      }
+      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] }) };
+    }));
+
+    const result = await probeModelConnection({ protocol: 'openai', baseUrl: 'https://example.test', apiKey: 'key', model: 'test-model' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      endpointUrl: 'https://example.test/chat/completions',
+    });
+    expect(calls).toEqual([
+      'https://example.test/v1/chat/completions',
+      'https://example.test/chat/completions',
+    ]);
+  });
+
+  it('uses only the provided endpoint URL for image probes', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      calls.push(String(url));
+      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] }) };
+    }));
+
+    const result = await probeModelConnection({
+      protocol: 'openai',
+      baseUrl: 'https://example.test',
+      endpointUrl: 'https://example.test/chat/completions',
+      apiKey: 'key',
+      model: 'test-model',
+      image: true,
+    });
+
+    expect(result).toMatchObject({ ok: true, endpointUrl: 'https://example.test/chat/completions' });
+    expect(calls).toEqual(['https://example.test/chat/completions']);
+  });
 
   it('preserves an explicit image-unsupported response before endpoint fallback', async () => {
     const fetch = vi.fn(async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => JSON.stringify({ error: { message: 'This model does not support image input' } }) }));

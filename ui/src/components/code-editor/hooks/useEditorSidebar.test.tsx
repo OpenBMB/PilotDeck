@@ -4,6 +4,7 @@ import type { Project } from '../../../types/app';
 import { useEditorSidebar } from './useEditorSidebar';
 
 const project = { name: 'project-a', path: '/workspace/project-a' } as Project;
+const windowsProject = { name: 'project-w', path: 'C:\\Work\\PilotDeck' } as Project;
 
 describe('useEditorSidebar file tabs', () => {
   it('opens files in unique tabs and activates an existing tab without duplicating it', () => {
@@ -22,6 +23,91 @@ describe('useEditorSidebar file tabs', () => {
 
     expect(result.current.editorTabs).toHaveLength(2);
     expect(result.current.activeFilePath).toBe('docs/one.md');
+  });
+
+  it('treats absolute and relative paths to the same workspace file as one tab', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('docs/report.xlsx'));
+    act(() => result.current.handleFileOpen('/workspace/project-a/docs/report.xlsx'));
+
+    expect(result.current.editorTabs).toHaveLength(1);
+    expect(result.current.activeFilePath).toBe('docs/report.xlsx');
+  });
+
+  it('does not merge same-named files from different workspace folders', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('/workspace/project-a/one/report.xlsx'));
+    act(() => result.current.handleFileOpen('two/report.xlsx'));
+
+    expect(result.current.editorTabs.map((tab) => tab.fileStack[0].path)).toEqual([
+      'one/report.xlsx',
+      'two/report.xlsx',
+    ]);
+  });
+
+  it('reuses a tab when its current preview file is opened from another surface', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('README.md'));
+    act(() => result.current.handlePreviewFileOpen('docs/guide.md'));
+    act(() => result.current.handleFileOpen('/workspace/project-a/docs/guide.md'));
+
+    expect(result.current.editorTabs).toHaveLength(1);
+    expect(result.current.editorTabs[0].fileStack.map((file) => file.path)).toEqual([
+      'README.md',
+      'docs/guide.md',
+    ]);
+    expect(result.current.activeFilePath).toBe('docs/guide.md');
+  });
+
+  it('activates an existing tab when preview navigation targets its current file', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('docs/guide.md'));
+    const guideTabId = result.current.activeEditorTabId;
+    act(() => result.current.handleFileOpen('README.md'));
+    act(() => result.current.handlePreviewFileOpen('docs/guide.md'));
+
+    expect(result.current.editorTabs).toHaveLength(2);
+    expect(result.current.activeEditorTabId).toBe(guideTabId);
+    expect(result.current.activeFilePath).toBe('docs/guide.md');
+  });
+
+  it('opens a root-history file in a new tab when the current file has unsaved changes', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('README.md'));
+    act(() => result.current.handlePreviewFileOpen('docs/guide.md'));
+    const dirtyTabId = result.current.activeEditorTabId!;
+    act(() => result.current.handleTabDirtyChange(dirtyTabId, true));
+    act(() => result.current.handleFileOpen('/workspace/project-a/README.md'));
+
+    expect(result.current.editorTabs).toHaveLength(2);
+    expect(result.current.editorTabs[0].dirty).toBe(true);
+    expect(result.current.editorTabs[0].fileStack.map((file) => file.path)).toEqual([
+      'README.md',
+      'docs/guide.md',
+    ]);
+    expect(result.current.activeEditorTabId).not.toBe(dirtyTabId);
+    expect(result.current.activeFilePath).toBe('README.md');
+  });
+
+  it('opens preview navigation in a new tab when the current file has unsaved changes', () => {
+    const { result } = renderHook(() => useEditorSidebar({ selectedProject: project, isMobile: false }));
+
+    act(() => result.current.handleFileOpen('README.md'));
+    act(() => result.current.handlePreviewFileOpen('docs/guide.md'));
+    const dirtyTabId = result.current.activeEditorTabId!;
+    act(() => result.current.handleTabDirtyChange(dirtyTabId, true));
+    act(() => result.current.handlePreviewFileOpen('README.md'));
+
+    expect(result.current.editorTabs).toHaveLength(2);
+    expect(result.current.editorTabs[0].dirty).toBe(true);
+    expect(result.current.editorTabs[0].fileStack.at(-1)?.path).toBe('docs/guide.md');
+    expect(result.current.activeEditorTabId).not.toBe(dirtyTabId);
+    expect(result.current.activeFilePath).toBe('README.md');
   });
 
   it('keeps markdown preview navigation inside its tab and supports going back', () => {
@@ -100,5 +186,25 @@ describe('useEditorSidebar file tabs', () => {
 
     expect(result.current.editorTabs.map((tab) => tab.fileStack[0].path)).toEqual(['keep.md']);
     expect(result.current.activeFilePath).toBe('keep.md');
+  });
+
+  it('updates and deletes Windows tabs when path casing differs', () => {
+    const { result } = renderHook(() => useEditorSidebar({
+      selectedProject: windowsProject,
+      isMobile: false,
+    }));
+
+    act(() => result.current.handleFileOpen('docs/report.md'));
+    const tabId = result.current.activeEditorTabId!;
+    act(() => result.current.handleTabDirtyChange(tabId, true));
+    act(() => result.current.handleFileRename('Docs/Report.md', 'Docs/Renamed.md'));
+
+    expect(result.current.activeFilePath).toBe('Docs/Renamed.md');
+    expect(result.current.editingFile?.renamedFromPath).toBe('docs/report.md');
+
+    act(() => result.current.handleFileDelete('docs/RENAMED.md'));
+
+    expect(result.current.editorTabs).toEqual([]);
+    expect(result.current.activeFilePath).toBeNull();
   });
 });

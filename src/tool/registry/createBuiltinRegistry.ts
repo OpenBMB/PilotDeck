@@ -104,9 +104,21 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   }));
   if (options?.webSearch !== false) {
     registry.register(createWebSearchTool(options?.webSearch));
+  } else {
+    registry.markUnavailable({
+      toolName: "web_search",
+      code: "unavailable",
+      reason: "web_search is disabled in this session.",
+    }, ["WebSearch"]);
   }
   if (options?.webFetch !== false) {
     registry.register(createWebFetchTool(options?.webFetch));
+  } else {
+    registry.markUnavailable({
+      toolName: "web_fetch",
+      code: "unavailable",
+      reason: "web_fetch is disabled in this session.",
+    }, ["WebFetch"]);
   }
   if (options?.agent !== false) {
     const agentOpts = options?.agent === true || options?.agent === undefined ? undefined : options.agent;

@@ -51,13 +51,19 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
-    expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
+    expect(data.supportsImage).toBe(true);
+    expect(data.imageCheckSource).toBe('probe');
+    expect(data.imageSupport).toMatchObject({ status: 'supported', supported: true });
+    expect(calls).toEqual([
+      'https://api.openai.com/v1/chat/completions',
+      'https://api.openai.com/v1/chat/completions',
+    ]);
   });
 
   it('allows enough completion tokens for reasoning models to return chat text', async () => {
-    let requestBody;
+    const requestBodies = [];
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
-      requestBody = JSON.parse(options.body);
+      requestBodies.push(JSON.parse(options.body));
       return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
     }));
 
@@ -73,7 +79,7 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
-    expect(requestBody).toMatchObject({
+    expect(requestBodies[0]).toMatchObject({
       model: 'kimi-k3',
       max_tokens: 8,
       messages: [{ role: 'user', content: 'Reply exactly: 1' }],
@@ -105,15 +111,21 @@ describe('config test-connection route', () => {
     expect(calls).toEqual([
       'https://api.openai.com/v1/chat/completions',
       'https://api.openai.com/chat/completions',
+      'https://api.openai.com/chat/completions',
     ]);
   });
 
   it('falls back to unversioned chat completions when protocol-versioned probing returns unexpected JSON', async () => {
     const calls = [];
-    vi.stubGlobal('fetch', vi.fn(async (url) => {
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
       calls.push(String(url));
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const hasImage = JSON.stringify(body).includes('image_url');
       if (String(url) === 'https://api.openai.com/v1/chat/completions') {
         return jsonResponse({ ok: true });
+      }
+      if (hasImage) {
+        return jsonResponse({ choices: [{ message: { content: 'image ok' } }] });
       }
       return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
     }));
@@ -130,9 +142,51 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
+    expect(data.supportsImage).toBe(true);
     expect(calls).toEqual([
       'https://api.openai.com/v1/chat/completions',
       'https://api.openai.com/chat/completions',
+      'https://api.openai.com/chat/completions',
+    ]);
+  });
+
+  it('returns supportsImage false when the validated endpoint rejects image input', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      calls.push(String(url));
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const hasImage = JSON.stringify(body).includes('image_url');
+      if (hasImage) {
+        return jsonResponse(
+          { error: { message: 'image input not supported' } },
+          { ok: false, status: 400, statusText: 'Bad Request' },
+        );
+      }
+      return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    }));
+
+    const { request } = await createConfigApp();
+    const data = await request('/api/config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerType: 'openai',
+        baseUrl: 'https://api.openai.com',
+        apiKey: 'sk-test',
+        model: 'gpt-test',
+      }),
+    });
+
+    expect(data.ok).toBe(true);
+    expect(data.supportsImage).toBe(false);
+    expect(data.imageCheckSource).toBe('probe');
+    expect(data.imageSupport).toMatchObject({
+      status: 'unsupported',
+      supported: false,
+      reasonCode: 'explicit_unsupported',
+    });
+    expect(calls).toEqual([
+      'https://api.openai.com/v1/chat/completions',
+      'https://api.openai.com/v1/chat/completions',
     ]);
   });
 
@@ -160,6 +214,7 @@ describe('config test-connection route', () => {
     expect(data.ok).toBe(true);
     expect(calls).toEqual([
       'https://api.anthropic.com/v1/messages',
+      'https://api.anthropic.com/messages',
       'https://api.anthropic.com/messages',
     ]);
   });
@@ -189,6 +244,7 @@ describe('config test-connection route', () => {
     expect(calls).toEqual([
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
       'https://generativelanguage.googleapis.com/models/gemini-pro:generateContent',
+      'https://generativelanguage.googleapis.com/models/gemini-pro:generateContent',
     ]);
   });
 
@@ -211,7 +267,10 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
-    expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
+    expect(calls).toEqual([
+      'https://api.openai.com/v1/chat/completions',
+      'https://api.openai.com/v1/chat/completions',
+    ]);
   });
 
   it('accepts full OpenAI-compatible endpoint URLs', async () => {
@@ -233,7 +292,10 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
-    expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
+    expect(calls).toEqual([
+      'https://api.openai.com/v1/chat/completions',
+      'https://api.openai.com/v1/chat/completions',
+    ]);
   });
 
   it('fails when the provider returns no chat text or reasoning output', async () => {
@@ -318,8 +380,11 @@ describe('config test-connection route', () => {
     });
 
     expect(data.ok).toBe(true);
-    expect(calls).toEqual(['http://localhost:11434/v1/chat/completions']);
-    expect(authHeaders).toEqual([undefined]);
+    expect(calls).toEqual([
+      'http://localhost:11434/v1/chat/completions',
+      'http://localhost:11434/v1/chat/completions',
+    ]);
+    expect(authHeaders).toEqual([undefined, undefined]);
   });
 });
 

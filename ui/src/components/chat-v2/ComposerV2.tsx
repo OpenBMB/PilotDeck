@@ -385,9 +385,9 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
   const used = readNumber(tokenBudget?.used) ?? readNumber(tokenBudget?.displayUsed) ?? 0;
   const total = readNumber(tokenBudget?.total) ?? 0;
   const effectiveTotal = readNumber(tokenBudget?.effectiveTotal);
-  const displayTotal =
-    effectiveTotal && effectiveTotal > 0 ? effectiveTotal : total;
-  if (displayTotal <= 0) {
+  const budgetTotal = effectiveTotal && effectiveTotal > 0 ? effectiveTotal : total;
+  const visibleTotal = total > 0 ? total : budgetTotal;
+  if (budgetTotal <= 0) {
     return {
       known: false,
       used: 0,
@@ -402,33 +402,29 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
     };
   }
 
-  // The visible count and percent must describe the resolved request budget.
-  const percent = Math.max(0, Math.round((used / displayTotal) * 100));
-  const snapshotState =
-    typeof tokenBudget?.state === "string" ? tokenBudget.state : null;
-  const tone =
-    snapshotState === "blocking"
-      ? "red"
-      : snapshotState === "warning"
-        ? "amber"
-        : percent >= 95
-          ? "red"
-          : percent >= 80
-            ? "amber"
-            : "normal";
+  // Policy severity still follows the effective request budget, while the
+  // visible denominator shows the full model context window when available.
+  const percent = Math.max(0, Math.round((used / budgetTotal) * 100));
+  const snapshotState = typeof tokenBudget?.state === "string" ? tokenBudget.state : null;
+  const tone = snapshotState === "blocking"
+    ? "red"
+    : snapshotState === "warning"
+      ? "amber"
+      : percent >= 95
+        ? "red"
+        : percent >= 80
+          ? "amber"
+          : "normal";
   return {
     known: true,
     used,
     total,
-    displayTotal,
+    displayTotal: visibleTotal,
     percent,
     percentLabel: formatContextPercentLabel(percent),
     usedLabel: formatTokenCount(used),
-    totalLabel: formatTokenCount(displayTotal),
-    state:
-      snapshotState === "blocking" || snapshotState === "warning"
-        ? snapshotState
-        : "ok",
+    totalLabel: formatTokenCount(visibleTotal),
+    state: snapshotState === "blocking" || snapshotState === "warning" ? snapshotState : "ok",
     tone,
   };
 }

@@ -50,6 +50,38 @@ const MASKED_SECRET = '********';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
 const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
 
+function imageSupportResultFromProbe(probe) {
+  if (probe.ok) {
+    return {
+      status: 'supported',
+      supported: true,
+      source: 'probe',
+      retryable: false,
+      manualConfirmationAllowed: false,
+    };
+  }
+  if (probe.imageUnsupported) {
+    return {
+      status: 'unsupported',
+      supported: false,
+      source: 'probe',
+      reasonCode: 'explicit_unsupported',
+      retryable: false,
+      manualConfirmationAllowed: false,
+      ...(probe.error ? { message: probe.error } : {}),
+    };
+  }
+  return {
+    status: 'detection_failed',
+    supported: null,
+    source: 'probe',
+    reasonCode: probe.code || 'ENDPOINT_UNREACHABLE',
+    retryable: true,
+    manualConfirmationAllowed: true,
+    ...(probe.error ? { message: probe.error } : {}),
+  };
+}
+
 function normalizeWebSearchProvider(provider) {
   return provider === 'tavily' || provider === 'custom' ? provider : 'glm';
 }
@@ -670,7 +702,23 @@ router.post('/test-connection', async (req, res) => {
     maxTokens: isOpenAIResponses ? 16 : 8,
   });
   if (probe.ok) {
-    return res.json({ ok: true, message: `Connected successfully — Model ${model} is available.` });
+    const imageProbe = await probeModelConnection({
+      protocol,
+      baseUrl: normalizedBaseUrl,
+      endpointUrl: probe.endpointUrl,
+      apiKey: effectiveApiKey,
+      model,
+      image: true,
+      maxTokens: 8,
+    });
+    const imageSupport = imageSupportResultFromProbe(imageProbe);
+    return res.json({
+      ok: true,
+      message: `Connected successfully — Model ${model} is available.`,
+      imageSupport,
+      supportsImage: imageSupport.supported,
+      imageCheckSource: imageSupport.source,
+    });
   }
   return res.json({ ok: false, error: probe.error });
 

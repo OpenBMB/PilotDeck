@@ -57,7 +57,8 @@
   "working": {
     "default": "处理中",
     "processing": "处理中",
-    "thinking": "连接中...",
+    "thinking": "思考中...",
+    "waitingForModel": "等待模型响应...",
     "callingModel": "调用模型中...",
     "executingTool": "执行工具中...",
     "generating": "正在生成回复",
@@ -158,7 +159,8 @@
   "thinking": {
     "title": "思考中...",
     "completed": "思考过程",
-    "emoji": "💭 思考中..."
+    "emoji": "💭 思考中...",
+    "liveContentLabel": "实时思考内容"
   },
   "json": {
     "response": "JSON 响应"

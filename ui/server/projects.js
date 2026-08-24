@@ -135,6 +135,15 @@ async function readMarkedProjectPaths() {
     return result;
 }
 
+async function readProjectCreatedAt(projectId) {
+    try {
+        const stats = await fs.stat(path.join(resolvePilotHome(process.env), 'projects', projectId));
+        return stats.birthtimeMs || stats.ctimeMs;
+    } catch {
+        return undefined;
+    }
+}
+
 async function getProjects(progressCallback = null) {
     const gateway = await getPilotDeckGateway();
     const { projects: webProjects } = await gateway.listProjects();
@@ -199,13 +208,23 @@ async function getProjects(progressCallback = null) {
             });
         }
 
-        const sessionsResult = await gateway
-            .listSessions({ projectKey: fullPath, limit: 5 })
-            .catch(() => ({ sessions: [] }));
+        let sessionsResult;
+        let sessionPreviewSucceeded = true;
+        try {
+            sessionsResult = await gateway.listSessions({ projectKey: fullPath, limit: 5 });
+        } catch {
+            sessionsResult = { sessions: [] };
+            sessionPreviewSucceeded = false;
+        }
         const sessions = (sessionsResult.sessions || []).map((session) =>
             toLegacySession(session, name),
         );
         applyCustomSessionNames(sessions, 'claude');
+        const latestSessionActivity = (sessionsResult.sessions || []).reduce(
+            (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
+            0,
+        );
+        const projectCreatedAt = project.createdAt ?? await readProjectCreatedAt(name);
 
         const taskmaster = await detectTaskMaster(fullPath).catch(() => ({
             hasTaskmaster: false,
@@ -216,7 +235,14 @@ async function getProjects(progressCallback = null) {
             displayName: projectDisplayName(fullPath),
             fullPath,
             path: fullPath,
-            lastActivity: project.lastActivity,
+            // A project's activity is the newest interaction in one of its
+            // sessions. For an untouched project, use its registration
+            // directory creation time instead of a mutable summary time.
+            lastActivity: latestSessionActivity > 0
+                ? latestSessionActivity
+                : sessionPreviewSucceeded && (project.sessionCount ?? sessions.length) === 0
+                    ? projectCreatedAt
+                    : project.lastActivity,
             sessions,
             sessionMeta: {
                 total: project.sessionCount ?? sessions.length,
@@ -248,14 +274,18 @@ async function getProjects(progressCallback = null) {
         // Without this, sessionMeta.hasMore was hardcoded `false` and the
         // sidebar would silently truncate to the first 5 sessions even
         // when dozens existed under ~/.pilotdeck/projects/<encoded>/chats/.
-        const [generalSessionsResult, generalSummary] = await Promise.all([
-            generalGateway
-                .listSessions({ projectKey: generalHome, limit: 5 })
-                .catch(() => ({ sessions: [] })),
-            generalGateway
-                .describeProject({ projectKey: generalHome })
-                .catch(() => null),
-        ]);
+        const sessionsPromise = generalGateway
+            .listSessions({ projectKey: generalHome, limit: 5 })
+            .then((sessionsResult) => ({ sessionsResult, succeeded: true }))
+            .catch(() => ({ sessionsResult: { sessions: [] }, succeeded: false }));
+        const summaryPromise = generalGateway
+            .describeProject({ projectKey: generalHome })
+            .then((summary) => ({ summary, succeeded: true }))
+            .catch(() => ({ summary: null, succeeded: false }));
+        const [
+            { sessionsResult: generalSessionsResult, succeeded: generalSessionPreviewSucceeded },
+            { summary: generalSummary, succeeded: generalSummarySucceeded },
+        ] = await Promise.all([sessionsPromise, summaryPromise]);
         generalSessions = (generalSessionsResult.sessions || []).map((session) =>
             toLegacySession(session, 'general'),
         );
@@ -263,7 +293,16 @@ async function getProjects(progressCallback = null) {
         generalTotal = typeof generalSummary?.sessionCount === 'number'
             ? generalSummary.sessionCount
             : generalSessions.length;
-        generalLastActivity = generalSummary?.lastActivity;
+        const latestGeneralSessionActivity = (generalSessionsResult.sessions || []).reduce(
+            (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
+            0,
+        );
+        generalLastActivity = latestGeneralSessionActivity > 0
+            ? latestGeneralSessionActivity
+            : generalSessionPreviewSucceeded && generalSummarySucceeded
+                && (generalSummary?.sessionCount ?? generalSessions.length) === 0
+                ? generalSummary?.createdAt
+                : generalSummary?.lastActivity;
     } catch {
         generalSessions = [];
         generalTotal = 0;
@@ -283,6 +322,11 @@ async function getProjects(progressCallback = null) {
         },
         taskmaster: { hasTaskmaster: false },
     });
+
+    result.sort((left, right) =>
+        (right.lastActivity ?? Number.NEGATIVE_INFINITY)
+        - (left.lastActivity ?? Number.NEGATIVE_INFINITY),
+    );
 
     return result;
 }

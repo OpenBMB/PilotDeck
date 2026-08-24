@@ -355,6 +355,7 @@ export type WebProjectSummary = {
   fullPath: string;
   sessionCount: number;
   lastActivity?: number;
+  createdAt?: number;
 };
 
 export type WebListProjectsResult = {
