@@ -6,38 +6,24 @@ import json
 import sys
 from typing import Any
 
-from docxlib.accessibility import inspect_accessibility
 from docxlib.annotations import annotate_docx, finalize_docx
-from docxlib.builder import run_builder, scaffold_builder
 from docxlib.common import (
     DocxSkillError,
+    assert_valid_docx,
     prepare_json_artifact_path,
     write_json,
 )
 from docxlib.core import compare_docx, filter_inspection, inspect_docx, sanitize_docx
 from docxlib.delivery import deliver_docx
-from docxlib.evaluation import run_evaluator
-from docxlib.fallback import fallback_patch
-from docxlib.review import review_candidate
+from docxlib.render import render_docx
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="docx.sh",
-        description="Create, edit, inspect, render, and verify Word DOCX files.",
+        description="Inspect, render, validate, and deliver Word DOCX files.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-
-    scaffold = sub.add_parser("scaffold", help="Create a minimal reproducible Python builder")
-    scaffold.add_argument("--out", required=True)
-    scaffold.add_argument("--overwrite", action="store_true")
-
-    build = sub.add_parser("build", help="Run a Python builder and validate an internal DOCX candidate")
-    build.add_argument("--builder", required=True)
-    build.add_argument("--input")
-    build.add_argument("--out", required=True)
-    build.add_argument("--overwrite", action="store_true")
-    build.add_argument("--timeout", type=int, default=180)
 
     inspect_parser = sub.add_parser("inspect", help="Extract DOCX content, structure, and package facts")
     inspect_parser.add_argument("--input", required=True)
@@ -47,18 +33,14 @@ def _parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("--location")
     inspect_parser.add_argument("--max-items", type=int, default=200)
 
-    review = sub.add_parser("review", help="Produce structural evidence and revision-specific page images")
-    review.add_argument("--input", required=True)
-    review.add_argument("--out-dir", required=True)
-    review.add_argument("--report")
-    review.add_argument("--dpi", type=int, default=150)
-    review.add_argument("--timeout", type=int, default=180)
+    validate = sub.add_parser("validate", help="Validate DOCX package structure")
+    validate.add_argument("--input", required=True)
 
-    evaluate = sub.add_parser("evaluate", help="Run a task-specific evaluator against a candidate")
-    evaluate.add_argument("--input", required=True)
-    evaluate.add_argument("--script", required=True)
-    evaluate.add_argument("--out", required=True)
-    evaluate.add_argument("--timeout", type=int, default=180)
+    render = sub.add_parser("render", help="Render DOCX pages to full-size PNG images")
+    render.add_argument("--input", required=True)
+    render.add_argument("--out-dir", required=True)
+    render.add_argument("--dpi", type=int, default=150)
+    render.add_argument("--timeout", type=int, default=180)
 
     deliver = sub.add_parser("deliver", help="Atomically publish a valid internal candidate")
     deliver.add_argument("--input", required=True)
@@ -93,38 +75,11 @@ def _parser() -> argparse.ArgumentParser:
     sanitize.add_argument("--remove-comments", action="store_true")
     sanitize.add_argument("--overwrite", action="store_true")
 
-    accessibility = sub.add_parser(
-        "accessibility",
-        help="Report semantic accessibility evidence without declaring compliance",
-    )
-    accessibility.add_argument("--input", required=True)
-    accessibility.add_argument("--out")
-
-    patch = sub.add_parser("fallback-patch", help="Run a scoped OOXML patch against an internal copy")
-    patch.add_argument("--input", required=True)
-    patch.add_argument("--script", required=True)
-    patch.add_argument("--out", required=True)
-    patch.add_argument("--report", required=True)
-    patch.add_argument("--allow-part", action="append", required=True)
-    patch.add_argument("--reason", required=True)
-    patch.add_argument("--timeout", type=int, default=180)
-    patch.add_argument("--overwrite", action="store_true")
-
     sub.add_parser("self-test", help="Run the bundled DOCX regression tests")
     return parser
 
 
 def _execute(args: argparse.Namespace) -> dict[str, Any]:
-    if args.command == "scaffold":
-        return scaffold_builder(args.out, overwrite=args.overwrite)
-    if args.command == "build":
-        return run_builder(
-            args.builder,
-            args.out,
-            input_path=args.input,
-            overwrite=args.overwrite,
-            timeout_seconds=args.timeout,
-        )
     if args.command == "inspect":
         result = filter_inspection(
             inspect_docx(args.input),
@@ -142,16 +97,15 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             write_json(output, result)
             result["out"] = str(output)
         return result
-    if args.command == "review":
-        return review_candidate(
+    if args.command == "validate":
+        return assert_valid_docx(args.input)
+    if args.command == "render":
+        return render_docx(
             args.input,
             args.out_dir,
-            report_path=args.report,
             dpi=args.dpi,
             timeout_seconds=args.timeout,
         )
-    if args.command == "evaluate":
-        return run_evaluator(args.input, args.script, args.out, timeout_seconds=args.timeout)
     if args.command == "deliver":
         return deliver_docx(
             args.input,
@@ -178,19 +132,6 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             args.input,
             args.out,
             remove_comments=args.remove_comments,
-            overwrite=args.overwrite,
-        )
-    if args.command == "accessibility":
-        return inspect_accessibility(args.input, args.out)
-    if args.command == "fallback-patch":
-        return fallback_patch(
-            args.input,
-            args.script,
-            args.out,
-            args.report,
-            allow_parts=args.allow_part,
-            reason=args.reason,
-            timeout_seconds=args.timeout,
             overwrite=args.overwrite,
         )
     if args.command == "self-test":

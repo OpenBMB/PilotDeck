@@ -17,6 +17,8 @@
   &nbsp;
   <a href="#-联系我们"><img src="https://img.shields.io/badge/飞书-交流群-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="飞书群"/></a>
   &nbsp;
+  <a href="https://modelbest.feishu.cn/wiki/UtWxwcERfiRIpIkBOjuc3h9tn1D?fromScene=spaceOverview"><img src="https://img.shields.io/badge/MiniCPM%20%E7%9F%A5%E8%AF%86%E5%BA%93-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="MiniCPM 知识库"/></a>
+  &nbsp;
   <a href="#-联系我们"><img src="https://img.shields.io/badge/微信-交流群-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="微信群"/></a>
   <br/>
 </p>

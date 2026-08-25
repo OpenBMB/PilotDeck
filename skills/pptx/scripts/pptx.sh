@@ -23,9 +23,8 @@ runtime_hash() {
   "$node_path" -e '
     const fs = require("node:fs");
     const crypto = require("node:crypto");
-    const files = process.argv.slice(1);
     const h = crypto.createHash("sha256");
-    for (const file of files) h.update(fs.readFileSync(file));
+    for (const file of process.argv.slice(1)) h.update(fs.readFileSync(file));
     process.stdout.write(h.digest("hex"));
   ' "$RUNTIME_SOURCE/package.json" "$RUNTIME_SOURCE/package-lock.json"
 }
@@ -42,8 +41,34 @@ runtime_ready() {
     const { createRequire } = require("node:module");
     const path = require("node:path");
     const req = createRequire(path.resolve(process.argv[1], "package.json"));
-    for (const name of ["pptxgenjs", "pptx-automizer", "jszip", "@xmldom/xmldom", "sharp"]) req.resolve(name);
+    for (const name of ["jszip", "@xmldom/xmldom"]) req.resolve(name);
   ' "$RUNTIME_CACHE" >/dev/null 2>&1
+}
+
+ensure_runtime() {
+  local npm_path="" expected=""
+  runtime_ready && return 0
+  find_node >/dev/null || {
+    printf '{"status":"error","error":"Node.js was not found"}\n' >&2
+    exit 2
+  }
+  npm_path="$(find_npm)" || {
+    printf '{"status":"error","error":"The pinned PPTX runtime is unavailable and npm was not found"}\n' >&2
+    exit 2
+  }
+  [[ -f "$RUNTIME_SOURCE/package-lock.json" ]] || {
+    printf '{"status":"error","error":"runtime/package-lock.json is missing"}\n' >&2
+    exit 2
+  }
+  mkdir -p "$RUNTIME_CACHE"
+  cp "$RUNTIME_SOURCE/package.json" "$RUNTIME_CACHE/package.json"
+  cp "$RUNTIME_SOURCE/package-lock.json" "$RUNTIME_CACHE/package-lock.json"
+  if ! "$npm_path" ci --prefix "$RUNTIME_CACHE" --no-audit --no-fund --silent; then
+    printf '{"status":"error","error":"The pinned PPTX runtime could not be prepared"}\n' >&2
+    exit 2
+  fi
+  expected="$(runtime_hash)"
+  printf '%s\n' "$expected" > "$STAMP_FILE"
 }
 
 find_soffice() {
@@ -74,72 +99,20 @@ find_pdf_renderer() {
   return 1
 }
 
-cmd_check() {
-  local node_path="" npm_path="" soffice_path="" renderer_path=""
-  local node_ok=false deps_ok=false render_available=false
-  if node_path="$(find_node)"; then
-    node_ok=true
-  fi
-  npm_path="$(find_npm || true)"
-  if runtime_ready; then
-    deps_ok=true
-  fi
-  soffice_path="$(find_soffice || true)"
-  renderer_path="$(find_pdf_renderer || true)"
-  if [[ -n "$soffice_path" && -n "$renderer_path" ]]; then
-    render_available=true
-  fi
-  printf '{"status":"%s","node":%s,"node_path":"%s","npm_path":"%s","dependencies":%s,"runtime":"%s","libreoffice_path":"%s","pdf_renderer_path":"%s","render_available":%s,"legacy_ppt_conversion_available":%s}\n' \
-    "$([[ "$node_ok" == true && "$deps_ok" == true ]] && printf ok || printf missing_dependencies)" \
-    "$node_ok" "$node_path" "$npm_path" "$deps_ok" "$RUNTIME_CACHE" \
-    "$soffice_path" "$renderer_path" "$render_available" "$render_available"
-  [[ "$node_ok" == true && "$deps_ok" == true ]]
-}
-
-cmd_fix() {
-  local npm_path="" expected=""
-  find_node >/dev/null || {
-    printf '{"status":"error","error":"Node.js was not found"}\n' >&2
-    exit 2
-  }
-  npm_path="$(find_npm)" || {
-    printf '{"status":"error","error":"npm was not found"}\n' >&2
-    exit 2
-  }
-  [[ -f "$RUNTIME_SOURCE/package-lock.json" ]] || {
-    printf '{"status":"error","error":"runtime/package-lock.json is missing"}\n' >&2
-    exit 2
-  }
-  mkdir -p "$RUNTIME_CACHE"
-  cp "$RUNTIME_SOURCE/package.json" "$RUNTIME_CACHE/package.json"
-  cp "$RUNTIME_SOURCE/package-lock.json" "$RUNTIME_CACHE/package-lock.json"
-  "$npm_path" ci --prefix "$RUNTIME_CACHE" --no-audit --no-fund
-  expected="$(runtime_hash)"
-  printf '%s\n' "$expected" > "$STAMP_FILE"
-  cmd_check
-}
-
 case "${1:-}" in
-  check)
-    shift
-    cmd_check "$@"
-    ;;
-  fix)
-    shift
-    cmd_fix "$@"
-    ;;
   ""|-h|--help|help)
-    printf 'Usage: pptx.sh <check|fix|inspect|scaffold|build|fallback-patch|review|evaluate|deliver|convert-legacy> [options]\n'
+    printf 'Usage: pptx.sh <validate|render|compare|deliver|convert-legacy> [options]\n'
+    exit 0
     ;;
-  *)
-    if ! runtime_ready; then
-      printf '{"status":"error","error":"PPTX dependencies are missing or stale","hint":"Run: bash %s fix"}\n' "$0" >&2
-      exit 2
-    fi
-    export PPTX_SKILL_ROOT="$SKILL_DIR"
+  validate|render|compare|deliver|convert-legacy)
+    ensure_runtime
     export PPTX_RUNTIME_ROOT="$RUNTIME_CACHE"
     export PPTX_SKILL_SOFFICE="$(find_soffice || true)"
     export PPTX_SKILL_PDF_RENDERER="$(find_pdf_renderer || true)"
     exec "$(find_node)" "$SCRIPT_DIR/pptx_cli.mjs" "$@"
+    ;;
+  *)
+    printf '{"status":"error","error":"Unknown PPTX command: %s"}\n' "$1" >&2
+    exit 2
     ;;
 esac

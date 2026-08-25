@@ -263,7 +263,10 @@ def _add_tracked_replacement(
                 code="cross-run-redline",
                 details={
                     "match": match,
-                    "fallback": "Use fallback-patch with word/document.xml allowlisted.",
+                    "next": (
+                        "Use a task-specific OOXML edit when the requested "
+                        "replacement must span multiple runs."
+                    ),
                 },
             )
         raise DocxSkillError(
@@ -397,7 +400,10 @@ def annotate_docx(
                         code="review-location-unsupported",
                         details={
                             "location": item.get("location"),
-                            "fallback": "Use fallback-patch with the relevant story part allowlisted.",
+                            "next": (
+                                "Use a task-specific OOXML edit for the relevant "
+                                "document story."
+                            ),
                         },
                     )
                 comment_results.append(
@@ -424,7 +430,10 @@ def annotate_docx(
                         code="review-location-unsupported",
                         details={
                             "location": item.get("location"),
-                            "fallback": "Use fallback-patch with the relevant story part allowlisted.",
+                            "next": (
+                                "Use a task-specific OOXML edit for the relevant "
+                                "document story."
+                            ),
                         },
                     )
                 replacement_results.append(

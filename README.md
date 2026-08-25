@@ -17,6 +17,8 @@
   &nbsp;
   <a href="#-community"><img src="https://img.shields.io/badge/Feishu-Community-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="Feishu"/></a>
   &nbsp;
+  <a href="https://modelbest.feishu.cn/wiki/UtWxwcERfiRIpIkBOjuc3h9tn1D?fromScene=spaceOverview"><img src="https://img.shields.io/badge/MiniCPM%20Wiki-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="MiniCPM Wiki"/></a>
+  &nbsp;
   <a href="#-community"><img src="https://img.shields.io/badge/WeChat-Community-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"/></a>
   <br/>
 </p>

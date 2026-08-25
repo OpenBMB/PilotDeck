@@ -4,462 +4,396 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli = path.join(skillRoot, 'scripts', 'pptx.sh');
 const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-pptx-test-'));
 const workDir = path.join(outputRoot, 'work');
-const environment = { ...process.env, PILOTDECK_WORK_DIR: workDir };
+const cacheDir = path.join(outputRoot, 'cache');
+const environment = {
+  ...process.env,
+  PILOTDECK_WORK_DIR: workDir,
+  PPTX_SKILL_CACHE: cacheDir,
+};
 let passed = false;
 
-function run(command, args = []) {
-  const result = spawnSync(command, args, {
+function rawPptx(...args) {
+  return spawnSync('bash', [cli, ...args], {
     cwd: skillRoot,
     env: environment,
     encoding: 'utf8',
   });
+}
+
+function pptx(...args) {
+  const result = rawPptx(...args);
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr || result.stdout}`);
+    throw new Error(`pptx.sh ${args.join(' ')} failed:\n${result.stderr || result.stdout}`);
   }
   return JSON.parse(result.stdout);
 }
 
-function pptx(...args) {
-  return run('bash', [cli, ...args]);
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }
 
 try {
   await fs.mkdir(workDir, { recursive: true });
-  const builder = path.join(workDir, 'deck.mjs');
-  const candidate = path.join(workDir, 'candidate.pptx');
-  const compatibilityCandidate = path.join(workDir, 'candidate-with-ooxml-variants.pptx');
-  const templateScaffold = path.join(workDir, 'template-deck.mjs');
-  const templateScaffoldCandidate = path.join(workDir, 'template-scaffold-candidate.pptx');
-  const editBuilder = path.join(workDir, 'edit.mjs');
-  const edited = path.join(workDir, 'edited.pptx');
-  const fallbackScript = path.join(workDir, 'patch.mjs');
-  const fallbackCandidate = path.join(workDir, 'fallback-candidate.pptx');
-  const fallbackReport = path.join(workDir, 'fallback-report.json');
-  const evaluator = path.join(workDir, 'evaluator.mjs');
-  const evaluation = path.join(workDir, 'evaluation.json');
-  const reviewDir = path.join(workDir, 'review');
-  const converted = path.join(workDir, 'converted.pptx');
-  const conversionReview = path.join(workDir, 'conversion-review');
-  const missingContentTypesCandidate = path.join(workDir, 'missing-content-types.pptx');
-  const missingRootRelationshipsCandidate = path.join(workDir, 'missing-root-relationships.pptx');
-  const invalidContentTypesNamespaceCandidate = path.join(workDir, 'invalid-content-types-namespace.pptx');
-  const invalidRelationshipsNamespaceCandidate = path.join(workDir, 'invalid-relationships-namespace.pptx');
-  const invalidSlideRelationshipsNamespaceCandidate = path.join(workDir, 'invalid-slide-relationships-namespace.pptx');
-  const wrongPresentationContentTypeCandidate = path.join(workDir, 'wrong-presentation-content-type.pptx');
-  const invalidDeliveryCandidate = path.join(workDir, 'invalid-delivery-candidate.pptx');
-  const invalidFinal = path.join(outputRoot, 'invalid-final.pptx');
-  const final = path.join(outputRoot, 'final.pptx');
 
-  const check = pptx('check');
-  assert.equal(check.status, 'ok');
-  process.env.PPTX_RUNTIME_ROOT = check.runtime;
-  pptx('scaffold', '--out', builder);
-  const built = pptx('build', '--builder', builder, '--out', candidate);
-  assert.equal(built.slideCount, 2);
+  const bootstrap = rawPptx('validate', '--input', path.join(workDir, 'missing.pptx'));
+  assert.notEqual(bootstrap.status, 0);
+  process.env.PPTX_RUNTIME_ROOT = path.join(cacheDir, 'runtime');
+  const { loadDependencies } = await import(`${pathToFileURL(path.join(skillRoot, 'scripts/lib/runtime.mjs')).href}?test=${Date.now()}`);
+  const { JSZip } = loadDependencies();
 
-  const manifest = pptx('inspect', '--input', candidate);
-  const title = manifest.slides[0].objects.find((object) => object.text.includes('A clear presentation'));
-  assert.ok(title?.name, 'starter title needs a stable object name');
-
-  const sourceHashBeforeScaffold = crypto.createHash('sha256').update(await fs.readFile(candidate)).digest('hex');
-  const scaffoldedTemplate = pptx('scaffold', '--input', candidate, '--out', templateScaffold);
-  assert.equal(scaffoldedTemplate.mode, 'template');
-  assert.equal(scaffoldedTemplate.slideCount, 2);
-  const templateScaffoldSource = await fs.readFile(templateScaffold, 'utf8');
-  assert.match(templateScaffoldSource, /createTemplatePresentation/);
-  assert.match(templateScaffoldSource, /slide\.generate/);
-  assert.match(templateScaffoldSource, /template\.setNotes/);
-  const scaffoldBuild = pptx(
-    'build',
-    '--builder', templateScaffold,
-    '--input', candidate,
-    '--out', templateScaffoldCandidate,
-  );
-  assert.equal(scaffoldBuild.engine, 'pptx-automizer');
-  const scaffoldManifest = pptx('inspect', '--input', templateScaffoldCandidate);
-  assert.equal(scaffoldManifest.slideCount, manifest.slideCount);
-  assert.deepEqual(
-    scaffoldManifest.slides.map((slide) => slide.text),
-    manifest.slides.map((slide) => slide.text),
-  );
-  assert.equal(
-    crypto.createHash('sha256').update(await fs.readFile(candidate)).digest('hex'),
-    sourceHashBeforeScaffold,
-  );
-
-  await fs.writeFile(fallbackScript, [
-    "import fs from 'node:fs/promises';",
-    "import path from 'node:path';",
-    'const args = process.argv.slice(2);',
-    "const packageIndex = args.indexOf('--package-dir');",
-    "if (packageIndex < 0 || !args[packageIndex + 1]) throw new Error('Missing --package-dir');",
-    "const slide = path.join(args[packageIndex + 1], 'ppt', 'slides', 'slide1.xml');",
-    "const xml = await fs.readFile(slide, 'utf8');",
-    "const updated = xml.replace('A clear presentation title', 'Fallback stays inside the skill');",
-    "if (updated === xml) throw new Error('Expected source text was not found');",
-    "await fs.writeFile(slide, updated, 'utf8');",
-    '',
-  ].join('\n'));
-  const fallback = pptx(
-    'fallback-patch',
-    '--input', candidate,
-    '--script', fallbackScript,
-    '--out', fallbackCandidate,
-    '--report', fallbackReport,
-  );
-  assert.equal(fallback.status, 'ok');
-  assert.deepEqual(fallback.changedParts, ['ppt/slides/slide1.xml']);
-  assert.ok(await fs.stat(fallback.report).then((stat) => stat.isFile()));
-  assert.match(pptx('inspect', '--input', fallbackCandidate).slides[0].text, /Fallback stays inside the skill/);
-  assert.equal(
-    crypto.createHash('sha256').update(await fs.readFile(candidate)).digest('hex'),
-    sourceHashBeforeScaffold,
-  );
-
-  const { loadDependencies } = await import('../scripts/lib/runtime.mjs');
-  const { JSZip, xmldom } = loadDependencies();
-  const compatibilityZip = await JSZip.loadAsync(await fs.readFile(candidate));
-  const relationshipNamespace = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-  const xmlnsNamespace = 'http://www.w3.org/2000/xmlns/';
-  const relationshipOwnerPart = (part) => {
-    if (part === '_rels/.rels') return '';
-    const match = part.match(/^(.*)\/_rels\/([^/]+)\.rels$/u);
-    return match ? path.posix.join(match[1], match[2]) : null;
-  };
-  const elementDescendants = (node) => {
-    const values = [];
-    const visit = (current) => {
-      for (let child = current?.firstChild; child; child = child.nextSibling) {
-        if (child.nodeType !== 1) continue;
-        values.push(child);
-        visit(child);
+  async function writeDeck(output, options = {}) {
+    const texts = options.texts ?? ['Alpha', 'Beta'];
+    const notes = options.notes ?? ['Source note', ''];
+    const chartPart = options.chartPart ?? null;
+    const orphanChartPart = options.orphanChartPart ?? null;
+    const prefix = options.bom ? '\uFEFF  \n' : '';
+    const zip = new JSZip();
+    const overrides = [
+      '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
+      ...texts.map((_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`),
+      ...notes.map((value, index) => value
+        ? `<Override PartName="/ppt/notesSlides/notesSlide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`
+        : ''),
+      ...[chartPart, orphanChartPart].filter(Boolean).map((part) => (
+        `<Override PartName="/${part}" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`
+      )),
+    ];
+    if (options.orphanSlide) {
+      overrides.push('<Override PartName="/ppt/slides/slide99.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>');
+    }
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  ${overrides.filter(Boolean).join('\n  ')}
+</Types>`;
+    zip.file('[Content_Types].xml', `${prefix}${contentTypes}`);
+    zip.file('_rels/.rels', `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`);
+    zip.file('ppt/presentation.xml', `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldIdLst>${texts.map((_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 1}"/>`).join('')}</p:sldIdLst>
+  <p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>
+  <p:notesSz cx="6858000" cy="9144000"/>
+</p:presentation>`);
+    zip.file('ppt/_rels/presentation.xml.rels', `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${texts.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`).join('\n  ')}
+</Relationships>`);
+    for (let index = 0; index < texts.length; index += 1) {
+      const number = index + 1;
+      zip.file(`ppt/slides/slide${number}.xml`, `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Text ${number}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${escapeXml(texts[index])}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`);
+      const slideRelationships = [];
+      if (notes[index]) {
+        slideRelationships.push(`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${number}.xml"/>`);
       }
-    };
-    visit(node);
-    return values;
-  };
-  let absoluteRelationshipTargets = 0;
-  let localRelationshipNamespaces = 0;
-  let bomParts = 0;
-  for (const part of Object.keys(compatibilityZip.files)) {
-    const file = compatibilityZip.file(part);
-    if (!file || !(part.endsWith('.xml') || part.endsWith('.rels'))) continue;
-    const xml = (await file.async('string')).replace(/^\uFEFF/u, '');
-    const document = new xmldom.DOMParser().parseFromString(xml, 'application/xml');
-    if (part.endsWith('.rels')) {
-      const ownerPart = relationshipOwnerPart(part);
-      assert.notEqual(ownerPart, null);
-      for (const relationship of elementDescendants(document).filter((node) => node.localName === 'Relationship')) {
-        if (String(relationship.getAttribute('TargetMode') ?? '').toLowerCase() === 'external') continue;
-        const target = relationship.getAttribute('Target');
-        const resolved = target.startsWith('/')
-          ? path.posix.normalize(target.slice(1))
-          : path.posix.normalize(path.posix.join(path.posix.dirname(ownerPart), target));
-        relationship.setAttribute('Target', `/${resolved}`);
-        absoluteRelationshipTargets += 1;
+      if (index === 0 && chartPart) {
+        slideRelationships.push(`<Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="${escapeXml(options.chartTarget)}"/>`);
       }
-    } else if (part.startsWith('ppt/')) {
-      const root = document.documentElement;
-      if (root?.getAttribute('xmlns:r') === relationshipNamespace) {
-        for (const element of elementDescendants(root)) {
-          const usesRelationshipsPrefix = Array.from({ length: element.attributes?.length ?? 0 })
-            .some((_, index) => element.attributes.item(index)?.prefix === 'r');
-          if (!usesRelationshipsPrefix) continue;
-          element.setAttributeNS(xmlnsNamespace, 'xmlns:r', relationshipNamespace);
-          localRelationshipNamespaces += 1;
-        }
-        root.removeAttributeNS(xmlnsNamespace, 'r');
-        root.removeAttribute('xmlns:r');
+      if (slideRelationships.length) {
+        zip.file(`ppt/slides/_rels/slide${number}.xml.rels`, `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${slideRelationships.join('')}</Relationships>`);
+      }
+      if (notes[index]) {
+        zip.file(`ppt/notesSlides/notesSlide${number}.xml`, `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${escapeXml(notes[index])}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>`);
       }
     }
-    compatibilityZip.file(part, `\uFEFF${new xmldom.XMLSerializer().serializeToString(document)}`);
-    bomParts += 1;
-  }
-  assert.ok(bomParts > 0);
-  assert.ok(absoluteRelationshipTargets > 0);
-  assert.ok(localRelationshipNamespaces > 0);
-
-  const notesRelationshipSuffixes = ['/notesSlide', '/notesMaster'];
-  for (const part of Object.keys(compatibilityZip.files).filter((name) => name.endsWith('.rels'))) {
-    const file = compatibilityZip.file(part);
-    if (!file) continue;
-    const document = new xmldom.DOMParser().parseFromString(
-      (await file.async('string')).replace(/^\uFEFF/u, ''),
-      'application/xml',
-    );
-    let changed = false;
-    for (const relationship of elementDescendants(document).filter((node) => node.localName === 'Relationship')) {
-      if (!notesRelationshipSuffixes.some((suffix) => relationship.getAttribute('Type').endsWith(suffix))) continue;
-      relationship.parentNode.removeChild(relationship);
-      changed = true;
+    for (const part of [chartPart, orphanChartPart].filter(Boolean)) {
+      zip.file(part, `${prefix}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea/></c:chart></c:chartSpace>`);
     }
-    if (changed) compatibilityZip.file(part, new xmldom.XMLSerializer().serializeToString(document));
-  }
-  const presentationDocument = new xmldom.DOMParser().parseFromString(
-    (await compatibilityZip.file('ppt/presentation.xml').async('string')).replace(/^\uFEFF/u, ''),
-    'application/xml',
-  );
-  for (const list of elementDescendants(presentationDocument).filter((node) => node.localName === 'notesMasterIdLst')) {
-    list.parentNode.removeChild(list);
-  }
-  compatibilityZip.file('ppt/presentation.xml', new xmldom.XMLSerializer().serializeToString(presentationDocument));
-  const contentTypesDocument = new xmldom.DOMParser().parseFromString(
-    (await compatibilityZip.file('[Content_Types].xml').async('string')).replace(/^\uFEFF/u, ''),
-    'application/xml',
-  );
-  for (const override of elementDescendants(contentTypesDocument).filter((node) => node.localName === 'Override')) {
-    if (!String(override.getAttribute('ContentType')).includes('.notes')) continue;
-    override.parentNode.removeChild(override);
-  }
-  compatibilityZip.file('[Content_Types].xml', new xmldom.XMLSerializer().serializeToString(contentTypesDocument));
-  compatibilityZip.remove('ppt/notesSlides');
-  compatibilityZip.remove('ppt/notesMasters');
-
-  await fs.writeFile(compatibilityCandidate, await compatibilityZip.generateAsync({ type: 'nodebuffer' }));
-  const compatibilitySourceHash = crypto.createHash('sha256').update(await fs.readFile(compatibilityCandidate)).digest('hex');
-  const compatibilityManifest = pptx('inspect', '--input', compatibilityCandidate);
-  assert.equal(compatibilityManifest.slideCount, manifest.slideCount);
-  assert.deepEqual(
-    compatibilityManifest.slides.map((slide) => slide.text),
-    manifest.slides.map((slide) => slide.text),
-  );
-
-  const conversion = pptx(
-    'convert-legacy',
-    '--input', candidate,
-    '--out', converted,
-    '--qa-dir', conversionReview,
-  );
-  assert.equal(conversion.status, 'converted');
-  assert.equal(conversion.validation.status, 'review_pending');
-  assert.equal(conversion.validation.sourceRender.slideCount, 2);
-  assert.equal(conversion.validation.convertedRender.slideCount, 2);
-  await fs.writeFile(editBuilder, [
-    'export default async function build({ createTemplatePresentation }) {',
-    '  const template = await createTemplatePresentation();',
-    '  template.addSlide(1, (slide) => {',
-    `    slide.modifyElement(${JSON.stringify(title.name)}, [template.ModifyTextHelper.setText('Template editing stays model-directed')]);`,
-    "    slide.generate((canvas, pptxgenjs) => canvas.addChart(pptxgenjs.ChartType.bar, [{ name: 'Results', labels: ['A', 'B'], values: [12, 6] }], { x: 0.8, y: 3.5, w: 4.2, h: 2.4, showLegend: false }), 'Generated Chart');",
-    "    slide.generate((canvas) => canvas.addTable([['Metric', 'Value'], ['A', '12'], ['B', '6']], { x: 5.4, y: 3.5, w: 3.6, h: 1.8 }), 'Generated Table');",
-    '  });',
-    "  template.setNotes(1, '[Sources]\\n- candidate-with-ooxml-variants.pptx');",
-    '  return template;',
-    '}',
-    '',
-  ].join('\n'));
-
-  const templateBuild = pptx('build', '--builder', editBuilder, '--input', compatibilityCandidate, '--out', edited);
-  assert.equal(templateBuild.engine, 'pptx-automizer');
-  assert.equal(
-    crypto.createHash('sha256').update(await fs.readFile(compatibilityCandidate)).digest('hex'),
-    compatibilitySourceHash,
-  );
-  assert.deepEqual(
-    (await fs.readdir(workDir)).filter((name) => name.endsWith('.template.pptx')),
-    [],
-    'normalized template copies should be cleaned up after the build',
-  );
-  const editedManifest = pptx('inspect', '--input', edited);
-  assert.match(editedManifest.slides[0].text, /Template editing stays model-directed/);
-  assert.ok(editedManifest.masterCount >= compatibilityManifest.masterCount);
-  assert.ok(editedManifest.layoutCount >= compatibilityManifest.layoutCount);
-  const editedZip = await JSZip.loadAsync(await fs.readFile(edited));
-  const editedPresentation = new xmldom.DOMParser().parseFromString(
-    await editedZip.file('ppt/presentation.xml').async('string'),
-    'application/xml',
-  );
-  const editedPresentationRelationships = new xmldom.DOMParser().parseFromString(
-    await editedZip.file('ppt/_rels/presentation.xml.rels').async('string'),
-    'application/xml',
-  );
-  const activeSlideRelationshipId = elementDescendants(editedPresentation)
-    .find((node) => node.localName === 'sldId')
-    .getAttribute('r:id');
-  const activeSlideRelationship = elementDescendants(editedPresentationRelationships)
-    .find((node) => node.localName === 'Relationship' && node.getAttribute('Id') === activeSlideRelationshipId);
-  const activeSlidePart = path.posix.join('ppt', activeSlideRelationship.getAttribute('Target'));
-  const activeSlideRelationshipsPart = path.posix.join(
-    path.posix.dirname(activeSlidePart),
-    '_rels',
-    `${path.posix.basename(activeSlidePart)}.rels`,
-  );
-  const activeSlideRelationships = new xmldom.DOMParser().parseFromString(
-    await editedZip.file(activeSlideRelationshipsPart).async('string'),
-    'application/xml',
-  );
-  const activeLayoutRelationship = elementDescendants(activeSlideRelationships)
-    .find((node) => node.localName === 'Relationship' && node.getAttribute('Type').endsWith('/slideLayout'));
-  const activeLayoutPart = path.posix.normalize(path.posix.join(
-    path.posix.dirname(activeSlidePart),
-    activeLayoutRelationship.getAttribute('Target'),
-  ));
-  assert.equal(
-    await editedZip.file(activeLayoutPart).async('string'),
-    await editedZip.file('ppt/slideLayouts/slideLayout1.xml').async('string'),
-    'generated content should remain on a copy of the source slide layout',
-  );
-  assert.ok(
-    Object.keys(editedZip.files).some((part) => /^ppt\/charts\/chart\d+\.xml$/u.test(part)),
-    'template generation should preserve an editable chart',
-  );
-  assert.match(await editedZip.file(activeSlidePart).async('string'), /<a:tbl>/u);
-  const activeNotesRelationship = elementDescendants(activeSlideRelationships)
-    .find((node) => node.localName === 'Relationship' && node.getAttribute('Type').endsWith('/notesSlide'));
-  const activeNotesPart = path.posix.normalize(path.posix.join(
-    path.posix.dirname(activeSlidePart),
-    activeNotesRelationship.getAttribute('Target'),
-  ));
-  const editedNotes = await editedZip.file(activeNotesPart).async('string');
-  assert.match(editedNotes, /\[Sources\]/u);
-  assert.match(editedNotes, /candidate-with-ooxml-variants\.pptx/u);
-  assert.ok(editedZip.file('ppt/notesMasters/notesMaster1.xml'));
-  assert.match(
-    await editedZip.file('ppt/presentation.xml').async('string'),
-    /<p:notesMasterIdLst>/u,
-  );
-
-  await fs.writeFile(evaluator, [
-    'export default async function evaluate({ candidate, helpers }) {',
-    '  return { checks: [',
-    "    { name: 'one selected slide', passed: candidate.slideCount === 1 },",
-    "    { name: 'edited text present', passed: helpers.findText('Template editing stays model-directed').length === 1 },",
-    '  ] };',
-    '}',
-    '',
-  ].join('\n'));
-  assert.equal(pptx('evaluate', '--input', edited, '--script', evaluator, '--out', evaluation).status, 'ok');
-
-  const editedHashBeforeReviewCollision = crypto.createHash('sha256')
-    .update(await fs.readFile(edited))
-    .digest('hex');
-  const reviewCollision = spawnSync('bash', [
-    cli,
-    'review',
-    '--input', edited,
-    '--out-dir', path.join(workDir, 'review-collision'),
-    '--report', edited,
-  ], {
-    cwd: skillRoot,
-    env: environment,
-    encoding: 'utf8',
-  });
-  assert.notEqual(reviewCollision.status, 0);
-  assert.match(reviewCollision.stderr, /candidate and report must use distinct paths/u);
-  assert.equal(
-    crypto.createHash('sha256').update(await fs.readFile(edited)).digest('hex'),
-    editedHashBeforeReviewCollision,
-  );
-
-  const review = pptx('review', '--input', edited, '--out-dir', reviewDir);
-  assert.ok(['review_pending', 'evidence_unavailable'].includes(review.status));
-  assert.equal(review.structure.slideCount, 1);
-  assert.equal(review.structure.slides, undefined);
-  assert.equal(review.audit.errors, undefined);
-  assert.ok(await fs.stat(review.audit.report).then((stat) => stat.isFile()));
-  const fullReview = JSON.parse(await fs.readFile(review.report, 'utf8'));
-  assert.equal(fullReview.structure.slides.length, 1);
-  assert.ok(Array.isArray(fullReview.audit.errors));
-  assert.ok(JSON.stringify(review).length < JSON.stringify(fullReview).length);
-  if (review.status === 'review_pending') {
-    assert.equal(review.render.pages.length, 1);
-    assert.ok(await fs.stat(review.render.pages[0].image).then((stat) => stat.isFile()));
+    if (options.orphanSlide) {
+      zip.file('ppt/slides/slide99.xml', `${prefix}<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld/></p:sld>`);
+    }
+    if (options.media) zip.file('ppt/media/image1.png', Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    await fs.writeFile(output, await zip.generateAsync({ type: 'nodebuffer' }));
   }
 
-  const writeDeliveryVariant = async (output, mutate) => {
-    const zip = await JSZip.loadAsync(await fs.readFile(edited));
+  async function mutateDeck(input, output, mutate) {
+    const zip = await JSZip.loadAsync(await fs.readFile(input));
     await mutate(zip);
     await fs.writeFile(output, await zip.generateAsync({ type: 'nodebuffer' }));
-  };
-  const assertDeliveryRejected = async (input, expectedError) => {
-    const result = spawnSync('bash', [
-      cli,
-      'deliver',
-      '--input', input,
-      '--out', invalidFinal,
-    ], {
-      cwd: skillRoot,
-      env: environment,
-      encoding: 'utf8',
-    });
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, expectedError);
-    assert.equal(await fs.stat(invalidFinal).then(() => true).catch(() => false), false);
-  };
+  }
 
-  await writeDeliveryVariant(missingContentTypesCandidate, (zip) => {
-    zip.remove('[Content_Types].xml');
+  const source = path.join(outputRoot, 'source.pptx');
+  const candidate = path.join(workDir, 'candidate.pptx');
+  const changedCandidate = path.join(workDir, 'changed.pptx');
+  const bomCandidate = path.join(workDir, 'bom.pptx');
+  const orphanCandidate = path.join(workDir, 'orphan.pptx');
+  const standardChartCandidate = path.join(workDir, 'standard-chart.pptx');
+  const nonstandardChartCandidate = path.join(workDir, 'nonstandard-chart.pptx');
+  const shorterCandidate = path.join(workDir, 'shorter.pptx');
+  await writeDeck(source);
+  await fs.copyFile(source, candidate);
+  await writeDeck(changedCandidate, { texts: ['Alpha revised', 'Beta'], notes: ['Revised source note', ''], media: true });
+  await writeDeck(bomCandidate, { bom: true });
+  await writeDeck(orphanCandidate, { orphanSlide: true });
+  await writeDeck(standardChartCandidate, {
+    chartPart: 'ppt/charts/chart1.xml',
+    chartTarget: '../charts/chart1.xml',
   });
-  await assertDeliveryRejected(missingContentTypesCandidate, /required part \[Content_Types\]\.xml is missing/u);
-
-  await writeDeliveryVariant(missingRootRelationshipsCandidate, (zip) => {
-    zip.remove('_rels/.rels');
+  await writeDeck(nonstandardChartCandidate, {
+    chartPart: 'ppt/slides/charts/chart1.xml',
+    chartTarget: 'charts/chart1.xml',
+    orphanChartPart: 'ppt/charts/chart99.xml',
   });
-  await assertDeliveryRejected(missingRootRelationshipsCandidate, /required part _rels\/\.rels is missing/u);
+  await writeDeck(shorterCandidate, { texts: ['Alpha'], notes: ['Source note'] });
 
-  await writeDeliveryVariant(invalidContentTypesNamespaceCandidate, async (zip) => {
-    const part = zip.file('[Content_Types].xml');
+  const valid = pptx('validate', '--input', candidate);
+  assert.equal(valid.status, 'ok');
+  assert.equal(valid.presentation.slideCount, 2);
+  assert.equal(valid.presentation.notesSlideCount, 1);
+  assert.equal(valid.warnings.length, 0);
+  assert.equal(pptx('validate', '--input', bomCandidate).status, 'ok');
+  assert.ok(pptx('validate', '--input', orphanCandidate).warnings.some((warning) => warning.code === 'orphan-slide-parts'));
+  assert.equal(pptx('validate', '--input', standardChartCandidate).presentation.chartCount, 1);
+  assert.equal(pptx('validate', '--input', nonstandardChartCandidate).presentation.chartCount, 1);
+
+  const missingContentTypes = path.join(workDir, 'missing-content-types.pptx');
+  await mutateDeck(candidate, missingContentTypes, (zip) => zip.remove('[Content_Types].xml'));
+  let failed = rawPptx('validate', '--input', missingContentTypes);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /required part \[Content_Types\]\.xml is missing/u);
+
+  const missingTarget = path.join(workDir, 'missing-target.pptx');
+  await mutateDeck(candidate, missingTarget, async (zip) => {
+    const part = zip.file('ppt/_rels/presentation.xml.rels');
+    zip.file('ppt/_rels/presentation.xml.rels', (await part.async('string')).replace('slides/slide1.xml', 'slides/missing.xml'));
+  });
+  failed = rawPptx('validate', '--input', missingTarget);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /targets missing part/u);
+
+  const wrongSlideTarget = path.join(workDir, 'wrong-slide-target.pptx');
+  await mutateDeck(candidate, wrongSlideTarget, async (zip) => {
+    const part = zip.file('ppt/_rels/presentation.xml.rels');
+    zip.file('ppt/_rels/presentation.xml.rels', (await part.async('string')).replace('slides/slide1.xml', 'presentation.xml'));
+  });
+  failed = rawPptx('validate', '--input', wrongSlideTarget);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /unexpected content type/u);
+
+  const wrongSlideRoot = path.join(workDir, 'wrong-slide-root.pptx');
+  await mutateDeck(candidate, wrongSlideRoot, async (zip) => {
+    const part = zip.file('ppt/slides/slide1.xml');
     const xml = await part.async('string');
-    const namespace = 'http://schemas.openxmlformats.org/package/2006/content-types';
-    assert.match(xml, new RegExp(namespace, 'u'));
-    zip.file('[Content_Types].xml', xml.replace(namespace, 'urn:invalid-content-types'));
+    zip.file('ppt/slides/slide1.xml', xml.replace('<p:sld ', '<p:presentation ').replace('</p:sld>', '</p:presentation>'));
   });
-  await assertDeliveryRejected(invalidContentTypesNamespaceCandidate, /must use namespace .*content-types/u);
+  failed = rawPptx('validate', '--input', wrongSlideRoot);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /not a presentation slide part/u);
 
-  await writeDeliveryVariant(invalidRelationshipsNamespaceCandidate, async (zip) => {
-    const part = zip.file('_rels/.rels');
-    const xml = await part.async('string');
-    const namespace = 'http://schemas.openxmlformats.org/package/2006/relationships';
-    assert.match(xml, new RegExp(namespace, 'u'));
-    zip.file('_rels/.rels', xml.replace(namespace, 'urn:invalid-relationships'));
+  const wrongNotesTarget = path.join(workDir, 'wrong-notes-target.pptx');
+  await mutateDeck(candidate, wrongNotesTarget, async (zip) => {
+    const part = zip.file('ppt/slides/_rels/slide1.xml.rels');
+    zip.file('ppt/slides/_rels/slide1.xml.rels', (await part.async('string')).replace('../notesSlides/notesSlide1.xml', '../presentation.xml'));
   });
-  await assertDeliveryRejected(invalidRelationshipsNamespaceCandidate, /must use namespace .*relationships/u);
+  failed = rawPptx('validate', '--input', wrongNotesTarget);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /notes relationship.*unexpected content type/u);
 
-  await writeDeliveryVariant(invalidSlideRelationshipsNamespaceCandidate, async (zip) => {
-    const part = zip.file(activeSlideRelationshipsPart);
+  const wrongNotesRoot = path.join(workDir, 'wrong-notes-root.pptx');
+  await mutateDeck(candidate, wrongNotesRoot, async (zip) => {
+    const part = zip.file('ppt/notesSlides/notesSlide1.xml');
     const xml = await part.async('string');
-    const namespace = 'http://schemas.openxmlformats.org/package/2006/relationships';
-    assert.match(xml, new RegExp(namespace, 'u'));
-    zip.file(activeSlideRelationshipsPart, xml.replace(namespace, 'urn:invalid-relationships'));
+    zip.file('ppt/notesSlides/notesSlide1.xml', xml.replace('<p:notes ', '<p:presentation ').replace('</p:notes>', '</p:presentation>'));
   });
-  await assertDeliveryRejected(
-    invalidSlideRelationshipsNamespaceCandidate,
-    /ppt\/slides\/_rels\/.*\.rels must use namespace .*relationships/u,
+  failed = rawPptx('validate', '--input', wrongNotesRoot);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /not a presentation notes slide part/u);
+
+  const wrongChartTarget = path.join(workDir, 'wrong-chart-target.pptx');
+  await mutateDeck(standardChartCandidate, wrongChartTarget, async (zip) => {
+    const part = zip.file('ppt/slides/_rels/slide1.xml.rels');
+    zip.file('ppt/slides/_rels/slide1.xml.rels', (await part.async('string')).replace('../charts/chart1.xml', '../presentation.xml'));
+  });
+  failed = rawPptx('validate', '--input', wrongChartTarget);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /chart relationship.*unexpected content type/u);
+
+  const wrongChartRoot = path.join(workDir, 'wrong-chart-root.pptx');
+  await mutateDeck(standardChartCandidate, wrongChartRoot, async (zip) => {
+    const part = zip.file('ppt/charts/chart1.xml');
+    const xml = await part.async('string');
+    zip.file('ppt/charts/chart1.xml', xml.replace('<c:chartSpace ', '<c:notChart ').replace('</c:chartSpace>', '</c:notChart>'));
+  });
+  failed = rawPptx('validate', '--input', wrongChartRoot);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /not a DrawingML chart part/u);
+
+  const unsafeTarget = path.join(workDir, 'unsafe-target.pptx');
+  await mutateDeck(candidate, unsafeTarget, async (zip) => {
+    const part = zip.file('ppt/_rels/presentation.xml.rels');
+    zip.file('ppt/_rels/presentation.xml.rels', (await part.async('string')).replace('slides/slide1.xml', '../../../outside.xml'));
+  });
+  failed = rawPptx('validate', '--input', unsafeTarget);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /unsafe target/u);
+
+  const unsafeEntry = path.join(workDir, 'unsafe-entry.pptx');
+  await mutateDeck(candidate, unsafeEntry, (zip) => zip.file('../outside.xml', '<outside/>'));
+  failed = rawPptx('validate', '--input', unsafeEntry);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /unsafe ZIP entry path/u);
+
+  const malformed = path.join(workDir, 'malformed.pptx');
+  await fs.writeFile(malformed, 'not a zip');
+  failed = rawPptx('validate', '--input', malformed);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /Not a valid PPTX OOXML package/u);
+
+  const comparisonPath = path.join(workDir, 'comparison.json');
+  const comparison = pptx('compare', '--source', source, '--candidate', changedCandidate, '--out', comparisonPath);
+  assert.equal(comparison.status, 'ok');
+  assert.equal(comparison.changed, true);
+  assert.equal(comparison.summary.textChangedSlidePositions, 1);
+  assert.equal(comparison.summary.notesChangedSlidePositions, 1);
+  assert.equal(comparison.summary.addedPartCount, 1);
+  assert.equal(comparison.summary.slideCountChanged, false);
+  assert.equal(Object.hasOwn(comparison.summary, 'slideSequenceChanged'), false);
+  const fullComparison = JSON.parse(await fs.readFile(comparisonPath, 'utf8'));
+  assert.equal(fullComparison.slides[0].text.source, 'Alpha');
+  assert.equal(fullComparison.slides[0].notes.candidate, 'Revised source note');
+  assert.equal(pptx('compare', '--source', source, '--candidate', candidate).changed, false);
+  assert.equal(pptx('compare', '--source', source, '--candidate', shorterCandidate).summary.slideCountChanged, true);
+
+  const final = path.join(outputRoot, 'final.pptx');
+  const delivered = pptx('deliver', '--input', candidate, '--out', final, '--source', source);
+  assert.equal(delivered.status, 'ok');
+  assert.equal(delivered.structure.slideCount, 2);
+  assert.equal(Object.hasOwn(delivered, 'validation'), false);
+  assert.equal(await fs.readFile(final).then(sha256), await fs.readFile(candidate).then(sha256));
+  assert.equal(await fs.readFile(source).then(sha256), await fs.readFile(candidate).then(sha256));
+
+  failed = rawPptx('deliver', '--input', changedCandidate, '--out', final);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /Refusing to overwrite existing deliverable/u);
+  const overwritten = pptx('deliver', '--input', changedCandidate, '--out', final, '--overwrite');
+  assert.equal(overwritten.sha256, await fs.readFile(changedCandidate).then(sha256));
+
+  const invalidFinal = path.join(outputRoot, 'invalid-final.pptx');
+  failed = rawPptx('deliver', '--input', wrongSlideTarget, '--out', invalidFinal);
+  assert.notEqual(failed.status, 0);
+  assert.equal(await fs.stat(invalidFinal).then(() => true).catch(() => false), false);
+  for (const [name, invalidCandidate] of [['notes', wrongNotesTarget], ['chart', wrongChartTarget]]) {
+    const relatedInvalidFinal = path.join(outputRoot, `invalid-${name}-final.pptx`);
+    failed = rawPptx('deliver', '--input', invalidCandidate, '--out', relatedInvalidFinal);
+    assert.notEqual(failed.status, 0);
+    assert.equal(await fs.stat(relatedInvalidFinal).then(() => true).catch(() => false), false);
+  }
+
+  const replaceSource = path.join(outputRoot, 'replace-source.pptx');
+  await fs.copyFile(source, replaceSource);
+  failed = rawPptx('deliver', '--input', changedCandidate, '--source', replaceSource, '--out', replaceSource);
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /without --replace-source/u);
+  const replacement = pptx(
+    'deliver',
+    '--input', changedCandidate,
+    '--source', replaceSource,
+    '--out', replaceSource,
+    '--replace-source',
   );
+  assert.equal(replacement.sourceReplaced, true);
+  assert.ok(replacement.recovery?.path.startsWith(await fs.realpath(path.join(workDir, 'pptx', 'recovery'))));
+  assert.equal(await fs.readFile(replacement.recovery.path).then(sha256), replacement.recovery.sha256);
+  assert.equal(await fs.readFile(replaceSource).then(sha256), await fs.readFile(changedCandidate).then(sha256));
 
-  await writeDeliveryVariant(wrongPresentationContentTypeCandidate, async (zip) => {
-    const document = new xmldom.DOMParser().parseFromString(
-      await zip.file('[Content_Types].xml').async('string'),
-      'application/xml',
-    );
-    const presentationOverride = elementDescendants(document).find((node) => (
-      node.localName === 'Override' && node.getAttribute('PartName') === '/ppt/presentation.xml'
-    ));
-    assert.ok(presentationOverride);
-    presentationOverride.setAttribute('ContentType', 'application/xml');
-    zip.file('[Content_Types].xml', new xmldom.XMLSerializer().serializeToString(document));
-  });
-  await assertDeliveryRejected(wrongPresentationContentTypeCandidate, /uses unexpected content type application\/xml/u);
+  const help = rawPptx('help');
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /validate\|render\|compare\|deliver\|convert-legacy/u);
+  assert.doesNotMatch(help.stdout, /inspect|scaffold|fallback-patch|review|evaluate/u);
 
-  await writeDeliveryVariant(invalidDeliveryCandidate, (zip) => {
-    zip.remove(activeLayoutPart);
-  });
-  await assertDeliveryRejected(invalidDeliveryCandidate, /targets missing part/u);
+  const pythonCheck = spawnSync('python3', ['-c', 'import pptx'], { encoding: 'utf8' });
+  if (pythonCheck.status === 0) {
+    const renderCandidate = path.join(workDir, 'render-candidate.pptx');
+    const pythonDeck = spawnSync('python3', ['-c', [
+      'from pptx import Presentation',
+      'from pptx.util import Inches',
+      'import sys',
+      'prs = Presentation()',
+      'slide = prs.slides.add_slide(prs.slide_layouts[6])',
+      'box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1))',
+      'box.text_frame.text = "Render smoke test"',
+      'prs.save(sys.argv[1])',
+    ].join(';'), renderCandidate], { encoding: 'utf8' });
+    assert.equal(pythonDeck.status, 0, pythonDeck.stderr);
+    const render = rawPptx('render', '--input', renderCandidate, '--out-dir', path.join(workDir, 'render'));
+    if (render.status === 0) {
+      const report = JSON.parse(render.stdout);
+      assert.equal(report.slideCount, 1);
+      assert.ok(await fs.stat(report.slides[0]).then((stat) => stat.isFile()));
+      const legacyDir = path.join(workDir, 'legacy-source');
+      const legacyProfile = path.join(workDir, 'legacy-profile');
+      await fs.mkdir(legacyDir, { recursive: true });
+      await fs.mkdir(legacyProfile, { recursive: true });
+      const toLegacy = spawnSync(report.engine, [
+        `-env:UserInstallation=${pathToFileURL(legacyProfile).href}`,
+        '--headless',
+        '--convert-to',
+        'ppt:MS PowerPoint 97',
+        '--outdir',
+        legacyDir,
+        renderCandidate,
+      ], { encoding: 'utf8' });
+      assert.equal(toLegacy.status, 0, toLegacy.stderr || toLegacy.stdout);
+      const legacySource = path.join(legacyDir, 'render-candidate.ppt');
+      assert.ok(await fs.stat(legacySource).then((stat) => stat.isFile()));
+      const conversion = pptx(
+        'convert-legacy',
+        '--input', legacySource,
+        '--out', path.join(workDir, 'legacy-converted.pptx'),
+      );
+      assert.equal(conversion.status, 'converted_with_warnings');
+      assert.equal(conversion.source.preserved, true);
+      assert.equal(conversion.output.slideCount, 1);
+    } else {
+      assert.match(render.stderr, /Rendering requires LibreOffice/u);
+    }
+  }
 
-  const delivered = pptx('deliver', '--input', edited, '--out', final);
-  assert.equal(delivered.slideCount, 1);
-  assert.ok(delivered.validation.textPartCount > 0);
-  assert.ok(delivered.validation.relationshipCount > 0);
-  assert.ok(delivered.validation.contentTypeCount > 0);
-  assert.ok(delivered.validation.mappedPartCount > 0);
-  assert.ok(await fs.stat(final).then((stat) => stat.isFile()));
   passed = true;
-  process.stdout.write(`${JSON.stringify({ status: 'ok', checks: ['build', 'template-scaffold', 'fallback-patch', 'ooxml-compatibility', 'convert', 'template-edit', 'evaluate', 'compact-review', 'opc-validation', 'delivery-validation', 'deliver'] })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    status: 'ok',
+    checks: [
+      'runtime-bootstrap',
+      'package-validation',
+      'bom-compatibility',
+      'warning-nonblocking',
+      'broken-package-rejection',
+      'slide-target-semantics',
+      'notes-chart-target-semantics',
+      'unsafe-path-rejection',
+      'factual-comparison',
+      'active-chart-counting',
+      'atomic-delivery',
+      'source-protection',
+      'recovery-copy',
+      'public-command-surface',
+      'render-when-available',
+      'legacy-conversion-when-available',
+    ],
+  })}\n`);
 } finally {
   if (passed) await fs.rm(outputRoot, { recursive: true, force: true });
   else process.stderr.write(`PPTX self-test artifacts: ${outputRoot}\n`);

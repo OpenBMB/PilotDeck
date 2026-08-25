@@ -1,11 +1,8 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { loadDependencies } from './runtime.mjs';
 
-const EMU_PER_INCH = 914400;
-const RELATIONSHIPS_NAMESPACE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
 const CONTENT_TYPES_PART = '[Content_Types].xml';
 const ROOT_RELATIONSHIPS_PART = '_rels/.rels';
 const CONTENT_TYPES_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/content-types';
@@ -16,23 +13,39 @@ const OFFICE_DOCUMENT_RELATIONSHIP_TYPES = new Set([
 ]);
 const PRESENTATION_MAIN_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml';
+const PRESENTATION_SLIDE_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.slide+xml';
+const PRESENTATION_NOTES_SLIDE_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml';
+const DRAWINGML_CHART_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.drawingml.chart+xml';
+const PRESENTATION_MAIN_NAMESPACES = new Set([
+  'http://schemas.openxmlformats.org/presentationml/2006/main',
+  'http://purl.oclc.org/ooxml/presentationml/main',
+]);
+const DRAWINGML_CHART_NAMESPACES = new Set([
+  'http://schemas.openxmlformats.org/drawingml/2006/chart',
+  'http://purl.oclc.org/ooxml/drawingml/chart',
+]);
+const LEGACY_MAGIC = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
 
-function parseXml(xml) {
-  const { xmldom } = loadDependencies();
-  const errors = [];
-  const normalized = xml.replace(/^\uFEFF/u, '');
-  const document = new xmldom.DOMParser({
-    onError: (level, message) => errors.push({ level, message }),
-  }).parseFromString(normalized, 'application/xml');
-  if (errors.some((item) => item.level === 'fatalError')) {
-    throw new Error(`Invalid OOXML: ${errors.map((item) => item.message).join('; ')}`);
-  }
-  return document;
+function normalizeXmlSource(xml) {
+  const withoutBom = String(xml).replace(/^\uFEFF/u, '');
+  return /^\s+<\?xml/u.test(withoutBom) ? withoutBom.trimStart() : withoutBom;
 }
 
-function serializeXml(document) {
+function parseXml(xml, part = 'OOXML part') {
   const { xmldom } = loadDependencies();
-  return new xmldom.XMLSerializer().serializeToString(document);
+  const errors = [];
+  const document = new xmldom.DOMParser({
+    onError: (level, message) => errors.push({ level, message }),
+  }).parseFromString(normalizeXmlSource(xml), 'application/xml');
+  const fatal = errors.filter((item) => item.level === 'fatalError');
+  if (!document?.documentElement || fatal.length) {
+    const details = fatal.map((item) => item.message).join('; ') || 'document root is missing';
+    throw new Error(`Invalid XML in ${part}: ${details}`);
+  }
+  return document;
 }
 
 function elementChildren(node) {
@@ -43,11 +56,11 @@ function elementChildren(node) {
   return values;
 }
 
-function descendants(node, localName) {
+function descendants(node, localName = null) {
   const values = [];
   const visit = (current) => {
     for (const child of elementChildren(current)) {
-      if (child.localName === localName || child.nodeName === localName) values.push(child);
+      if (localName === null || child.localName === localName || child.nodeName === localName) values.push(child);
       visit(child);
     }
   };
@@ -55,121 +68,120 @@ function descendants(node, localName) {
   return values;
 }
 
-function firstDescendant(node, localName) {
-  return descendants(node, localName)[0] ?? null;
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-function numberAttribute(node, name) {
-  if (!node) return null;
-  const value = Number(node.getAttribute(name));
-  return Number.isFinite(value) ? value : null;
-}
-
-function inches(emu) {
-  return emu === null ? null : Math.round((emu / EMU_PER_INCH) * 10000) / 10000;
-}
-
-function relationshipMap(document) {
-  const map = new Map();
-  for (const rel of descendants(document, 'Relationship')) {
-    map.set(rel.getAttribute('Id'), rel.getAttribute('Target'));
+function canonicalPartName(value) {
+  const raw = String(value ?? '').replace(/^\/+/, '');
+  if (!raw || raw.includes('\\') || raw.includes('\0')) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = raw;
   }
-  return map;
+  const normalized = path.posix.normalize(decoded);
+  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../') || path.posix.isAbsolute(normalized)) {
+    return null;
+  }
+  return normalized;
 }
 
-function resolvePart(basePart, target) {
-  if (!target) return null;
-  const [part] = target.split(/[?#]/u, 1);
-  if (part.startsWith('/')) return path.posix.normalize(part.slice(1));
-  return path.posix.normalize(path.posix.join(path.posix.dirname(basePart), part));
+function assertSafeZipEntries(zip) {
+  for (const [name, entry] of Object.entries(zip.files)) {
+    const original = entry.unsafeOriginalName ?? name;
+    const withoutTrailingSlash = String(original).replace(/\/+$/u, '');
+    if (!withoutTrailingSlash) continue;
+    if (withoutTrailingSlash.startsWith('/') || !canonicalPartName(withoutTrailingSlash)) {
+      throw new Error(`Invalid PPTX OPC package: unsafe ZIP entry path ${original}`);
+    }
+  }
+}
+
+function buildPartIndex(zip) {
+  const index = new Map();
+  for (const [name, entry] of Object.entries(zip.files)) {
+    if (entry.dir) continue;
+    const canonical = canonicalPartName(name);
+    if (!canonical) throw new Error(`Invalid PPTX OPC package: unsafe part path ${name}`);
+    if (index.has(canonical)) {
+      throw new Error(`Invalid PPTX OPC package: multiple ZIP entries resolve to ${canonical}`);
+    }
+    index.set(canonical, name);
+  }
+  return index;
+}
+
+function requiredPart(context, part) {
+  const canonical = canonicalPartName(part);
+  const actual = canonical ? context.partIndex.get(canonical) : null;
+  const file = actual ? context.zip.file(actual) : null;
+  if (!file) throw new Error(`Invalid PPTX OPC package: required part ${part} is missing`);
+  return { canonical, actual, file };
+}
+
+function optionalPart(context, part) {
+  const canonical = canonicalPartName(part);
+  const actual = canonical ? context.partIndex.get(canonical) : null;
+  return actual ? context.zip.file(actual) : null;
 }
 
 function relationshipOwnerPart(relationshipsPart) {
-  if (relationshipsPart === '_rels/.rels') return '';
+  if (relationshipsPart === ROOT_RELATIONSHIPS_PART) return '';
   const match = relationshipsPart.match(/^(.*)\/_rels\/([^/]+)\.rels$/u);
-  if (!match) return null;
-  return path.posix.join(match[1], match[2]);
+  return match ? path.posix.join(match[1], match[2]) : null;
 }
 
-function relationshipTargetSuffix(target) {
-  return target.slice(target.search(/[?#]/u) < 0 ? target.length : target.search(/[?#]/u));
+function relationshipsPartFor(ownerPart) {
+  if (!ownerPart) return ROOT_RELATIONSHIPS_PART;
+  return path.posix.join(path.posix.dirname(ownerPart), '_rels', `${path.posix.basename(ownerPart)}.rels`);
 }
 
-function relativeRelationshipTarget(ownerPart, target) {
-  const resolved = resolvePart(ownerPart, target);
-  if (!resolved) return target;
-  const ownerDirectory = path.posix.dirname(ownerPart);
-  const relative = path.posix.relative(ownerDirectory === '.' ? '' : ownerDirectory, resolved);
-  return `${relative || path.posix.basename(resolved)}${relationshipTargetSuffix(target)}`;
-}
-
-function zipContainsPart(zip, part) {
-  if (!part || part === '.' || part.startsWith('../')) return false;
-  if (zip.file(part)) return true;
+function resolveRelationshipTarget(ownerPart, target) {
+  const raw = String(target ?? '').split(/[?#]/u, 1)[0];
+  if (!raw || raw.includes('\\') || raw.includes('\0')) return null;
+  let decoded;
   try {
-    return decodeURI(part) !== part && Boolean(zip.file(decodeURI(part)));
+    decoded = decodeURIComponent(raw);
   } catch {
-    return false;
+    decoded = raw;
   }
+  const joined = decoded.startsWith('/')
+    ? decoded.slice(1)
+    : path.posix.join(path.posix.dirname(ownerPart || ''), decoded);
+  return canonicalPartName(joined);
 }
 
-function ensureRelationshipNamespace(document) {
+function relationshipId(node) {
+  const prefixed = node.getAttribute('r:id');
+  if (prefixed) return prefixed;
+  for (let index = 0; index < (node.attributes?.length ?? 0); index += 1) {
+    const attribute = node.attributes.item(index);
+    if (attribute?.localName === 'id' && /\/relationships$/u.test(attribute.namespaceURI ?? '')) return attribute.value;
+  }
+  return null;
+}
+
+async function readRelationships(context, part, { required = false } = {}) {
+  const file = optionalPart(context, part);
+  if (!file) {
+    if (required) requiredPart(context, part);
+    return [];
+  }
+  const document = parseXml(await file.async('string'), part);
   const root = document.documentElement;
-  if (!root) throw new Error('Invalid OOXML: document root is missing');
-  const current = root.getAttribute('xmlns:r');
-  if (current && current !== RELATIONSHIPS_NAMESPACE) {
-    throw new Error(`Invalid OOXML: xmlns:r is bound to an unexpected namespace: ${current}`);
+  if (root.localName !== 'Relationships' || root.namespaceURI !== PACKAGE_RELATIONSHIPS_NAMESPACE) {
+    throw new Error(`Invalid PPTX OPC package: ${part} must use namespace ${PACKAGE_RELATIONSHIPS_NAMESPACE}`);
   }
-  if (!current) root.setAttributeNS(XMLNS_NAMESPACE, 'xmlns:r', RELATIONSHIPS_NAMESPACE);
-}
-
-async function validateZipRelationships(zip) {
-  let relationshipCount = 0;
-  for (const relationshipsPart of Object.keys(zip.files).filter((name) => name.endsWith('.rels'))) {
-    const ownerPart = relationshipOwnerPart(relationshipsPart);
-    if (ownerPart === null) throw new Error(`Invalid OOXML relationship part path: ${relationshipsPart}`);
-    for (const relationship of await readRelationshipsPart(zip, relationshipsPart)) {
-      relationshipCount += 1;
-      if (String(relationship.getAttribute('TargetMode') ?? '').toLowerCase() === 'external') continue;
-      const target = relationship.getAttribute('Target');
-      const resolved = resolvePart(ownerPart, target);
-      if (!zipContainsPart(zip, resolved)) {
-        throw new Error(`Invalid OOXML relationship: ${relationshipsPart} targets missing part ${target}`);
-      }
-    }
-  }
-  return relationshipCount;
-}
-
-function requiredZipPart(zip, part) {
-  const file = zip.file(part);
-  if (!file) throw new Error(`Invalid PPTX OPC package: required part ${part} is missing`);
-  return file;
-}
-
-async function readRelationshipsPart(zip, part) {
-  const document = parseXml(await requiredZipPart(zip, part).async('string'));
-  const root = document.documentElement;
-  if (root?.localName !== 'Relationships' || root.namespaceURI !== PACKAGE_RELATIONSHIPS_NAMESPACE) {
-    throw new Error(
-      `Invalid PPTX OPC package: ${part} must use namespace ${PACKAGE_RELATIONSHIPS_NAMESPACE}`,
-    );
-  }
-  return elementChildren(root).filter((relationship) => (
-    relationship.localName === 'Relationship'
-    && relationship.namespaceURI === PACKAGE_RELATIONSHIPS_NAMESPACE
-  ));
-}
-
-function canonicalPartName(partName) {
-  const value = String(partName ?? '').replace(/^\/+/u, '');
-  const normalized = path.posix.normalize(value);
-  if (!value || normalized === '.' || normalized.startsWith('../')) return null;
-  try {
-    return decodeURI(normalized);
-  } catch {
-    return normalized;
-  }
+  return elementChildren(root)
+    .filter((node) => node.localName === 'Relationship' && node.namespaceURI === PACKAGE_RELATIONSHIPS_NAMESPACE)
+    .map((node) => ({
+      id: node.getAttribute('Id'),
+      type: node.getAttribute('Type'),
+      target: node.getAttribute('Target'),
+      external: String(node.getAttribute('TargetMode') ?? '').toLowerCase() === 'external',
+    }));
 }
 
 function partExtension(part) {
@@ -178,382 +190,279 @@ function partExtension(part) {
   return path.posix.extname(basename).slice(1).toLowerCase();
 }
 
-async function validateRootOfficeDocument(zip) {
-  const officeDocumentRelationships = (await readRelationshipsPart(zip, ROOT_RELATIONSHIPS_PART))
-    .filter((relationship) => (
-      OFFICE_DOCUMENT_RELATIONSHIP_TYPES.has(relationship.getAttribute('Type'))
-      && String(relationship.getAttribute('TargetMode') ?? '').toLowerCase() !== 'external'
-    ));
-  if (officeDocumentRelationships.length !== 1) {
-    throw new Error('Invalid PPTX OPC package: root relationships must contain one officeDocument entry');
-  }
-  const target = officeDocumentRelationships[0].getAttribute('Target');
-  const resolved = resolvePart('', target);
-  if (!zipContainsPart(zip, resolved)) {
-    throw new Error(`Invalid PPTX OPC package: officeDocument targets missing part ${target}`);
-  }
-  return canonicalPartName(resolved);
-}
-
-async function validateContentTypes(zip, officeDocumentPart) {
-  const document = parseXml(await requiredZipPart(zip, CONTENT_TYPES_PART).async('string'));
+async function validateContentTypes(context, officeDocumentPart) {
+  const { file } = requiredPart(context, CONTENT_TYPES_PART);
+  const document = parseXml(await file.async('string'), CONTENT_TYPES_PART);
   const root = document.documentElement;
-  if (root?.localName !== 'Types' || root.namespaceURI !== CONTENT_TYPES_NAMESPACE) {
-    throw new Error(
-      `Invalid PPTX OPC package: ${CONTENT_TYPES_PART} must use namespace ${CONTENT_TYPES_NAMESPACE}`,
-    );
+  if (root.localName !== 'Types' || root.namespaceURI !== CONTENT_TYPES_NAMESPACE) {
+    throw new Error(`Invalid PPTX OPC package: ${CONTENT_TYPES_PART} must use namespace ${CONTENT_TYPES_NAMESPACE}`);
   }
-
-  const contentTypeEntries = elementChildren(root)
-    .filter((entry) => entry.namespaceURI === CONTENT_TYPES_NAMESPACE);
   const defaults = new Map();
-  for (const entry of contentTypeEntries.filter((item) => item.localName === 'Default')) {
-    const extension = entry.getAttribute('Extension').replace(/^\./u, '').toLowerCase();
-    const contentType = entry.getAttribute('ContentType');
-    if (!extension || !contentType) {
-      throw new Error(`Invalid PPTX OPC package: ${CONTENT_TYPES_PART} contains an incomplete Default entry`);
-    }
-    defaults.set(extension, contentType);
-  }
-
   const overrides = new Map();
-  for (const entry of contentTypeEntries.filter((item) => item.localName === 'Override')) {
-    const part = canonicalPartName(entry.getAttribute('PartName'));
-    const contentType = entry.getAttribute('ContentType');
-    if (!part || !contentType) {
-      throw new Error(`Invalid PPTX OPC package: ${CONTENT_TYPES_PART} contains an incomplete Override entry`);
+  for (const entry of elementChildren(root).filter((node) => node.namespaceURI === CONTENT_TYPES_NAMESPACE)) {
+    if (entry.localName === 'Default') {
+      const extension = entry.getAttribute('Extension').replace(/^\./u, '').toLowerCase();
+      const contentType = entry.getAttribute('ContentType');
+      if (!extension || !contentType) throw new Error(`Invalid PPTX OPC package: ${CONTENT_TYPES_PART} contains an incomplete Default entry`);
+      defaults.set(extension, contentType);
+    } else if (entry.localName === 'Override') {
+      const part = canonicalPartName(entry.getAttribute('PartName'));
+      const contentType = entry.getAttribute('ContentType');
+      if (!part || !contentType) throw new Error(`Invalid PPTX OPC package: ${CONTENT_TYPES_PART} contains an incomplete Override entry`);
+      overrides.set(part, contentType);
     }
-    overrides.set(part, contentType);
   }
-
-  const contentTypeForPart = (part) => {
-    const canonical = canonicalPartName(part);
-    if (!canonical) return undefined;
-    return overrides.get(canonical) ?? defaults.get(partExtension(canonical));
-  };
-
+  const contentTypeFor = (part) => overrides.get(part) ?? defaults.get(partExtension(part));
   let mappedPartCount = 0;
-  for (const [part, entry] of Object.entries(zip.files)) {
-    if (entry.dir || part === CONTENT_TYPES_PART) continue;
-    if (!contentTypeForPart(part)) {
-      throw new Error(`Invalid PPTX OPC package: no content type is declared for ${part}`);
-    }
+  for (const part of context.partIndex.keys()) {
+    if (part === CONTENT_TYPES_PART) continue;
+    if (!contentTypeFor(part)) throw new Error(`Invalid PPTX OPC package: no content type is declared for ${part}`);
     mappedPartCount += 1;
   }
-
-  const officeDocumentContentType = contentTypeForPart(officeDocumentPart);
-  if (officeDocumentContentType !== PRESENTATION_MAIN_CONTENT_TYPE) {
-    throw new Error(
-      `Invalid PPTX OPC package: ${officeDocumentPart} uses unexpected content type ${officeDocumentContentType ?? '(missing)'}`,
-    );
+  const mainType = contentTypeFor(officeDocumentPart);
+  if (mainType !== PRESENTATION_MAIN_CONTENT_TYPE) {
+    throw new Error(`Invalid PPTX OPC package: ${officeDocumentPart} uses unexpected content type ${mainType ?? '(missing)'}`);
   }
+  return { contentTypeCount: defaults.size + overrides.size, mappedPartCount, contentTypeFor };
+}
 
+async function findOfficeDocumentPart(context) {
+  const relationships = await readRelationships(context, ROOT_RELATIONSHIPS_PART, { required: true });
+  const matches = relationships.filter((relationship) => (
+    !relationship.external && OFFICE_DOCUMENT_RELATIONSHIP_TYPES.has(relationship.type)
+  ));
+  if (matches.length !== 1) {
+    throw new Error('Invalid PPTX OPC package: root relationships must contain one officeDocument entry');
+  }
+  const target = resolveRelationshipTarget('', matches[0].target);
+  if (!target || !context.partIndex.has(target)) {
+    throw new Error(`Invalid PPTX OPC package: officeDocument targets missing or unsafe part ${matches[0].target}`);
+  }
+  return target;
+}
+
+async function validateAllXml(context) {
+  const parts = [...context.partIndex.keys()].filter((part) => part.endsWith('.xml') || part.endsWith('.rels'));
+  for (const part of parts) parseXml(await requiredPart(context, part).file.async('string'), part);
+  return parts.length;
+}
+
+async function validateAllRelationships(context) {
+  let relationshipCount = 0;
+  let externalRelationshipCount = 0;
+  const orphanRelationshipParts = [];
+  for (const part of [...context.partIndex.keys()].filter((name) => name.endsWith('.rels'))) {
+    const owner = relationshipOwnerPart(part);
+    if (owner === null) throw new Error(`Invalid OOXML relationship part path: ${part}`);
+    if (owner && !context.partIndex.has(owner)) orphanRelationshipParts.push(part);
+    for (const relationship of await readRelationships(context, part, { required: true })) {
+      relationshipCount += 1;
+      if (relationship.external) {
+        externalRelationshipCount += 1;
+        continue;
+      }
+      const target = resolveRelationshipTarget(owner, relationship.target);
+      if (!target) throw new Error(`Invalid OOXML relationship: ${part} has unsafe target ${relationship.target}`);
+      if (!context.partIndex.has(target)) {
+        throw new Error(`Invalid OOXML relationship: ${part} targets missing part ${relationship.target}`);
+      }
+    }
+  }
+  return { relationshipCount, externalRelationshipCount, orphanRelationshipParts };
+}
+
+function normalizedText(document) {
+  const paragraphs = descendants(document, 'p')
+    .map((paragraph) => descendants(paragraph, 't').map((node) => node.textContent ?? '').join(''))
+    .map((value) => value.replace(/\s+/gu, ' ').trim())
+    .filter(Boolean);
+  if (paragraphs.length) return paragraphs.join('\n');
+  return descendants(document, 't')
+    .map((node) => node.textContent ?? '')
+    .join(' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+async function presentationSlides(context, officeDocumentPart, contentTypeFor) {
+  const presentationDocument = parseXml(
+    await requiredPart(context, officeDocumentPart).file.async('string'),
+    officeDocumentPart,
+  );
+  const presentationRelationshipsPart = relationshipsPartFor(officeDocumentPart);
+  const relationships = await readRelationships(context, presentationRelationshipsPart, { required: true });
+  const relationshipMap = new Map(relationships.map((relationship) => [relationship.id, relationship]));
+  const slideParts = [];
+  for (const slideId of descendants(presentationDocument, 'sldId')) {
+    const id = relationshipId(slideId);
+    const relationship = relationshipMap.get(id);
+    if (!id || !relationship || relationship.external || !/\/slide$/u.test(relationship.type)) {
+      throw new Error(`Invalid PPTX presentation: slide entry ${id ?? '(missing relationship id)'} does not resolve to a slide relationship`);
+    }
+    const part = resolveRelationshipTarget(officeDocumentPart, relationship.target);
+    if (!part || !context.partIndex.has(part)) {
+      throw new Error(`Invalid PPTX presentation: slide relationship ${id} targets missing or unsafe part ${relationship.target}`);
+    }
+    const contentType = contentTypeFor(part);
+    if (contentType !== PRESENTATION_SLIDE_CONTENT_TYPE) {
+      throw new Error(`Invalid PPTX presentation: slide relationship ${id} targets ${part} with unexpected content type ${contentType ?? '(missing)'}`);
+    }
+    slideParts.push(part);
+  }
+  if (!slideParts.length) throw new Error('Invalid PPTX presentation: no active slides were found');
+
+  const slides = [];
+  const activeNotes = new Set();
+  const activeCharts = new Set();
+  for (let index = 0; index < slideParts.length; index += 1) {
+    const part = slideParts[index];
+    const document = parseXml(await requiredPart(context, part).file.async('string'), part);
+    const root = document.documentElement;
+    if (root.localName !== 'sld' || !PRESENTATION_MAIN_NAMESPACES.has(root.namespaceURI)) {
+      throw new Error(`Invalid PPTX presentation: ${part} is not a presentation slide part`);
+    }
+    const slideRelationships = await readRelationships(context, relationshipsPartFor(part));
+    for (const relationship of slideRelationships.filter((item) => (
+      !item.external && /\/chart$/u.test(item.type)
+    ))) {
+      const chartPart = resolveRelationshipTarget(part, relationship.target);
+      if (!chartPart || !context.partIndex.has(chartPart)) {
+        throw new Error(`Invalid PPTX presentation: ${part} targets missing or unsafe chart part ${relationship.target}`);
+      }
+      const chartContentType = contentTypeFor(chartPart);
+      if (chartContentType !== DRAWINGML_CHART_CONTENT_TYPE) {
+        throw new Error(`Invalid PPTX presentation: chart relationship from ${part} targets ${chartPart} with unexpected content type ${chartContentType ?? '(missing)'}`);
+      }
+      const chartDocument = parseXml(await requiredPart(context, chartPart).file.async('string'), chartPart);
+      const chartRoot = chartDocument.documentElement;
+      if (chartRoot.localName !== 'chartSpace' || !DRAWINGML_CHART_NAMESPACES.has(chartRoot.namespaceURI)) {
+        throw new Error(`Invalid PPTX presentation: ${chartPart} is not a DrawingML chart part`);
+      }
+      activeCharts.add(chartPart);
+    }
+    const notesRelationship = slideRelationships.find((relationship) => (
+      !relationship.external && /\/notesSlide$/u.test(relationship.type)
+    ));
+    let notesPart = null;
+    let notes = '';
+    if (notesRelationship) {
+      notesPart = resolveRelationshipTarget(part, notesRelationship.target);
+      if (!notesPart || !context.partIndex.has(notesPart)) {
+        throw new Error(`Invalid PPTX presentation: ${part} targets missing or unsafe notes part ${notesRelationship.target}`);
+      }
+      const notesContentType = contentTypeFor(notesPart);
+      if (notesContentType !== PRESENTATION_NOTES_SLIDE_CONTENT_TYPE) {
+        throw new Error(`Invalid PPTX presentation: notes relationship from ${part} targets ${notesPart} with unexpected content type ${notesContentType ?? '(missing)'}`);
+      }
+      const notesDocument = parseXml(await requiredPart(context, notesPart).file.async('string'), notesPart);
+      const notesRoot = notesDocument.documentElement;
+      if (notesRoot.localName !== 'notes' || !PRESENTATION_MAIN_NAMESPACES.has(notesRoot.namespaceURI)) {
+        throw new Error(`Invalid PPTX presentation: ${notesPart} is not a presentation notes slide part`);
+      }
+      activeNotes.add(notesPart);
+      notes = normalizedText(notesDocument);
+    }
+    slides.push({
+      number: index + 1,
+      part,
+      text: normalizedText(document),
+      notesPart,
+      notes,
+    });
+  }
+  return { slides, activeNotes, activeCharts };
+}
+
+function featureCounts(parts, externalRelationshipCount, activeChartCount) {
+  const count = (pattern) => parts.filter((part) => pattern.test(part)).length;
   return {
-    contentTypeCount: defaults.size + overrides.size,
-    mappedPartCount,
+    masterCount: count(/^ppt\/slideMasters\/slideMaster\d+\.xml$/u),
+    layoutCount: count(/^ppt\/slideLayouts\/slideLayout\d+\.xml$/u),
+    themeCount: count(/^ppt\/theme\/theme\d+\.xml$/u),
+    notesSlideCount: count(/^ppt\/notesSlides\/notesSlide\d+\.xml$/u),
+    chartCount: activeChartCount,
+    mediaCount: count(/^ppt\/media\//u),
+    embeddingCount: count(/^ppt\/embeddings\//u),
+    oleObjectCount: count(/^ppt\/embeddings\/oleObject/u),
+    activeXCount: count(/^ppt\/activeX\//u),
+    macroPartCount: count(/(^|\/)vbaProject\.bin$/u),
+    signaturePartCount: count(/^_xmlsignatures\//u),
+    externalRelationshipCount,
   };
+}
+
+async function partHashes(context) {
+  const values = [];
+  for (const [part, actual] of [...context.partIndex.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    const buffer = await context.zip.file(actual).async('nodebuffer');
+    values.push([part, sha256(buffer)]);
+  }
+  return Object.fromEntries(values);
 }
 
 async function loadPptxPackage(inputPath) {
   const absolute = path.resolve(inputPath);
   const buffer = await fs.readFile(absolute);
-  const { JSZip } = loadDependencies();
-  const legacyMagic = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
-  if (buffer.length >= legacyMagic.length && buffer.subarray(0, legacyMagic.length).equals(legacyMagic)) {
-    throw new Error('Legacy binary .ppt is not OOXML. Run `pptx.sh convert-legacy --input source.ppt --out source-converted.pptx --qa-dir conversion-qa` first.');
+  if (buffer.length >= LEGACY_MAGIC.length && buffer.subarray(0, LEGACY_MAGIC.length).equals(LEGACY_MAGIC)) {
+    throw new Error('Legacy binary .ppt is not OOXML. Run `pptx.sh convert-legacy --input source.ppt --out source-converted.pptx` first.');
   }
+  const { JSZip } = loadDependencies();
   let zip;
   try {
     zip = await JSZip.loadAsync(buffer);
   } catch (error) {
     throw new Error(`Not a valid PPTX OOXML package: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return { absolute, buffer, zip };
+  assertSafeZipEntries(zip);
+  return { absolute, buffer, zip, partIndex: buildPartIndex(zip) };
+}
+
+export async function readPptxFacts(inputPath, options = {}) {
+  const context = await loadPptxPackage(inputPath);
+  const officeDocumentPart = await findOfficeDocumentPart(context);
+  const contentTypes = await validateContentTypes(context, officeDocumentPart);
+  const textPartCount = await validateAllXml(context);
+  const relationships = await validateAllRelationships(context);
+  const presentation = await presentationSlides(context, officeDocumentPart, contentTypes.contentTypeFor);
+  const parts = [...context.partIndex.keys()].sort();
+  const activeSlides = new Set(presentation.slides.map((slide) => slide.part));
+  const orphanSlides = parts.filter((part) => /^ppt\/slides\/slide\d+\.xml$/u.test(part) && !activeSlides.has(part));
+  const orphanNotes = parts.filter((part) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/u.test(part) && !presentation.activeNotes.has(part));
+  const warnings = [];
+  if (relationships.orphanRelationshipParts.length) {
+    warnings.push({ code: 'orphan-relationship-parts', parts: relationships.orphanRelationshipParts });
+  }
+  if (orphanSlides.length) warnings.push({ code: 'orphan-slide-parts', parts: orphanSlides });
+  if (orphanNotes.length) warnings.push({ code: 'orphan-notes-parts', parts: orphanNotes });
+  const features = featureCounts(parts, relationships.externalRelationshipCount, presentation.activeCharts.size);
+  const report = {
+    status: 'ok',
+    input: context.absolute,
+    sha256: sha256(context.buffer),
+    bytes: context.buffer.length,
+    package: {
+      readable: true,
+      officeDocumentPart,
+      textPartCount,
+      relationshipCount: relationships.relationshipCount,
+      contentTypeCount: contentTypes.contentTypeCount,
+      mappedPartCount: contentTypes.mappedPartCount,
+      partCount: parts.length,
+    },
+    presentation: {
+      slideCount: presentation.slides.length,
+      ...features,
+    },
+    warnings,
+  };
+  return {
+    report,
+    slides: presentation.slides,
+    parts,
+    partHashes: options.includePartHashes ? await partHashes(context) : null,
+  };
 }
 
 export async function validatePptxPackage(inputPath) {
-  const { absolute, zip } = await loadPptxPackage(inputPath);
-  const officeDocumentPart = await validateRootOfficeDocument(zip);
-  const contentTypes = await validateContentTypes(zip, officeDocumentPart);
-  const textParts = Object.keys(zip.files)
-    .filter((name) => !zip.files[name].dir && (name.endsWith('.xml') || name.endsWith('.rels')));
-  for (const part of textParts) parseXml(await zip.file(part).async('string'));
-  const relationshipCount = await validateZipRelationships(zip);
-  return {
-    file: absolute,
-    textPartCount: textParts.length,
-    relationshipCount,
-    contentTypeCount: contentTypes.contentTypeCount,
-    mappedPartCount: contentTypes.mappedPartCount,
-  };
-}
-
-export async function normalizeTemplatePptx(inputPath, outputPath) {
-  const source = path.resolve(inputPath);
-  const output = path.resolve(outputPath);
-  if (source === output) throw new Error('Template normalization requires a separate output path');
-  const { zip } = await loadPptxPackage(source);
-  const stats = {
-    bomParts: 0,
-    absoluteRelationshipTargets: 0,
-    relationshipNamespaces: 0,
-  };
-  const textParts = Object.keys(zip.files)
-    .filter((name) => !zip.files[name].dir && (name.endsWith('.xml') || name.endsWith('.rels')));
-
-  for (const part of textParts) {
-    const file = zip.file(part);
-    const original = await file.async('string');
-    const withoutBom = original.replace(/^\uFEFF/u, '');
-    if (withoutBom !== original) stats.bomParts += 1;
-    let normalized = withoutBom;
-
-    if (part.endsWith('.rels')) {
-      const ownerPart = relationshipOwnerPart(part);
-      if (ownerPart === null) throw new Error(`Invalid OOXML relationship part path: ${part}`);
-      const document = parseXml(normalized);
-      for (const relationship of descendants(document, 'Relationship')) {
-        if (String(relationship.getAttribute('TargetMode') ?? '').toLowerCase() === 'external') continue;
-        const target = relationship.getAttribute('Target');
-        if (!target.startsWith('/')) continue;
-        relationship.setAttribute('Target', relativeRelationshipTarget(ownerPart, target));
-        stats.absoluteRelationshipTargets += 1;
-      }
-      normalized = serializeXml(document);
-    } else if (part.startsWith('ppt/')) {
-      const document = parseXml(normalized);
-      const hadRelationshipNamespace = Boolean(document.documentElement?.getAttribute('xmlns:r'));
-      ensureRelationshipNamespace(document);
-      if (!hadRelationshipNamespace) stats.relationshipNamespaces += 1;
-      normalized = serializeXml(document);
-    }
-
-    zip.file(part, normalized);
-  }
-
-  await fs.mkdir(path.dirname(output), { recursive: true });
-  const buffer = await zip.generateAsync({
-    type: 'nodebuffer',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 },
-  });
-  await fs.writeFile(output, buffer);
-  await validatePptxPackage(output);
-  return { input: source, output, ...stats };
-}
-
-function readText(node) {
-  return descendants(node, 't')
-    .map((item) => item.textContent ?? '')
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function fontPoints(node) {
-  const sizes = descendants(node, 'rPr')
-    .concat(descendants(node, 'defRPr'), descendants(node, 'endParaRPr'))
-    .map((item) => Number(item.getAttribute('sz')) / 100)
-    .filter(Number.isFinite);
-  return sizes.length ? Math.max(...sizes) : null;
-}
-
-function fontFaces(node) {
-  const values = [];
-  for (const tag of ['latin', 'ea', 'cs', 'sym']) {
-    for (const item of descendants(node, tag)) {
-      const typeface = item.getAttribute('typeface');
-      if (typeface && !values.includes(typeface)) values.push(typeface);
-    }
-  }
-  return values;
-}
-
-function textFitMode(node) {
-  if (firstDescendant(node, 'spAutoFit')) return 'resize_shape';
-  if (firstDescendant(node, 'normAutofit')) return 'shrink_text';
-  if (firstDescendant(node, 'noAutofit')) return 'none';
-  return 'unspecified';
-}
-
-function containsCjk(text) {
-  return /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/u.test(String(text ?? ''));
-}
-
-function classifyGraphicFrame(node) {
-  const graphicData = firstDescendant(node, 'graphicData');
-  const uri = graphicData?.getAttribute('uri') ?? '';
-  if (/chart/i.test(uri)) return 'chart';
-  if (/table/i.test(uri)) return 'table';
-  if (/diagram/i.test(uri)) return 'diagram';
-  return 'graphic-frame';
-}
-
-function parseBounds(node) {
-  const xfrm = firstDescendant(node, 'xfrm');
-  if (!xfrm) return null;
-  const off = firstDescendant(xfrm, 'off');
-  const ext = firstDescendant(xfrm, 'ext');
-  const x = numberAttribute(off, 'x');
-  const y = numberAttribute(off, 'y');
-  const w = numberAttribute(ext, 'cx');
-  const h = numberAttribute(ext, 'cy');
-  if ([x, y, w, h].some((value) => value === null)) return null;
-  return { x: inches(x), y: inches(y), w: inches(w), h: inches(h) };
-}
-
-function parseSlideObject(node) {
-  const cNvPr = firstDescendant(node, 'cNvPr');
-  const placeholder = firstDescendant(node, 'ph');
-  const creationId = descendants(node, 'creationId')[0];
-  const objectType = node.localName === 'graphicFrame'
-    ? classifyGraphicFrame(node)
-    : ({ sp: 'shape', pic: 'image', cxnSp: 'connector', grpSp: 'group' }[node.localName] ?? node.localName);
-  const text = readText(node);
-  return {
-    id: cNvPr?.getAttribute('id') || null,
-    creationId: creationId?.getAttribute('id') || creationId?.getAttribute('val') || null,
-    name: cNvPr?.getAttribute('name') || null,
-    description: cNvPr?.getAttribute('descr') || null,
-    type: objectType,
-    placeholder: placeholder
-      ? {
-          type: placeholder.getAttribute('type') || 'body',
-          index: placeholder.getAttribute('idx') || null,
-        }
-      : null,
-    bounds: parseBounds(node),
-    fontPoints: fontPoints(node),
-    fonts: fontFaces(node),
-    textFit: textFitMode(node),
-    containsCjk: containsCjk(text),
-    text,
-  };
-}
-
-function parseSlide(xml, number, part) {
-  const document = parseXml(xml);
-  const spTree = firstDescendant(document, 'spTree');
-  const objects = spTree
-    ? elementChildren(spTree)
-        .filter((node) => ['sp', 'pic', 'graphicFrame', 'cxnSp', 'grpSp'].includes(node.localName))
-        .map(parseSlideObject)
-    : [];
-  const creationId = descendants(document, 'creationId')
-    .find((node) => node.getAttribute('val'))?.getAttribute('val') ?? null;
-  return {
-    number,
-    part,
-    creationId,
-    objectCount: objects.length,
-    objects,
-    text: objects.map((item) => item.text).filter(Boolean).join(' '),
-  };
-}
-
-function parseTheme(xml) {
-  if (!xml) return {
-    majorFont: null,
-    minorFont: null,
-    majorEastAsianFont: null,
-    minorEastAsianFont: null,
-    supplementalFonts: [],
-    colors: {},
-  };
-  const document = parseXml(xml);
-  const major = firstDescendant(document, 'majorFont');
-  const minor = firstDescendant(document, 'minorFont');
-  const latin = (node) => firstDescendant(node, 'latin')?.getAttribute('typeface') || null;
-  const eastAsian = (node) => firstDescendant(node, 'ea')?.getAttribute('typeface') || null;
-  const supplementalFonts = [...new Map(
-    [major, minor]
-      .flatMap((node) => descendants(node, 'font'))
-      .map((node) => ({ script: node.getAttribute('script') || null, typeface: node.getAttribute('typeface') || null }))
-      .filter((item) => item.typeface && ['Hans', 'Hant', 'Jpan', 'Hang'].includes(item.script))
-      .map((item) => [`${item.script}:${item.typeface}`, item]),
-  ).values()];
-  const colors = {};
-  const scheme = firstDescendant(document, 'clrScheme');
-  for (const child of elementChildren(scheme)) {
-    const colorNode = elementChildren(child)[0];
-    if (!colorNode) continue;
-    colors[child.localName] = colorNode.getAttribute('val') || colorNode.getAttribute('lastClr') || null;
-  }
-  return {
-    majorFont: latin(major),
-    minorFont: latin(minor),
-    majorEastAsianFont: eastAsian(major),
-    minorEastAsianFont: eastAsian(minor),
-    supplementalFonts,
-    colors,
-  };
-}
-
-function slidePartFallback(files) {
-  return files
-    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
-    .sort((a, b) => Number(a.match(/slide(\d+)/)?.[1]) - Number(b.match(/slide(\d+)/)?.[1]));
-}
-
-export async function inspectPptx(inputPath) {
-  const { absolute, buffer, zip } = await loadPptxPackage(inputPath);
-  const files = Object.keys(zip.files);
-  const presentationPart = 'ppt/presentation.xml';
-  const presentationFile = zip.file(presentationPart);
-  if (!presentationFile) throw new Error('Not a valid PPTX: ppt/presentation.xml is missing');
-  const presentationXml = await presentationFile.async('string');
-  const presentation = parseXml(presentationXml);
-  const sizeNode = firstDescendant(presentation, 'sldSz');
-  const cx = numberAttribute(sizeNode, 'cx') ?? 12192000;
-  const cy = numberAttribute(sizeNode, 'cy') ?? 6858000;
-  const relsFile = zip.file('ppt/_rels/presentation.xml.rels');
-  let slideParts = [];
-  if (relsFile) {
-    const rels = relationshipMap(parseXml(await relsFile.async('string')));
-    slideParts = descendants(presentation, 'sldId')
-      .map((node) => node.getAttribute('r:id') || node.getAttribute('id'))
-      .map((id) => resolvePart(presentationPart, rels.get(id)))
-      .filter((part) => part && zip.file(part));
-  }
-  if (!slideParts.length) slideParts = slidePartFallback(files);
-  const slides = [];
-  for (let i = 0; i < slideParts.length; i += 1) {
-    const xml = await zip.file(slideParts[i]).async('string');
-    slides.push(parseSlide(xml, i + 1, slideParts[i]));
-  }
-  const fontUsageMap = new Map();
-  for (const slide of slides) {
-    for (const object of slide.objects) {
-      for (const fontFace of object.fonts) {
-        const current = fontUsageMap.get(fontFace) ?? {
-          fontFace,
-          slides: new Set(),
-          objectCount: 0,
-          cjkObjectCount: 0,
-        };
-        current.slides.add(slide.number);
-        current.objectCount += 1;
-        if (object.containsCjk) current.cjkObjectCount += 1;
-        fontUsageMap.set(fontFace, current);
-      }
-    }
-  }
-  const fontUsage = [...fontUsageMap.values()]
-    .map((item) => ({ ...item, slides: [...item.slides].sort((a, b) => a - b) }))
-    .sort((a, b) => a.fontFace.localeCompare(b.fontFace));
-  const themePart = files.find((name) => /^ppt\/theme\/theme\d+\.xml$/.test(name));
-  const themeXml = themePart ? await zip.file(themePart).async('string') : null;
-  return {
-    schemaVersion: 1,
-    file: absolute,
-    sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
-    bytes: buffer.length,
-    slideSize: { width: inches(cx), height: inches(cy), cx, cy },
-    slideCount: slides.length,
-    masterCount: files.filter((name) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(name)).length,
-    layoutCount: files.filter((name) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(name)).length,
-    theme: parseTheme(themeXml),
-    fontUsage,
-    slides,
-  };
+  return (await readPptxFacts(inputPath)).report;
 }

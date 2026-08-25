@@ -14,6 +14,7 @@ from .common import (
     DocxSkillError,
     assert_internal_control_path,
     assert_valid_docx,
+    file_sha256,
     require_docx_path,
 )
 
@@ -165,10 +166,12 @@ def render_docx(
     if dpi < 72 or dpi > 300:
         raise DocxSkillError("DPI must be between 72 and 300")
 
-    out_dir = assert_internal_control_path(
+    render_root = assert_internal_control_path(
         output_dir,
         purpose="DOCX render directory",
     )
+    revision = file_sha256(source)
+    out_dir = render_root / revision[:16]
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("page-*.png"):
         stale.unlink()
@@ -286,6 +289,8 @@ def render_docx(
     return {
         "status": "ok",
         "input": str(source),
+        "revision": revision,
+        "render_root": str(render_root),
         "out_dir": str(out_dir),
         "pages": len(page_paths),
         "images": page_paths,

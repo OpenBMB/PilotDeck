@@ -1,124 +1,90 @@
 ---
 name: pptx
-description: Create, edit, inspect, render, review, and deliver editable Microsoft PowerPoint .pptx presentations. Use for new decks, source- or template-based presentations, targeted slide edits, charts, tables, images, narrative restructuring, visual QA, and conversion of legacy .ppt inputs to .pptx. Do not use for HTML/browser presentations, Google Slides, or live Microsoft PowerPoint control.
+description: Create, edit, review, and finalize editable Microsoft PowerPoint .pptx presentations. Use for new decks, source- or template-based presentations, targeted slide edits, charts, tables, images, speaker notes, visual QA, and legacy .ppt conversion. Do not use for HTML/browser presentations, Google Slides, or live Microsoft PowerPoint control.
 ---
 
 # PPTX presentations
 
-Work through four stages:
+Use four stages as a reasoning framework, not a fixed tool pipeline:
 
 1. Understand the request and source materials.
-2. Build or edit the presentation.
-3. Review the actual result.
-4. Deliver the reviewed candidate.
+2. Build or edit the presentation using the approach best suited to the task.
+3. Review the actual result with evidence proportionate to the risk.
+4. Deliver the chosen candidate safely.
 
-Adapt the depth of inspection and verification to the task. Let the model decide the narrative, visual language, layout, and review scope; use scripts for reproducible file operations and evidence.
+The user's explicit requirements are the primary acceptance criteria. Adapt the implementation and review depth to the task rather than optimizing for a template, style rule, or tool verdict from this skill.
 
-## Protect files and facts
+## Understand
 
-- Preserve source files unless the user explicitly requests replacement.
-- Keep builders, candidates, renders, evaluators, reports, and debug output under `PILOTDECK_WORK_DIR`.
-- Do not invent unsupported claims, quotations, dates, names, or values.
-- Treat `.pptx` as the editable deliverable. Convert legacy `.ppt` to an internal `.pptx` candidate before further work.
-- Deliver only a valid candidate that corresponds to the evidence reviewed.
+Determine the audience, purpose, intended takeaway, authoritative sources, expected form, and what must remain unchanged. Distinguish factual sources from templates and visual references.
 
-Resolve the CLI once:
+- Preserve source files unless replacement is explicitly requested.
+- Do not invent unsupported facts, quotations, dates, names, values, or citations.
+- When editing, preserve content, structure, formatting, notes, and package features the user did not ask to change.
+- Inspect only the material and package features relevant to the requested outcome. Use direct Python, `python-pptx`, ZIP/XML inspection, LibreOffice, or another suitable approach as useful.
+
+Resolve the mechanical CLI only when one of its commands helps:
 
 ```bash
 SKILL_ROOT={{SKILL_ROOT_SHELL}}
 PPTX="$SKILL_ROOT/scripts/pptx.sh"
 WORKSPACE="${PILOTDECK_WORK_DIR:?PILOTDECK_WORK_DIR is required}/pptx"
 mkdir -p "$WORKSPACE/tmp" "$WORKSPACE/review"
-bash "$PPTX" check || bash "$PPTX" fix
 ```
 
-## Understand
+## Build
 
-Determine the audience, communication purpose, authoritative sources, intended takeaway, expected format, and what must remain unchanged. Distinguish factual sources from visual references.
+Use the approach best suited to the task. `python-pptx`, PptxGenJS, direct OOXML editing, LibreOffice, other libraries, or a combination are all valid. Do not switch languages or adopt a wrapper merely to use this skill.
 
-Inspect structure when an existing presentation matters:
+Keep task scripts, candidates, extracted media, reports, renders, and debugging output under `PILOTDECK_WORK_DIR`. Put only the requested final deliverable in the project workspace.
 
-```bash
-bash "$PPTX" inspect --input "$INPUT_PPTX"
-```
+Prefer localized edits to reconstruction when modifying an existing presentation. Inspect package-sensitive features before round-tripping speaker notes, masters, layouts, themes, charts, animations, embedded workbooks, OLE objects, macros, signatures, or uncommon media. Choose a preservation strategy based on the actual presentation and report limitations honestly.
 
-Review the source visually before layout-sensitive edits. Use judgment instead of converting the request into a fixed route, task category, frame map, or collection of boolean permissions.
+Follow supplied templates, brand guidance, and explicit art direction. Otherwise choose a coherent visual language appropriate to the audience and content.
 
-## Execute
-
-Use one reproducible JavaScript `.mjs` builder for each candidate revision. Scaffold a minimal builder, patch the same file as the work evolves, and build to an internal candidate. Pass the source when the task starts from a template or existing PPTX so the scaffold uses the template editing API:
-
-```bash
-bash "$PPTX" scaffold --out "$WORKSPACE/tmp/deck.mjs"
-bash "$PPTX" scaffold --input "$INPUT_PPTX" --out "$WORKSPACE/tmp/deck.mjs"
-bash "$PPTX" build \
-  --builder "$WORKSPACE/tmp/deck.mjs" \
-  --out "$WORKSPACE/tmp/candidate.pptx"
-```
-
-For template inheritance or an existing PPTX, add `--input "$INPUT_PPTX"`. The builder can call `createTemplatePresentation()` and use the complete pptx-automizer API to select, reorder, preserve, or modify source slides and named objects. On a copied template slide, use `slide.generate()` to add editable PptxGenJS text, shapes, images, charts, or tables, and use `template.setNotes()` to set speaker notes by final output position. Prefer localized edits over reconstruction when the source already contains the desired visual system.
-
-For a new deck, return a PptxGenJS presentation from the builder. Use the complete PptxGenJS API and the optional image crop/contain helpers. Charts, tables, native shapes, prepared graphics, and diagrams are available when they serve the content.
-
-When the standard builder APIs cannot safely express an important package edit, write a task-local patch and run it through the controlled fallback instead of unpacking, repacking, or publishing a PPTX directly:
-
-```bash
-bash "$PPTX" fallback-patch \
-  --input "$INPUT_OR_CANDIDATE" \
-  --script "$WORKSPACE/tmp/patch.mjs" \
-  --out "$WORKSPACE/tmp/patched-candidate.pptx" \
-  --report "$WORKSPACE/tmp/fallback-report.json"
-```
-
-The patch receives a temporary package directory. The wrapper preserves the source, records changed parts, repacks to an internal candidate, and keeps the result in the normal review and delivery flow. See [builder-api.md](references/builder-api.md) for the patch contract.
-
-### Choose presentation intentionally
-
-Follow supplied templates, brand guidance, and explicit art direction. Otherwise choose a coherent visual language appropriate to the audience and subject. Plan the story and visuals together; avoid default branding, decoration, or dense UI-like layouts that do not help the presentation communicate.
+For PowerPoint-specific package and compatibility behavior, read [powerpoint-specifics.md](references/powerpoint-specifics.md) only when relevant.
 
 ## Review
 
-Review the presentation itself, not a handwritten pass status:
+Judge the presentation against the user's requested outcome, not whether a tool ran successfully. Directly rereading the final content may be enough for a simple task. When additional evidence would materially improve confidence, choose any appropriate combination of:
+
+- reconcile facts, values, quotations, and sources;
+- inspect relevant slides, notes, relationships, or package parts directly;
+- `validate` for package, XML, relationship, and active-slide diagnostics;
+- `render` for slide images and visual evidence;
+- `compare` for factual differences after editing an existing presentation;
+- a small task-specific checking script for requirements unique to the request.
+
+These tools are independent, not a required pipeline. They provide facts and evidence, never a content- or design-quality verdict.
 
 ```bash
-bash "$PPTX" review \
+bash "$PPTX" validate --input "$WORKSPACE/tmp/candidate.pptx"
+bash "$PPTX" render \
   --input "$WORKSPACE/tmp/candidate.pptx" \
-  --out-dir "$WORKSPACE/review"
+  --out-dir "$WORKSPACE/review/latest"
+bash "$PPTX" compare \
+  --source "$INPUT_PPTX" \
+  --candidate "$WORKSPACE/tmp/candidate.pptx" \
+  --out "$WORKSPACE/review/comparison.json"
 ```
 
-`review_pending` means structural facts, audit observations, and revision-specific slide images are ready; it is not a visual verdict. Choose relevant slides from the task and risk, inspect them at full size, and treat audit findings as evidence rather than automatic failures. If the candidate changes, review the new revision instead of relying on earlier images.
-
-The command returns a compact evidence index; detailed structure and findings remain in its `report` and `audit.report` files. Read those details when the task or a summary finding warrants them instead of loading them by default.
-
-LibreOffice rendering is a compatibility baseline, not Microsoft PowerPoint. It may substitute or omit fonts—commonly CJK fonts—causing boxes, blanks, or different wrapping. Compare source and candidate evidence before attributing these artifacts to the candidate; when the baseline is inconclusive, report the rendering limitation instead of claiming a visual fix.
-
-When correctness depends on sources, exact values, specified copy, slide preservation, or task-specific acceptance criteria, write an independent evaluator:
-
-```bash
-bash "$PPTX" evaluate \
-  --input "$WORKSPACE/tmp/candidate.pptx" \
-  --script "$WORKSPACE/tmp/evaluator.mjs" \
-  --out "$WORKSPACE/review/evaluation.json"
-```
-
-Let the evaluator reflect the actual task. See [review-and-evaluation.md](references/review-and-evaluation.md) for proportional visual and factual review.
+Open relevant full-size slide images before making visual claims. After changing the candidate, prior images no longer describe the current presentation. LibreOffice rendering is a compatibility baseline and may substitute fonts, wrap text, or render effects differently from Microsoft PowerPoint.
 
 ## Specialized operation
 
-For legacy PowerPoint 97–2003 input, preserve the source and convert it once:
+For legacy PowerPoint 97–2003 input, preserve the source and convert it to an internal `.pptx` candidate before editing:
 
 ```bash
 bash "$PPTX" convert-legacy \
   --input "$SOURCE_PPT" \
-  --out "$WORKSPACE/tmp/source-converted.pptx" \
-  --qa-dir "$WORKSPACE/review/legacy-conversion"
+  --out "$WORKSPACE/tmp/source-converted.pptx"
 ```
 
-Use the converted candidate in the ordinary understand, execute, and review stages. Report compatibility limits rather than claiming lossless migration.
+Read [legacy-ppt-conversion.md](references/legacy-ppt-conversion.md) when handling `.ppt`. Conversion is not a guarantee of lossless migration; use `render` or another targeted check when conversion fidelity matters.
 
 ## Deliver
 
-Publish the reviewed candidate atomically:
+Publish the chosen internal candidate through the delivery command:
 
 ```bash
 bash "$PPTX" deliver \
@@ -126,12 +92,6 @@ bash "$PPTX" deliver \
   --out "$FINAL_PPTX"
 ```
 
-Confirm that the final file exists, matches the candidate, opens as a valid non-empty PPTX, and is the only requested project-visible artifact. Report unresolved ambiguity, unsupported features, rendering limitations, or verification gaps.
+For an edit, add `--source "$INPUT_PPTX"`. Replace that exact source only when explicitly requested, using `--source "$INPUT_PPTX" --out "$INPUT_PPTX" --replace-source`; a recovery copy remains internal.
 
-## Load references only when needed
-
-- [builder-api.md](references/builder-api.md): builder contract, PptxGenJS, optional helpers, and template inheritance.
-- [design-and-narrative.md](references/design-and-narrative.md): story, layout, typography, images, and neutral defaults.
-- [charts-and-data.md](references/charts-and-data.md): quantitative charts, tables, sources, and reconciliation.
-- [review-and-evaluation.md](references/review-and-evaluation.md): revision evidence and task-specific evaluators.
-- [legacy-ppt-conversion.md](references/legacy-ppt-conversion.md): old `.ppt` conversion and compatibility limitations.
+`deliver` checks package validity, protects the source, and publishes the exact candidate atomically. It does not run `validate`, `render`, or `compare`, and it does not decide whether the content, facts, design, or requested outcome are good enough; those judgments belong to the model's review.

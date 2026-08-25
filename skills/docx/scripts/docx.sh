@@ -62,7 +62,7 @@ cmd_check() {
   local soffice_path=""
   if py="$(find_python)"; then
     py_ok=true
-    if "$py" -c 'import docx, lxml, PIL, fitz' >/dev/null 2>&1; then
+    if "$py" -c 'import docx, lxml, fitz' >/dev/null 2>&1; then
       deps_ok=true
     fi
   fi
@@ -117,14 +117,14 @@ case "${1:-}" in
     if [[ -n "$py" ]]; then
       exec "$py" "$SCRIPT_DIR/docx_cli.py" --help
     fi
-    printf 'Usage: docx.sh <check|fix|scaffold|build|inspect|review|evaluate|deliver|annotate|finalize|compare|sanitize|accessibility|fallback-patch|self-test> [options]\n'
+    printf 'Usage: docx.sh <check|fix|inspect|validate|render|deliver|annotate|finalize|compare|sanitize|self-test> [options]\n'
     ;;
   *)
     py=""
     if ! py="$(find_python)"; then
       py=""
     fi
-    if [[ -z "$py" ]] || ! "$py" -c 'import docx, lxml, PIL, fitz' >/dev/null 2>&1; then
+    if [[ -z "$py" ]] || ! "$py" -c 'import docx, lxml, fitz' >/dev/null 2>&1; then
       printf '{"status":"error","code":"missing-dependencies","error":"DOCX dependencies are missing","hint":"Run: bash %s fix"}\n' "$0" >&2
       exit 2
     fi
