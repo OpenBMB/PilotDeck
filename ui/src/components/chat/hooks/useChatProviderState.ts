@@ -4,6 +4,11 @@ import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { CLAUDE_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode } from '../types/types';
 import type { Project, ProjectSession } from '../../../types/app';
+import {
+  mergeModelSelections,
+  normalizeModelSelection,
+  parseCatalogItem,
+} from '../../chat-v2/modelCapabilityOptions';
 
 interface UseChatProviderStateArgs {
   selectedProject: Project | null;
@@ -40,6 +45,7 @@ export type ChatModelCatalogItem = {
   capabilities: {
     reasoning?: ModelNumericCapability;
     temperature?: ModelNumericCapability;
+    speed?: ModelNumericCapability;
   };
 };
 
@@ -51,6 +57,7 @@ export type ChatModelSelection =
       model: string;
       reasoning?: number;
       temperature?: number;
+      speed?: number;
     };
 
 const DEFAULT_MODEL_OPTIONS: ModelOption[] = CLAUDE_MODELS.OPTIONS.map((option) => ({
@@ -230,13 +237,9 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
         }
 
         const items = Array.isArray(catalogData?.items)
-          ? catalogData.items.filter((item: unknown): item is ChatModelCatalogItem => (
-            Boolean(item)
-            && typeof item === 'object'
-            && typeof (item as ChatModelCatalogItem).id === 'string'
-            && typeof (item as ChatModelCatalogItem).provider === 'string'
-            && typeof (item as ChatModelCatalogItem).model === 'string'
-          ))
+          ? catalogData.items
+            .map((item: unknown) => parseCatalogItem(item))
+            .filter((item: ChatModelCatalogItem | null): item is ChatModelCatalogItem => Boolean(item))
           : [];
         setModelCatalog(items);
 
@@ -244,11 +247,11 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
         const stored = localStorage.getItem(`composer-model-${projectKey}`);
         if (stored) {
           try {
-            storedSelection = JSON.parse(stored) as ChatModelSelection;
+            storedSelection = normalizeModelSelection(JSON.parse(stored));
             let isValidStoredSelection = false;
-            if (storedSelection.mode === 'auto') {
+            if (storedSelection?.mode === 'auto') {
               isValidStoredSelection = catalogData?.router?.autoAvailable === true;
-            } else if (storedSelection.mode === 'model') {
+            } else if (storedSelection?.mode === 'model') {
               const { provider, model: modelId } = storedSelection;
               isValidStoredSelection = items.some((item: ChatModelCatalogItem) => (
                 item.provider === provider && item.model === modelId && item.available
@@ -274,22 +277,19 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
           });
           if (sessionResponse.ok) {
             const sessionData = await sessionResponse.json();
-            nextSelection = sessionData?.saved || storedSelection || (
-              sessionData?.effective?.provider && sessionData?.effective?.model
-                ? {
-                    mode: 'model',
-                    provider: sessionData.effective.provider,
-                    model: sessionData.effective.model,
-                    ...(typeof sessionData.effective.reasoning === 'number'
-                      ? { reasoning: sessionData.effective.reasoning }
-                      : {}),
-                    ...(typeof sessionData.effective.temperature === 'number'
-                      ? { temperature: sessionData.effective.temperature }
-                      : {}),
-                  }
-                : null
-            );
-            if (!sessionData?.saved && storedSelection) {
+            const savedSelection = normalizeModelSelection(sessionData?.saved);
+            const effectiveSelection = sessionData?.effective?.provider && sessionData?.effective?.model
+              ? normalizeModelSelection({
+                  mode: 'model',
+                  provider: sessionData.effective.provider,
+                  model: sessionData.effective.model,
+                  reasoning: sessionData.effective.reasoning,
+                  temperature: sessionData.effective.temperature,
+                  speed: sessionData.effective.speed,
+                })
+              : null;
+            nextSelection = mergeModelSelections(savedSelection, storedSelection) || effectiveSelection;
+            if (!savedSelection && storedSelection) {
               void authenticatedFetch('/api/sessions/model', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

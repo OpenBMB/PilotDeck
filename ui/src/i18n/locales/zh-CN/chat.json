@@ -264,6 +264,16 @@
       "agentDescription": "直接处理并执行任务",
       "planDescription": "先产出计划，确认后再执行",
       "askDescription": "仅回答问题，不修改文件"
+    },
+    "models": {
+      "select": "选择模型",
+      "change": "选择模型",
+      "search": "搜索模型",
+      "empty": "没有匹配的模型",
+      "advanced": "高级设置",
+      "reasoning": "推理强度",
+      "speed": "速度",
+      "temperature": "温度"
     }
   },
   "documentReferences": {

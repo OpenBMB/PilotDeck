@@ -281,6 +281,16 @@
       "agentDescription": "Directly process and execute the task",
       "planDescription": "Generate a plan first, then execute after confirmation",
       "askDescription": "Only answers questions without modifying files"
+    },
+    "models": {
+      "select": "Select model",
+      "change": "Select model",
+      "search": "Search models",
+      "empty": "No matching models",
+      "advanced": "Advanced settings",
+      "reasoning": "Reasoning",
+      "speed": "Speed",
+      "temperature": "Temperature"
     }
   },
   "documentReferences": {

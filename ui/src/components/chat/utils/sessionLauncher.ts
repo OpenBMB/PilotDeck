@@ -23,6 +23,7 @@ type StartSessionOptions = {
     model: string;
     reasoning?: number;
     temperature?: number;
+    speed?: number;
   };
   images?: unknown[];
   attachments?: ChatAttachment[];

@@ -40,8 +40,18 @@ import { authenticatedFetch } from "../../utils/api";
 import type {
   ChatModelCatalogItem,
   ChatModelSelection,
-  ModelNumericCapability,
 } from "../chat/hooks/useChatProviderState";
+import {
+  REASONING_LABELS,
+  SPEED_LABELS,
+  buildExplicitSelection,
+  capabilityValues,
+  modelSelectionId,
+  paramsFromSelection,
+  preserveParamsForModel,
+  sameCapabilityValue,
+  speedOptionValues,
+} from "./modelCapabilityOptions";
 import DocumentReferenceChip from "./DocumentReferenceChip";
 
 interface MentionableFile {
@@ -271,45 +281,6 @@ const BLOCKING_PERMISSION_TOOLS = new Set([
   "exit_plan_mode",
 ]);
 
-const REASONING_LABELS = new Map<number, string>([
-  [0, "关闭"],
-  [0.2, "轻度"],
-  [0.4, "低"],
-  [0.6, "中"],
-  [0.8, "高"],
-  [0.9, "极高"],
-  [1, "最高"],
-]);
-
-function capabilityValues(capability?: ModelNumericCapability): number[] {
-  if (!capability) return [];
-  if (Array.isArray(capability.values)) {
-    return capability.values.filter(Number.isFinite);
-  }
-  if (
-    capability.type !== "range" ||
-    !Number.isFinite(capability.min) ||
-    !Number.isFinite(capability.max) ||
-    !Number.isFinite(capability.step) ||
-    (capability.step ?? 0) <= 0
-  ) {
-    return [];
-  }
-
-  const min = capability.min as number;
-  const max = capability.max as number;
-  const step = capability.step as number;
-  const values: number[] = [];
-  for (
-    let value = min;
-    value <= max + step / 2 && values.length < 101;
-    value += step
-  ) {
-    values.push(Number(value.toFixed(10)));
-  }
-  return values;
-}
-
 function renderMatchHighlights(text: string, query: string): ReactNode {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return text;
@@ -340,14 +311,6 @@ function renderMatchHighlights(text: string, query: string): ReactNode {
   if (cursor === 0) return text;
   if (cursor < text.length) parts.push(text.slice(cursor));
   return parts;
-}
-
-function modelSelectionId(selection: ChatModelSelection | null): string {
-  return selection?.mode === "auto"
-    ? "router/auto"
-    : selection?.mode === "model"
-      ? `${selection.provider}/${selection.model}`
-      : "";
 }
 
 function readNumber(value: unknown): number | null {
@@ -427,6 +390,48 @@ export function getContextStatus(tokenBudget?: Record<string, unknown> | null): 
     state: snapshotState === "blocking" || snapshotState === "warning" ? snapshotState : "ok",
     tone,
   };
+}
+
+function CapabilityOptionList({
+  values,
+  labels,
+  currentValue,
+  onSelect,
+}: {
+  values: number[];
+  labels: Map<number, string>;
+  currentValue: number | undefined;
+  onSelect: (value: number) => void;
+}) {
+  return (
+    <div className="grid">
+      {values.map((value) => {
+        const selected = sameCapabilityValue(currentValue, value);
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={selected}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect(value);
+            }}
+            className={cn(
+              "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[#e4e0fb] hover:bg-[#f7f6ff] hover:text-[#4742a9] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+              selected
+                ? "border-[#d6d1ff] bg-[#eeecff] font-[650] text-[#393393] hover:border-[#d6d1ff] hover:bg-[#eeecff] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
+                : "",
+            )}
+          >
+            <span>{labels.get(value) ?? String(value)}</span>
+            {selected ? (
+              <Check className="h-[9px] w-[9px]" strokeWidth={2} />
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function ComposerV2({
@@ -632,6 +637,25 @@ export default function ComposerV2({
   );
   const advancedModel =
     modelCatalog.find((item) => item.id === advancedModelId) || null;
+  const advancedParams = paramsFromSelection(
+    modelSelection,
+    advancedModel?.id,
+  );
+  const updateModelParams = (
+    item: ChatModelCatalogItem,
+    patch: {
+      reasoning?: number;
+      temperature?: number;
+      speed?: number;
+    },
+  ) => {
+    onModelSelectionChange(
+      buildExplicitSelection(item, {
+        ...preserveParamsForModel(item, modelSelection),
+        ...patch,
+      }),
+    );
+  };
 
   return (
     <div
@@ -1445,7 +1469,8 @@ export default function ComposerV2({
                                 const isSelected = item.id === selectedModelId;
                                 const hasAdvanced = Boolean(
                                   item.capabilities.reasoning ||
-                                  item.capabilities.temperature,
+                                  item.capabilities.temperature ||
+                                  item.capabilities.speed,
                                 );
                                 return (
                                   <div
@@ -1467,11 +1492,13 @@ export default function ComposerV2({
                                         onModelSelectionChange(
                                           isAuto
                                             ? { mode: "auto" }
-                                            : {
-                                                mode: "model",
-                                                provider: item.provider,
-                                                model: item.model,
-                                              },
+                                            : buildExplicitSelection(
+                                                item,
+                                                preserveParamsForModel(
+                                                  item,
+                                                  modelSelection,
+                                                ),
+                                              ),
                                         );
                                         setIsModelMenuOpen(false);
                                         setAdvancedModelId(null);
@@ -1527,6 +1554,16 @@ export default function ComposerV2({
                                 defaultValue: "模型高级设置",
                               }) as string
                             }
+                            onMouseDown={(event) => {
+                              if (
+                                (event.target as HTMLElement | null)?.closest(
+                                  "input",
+                                )
+                              ) {
+                                return;
+                              }
+                              event.preventDefault();
+                            }}
                             className={cn(
                               "overflow-hidden rounded-[10px] border border-violet-300 bg-white p-[9px] text-[#505260] shadow-xl shadow-violet-950/10 dark:border-violet-800 dark:bg-neutral-900 dark:text-neutral-300",
                               compact
@@ -1541,63 +1578,43 @@ export default function ComposerV2({
                                     defaultValue: "推理强度",
                                   })}
                                 </h2>
-                                <div className="grid">
-                                  {capabilityValues(
+                                <CapabilityOptionList
+                                  values={capabilityValues(
                                     advancedModel.capabilities.reasoning,
-                                  ).map((value) => {
-                                    const currentValue =
-                                      modelSelection?.mode === "model" &&
-                                      selectedModelId === advancedModel.id &&
-                                      typeof modelSelection.reasoning ===
-                                        "number"
-                                        ? modelSelection.reasoning
-                                        : undefined;
-                                    return (
-                                      <button
-                                        key={value}
-                                        type="button"
-                                        onMouseDown={(event) =>
-                                          event.preventDefault()
-                                        }
-                                        onClick={() =>
-                                          onModelSelectionChange({
-                                            mode: "model",
-                                            provider: advancedModel.provider,
-                                            model: advancedModel.model,
-                                            reasoning: value,
-                                            ...(modelSelection?.mode ===
-                                              "model" &&
-                                            selectedModelId ===
-                                              advancedModel.id &&
-                                            typeof modelSelection.temperature ===
-                                              "number"
-                                              ? {
-                                                  temperature:
-                                                    modelSelection.temperature,
-                                                }
-                                              : {}),
-                                          })
-                                        }
-                                        className={cn(
-                                          "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[#e4e0fb] hover:bg-[#f7f6ff] hover:text-[#4742a9] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
-                                          currentValue === value
-                                            ? "border-[#d6d1ff] bg-[#eeecff] font-[650] text-[#393393] hover:border-[#d6d1ff] hover:bg-[#eeecff] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
-                                            : "",
-                                        )}
-                                      >
-                                        <span>
-                                          {REASONING_LABELS.get(value) || value}
-                                        </span>
-                                        {currentValue === value ? (
-                                          <Check
-                                            className="h-[9px] w-[9px]"
-                                            strokeWidth={2}
-                                          />
-                                        ) : null}
-                                      </button>
-                                    );
+                                  )}
+                                  labels={REASONING_LABELS}
+                                  currentValue={advancedParams.reasoning}
+                                  onSelect={(reasoning) =>
+                                    updateModelParams(advancedModel, {
+                                      reasoning,
+                                    })
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                            {advancedModel.capabilities.speed ? (
+                              <div
+                                className={cn(
+                                  advancedModel.capabilities.reasoning
+                                    ? "mt-2 border-t border-[#e7e4f1] pt-2 dark:border-neutral-800"
+                                    : "",
+                                )}
+                              >
+                                <h2 className="mb-1 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
+                                  {t("input.models.speed", {
+                                    defaultValue: "速度",
                                   })}
-                                </div>
+                                </h2>
+                                <CapabilityOptionList
+                                  values={speedOptionValues(
+                                    advancedModel.capabilities.speed,
+                                  )}
+                                  labels={SPEED_LABELS}
+                                  currentValue={advancedParams.speed}
+                                  onSelect={(speed) =>
+                                    updateModelParams(advancedModel, { speed })
+                                  }
+                                />
                               </div>
                             ) : null}
                             {advancedModel.capabilities.temperature
@@ -1605,14 +1622,8 @@ export default function ComposerV2({
                                   const capability =
                                     advancedModel.capabilities.temperature;
                                   const values = capabilityValues(capability);
-                                  const savedValue =
-                                    modelSelection?.mode === "model" &&
-                                    selectedModelId === advancedModel.id &&
-                                    typeof modelSelection.temperature ===
-                                      "number"
-                                      ? modelSelection.temperature
-                                      : undefined;
-                                  const currentValue = savedValue ?? values[0];
+                                  const currentValue =
+                                    advancedParams.temperature ?? values[0];
                                   const rangeMin = capability.min ?? 0;
                                   const rangeMax = capability.max ?? 1;
                                   const temperaturePercent =
@@ -1628,28 +1639,15 @@ export default function ComposerV2({
                                           ),
                                         )
                                       : 0;
-                                  const updateTemperature = (
-                                    temperature: number,
-                                  ) =>
-                                    onModelSelectionChange({
-                                      mode: "model",
-                                      provider: advancedModel.provider,
-                                      model: advancedModel.model,
-                                      ...(modelSelection?.mode === "model" &&
-                                      selectedModelId === advancedModel.id &&
-                                      typeof modelSelection.reasoning ===
-                                        "number"
-                                        ? {
-                                            reasoning: modelSelection.reasoning,
-                                          }
-                                        : {}),
-                                      temperature,
-                                    });
+                                  const hasPreviousSection = Boolean(
+                                    advancedModel.capabilities.reasoning ||
+                                      advancedModel.capabilities.speed,
+                                  );
 
                                   return (
                                     <div
                                       className={cn(
-                                        advancedModel.capabilities.reasoning
+                                        hasPreviousSection
                                           ? "mt-2 border-t border-[#e7e4f1] pt-2 dark:border-neutral-800"
                                           : "",
                                       )}
@@ -1660,34 +1658,16 @@ export default function ComposerV2({
                                         })}
                                       </h2>
                                       {capability.type === "enum" ? (
-                                        <div className="grid">
-                                          {values.map((value) => (
-                                            <button
-                                              key={value}
-                                              type="button"
-                                              onMouseDown={(event) =>
-                                                event.preventDefault()
-                                              }
-                                              onClick={() =>
-                                                updateTemperature(value)
-                                              }
-                                              className={cn(
-                                                "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[#e4e0fb] hover:bg-[#f7f6ff] hover:text-[#4742a9] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
-                                                currentValue === value
-                                                  ? "border-[#d6d1ff] bg-[#eeecff] font-[650] text-[#393393] hover:border-[#d6d1ff] hover:bg-[#eeecff] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
-                                                  : "",
-                                              )}
-                                            >
-                                              <span>{value}</span>
-                                              {currentValue === value ? (
-                                                <Check
-                                                  className="h-[9px] w-[9px]"
-                                                  strokeWidth={2}
-                                                />
-                                              ) : null}
-                                            </button>
-                                          ))}
-                                        </div>
+                                        <CapabilityOptionList
+                                          values={values}
+                                          labels={new Map()}
+                                          currentValue={currentValue}
+                                          onSelect={(temperature) =>
+                                            updateModelParams(advancedModel, {
+                                              temperature,
+                                            })
+                                          }
+                                        />
                                       ) : currentValue !== undefined ? (
                                         <div className="grid grid-cols-[minmax(0,1fr)_28px] items-center gap-[7px] px-[7px] pb-[3px] pt-0.5">
                                           <input
@@ -1701,10 +1681,15 @@ export default function ComposerV2({
                                                 defaultValue: "温度",
                                               }) as string
                                             }
+                                            onMouseDown={(event) =>
+                                              event.stopPropagation()
+                                            }
                                             onChange={(event) =>
-                                              updateTemperature(
-                                                Number(event.target.value),
-                                              )
+                                              updateModelParams(advancedModel, {
+                                                temperature: Number(
+                                                  event.target.value,
+                                                ),
+                                              })
                                             }
                                             style={
                                               {

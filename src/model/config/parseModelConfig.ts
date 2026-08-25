@@ -193,7 +193,12 @@ function parseModelDefinition(
   const catalogHit = lookupCatalogModel(providerId, modelId);
   const catalogModel = catalogHit.model;
 
-  const capabilities = parseCapabilities(protocol, model.capabilities, catalogModel?.capabilities);
+  const capabilities = parseCapabilities(
+    protocol,
+    model.capabilities,
+    catalogModel?.capabilities,
+    providerId,
+  );
   // Cross-provider model-name matches are useful for token/capability hints,
   // but they must not silently opt a custom model into image delivery. Aliases
   // declared by the selected catalog provider are trusted like exact matches.
@@ -217,6 +222,7 @@ function parseCapabilities(
   protocol: ModelProtocol,
   rawCapabilities: unknown,
   catalogCapabilities?: ModelCapabilities,
+  providerId?: string,
 ): ModelCapabilities {
   const protocolDefaults =
     protocol === "anthropic"
@@ -227,7 +233,7 @@ function parseCapabilities(
   const defaults = catalogCapabilities ?? protocolDefaults;
 
   if (rawCapabilities === undefined) {
-    return defaults;
+    return applyOfficialSpeedDefault(defaults, providerId);
   }
 
   if (!isRecord(rawCapabilities)) {
@@ -268,12 +274,22 @@ function parseCapabilities(
     }
   }
 
-  return {
+  return applyOfficialSpeedDefault({
     ...mergeCapabilities(defaults, overrides),
     ...(capabilities.supportsThinking !== undefined
       ? { supportsThinkingExplicit: capabilities.supportsThinking }
       : {}),
-  } as ModelCapabilities;
+  } as ModelCapabilities, providerId, overrides.supportsSpeed);
+}
+
+function applyOfficialSpeedDefault(
+  capabilities: ModelCapabilities,
+  providerId: string | undefined,
+  explicitSpeed?: boolean,
+): ModelCapabilities {
+  if (explicitSpeed !== undefined) return capabilities;
+  if (providerId !== "openai" && providerId !== "anthropic") return capabilities;
+  return { ...capabilities, supportsSpeed: true };
 }
 
 function parseMultimodal(
