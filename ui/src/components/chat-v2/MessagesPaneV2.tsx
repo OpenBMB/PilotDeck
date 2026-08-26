@@ -15,6 +15,7 @@ import type { SessionStore } from '../../stores/useSessionStore';
 import { getSessionRequestParams, isReadOnlySession, type Project, type ProjectSession, type SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import MessageRowV2 from './MessageRowV2';
+import AssistantReplyQuoteAction from './AssistantReplyQuoteAction';
 import SubagentDetailModal from './SubagentDetailModal';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import { useRegisterChatHistorySearchControls } from './ChatHistorySearchController';
@@ -1349,6 +1350,7 @@ function MessagesPaneV2({
         </div>
       )}
 
+      <AssistantReplyQuoteAction />
       {openSubagentId ? (
         <SubagentDetailModal
           subagentId={openSubagentId}

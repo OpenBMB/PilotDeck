@@ -308,6 +308,15 @@
     "pageUnknown": "page unknown",
     "remove": "Remove reference"
   },
+  "replyQuotes": {
+    "addToChat": "Add to PilotDeck chat",
+    "chip": "{{count}} quotes",
+    "chip_one": "{{count}} quote",
+    "chip_other": "{{count}} quotes",
+    "remove": "Remove this quote",
+    "removeAll": "Remove all quotes",
+    "panelLabel": "Quoted assistant replies"
+  },
   "commandMenu": {
     "empty": "No commands available",
     "groups": {

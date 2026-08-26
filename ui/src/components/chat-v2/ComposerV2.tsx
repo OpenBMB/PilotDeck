@@ -36,6 +36,7 @@ import ImageAttachment from "../chat/view/subcomponents/ImageAttachment";
 import CommandMenu from "../chat/view/subcomponents/CommandMenu";
 import { cn } from "../../lib/utils.js";
 import type { ContentReference } from "../../types/contentReference";
+import { partitionContentReferences } from "../../types/assistantReplyReference";
 import { authenticatedFetch } from "../../utils/api";
 import type {
   ChatModelCatalogItem,
@@ -53,6 +54,7 @@ import {
   speedOptionValues,
 } from "./modelCapabilityOptions";
 import DocumentReferenceChip from "./DocumentReferenceChip";
+import ReplyQuoteChip from "./ReplyQuoteChip";
 
 interface MentionableFile {
   id?: string;
@@ -561,6 +563,10 @@ export default function ComposerV2({
     BLOCKING_PERMISSION_TOOLS.has(request.toolName),
   );
 
+  const { fileReferences, replyQuotes } = useMemo(
+    () => partitionContentReferences(documentReferences),
+    [documentReferences],
+  );
   const hasDraftContent =
     input.trim().length > 0 ||
     attachedImages.length > 0 ||
@@ -684,10 +690,10 @@ export default function ComposerV2({
               compact && "pd-composer-compact",
             )}
           >
-            {attachedImages.length > 0 || documentReferences.length > 0 ? (
+            {attachedImages.length > 0 || fileReferences.length > 0 ? (
               <div className="pd-composer-attachment-panel mb-2 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex flex-wrap gap-2">
-                  {documentReferences.map((reference) => (
+                  {fileReferences.map((reference) => (
                     <DocumentReferenceChip
                       key={reference.id}
                       reference={reference}
@@ -862,7 +868,8 @@ export default function ComposerV2({
 
               {selectedFileMentions.length > 0 ||
               selectedSkills.length > 0 ||
-              selectedCommands.length > 0 ? (
+              selectedCommands.length > 0 ||
+              replyQuotes.length > 0 ? (
                 <div
                   className="pd-composer-selection-chips -mt-0.5 mb-1.5 flex min-h-[26px] flex-wrap items-center gap-1.5 px-1"
                   aria-label={
@@ -871,6 +878,15 @@ export default function ComposerV2({
                     }) as string
                   }
                 >
+                  {replyQuotes.length > 0 ? (
+                    <ReplyQuoteChip
+                      quotes={replyQuotes}
+                      onRemove={onRemoveDocumentReference}
+                      onRemoveAll={() => {
+                        replyQuotes.forEach((quote) => onRemoveDocumentReference(quote.id));
+                      }}
+                    />
+                  ) : null}
                   {selectedFileMentions.map((mention) => (
                     <span
                       key={mention.id || mention.path}

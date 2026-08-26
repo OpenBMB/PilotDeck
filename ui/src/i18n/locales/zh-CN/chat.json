@@ -291,6 +291,13 @@
     "pageUnknown": "页码未知",
     "remove": "删除引用"
   },
+  "replyQuotes": {
+    "addToChat": "添加到PilotDeck对话",
+    "chip": "{{count}}条标签",
+    "remove": "删除这条标签",
+    "removeAll": "删除全部标签",
+    "panelLabel": "已引用的回复内容"
+  },
   "commandMenu": {
     "empty": "暂无可用命令",
     "groups": {

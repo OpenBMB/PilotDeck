@@ -15,6 +15,7 @@ import {
   normalizeContentReference,
   type ContentReference,
 } from '../../types/contentReference';
+import { partitionContentReferences } from '../../types/assistantReplyReference';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -31,6 +32,7 @@ import { processSummaryToTrace, type ProcessAttachment } from './processGrouping
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
+import ReplyQuoteChip from './ReplyQuoteChip';
 import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
 
 type DiffLine = { type: string; content: string; lineNum: number };
@@ -183,6 +185,10 @@ function MessageRowV2({
       .map(attachmentToDocumentReference)
       .filter((reference): reference is ContentReference => Boolean(reference)),
     [messageAttachments],
+  );
+  const { fileReferences: fileDocumentReferences, replyQuotes: replyQuoteReferences } = useMemo(
+    () => partitionContentReferences(documentReferenceAttachments),
+    [documentReferenceAttachments],
   );
   const referenceImageNames = useMemo(
     () => new Set(documentReferenceAttachments
@@ -370,9 +376,12 @@ function MessageRowV2({
             <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
           ) : (
             <>
-              {documentReferenceAttachments.length > 0 ? (
+              {fileDocumentReferences.length > 0 || replyQuoteReferences.length > 0 ? (
                 <div className={formattedContent || fileAttachments.length > 0 ? 'mb-2 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
-                  {documentReferenceAttachments.map((reference) => (
+                  {replyQuoteReferences.length > 0 ? (
+                    <ReplyQuoteChip quotes={replyQuoteReferences} />
+                  ) : null}
+                  {fileDocumentReferences.map((reference) => (
                     <DocumentReferenceChip
                       key={reference.id}
                       reference={reference}
@@ -602,8 +611,15 @@ function MessageRowV2({
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
-        <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
-        onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        <div
+          {...(!message.isStreaming ? {
+            'data-assistant-quote-source': '',
+            'data-assistant-quote-message-id': message.id || message.entryId || message.turnId || '',
+          } : {})}
+        >
+          <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
+          onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        </div>
       )}
       {assistantArtifacts.length > 0 ? (
         <AgentFileArtifactGroup
