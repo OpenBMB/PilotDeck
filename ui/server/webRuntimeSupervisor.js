@@ -13,7 +13,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UI_ROOT = path.resolve(__dirname, '..');
-const CONCURRENTLY_BIN = path.join(UI_ROOT, 'node_modules', 'concurrently', 'dist', 'bin', 'concurrently.js');
+const CONCURRENTLY_BIN_CANDIDATES = [
+  path.join(UI_ROOT, 'node_modules', 'concurrently', 'dist', 'bin', 'concurrently.js'),
+  path.join(UI_ROOT, '..', 'node_modules', 'concurrently', 'dist', 'bin', 'concurrently.js'),
+];
+const CONCURRENTLY_BIN = CONCURRENTLY_BIN_CANDIDATES.find((candidate) => existsSync(candidate))
+  || CONCURRENTLY_BIN_CANDIDATES[0];
 
 export function normalizeSupervisorMode(value) {
   return value === 'dev' ? 'dev' : 'start-built';

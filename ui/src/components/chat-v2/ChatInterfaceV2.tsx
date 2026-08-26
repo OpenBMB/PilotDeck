@@ -125,11 +125,17 @@ function ChatInterfaceV2({
     setModelSelection,
     isModelCatalogLoading,
     modelCatalogError,
+    thinkingModelContext,
     permissionMode,
     setPermissionMode: setPermissionModeRaw,
     pendingPermissionRequests,
     setPendingPermissionRequests,
   } = useChatProviderState({ selectedProject, selectedSession });
+
+  const thinkingModeAvailability = React.useMemo(
+    () => getThinkingModeAvailability(thinkingModelContext),
+    [thinkingModelContext],
+  );
 
   const cycleRunMode = useCallback(() => {
     setRunMode((currentMode) => {
@@ -212,6 +218,7 @@ function ChatInterfaceV2({
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded: _isTextareaExpanded,
+    thinkingMode,
     slashCommandsCount: _slashCommandsCount,
     filteredCommands,
     frequentCommands,
