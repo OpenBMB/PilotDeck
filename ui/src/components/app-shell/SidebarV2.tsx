@@ -1054,7 +1054,7 @@ export default function SidebarV2({
       className={cn(
         // On mobile the parent wraps this aside in an overlay constrained
         // to 85vw, so force the inline width style off with !w-full there.
-        'project-sidebar sidebar-shell relative h-full shrink-0 text-neutral-900 max-md:!w-full',
+        'project-sidebar sidebar-shell relative h-full shrink-0 text-neutral-900 dark:text-neutral-100 max-md:!w-full',
         isCompact && 'compact',
       )}
     >

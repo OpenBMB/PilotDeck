@@ -10,7 +10,7 @@ type ProtectedRouteProps = {
 };
 
 /** TEMP for onboarding UI work. Set back to false when done. */
-const FORCE_ONBOARDING_FOR_DEV = true;
+// const FORCE_ONBOARDING_FOR_DEV = true;
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const {
@@ -33,9 +33,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <LoginForm />;
   }
 
-  if (FORCE_ONBOARDING_FOR_DEV || !hasCompletedOnboarding) {
+  if (!hasCompletedOnboarding) {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
   }
+  // if (FORCE_ONBOARDING_FOR_DEV || !hasCompletedOnboarding) {
+  //   return <Onboarding onComplete={refreshOnboardingStatus} />;
+  // }
 
   return <>{children}</>;
 }

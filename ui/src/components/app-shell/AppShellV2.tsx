@@ -692,7 +692,7 @@ export default function AppShellV2() {
         </div>
       )}
 
-      <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+      <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950">
         <MainAreaV2
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
