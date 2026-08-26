@@ -77,6 +77,7 @@ type MessagesPaneV2Props = {
   planModeActive?: boolean;
   sessionStore?: SessionStore;
   onFork?: (message: ChatMessage, carriedMessageCount: number) => void;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
   forkDisabled?: boolean;
   forkParentSessionTitle?: string | null;
 };
@@ -356,6 +357,7 @@ function MessagesPaneV2({
   planModeActive = false,
   sessionStore,
   onFork,
+  onRegenerate,
   forkDisabled = false,
   forkParentSessionTitle = null,
 }: MessagesPaneV2Props) {
@@ -555,6 +557,12 @@ function MessagesPaneV2({
     })),
     [getMessageKey, messageWindowScope, renderableMessageItems],
   );
+  const lastUserMessageItemKey = useMemo(() => {
+    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
+      if (keyedMessageItems[index].message.type === 'user') return keyedMessageItems[index].itemKey;
+    }
+    return null;
+  }, [keyedMessageItems]);
   const measuredItemHeights = useMemo(() => {
     void heightVersion;
     return keyedMessageItems.map((item) => measuredHeightsRef.current.get(item.itemKey) ?? item.estimatedHeight);
@@ -1034,6 +1042,12 @@ function MessagesPaneV2({
             forkCarriedMessageCount={forkCarriedMessageCount}
             forkDisabled={forkDisabled}
             showAssistantActions={showAssistantActions}
+            canEdit={Boolean(
+              onRegenerate
+              && !sessionIsReadOnly
+              && item.itemKey === lastUserMessageItemKey
+            )}
+            onRegenerate={onRegenerate}
           />
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
@@ -1077,7 +1091,10 @@ function MessagesPaneV2({
     liveProcessStartedAtMs,
     onFileOpen,
     onFork,
+    onRegenerate,
     forkDisabled,
+    lastUserMessageItemKey,
+    sessionIsReadOnly,
     onGrantSessionToolPermission,
     onShowSettings,
     provider,

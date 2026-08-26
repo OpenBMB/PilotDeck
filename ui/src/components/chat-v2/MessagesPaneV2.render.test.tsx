@@ -100,6 +100,7 @@ function createPaneElement({
   planModeActive = false,
   showThinking = true,
   inlineThinking = false,
+  onRegenerate,
 }: {
   messages: ChatMessage[];
   activityMessages?: ChatMessage[];
@@ -110,6 +111,7 @@ function createPaneElement({
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   const scrollContainerRef = React.createRef<HTMLDivElement>();
 
@@ -143,6 +145,7 @@ function createPaneElement({
         planModeActive={planModeActive}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
+        onRegenerate={onRegenerate}
       />
     </FindShortcutProvider>
   );
@@ -158,6 +161,7 @@ function renderPane(options: {
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   return render(createPaneElement(options));
 }
@@ -198,6 +202,25 @@ function SessionPaneHarness({
 }
 
 describe('MessagesPaneV2 render behavior', () => {
+  it('offers editing only on the latest user message', () => {
+    const now = new Date().toISOString();
+    renderPane({
+      messages: [
+        { id: 'user-old', turnId: 'turn-old', type: 'user', content: 'Old request', timestamp: now },
+        { id: 'assistant-old', turnId: 'turn-old', type: 'assistant', content: 'Old answer', timestamp: now },
+        { id: 'user-latest', turnId: 'turn-latest', type: 'user', content: 'Latest request', timestamp: now },
+        { id: 'assistant-latest', turnId: 'turn-latest', type: 'assistant', content: 'Latest answer', timestamp: now },
+      ],
+      onRegenerate: vi.fn(async () => undefined),
+    });
+
+    expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1);
+    const latestMessageRow = screen.getByText('Latest request').closest('.chat-message');
+    expect(latestMessageRow?.querySelector('[aria-label="Edit message"]')).not.toBeNull();
+    const oldMessageRow = screen.getByText('Old request').closest('.chat-message');
+    expect(oldMessageRow?.querySelector('[aria-label="Edit message"]')).toBeNull();
+  });
+
   it('shows a waiting state before the model produces content', () => {
     const now = new Date().toISOString();
     renderPane({

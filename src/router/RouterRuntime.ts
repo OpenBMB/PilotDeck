@@ -549,12 +549,21 @@ export function createRouterRuntime(
     if (decision.mutations.subagentTagStripped) {
       messages = stripSubagentTagFromMessages(messages);
     }
+    const routedCachePlan = request.cachePlan &&
+      (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
+      (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
+      ? request.cachePlan
+      : undefined;
     return clampMaxOutputTokensToModelCap({
       ...request,
       ...decision.requestPatch,
       provider: decision.provider,
       model: decision.model,
       messages,
+      cacheBreakpoints: request.cachePlan !== undefined
+        ? routedCachePlan?.messages
+        : request.cacheBreakpoints,
+      cachePlan: routedCachePlan,
     }, deps.modelRuntime);
   }
 
@@ -564,10 +573,19 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
+      const routedCachePlan = request.cachePlan &&
+        (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
+        (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
+        ? request.cachePlan
+        : undefined;
       const passthroughRequest: CanonicalModelRequest = {
         ...request,
         provider: decision.provider,
         model: decision.model,
+        cacheBreakpoints: request.cachePlan !== undefined
+          ? routedCachePlan?.messages
+          : request.cacheBreakpoints,
+        cachePlan: routedCachePlan,
       };
       const downgradedPassthrough = downgradeRequestForAttempt(
         passthroughRequest,

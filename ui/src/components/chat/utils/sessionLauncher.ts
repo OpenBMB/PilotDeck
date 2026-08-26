@@ -34,6 +34,16 @@ type StartSessionOptions = {
   forceStart?: boolean;
 };
 
+type RegenerateLastSessionOptions = Omit<
+  StartSessionOptions,
+  'temporarySessionId' | 'alwaysOnPlanId' | 'alwaysOnExecutionToken' | 'forceStart'
+> & {
+  requestId: string;
+  sessionId: string;
+  expectedTurnId: string;
+  syntheticMessages?: Array<{ text: string; purpose?: string }>;
+};
+
 const VALID_PERMISSION_MODES = new Set<PermissionMode>([
   'default',
   'bypassPermissions',
@@ -164,4 +174,58 @@ export function startSessionCommand({
   });
 
   return sessionToActivate;
+}
+
+export function regenerateLastSessionCommand({
+  sendMessage,
+  selectedProject,
+  command,
+  requestId,
+  sessionId,
+  expectedTurnId,
+  runId,
+  userVisibleInput,
+  permissionMode = 'default',
+  basePermissionMode,
+  runMode,
+  model,
+  thinking,
+  sessionSummary,
+  toolsSettings = getPilotDeckSettings(),
+  images,
+  attachments,
+  workspaceCwd,
+  syntheticMessages,
+}: RegenerateLastSessionOptions): void {
+  const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+  sendMessage({
+    type: 'regenerate-last-message',
+    requestId,
+    sessionId,
+    expectedTurnId,
+    command,
+    options: {
+      sessionId,
+      resume: true,
+      projectPath: resolvedProjectPath,
+      cwd: resolvedProjectPath,
+      ...(runId ? { runId } : {}),
+      toolsSettings,
+      ...(runMode ? { runMode } : {}),
+      permissionMode,
+      ...(basePermissionMode ? { basePermissionMode } : {}),
+      ...(model ? { model } : {}),
+      ...(thinking ? { thinking } : {}),
+      sessionSummary,
+      ...(typeof userVisibleInput === 'string' && userVisibleInput.trim()
+        ? { userVisibleInput: userVisibleInput.trim() }
+        : {}),
+      ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
+      ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+      ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(Array.isArray(syntheticMessages) && syntheticMessages.length > 0
+        ? { syntheticMessages }
+        : {}),
+    },
+  });
 }

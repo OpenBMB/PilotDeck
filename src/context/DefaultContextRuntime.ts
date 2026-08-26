@@ -8,7 +8,7 @@ import {
   buildPostCompactMessages,
   truncateHeadPreservingCheckpoint,
 } from "./compaction/CompactionEngine.js";
-import type { CachedMicroCompactionEngine } from "./compaction/CachedMicroCompactionEngine.js";
+import { buildCachePlan } from "./cache/CachePlan.js";
 import type { MicroCompactionEngine } from "./compaction/MicroCompactionEngine.js";
 import type { SnipEngine } from "./compaction/SnipEngine.js";
 import { ensureTrailingUserMessage } from "./compaction/toolPairIntegrity.js";
@@ -57,11 +57,6 @@ export type DefaultContextRuntimeOptions = {
   compactionEngine?: CompactionEngine;
   /** A5 — token-budget-driven policy that decides when to summarize. */
   autoCompactionPolicy?: AutoCompactionPolicy;
-  /**
-   * A4 — opt-in cached micro-compaction engine. Construction is gated by
-   * `PilotConfig.context.cachedMicrocompactEnabled` upstream.
-   */
-  microcompactEngine?: CachedMicroCompactionEngine;
   /** Tier 1 — truncates old tool_result content (time-based path). */
   microCompaction?: MicroCompactionEngine;
   /** Tier 2 — prunes middle turns, keeping head + tail anchors. */
@@ -113,7 +108,8 @@ export class DefaultContextRuntime implements ContextRuntime {
   readonly tokenBudget?: TokenBudgetManager;
   readonly compactionEngine?: CompactionEngine;
   readonly autoCompactionPolicy?: AutoCompactionPolicy;
-  readonly microcompactEngine?: CachedMicroCompactionEngine;
+  private readonly cachePlanState = new Map<string, { fingerprint: string; generation: number }>();
+  private readonly cacheResetSessions = new Set<string>();
   private readonly microCompaction?: MicroCompactionEngine;
   private readonly snipEngine?: SnipEngine;
   private readonly overflowRecovery?: ContextOverflowRecovery;
@@ -137,7 +133,6 @@ export class DefaultContextRuntime implements ContextRuntime {
     this.tokenBudget = options.tokenBudget;
     this.compactionEngine = options.compactionEngine;
     this.autoCompactionPolicy = options.autoCompactionPolicy;
-    this.microcompactEngine = options.microcompactEngine;
     this.microCompaction = options.microCompaction;
     this.snipEngine = options.snipEngine;
     this.overflowRecovery = options.overflowRecovery;
@@ -244,10 +239,23 @@ export class DefaultContextRuntime implements ContextRuntime {
 
     const joined = parts.join("\n\n");
 
-    const microcompactResult = this.microcompactEngine?.apply({
-      messages: projection.messages,
+    const cachePlanInput = {
       provider: input.provider,
-    });
+      model: input.model,
+      systemPrompt: joined,
+      tools: input.tools,
+      messages: projection.messages,
+      enabled: input.protocol === "anthropic" && input.supportsPromptCache === true,
+    };
+    const cachePlanFingerprint = buildCachePlan(cachePlanInput, 0)?.fingerprint;
+    const cachePlan = buildCachePlan(
+      cachePlanInput,
+      this.nextCachePlanGeneration(
+        input.sessionId,
+        cachePlanFingerprint,
+        this.cacheResetSessions.delete(input.sessionId),
+      ),
+    );
 
     return {
       messages: projection.messages,
@@ -260,8 +268,24 @@ export class DefaultContextRuntime implements ContextRuntime {
         droppedCount: projection.droppedCount,
         toolCount: input.tools.length,
       },
-      cacheBreakpoints: microcompactResult?.cacheBreakpoints,
+      cacheBreakpoints: cachePlan?.messages,
+      cachePlan,
     };
+  }
+
+  private nextCachePlanGeneration(sessionId: string, fingerprint: string | undefined, forceReset = false): number {
+    const previous = this.cachePlanState.get(sessionId);
+    if (!fingerprint) return previous?.generation ?? 0;
+    if (forceReset || fingerprint !== previous?.fingerprint) {
+      const generation = (previous?.generation ?? 0) + 1;
+      this.cachePlanState.set(sessionId, { fingerprint, generation });
+      return generation;
+    }
+    return previous.generation;
+  }
+
+  private markCachePlanReset(sessionId: string): void {
+    if (sessionId) this.cacheResetSessions.add(sessionId);
   }
 
   async applyToolResults(input: ContextToolResultInput): Promise<ContextToolResultResult> {
@@ -383,6 +407,7 @@ export class DefaultContextRuntime implements ContextRuntime {
         if (micro.rewritten === 0) {
           return { type: "skipped", snapshot: microSnapshot };
         }
+        this.markCachePlanReset(sessionId);
         return {
           type: "compacted",
           messages: ensureTrailingUserMessage(messages),
@@ -521,6 +546,9 @@ export class DefaultContextRuntime implements ContextRuntime {
       preTokens: finalResult?.preTokens ?? result.preTokens,
       postTokens: finalResult?.postTokens,
     });
+    if (summarySucceeded || snipApplied || emergencyApplied) {
+      this.markCachePlanReset(sessionId);
+    }
     // 90% is the protection threshold that triggers emergency work, not a
     // hard provider overflow. If the final prompt is still below the actual
     // effective input budget, it remains sendable and should not be converted

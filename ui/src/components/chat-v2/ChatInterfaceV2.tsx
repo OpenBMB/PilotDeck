@@ -13,8 +13,24 @@ import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
+import {
+  getEffectiveThinkingMode,
+  getThinkingModeAvailability,
+} from '../chat/constants/thinkingModeAvailability';
+import { thinkingModeToConfig } from '../chat/constants/thinkingModes';
 import { useSessionStore } from '../../stores/useSessionStore';
-import { getDraftInputStorageKey, safeLocalStorage } from '../chat/utils/chatStorage';
+import { getDraftInputStorageKey, getPilotDeckSettings, safeLocalStorage } from '../chat/utils/chatStorage';
+import { buildAttachmentPathNote } from '../chat/utils/attachmentNotes';
+import {
+  createUserTurnRunId,
+  getNotificationSessionSummary,
+  regenerateLastSessionCommand,
+} from '../chat/utils/sessionLauncher';
+import {
+  formatContentReferencePromptBlock,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../types/contentReference';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
@@ -24,6 +40,12 @@ type PendingViewSession = {
   sessionId: string | null;
   startedAt: number;
 };
+
+const EDIT_RECONCILIATION_HINT = [
+  'The user replaced their immediately previous request with this edited request.',
+  'The conversation transcript no longer contains the replaced turn, but its tool actions may already have changed the current workspace.',
+  'Treat the current workspace as the source of truth: inspect existing changes, do not assume earlier work is correct, and reconcile or revise it to satisfy the edited request.',
+].join(' ');
 
 // V2 chat wrapper. Reuses all business-logic hooks from legacy
 // `ChatInterface` so streaming, file-mentions, slash commands, permissions,
@@ -80,6 +102,11 @@ function ChatInterfaceV2({
   const [isAbortPending, setIsAbortPending] = useState(false);
   const [runMode, setRunMode] = useState<ChatRunMode>('agent');
   const [isForkPending, setIsForkPending] = useState(false);
+  const regenerateRequestsRef = useRef(new Map<string, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timeoutId: number;
+  }>());
   const { addToast } = useToast();
 
   const resetStreamingState = useCallback(() => {
@@ -371,7 +398,7 @@ function ChatInterfaceV2({
 
   const handleFork = useCallback(async (message: ChatMessage, _carriedPreview: number) => {
     if (isForkPending || isLoading || sessionIsReadOnly) return;
-    const sessionId = currentSessionId || selectedSession?.id;
+    const sessionId = selectedSession?.id || currentSessionId;
     const fromEntryId = message.entryId;
     if (!sessionId || !fromEntryId || !selectedProject) {
       addToast('error', t('fork.missingTarget', { defaultValue: 'Cannot fork this message.' }));
@@ -451,6 +478,98 @@ function ChatInterfaceV2({
     setInput,
     t,
     textareaRef,
+  ]);
+
+  useEffect(() => {
+    if (!subscribe) return undefined;
+    const unsubscribe = subscribe((message: any) => {
+      if (message?.type !== 'regenerate-last-message-result') return;
+      const requestId = typeof message.requestId === 'string' ? message.requestId : '';
+      const pending = regenerateRequestsRef.current.get(requestId);
+      if (!pending) return;
+      regenerateRequestsRef.current.delete(requestId);
+      window.clearTimeout(pending.timeoutId);
+      if (message.success) pending.resolve();
+      else pending.reject(new Error(message.error || t('edit.failed', { defaultValue: 'Could not edit this message.' })));
+    });
+    return () => unsubscribe();
+  }, [subscribe, t]);
+
+  useEffect(() => () => {
+    for (const pending of regenerateRequestsRef.current.values()) {
+      window.clearTimeout(pending.timeoutId);
+      pending.reject(new Error(t('edit.cancelled', { defaultValue: 'Message edit was cancelled.' })));
+    }
+    regenerateRequestsRef.current.clear();
+  }, [t]);
+
+  const handleRegenerate = useCallback(async (message: ChatMessage, editedText: string) => {
+    const sessionId = selectedSession?.id || currentSessionId;
+    const expectedTurnId = String(message.turnId || message.runId || '').trim();
+    if (!sessionId || !expectedTurnId || !selectedProject || sessionIsReadOnly) {
+      throw new Error(t('edit.missingTarget', { defaultValue: 'The last message can no longer be edited.' }));
+    }
+
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    const references = attachments
+      .map((attachment) => normalizeContentReference(attachment.contentReference ?? attachment))
+      .filter((reference): reference is ContentReference => Boolean(reference));
+    const regularFiles = attachments
+      .filter((attachment) => !attachment.kind || attachment.kind === 'file')
+      .flatMap((attachment) => {
+        const path = attachment.path || attachment.filePath;
+        return path ? [{ name: attachment.name, path }] : [];
+      });
+    const command = `${editedText}${buildAttachmentPathNote(regularFiles)}${formatContentReferencePromptBlock(references)}`;
+    const requestId = createUserTurnRunId();
+    const runId = createUserTurnRunId();
+    const result = new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        regenerateRequestsRef.current.delete(requestId);
+        reject(new Error(t('edit.timeout', { defaultValue: 'Editing timed out. Please try again.' })));
+      }, 120_000);
+      regenerateRequestsRef.current.set(requestId, { resolve, reject, timeoutId });
+    });
+
+    const effectiveThinkingMode = getEffectiveThinkingMode(thinkingMode, thinkingModeAvailability);
+    regenerateLastSessionCommand({
+      sendMessage,
+      selectedProject,
+      requestId,
+      sessionId,
+      expectedTurnId,
+      command,
+      runId,
+      userVisibleInput: editedText,
+      toolsSettings: getPilotDeckSettings(),
+      runMode,
+      permissionMode: effectivePermissionMode,
+      basePermissionMode: permissionMode,
+      model,
+      thinking: thinkingModeToConfig(effectiveThinkingMode),
+      sessionSummary: getNotificationSessionSummary(selectedSession, editedText),
+      images: Array.isArray(message.images) ? message.images : [],
+      attachments,
+      syntheticMessages: [{
+        text: EDIT_RECONCILIATION_HINT,
+        purpose: 'edited_turn_workspace_reconciliation',
+      }],
+    });
+
+    return result;
+  }, [
+    currentSessionId,
+    effectivePermissionMode,
+    model,
+    permissionMode,
+    runMode,
+    selectedProject,
+    selectedSession,
+    sendMessage,
+    sessionIsReadOnly,
+    t,
+    thinkingMode,
+    thinkingModeAvailability,
   ]);
 
   useEffect(() => {
@@ -681,6 +800,7 @@ function ChatInterfaceV2({
         planModeActive={effectivePermissionMode === 'plan'}
         sessionStore={sessionStore}
         onFork={sessionIsReadOnly ? undefined : handleFork}
+        onRegenerate={sessionIsReadOnly ? undefined : handleRegenerate}
         forkDisabled={isForkPending}
       />
       {composerSlot}

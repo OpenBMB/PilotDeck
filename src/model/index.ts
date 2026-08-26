@@ -88,6 +88,7 @@ export type {
   CanonicalToolResult,
   CanonicalToolSchema,
   CanonicalUsage,
+  CachePlan,
   ModelConfig,
   ModelDefinition,
   ModelProtocol,

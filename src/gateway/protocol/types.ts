@@ -31,6 +31,10 @@ import type {
   WebReadSubagentMessagesResult as WebUiReadSubagentMessagesResult,
   WebForkSessionInput as WebUiForkSessionInput,
   WebForkSessionResult as WebUiForkSessionResult,
+  WebReplaceLastTurnInput as WebUiReplaceLastTurnInput,
+  WebReplaceLastTurnResult as WebUiReplaceLastTurnResult,
+  WebFinalizeLastTurnReplacementInput as WebUiFinalizeLastTurnReplacementInput,
+  WebFinalizeLastTurnReplacementResult as WebUiFinalizeLastTurnReplacementResult,
 } from "../../web/client/protocol.js";
 import type {
   SkillCreateInput,
@@ -142,6 +146,7 @@ type GatewayTurnScopedEventMetadata = {
 
 export type GatewayEvent = GatewayTurnScopedEventMetadata & (
   | { type: "turn_started"; runId: string }
+  | { type: "input_accepted"; runId: string }
   | { type: "model_request_started"; model?: string; provider?: string }
   | {
       type: "model_selection_changed";
@@ -304,6 +309,10 @@ export type WebReadSubagentMessagesInput = WebUiReadSubagentMessagesInput;
 export type WebReadSubagentMessagesResult = WebUiReadSubagentMessagesResult;
 export type WebForkSessionInput = WebUiForkSessionInput;
 export type WebForkSessionResult = WebUiForkSessionResult;
+export type WebReplaceLastTurnInput = WebUiReplaceLastTurnInput;
+export type WebReplaceLastTurnResult = WebUiReplaceLastTurnResult;
+export type WebFinalizeLastTurnReplacementInput = WebUiFinalizeLastTurnReplacementInput;
+export type WebFinalizeLastTurnReplacementResult = WebUiFinalizeLastTurnReplacementResult;
 export type WebProjectSummary = WebUiProjectSummary;
 export type WebListProjectsResult = WebUiListProjectsResult;
 export type WebDescribeProjectInput = { projectKey: string };
@@ -575,6 +584,12 @@ export interface Gateway {
    * Fork a session transcript at a prior user turn into a new session file.
    */
   forkSession(input: WebForkSessionInput): Promise<WebForkSessionResult>;
+  /** Abort any active run and atomically remove the latest turn from the transcript. */
+  replaceLastTurn(input: WebReplaceLastTurnInput): Promise<WebReplaceLastTurnResult>;
+  /** Commit a durable replacement input or restore the transcript when submission failed. */
+  finalizeLastTurnReplacement(
+    input: WebFinalizeLastTurnReplacementInput,
+  ): Promise<WebFinalizeLastTurnReplacementResult>;
   /**
    * Read a subagent's sidechain transcript and return its messages in WebMessage format.
    */

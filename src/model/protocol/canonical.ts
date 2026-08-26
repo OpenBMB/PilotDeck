@@ -210,6 +210,17 @@ export type CanonicalOutputSchema = {
   strict?: boolean;
 };
 
+/** Internal provider-boundary prompt-cache layout; never persisted. */
+export type CachePlan = {
+  provider?: string;
+  model?: string;
+  system: boolean;
+  tools: boolean;
+  messages: number[];
+  fingerprint: string;
+  generation: number;
+};
+
 export type CanonicalModelRequest = {
   model: string;
   provider: string;
@@ -227,10 +238,13 @@ export type CanonicalModelRequest = {
   outputSchema?: CanonicalOutputSchema;
   /**
    * A4: indices into `messages` whose final content block should be marked
-   * `cache_control: { type: "ephemeral" }` when lowered to Anthropic. Other
-   * providers ignore this. Set by `CachedMicroCompactionEngine`.
+   * `cache_control: { type: "ephemeral", ttl: "5m" }` when lowered to
+   * Anthropic. Other providers ignore this. The default context layout marks
+   * the final three non-system messages for the `system + recent3` strategy.
    */
   cacheBreakpoints?: number[];
+  /** Internal prompt-cache layout computed by the context runtime. */
+  cachePlan?: CachePlan;
 };
 
 export type CanonicalUsage = {

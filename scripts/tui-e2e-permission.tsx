@@ -29,6 +29,14 @@ class MockGateway implements Gateway {
   private pending = new Map<string, PendingPermission>();
   private aborted = false;
 
+  async replaceLastTurn(): Promise<never> {
+    throw new Error("replaceLastTurn is not used by this TUI test.");
+  }
+
+  async finalizeLastTurnReplacement(): Promise<never> {
+    throw new Error("finalizeLastTurnReplacement is not used by this TUI test.");
+  }
+
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
     this.aborted = false;
     yield { type: "turn_started", runId: "run-1" };

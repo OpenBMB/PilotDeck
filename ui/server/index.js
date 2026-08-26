@@ -7,6 +7,7 @@ installGlobalProxy();
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -15,6 +16,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const installMode = fs.existsSync(path.join(__dirname, '..', '..', '.git')) ? 'git' : 'npm';
+const serverInstanceId = crypto.randomUUID();
+const serverStartedAt = new Date().toISOString();
+const serverPid = process.pid;
 
 // ANSI color codes for terminal output
 const colors = {
@@ -42,7 +46,6 @@ console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import os from 'os';
 import http from 'http';
 import cors from 'cors';
@@ -53,12 +56,15 @@ import fetch from 'node-fetch';
 import mime from 'mime-types';
 import JSZip from 'jszip';
 import { readPermissionSettings } from './services/permissionSettings.js';
+import { regenerateLastMessageTransaction } from './services/regenerateLastMessage.js';
 import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 
 import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
 import {
     runChatViaGateway,
+    replaceLastTurnViaGateway,
+    finalizeLastTurnReplacementViaGateway,
     abortViaGateway,
     decidePermissionViaGateway,
     grantSessionPermissionViaGateway,
@@ -349,6 +355,11 @@ async function setupProjectsWatcher() {
 
 
 const app = express();
+app.locals.restartInstanceInfo = {
+    instanceId: serverInstanceId,
+    startedAt: serverStartedAt,
+    pid: serverPid
+};
 const server = http.createServer(app);
 
 const ptySessionsMap = new Map();
@@ -474,10 +485,14 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
+    const instanceInfo = req.app.locals.restartInstanceInfo || {};
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        installMode
+        installMode,
+        instanceId: instanceInfo.instanceId,
+        startedAt: instanceInfo.startedAt,
+        pid: instanceInfo.pid
     });
 });
 
@@ -2494,6 +2509,28 @@ function handleChatConnection(ws, request) {
                 }
                 const providerHint = data.options?.providerHint || data.type.replace('-command', '');
                 await runChatViaGateway(data.command, data.options, streamWriter, providerHint);
+            } else if (data.type === 'regenerate-last-message') {
+                const sessionId = normalizeSessionId(data.sessionId || data.options?.sessionId);
+                const requestId = typeof data.requestId === 'string' ? data.requestId : null;
+                const expectedTurnId = typeof data.expectedTurnId === 'string'
+                    ? data.expectedTurnId.trim()
+                    : '';
+                const provider = data.options?.providerHint || 'pilotdeck';
+                if (sessionId) {
+                    sessionWatchRegistry.watch(sessionId, ws);
+                }
+                await regenerateLastMessageTransaction({
+                    data,
+                    sessionId,
+                    requestId,
+                    expectedTurnId,
+                    provider,
+                    writer,
+                    streamWriter,
+                    replaceLastTurn: replaceLastTurnViaGateway,
+                    finalizeLastTurnReplacement: finalizeLastTurnReplacementViaGateway,
+                    runChat: runChatViaGateway,
+                });
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
                 const provider = data.provider || 'pilotdeck';

@@ -203,6 +203,17 @@ export class GatewayBrowserClient {
     );
   }
 
+  replaceLastTurn(input: import("./protocol.js").WebReplaceLastTurnInput) {
+    return this.request<import("./protocol.js").WebReplaceLastTurnResult>("replace_last_turn", input);
+  }
+
+  finalizeLastTurnReplacement(input: import("./protocol.js").WebFinalizeLastTurnReplacementInput) {
+    return this.request<import("./protocol.js").WebFinalizeLastTurnReplacementResult>(
+      "finalize_last_turn_replacement",
+      input,
+    );
+  }
+
   permissionDecide(input: import("./protocol.js").WebPermissionDecision) {
     return this.request<{ delivered: boolean }>("permission_decide", input);
   }

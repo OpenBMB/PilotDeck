@@ -352,6 +352,7 @@ function cacheKeyForRequest(request: CanonicalModelRequest): string {
       thinking: request.thinking,
       outputSchema: request.outputSchema,
       cacheBreakpoints: request.cacheBreakpoints,
+      cachePlan: request.cachePlan,
     }))
     .digest("hex");
 }

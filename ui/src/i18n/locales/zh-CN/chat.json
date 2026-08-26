@@ -15,6 +15,15 @@
     "copyAsMarkdown": "复制为 Markdown",
     "copyAsText": "复制为纯文本"
   },
+  "edit": {
+    "message": "修改消息",
+    "cancel": "取消",
+    "send": "发送",
+    "failed": "无法修改这条消息。",
+    "cancelled": "已取消修改消息。",
+    "missingTarget": "最后一条消息已无法修改。",
+    "timeout": "修改请求超时，请重试。"
+  },
   "messageTypes": {
     "user": "U",
     "error": "错误",

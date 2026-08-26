@@ -94,15 +94,12 @@ export function useGitVersion() {
     }
   }, []);
 
-  const triggerRestart = useCallback(async () => {
-    try {
-      await authenticatedFetch('/api/update/restart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch {
-      // Expected — server will die
-    }
+  const triggerRestart = useCallback(async (options: { signal?: AbortSignal } = {}) => {
+    return authenticatedFetch('/api/update/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: options.signal,
+    });
   }, []);
 
   return { info, loading, error, fetchVersion, triggerUpdate, triggerRestart };

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
 import { dirname, resolve, join as joinPath } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,7 +16,6 @@ import {
 import { resolveRoutedModelMaxContextTokens } from "../agent/runtime/modelContextWindow.js";
 import {
   AutoCompactionPolicy,
-  CachedMicroCompactionEngine,
   CompactionEngine,
   ContextOverflowRecovery,
   DefaultContextRuntime,
@@ -70,6 +70,11 @@ import { sanitizeSessionIdForPath } from "../session/storage/ProjectSessionStora
 import { createSessionTitleGenerator } from "../session/title/SessionTitleGenerator.js";
 import { readWebSessionMessages, readSubagentWebMessages } from "../web/server/readSessionMessages.js";
 import { forkWebSession } from "../web/server/forkSession.js";
+import {
+  finalizeLastWebSessionTurnReplacement,
+  recoverPendingLastTurnReplacements,
+  replaceLastWebSessionTurn,
+} from "../web/server/replaceLastTurn.js";
 import { describeWebProject, listWebProjects } from "../web/server/listProjects.js";
 import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
 import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
@@ -169,6 +174,22 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const baseEnv = options.env ?? process.env;
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const pilotHome = options.pilotHome ?? resolvePilotHome(baseEnv);
+  const replacementTransactionOwner = { instanceId: randomUUID(), pid: process.pid };
+  const replacementRecovery = recoverPendingLastTurnReplacements(pilotHome);
+  if (replacementRecovery.committed > 0 || replacementRecovery.rolledBack > 0) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[pilotdeck] Recovered last-turn replacements: committed=${replacementRecovery.committed} ` +
+      `rolledBack=${replacementRecovery.rolledBack}.`,
+    );
+  }
+  for (const failure of replacementRecovery.failures) {
+    // Keep the backup/journal in place so a later startup can retry safely.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[pilotdeck] Could not recover replacement transaction for ${failure.transcriptPath}: ${failure.message}`,
+    );
+  }
   const env = options.pilotHome ? { ...baseEnv, PILOT_HOME: pilotHome } : baseEnv;
   const builtinSkillsRoot = resolveBuiltinSkillsRoot(options.builtinSkillsRoot, env);
   const legacySkillMigration = migrateLegacyBundledSkillCopies({ pilotHome, builtinSkillsRoot });
@@ -417,6 +438,19 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       }),
     forkSession: (input) =>
       forkWebSession(input, {
+        projectRoot: input.projectKey ? input.projectKey : fallbackProjectRoot,
+        pilotHome,
+        now,
+      }),
+    replaceLastTurn: (input) =>
+      replaceLastWebSessionTurn(input, {
+        projectRoot: input.projectKey ? input.projectKey : fallbackProjectRoot,
+        pilotHome,
+        now,
+        transactionOwner: replacementTransactionOwner,
+      }),
+    finalizeLastTurnReplacement: (input) =>
+      finalizeLastWebSessionTurnReplacement(input, {
         projectRoot: input.projectKey ? input.projectKey : fallbackProjectRoot,
         pilotHome,
         now,
@@ -1212,6 +1246,14 @@ class ProjectRuntimeRegistry {
           return undefined;
         }
       },
+      getModelProtocol: (provider) => runtime.model.getProviderProtocol(provider),
+      getModelSupportsPromptCache: (provider, model) => {
+        try {
+          return runtime.model.getCapabilities(provider, model).supportsPromptCache;
+        } catch {
+          return undefined;
+        }
+      },
     };
     const sessionTitleGenerator = createSessionTitleGenerator({
       modelRuntime: runtime.model,
@@ -1255,7 +1297,6 @@ class ProjectRuntimeRegistry {
         eventEmitter: eventBuf.emitter,
       });
       const autoCompactionPolicy = new AutoCompactionPolicy({ tokenBudget });
-      const microcompactEngine = new CachedMicroCompactionEngine({ enabled: true });
       const microCompaction = new MicroCompactionEngine({
         protectedToolNames: DEFAULT_PROTECTED_TOOL_RESULT_NAMES,
       });
@@ -1282,7 +1323,6 @@ class ProjectRuntimeRegistry {
         tokenBudget,
         compactionEngine,
         autoCompactionPolicy,
-        microcompactEngine,
         microCompaction,
         snipEngine,
         overflowRecovery,

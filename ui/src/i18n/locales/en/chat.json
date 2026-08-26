@@ -15,6 +15,15 @@
     "copyAsMarkdown": "Copy as markdown",
     "copyAsText": "Copy as text"
   },
+  "edit": {
+    "message": "Edit message",
+    "cancel": "Cancel",
+    "send": "Send",
+    "failed": "Could not edit this message.",
+    "cancelled": "Message edit was cancelled.",
+    "missingTarget": "The last message can no longer be edited.",
+    "timeout": "Editing timed out. Please try again."
+  },
   "messageTypes": {
     "user": "U",
     "error": "Error",

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../../types/app';
-import { createUserTurnRunId, startSessionCommand } from './sessionLauncher';
+import { createUserTurnRunId, regenerateLastSessionCommand, startSessionCommand } from './sessionLauncher';
 
 describe('sessionLauncher turn identity', () => {
   afterEach(() => {
@@ -45,5 +45,39 @@ describe('sessionLauncher turn identity', () => {
         runId: 'run-user-1',
       }),
     }));
+  });
+
+  it('sends an atomic same-session replacement request with preserved payload', () => {
+    const sendMessage = vi.fn();
+
+    regenerateLastSessionCommand({
+      sendMessage,
+      selectedProject: { name: 'PilotDeck', path: '/workspace/PilotDeck' } as Project,
+      requestId: 'replace-request-1',
+      sessionId: 'web:session-1',
+      expectedTurnId: 'old-turn',
+      command: 'Corrected request',
+      userVisibleInput: 'Corrected request',
+      runId: 'new-turn',
+      images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
+      attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+      syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: 'regenerate-last-message',
+      requestId: 'replace-request-1',
+      sessionId: 'web:session-1',
+      expectedTurnId: 'old-turn',
+      command: 'Corrected request',
+      options: expect.objectContaining({
+        sessionId: 'web:session-1',
+        runId: 'new-turn',
+        userVisibleInput: 'Corrected request',
+        images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
+        attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+        syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
+      }),
+    });
   });
 });

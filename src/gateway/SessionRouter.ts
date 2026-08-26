@@ -101,6 +101,10 @@ export class SessionRouter {
     return this.inFlightTurns.has(sessionKey);
   }
 
+  activeTurnRunId(sessionKey: string): string | undefined {
+    return this.inFlightTurns.get(sessionKey);
+  }
+
   endTurn(sessionKey: string, runId?: string): void {
     const record = this.sessions.get(sessionKey);
     const inFlightRunId = this.inFlightTurns.get(sessionKey);

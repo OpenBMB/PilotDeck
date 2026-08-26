@@ -272,6 +272,8 @@ export class SubAgentSession {
       getModelMaxContextTokens: this.options.parentDependencies.getModelMaxContextTokens,
       getModelMaxOutputTokens: this.options.parentDependencies.getModelMaxOutputTokens,
       getModelTokenLimits: this.options.parentDependencies.getModelTokenLimits,
+      getModelProtocol: this.options.parentDependencies.getModelProtocol,
+      getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
     };
   }

@@ -43,6 +43,7 @@ import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependenci
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
+import { buildCachePlan } from "../../context/cache/CachePlan.js";
 import { truncateHeadPreservingCheckpoint } from "../../context/compaction/CompactionEngine.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type {
@@ -2017,12 +2018,16 @@ export class AgentLoop {
     if (this.config.runMode === "ask") {
       tools = filterAskModeTools(toolDefinitions);
     }
+    const requestProvider = input.modelOverride?.provider ?? this.config.provider;
+    const requestModel = input.modelOverride?.model ?? this.config.model;
     const prepared = await contextRuntime.prepareForModel({
       sessionId: input.sessionId,
       turnId: input.turnId,
       cwd: this.config.cwd,
-      provider: this.config.provider,
-      model: this.config.model,
+      provider: requestProvider,
+      model: requestModel,
+      protocol: this.dependencies.getModelProtocol?.(requestProvider),
+      supportsPromptCache: this.dependencies.getModelSupportsPromptCache?.(requestProvider, requestModel),
       permissionMode: this.config.permissionMode,
       runMode: this.config.runMode ?? "agent",
       additionalWorkingDirectories: this.config.permissionContext.additionalWorkingDirectories,
@@ -2054,12 +2059,27 @@ export class AgentLoop {
       );
     }
 
+    const finalMessages = this.config.permissionMode === "plan"
+      ? appendPlanModeReminder(materialized.messages)
+      : materialized.messages;
+    const finalCachePlan = prepared.cachePlan
+      ? buildCachePlan({
+          provider: requestProvider,
+          model: requestModel,
+          systemPrompt: prepared.systemPrompt,
+          tools: prepared.tools,
+          messages: finalMessages,
+          enabled: true,
+        }, prepared.cachePlan.generation)
+      : undefined;
+    const finalCacheBreakpoints = finalCachePlan?.messages ?? (
+      this.config.permissionMode === "plan" ? undefined : prepared.cacheBreakpoints
+    );
+
     return {
-      provider: input.modelOverride?.provider ?? this.config.provider,
-      model: input.modelOverride?.model ?? this.config.model,
-      messages: this.config.permissionMode === "plan"
-        ? appendPlanModeReminder(materialized.messages)
-        : materialized.messages,
+      provider: requestProvider,
+      model: requestModel,
+      messages: finalMessages,
       systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
       tools: prepared.tools,
       toolChoice: this.config.toolChoice,
@@ -2069,7 +2089,8 @@ export class AgentLoop {
       thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
       metadata: this.config.metadata,
-      cacheBreakpoints: prepared.cacheBreakpoints,
+      cacheBreakpoints: finalCacheBreakpoints,
+      cachePlan: finalCachePlan,
     };
   }
 
@@ -2098,6 +2119,7 @@ export class AgentLoop {
           systemPrompt: candidateRequest.systemPrompt,
           tools: candidateRequest.tools,
           cacheBreakpoints: candidateRequest.cacheBreakpoints,
+          cachePlan: candidateRequest.cachePlan,
         };
         candidateRequest = this.dependencies.router.materializeRequest
           ? this.dependencies.router.materializeRequest(options.decision, materializedRequest)

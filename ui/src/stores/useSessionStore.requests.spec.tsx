@@ -62,6 +62,89 @@ function userMessage(
   };
 }
 
+describe('useSessionStore last-turn replacement', () => {
+  afterEach(cleanup);
+
+  it('drops the discarded tail and inserts the edited user message', () => {
+    const { result } = renderHook(() => useSessionStore());
+    const slot = result.current.getSlot('session-1');
+    slot.serverMessages = [
+      userMessage('first-user', 'First request', '2026-08-04T00:00:00.000Z', { turnId: 'turn-1' }),
+      serverMessage('first-answer', 'First answer'),
+      userMessage('old-user', 'Old request', '2026-08-04T00:01:00.000Z', { turnId: 'turn-2' }),
+      { ...serverMessage('old-answer', 'Old answer'), turnId: 'turn-2' },
+    ];
+    slot.serverMessages[1] = { ...slot.serverMessages[1], turnId: 'turn-1' };
+    slot.realtimeMessages = [{
+      ...serverMessage('old-tool', 'tool output'),
+      kind: 'tool_result',
+      turnId: 'turn-2',
+    }];
+    slot.activityMessages = [{
+      ...serverMessage('old-activity', 'working'),
+      kind: 'agent_activity',
+      parentRunId: 'turn-2',
+    }];
+
+    act(() => {
+      result.current.replaceLastTurn('session-1', 'turn-2', {
+        ...userMessage('local-new-turn', 'Corrected request', '2026-08-04T00:02:00.000Z'),
+        runId: 'turn-3',
+        turnId: 'turn-3',
+      });
+    });
+
+    const updated = result.current.getSessionSlot('session-1');
+    expect(updated?.serverMessages.map((message) => message.id)).toEqual(['first-user', 'first-answer']);
+    expect(updated?.realtimeMessages.map((message) => message.id)).toEqual(['local-new-turn']);
+    expect(updated?.activityMessages).toEqual([]);
+    expect(updated?.merged.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'Corrected request',
+      turnId: 'turn-3',
+    });
+  });
+
+  it('keeps the previous response when a discarded-turn status row is ordered early', () => {
+    const { result } = renderHook(() => useSessionStore());
+    const slot = result.current.getSlot('session-1');
+    slot.serverMessages = [
+      userMessage('first-user', 'First request', '2026-08-04T00:00:00.000Z', { turnId: 'turn-1' }),
+      {
+        ...serverMessage('early-status', 'Working'),
+        kind: 'status',
+        turnId: 'turn-2',
+      },
+      { ...serverMessage('first-thinking', 'First reasoning'), kind: 'thinking', turnId: 'turn-1' },
+      { ...serverMessage('first-answer', 'First answer'), turnId: 'turn-1' },
+      userMessage('old-user', 'Old request', '2026-08-04T00:01:00.000Z', { turnId: 'turn-2' }),
+      { ...serverMessage('old-answer', 'Old answer'), turnId: 'turn-2' },
+    ];
+
+    act(() => {
+      result.current.replaceLastTurn('session-1', 'turn-2', {
+        ...userMessage('local-new-turn', 'Corrected request', '2026-08-04T00:02:00.000Z'),
+        runId: 'turn-3',
+        turnId: 'turn-3',
+      });
+    });
+
+    const updated = result.current.getSessionSlot('session-1');
+    expect(updated?.serverMessages.map((message) => message.id)).toEqual([
+      'first-user',
+      'first-thinking',
+      'first-answer',
+    ]);
+    expect(updated?.realtimeMessages.map((message) => message.id)).toEqual(['local-new-turn']);
+    expect(updated?.merged.map((message) => message.id)).toEqual([
+      'first-user',
+      'first-thinking',
+      'first-answer',
+      'local-new-turn',
+    ]);
+  });
+});
+
 describe('useSessionStore server request ordering', () => {
   beforeEach(() => {
     mocks.authenticatedFetch.mockReset();

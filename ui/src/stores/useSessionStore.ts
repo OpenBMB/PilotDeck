@@ -1427,6 +1427,56 @@ export function useSessionStore() {
     }
   }, [getSlot, notify]);
 
+  /**
+   * Replace the transcript tail in-place after the gateway atomically removes
+   * the latest turn. Because editing is limited to the last user message, all
+   * rendered rows at and after that turn belong to the discarded turn.
+   */
+  const replaceLastTurn = useCallback((
+    sessionId: string,
+    replacedTurnId: string,
+    replacement: NormalizedMessage,
+  ) => {
+    const slot = getSlot(sessionId);
+    const belongsToReplacedTurn = (message: NormalizedMessage) => (
+      getMessageTurnId(message) === replacedTurnId
+      || message.parentRunId === replacedTurnId
+    );
+    const truncateAtTurn = (messages: NormalizedMessage[]) => {
+      // Status rows can be inserted before earlier turns because their sequence
+      // numbers are turn-local. Only the discarded user message is a safe tail
+      // boundary; remove any misplaced rows from that turn in the retained prefix.
+      const index = messages.findIndex((message) => (
+        message.kind === 'text'
+        && message.role === 'user'
+        && getMessageTurnId(message) === replacedTurnId
+      ));
+      const prefix = index >= 0 ? messages.slice(0, index) : messages;
+      return prefix.filter((message) => !belongsToReplacedTurn(message));
+    };
+
+    const previousServerMessageCount = slot.serverMessages.length;
+    slot.serverMessages = truncateAtTurn(slot.serverMessages);
+    slot.realtimeMessages = [
+      ...truncateAtTurn(slot.realtimeMessages),
+      captureOptimisticUserServerTail(replacement, slot.serverMessages, false),
+    ];
+    slot.activityMessages = slot.activityMessages.filter((message) => !belongsToReplacedTurn(message));
+    const removedServerMessageCount = previousServerMessageCount - slot.serverMessages.length;
+    slot.total = Math.max(
+      slot.serverMessages.length + 1,
+      slot.total - removedServerMessageCount + 1,
+    );
+    slot.offset = Math.max(
+      slot.serverMessages.length + 1,
+      slot.offset - removedServerMessageCount + 1,
+    );
+    slot.status = 'streaming';
+    slot.lastError = null;
+    recomputeMergedIfNeeded(slot);
+    notify(sessionId);
+  }, [getSlot, notify]);
+
   const upsertActivity = useCallback((sessionId: string, msg: NormalizedMessage) => {
     const slot = getSlot(sessionId);
     const key = msg.activityId || msg.id;
@@ -1975,6 +2025,7 @@ export function useSessionStore() {
     fetchFromServer,
     fetchMore,
     appendRealtime,
+    replaceLastTurn,
     upsertActivity,
     setActivities,
     cancelRunningActivities,
@@ -2001,7 +2052,7 @@ export function useSessionStore() {
     finalizeSubagentDetailThinking,
   }), [
     getSlot, has, fetchFromServer, fetchMore,
-    appendRealtime, upsertActivity, setActivities, cancelRunningActivities, appendRealtimeBatch, refreshFromServer,
+    appendRealtime, replaceLastTurn, upsertActivity, setActivities, cancelRunningActivities, appendRealtimeBatch, refreshFromServer,
     setActiveSession, setStatus, isStale, updateStreaming, finalizeStreaming,
     updateStreamingThinking, finalizeStreamingThinking,
     clearRealtime, clearAssistantRealtime, getMessages, getActivityMessages, getSubagentDetailMessages, getSessionSlot,

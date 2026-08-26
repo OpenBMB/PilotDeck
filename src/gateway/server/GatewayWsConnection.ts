@@ -247,6 +247,10 @@ export class GatewayWsConnection {
         return this.options.gateway.readSubagentMessages(frame.params as never);
       case "fork_session":
         return this.options.gateway.forkSession(frame.params as never);
+      case "replace_last_turn":
+        return this.options.gateway.replaceLastTurn(frame.params as never);
+      case "finalize_last_turn_replacement":
+        return this.options.gateway.finalizeLastTurnReplacement(frame.params as never);
       case "list_projects":
         return this.options.gateway.listProjects();
       case "describe_project":

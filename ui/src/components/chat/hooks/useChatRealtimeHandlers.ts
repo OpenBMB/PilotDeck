@@ -451,6 +451,56 @@ export function useChatRealtimeHandlers({
           return;
         }
 
+        case 'session-turn-replaced': {
+          const replacedSessionId = resolveSessionId(msg);
+          const replacedTurnId = typeof msg.replacedTurnId === 'string'
+            ? msg.replacedTurnId.trim()
+            : '';
+          const replacementRunId = typeof msg.replacementRunId === 'string'
+            ? msg.replacementRunId.trim()
+            : '';
+          if (!replacedSessionId || !replacedTurnId || !replacementRunId) return;
+
+          clearAccumulators();
+          sessionStore.setActiveSession(replacedSessionId);
+          sessionStore.replaceLastTurn?.(
+            replacedSessionId,
+            replacedTurnId,
+            {
+              id: `local_${replacementRunId}`,
+              sessionId: replacedSessionId,
+              timestamp: new Date().toISOString(),
+              provider,
+              kind: 'text',
+              role: 'user',
+              content: typeof msg.content === 'string' ? msg.content : '',
+              images: Array.isArray(msg.images)
+                ? msg.images.flatMap((image) => {
+                    if (typeof image === 'string') return image ? [image] : [];
+                    return image && typeof image.data === 'string' ? [image.data] : [];
+                  })
+                : [],
+              attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
+              runId: replacementRunId,
+              turnId: replacementRunId,
+            },
+          );
+          setPendingPermissionRequests((previous) => (
+            previous.filter((request) => request.sessionId !== replacedSessionId)
+          ));
+          if (isSessionForActiveView(replacedSessionId, activeViewSessionId)) {
+            updateActiveRunId(replacementRunId);
+            setSessionRuntimeState('running');
+            setIsLoading(true);
+            setCanAbortSession(true);
+            setIsAborting(false);
+            setClaudeStatus(null);
+            setPilotDeckStatus(null);
+          }
+          onSessionProcessing?.(replacedSessionId);
+          return;
+        }
+
         case 'session-status': {
           const statusSessionId = msg.sessionId;
           if (!statusSessionId) return;

@@ -12,7 +12,6 @@ import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntime
 import {
   actualInputTokensFromUsage,
   AutoCompactionPolicy,
-  CachedMicroCompactionEngine,
   CompactionEngine,
   ContextOverflowRecovery,
   DEFAULT_PROTECTED_TOOL_RESULT_NAMES,
@@ -113,7 +112,6 @@ const context = new DefaultContextRuntime({
   tokenBudget,
   compactionEngine,
   autoCompactionPolicy: new AutoCompactionPolicy({ tokenBudget }),
-  microcompactEngine: new CachedMicroCompactionEngine({ enabled: true }),
   microCompaction,
   snipEngine: new SnipEngine({ protectedToolNames: DEFAULT_PROTECTED_TOOL_RESULT_NAMES }),
   overflowRecovery: new ContextOverflowRecovery(),
@@ -194,6 +192,14 @@ const { session } = createAgentSessionWithStorage({
             : caps.maxContextTokens,
           maxOutputTokens: caps.maxOutputTokens,
         };
+      } catch {
+        return undefined;
+      }
+    },
+    getModelProtocol: (provider) => modelRuntime.getProviderProtocol(provider),
+    getModelSupportsPromptCache: (provider, modelId) => {
+      try {
+        return modelRuntime.getCapabilities(provider, modelId).supportsPromptCache;
       } catch {
         return undefined;
       }
