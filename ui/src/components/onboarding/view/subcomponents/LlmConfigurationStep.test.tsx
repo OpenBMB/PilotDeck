@@ -42,6 +42,27 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
       }
+      if (url === '/api/v1/providers') {
+        return {
+          ok: true,
+          json: async () => ({
+            providers: [
+              { id: 'anthropic', displayName: 'Anthropic', protocol: 'anthropic', endpoint: 'https://api.anthropic.com', logoUrl: '/onboarding/providers/anthropic.svg', requiresApiKey: true },
+              { id: 'openai', displayName: 'OpenAI', protocol: 'openai', endpoint: 'https://api.openai.com/v1', logoUrl: '/onboarding/providers/openai.svg', requiresApiKey: true },
+              { id: 'openai-responses', displayName: 'OpenAI (Responses API)', protocol: 'openai-responses', endpoint: 'https://api.openai.com/v1', logoUrl: '/onboarding/providers/openai.svg', requiresApiKey: true },
+              { id: 'dashscope', displayName: '阿里云百炼 (DashScope)', protocol: 'openai', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', logoUrl: '/onboarding/providers/bailian-color.svg', requiresApiKey: true },
+              { id: 'deepseek', displayName: 'DeepSeek', protocol: 'openai', endpoint: 'https://api.deepseek.com/v1', logoUrl: '/onboarding/providers/deepseek-color.svg', requiresApiKey: true },
+              { id: 'google', displayName: 'Google AI (Gemini)', protocol: 'google', endpoint: 'https://generativelanguage.googleapis.com', logoUrl: '/onboarding/providers/gemini-color.svg', requiresApiKey: true },
+              { id: 'openrouter', displayName: 'OpenRouter', protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1', logoUrl: '/onboarding/providers/openrouter-color.svg', requiresApiKey: true },
+              { id: 'ollama', displayName: 'Ollama', protocol: 'openai', endpoint: 'http://localhost:11434/v1', logoUrl: '/onboarding/providers/ollama.svg', requiresApiKey: false },
+              { id: 'minimax', displayName: 'MiniMax', protocol: 'openai', endpoint: 'https://api.minimaxi.com/v1', logoUrl: '/onboarding/providers/minimax-color.svg', requiresApiKey: true },
+              { id: 'moonshot', displayName: 'Moonshot AI (Kimi)', protocol: 'openai', endpoint: 'https://api.moonshot.cn/v1', logoUrl: '/onboarding/providers/kimi.svg', requiresApiKey: true },
+              { id: 'volc_ark', displayName: '火山方舟 (Volcano Ark)', protocol: 'openai', endpoint: 'https://ark.cn-beijing.volces.com/api/v3', logoUrl: '/onboarding/providers/volcengine-color.svg', requiresApiKey: true },
+              { id: 'zhipu', displayName: '智谱 Z.AI', protocol: 'openai', endpoint: 'https://api.z.ai/api/paas/v4', logoUrl: '/onboarding/providers/zhipu-color.svg', requiresApiKey: true },
+            ],
+          }),
+        };
+      }
       return { ok: true, json: async () => ({}) };
     });
     mocks.fetchRemoteDefaultModels.mockResolvedValue([]);
@@ -55,6 +76,12 @@ describe('LlmConfigurationStep', () => {
 
   it('fetches Ollama models through the no-key provider path without also running catalog fallback', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.authenticatedFetch).toHaveBeenCalledWith('/api/v1/providers', expect.anything());
+      expect(screen.getByRole('button', { name: /^Ollama$/ }).querySelector('img')?.getAttribute('src'))
+        .toBe('/onboarding/providers/ollama.svg');
+    });
 
     await waitFor(() => {
       expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
@@ -78,8 +105,10 @@ describe('LlmConfigurationStep', () => {
     }));
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(screen.getByText(/Using bundled model list\. Local model list unavailable: ECONNREFUSED/)).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'qwen3:0.6b' })).toBeTruthy();
     });
+    expect(screen.queryByText(/Using bundled model list/)).toBeNull();
+    expect(screen.getByText('None')).toBeTruthy();
   });
 
   it('uses DeepSeek bundled models until an API key is entered', async () => {
@@ -93,8 +122,9 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
 
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Fetch model list' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('combobox', { name: 'Model' }).textContent).toContain('DeepSeek V4 Pro');
+    expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
   });
 
   it('uses Kimi bundled models until an API key is entered', async () => {
@@ -108,7 +138,117 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Moonshot AI \(Kimi\)$/ }));
 
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Fetch model list' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('combobox', { name: 'Model' }).textContent).toContain('Kimi K2.6');
+    expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'kimi-k2.6' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('keeps Test connection clickable before an API key is entered', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    const button = await screen.findByRole('button', { name: /Test connection/i });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(button);
+
+    expect(await screen.findByText('Select at least one model ID before testing the connection.')).toBeTruthy();
+    expect(mocks.authenticatedFetch).not.toHaveBeenCalledWith(
+      '/api/config/test-connection',
+      expect.anything(),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'anthropic/claude-sonnet-4.6' }));
+    fireEvent.click(button);
+
+    expect(await screen.findByText('Enter an API key before testing the connection.')).toBeTruthy();
+  });
+
+  it('moves models between available and selected lists', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    const available = await screen.findByRole('button', { name: 'deepseek-v4-pro' });
+    expect(screen.getByText('None')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
+      (button) => (button as HTMLButtonElement).disabled,
+    )).toBe(true);
+
+    fireEvent.click(available);
+
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByText('deepseek-v4-pro')).toBeTruthy();
+    expect(screen.queryByText('None')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
+
+    expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('tests only selected model IDs and enables continue after a successful test', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
+    mocks.fetchProviderModels.mockResolvedValue([
+      { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash' },
+    ]);
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/test-connection') {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, supportsImage: false, imageCheckSource: 'catalog' }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+
+    await waitFor(() => {
+      const testCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/test-connection');
+      expect(testCalls).toHaveLength(1);
+      expect(JSON.parse(String(testCalls[0]?.[1]?.body))).toEqual(expect.objectContaining({
+        model: 'deepseek-v4-pro',
+      }));
+    });
+
+    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+  });
+
+  it('places a typed model ID into the selected list on enter', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+
+    const input = screen.getByPlaceholderText('model-id');
+    fireEvent.change(input, { target: { value: 'my-custom-model' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(screen.queryByPlaceholderText('model-id')).toBeNull();
+    expect(screen.getByText('my-custom-model')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'my-custom-model' })).toBeNull();
+    expect(screen.queryByText('None')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
+    expect(screen.getByRole('button', { name: 'my-custom-model' })).toBeTruthy();
   });
 });

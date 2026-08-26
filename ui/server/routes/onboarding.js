@@ -37,6 +37,20 @@ const PRESETS = {
   openrouter: { protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1' },
   ollama: { protocol: 'openai', endpoint: 'http://localhost:11434/v1' },
 };
+const PROVIDER_CATALOG = [
+  { id: 'anthropic', displayName: 'Anthropic', logoUrl: '/onboarding/providers/anthropic.svg' },
+  { id: 'openai', displayName: 'OpenAI', logoUrl: '/onboarding/providers/openai.svg' },
+  { id: 'openai-responses', displayName: 'OpenAI (Responses API)', logoUrl: '/onboarding/providers/openai.svg' },
+  { id: 'dashscope', displayName: '阿里云百炼 (DashScope)', logoUrl: '/onboarding/providers/bailian-color.svg' },
+  { id: 'deepseek', displayName: 'DeepSeek', logoUrl: '/onboarding/providers/deepseek-color.svg' },
+  { id: 'google', displayName: 'Google AI (Gemini)', logoUrl: '/onboarding/providers/gemini-color.svg' },
+  { id: 'openrouter', displayName: 'OpenRouter', logoUrl: '/onboarding/providers/openrouter-color.svg' },
+  { id: 'ollama', displayName: 'Ollama', logoUrl: '/onboarding/providers/ollama.svg' },
+  { id: 'minimax', displayName: 'MiniMax', logoUrl: '/onboarding/providers/minimax-color.svg' },
+  { id: 'moonshot', displayName: 'Moonshot AI (Kimi)', logoUrl: '/onboarding/providers/kimi.svg' },
+  { id: 'volc_ark', displayName: '火山方舟 (Volcano Ark)', logoUrl: '/onboarding/providers/volcengine-color.svg' },
+  { id: 'zhipu', displayName: '智谱 Z.AI', logoUrl: '/onboarding/providers/zhipu-color.svg' },
+];
 const PROTOCOLS = new Set(['openai', 'openai-responses', 'anthropic', 'google']);
 
 function createInFlightLimiter(globalLimit, perUserLimit) {
@@ -165,6 +179,22 @@ function modelTestRateLimiter(req, res, next) {
   res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
   return apiError(res, 429, 'RATE_LIMITED', 'Too many connection tests.');
 }
+
+router.get('/providers', (_req, res) => {
+  res.json({
+    providers: PROVIDER_CATALOG.map((item) => {
+      const preset = PRESETS[item.id];
+      return {
+        id: item.id,
+        displayName: item.displayName,
+        protocol: preset.protocol,
+        endpoint: preset.endpoint,
+        logoUrl: item.logoUrl,
+        requiresApiKey: item.id !== 'ollama',
+      };
+    }),
+  });
+});
 
 router.post('/model-connection-tests', modelTestRateLimiter, async (req, res) => {
   const provider = resolveProvider(req.body || {});

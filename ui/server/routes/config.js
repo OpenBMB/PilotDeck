@@ -28,6 +28,7 @@ import {
   isExpectedProviderModelsResponseShape,
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
+import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
@@ -49,6 +50,25 @@ const router = express.Router();
 const MASKED_SECRET = '********';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
 const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
+
+function catalogImageSupport(providerId, modelId) {
+  const provider = String(providerId || '').trim();
+  const model = String(modelId || '').trim();
+  if (!provider || !model) return null;
+  const result = lookupCatalogModel(provider, model);
+  if (!result.model) return null;
+  return Array.isArray(result.model.multimodal?.input) && result.model.multimodal.input.includes('image');
+}
+
+function imageSupportResultFromCatalog(supported) {
+  return {
+    status: supported ? 'supported' : 'unsupported',
+    supported,
+    source: 'catalog',
+    retryable: false,
+    manualConfirmationAllowed: false,
+  };
+}
 
 function imageSupportResultFromProbe(probe) {
   if (probe.ok) {
@@ -702,6 +722,25 @@ router.post('/test-connection', async (req, res) => {
     maxTokens: isOpenAIResponses ? 16 : 8,
   });
   if (probe.ok) {
+    if (req.body?.skipImage === true) {
+      return res.json({
+        ok: true,
+        message: `Connected successfully — Model ${model} is available.`,
+        supportsImage: null,
+        imageCheckSource: null,
+      });
+    }
+    const catalogSupport = catalogImageSupport(normalizedProviderId, model);
+    if (catalogSupport !== null) {
+      const imageSupport = imageSupportResultFromCatalog(catalogSupport);
+      return res.json({
+        ok: true,
+        message: `Connected successfully — Model ${model} is available.`,
+        imageSupport,
+        supportsImage: imageSupport.supported,
+        imageCheckSource: imageSupport.source,
+      });
+    }
     const imageProbe = await probeModelConnection({
       protocol,
       baseUrl: normalizedBaseUrl,
@@ -709,7 +748,7 @@ router.post('/test-connection', async (req, res) => {
       apiKey: effectiveApiKey,
       model,
       image: true,
-      maxTokens: 8,
+      maxTokens: 16,
     });
     const imageSupport = imageSupportResultFromProbe(imageProbe);
     return res.json({

@@ -5,10 +5,10 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('model connection probe request formats', () => {
   for (const [protocol, response, assertBody] of [
-    ['openai', { choices: [{ message: { content: 'ok' } }] }, (body) => expect(body.messages[0].content[1].type).toBe('image_url')],
-    ['openai-responses', { object: 'response', output_text: 'ok' }, (body) => expect(body.input[0].content[1].type).toBe('input_image')],
-    ['anthropic', { type: 'message', content: [{ type: 'text', text: 'ok' }] }, (body) => expect(body.messages[0].content[1].source.type).toBe('base64')],
-    ['google', { candidates: [{ content: { parts: [{ text: 'ok' }] } }] }, (body) => expect(body.contents[0].parts[1].inlineData.mimeType).toBe('image/png')],
+    ['openai', { choices: [{ message: { content: 'red' } }] }, (body) => expect(body.messages[0].content[1].type).toBe('image_url')],
+    ['openai-responses', { object: 'response', output_text: 'red' }, (body) => expect(body.input[0].content[1].type).toBe('input_image')],
+    ['anthropic', { type: 'message', content: [{ type: 'text', text: 'red' }] }, (body) => expect(body.messages[0].content[1].source.type).toBe('base64')],
+    ['google', { candidates: [{ content: { parts: [{ text: 'red' }] } }] }, (body) => expect(body.contents[0].parts[1].inlineData.mimeType).toBe('image/png')],
   ]) {
     it(`uses the ${protocol} image request shape`, async () => {
       let requestBody;
@@ -48,7 +48,7 @@ describe('model connection probe request formats', () => {
     const calls = [];
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       calls.push(String(url));
-      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] }) };
+      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify({ choices: [{ message: { content: 'red' } }] }) };
     }));
 
     const result = await probeModelConnection({

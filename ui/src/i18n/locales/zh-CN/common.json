@@ -473,6 +473,23 @@
       "providePath": "请提供工作区路径",
       "failedToCreate": "创建工作区失败",
       "failedToCreateFolder": "创建文件夹失败"
+    },
+    "folderBrowser": {
+      "title": "选择文件夹",
+      "select": "选择",
+      "path": "路径：",
+      "cancel": "取消",
+      "useThisFolder": "使用此文件夹",
+      "showHidden": "显示隐藏文件夹",
+      "hideHidden": "不显示隐藏文件夹",
+      "createFolder": "新建文件夹",
+      "close": "关闭",
+      "newFolderName": "新文件夹名称",
+      "create": "创建",
+      "browseFolders": "浏览文件夹",
+      "noSubfolders": "未找到子文件夹",
+      "loadFailed": "加载文件夹失败",
+      "createFailed": "创建文件夹失败"
     }
   },
   "notifications": {

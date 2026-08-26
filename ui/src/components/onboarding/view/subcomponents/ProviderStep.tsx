@@ -1,15 +1,52 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CATALOG_PROVIDERS } from '../../../../shared/catalogProviders';
-import { CUSTOM_PROVIDER } from '../constants';
+import {
+  CATALOG_PROVIDERS,
+  findCatalogProviderById,
+  type CatalogProvider,
+} from '../../../../shared/catalogProviders';
+import { authenticatedFetch } from '../../../../utils/api';
+import { CUSTOM_PROVIDER, PROVIDER_LOGOS } from '../constants';
 import type { LlmSetupController } from '../types';
 import FooterActions from './FooterActions';
-import { RadioCheckIcon } from './icons';
+import { GearIcon, RadioCheckIcon } from './icons';
 
 type ProviderStepProps = {
   llm: LlmSetupController;
   onBack: () => void;
   onContinue: () => void;
 };
+
+type ProviderListItem = {
+  id: string;
+  displayName: string;
+  protocol?: CatalogProvider['protocol'];
+  endpoint?: string;
+  logoUrl?: string;
+  requiresApiKey?: boolean;
+};
+
+function fallbackProviders(): ProviderListItem[] {
+  return CATALOG_PROVIDERS.map((provider) => ({
+    id: provider.id,
+    displayName: provider.displayName,
+    protocol: provider.protocol,
+    endpoint: provider.defaultUrl,
+    logoUrl: PROVIDER_LOGOS[provider.id],
+    requiresApiKey: provider.requiresApiKey !== false,
+  }));
+}
+
+function toCatalogProvider(item: ProviderListItem): CatalogProvider {
+  return findCatalogProviderById(item.id) ?? {
+    id: item.id,
+    displayName: item.displayName,
+    protocol: item.protocol ?? 'openai',
+    defaultUrl: item.endpoint ?? '',
+    models: [],
+    requiresApiKey: item.requiresApiKey,
+  };
+}
 
 function providerInitials(name: string) {
   const ascii = name.replace(/[^\w\s]/g, ' ').trim();
@@ -20,6 +57,33 @@ function providerInitials(name: string) {
 
 export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepProps) {
   const { t } = useTranslation('onboarding');
+  const [providers, setProviders] = useState<ProviderListItem[]>(fallbackProviders);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    authenticatedFetch('/api/v1/providers', { signal: abortController.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json().catch(() => ({}));
+        const items = Array.isArray(data?.providers) ? data.providers : [];
+        const next = items.flatMap((item: unknown): ProviderListItem[] => {
+          if (!item || typeof item !== 'object') return [];
+          const candidate = item as ProviderListItem;
+          if (typeof candidate.id !== 'string' || typeof candidate.displayName !== 'string') return [];
+          return [{
+            ...candidate,
+            logoUrl: typeof candidate.logoUrl === 'string' && candidate.logoUrl
+              ? candidate.logoUrl
+              : PROVIDER_LOGOS[candidate.id],
+          }];
+        });
+        if (next.length > 0) setProviders(next);
+      })
+      .catch(() => {
+        /* Keep the local catalog fallback if the onboarding provider list is unavailable. */
+      });
+    return () => abortController.abort();
+  }, []);
 
   return (
     <div className="content-page">
@@ -29,7 +93,26 @@ export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepPr
       </header>
 
       <div className="provider-grid">
-        {CATALOG_PROVIDERS.map((provider) => {
+        <button
+          className={`provider-card custom-provider${llm.isCustomMode ? ' selected' : ''}`}
+          type="button"
+          aria-pressed={llm.isCustomMode}
+          aria-label={t('provider.customTitle')}
+          onClick={() => llm.handleProviderSelect(CUSTOM_PROVIDER)}
+        >
+          <span className="provider-icon" aria-hidden="true">
+            <GearIcon width={22} height={22} />
+          </span>
+          <span className="provider-copy">
+            <span className="provider-title-row">
+              <strong>{t('provider.customTitle')}</strong>
+            </span>
+          </span>
+          <span className="radio-dot" aria-hidden="true">
+            {llm.isCustomMode && <RadioCheckIcon />}
+          </span>
+        </button>
+        {providers.map((provider) => {
           const selected = llm.selectedProvider?.id === provider.id;
           return (
             <button
@@ -38,10 +121,14 @@ export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepPr
               type="button"
               aria-pressed={selected}
               aria-label={provider.displayName}
-              onClick={() => llm.handleProviderSelect(provider)}
+              onClick={() => llm.handleProviderSelect(toCatalogProvider(provider))}
             >
               <span className="provider-icon" aria-hidden="true">
-                {providerInitials(provider.displayName)}
+                {provider.logoUrl ? (
+                  <img src={provider.logoUrl} alt="" />
+                ) : (
+                  providerInitials(provider.displayName)
+                )}
               </span>
               <span className="provider-copy">
                 <span className="provider-title-row">
@@ -54,24 +141,6 @@ export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepPr
             </button>
           );
         })}
-        <button
-          className={`provider-card custom-provider${llm.isCustomMode ? ' selected' : ''}`}
-          type="button"
-          aria-pressed={llm.isCustomMode}
-          aria-label={t('provider.customTitle')}
-          onClick={() => llm.handleProviderSelect(CUSTOM_PROVIDER)}
-        >
-          <span className="provider-icon" aria-hidden="true">+</span>
-          <span className="provider-copy">
-            <span className="provider-title-row">
-              <strong>{t('provider.customTitle')}</strong>
-            </span>
-            <small>{t('provider.customHint')}</small>
-          </span>
-          <span className="radio-dot" aria-hidden="true">
-            {llm.isCustomMode && <RadioCheckIcon />}
-          </span>
-        </button>
       </div>
 
       <FooterActions

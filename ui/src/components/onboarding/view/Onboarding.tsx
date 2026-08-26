@@ -64,6 +64,20 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }, [onComplete, workspace]);
 
+  const handleSkipChat = useCallback(async () => {
+    setCompleteError('');
+    try {
+      const response = await authenticatedFetch('/api/user/complete-onboarding', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to complete onboarding');
+      }
+      await onComplete?.();
+    } catch (caughtError) {
+      setCompleteError(caughtError instanceof Error ? caughtError.message : 'Failed to complete onboarding');
+    }
+  }, [onComplete]);
+
   return (
     <main className="onboarding-shell prototype-shell desktop-prototype-shell" data-platform="desktop">
       <OnboardingTopbar />
@@ -85,11 +99,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               error={completeError || workspace.error}
               progress={workspace.progress}
               isCreating={workspace.isCreating}
-              canFinish={workspace.canFinish}
-              onWorkspaceTypeChange={workspace.setWorkspaceType}
               onWorkspacePathChange={workspace.setWorkspacePath}
               onGithubUrlChange={workspace.setGithubUrl}
               onBack={goBack}
+              onSkipChat={handleSkipChat}
               onFinish={handleFinish}
             />
           )}

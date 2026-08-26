@@ -475,6 +475,23 @@
       "providePath": "Please provide a workspace path",
       "failedToCreate": "Failed to create workspace",
       "failedToCreateFolder": "Failed to create folder"
+    },
+    "folderBrowser": {
+      "title": "Select Folder",
+      "select": "Select",
+      "path": "Path:",
+      "cancel": "Cancel",
+      "useThisFolder": "Use this folder",
+      "showHidden": "Show hidden folders",
+      "hideHidden": "Hide hidden folders",
+      "createFolder": "Create new folder",
+      "close": "Close",
+      "newFolderName": "New folder name",
+      "create": "Create",
+      "browseFolders": "Browse folders",
+      "noSubfolders": "No subfolders found",
+      "loadFailed": "Failed to load folders",
+      "createFailed": "Failed to create folder"
     }
   },
   "notifications": {

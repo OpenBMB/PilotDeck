@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import FolderBrowserModal from '../../../project-creation-wizard/components/FolderBrowserModal';
-import type { WorkspaceType } from '../../../project-creation-wizard/types';
 import type { WorkspaceDraft } from '../types';
-import FooterActions from './FooterActions';
-import { FolderBrowseIcon, FolderIcon, GitBranchIcon, RadioCheckIcon } from './icons';
+import { ArrowLeftIcon, FolderBrowseIcon, StepCheckIcon } from './icons';
 
 type WorkspaceStepProps = {
   draft: WorkspaceDraft;
   error: string;
   progress: string;
   isCreating: boolean;
-  canFinish: boolean;
-  onWorkspaceTypeChange: (workspaceType: WorkspaceType) => void;
   onWorkspacePathChange: (workspacePath: string) => void;
   onGithubUrlChange: (githubUrl: string) => void;
   onBack: () => void;
+  onSkipChat: () => void | Promise<void>;
   onFinish: () => void | Promise<void>;
 };
 
@@ -24,15 +21,28 @@ export default function WorkspaceStep({
   error,
   progress,
   isCreating,
-  canFinish,
-  onWorkspaceTypeChange,
   onWorkspacePathChange,
   onGithubUrlChange,
   onBack,
+  onSkipChat,
   onFinish,
 }: WorkspaceStepProps) {
   const { t } = useTranslation('onboarding');
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [pathInvalid, setPathInvalid] = useState(false);
+
+  const handlePathChange = (value: string) => {
+    setPathInvalid(false);
+    onWorkspacePathChange(value);
+  };
+
+  const handleCreateWorkspace = () => {
+    if (!draft.workspacePath.trim()) {
+      setPathInvalid(true);
+      return;
+    }
+    void onFinish();
+  };
 
   return (
     <div className="content-page workspace-setup-page">
@@ -41,106 +51,89 @@ export default function WorkspaceStep({
         <p className="intro-copy">{t('workspace.intro')}</p>
       </header>
 
-      <section className="workspace-type-section">
-        <h2>{t('workspace.typeHeading')}</h2>
-        <div className="workspace-type-grid">
-          <button
-            className={`workspace-type-card${draft.workspaceType === 'existing' ? ' selected' : ''}`}
-            type="button"
-            aria-pressed={draft.workspaceType === 'existing'}
-            onClick={() => onWorkspaceTypeChange('existing')}
-          >
-            <span className="workspace-type-icon"><FolderIcon /></span>
-            <span>
-              <strong>{t('workspace.existingTitle')}</strong>
-              <small>{t('workspace.existingHint')}</small>
-            </span>
-            <span className="radio-dot" aria-hidden="true">
-              {draft.workspaceType === 'existing' && <RadioCheckIcon />}
-            </span>
-          </button>
-          <button
-            className={`workspace-type-card${draft.workspaceType === 'new' ? ' selected' : ''}`}
-            type="button"
-            aria-pressed={draft.workspaceType === 'new'}
-            onClick={() => onWorkspaceTypeChange('new')}
-          >
-            <span className="workspace-type-icon"><GitBranchIcon /></span>
-            <span>
-              <strong>{t('workspace.newTitle')}</strong>
-              <small>{t('workspace.newHint')}</small>
-            </span>
-            <span className="radio-dot" aria-hidden="true">
-              {draft.workspaceType === 'new' && <RadioCheckIcon />}
-            </span>
-          </button>
-        </div>
-      </section>
-
-      <div className="workspace-config-card">
-        <label className="field-group">
-          {t('workspace.pathLabel')}
-          <div className="workspace-path-control">
-            <input
-              type="text"
-              value={draft.workspacePath}
-              onChange={(event) => onWorkspacePathChange(event.target.value)}
-              placeholder={draft.workspaceType === 'existing' ? '/path/to/existing/workspace' : '/path/to/new/workspace'}
-              disabled={isCreating}
-            />
-            <button
-              className="folder-browse-button"
-              type="button"
-              title={t('workspace.browse')}
-              onClick={() => setShowFolderBrowser(true)}
-              disabled={isCreating}
-            >
-              <FolderBrowseIcon />
-            </button>
-          </div>
-          <small>{t('workspace.pathHint')}</small>
-        </label>
-
-        {draft.workspaceType === 'new' && (
-          <label className="field-group">
-            {t('workspace.githubLabel')}
-            <div className="github-url-control">
+      <form className="workspace-simple-form" onSubmit={(event) => event.preventDefault()}>
+        <label className={`workspace-form-row${pathInvalid ? ' invalid' : ''}`}>
+          <span>{t('workspace.pathLabel')}</span>
+          <span className="workspace-field-stack workspace-path-field-stack">
+            <span className="workspace-path-control">
               <input
-                type="url"
-                value={draft.githubUrl}
-                onChange={(event) => onGithubUrlChange(event.target.value)}
-                placeholder={t('workspace.githubPlaceholder')}
+                type="text"
+                value={draft.workspacePath}
+                onChange={(event) => handlePathChange(event.target.value)}
+                aria-invalid={pathInvalid}
+                aria-required="true"
                 disabled={isCreating}
               />
-            </div>
+              <button
+                type="button"
+                className="folder-browse-button"
+                aria-label={t('workspace.browse')}
+                title={t('workspace.browse')}
+                onClick={() => setShowFolderBrowser(true)}
+                disabled={isCreating}
+              >
+                <FolderBrowseIcon width={20} height={20} />
+              </button>
+            </span>
+            <small className="workspace-name-help">
+              {pathInvalid ? t('workspace.pathRequired') : t('workspace.pathHint')}
+            </small>
+          </span>
+        </label>
+        <label className="workspace-form-row github-url-field">
+          <span>{t('workspace.githubLabel')}</span>
+          <span className="workspace-field-stack">
+            <input
+              type="url"
+              value={draft.githubUrl}
+              onChange={(event) => onGithubUrlChange(event.target.value)}
+              disabled={isCreating}
+            />
             <small>{t('workspace.githubHint')}</small>
-          </label>
-        )}
+          </span>
+        </label>
+      </form>
 
-        {(error || progress) && (
-          <div className={error ? 'workspace-error' : 'field-help'}>
-            {error || progress}
-          </div>
-        )}
+      {(error || progress) && (
+        <div className={error ? 'workspace-error' : 'field-help'}>
+          {error || progress}
+        </div>
+      )}
+
+      <div className="footer-actions workspace-create-actions">
+        <button className="button secondary" type="button" onClick={onBack} disabled={isCreating}>
+          <ArrowLeftIcon width={18} height={18} />
+          {t('actions.back')}
+        </button>
+        <div className="workspace-primary-actions">
+          <button
+            className="button secondary direct-chat-button"
+            type="button"
+            onClick={() => {
+              void onSkipChat();
+            }}
+            disabled={isCreating}
+          >
+            {t('workspace.startChatting')}
+          </button>
+          <button
+            className="button primary"
+            type="button"
+            onClick={handleCreateWorkspace}
+            disabled={isCreating}
+          >
+            <StepCheckIcon width={18} height={18} />
+            {t('workspace.createWorkspace')}
+          </button>
+        </div>
       </div>
-
-      <FooterActions
-        backLabel={t('actions.back')}
-        nextLabel={t('actions.finish')}
-        nextDisabled={!canFinish}
-        nextBusy={isCreating}
-        onBack={onBack}
-        onNext={() => {
-          void onFinish();
-        }}
-      />
 
       <FolderBrowserModal
         isOpen={showFolderBrowser}
-        autoAdvanceOnSelect={draft.workspaceType === 'existing'}
+        autoAdvanceOnSelect
         onClose={() => setShowFolderBrowser(false)}
         onFolderSelected={(selectedPath) => {
-          onWorkspacePathChange(selectedPath);
+          handlePathChange(selectedPath);
           setShowFolderBrowser(false);
         }}
       />

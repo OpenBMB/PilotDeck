@@ -8,7 +8,7 @@ import type { WorkspaceType } from '../../../project-creation-wizard/types';
 import type { WorkspaceDraft } from '../types';
 
 const initialDraft: WorkspaceDraft = {
-  workspaceType: 'existing',
+  workspaceType: 'new',
   workspacePath: '',
   githubUrl: '',
 };
@@ -37,13 +37,15 @@ export default function useOnboardingWorkspace() {
   const canFinish = draft.workspacePath.trim().length > 0;
 
   const createWorkspace = useCallback(async () => {
-    if (!canFinish) return;
+    if (!draft.workspacePath.trim()) {
+      throw new Error('Workspace path is required.');
+    }
     setIsCreating(true);
     setError('');
     setProgress('');
 
     try {
-      if (isCloneWorkflow(draft.workspaceType, draft.githubUrl)) {
+      if (isCloneWorkflow('new', draft.githubUrl)) {
         await cloneWorkspaceWithProgress(
           {
             workspacePath: draft.workspacePath.trim(),
@@ -58,7 +60,7 @@ export default function useOnboardingWorkspace() {
       }
 
       await createWorkspaceRequest({
-        workspaceType: draft.workspaceType,
+        workspaceType: 'new',
         path: draft.workspacePath.trim(),
       });
     } catch (caughtError) {
@@ -68,7 +70,7 @@ export default function useOnboardingWorkspace() {
     } finally {
       setIsCreating(false);
     }
-  }, [canFinish, draft.githubUrl, draft.workspacePath, draft.workspaceType]);
+  }, [draft.githubUrl, draft.workspacePath]);
 
   return {
     draft,

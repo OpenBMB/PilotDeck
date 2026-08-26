@@ -10,7 +10,7 @@ type ProtectedRouteProps = {
 };
 
 /** TEMP for onboarding UI work. Set back to false when done. */
-const FORCE_ONBOARDING_FOR_DEV = false;
+const FORCE_ONBOARDING_FOR_DEV = true;
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const {

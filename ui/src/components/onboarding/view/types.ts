@@ -16,17 +16,22 @@ export type ProviderAuthStatus = {
 
 export type ProviderStatusMap = Record<CliProvider, ProviderAuthStatus>;
 
-export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+export type TestStatus = 'idle' | 'testing' | 'success' | 'error' | 'manual';
 
 export type ModelListStatus = 'idle' | 'loading' | 'error';
 
+export type ImageSupportSource = 'catalog' | 'probe' | 'manual';
+
+export type ModelImageSupport = {
+  supportsImage: boolean | null;
+  source: ImageSupportSource | null;
+};
+
 export type LlmSetupController = {
   selectedProvider: CatalogProvider | null;
-  selectedModelId: string;
-  customModelId: string;
+  modelIds: string[];
   apiKey: string;
   customUrl: string;
-  showAdvanced: boolean;
   testStatus: TestStatus;
   testMessage: string;
   saving: boolean;
@@ -40,22 +45,28 @@ export type LlmSetupController = {
   selectedDefaultUrl: string;
   effectiveUrl: string;
   effectiveModelId: string;
+  effectiveModelIds: string[];
   effectiveProtocol: CatalogProviderProtocol;
   effectiveProviderId: string;
   selectedProviderRequiresApiKey: boolean;
   canFetchModels: boolean;
   canTest: boolean;
-  setSelectedModelId: (value: string) => void;
-  setCustomModelId: (value: string) => void;
+  canContinue: boolean;
+  unknownImageProbeCount: number;
+  manualModelIds: string[];
+  setModelIds: (value: string[] | ((current: string[]) => string[])) => void;
+  selectModelId: (modelId: string) => void;
+  deselectModelId: (modelId: string) => void;
   setApiKey: (value: string) => void;
   setCustomUrl: (value: string) => void;
-  setShowAdvanced: (value: boolean | ((current: boolean) => boolean)) => void;
   setCustomProviderId: (value: string) => void;
   setCustomProtocol: (value: CatalogProviderProtocol) => void;
   resetTest: () => void;
   handleProviderSelect: (provider: CatalogProvider) => void;
   handleFetchModels: () => Promise<void>;
   handleTest: () => Promise<void>;
+  submitManualImageSupport: (values: Record<string, boolean>) => void;
+  cancelManualImageSupport: () => void;
   handleSave: () => Promise<void>;
 };
 
