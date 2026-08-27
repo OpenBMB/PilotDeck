@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { ImPermissionHelper } from "../../src/adapters/channel/protocol/ImPermissionHelper.js";
 import type { Gateway } from "../../src/gateway/index.js";
 
-test("ImPermissionHelper resolves all pending permission requests for a chat", async () => {
+test("ImPermissionHelper resolves pending permission requests in FIFO order", async () => {
   const helper = new ImPermissionHelper();
   const decisions: Array<{
     sessionKey: string;
@@ -39,19 +39,21 @@ test("ImPermissionHelper resolves all pending permission requests for a chat", a
 
   assert.match(first ?? "", /工具 read_file 需要权限/);
   assert.match(first ?? "", /\/tmp\/a\.txt/);
-  assert.match(second ?? "", /2 个工具权限请求|2 个工具权限/);
-  assert.match(second ?? "", /请求 1: 工具 read_file/);
-  assert.match(second ?? "", /\/tmp\/a\.txt/);
-  assert.match(second ?? "", /请求 2: 工具 read_file/);
-  assert.match(second ?? "", /\/tmp\/b\.txt/);
+  assert.equal(second, undefined);
   assert.equal(helper.hasPending("chat-1"), true);
 
   const confirmation = await helper.answer("chat-1", "1", gateway);
 
-  assert.equal(confirmation, "已允许 2 个待处理权限请求一次，继续执行。");
+  assert.equal(confirmation, "已允许一次，继续执行。");
   assert.deepEqual(decisions, [
     { sessionKey: "session-1", requestId: "request-1", decision: "allow", remember: false },
-    { sessionKey: "session-1", requestId: "request-2", decision: "allow", remember: false },
+  ]);
+  assert.equal(helper.hasPending("chat-1"), true);
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /\/tmp\/b\.txt/);
+  assert.equal(await helper.answer("chat-1", "0", gateway), "已拒绝，继续处理。");
+  assert.deepEqual(decisions, [
+    { sessionKey: "session-1", requestId: "request-1", decision: "allow", remember: false },
+    { sessionKey: "session-1", requestId: "request-2", decision: "deny", reason: "User denied permission from IM channel." },
   ]);
   assert.equal(helper.hasPending("chat-1"), false);
 });
@@ -73,4 +75,26 @@ test("ImPermissionHelper keeps pending requests when the reply is invalid", asyn
 
   assert.equal(confirmation, "请回复 1 允许一次，回复 2 允许本会话，回复 0 拒绝。");
   assert.equal(helper.hasPending("chat-1"), true);
+});
+
+test("ImPermissionHelper ignores concurrent replies while a decision is in flight", async () => {
+  const helper = new ImPermissionHelper();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const decisions: string[] = [];
+  const gateway = {
+    permissionDecide: async ({ requestId }: { requestId: string }) => {
+      decisions.push(requestId);
+      await gate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {} });
+  helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {} });
+  const first = helper.answer("chat-1", "1", gateway);
+  assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
+  release();
+  assert.equal(await first, "已允许一次，继续执行。");
+  assert.deepEqual(decisions, ["request-1"]);
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
 });

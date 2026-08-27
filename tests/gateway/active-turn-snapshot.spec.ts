@@ -128,6 +128,49 @@ test("status-only active turn snapshots preserve includeEvents through remote an
   });
 });
 
+test("submit_turn stream ending without completion emits a terminal gateway error", async () => {
+  const socket = new FakeTextWebSocketConnection();
+  const gateway = {
+    describeServer: async () => ({ mode: "in_process" }),
+    async *submitTurn() {
+      yield { type: "assistant_text_delta", text: "partial" } as GatewayEvent;
+    },
+  } as unknown as Gateway;
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: "secret",
+    serverVersion: "test",
+    gateway,
+  });
+
+  socket.dispatch({
+    type: "hello",
+    protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION,
+    clientName: "test",
+    clientVersion: "test",
+    token: "secret",
+  });
+  await flushAsyncWork();
+  socket.dispatch({
+    type: "request",
+    id: "submit-incomplete",
+    method: "submit_turn",
+    params: { sessionKey: "web:incomplete", channelKey: "web", message: "hello" },
+  });
+  await flushAsyncWork();
+
+  const terminal = socket.sent.find((frame) => (
+    (frame as { type?: string; id?: string; final?: boolean }).type === "event"
+    && (frame as { id?: string }).id === "submit-incomplete"
+    && (frame as { final?: boolean }).final === true
+  )) as { event?: { type?: string; code?: string; message?: string; recoverable?: boolean } } | undefined;
+  assert.deepEqual(terminal?.event, {
+    type: "error",
+    code: "gateway_stream_ended_without_completion",
+    message: "Gateway stream ended without a turn_completed event.",
+    recoverable: true,
+  });
+});
+
 test("gateway failure status keeps the attempted run id for live/history deduplication", async () => {
   const router = {
     beginTurn: () => true,

@@ -78,6 +78,8 @@ export type FeishuChannelOptions = {
   connectionMode?: FeishuConnectionMode;
   /** "feishu" (open.feishu.cn) or "lark" (open.larksuite.com). */
   domainName?: "feishu" | "lark";
+  /** Optional per-channel permission mode forwarded to Gateway turns. */
+  permissionMode?: "default" | "bypassPermissions";
   mapper?: FeishuSessionMapper;
   /**
    * Optional override for outbound delivery (used in tests). When omitted the
@@ -142,6 +144,7 @@ export class FeishuChannel implements ChannelAdapter {
   private verifyToken?: string;
   private connectionMode: FeishuConnectionMode;
   private domainName: "feishu" | "lark";
+  private permissionMode?: "default" | "bypassPermissions";
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -152,6 +155,7 @@ export class FeishuChannel implements ChannelAdapter {
   private readonly activeChats = new Set<string>();
   private readonly chatState = new ImChatSessionState<QueuedFeishuTurn>({ maxPendingTurns: FEISHU_MAX_PENDING_TURNS_PER_CHAT });
   private readonly inboundBatches = new Map<string, FeishuInboundBatch>();
+  private readonly permissionAnsweringChats = new Set<string>();
   private readonly elicitation = new ImElicitationHelper();
   private readonly permissions = new ImPermissionHelper();
   private readonly attachmentStore = new ImAttachmentStore({
@@ -173,6 +177,7 @@ export class FeishuChannel implements ChannelAdapter {
     this.verifyToken = options.verifyToken;
     this.connectionMode = options.connectionMode ?? "stream";
     this.domainName = options.domainName ?? "feishu";
+    this.permissionMode = options.permissionMode;
     this.onStateChange = options.onStateChange;
   }
 
@@ -186,6 +191,7 @@ export class FeishuChannel implements ChannelAdapter {
       this.appSecret = this.appSecret || cfg.appSecret || "";
       this.encryptKey = this.encryptKey ?? cfg.encryptKey;
       this.verifyToken = this.verifyToken ?? cfg.verifyToken;
+      this.permissionMode = this.permissionMode ?? cfg.permissionMode;
     }
 
     if (!this.explicitSend && (!this.appId || !this.appSecret)) {
@@ -343,10 +349,16 @@ export class FeishuChannel implements ChannelAdapter {
       });
       return true;
     }
-    if (this.permissions.hasPending(input.chatId)) {
-      void this.answerPendingPermission(input.chatId, input.text).catch((e: unknown) => {
-        this.logger?.error?.(`feishu: permission answer error: ${e}`);
-      });
+    if (this.permissions.hasPending(input.chatId) || this.permissionAnsweringChats.has(input.chatId)) {
+      if (this.permissionAnsweringChats.has(input.chatId)) return true;
+      this.permissionAnsweringChats.add(input.chatId);
+      void this.answerPendingPermission(input.chatId, input.text)
+        .catch((e: unknown) => {
+          this.logger?.error?.(`feishu: permission answer error: ${e}`);
+        })
+        .finally(() => {
+          this.permissionAnsweringChats.delete(input.chatId);
+        });
       return true;
     }
     return false;
@@ -362,6 +374,8 @@ export class FeishuChannel implements ChannelAdapter {
     if (!this.gateway) return;
     const confirmation = await this.permissions.answer(chatId, text, this.gateway);
     if (confirmation) await this.send({ chatId, text: confirmation });
+    const nextPrompt = this.permissions.takeNextPrompt(chatId);
+    if (nextPrompt) await this.send({ chatId, text: nextPrompt });
   }
 
   private async drainInboundBatch(chatId: string): Promise<void> {
@@ -482,6 +496,7 @@ export class FeishuChannel implements ChannelAdapter {
   private resetChatInteractionState(chatId: string): void {
     this.chatState.resetForNewSession(chatId);
     this.elicitation.clear(chatId);
+    this.permissionAnsweringChats.delete(chatId);
     this.permissions.clear(chatId);
     const batch = this.inboundBatches.get(chatId);
     if (batch?.timer) clearTimeout(batch.timer);
@@ -539,6 +554,7 @@ export class FeishuChannel implements ChannelAdapter {
           message: turn.message,
           ...(turn.attachments.length > 0 ? { attachments: turn.attachments } : {}),
           allowPlanModeTools: false,
+          ...(this.permissionMode ? { mode: this.permissionMode, basePermissionMode: this.permissionMode } : {}),
           timeoutMs: turnTimeoutMs,
           ...(turn.projectKey ? { projectKey: turn.projectKey } : {}),
         })) {

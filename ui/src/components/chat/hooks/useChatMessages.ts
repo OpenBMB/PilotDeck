@@ -120,7 +120,10 @@ function convertSingleMessage(
         };
       } else {
         const text = normalizeAssistantText(content);
-        if (!text.trim() && !options.preserveEmptyAssistantShell) return null;
+        const assistantAttachments = Array.isArray(msg.attachments)
+          ? msg.attachments.filter((attachment) => attachment && typeof attachment.name === 'string')
+          : [];
+        if (!text.trim() && assistantAttachments.length === 0 && !options.preserveEmptyAssistantShell) return null;
         return {
           id: msg.id,
           entryId: msg.entryId,
@@ -128,6 +131,7 @@ function convertSingleMessage(
           content: text,
           timestamp: msg.timestamp,
           ...turnIdentity,
+          ...(assistantAttachments.length > 0 ? { attachments: assistantAttachments } : {}),
         };
       }
     }

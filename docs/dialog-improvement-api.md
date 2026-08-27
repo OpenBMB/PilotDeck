@@ -488,6 +488,7 @@ type SetSessionModelRequest = {
 5. 非法组合返回 `INVALID_PERMISSION_MODE`，且不得启动模型调用。
 
 权限确认继续通过 `permission_request` 事件和 `permission_decide` RPC 完成。
+文本 IM 渠道对同一会话内的多个权限请求按 FIFO 顺序逐条发送和确认；每次 `1/2/0` 只决策当前请求，完成后再发送下一条提示。
 
 ## 8. 提交对话
 
@@ -554,6 +555,17 @@ type ModelSelectionChangedEvent = {
 
 其余事件沿用现有 `turn_started`、`permission_request`、`assistant_text_delta`、`assistant_thinking_delta`、`tool_call_started`、`tool_call_finished`、`turn_completed` 和 `error`。
 
+当 `submit_turn` 流自然结束但未收到 `turn_completed` 时，WebSocket 会以 `final: true` 发送 `error` 事件，不会伪造成功的 `turn_completed`：
+
+```ts
+type IncompleteGatewayStreamError = {
+  type: "error";
+  code: "gateway_stream_ended_without_completion";
+  message: string;
+  recoverable: true;
+};
+```
+
 ## 9. 错误码
 
 | 错误码 | HTTP/事件 | 说明 |
@@ -568,6 +580,7 @@ type ModelSelectionChangedEvent = {
 | `UPLOAD_MANIFEST_MISMATCH` | 400 | multipart 与 manifest 不一致 |
 | `UPLOAD_STREAM_INTERRUPTED` | 400 | 上传流意外中断 |
 | `ATTACHMENT_EXPIRED` | 410 | 附件已过期 |
+| `gateway_stream_ended_without_completion` | 事件 | Gateway 流结束时未收到 `turn_completed` |
 | `INVALID_PERMISSION_MODE` | 400 | 权限模式非法 |
 | `INVALID_MODEL_OVERRIDE` | 400 | 模型不存在或不可用 |
 | `UNSUPPORTED_MODEL_PARAMETER` | 422 | 模型参数不受支持或超出范围 |

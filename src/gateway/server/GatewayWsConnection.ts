@@ -103,15 +103,21 @@ export class GatewayWsConnection {
         } finally {
           if (sessionKey) this.inFlightSessions.delete(sessionKey);
         }
-        const usage = lastCompleted?.type === "turn_completed" ? lastCompleted.usage : {};
-        const finishReason = lastCompleted?.type === "turn_completed" ? lastCompleted.finishReason : "completed";
+        const terminalEvent: GatewayEvent = lastCompleted?.type === "turn_completed"
+          ? lastCompleted
+          : {
+              type: "error",
+              code: "gateway_stream_ended_without_completion",
+              message: "Gateway stream ended without a turn_completed event.",
+              recoverable: true,
+            };
         this.ws.sendText(
           JSON.stringify({
             type: "event",
             id: frame.id,
             seq,
             final: true,
-            event: { type: "turn_completed", usage, finishReason },
+            event: terminalEvent,
           }),
         );
         return;

@@ -176,6 +176,8 @@ export class MattermostChannel implements ChannelAdapter {
       try {
         const confirmation = await this.permissions.answer(chatId, text, this.gateway);
         if (confirmation) await this.sendReply({ channelId, rootId }, confirmation);
+        const nextPrompt = this.permissions.takeNextPrompt(chatId);
+        if (nextPrompt) await this.sendReply({ channelId, rootId }, nextPrompt);
       } catch (e) {
         this.logger?.error?.(`mattermost: permission answer error: ${e}`);
       }

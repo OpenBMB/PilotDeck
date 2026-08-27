@@ -597,7 +597,7 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0) ? (
+  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0 || fileAttachments.length > 0) ? (
     <div className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
@@ -611,6 +611,15 @@ function MessageRowV2({
           project={selectedProject}
           onBrowse={onFileOpen}
         />
+      ) : null}
+      {fileAttachments.length > 0 ? (
+        <div className={hasAssistantProse || assistantArtifacts.length > 0 ? 'mt-2' : undefined}>
+          <UserAttachmentCards
+            attachments={fileAttachments}
+            project={selectedProject}
+            onBrowse={onFileOpen}
+          />
+        </div>
       ) : null}
       {shouldRenderAssistantActions ? (
         <div

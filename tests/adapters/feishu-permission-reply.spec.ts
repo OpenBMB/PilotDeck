@@ -62,6 +62,131 @@ test("Feishu handles permission replies before the active chat drain finishes", 
   assert.deepEqual((channel as any).inboundBatches.get(chatId), { messages: [], draining: true });
 });
 
+test("Feishu sends permission prompts in FIFO order", async () => {
+  const chatId = "oc_batch";
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const decisions: string[] = [];
+  let releaseTurn!: () => void;
+  const turnReleased = new Promise<void>((resolve) => { releaseTurn = resolve; });
+  const gateway = {
+    submitTurn: async function* () {
+      yield { type: "turn_started", runId: "run-batch" };
+      yield {
+        type: "permission_request",
+        requestId: "request-1",
+        toolName: "read_file",
+        payload: { file_path: "/tmp/a.txt" },
+      };
+      yield {
+        type: "permission_request",
+        requestId: "request-2",
+        toolName: "glob",
+        payload: { pattern: "**/*.pptx" },
+      };
+      await turnReleased;
+      yield { type: "turn_completed", usage: {}, finishReason: "completed" };
+    },
+    permissionDecide: async (input: { requestId: string }) => {
+      decisions.push(input.requestId);
+      if (decisions.length === 2) releaseTurn();
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  const channel = new FeishuChannel({
+    connectionMode: "webhook",
+    send: async (message) => { sent.push(message); },
+  });
+  await channel.start({ gateway, logger: {} });
+
+  const response = createMockResponse();
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "run", eventId: "run-1" }),
+  );
+  await delay(50);
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0]?.text ?? "", /工具 read_file 需要权限/);
+
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-1" }),
+  );
+  await delay(50);
+  assert.deepEqual(decisions, ["request-1"]);
+  assert.equal(sent.length, 3);
+  assert.match(sent[2]?.text ?? "", /工具 glob 需要权限/);
+
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-2" }),
+  );
+  await delay(50);
+  assert.deepEqual(decisions, ["request-1", "request-2"]);
+});
+
+test("Feishu ignores duplicate permission replies while the first decision is in flight", async () => {
+  const chatId = "oc_duplicate_reply";
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const decisions: string[] = [];
+  let releaseDecision!: () => void;
+  const decisionGate = new Promise<void>((resolve) => { releaseDecision = resolve; });
+  let resolvePermissionShown!: () => void;
+  const permissionShown = new Promise<void>((resolve) => { resolvePermissionShown = resolve; });
+  let turnCount = 0;
+  const gateway = {
+    submitTurn: async function* () {
+      turnCount += 1;
+      yield { type: "turn_started", runId: `run-${turnCount}` };
+      resolvePermissionShown();
+      yield {
+        type: "permission_request",
+        requestId: "request-duplicate",
+        toolName: "bash",
+        payload: { command: "ls -l /tmp" },
+      };
+      yield { type: "turn_completed", usage: {}, finishReason: "completed" };
+    },
+    permissionDecide: async (input: { requestId: string }) => {
+      decisions.push(input.requestId);
+      await decisionGate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  const channel = new FeishuChannel({
+    connectionMode: "webhook",
+    send: async (message) => { sent.push(message); },
+  });
+  await channel.start({ gateway, logger: {} });
+
+  const response = createMockResponse();
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "run", eventId: "run-duplicate" }),
+  );
+  await withTimeout(permissionShown, 1_000);
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-1" }),
+  );
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-2" }),
+  );
+  releaseDecision();
+  await delay(50);
+
+  assert.deepEqual(decisions, ["request-duplicate"]);
+  assert.equal(turnCount, 1);
+  assert.equal(sent.filter((message) => message.text.includes("已允许一次")).length, 1);
+});
+
 function createMockResponse(): { statusCode?: number; body?: string; writeHead(statusCode: number): void; end(body: string): void } {
   return {
     writeHead(statusCode: number) {
@@ -85,4 +210,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function delay(timeoutMs: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 }

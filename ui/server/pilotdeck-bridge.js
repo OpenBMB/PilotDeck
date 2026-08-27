@@ -516,6 +516,32 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     content: event.text,
                 }),
             ];
+        case 'assistant_attachment': {
+            const attachment = event.attachment && typeof event.attachment === 'object'
+                ? event.attachment
+                : {};
+            const name = typeof attachment.name === 'string' && attachment.name.trim()
+                ? attachment.name.trim()
+                : 'attachment';
+            const normalizedAttachment = {
+                kind: 'file',
+                name,
+                ...(typeof attachment.path === 'string' && attachment.path.trim()
+                    ? { path: attachment.path }
+                    : {}),
+                ...(typeof attachment.mimeType === 'string' ? { mimeType: attachment.mimeType } : {}),
+                ...(typeof attachment.bytes === 'number' ? { size: attachment.bytes } : {}),
+            };
+            return [
+                createNormalizedMessage({
+                    ...base,
+                    kind: 'text',
+                    role: 'assistant',
+                    content: normalizedAttachment.path ? '' : `已生成附件：${name}`,
+                    attachments: [normalizedAttachment],
+                }),
+            ];
+        }
         case 'file_artifacts':
             return [
                 createNormalizedMessage({

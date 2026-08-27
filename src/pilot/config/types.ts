@@ -194,6 +194,7 @@ export type PilotAdaptersConfig = {
     defaultSessionLabel: string;
     connectionMode?: "stream" | "webhook";
     domainName?: "feishu" | "lark";
+    permissionMode?: "default" | "bypassPermissions";
   };
   weixin?: { enabled: boolean };
   qq?: {

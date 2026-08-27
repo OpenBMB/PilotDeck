@@ -61,6 +61,33 @@ describe('session activity fallback', () => {
 });
 
 describe('gatewayEventToFrames agent status errors', () => {
+    it('projects assistant attachments instead of dropping them', () => {
+        const frames = gatewayEventToFrames({
+            type: 'assistant_attachment',
+            runId: 'run-attachment',
+            attachment: {
+                type: 'file',
+                name: 'report.pptx',
+                path: 'reports/report.pptx',
+                mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                bytes: 42,
+                source: 'tool_result',
+            },
+        }, 'web:s_test', 'pilotdeck');
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({
+            kind: 'text',
+            role: 'assistant',
+            attachments: [{
+                name: 'report.pptx',
+                path: 'reports/report.pptx',
+                mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                size: 42,
+            }],
+        });
+    });
+
     it('maps tool result detail availability to a mergeable tool_result frame', () => {
         const frames = gatewayEventToFrames({
             type: 'tool_result_detail_available',
