@@ -47,6 +47,7 @@ type PendingRequest = {
 export class GatewayWsClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly streams = new Map<string, AsyncEventQueue<GatewayEvent>>();
+  private readonly lastStreamEvents = new Map<string, GatewayEvent>();
   private readonly notificationHandlers: GatewayWsNotificationHandler[] = [];
   private ws?: WebSocket;
   private hello?: WsHelloOk;
@@ -182,12 +183,15 @@ export class GatewayWsClient {
       }
       if (!frame.final) {
         stream.push(frame.event);
+        this.lastStreamEvents.set(frame.id, frame.event);
         return;
       }
-      if (frame.event.type === "error") {
+      const lastEvent = this.lastStreamEvents.get(frame.id);
+      if (frame.event.type === "error" && !sameGatewayError(lastEvent, frame.event)) {
         stream.push(frame.event);
       }
       this.streams.delete(frame.id);
+      this.lastStreamEvents.delete(frame.id);
       stream.close();
     }
   }
@@ -201,7 +205,18 @@ export class GatewayWsClient {
       stream.fail(error);
     }
     this.streams.clear();
+    this.lastStreamEvents.clear();
   }
+}
+
+function sameGatewayError(
+  left: GatewayEvent | undefined,
+  right: Extract<GatewayEvent, { type: "error" }>,
+): boolean {
+  return left?.type === "error"
+    && left.code === right.code
+    && left.message === right.message
+    && left.runId === right.runId;
 }
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {

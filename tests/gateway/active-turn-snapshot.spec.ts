@@ -220,6 +220,43 @@ test("submit_turn stream failure emits a terminal error event", async () => {
   assert.equal(socket.sent.some((frame) => (frame as { type?: string }).type === "response"), false);
 });
 
+test("submit_turn does not synthesize a second error after an error event", async () => {
+  const socket = new FakeTextWebSocketConnection();
+  const gateway = {
+    describeServer: async () => ({ mode: "in_process" }),
+    async *submitTurn() {
+      yield {
+        type: "error",
+        code: "INVALID_PERMISSION_MODE",
+        message: "invalid permission mode",
+        recoverable: false,
+      } as GatewayEvent;
+    },
+  } as unknown as Gateway;
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: "secret",
+    serverVersion: "test",
+    gateway,
+  });
+  socket.dispatch({ type: "hello", protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION, clientName: "test", clientVersion: "test", token: "secret" });
+  await flushAsyncWork();
+  socket.dispatch({
+    type: "request",
+    id: "submit-error",
+    method: "submit_turn",
+    params: { sessionKey: "web:error", channelKey: "web", message: "hello" },
+  });
+  await flushAsyncWork();
+  const errors = socket.sent.filter((frame) => (
+    (frame as { type?: string; event?: { type?: string } }).type === "event"
+    && (frame as { event?: { type?: string } }).event?.type === "error"
+  ));
+  assert.equal(errors.length, 2);
+  assert.equal((errors[0] as { event: { code?: string } }).event.code, "INVALID_PERMISSION_MODE");
+  assert.equal((errors[1] as { final?: boolean; event: { code?: string } }).final, true);
+  assert.equal((errors[1] as { event: { code?: string } }).event.code, "INVALID_PERMISSION_MODE");
+});
+
 test("gateway failure status keeps the attempted run id for live/history deduplication", async () => {
   const router = {
     beginTurn: () => true,

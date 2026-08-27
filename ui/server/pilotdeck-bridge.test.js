@@ -88,6 +88,29 @@ describe('gatewayEventToFrames agent status errors', () => {
         });
     });
 
+    it('projects content-only image attachments as inline images', () => {
+        const frames = gatewayEventToFrames({
+            type: 'assistant_attachment',
+            runId: 'run-image',
+            attachment: {
+                type: 'image',
+                name: 'chart.png',
+                mimeType: 'image/png',
+                content: 'aGVsbG8=',
+                bytes: 5,
+            },
+        }, 'web:s_test', 'pilotdeck');
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({
+            kind: 'text',
+            role: 'assistant',
+            content: '',
+            images: [{ data: 'data:image/png;base64,aGVsbG8=', name: 'chart.png', size: 5 }],
+        });
+        expect(frames[0].attachments).toBeUndefined();
+    });
+
     it('maps tool result detail availability to a mergeable tool_result frame', () => {
         const frames = gatewayEventToFrames({
             type: 'tool_result_detail_available',

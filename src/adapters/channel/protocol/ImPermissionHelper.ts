@@ -11,6 +11,7 @@ export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
   private readonly nextPrompts = new Map<string, string>();
   private readonly answering = new Set<string>();
+  private readonly inFlight = new Set<string>();
   private readonly generations = new Map<string, number>();
 
   capture(chatId: string, sessionKey: string, event: GatewayEvent & { type: "permission_request" }): string | undefined {
@@ -42,6 +43,7 @@ export class ImPermissionHelper {
   takeNextPrompt(chatId: string): string | undefined {
     const prompt = this.nextPrompts.get(chatId);
     this.nextPrompts.delete(chatId);
+    this.answering.delete(chatId);
     return prompt;
   }
 
@@ -56,6 +58,7 @@ export class ImPermissionHelper {
     }
 
     this.answering.add(chatId);
+    this.inFlight.add(chatId);
     const generation = this.generations.get(chatId) ?? 0;
     const entry = entries.shift();
     if (!entry) {
@@ -79,19 +82,22 @@ export class ImPermissionHelper {
       if (trimmed === "2") return "已允许本会话，继续执行。";
       return "已允许一次，继续执行。";
     } finally {
-      this.answering.delete(chatId);
+      this.inFlight.delete(chatId);
+      if (entries.length === 0) this.answering.delete(chatId);
       this.generations.delete(chatId);
     }
   }
 
   clear(chatId: string): void {
-    if (this.answering.has(chatId)) {
+    if (this.inFlight.has(chatId)) {
       this.generations.set(chatId, (this.generations.get(chatId) ?? 0) + 1);
     } else {
       this.generations.delete(chatId);
     }
     this.pending.delete(chatId);
     this.nextPrompts.delete(chatId);
+    this.inFlight.delete(chatId);
+    this.answering.delete(chatId);
   }
 }
 

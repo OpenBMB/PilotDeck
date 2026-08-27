@@ -59,6 +59,7 @@ export class GatewayBrowserClient {
   private hello?: WebHelloOk;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly streams = new Map<string, AsyncEventQueue<WebGatewayEvent>>();
+  private readonly lastStreamEvents = new Map<string, WebGatewayEvent>();
   private connectError?: Error;
   private closed = false;
   private helloResolve?: (hello: WebHelloOk) => void;
@@ -367,9 +368,11 @@ export class GatewayBrowserClient {
       if (!stream) return;
       if (!frame.final) {
         stream.push(frame.event);
+        this.lastStreamEvents.set(frame.id, frame.event);
         return;
       }
-      if (frame.event.type === "error") {
+      const lastEvent = this.lastStreamEvents.get(frame.id);
+      if (frame.event.type === "error" && !sameWebGatewayError(lastEvent, frame.event)) {
         stream.push(frame.event);
       }
       // `final: true` is a synthetic stream-end marker emitted by
@@ -379,6 +382,7 @@ export class GatewayBrowserClient {
       // docs/old-ui-adaptation/01-old-ui-current-state/03-data-protocols-and-state.md
       // §175.
       this.streams.delete(frame.id);
+      this.lastStreamEvents.delete(frame.id);
       stream.close();
     }
   }
@@ -407,6 +411,7 @@ export class GatewayBrowserClient {
       stream.fail(error);
     }
     this.streams.clear();
+    this.lastStreamEvents.clear();
   }
 
   private newId(): string {
@@ -421,6 +426,16 @@ export class GatewayBrowserClient {
     }
     return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   }
+}
+
+function sameWebGatewayError(
+  left: WebGatewayEvent | undefined,
+  right: Extract<WebGatewayEvent, { type: "error" }>,
+): boolean {
+  return left?.type === "error"
+    && left.code === right.code
+    && left.message === right.message
+    && left.runId === right.runId;
 }
 
 export async function readLocalGatewayToken(

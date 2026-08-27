@@ -93,10 +93,13 @@ export class GatewayWsConnection {
         const sessionKey = (frame.params as { sessionKey?: string } | undefined)?.sessionKey;
         if (sessionKey) this.inFlightSessions.add(sessionKey);
         let lastCompleted: GatewayEvent | undefined;
+        let lastTerminalError: GatewayEvent | undefined;
         try {
           for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
             if (event.type === "turn_completed") {
               lastCompleted = event;
+            } else if (event.type === "error") {
+              lastTerminalError = event;
             }
             this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: submitTurnSeq++, final: false, event }));
           }
@@ -106,6 +109,8 @@ export class GatewayWsConnection {
         const runId = (frame.params as { runId?: string } | undefined)?.runId;
         const terminalEvent: GatewayEvent = lastCompleted?.type === "turn_completed"
           ? lastCompleted
+          : lastTerminalError?.type === "error"
+            ? lastTerminalError
           : {
               type: "error",
               code: "gateway_stream_ended_without_completion",

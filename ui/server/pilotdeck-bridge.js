@@ -523,13 +523,39 @@ export function gatewayEventToFrames(event, sessionId, provider) {
             const name = typeof attachment.name === 'string' && attachment.name.trim()
                 ? attachment.name.trim()
                 : 'attachment';
+            const attachmentPath = typeof attachment.path === 'string' && attachment.path.trim()
+                ? attachment.path.trim()
+                : undefined;
+            const attachmentMimeType = typeof attachment.mimeType === 'string'
+                ? attachment.mimeType
+                : undefined;
+            const attachmentContent = typeof attachment.content === 'string' && attachment.content.length > 0
+                ? attachment.content
+                : undefined;
+            if (attachment.type === 'image' && !attachmentPath && attachmentContent) {
+                const imageData = attachmentContent.startsWith('data:')
+                    ? attachmentContent
+                    : `data:${attachmentMimeType || 'image/png'};base64,${attachmentContent}`;
+                return [
+                    createNormalizedMessage({
+                        ...base,
+                        kind: 'text',
+                        role: 'assistant',
+                        content: '',
+                        images: [{
+                            data: imageData,
+                            name,
+                            ...(attachmentMimeType ? { mimeType: attachmentMimeType } : {}),
+                            ...(typeof attachment.bytes === 'number' ? { size: attachment.bytes } : {}),
+                        }],
+                    }),
+                ];
+            }
             const normalizedAttachment = {
                 kind: 'file',
                 name,
-                ...(typeof attachment.path === 'string' && attachment.path.trim()
-                    ? { path: attachment.path }
-                    : {}),
-                ...(typeof attachment.mimeType === 'string' ? { mimeType: attachment.mimeType } : {}),
+                ...(attachmentPath ? { path: attachmentPath } : {}),
+                ...(attachmentMimeType ? { mimeType: attachmentMimeType } : {}),
                 ...(typeof attachment.bytes === 'number' ? { size: attachment.bytes } : {}),
             };
             return [

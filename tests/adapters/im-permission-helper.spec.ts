@@ -96,6 +96,7 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   release();
   assert.equal(await first, "已允许一次，继续执行。");
   assert.deepEqual(decisions, ["request-1"]);
+  assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
 });
 
