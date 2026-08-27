@@ -118,4 +118,15 @@ test("ImPermissionHelper does not resurrect a prompt after clear", async () => {
   assert.equal(await answer, undefined);
   assert.equal(helper.takeNextPrompt("chat-1"), undefined);
   assert.equal(helper.hasPending("chat-1"), false);
+  assert.equal((helper as any).generations.size, 0);
+});
+
+test("ImPermissionHelper releases generation state after a completed answer", async () => {
+  const helper = new ImPermissionHelper();
+  const gateway = { permissionDecide: async () => ({ delivered: true }) } as unknown as Gateway;
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  await helper.answer("chat-1", "1", gateway);
+  assert.equal((helper as any).generations.size, 0);
 });

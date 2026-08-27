@@ -80,14 +80,18 @@ export class ImPermissionHelper {
       return "已允许一次，继续执行。";
     } finally {
       this.answering.delete(chatId);
+      this.generations.delete(chatId);
     }
   }
 
   clear(chatId: string): void {
-    this.generations.set(chatId, (this.generations.get(chatId) ?? 0) + 1);
+    if (this.answering.has(chatId)) {
+      this.generations.set(chatId, (this.generations.get(chatId) ?? 0) + 1);
+    } else {
+      this.generations.delete(chatId);
+    }
     this.pending.delete(chatId);
     this.nextPrompts.delete(chatId);
-    this.answering.delete(chatId);
   }
 }
 

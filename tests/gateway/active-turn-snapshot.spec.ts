@@ -154,7 +154,7 @@ test("submit_turn stream ending without completion emits a terminal gateway erro
     type: "request",
     id: "submit-incomplete",
     method: "submit_turn",
-    params: { sessionKey: "web:incomplete", channelKey: "web", message: "hello" },
+    params: { sessionKey: "web:incomplete", channelKey: "web", message: "hello", runId: "run-incomplete" },
   });
   await flushAsyncWork();
 
@@ -168,7 +168,56 @@ test("submit_turn stream ending without completion emits a terminal gateway erro
     code: "gateway_stream_ended_without_completion",
     message: "Gateway stream ended without a turn_completed event.",
     recoverable: true,
+    runId: "run-incomplete",
   });
+});
+
+test("submit_turn stream failure emits a terminal error event", async () => {
+  const socket = new FakeTextWebSocketConnection();
+  const gateway = {
+    describeServer: async () => ({ mode: "in_process" }),
+    async *submitTurn() {
+      throw new Error("submit failed");
+    },
+  } as unknown as Gateway;
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: "secret",
+    serverVersion: "test",
+    gateway,
+  });
+  socket.dispatch({
+    type: "hello",
+    protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION,
+    clientName: "test",
+    clientVersion: "test",
+    token: "secret",
+  });
+  await flushAsyncWork();
+  socket.dispatch({
+    type: "request",
+    id: "submit-thrown",
+    method: "submit_turn",
+    params: { sessionKey: "web:thrown", channelKey: "web", message: "hello", runId: "run-thrown" },
+  });
+  await flushAsyncWork();
+  assert.deepEqual(socket.sent.find((frame) => (
+    (frame as { type?: string; id?: string; final?: boolean }).type === "event"
+    && (frame as { id?: string }).id === "submit-thrown"
+    && (frame as { final?: boolean }).final === true
+  )), {
+    type: "event",
+    id: "submit-thrown",
+    seq: 0,
+    final: true,
+    event: {
+      type: "error",
+      code: "gateway_submit_failed",
+      message: "submit failed",
+      recoverable: true,
+      runId: "run-thrown",
+    },
+  });
+  assert.equal(socket.sent.some((frame) => (frame as { type?: string }).type === "response"), false);
 });
 
 test("gateway failure status keeps the attempted run id for live/history deduplication", async () => {

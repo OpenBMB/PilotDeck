@@ -87,22 +87,23 @@ export class GatewayWsConnection {
   }
 
   private async handleRequest(frame: WsRequestFrame): Promise<void> {
+    let submitTurnSeq = 0;
     try {
       if (frame.method === "submit_turn") {
         const sessionKey = (frame.params as { sessionKey?: string } | undefined)?.sessionKey;
         if (sessionKey) this.inFlightSessions.add(sessionKey);
-        let seq = 0;
         let lastCompleted: GatewayEvent | undefined;
         try {
           for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
             if (event.type === "turn_completed") {
               lastCompleted = event;
             }
-            this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: seq++, final: false, event }));
+            this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: submitTurnSeq++, final: false, event }));
           }
         } finally {
           if (sessionKey) this.inFlightSessions.delete(sessionKey);
         }
+        const runId = (frame.params as { runId?: string } | undefined)?.runId;
         const terminalEvent: GatewayEvent = lastCompleted?.type === "turn_completed"
           ? lastCompleted
           : {
@@ -110,12 +111,13 @@ export class GatewayWsConnection {
               code: "gateway_stream_ended_without_completion",
               message: "Gateway stream ended without a turn_completed event.",
               recoverable: true,
+              ...(runId ? { runId } : {}),
             };
         this.ws.sendText(
           JSON.stringify({
             type: "event",
             id: frame.id,
-            seq,
+            seq: submitTurnSeq,
             final: true,
             event: terminalEvent,
           }),
@@ -126,6 +128,24 @@ export class GatewayWsConnection {
       const result = await this.dispatchRequest(frame);
       this.ws.sendText(JSON.stringify({ type: "response", id: frame.id, ok: true, result }));
     } catch (error) {
+      if (frame.method === "submit_turn") {
+        const runId = (frame.params as { runId?: string } | undefined)?.runId;
+        const event: GatewayEvent = {
+          type: "error",
+          code: "gateway_submit_failed",
+          message: error instanceof Error ? error.message : String(error),
+          recoverable: true,
+          ...(runId ? { runId } : {}),
+        };
+        this.ws.sendText(JSON.stringify({
+          type: "event",
+          id: frame.id,
+          seq: submitTurnSeq,
+          final: true,
+          event,
+        }));
+        return;
+      }
       // SkillManagerError carries a structured `code` we want to round-
       // trip to the client (so the UI can surface "conflict", "not_found",
       // "invalid_slug", etc. as actionable messages instead of a generic
