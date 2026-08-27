@@ -59,7 +59,8 @@ export class ImPermissionHelper {
 
     this.answering.add(chatId);
     this.inFlight.add(chatId);
-    const generation = this.generations.get(chatId) ?? 0;
+    const generation = (this.generations.get(chatId) ?? 0) + 1;
+    this.generations.set(chatId, generation);
     const entry = entries.shift();
     if (!entry) {
       this.answering.delete(chatId);
@@ -81,10 +82,22 @@ export class ImPermissionHelper {
       if (trimmed === "0") return "已拒绝，继续处理。";
       if (trimmed === "2") return "已允许本会话，继续执行。";
       return "已允许一次，继续执行。";
+    } catch (error) {
+      if ((this.generations.get(chatId) ?? 0) === generation) {
+        const currentEntries = this.pending.get(chatId) ?? entries;
+        this.pending.set(chatId, [entry, ...currentEntries]);
+        this.nextPrompts.delete(chatId);
+        this.answering.delete(chatId);
+      }
+      throw error;
     } finally {
-      this.inFlight.delete(chatId);
-      if (entries.length === 0) this.answering.delete(chatId);
-      this.generations.delete(chatId);
+      if ((this.generations.get(chatId) ?? 0) === generation) {
+        this.inFlight.delete(chatId);
+        if (entries.length === 0) this.answering.delete(chatId);
+        this.generations.delete(chatId);
+      } else if (!this.pending.has(chatId) && !this.inFlight.has(chatId) && !this.answering.has(chatId)) {
+        this.generations.delete(chatId);
+      }
     }
   }
 

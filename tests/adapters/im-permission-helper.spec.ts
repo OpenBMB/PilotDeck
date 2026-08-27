@@ -131,3 +131,61 @@ test("ImPermissionHelper releases generation state after a completed answer", as
   await helper.answer("chat-1", "1", gateway);
   assert.equal((helper as any).generations.size, 0);
 });
+
+test("ImPermissionHelper restores the current request when permissionDecide fails", async () => {
+  const helper = new ImPermissionHelper();
+  let attempts = 0;
+  const gateway = {
+    permissionDecide: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("gateway unavailable");
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  });
+
+  await assert.rejects(helper.answer("chat-1", "1", gateway), /gateway unavailable/);
+  assert.equal(helper.hasPending("chat-1"), true);
+  assert.equal(helper.isAnswering("chat-1"), false);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+  assert.equal(attempts, 2);
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+});
+
+test("ImPermissionHelper keeps new state intact when an old answer finishes after clear", async () => {
+  const helper = new ImPermissionHelper();
+  let releaseOld!: () => void;
+  const oldGate = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const decisions: string[] = [];
+  const gateway = {
+    permissionDecide: async ({ requestId }: { requestId: string }) => {
+      decisions.push(requestId);
+      if (requestId === "old-request") await oldGate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+
+  helper.capture("chat-1", "old-session", {
+    type: "permission_request", requestId: "old-request", toolName: "read_file", payload: {},
+  });
+  const oldAnswer = helper.answer("chat-1", "1", gateway);
+  helper.clear("chat-1");
+  helper.capture("chat-1", "new-session", {
+    type: "permission_request", requestId: "new-request", toolName: "write_file", payload: {},
+  });
+  const newAnswer = helper.answer("chat-1", "1", gateway);
+
+  assert.equal(await newAnswer, "已允许一次，继续执行。");
+  assert.equal(helper.hasPending("chat-1"), false);
+  releaseOld();
+  assert.equal(await oldAnswer, undefined);
+  assert.deepEqual(decisions, ["old-request", "new-request"]);
+  assert.equal(helper.isAnswering("chat-1"), false);
+  assert.equal((helper as any).generations.size, 0);
+});
