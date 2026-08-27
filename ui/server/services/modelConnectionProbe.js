@@ -6,7 +6,7 @@ import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { deflateSync } from 'node:zlib';
 import { randomInt } from 'node:crypto';
 
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 30_000;
 const IMAGE_COLORS = {
   red: [220, 48, 48],
   blue: [40, 96, 220],
@@ -136,7 +136,7 @@ function responseDetail(responseText, response) {
 }
 
 function looksLikeImageUnsupported(detail) {
-  return /(?:image|vision|multimodal).{0,60}(?:not supported|unsupported|not enabled|not available)|(?:not supported|unsupported|does not support).{0,60}(?:image|vision|multimodal)/i.test(detail);
+  return /(?:image|vision|multimodal).{0,60}(?:not supported|unsupported|not enabled|not available)|(?:not supported|unsupported|does not support).{0,60}(?:image|vision|multimodal)|(?:content\.type|content type).{0,60}allowed values?\s*:\s*\[\s*['"]text['"]\s*\]/i.test(detail);
 }
 
 function classifyProbeError(detail, status) {
@@ -239,8 +239,10 @@ export async function probeModelConnection({ protocol, baseUrl, endpointUrl, api
     return { ok: false, imageUnsupported: image && looksLikeImageUnsupported(detail), code: classifyProbeError(detail), error: detail };
   } catch (error) {
     if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : error;
-    const timedOut = error?.name === 'AbortError' || error?.code === 'network_timeout';
-    return { ok: false, imageUnsupported: false, code: 'ENDPOINT_UNREACHABLE', error: timedOut ? 'Connection timed out after 10s.' : (error?.message || String(error)) };
+    const timedOut = controller.signal.aborted
+      || error?.name === 'AbortError'
+      || error?.code === 'network_timeout';
+    return { ok: false, imageUnsupported: false, code: 'ENDPOINT_UNREACHABLE', error: timedOut ? 'Connection timed out after 30s.' : (error?.message || String(error)) };
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', forwardAbort);
