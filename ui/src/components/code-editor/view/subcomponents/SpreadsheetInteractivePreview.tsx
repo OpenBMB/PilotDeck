@@ -221,277 +221,298 @@ export default function SpreadsheetInteractivePreview({
     const container = containerRef.current;
     if (!container) return undefined;
     let disposed = false;
+    let runtime: UniverRuntime | null = null;
     setRuntimeReady(false);
 
-    try {
-      const univer = new Univer({
-        locale: univerLocale,
-        locales: {
-          [univerLocale]: UNIVER_LOCALES[univerLocale],
-        },
-        logLevel: LogLevel.ERROR,
-      });
+    // Univer mounts its own React root into `container`. React StrictMode replays
+    // effects during development (setup -> cleanup -> setup), and disposing that
+    // nested root synchronously from the replay cleanup races with the next mount.
+    // Deferring initialization lets the synthetic cleanup cancel the first setup
+    // before Univer creates a root at all.
+    const initializeTimer = window.setTimeout(() => {
+      if (disposed) return;
 
-      univer.registerPlugin(UniverRenderEnginePlugin);
-      univer.registerPlugin(UniverFormulaEnginePlugin);
-      univer.registerPlugin(UniverUIPlugin, {
-        container,
-        ...SPREADSHEET_UNIVER_UI_CONFIG,
-      });
-      univer.registerPlugin(UniverDocsPlugin);
-      univer.registerPlugin(UniverDocsUIPlugin);
-      univer.registerPlugin(UniverSheetsPlugin);
-      univer.registerPlugin(
-        UniverSheetsUIPlugin,
-        SPREADSHEET_UNIVER_SHEETS_UI_CONFIG,
-      );
-      univer.registerPlugin(UniverSheetsFormulaPlugin);
-      univer.registerPlugin(UniverSheetsFormulaUIPlugin);
-      univer.registerPlugin(UniverSheetsNumfmtPlugin);
-      univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
+      try {
+        const univer = new Univer({
+          locale: univerLocale,
+          locales: {
+            [univerLocale]: UNIVER_LOCALES[univerLocale],
+          },
+          logLevel: LogLevel.ERROR,
+        });
 
-      const api = FUniver.newAPI(univer);
-      api.createWorkbook({ ...workbook, locale: univerLocale });
-      const fWorkbook = api.getActiveWorkbook();
-      const contextSelectionIntent = createSpreadsheetContextSelectionIntent<
-        ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>
-      >();
-      let selectionPopup: { dispose: () => void } | null = null;
-      const disposeSelectionPopup = () => {
-        selectionPopup?.dispose();
-        selectionPopup = null;
-      };
-      const popupComponentKey = `pilotdeck-cell-reference-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const popupComponent = api.registerComponent(
-        popupComponentKey,
-        () => (
-          <button
-            type="button"
-            className={floatingSelectionSingleActionClassName}
-            onPointerDown={(event) => event.stopPropagation()}
-            onPointerUp={(event) => event.stopPropagation()}
-            onClick={() => addCellReferenceRef.current()}
-          >
-            {t('selection.chatInPilotDeck')}
-          </button>
-        ),
-      );
-      const updateSelectedCell = (
-        worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
-        row = 0,
-        column = 0,
-      ) => {
-        const cell = worksheet.getRange(row, column);
-        const formula = cell.getFormula();
-        setSelectedCell({
-          address: `${getColumnName(column)}${row + 1}`,
-          value: formula || cell.getDisplayValue(),
+        univer.registerPlugin(UniverRenderEnginePlugin);
+        univer.registerPlugin(UniverFormulaEnginePlugin);
+        univer.registerPlugin(UniverUIPlugin, {
+          container,
+          ...SPREADSHEET_UNIVER_UI_CONFIG,
         });
-      };
-      const syncSelection = (
-        worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
-        selections: Array<{
-          startRow: number;
-          endRow: number;
-          startColumn: number;
-          endColumn: number;
-        }>,
-        origin: SpreadsheetSelectionOrigin,
-      ) => {
-        const selection = selections[0];
-        if (!selection) {
-          selectionDraftRef.current = null;
-          setSelectionDraft(null);
-          disposeSelectionPopup();
-          return;
-        }
-        updateSelectedCell(
-          worksheet,
-          selection.startRow,
-          selection.startColumn,
+        univer.registerPlugin(UniverDocsPlugin);
+        univer.registerPlugin(UniverDocsUIPlugin);
+        univer.registerPlugin(UniverSheetsPlugin);
+        univer.registerPlugin(
+          UniverSheetsUIPlugin,
+          SPREADSHEET_UNIVER_SHEETS_UI_CONFIG,
         );
-        const cells = selections.map((selectedRange) => {
-          const range = worksheet.getRange(selectedRange);
-          const rowCount = selectedRange.endRow - selectedRange.startRow + 1;
-          const columnCount = selectedRange.endColumn - selectedRange.startColumn + 1;
-          const snapshotRowCount = Math.min(rowCount, MAX_REFERENCE_SNAPSHOT_ROWS);
-          const snapshotColumnCount = Math.min(columnCount, MAX_REFERENCE_SNAPSHOT_COLUMNS);
-          const snapshotRange = worksheet.getRange(
-            selectedRange.startRow,
-            selectedRange.startColumn,
-            snapshotRowCount,
-            snapshotColumnCount,
-          );
-          return {
-            range: range.getA1Notation(),
-            displayValues: snapshotRange.getDisplayValues(),
-            rawValues: snapshotRange.getValues(),
-            formulas: snapshotRange.getFormulas(),
-            rowCount,
-            columnCount,
-            truncated: rowCount > snapshotRowCount || columnCount > snapshotColumnCount,
-          };
-        });
-        const headerRowCount = Math.min(2, selection.startRow);
-        const headerColumnCount = Math.min(
-          selection.endColumn - selection.startColumn + 1,
-          MAX_REFERENCE_CONTEXT_COLUMNS,
-        );
-        const headers = headerRowCount > 0
-          ? worksheet.getRange(
-            selection.startRow - headerRowCount,
-            selection.startColumn,
-            headerRowCount,
-            headerColumnCount,
-          ).getDisplayValues()
-          : undefined;
-        const contextStartRow = Math.max(0, selection.startRow - 1);
-        const contextStartColumn = Math.max(0, selection.startColumn - 1);
-        const surroundingValues = worksheet.getRange(
-          contextStartRow,
-          contextStartColumn,
-          Math.min(
-            selection.endRow - contextStartRow + 2,
-            MAX_REFERENCE_CONTEXT_ROWS,
-          ),
-          Math.min(
-            selection.endColumn - contextStartColumn + 2,
-            MAX_REFERENCE_CONTEXT_COLUMNS,
-          ),
-        ).getDisplayValues();
-        const nextDraft = {
-          sheetId: worksheet.getSheetId(),
-          sheetName: worksheet.getSheetName(),
-          ranges: cells.map((cell) => cell.range),
-          activeRange: cells[0]?.range || `${getColumnName(selection.startColumn)}${selection.startRow + 1}`,
-          cells,
-          headers,
-          surroundingValues,
+        univer.registerPlugin(UniverSheetsFormulaPlugin);
+        univer.registerPlugin(UniverSheetsFormulaUIPlugin);
+        univer.registerPlugin(UniverSheetsNumfmtPlugin);
+        univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
+
+        const api = FUniver.newAPI(univer);
+        api.createWorkbook({ ...workbook, locale: univerLocale });
+        const fWorkbook = api.getActiveWorkbook();
+        const contextSelectionIntent = createSpreadsheetContextSelectionIntent<
+          ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>
+        >();
+        let selectionPopup: { dispose: () => void } | null = null;
+        const disposeSelectionPopup = () => {
+          selectionPopup?.dispose();
+          selectionPopup = null;
         };
-        selectionDraftRef.current = nextDraft;
-        setSelectionDraft(nextDraft);
-
-        if (!shouldShowSpreadsheetSelectionPopup(
-          origin,
-          referenceModeRef.current === 'region',
-        )) return;
-        disposeSelectionPopup();
-        selectionPopup = worksheet.getRange(selection).attachRangePopup({
-          componentKey: popupComponentKey,
-          direction: 'top-center',
-          offset: [0, -8],
-        }) || null;
-      };
-      const syncCurrentSelection = (
-        worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
-        origin: SpreadsheetSelectionOrigin,
-      ) => {
-        const selections = worksheet
-          .getSelection()
-          ?.getActiveRangeList()
-          .map((range) => range.getRange()) || [];
-        syncSelection(worksheet, selections, origin);
-      };
-      const handleSheetPointerDown = (event: PointerEvent) => {
-        contextSelectionIntent.recordPointerDown(event.button, event.ctrlKey);
-      };
-      const handleSheetContextMenu = (event: MouseEvent) => {
-        event.preventDefault();
-      };
-      container.addEventListener('pointerdown', handleSheetPointerDown, true);
-      container.addEventListener('contextmenu', handleSheetContextMenu);
-      if (fWorkbook) {
-        fWorkbook.setActiveSheet(`sheet-${activeSheetIndexRef.current}`);
-        fWorkbook.getActiveSheet().zoom(zoomRef.current);
-        void fWorkbook.getWorkbookPermission().setReadOnly();
-        updateSelectedCell(fWorkbook.getActiveSheet());
-      }
-      const activeSheetListener = api.addEvent(
-        api.Event.ActiveSheetChanged,
-        ({ activeSheet }) => {
-          const nextIndex = getSheetIndex(activeSheet.getSheetId());
-          if (nextIndex !== null) onActiveSheetChangeRef.current(nextIndex);
-          updateSelectedCell(activeSheet);
-          selectionDraftRef.current = null;
-          setSelectionDraft(null);
-          disposeSelectionPopup();
-        },
-      );
-      const selectionListener = api.addEvent(
-        api.Event.SelectionChanged,
-        ({ worksheet, selections }) => {
-          disposeSelectionPopup();
-          syncSelection(worksheet, selections, 'passive');
-        },
-      );
-      const selectionMoveStartListener = api.addEvent(
-        api.Event.SelectionMoveStart,
-        () => {
-          disposeSelectionPopup();
-        },
-      );
-      const selectionMoveEndListener = api.addEvent(
-        api.Event.SelectionMoveEnd,
-        ({ worksheet, selections }) => {
-          disposeSelectionPopup();
-          syncSelection(worksheet, selections, 'passive');
-        },
-      );
-      const cellPointerDownListener = api.addEvent(
-        api.Event.CellPointerDown,
-        ({ worksheet }) => {
-          if (contextSelectionIntent.recordCellPointerDown(worksheet)) {
-            disposeSelectionPopup();
-          }
-        },
-      );
-      const cellPointerUpListener = api.addEvent(
-        api.Event.CellPointerUp,
-        () => {
-          const worksheet = contextSelectionIntent.consumeContextAction();
-          if (!worksheet) return;
-          window.requestAnimationFrame(() => {
-            if (disposed) return;
-            syncCurrentSelection(worksheet, 'context-action');
+        const popupComponentKey = `pilotdeck-cell-reference-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const popupComponent = api.registerComponent(
+          popupComponentKey,
+          () => (
+            <button
+              type="button"
+              className={floatingSelectionSingleActionClassName}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={() => addCellReferenceRef.current()}
+            >
+              {t('selection.chatInPilotDeck')}
+            </button>
+          ),
+        );
+        const updateSelectedCell = (
+          worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
+          row = 0,
+          column = 0,
+        ) => {
+          const cell = worksheet.getRange(row, column);
+          const formula = cell.getFormula();
+          setSelectedCell({
+            address: `${getColumnName(column)}${row + 1}`,
+            value: formula || cell.getDisplayValue(),
           });
-        },
-      );
-      runtimeRef.current = {
-        univer,
-        api,
-        disposeActiveSheetListener: () => activeSheetListener.dispose(),
-        disposeSelectionListener: () => selectionListener.dispose(),
-        disposeSelectionMoveStartListener: () => selectionMoveStartListener.dispose(),
-        disposeSelectionMoveEndListener: () => selectionMoveEndListener.dispose(),
-        disposeCellPointerDownListener: () => cellPointerDownListener.dispose(),
-        disposeCellPointerUpListener: () => cellPointerUpListener.dispose(),
-        disposeContextSelectionIntent: () => {
-          container.removeEventListener('pointerdown', handleSheetPointerDown, true);
-          container.removeEventListener('contextmenu', handleSheetContextMenu);
-          contextSelectionIntent.reset();
-        },
-        disposePopupComponent: () => popupComponent.dispose(),
-        disposeSelectionPopup,
-      };
-      setRuntimeReady(true);
-    } catch (error) {
-      onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
-    }
+        };
+        const syncSelection = (
+          worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
+          selections: Array<{
+            startRow: number;
+            endRow: number;
+            startColumn: number;
+            endColumn: number;
+          }>,
+          origin: SpreadsheetSelectionOrigin,
+        ) => {
+          const selection = selections[0];
+          if (!selection) {
+            selectionDraftRef.current = null;
+            setSelectionDraft(null);
+            disposeSelectionPopup();
+            return;
+          }
+          updateSelectedCell(
+            worksheet,
+            selection.startRow,
+            selection.startColumn,
+          );
+          const cells = selections.map((selectedRange) => {
+            const range = worksheet.getRange(selectedRange);
+            const rowCount = selectedRange.endRow - selectedRange.startRow + 1;
+            const columnCount = selectedRange.endColumn - selectedRange.startColumn + 1;
+            const snapshotRowCount = Math.min(rowCount, MAX_REFERENCE_SNAPSHOT_ROWS);
+            const snapshotColumnCount = Math.min(columnCount, MAX_REFERENCE_SNAPSHOT_COLUMNS);
+            const snapshotRange = worksheet.getRange(
+              selectedRange.startRow,
+              selectedRange.startColumn,
+              snapshotRowCount,
+              snapshotColumnCount,
+            );
+            return {
+              range: range.getA1Notation(),
+              displayValues: snapshotRange.getDisplayValues(),
+              rawValues: snapshotRange.getValues(),
+              formulas: snapshotRange.getFormulas(),
+              rowCount,
+              columnCount,
+              truncated: rowCount > snapshotRowCount || columnCount > snapshotColumnCount,
+            };
+          });
+          const headerRowCount = Math.min(2, selection.startRow);
+          const headerColumnCount = Math.min(
+            selection.endColumn - selection.startColumn + 1,
+            MAX_REFERENCE_CONTEXT_COLUMNS,
+          );
+          const headers = headerRowCount > 0
+            ? worksheet.getRange(
+              selection.startRow - headerRowCount,
+              selection.startColumn,
+              headerRowCount,
+              headerColumnCount,
+            ).getDisplayValues()
+            : undefined;
+          const contextStartRow = Math.max(0, selection.startRow - 1);
+          const contextStartColumn = Math.max(0, selection.startColumn - 1);
+          const surroundingValues = worksheet.getRange(
+            contextStartRow,
+            contextStartColumn,
+            Math.min(
+              selection.endRow - contextStartRow + 2,
+              MAX_REFERENCE_CONTEXT_ROWS,
+            ),
+            Math.min(
+              selection.endColumn - contextStartColumn + 2,
+              MAX_REFERENCE_CONTEXT_COLUMNS,
+            ),
+          ).getDisplayValues();
+          const nextDraft = {
+            sheetId: worksheet.getSheetId(),
+            sheetName: worksheet.getSheetName(),
+            ranges: cells.map((cell) => cell.range),
+            activeRange: cells[0]?.range || `${getColumnName(selection.startColumn)}${selection.startRow + 1}`,
+            cells,
+            headers,
+            surroundingValues,
+          };
+          selectionDraftRef.current = nextDraft;
+          setSelectionDraft(nextDraft);
+
+          if (!shouldShowSpreadsheetSelectionPopup(
+            origin,
+            referenceModeRef.current === 'region',
+          )) return;
+          disposeSelectionPopup();
+          selectionPopup = worksheet.getRange(selection).attachRangePopup({
+            componentKey: popupComponentKey,
+            direction: 'top-center',
+            offset: [0, -8],
+          }) || null;
+        };
+        const syncCurrentSelection = (
+          worksheet: ReturnType<NonNullable<typeof fWorkbook>['getActiveSheet']>,
+          origin: SpreadsheetSelectionOrigin,
+        ) => {
+          const selections = worksheet
+            .getSelection()
+            ?.getActiveRangeList()
+            .map((range) => range.getRange()) || [];
+          syncSelection(worksheet, selections, origin);
+        };
+        const handleSheetPointerDown = (event: PointerEvent) => {
+          contextSelectionIntent.recordPointerDown(event.button, event.ctrlKey);
+        };
+        const handleSheetContextMenu = (event: MouseEvent) => {
+          event.preventDefault();
+        };
+        container.addEventListener('pointerdown', handleSheetPointerDown, true);
+        container.addEventListener('contextmenu', handleSheetContextMenu);
+        if (fWorkbook) {
+          fWorkbook.setActiveSheet(`sheet-${activeSheetIndexRef.current}`);
+          fWorkbook.getActiveSheet().zoom(zoomRef.current);
+          void fWorkbook.getWorkbookPermission().setReadOnly();
+          updateSelectedCell(fWorkbook.getActiveSheet());
+        }
+        const activeSheetListener = api.addEvent(
+          api.Event.ActiveSheetChanged,
+          ({ activeSheet }) => {
+            const nextIndex = getSheetIndex(activeSheet.getSheetId());
+            if (nextIndex !== null) onActiveSheetChangeRef.current(nextIndex);
+            updateSelectedCell(activeSheet);
+            selectionDraftRef.current = null;
+            setSelectionDraft(null);
+            disposeSelectionPopup();
+          },
+        );
+        const selectionListener = api.addEvent(
+          api.Event.SelectionChanged,
+          ({ worksheet, selections }) => {
+            disposeSelectionPopup();
+            syncSelection(worksheet, selections, 'passive');
+          },
+        );
+        const selectionMoveStartListener = api.addEvent(
+          api.Event.SelectionMoveStart,
+          () => {
+            disposeSelectionPopup();
+          },
+        );
+        const selectionMoveEndListener = api.addEvent(
+          api.Event.SelectionMoveEnd,
+          ({ worksheet, selections }) => {
+            disposeSelectionPopup();
+            syncSelection(worksheet, selections, 'passive');
+          },
+        );
+        const cellPointerDownListener = api.addEvent(
+          api.Event.CellPointerDown,
+          ({ worksheet }) => {
+            if (contextSelectionIntent.recordCellPointerDown(worksheet)) {
+              disposeSelectionPopup();
+            }
+          },
+        );
+        const cellPointerUpListener = api.addEvent(
+          api.Event.CellPointerUp,
+          () => {
+            const worksheet = contextSelectionIntent.consumeContextAction();
+            if (!worksheet) return;
+            window.requestAnimationFrame(() => {
+              if (disposed) return;
+              syncCurrentSelection(worksheet, 'context-action');
+            });
+          },
+        );
+        runtime = {
+          univer,
+          api,
+          disposeActiveSheetListener: () => activeSheetListener.dispose(),
+          disposeSelectionListener: () => selectionListener.dispose(),
+          disposeSelectionMoveStartListener: () => selectionMoveStartListener.dispose(),
+          disposeSelectionMoveEndListener: () => selectionMoveEndListener.dispose(),
+          disposeCellPointerDownListener: () => cellPointerDownListener.dispose(),
+          disposeCellPointerUpListener: () => cellPointerUpListener.dispose(),
+          disposeContextSelectionIntent: () => {
+            container.removeEventListener('pointerdown', handleSheetPointerDown, true);
+            container.removeEventListener('contextmenu', handleSheetContextMenu);
+            contextSelectionIntent.reset();
+          },
+          disposePopupComponent: () => popupComponent.dispose(),
+          disposeSelectionPopup,
+        };
+        runtimeRef.current = runtime;
+        setRuntimeReady(true);
+      } catch (error) {
+        onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
+      }
+    }, 0);
 
     return () => {
       disposed = true;
-      const runtime = runtimeRef.current;
-      runtimeRef.current = null;
-      runtime?.disposeSelectionPopup?.();
-      runtime?.disposeActiveSheetListener?.();
-      runtime?.disposeSelectionListener?.();
-      runtime?.disposeSelectionMoveStartListener?.();
-      runtime?.disposeSelectionMoveEndListener?.();
-      runtime?.disposeCellPointerDownListener?.();
-      runtime?.disposeCellPointerUpListener?.();
-      runtime?.disposeContextSelectionIntent?.();
-      runtime?.disposePopupComponent?.();
-      runtime?.univer.dispose();
+      window.clearTimeout(initializeTimer);
+      const runtimeToDispose = runtime;
+      if (runtimeRef.current === runtimeToDispose) {
+        runtimeRef.current = null;
+      }
+      if (!runtimeToDispose) return;
+
+      // Univer's dispose path synchronously unmounts its nested React root. Run it
+      // after the outer React commit so it cannot delete nodes from a replacement
+      // root that is being mounted during the same commit.
+      window.setTimeout(() => {
+        runtimeToDispose.disposeSelectionPopup?.();
+        runtimeToDispose.disposeActiveSheetListener?.();
+        runtimeToDispose.disposeSelectionListener?.();
+        runtimeToDispose.disposeSelectionMoveStartListener?.();
+        runtimeToDispose.disposeSelectionMoveEndListener?.();
+        runtimeToDispose.disposeCellPointerDownListener?.();
+        runtimeToDispose.disposeCellPointerUpListener?.();
+        runtimeToDispose.disposeContextSelectionIntent?.();
+        runtimeToDispose.disposePopupComponent?.();
+        runtimeToDispose.univer.dispose();
+      }, 0);
     };
   }, [t, univerLocale, workbook]);
 

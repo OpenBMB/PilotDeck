@@ -147,6 +147,8 @@ export type CanonicalMessageMetadata = {
   /** Compaction id of the effective replacement snapshot persisted in the transcript. */
   compactSnapshotId?: string;
   purpose?: string;
+  /** Stable queued-input id for a user message injected during an active turn. */
+  queueItemId?: string;
   forkCarryover?: {
     sourceSessionId: string;
     sourceTurnId?: string;

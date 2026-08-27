@@ -9,6 +9,10 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
   ProjectFilesListInput,
   ProjectFilesListResult,
   CommandsListInput,
@@ -83,6 +87,14 @@ export class RemoteGateway implements Gateway {
 
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
     return this.client.stream("submit_turn", input);
+  }
+
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    return (await this.client.request("steer_turn", input)) as GatewaySteerTurnResult;
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    return (await this.client.request("cancel_steer", input)) as GatewayCancelSteerResult;
   }
 
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {

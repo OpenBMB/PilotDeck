@@ -13,6 +13,7 @@ import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
+import { useSessionInputQueue } from '../chat/hooks/useSessionInputQueue';
 import {
   getEffectiveThinkingMode,
   getThinkingModeAvailability,
@@ -32,8 +33,10 @@ import {
   type ContentReference,
 } from '../../types/contentReference';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
+import QueuedMessagesTray from './QueuedMessagesTray';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
@@ -86,6 +89,7 @@ function ChatInterfaceV2({
   compact = false,
 }: ChatInterfaceProps) {
   const { t } = useTranslation('chat');
+  const { subscribe: contextSubscribe } = useWebSocket();
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
     useTasksSettings();
   const sessionIsReadOnly = isReadOnlySession(selectedSession);
@@ -206,6 +210,13 @@ function ChatInterfaceV2({
 
   const watchedSessionId = selectedSession?.id || currentSessionId || null;
   useSessionWatch({ sessionId: watchedSessionId, ws, sendMessage });
+  const inputQueue = useSessionInputQueue({
+    sessionId: watchedSessionId,
+    projectPath: selectedProject?.fullPath || selectedProject?.path,
+    ws,
+    sendMessage,
+    subscribe: subscribe || contextSubscribe,
+  });
 
   const {
     input,
@@ -253,9 +264,6 @@ function ChatInterfaceV2({
     handleGrantToolPermission,
     handleGrantSessionToolPermission,
     handleInputFocusChange,
-    isBusySendQueued,
-    isBusySendConfirmed,
-    cancelBusySendQueue,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -267,6 +275,8 @@ function ChatInterfaceV2({
     cycleRunMode,
     isLoading,
     canAbortSession,
+    inputQueuePaused: inputQueue.queueState.paused,
+    enqueuePreparedInput: inputQueue.enqueue,
     tokenBudget,
     thinkingModeAvailability,
     sendMessage,
@@ -384,6 +394,30 @@ function ChatInterfaceV2({
     handleAbortSession();
     setIsAbortPending(true);
   }, [canAbortSession, handleAbortSession, isAbortPending, isLoading]);
+
+  const handleResumeInputQueue = useCallback(() => {
+    void inputQueue.resume().then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.resumeFailed', { defaultValue: 'Failed to resume the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleSteerQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.steer(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.steerFailed', { defaultValue: 'The message remains queued.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleDeleteQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.remove(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.deleteFailed', { defaultValue: 'Failed to delete the queued message.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleMoveQueuedInputToFront = useCallback((itemId: string) => {
+    void inputQueue.moveToFront(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.moveFailed', { defaultValue: 'Failed to reorder the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
 
   const handleFork = useCallback(async (message: ChatMessage, _carriedPreview: number) => {
     if (isForkPending || isLoading || sessionIsReadOnly) return;
@@ -619,6 +653,16 @@ function ChatInterfaceV2({
     </div>
   ) : (
     <ComposerV2
+      queueTray={(
+        <QueuedMessagesTray
+          state={inputQueue.queueState}
+          isLoading={isLoading}
+          onResume={handleResumeInputQueue}
+          onSteer={handleSteerQueuedInput}
+          onDelete={handleDeleteQueuedInput}
+          onMoveToFront={handleMoveQueuedInputToFront}
+        />
+      )}
       input={input}
       placeholder={t('composer.placeholder', {
         defaultValue: 'Tell PilotDeck what you want to get done…',
@@ -644,7 +688,7 @@ function ChatInterfaceV2({
       }
       documentReferences={documentReferences}
       onRemoveDocumentReference={removeDocumentReference}
-        onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
+      onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
@@ -666,9 +710,8 @@ function ChatInterfaceV2({
       isLoading={isLoading}
       canAbortSession={canAbortSession}
       isAbortPending={isAbortPending}
-      isBusySendQueued={isBusySendQueued}
-      isBusySendConfirmed={isBusySendConfirmed}
-      onCancelBusySendQueue={cancelBusySendQueue}
+      isInputQueuePaused={inputQueue.queueState.paused}
+      onResumeInputQueue={handleResumeInputQueue}
       tokenBudget={tokenBudget}
       thinkingMode={thinkingMode}
       thinkingModeAvailability={thinkingModeAvailability}

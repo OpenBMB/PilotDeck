@@ -7,7 +7,8 @@ export type AgentLoopTransitionReason =
   | "max_turns"
   | "aborted_streaming"
   | "aborted_tools"
-  | "auto_compact";
+  | "auto_compact"
+  | "user_steer";
 
 export type AgentLoopTransition = {
   reason: AgentLoopTransitionReason;

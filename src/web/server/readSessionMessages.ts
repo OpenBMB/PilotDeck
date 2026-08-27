@@ -576,6 +576,12 @@ export function flattenCanonicalMessage(
     }
   }
   flushText();
+  const queueItemId = message.metadata?.queueItemId;
+  if (typeof queueItemId === "string" && queueItemId) {
+    for (const webMessage of out) {
+      webMessage.queueItemId = queueItemId;
+    }
+  }
   return out;
 }
 
