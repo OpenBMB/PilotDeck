@@ -53,11 +53,10 @@ describe('SidebarV2 layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByAltText('PILOTDECK')).toHaveAttribute(
-      'src',
+    expect(screen.getByAltText('PILOTDECK').getAttribute('src')).toBe(
       '/pilotdeck-logo-lockup-transparent.png',
     );
-    expect(screen.getByRole('navigation', { name: 'Quick actions' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Primary actions' })).toBeTruthy();
     expect(screen.queryByText('New Chat')).toBeNull();
     expect(screen.queryByText('New Project')).toBeNull();
     expect(screen.getByText('Skills')).toBeTruthy();

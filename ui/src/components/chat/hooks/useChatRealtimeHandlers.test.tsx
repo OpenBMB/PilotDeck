@@ -45,6 +45,47 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     });
   });
 
+  it('finalizes assistant streams when applied guidance creates a user boundary in the same run', () => {
+    const sessionStore = createSessionStore();
+    renderHook(() => useChatRealtimeHandlers({
+      provider,
+      selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
+      selectedSession: { id: 'web:s_test' } as unknown as ProjectSession,
+      currentSessionId: 'web:s_test',
+      setCurrentSessionId: noop,
+      setIsLoading: noop,
+      setSessionRuntimeState: noop,
+      activeRunId: 'run-1',
+      setActiveRunId: noop,
+      setCanAbortSession: noop,
+      setIsAborting: noop,
+      setClaudeStatus: noop,
+      setPilotDeckStatus: noop,
+      setTokenBudget: noop,
+      setPendingPermissionRequests: noop,
+      pendingViewSessionRef: { current: null },
+      sessionStore,
+    }));
+
+    act(() => {
+      mocks.listener?.({
+        kind: 'text',
+        role: 'user',
+        content: 'Adjust direction',
+        sessionId: 'web:s_test',
+        runId: 'run-1',
+        isSteer: true,
+      });
+    });
+
+    expect(sessionStore.finalizeStreamingThinking).toHaveBeenCalledWith('web:s_test', 'run-1');
+    expect(sessionStore.finalizeStreaming).toHaveBeenCalledWith('web:s_test', 'run-1');
+    expect(sessionStore.appendRealtime).toHaveBeenCalledWith(
+      'web:s_test',
+      expect.objectContaining({ role: 'user', isSteer: true }),
+    );
+  });
+
   it('cancels running subagents for a terminal agent_aborted frame', () => {
     const sessionStore = createSessionStore();
     const setSessionRuntimeState = vi.fn();
@@ -119,7 +160,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     expect(setSessionRuntimeState).toHaveBeenCalledWith('inactive');
   });
 
-  it('keeps subagents running and synchronizes status for a non-terminal force-start error', () => {
+  it('keeps subagents running and synchronizes status for a non-terminal session-busy error', () => {
     const sessionStore = createSessionStore();
     const setSessionRuntimeState = vi.fn();
     const setIsLoading = vi.fn();
@@ -150,8 +191,8 @@ describe('useChatRealtimeHandlers terminal errors', () => {
       mocks.listener?.({
         kind: 'error',
         sessionId: 'cron:task-1',
-        code: 'force_start_abort_failed',
-        content: 'The current turn may still be running.',
+        code: 'session_busy',
+        content: 'This session already has an active turn.',
         terminal: false,
       });
     });

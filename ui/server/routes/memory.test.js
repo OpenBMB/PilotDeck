@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

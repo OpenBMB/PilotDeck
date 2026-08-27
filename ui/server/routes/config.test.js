@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import express from 'express';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

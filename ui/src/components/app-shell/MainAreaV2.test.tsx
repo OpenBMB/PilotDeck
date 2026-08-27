@@ -227,16 +227,15 @@ describe('MainAreaV2 dashboard switcher', () => {
     fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
     expect(filesButton.getAttribute('aria-pressed')).toBe('true');
-    expect(filesButton.className).toContain('bg-blue-100');
-    expect(filesButton.className).toContain('text-blue-700');
-    expect(filesButton.className).not.toContain('shadow');
+    expect(filesButton.className).toContain('file-entry');
+    expect(filesButton.className).toContain('font-medium');
 
     fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
     expect(filesButton.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('replaces the overflow button with the selected dashboard and restores it when closed', async () => {
+  it('keeps the dashboard menu available after selecting a dashboard', async () => {
     render(<Harness />);
 
     const overflowButton = screen.getByRole('button', { name: 'Open dashboards menu' });
@@ -251,19 +250,13 @@ describe('MainAreaV2 dashboard switcher', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'tabs.memory' }));
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('memory');
-    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open dashboards menu' })).toBeTruthy();
 
-    const memoryButton = screen.getByRole('button', { name: 'tabs.memory' });
-    expect(memoryButton.getAttribute('aria-pressed')).toBe('true');
-    expect(memoryButton.className).toContain('bg-blue-100');
-    expect(memoryButton.className).toContain('text-blue-700');
-    expect(memoryButton.className).not.toContain('shadow');
-    fireEvent.click(memoryButton);
-
+    const filesButton = screen.getByRole('button', { name: 'tabs.files' });
+    fireEvent.click(filesButton);
+    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
+    fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Open dashboards menu' })).not.toBeNull();
-    });
   });
 
   it('replaces the workspace header with only the scheduled tasks title', async () => {

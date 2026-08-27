@@ -15,7 +15,7 @@ import type {
   CronUpdateInput,
   CronUpdateResult,
 } from "../../cron/protocol/types.js";
-import type { CanonicalUsage } from "../../model/index.js";
+import type { CanonicalMessage, CanonicalUsage } from "../../model/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 import type { SessionInfo as ProjectSessionInfo } from "../../session/index.js";
 import type {
@@ -129,6 +129,32 @@ export type GatewaySubmitTurnInput = {
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
 };
 
+export type GatewaySteerTurnInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+  message: string;
+  projectKey?: string;
+  attachments?: ChannelAttachment[];
+  uploadedAttachments?: UploadedAttachmentRef[];
+};
+
+export type GatewaySteerTurnResult = {
+  accepted: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "turn_closing" | "cancelled";
+};
+
+export type GatewayCancelSteerInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+};
+
+export type GatewayCancelSteerResult = {
+  cancelled: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "too_late";
+};
+
 export type GatewayRecordAgentStatusMessageInput = {
   sessionKey: string;
   turnId: string;
@@ -147,6 +173,8 @@ type GatewayTurnScopedEventMetadata = {
 export type GatewayEvent = GatewayTurnScopedEventMetadata & (
   | { type: "turn_started"; runId: string }
   | { type: "input_accepted"; runId: string }
+  | { type: "steer_applied"; itemId: string; message: CanonicalMessage }
+  | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_request_started"; model?: string; provider?: string }
   | {
       type: "model_selection_changed";
@@ -536,6 +564,8 @@ export type AlwaysOnRerunPlanResult = {
 
 export interface Gateway {
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent>;
+  steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
+  cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult>;
   abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void>;
   listSessions(input: ListSessionsInput): Promise<ListSessionsResult>;
   resumeSession(input: { sessionKey: string }): Promise<{ sessionKey: string }>;

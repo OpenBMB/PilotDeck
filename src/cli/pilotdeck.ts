@@ -774,6 +774,8 @@ function createFallbackGateway(): Gateway {
   }
   return {
     submitTurn: errorStream,
+    steerTurn: async () => ({ accepted: false, reason: "no_active_turn" }),
+    cancelSteer: async () => ({ cancelled: false, reason: "no_active_turn" }),
     abortTurn: async () => undefined,
     listSessions: async () => ({ sessions: [] }),
     resumeSession: async (input) => input,

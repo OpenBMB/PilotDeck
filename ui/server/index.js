@@ -76,7 +76,15 @@ import {
     getRouterStatsSummary,
     getPilotDeckGateway,
     registerAlwaysOnNotificationForwarding,
+    registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
+    getInputQueueStateViaGateway,
+    enqueueInputViaGateway,
+    deleteQueuedInputViaGateway,
+    moveQueuedInputToFrontViaGateway,
+    pauseInputQueueViaGateway,
+    resumeInputQueueViaGateway,
+    steerQueuedInputViaGateway,
 } from './pilotdeck-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
@@ -220,6 +228,10 @@ function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) 
         client.send(payload);
     });
 }
+
+registerSessionInputNotificationForwarding((sessionId, frame) => {
+    broadcastToSessionWatchers(sessionId, frame, undefined);
+});
 
 // Broadcast progress to all connected WebSocket clients
 function broadcastProgress(progress) {
@@ -2463,6 +2475,8 @@ function handleChatConnection(ws, request) {
             if (data.type === 'watch-session') {
                 if (requestSessionId) {
                     sessionWatchRegistry.watch(requestSessionId, ws);
+                    const queueState = await getInputQueueStateViaGateway(requestSessionId, data.options || {});
+                    if (queueState) writer.send(queueState);
                 }
                 return;
             }
@@ -2509,6 +2523,68 @@ function handleChatConnection(ws, request) {
                 }
                 const providerHint = data.options?.providerHint || data.type.replace('-command', '');
                 await runChatViaGateway(data.command, data.options, streamWriter, providerHint);
+            } else if (data.type === 'get-input-queue') {
+                const queueState = await getInputQueueStateViaGateway(requestSessionId, data.options || {});
+                if (queueState) writer.send(queueState);
+            } else if (data.type === 'queue-input') {
+                const result = await enqueueInputViaGateway(
+                    requestSessionId,
+                    data.item,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'enqueue',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'delete-queued-input') {
+                const result = await deleteQueuedInputViaGateway(requestSessionId, data.itemId, streamWriter);
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'delete',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'move-queued-input') {
+                const result = moveQueuedInputToFrontViaGateway(requestSessionId, data.itemId, streamWriter);
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'move',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'steer-queued-input') {
+                const result = await steerQueuedInputViaGateway(
+                    requestSessionId,
+                    data.itemId,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'steer',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'resume-input-queue') {
+                const result = await resumeInputQueueViaGateway(
+                    requestSessionId,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'resume',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
             } else if (data.type === 'regenerate-last-message') {
                 const sessionId = normalizeSessionId(data.sessionId || data.options?.sessionId);
                 const requestId = typeof data.requestId === 'string' ? data.requestId : null;
@@ -2534,6 +2610,7 @@ function handleChatConnection(ws, request) {
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
                 const provider = data.provider || 'pilotdeck';
+                pauseInputQueueViaGateway(data.sessionId, streamWriter, 'user_stopped');
                 const success = await abortViaGateway(data.sessionId, provider);
                 writer.send(createNormalizedMessage({ kind: 'complete', exitCode: success ? 0 : 1, aborted: true, success, sessionId: data.sessionId, provider }));
             } else if (data.type === 'permission-response') {
@@ -2593,7 +2670,12 @@ function handleChatConnection(ws, request) {
                     sessionWatchRegistry.watch(sessionId, ws);
                 }
                 const includeActiveTurnMessages = data.includeActiveTurnMessages !== false;
-                const activity = await getSessionActivityViaGateway(sessionId, data.provider || 'pilotdeck', includeActiveTurnMessages);
+                const activity = await getSessionActivityViaGateway(
+                    sessionId,
+                    data.provider || 'pilotdeck',
+                    includeActiveTurnMessages,
+                    streamWriter,
+                );
                 writer.send({
                     type: 'session-status',
                     sessionId,

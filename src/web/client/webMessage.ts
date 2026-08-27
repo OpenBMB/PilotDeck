@@ -105,6 +105,8 @@ export type WebMessage = {
   kind: WebMessageKind;
   /** Logical agent turn that owns this message. Stable across live/history projections. */
   turnId?: string;
+  /** Stable queued-input identity, used to reconcile recovered in-flight guidance. */
+  queueItemId?: string;
   /** Transcript ordering sequence for deterministic history reconciliation. */
   sequence?: number;
   toolCallId?: string;

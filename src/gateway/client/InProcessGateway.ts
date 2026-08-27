@@ -29,6 +29,10 @@ import type {
   GatewaySessionPermissionGrantInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
@@ -723,6 +727,48 @@ export class InProcessGateway implements Gateway {
     }
   }
 
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
+
+    const uploaded = input.uploadedAttachments?.length
+      ? await this.resolveUploadedAttachments(input)
+      : [];
+    const attachments = [...(input.attachments ?? []), ...uploaded];
+    const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
+    const agentInput = await buildAgentInputWithAttachments(
+      input.message,
+      attachments,
+      allowedReadFiles,
+      input.projectKey,
+      this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
+    );
+    const message: CanonicalMessage = {
+      role: "user",
+      content: agentInput.type === "text"
+        ? [{ type: "text", text: agentInput.text }]
+        : agentInput.content,
+      metadata: { purpose: "mid_turn_steer", queueItemId: input.itemId },
+    };
+    return this.router.steer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+      message,
+      allowedReadFiles,
+    });
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { cancelled: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { cancelled: false, reason: "turn_mismatch" };
+    return this.router.cancelSteer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+    });
+  }
+
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
     const reason = input.reason ?? (input.runId ? `aborted:${input.runId}` : "aborted");
     await this.router.abort(input.sessionKey, reason);
@@ -849,7 +895,7 @@ export class InProcessGateway implements Gateway {
     this.transcriptWriteReservations.add(sessionKey);
   }
 
-  private async resolveUploadedAttachments(input: GatewaySubmitTurnInput): Promise<ChannelAttachment[]> {
+  private async resolveUploadedAttachments(input: Pick<GatewaySubmitTurnInput, "projectKey" | "uploadedAttachments">): Promise<ChannelAttachment[]> {
     if (!input.projectKey) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploaded attachments.");
     if (!this.options.resolveUploadedAttachments) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Uploaded attachments are unavailable.");
     return this.options.resolveUploadedAttachments({ projectKey: input.projectKey, uploads: input.uploadedAttachments ?? [] });
@@ -1808,6 +1854,10 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{ type: "turn_started", runId }];
     case "input_accepted":
       return [{ type: "input_accepted", runId }];
+    case "steer_applied":
+      return [{ type: "steer_applied", itemId: event.itemId, message: event.message }];
+    case "steer_unapplied":
+      return [{ type: "steer_unapplied", itemId: event.itemId, reason: event.reason }];
     case "model_request_started":
       return [{ type: "model_request_started", model: event.model, provider: event.provider }];
     case "model_event":

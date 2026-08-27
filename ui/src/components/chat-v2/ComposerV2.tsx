@@ -19,6 +19,7 @@ import {
   Loader2,
   File,
   Folder,
+  Play,
   Plus,
   Search,
   ShieldAlert,
@@ -55,6 +56,7 @@ import {
 } from "./modelCapabilityOptions";
 import DocumentReferenceChip from "./DocumentReferenceChip";
 import ReplyQuoteChip from "./ReplyQuoteChip";
+import { getComposerPrimaryAction } from "./composerPrimaryAction";
 
 interface MentionableFile {
   id?: string;
@@ -147,9 +149,8 @@ export type ComposerV2Props = {
   isLoading: boolean;
   canAbortSession: boolean;
   isAbortPending?: boolean;
-  isBusySendQueued?: boolean;
-  isBusySendConfirmed?: boolean;
-  onCancelBusySendQueue?: () => void;
+  isInputQueuePaused?: boolean;
+  onResumeInputQueue?: () => void;
   isSubmitPending?: boolean;
   modelCatalog: ChatModelCatalogItem[];
   modelSelection: ChatModelSelection | null;
@@ -182,6 +183,7 @@ export type ComposerV2Props = {
 
   chromeless?: boolean;
   compact?: boolean;
+  queueTray?: ReactNode;
 };
 
 type ContextStatus = {
@@ -491,9 +493,8 @@ export default function ComposerV2({
   isLoading,
   canAbortSession,
   isAbortPending = false,
-  isBusySendQueued = false,
-  isBusySendConfirmed = false,
-  onCancelBusySendQueue,
+  isInputQueuePaused = false,
+  onResumeInputQueue,
   isSubmitPending = false,
   modelCatalog,
   modelSelection,
@@ -511,6 +512,7 @@ export default function ComposerV2({
   onPlanExecutionApproved,
   chromeless = false,
   compact = false,
+  queueTray,
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
@@ -590,26 +592,21 @@ export default function ComposerV2({
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
   const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
-  const showAbortButton = isLoading && canAbortSession && !hasDraftContent;
+  const primaryAction = getComposerPrimaryAction({
+    isLoading,
+    isInputQueuePaused,
+    hasDraftContent,
+  });
   const sendTitle =
     hasUploadingImages
       ? (t("input.uploading", { defaultValue: "正在上传..." }) as string)
       : isSubmitPending
       ? (t("input.sending", { defaultValue: "Sending..." }) as string)
-      : isBusySendConfirmed
-        ? (t("input.queuedSendConfirmed", {
-            defaultValue: "Stopping current turn — sending next message",
-          }) as string)
-        : isBusySendQueued
-          ? (t("input.queuedSendConfirm", {
-              defaultValue:
-                "Queued — click send again to stop this turn and send now",
-            }) as string)
-          : isLoading
-            ? (t("input.queueSend", {
-                defaultValue: "Queue message",
-              }) as string)
-            : (t("input.send", { defaultValue: "Send" }) as string);
+      : isInputQueuePaused && !hasDraftContent
+        ? (t("inputQueue.resume", { defaultValue: "Continue" }) as string)
+      : isLoading
+        ? (t("input.queueSend", { defaultValue: "Queue message" }) as string)
+        : (t("input.send", { defaultValue: "Send" }) as string);
   const selectedPermissionOption =
     PERMISSION_MODE_OPTIONS.find((option) => option.mode === permissionMode) ||
     PERMISSION_MODE_OPTIONS[0];
@@ -671,6 +668,7 @@ export default function ComposerV2({
       )}
     >
       <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[860px]")}>
+        {queueTray}
         {pendingPermissionRequests.length > 0 ? (
           <div className="mb-3">
             <PermissionRequestsBanner
@@ -1358,35 +1356,6 @@ export default function ComposerV2({
                   })}
                 </div>
 
-                {isBusySendQueued ? (
-                  <div className="hidden min-w-0 flex-1 items-center justify-end gap-1 px-2 text-[12px] text-amber-700 dark:text-amber-300 sm:flex">
-                    <span className="truncate rounded-full bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
-                      {isBusySendConfirmed
-                        ? t("input.queuedSendConfirmedInline", {
-                            defaultValue: "Stopping current turn; sending next",
-                          })
-                        : t("input.queuedSendConfirmInline", {
-                            defaultValue:
-                              "Queued; click again to stop this turn and send now",
-                          })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={onCancelBusySendQueue}
-                      className="rounded-full px-2 py-1 text-amber-700 transition hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                      title={
-                        t("input.cancelQueuedSend", {
-                          defaultValue: "Cancel queued message",
-                        }) as string
-                      }
-                    >
-                      {t("input.cancelQueuedSendShort", {
-                        defaultValue: "Cancel",
-                      })}
-                    </button>
-                  </div>
-                ) : null}
-
                 <div
                   className={cn(
                     "pd-composer-toolbar-right ml-auto flex shrink-0 items-center gap-3",
@@ -1729,11 +1698,11 @@ export default function ComposerV2({
                     ) : null}
                   </div>
 
-                  {showAbortButton ? (
+                  {primaryAction === "stop" ? (
                     <button
                       type="button"
                       onClick={onAbortSession}
-                      disabled={isAbortPending}
+                      disabled={isAbortPending || !canAbortSession}
                       className={cn(
                         "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600",
                         isAbortPending &&
@@ -1762,55 +1731,52 @@ export default function ComposerV2({
                         />
                       )}
                     </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    disabled={disabled}
-                    aria-label={sendTitle}
-                    aria-busy={
-                      isSubmitPending ||
-                      hasUploadingImages ||
-                      isBusySendConfirmed
-                    }
-                    className={cn(
-                      "home-send-button disabled:opacity-40",
-                      isBusySendQueued &&
-                        "bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-400 dark:text-neutral-950 dark:hover:bg-amber-300",
-                      isBusySendConfirmed && "cursor-wait",
-                      (isSubmitPending || hasUploadingImages) && "cursor-wait",
-                    )}
-                    title={sendTitle}
-                  >
-                    {isSubmitPending || hasUploadingImages ? (
-                      <Loader2
-                        className="h-4 w-4 animate-spin"
-                        strokeWidth={2.25}
-                      />
-                    ) : isBusySendConfirmed ? (
-                      <Loader2
-                        className="h-4 w-4 animate-spin"
-                        strokeWidth={2.25}
-                      />
-                    ) : isBusySendQueued ? (
-                      <Check className="h-4 w-4" strokeWidth={2.25} />
-                    ) : (
-                      <svg
-                        aria-hidden="true"
-                        className="icon"
-                        fill="none"
-                        height="18"
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="1.8"
-                        viewBox="0 0 24 24"
-                        width="18"
-                      >
-                        <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
-                        <path d="m21.854 2.147-10.94 10.939" />
-                      </svg>
-                    )}
-                  </button>
+                  ) : primaryAction === "resume" ? (
+                    <button
+                      type="button"
+                      onClick={onResumeInputQueue}
+                      className="home-send-button"
+                      aria-label={sendTitle}
+                      title={sendTitle}
+                    >
+                      <Play className="h-4 w-4" fill="currentColor" strokeWidth={2} />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={disabled}
+                      aria-label={sendTitle}
+                      aria-busy={isSubmitPending || hasUploadingImages}
+                      className={cn(
+                        "home-send-button disabled:opacity-40",
+                        (isSubmitPending || hasUploadingImages) && "cursor-wait",
+                      )}
+                      title={sendTitle}
+                    >
+                      {isSubmitPending || hasUploadingImages ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          strokeWidth={2.25}
+                        />
+                      ) : (
+                        <svg
+                          aria-hidden="true"
+                          className="icon"
+                          fill="none"
+                          height="18"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.8"
+                          viewBox="0 0 24 24"
+                          width="18"
+                        >
+                          <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+                          <path d="m21.854 2.147-10.94 10.939" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
