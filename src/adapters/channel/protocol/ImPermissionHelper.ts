@@ -11,6 +11,7 @@ export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
   private readonly nextPrompts = new Map<string, string>();
   private readonly answering = new Set<string>();
+  private readonly generations = new Map<string, number>();
 
   capture(chatId: string, sessionKey: string, event: GatewayEvent & { type: "permission_request" }): string | undefined {
     const entries = this.pending.get(chatId) ?? [];
@@ -34,6 +35,10 @@ export class ImPermissionHelper {
     return (this.pending.get(chatId)?.length ?? 0) > 0;
   }
 
+  isAnswering(chatId: string): boolean {
+    return this.answering.has(chatId);
+  }
+
   takeNextPrompt(chatId: string): string | undefined {
     const prompt = this.nextPrompts.get(chatId);
     this.nextPrompts.delete(chatId);
@@ -51,6 +56,7 @@ export class ImPermissionHelper {
     }
 
     this.answering.add(chatId);
+    const generation = this.generations.get(chatId) ?? 0;
     const entry = entries.shift();
     if (!entry) {
       this.answering.delete(chatId);
@@ -67,6 +73,7 @@ export class ImPermissionHelper {
         ...(deny ? { reason: "User denied permission from IM channel." } : {}),
         ...(!deny ? { remember: trimmed === "2" } : {}),
       });
+      if ((this.generations.get(chatId) ?? 0) !== generation) return undefined;
       if (entries.length > 0) this.nextPrompts.set(chatId, formatPermissionPrompt(entries[0]!));
       if (trimmed === "0") return "已拒绝，继续处理。";
       if (trimmed === "2") return "已允许本会话，继续执行。";
@@ -77,6 +84,7 @@ export class ImPermissionHelper {
   }
 
   clear(chatId: string): void {
+    this.generations.set(chatId, (this.generations.get(chatId) ?? 0) + 1);
     this.pending.delete(chatId);
     this.nextPrompts.delete(chatId);
     this.answering.delete(chatId);

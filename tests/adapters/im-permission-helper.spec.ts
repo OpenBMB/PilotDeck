@@ -98,3 +98,24 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   assert.deepEqual(decisions, ["request-1"]);
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
 });
+
+test("ImPermissionHelper does not resurrect a prompt after clear", async () => {
+  const helper = new ImPermissionHelper();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gateway = {
+    permissionDecide: async () => {
+      await gate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  helper.capture("chat-1", "old-session", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  const answer = helper.answer("chat-1", "1", gateway);
+  helper.clear("chat-1");
+  release();
+  assert.equal(await answer, undefined);
+  assert.equal(helper.takeNextPrompt("chat-1"), undefined);
+  assert.equal(helper.hasPending("chat-1"), false);
+});

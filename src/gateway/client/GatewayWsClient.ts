@@ -184,6 +184,9 @@ export class GatewayWsClient {
         stream.push(frame.event);
         return;
       }
+      if (frame.event.type === "error") {
+        stream.push(frame.event);
+      }
       this.streams.delete(frame.id);
       stream.close();
     }

@@ -438,7 +438,7 @@ export class WeixinChannel implements ChannelAdapter {
       return;
     }
 
-    if (this.permissions.hasPending(fromUser) && this.gateway) {
+    if ((this.permissions.hasPending(fromUser) || this.permissions.isAnswering(fromUser)) && this.gateway) {
       try {
         const trimmed = text.trim();
         const confirmation = await this.permissions.answer(fromUser, text, this.gateway);

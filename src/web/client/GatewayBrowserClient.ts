@@ -369,10 +369,13 @@ export class GatewayBrowserClient {
         stream.push(frame.event);
         return;
       }
+      if (frame.event.type === "error") {
+        stream.push(frame.event);
+      }
       // `final: true` is a synthetic stream-end marker emitted by
       // `GatewayWsConnection`. The real `turn_completed` (if any) was
       // already pushed by the agent stream above. Dropping the synthetic
-      // payload prevents double-rendering — see
+      // payload prevents double-rendering of normal completion — see
       // docs/old-ui-adaptation/01-old-ui-current-state/03-data-protocols-and-state.md
       // §175.
       this.streams.delete(frame.id);
