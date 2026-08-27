@@ -555,7 +555,7 @@ type ModelSelectionChangedEvent = {
 
 其余事件沿用现有 `turn_started`、`permission_request`、`assistant_text_delta`、`assistant_thinking_delta`、`tool_call_started`、`tool_call_finished`、`turn_completed` 和 `error`。
 
-当 `submit_turn` 流自然结束但未收到 `turn_completed` 时，WebSocket 会以 `final: true` 发送 `error` 事件，不会伪造成功的 `turn_completed`：
+当 `submit_turn` 流自然结束但未收到 `turn_completed`，或提交过程抛出异常时，WebSocket 都会以 `final: true` 发送 `error` 事件并终止流，不会伪造成功的 `turn_completed`。自然结束和异常提交分别使用以下错误码：
 
 ```ts
 type IncompleteGatewayStreamError = {
@@ -563,6 +563,15 @@ type IncompleteGatewayStreamError = {
   code: "gateway_stream_ended_without_completion";
   message: string;
   recoverable: true;
+  runId?: string;
+};
+
+type GatewaySubmitFailedError = {
+  type: "error";
+  code: "gateway_submit_failed";
+  message: string;
+  recoverable: true;
+  runId?: string;
 };
 ```
 
@@ -581,6 +590,7 @@ type IncompleteGatewayStreamError = {
 | `UPLOAD_STREAM_INTERRUPTED` | 400 | 上传流意外中断 |
 | `ATTACHMENT_EXPIRED` | 410 | 附件已过期 |
 | `gateway_stream_ended_without_completion` | 事件 | Gateway 流结束时未收到 `turn_completed` |
+| `gateway_submit_failed` | 事件 | `submit_turn` 执行过程中抛出异常，Gateway 以错误事件终止流 |
 | `INVALID_PERMISSION_MODE` | 400 | 权限模式非法 |
 | `INVALID_MODEL_OVERRIDE` | 400 | 模型不存在或不可用 |
 | `UNSUPPORTED_MODEL_PARAMETER` | 422 | 模型参数不受支持或超出范围 |

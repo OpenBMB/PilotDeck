@@ -205,7 +205,7 @@ type UploadedAttachmentRef = {
 3. bypass 仅在调用方具备能力且用户明确选择时允许。
 4. 生效模式写入 turn metadata；会话恢复不继承下一轮临时覆盖。
 
-权限请求继续使用现有 `permission_request` / `permission_decide` 事件和 RPC。
+权限请求继续使用现有 `permission_request` / `permission_decide` 事件和 RPC。`submit_turn` 流自然结束但未收到 `turn_completed` 时使用 `gateway_stream_ended_without_completion` 终止；提交过程抛出异常时使用 `gateway_submit_failed` 终止。两种 terminal error 均保留可选 `runId`。
 
 ## 9. 模型目录与会话覆盖
 
