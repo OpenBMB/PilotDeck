@@ -99,9 +99,18 @@ function convertSingleMessage(
 
       if (msg.role === 'user') {
         const userImages = Array.isArray(msg.images)
-          ? msg.images
-              .filter((d) => typeof d === 'string' && d.length > 0)
-              .map((d) => ({ data: d, name: '' }))
+          ? msg.images.flatMap((image) => {
+              if (typeof image === 'string') {
+                return image.length > 0 ? [{ data: image, name: '' }] : [];
+              }
+              if (!image || typeof image.data !== 'string' || image.data.length === 0) return [];
+              return [{
+                data: image.data,
+                name: typeof image.name === 'string' ? image.name : '',
+                ...(typeof image.mimeType === 'string' ? { mimeType: image.mimeType } : {}),
+                ...(typeof image.size === 'number' ? { size: image.size } : {}),
+              }];
+            })
           : undefined;
         if (!content.trim() && userAttachments.length === 0 && (!userImages || userImages.length === 0)) return null;
         return {
