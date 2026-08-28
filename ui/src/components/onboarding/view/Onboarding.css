@@ -57,7 +57,7 @@
   --surface: #ffffff;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: 64px 1fr;
+  grid-template-rows: 1fr;
   color: var(--ink);
   background:
     radial-gradient(circle at 10% 12%, rgb(246, 243, 255) 0px, transparent 28%),
@@ -66,6 +66,10 @@
   font-synthesis: none;
   text-rendering: optimizelegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+.onboarding-shell.prototype-shell {
+  padding-top: 64px;
 }
 
 .onboarding-shell *,
@@ -260,10 +264,11 @@
 
 .onboarding-shell .privacy-note {
   display: flex;
-  gap: 12px;
-  padding: 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid rgb(217, 220, 242);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--sidebar-2);
   box-shadow: rgba(83, 86, 151, 0.05) 0 8px 20px;
 }
@@ -273,20 +278,9 @@
   color: rgb(67, 169, 140);
 }
 
-.onboarding-shell .privacy-note strong,
-.onboarding-shell .privacy-note span {
-  display: block;
-}
-
 .onboarding-shell .privacy-note strong {
   font-size: 13px;
-  margin-bottom: 5px;
-}
-
-.onboarding-shell .privacy-note span {
-  color: rgb(116, 124, 155);
-  font-size: 11px;
-  line-height: 1.55;
+  line-height: 1.3;
 }
 
 .onboarding-shell .setup-content {
@@ -551,7 +545,8 @@
 .onboarding-shell .radio-dot {
   position: absolute;
   right: 10px;
-  top: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 18px;
   height: 18px;
   border: 1px solid rgb(211, 216, 226);
@@ -649,11 +644,13 @@
 }
 
 .onboarding-shell .connection-form {
-  flex: 0 0 auto;
+  flex: 1;
+  min-height: 0;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 15px;
   background: rgb(255, 255, 255);
@@ -739,6 +736,13 @@
   cursor: pointer;
 }
 
+.onboarding-shell .protocol-select:focus,
+.onboarding-shell .protocol-select:focus-visible {
+  outline: none;
+  border-color: rgb(223, 227, 234);
+  box-shadow: none;
+}
+
 .onboarding-shell span.select-control {
   cursor: default;
 }
@@ -805,8 +809,12 @@
 
 .onboarding-shell .model-id-fieldset {
   min-width: 0;
+  min-height: 0;
+  flex: 1;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
   border: 0;
 }
 
@@ -821,6 +829,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  flex: 1;
 }
 
 .onboarding-shell .model-id-section {
@@ -832,6 +842,10 @@
 }
 
 .onboarding-shell .model-id-section.available {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
   border-top: 1px solid var(--line);
 }
 
@@ -843,14 +857,69 @@
   line-height: 16px;
 }
 
+.onboarding-shell .model-id-available-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.onboarding-shell .model-id-search {
+  position: relative;
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px 0 34px;
+  border: 1px solid rgb(223, 227, 234);
+  border-radius: 9px;
+  background: rgb(255, 255, 255);
+  color: rgb(138, 147, 165);
+}
+
+.onboarding-shell .model-id-search svg {
+  position: absolute;
+  left: 11px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.onboarding-shell .connection-page .model-id-search input {
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  appearance: none;
+  font-weight: 450;
+}
+
+.onboarding-shell .connection-page .model-id-search input:hover,
+.onboarding-shell .connection-page .model-id-search input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.onboarding-shell .model-id-search input::placeholder {
+  color: rgb(154, 161, 176);
+}
+
 .onboarding-shell .model-id-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   align-content: flex-start;
-  gap: 9px;
+  gap: 10px 12px;
   min-width: 0;
-  padding: 4px 10px 4px 2px;
+  padding: 8px 10px 8px 6px;
 }
 
 .onboarding-shell .model-id-section:not(.available) .model-id-chips {
@@ -859,7 +928,8 @@
 }
 
 .onboarding-shell .model-id-section.available .model-id-chips {
-  max-height: 90px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -874,19 +944,34 @@
 
 .onboarding-shell .model-chip {
   position: relative;
-  min-width: 0;
+  width: 152px;
   max-width: 100%;
   min-height: 36px;
-  padding: 0 11px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   border-radius: 9px;
   background: rgb(251, 251, 255);
   color: rgb(44, 52, 65);
   font-size: 12px;
   font-weight: 550;
   line-height: 1.2;
+}
+
+.onboarding-shell .model-chip-label {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
 }
 
 .onboarding-shell .model-chip.selected {
@@ -895,44 +980,53 @@
 
 .onboarding-shell .model-chip.available {
   border: 1px solid var(--brand);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 550;
+}
+
+.onboarding-shell .model-chip.available .model-chip-label {
   cursor: pointer;
 }
 
-.onboarding-shell .model-chip.available:hover:not(:disabled) {
+.onboarding-shell .model-chip.available:hover:has(.model-chip-label:not(:disabled)) {
   background: var(--brand-soft);
 }
 
-.onboarding-shell .model-chip.available:disabled {
+.onboarding-shell .model-chip.available:has(.model-chip-label:disabled) {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.onboarding-shell .model-chip.selected button {
+.onboarding-shell .model-chip-remove {
   position: absolute;
   z-index: 1;
-  top: -6px;
-  right: -6px;
-  width: 14px;
-  height: 14px;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 0;
-  border-radius: 3px;
-  background: rgb(226, 74, 74);
-  color: rgb(255, 255, 255);
+  border: 1px solid rgb(211, 216, 226);
+  border-radius: 50%;
+  background: rgb(255, 255, 255);
+  color: rgb(62, 70, 86);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
-.onboarding-shell .model-chip.selected button:hover {
-  background: rgb(198, 54, 54);
+.onboarding-shell .model-chip:hover .model-chip-remove,
+.onboarding-shell .model-chip:focus-within .model-chip-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.onboarding-shell .model-chip-remove:hover {
+  border-color: rgb(180, 186, 200);
+  background: rgb(248, 249, 252);
 }
 
 .onboarding-shell .connection-page .model-chip-input {
-  width: auto;
-  min-width: 18ch;
+  width: 152px;
   max-width: 100%;
   height: 36px;
   padding: 0 11px;
@@ -942,11 +1036,13 @@
 }
 
 .onboarding-shell .add-model-button {
-  width: fit-content;
+  width: 152px;
+  max-width: 100%;
   min-height: 36px;
   padding: 0 11px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border: 1px dashed rgb(184, 188, 232);
   border-radius: 9px;
@@ -1467,16 +1563,8 @@
 }
 
 @media (max-width: 900px) {
-  .onboarding-shell {
-    grid-template-rows: 58px 1fr;
-  }
-
-  .onboarding-shell .topbar {
-    padding: 0 20px;
-  }
-
-  .onboarding-shell .brand-lockup {
-    width: 162px;
+  .onboarding-shell.prototype-shell {
+    padding-top: 58px;
   }
 
   .onboarding-shell .onboarding-frame {

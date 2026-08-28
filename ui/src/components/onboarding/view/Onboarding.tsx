@@ -5,7 +5,6 @@ import useLlmSetup from './hooks/useLlmSetup';
 import useOnboardingWorkspace from './hooks/useOnboardingWorkspace';
 import ConnectionStep from './subcomponents/ConnectionStep';
 import LanguageStep from './subcomponents/LanguageStep';
-import OnboardingTopbar from './subcomponents/OnboardingTopbar';
 import ProviderStep from './subcomponents/ProviderStep';
 import SetupSidebar from './subcomponents/SetupSidebar';
 import WorkspaceStep from './subcomponents/WorkspaceStep';
@@ -80,7 +79,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   return (
     <main className="onboarding-shell prototype-shell desktop-prototype-shell" data-platform="desktop">
-      <OnboardingTopbar />
       <section className="onboarding-frame" aria-live="polite">
         <SetupSidebar currentStep={currentStep} />
         <div className="setup-content">

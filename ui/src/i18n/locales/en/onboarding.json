@@ -3,8 +3,7 @@
   "sidebar": {
     "kicker": "First-time setup",
     "title": "Prepare your AI workspace",
-    "privacyTitle": "Your setup stays local",
-    "privacyBody": "PilotDeck never uploads your API key to the cloud."
+    "privacyTitle": "Your setup stays local"
   },
   "steps": {
     "language": "Language",
@@ -57,7 +56,9 @@
     "availableModels": "Available models",
     "noSelectedModels": "None",
     "addModelId": "Add model ID",
+    "searchModelId": "Search model ID",
     "removeModelId": "Remove model ID",
+    "hideAvailableModelId": "Remove from available",
     "fetchingModels": "Fetching remote model list...",
     "openaiUrlHint": "OpenAI-compatible base URLs should include the API version path, for example ending in /v1.",
     "responsesUrlHint": "OpenAI Responses API base URLs should include the API version path, for example ending in /v1.",

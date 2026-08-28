@@ -251,4 +251,26 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
     expect(screen.getByRole('button', { name: 'my-custom-model' })).toBeTruthy();
   });
+
+  it('places add model first, filters available models, and can hide a candidate', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    const addButton = await screen.findByRole('button', { name: 'Add model ID' });
+    expect(addButton.parentElement?.firstElementChild).toBe(addButton);
+
+    fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: 'flash' } });
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from available deepseek-v4-pro' }));
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+  });
 });
+

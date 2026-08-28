@@ -38,10 +38,7 @@ export default function SetupSidebar({ currentStep }: SetupSidebarProps) {
       </div>
       <div className="privacy-note">
         <ShieldCheckIcon />
-        <div>
-          <strong>{t('sidebar.privacyTitle')}</strong>
-          <span>{t('sidebar.privacyBody')}</span>
-        </div>
+        <strong>{t('sidebar.privacyTitle')}</strong>
       </div>
     </aside>
   );

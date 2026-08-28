@@ -17,6 +17,7 @@ import {
   PlugIcon,
   WarningCircleFillIcon,
   PlusIcon,
+  MagnifyingGlassIcon,
   WarningIcon,
 } from './icons';
 
@@ -26,15 +27,63 @@ type ConnectionStepProps = {
   onContinue: () => void | Promise<void>;
 };
 
-function modelIdInputWidth(value: string) {
-  return `${Math.max(18, value.length + 2)}ch`;
+type ModelChipProps = {
+  modelId: string;
+  variant: 'selected' | 'available';
+  title: string;
+  removeLabel: string;
+  onRemove: () => void;
+  onSelect?: () => void;
+  selectDisabled?: boolean;
+};
+
+function ModelChip({
+  modelId,
+  variant,
+  title,
+  removeLabel,
+  onRemove,
+  onSelect,
+  selectDisabled,
+}: ModelChipProps) {
+  return (
+    <span className={`model-chip ${variant}`} title={title}>
+      {variant === 'available' ? (
+        <button
+          className="model-chip-label"
+          type="button"
+          onClick={onSelect}
+          disabled={selectDisabled}
+        >
+          {modelId}
+        </button>
+      ) : (
+        <span className="model-chip-label">{modelId}</span>
+      )}
+      <button
+        className="model-chip-remove"
+        type="button"
+        aria-label={removeLabel}
+        title={removeLabel}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onRemove();
+        }}
+      >
+        <CloseIcon width={8} height={8} />
+      </button>
+    </span>
+  );
 }
 
 export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionStepProps) {
   const { t } = useTranslation('onboarding');
   const [showApiKey, setShowApiKey] = useState(false);
   const [extraAvailableIds, setExtraAvailableIds] = useState<string[]>([]);
+  const [hiddenAvailableIds, setHiddenAvailableIds] = useState<string[]>([]);
   const [draftAvailableId, setDraftAvailableId] = useState<string | null>(null);
+  const [modelQuery, setModelQuery] = useState('');
 
   const providerName = llm.isCustomMode
     ? t('provider.customTitle')
@@ -45,7 +94,9 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
 
   useEffect(() => {
     setExtraAvailableIds([]);
+    setHiddenAvailableIds([]);
     setDraftAvailableId(null);
+    setModelQuery('');
   }, [llm.effectiveProviderId, llm.effectiveProtocol, llm.effectiveUrl]);
 
   const handleFieldChange = (updater: () => void) => {
@@ -55,10 +106,18 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
 
   const selectedIds = llm.effectiveModelIds;
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const hiddenIdSet = useMemo(() => new Set(hiddenAvailableIds), [hiddenAvailableIds]);
   const availableIds = useMemo(() => {
     const fromProvider = llm.selectedModels.map((model) => model.id);
-    return uniqueModelIds([...fromProvider, ...extraAvailableIds]).filter((id) => !selectedIdSet.has(id));
-  }, [extraAvailableIds, llm.selectedModels, selectedIdSet]);
+    return uniqueModelIds([...fromProvider, ...extraAvailableIds]).filter(
+      (id) => !selectedIdSet.has(id) && !hiddenIdSet.has(id),
+    );
+  }, [extraAvailableIds, hiddenIdSet, llm.selectedModels, selectedIdSet]);
+  const filteredAvailableIds = useMemo(() => {
+    const query = modelQuery.trim().toLowerCase();
+    if (!query) return availableIds;
+    return availableIds.filter((id) => id.toLowerCase().includes(query));
+  }, [availableIds, modelQuery]);
 
   const modelTitle = (modelId: string) => (
     llm.selectedModels.find((model) => model.id === modelId)?.displayName || modelId
@@ -73,13 +132,20 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
     if (!inProviderList) {
       setExtraAvailableIds((current) => (current.includes(modelId) ? current : [...current, modelId]));
     }
+    setHiddenAvailableIds((current) => current.filter((id) => id !== modelId));
     llm.deselectModelId(modelId);
+  };
+
+  const hideAvailableModel = (modelId: string) => {
+    setExtraAvailableIds((current) => current.filter((id) => id !== modelId));
+    setHiddenAvailableIds((current) => (current.includes(modelId) ? current : [...current, modelId]));
   };
 
   const commitDraftAvailableId = () => {
     const nextId = draftAvailableId?.trim() ?? '';
     setDraftAvailableId(null);
     if (!nextId || selectedIdSet.has(nextId)) return;
+    setHiddenAvailableIds((current) => current.filter((id) => id !== nextId));
     if (selectedIds.length >= MAX_ONBOARDING_MODELS) {
       setExtraAvailableIds((current) => (current.includes(nextId) ? current : [...current, nextId]));
       return;
@@ -194,68 +260,78 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                     <span className="model-id-empty">{t('connection.noSelectedModels')}</span>
                   ) : (
                     selectedIds.map((modelId) => (
-                      <span className="model-chip selected" key={`selected-${modelId}`} title={modelTitle(modelId)}>
-                        {modelId}
-                        <button
-                          type="button"
-                          aria-label={t('connection.removeModelId')}
-                          title={t('connection.removeModelId')}
-                          onClick={() => deselectSelectedModel(modelId)}
-                        >
-                          <CloseIcon width={10} height={10} />
-                        </button>
-                      </span>
+                      <ModelChip
+                        key={`selected-${modelId}`}
+                        modelId={modelId}
+                        variant="selected"
+                        title={modelTitle(modelId)}
+                        removeLabel={t('connection.removeModelId')}
+                        onRemove={() => deselectSelectedModel(modelId)}
+                      />
                     ))
                   )}
                 </div>
               </div>
               <div className="model-id-section available">
                 <span className="model-id-section-label">{t('connection.availableModels')}</span>
-                <div className="model-id-chips">
-                  {availableIds.map((modelId) => (
-                    <button
-                      className="model-chip available"
-                      type="button"
-                      key={`available-${modelId}`}
-                      title={modelTitle(modelId)}
-                      onClick={() => selectAvailableModel(modelId)}
-                      disabled={selectedIds.length >= MAX_ONBOARDING_MODELS}
-                    >
-                      {modelId}
-                    </button>
-                  ))}
-                  {draftAvailableId != null && (
+                <div className="model-id-available-body">
+                  <label className="model-id-search" htmlFor="available-model-search">
+                    <MagnifyingGlassIcon width={15} height={15} />
                     <input
-                      className="model-chip-input"
+                      id="available-model-search"
                       type="text"
-                      value={draftAvailableId}
-                      placeholder={t('connection.modelIdPlaceholder')}
-                      style={{ width: modelIdInputWidth(draftAvailableId) }}
-                      onChange={(event) => setDraftAvailableId(event.target.value)}
-                      onBlur={commitDraftAvailableId}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          commitDraftAvailableId();
-                        }
-                        if (event.key === 'Escape') {
-                          setDraftAvailableId(null);
-                        }
-                      }}
-                      autoFocus
+                      value={modelQuery}
+                      onChange={(event) => setModelQuery(event.target.value)}
+                      placeholder={t('connection.searchModelId')}
                       autoComplete="off"
                       spellCheck={false}
-                      aria-label={t('connection.modelId')}
                     />
-                  )}
-                  <button
-                    className="add-model-button"
-                    type="button"
-                    onClick={addModelId}
-                  >
-                    <PlusIcon />
-                    {t('connection.addModelId')}
-                  </button>
+                  </label>
+                  <div className="model-id-chips">
+                    <button
+                      className="add-model-button"
+                      type="button"
+                      onClick={addModelId}
+                    >
+                      <PlusIcon />
+                      {t('connection.addModelId')}
+                    </button>
+                    {draftAvailableId != null && (
+                      <input
+                        className="model-chip-input"
+                        type="text"
+                        value={draftAvailableId}
+                        placeholder={t('connection.modelIdPlaceholder')}
+                        onChange={(event) => setDraftAvailableId(event.target.value)}
+                        onBlur={commitDraftAvailableId}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            commitDraftAvailableId();
+                          }
+                          if (event.key === 'Escape') {
+                            setDraftAvailableId(null);
+                          }
+                        }}
+                        autoFocus
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-label={t('connection.modelId')}
+                      />
+                    )}
+                    {filteredAvailableIds.map((modelId) => (
+                      <ModelChip
+                        key={`available-${modelId}`}
+                        modelId={modelId}
+                        variant="available"
+                        title={modelTitle(modelId)}
+                        removeLabel={`${t('connection.hideAvailableModelId')} ${modelId}`}
+                        onRemove={() => hideAvailableModel(modelId)}
+                        onSelect={() => selectAvailableModel(modelId)}
+                        selectDisabled={selectedIds.length >= MAX_ONBOARDING_MODELS}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -313,9 +389,6 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
               <span>{llm.testMessage}</span>
             </div>
           </div>
-        )}
-        {llm.testStatus === 'success' && llm.testMessage && (
-          <p className="connection-test-hint">{llm.testMessage || t('connection.testSuccess')}</p>
         )}
       </div>
 
