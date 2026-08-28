@@ -199,12 +199,11 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
       toolName?: string;
       resultPath?: string;
       /**
-       * Inline image results — emitted when the tool returns one or more
-       * `PilotDeckToolResultContent { type: "image" }` blocks (e.g. `read_file`
-       * on a PNG/JPG, or PDF-page rendering). Hosts render these alongside
-       * the tool's row so the user sees the picture next to the call site
-       * instead of in a stray user-side bubble. Empty when no images were
-       * returned. Base64 payloads should already be size-budgeted by the tool.
+       * Inline read_file image results — emitted when `read_file` returns one
+       * or more image blocks. Hosts render these alongside the tool row. Image
+       * blocks from other tools are emitted as `assistant_attachment` events
+       * instead, so each image has one live projection. Base64 payloads should
+       * already be size-budgeted by the tool.
        */
       images?: Array<{
         mimeType: string;

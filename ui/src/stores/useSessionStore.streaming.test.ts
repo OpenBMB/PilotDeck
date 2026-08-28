@@ -90,6 +90,26 @@ describe('isSessionForActiveView', () => {
   });
 });
 
+describe('assistant attachment history reconciliation', () => {
+  it('deduplicates empty assistant attachment messages by attachment identity', () => {
+    const live = textMessage('live-attachment', '', '2026-05-28T00:00:00.000Z', {
+      runId: 'run-attachment',
+      turnId: 'run-attachment',
+      attachments: [{ name: 'report.txt', path: '/workspace/report.txt', mimeType: 'text/plain' }],
+    });
+    const persisted = textMessage('persisted-attachment', '', '2026-05-28T00:00:01.000Z', {
+      runId: 'run-attachment',
+      turnId: 'run-attachment',
+      attachments: [{ name: 'report.txt', path: '/workspace/report.txt', mimeType: 'text/plain' }],
+    });
+
+    expect(isRealtimeMessageRepresentedOnServer(live, [persisted])).toBe(true);
+    expect(computeMerged([persisted], [live]).map((message) => message.id)).toEqual([
+      'persisted-attachment',
+    ]);
+  });
+});
+
 describe('cancelRunningAgentActivities', () => {
   it('marks only unfinished agent activities as cancelled after a confirmed abort', () => {
     const running = {

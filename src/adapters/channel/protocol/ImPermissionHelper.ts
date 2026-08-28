@@ -33,7 +33,7 @@ export class ImPermissionHelper {
   }
 
   hasPending(chatId: string): boolean {
-    return (this.pending.get(chatId)?.length ?? 0) > 0;
+    return (this.pending.get(chatId)?.length ?? 0) > 0 || this.answering.has(chatId);
   }
 
   isAnswering(chatId: string): boolean {

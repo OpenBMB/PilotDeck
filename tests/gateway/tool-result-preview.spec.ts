@@ -96,3 +96,32 @@ test("mapAgentEvent bounds subagent tool result content and preview", () => {
   assert.match(detail.content, /Gateway preview truncated/);
   assert.equal(detail.resultBytes, Buffer.byteLength(largeOutput, "utf8"));
 });
+
+test("mapAgentEvent projects non-read_file images only as assistant attachments", () => {
+  const frames = mapAgentEvent({
+    type: "tool_result",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    result: {
+      type: "success",
+      toolCallId: "tool-image-1",
+      toolName: "screenshot",
+      content: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+      startedAt: "2026-07-09T00:00:00.000Z",
+      completedAt: "2026-07-09T00:00:01.000Z",
+    },
+  }, "run-1");
+
+  const toolFrame = frames.find((event): event is Extract<GatewayEvent, { type: "tool_call_finished" }> =>
+    event.type === "tool_call_finished"
+  );
+  const attachment = frames.find((event): event is Extract<GatewayEvent, { type: "assistant_attachment" }> =>
+    event.type === "assistant_attachment"
+  );
+
+  assert.ok(toolFrame);
+  assert.equal(toolFrame.images, undefined);
+  assert.ok(attachment);
+  assert.equal(attachment.attachment.type, "image");
+  assert.equal(attachment.attachment.content, "aW1hZ2U=");
+});
