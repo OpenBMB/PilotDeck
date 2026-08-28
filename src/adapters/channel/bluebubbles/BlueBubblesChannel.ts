@@ -158,8 +158,8 @@ export class BlueBubblesChannel implements ChannelAdapter {
           await this.sendReply(chatGuid, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatGuid);
           if (nextPrompt) {
-            await this.sendReply(chatGuid, nextPrompt);
-            this.permissions.confirmNextPrompt(chatGuid);
+            const delivered = await this.sendReply(chatGuid, nextPrompt);
+            this.permissions.confirmNextPrompt(chatGuid, delivered);
           }
         }
       } catch (e) {
@@ -206,7 +206,7 @@ export class BlueBubblesChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatGuid, sessionKey, event);
-          if (questionText) await this.sendReply(chatGuid, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatGuid, await this.sendReply(chatGuid, questionText));
           continue;
         }
         const fragment = renderBlueBubblesEvent(event);
@@ -226,8 +226,8 @@ export class BlueBubblesChannel implements ChannelAdapter {
     }
   }
 
-  private async sendReply(chatGuid: string, text: string): Promise<void> {
-    if (!this.running) return;
+  private async sendReply(chatGuid: string, text: string): Promise<boolean> {
+    if (!this.running) return false;
     const url = new URL("/api/v1/message/text", this.serverUrl);
     const tempGuid = randomUUID();
     const body: Record<string, unknown> = {
@@ -250,9 +250,12 @@ export class BlueBubblesChannel implements ChannelAdapter {
         const raw: any = await res.json().catch(() => ({}));
         const err = raw?.message ?? raw?.error ?? res.statusText;
         this.logger?.error?.(`bluebubbles: send HTTP ${res.status}: ${err}`);
+        return false;
       }
+      return true;
     } catch (e) {
       this.logger?.error?.(`bluebubbles: send failed: ${e}`);
+      return false;
     }
   }
 }

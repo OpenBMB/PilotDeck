@@ -170,7 +170,15 @@ function mapWebMessageToNormalized(message, sessionId) {
         role: message.role === 'user' ? 'user' : 'assistant',
         content: message.text || '',
         ...(Array.isArray(message.images) && message.images.length > 0
-          ? { images: message.images.map((image) => image?.data).filter(Boolean) }
+          ? { images: message.images.map((image) => {
+              if (typeof image === 'string') return image;
+              if (!image || typeof image.data !== 'string' || !image.data) return undefined;
+              return {
+                data: image.data,
+                ...(image.name ? { name: image.name } : {}),
+                ...(image.mimeType ? { mimeType: image.mimeType } : {}),
+              };
+            }).filter(Boolean) }
           : {}),
         ...(Array.isArray(payload.attachments) && payload.attachments.length > 0
           ? { attachments: payload.attachments }

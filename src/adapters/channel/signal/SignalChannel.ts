@@ -249,7 +249,7 @@ export class SignalChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) await this.sendReply(chatId, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText));
           continue;
         }
         const fragment = renderSignalEvent(event);

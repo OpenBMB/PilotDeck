@@ -844,7 +844,7 @@ function assistantAttachmentKey(message: NormalizedMessage): string | undefined 
   const images = Array.isArray(message.images)
     ? message.images.map((image) => typeof image === 'string'
       ? image
-      : `${image.data}\0${image.name || ''}\0${image.mimeType || ''}`)
+      : image.data)
     : [];
   if (attachments.length === 0 && images.length === 0) return undefined;
   return JSON.stringify({ attachments, images });

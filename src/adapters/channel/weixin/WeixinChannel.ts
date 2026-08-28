@@ -709,7 +709,7 @@ export class WeixinChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(userId, sessionKey, event);
           await liveReply.pauseActivity();
-          if (questionText) await this.sendReply(userId, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText));
           continue;
         }
         if (event.type === "error" && event.code === "agent_aborted") {

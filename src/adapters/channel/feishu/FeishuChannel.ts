@@ -378,8 +378,8 @@ export class FeishuChannel implements ChannelAdapter {
       await this.send({ chatId, text: confirmation });
       const nextPrompt = this.permissions.takeNextPrompt(chatId);
       if (nextPrompt) {
-        await this.send({ chatId, text: nextPrompt });
-        this.permissions.confirmNextPrompt(chatId);
+        const delivered = await this.send({ chatId, text: nextPrompt });
+        this.permissions.confirmNextPrompt(chatId, delivered);
       }
     }
   }
@@ -465,7 +465,7 @@ export class FeishuChannel implements ChannelAdapter {
         gateway: this.gateway,
         chatId,
         channelKey: "feishu",
-        reply: (msg) => this.send({ chatId, text: msg }),
+        reply: (msg) => this.send({ chatId, text: msg }).then(() => undefined),
         bindProject: (projectKey) => { this.mapper.bindProject(chatId, projectKey); this.onStateChange?.(this.mapper.snapshot()); },
         getProject: () => this.mapper.getProject(chatId),
         resetSession: () => { this.mapper.resolve({ chatId, text: "/new" }); this.onStateChange?.(this.mapper.snapshot()); },
@@ -578,7 +578,7 @@ export class FeishuChannel implements ChannelAdapter {
           if (event.type === "permission_request") {
             const questionText = this.permissions.capture(chatId, turn.sessionKey, event);
             await liveReply.pauseActivity();
-            if (questionText) await this.send({ chatId, text: questionText });
+            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }));
             continue;
           }
           if (event.type === "error" && event.code === "agent_aborted") {
@@ -661,15 +661,15 @@ export class FeishuChannel implements ChannelAdapter {
     };
   }
 
-  private async send(message: FeishuOutboundMessage): Promise<void> {
-    await this.sendTextMessage(message);
+  private async send(message: FeishuOutboundMessage): Promise<boolean> {
+    return (await this.sendTextMessage(message)) !== false;
   }
 
   private async sendAttachment(chatId: string, attachment: Parameters<ImAttachmentDelivery["send"]>[0]): Promise<boolean> {
     return new ImAttachmentDelivery({
       maxBytes: FEISHU_MAX_ATTACHMENT_BYTES,
       logger: this.logger,
-      sendTextFallback: (text) => this.send({ chatId, text }),
+      sendTextFallback: (text) => this.send({ chatId, text }).then(() => undefined),
       sendPrepared: (prepared) => this.uploadAndSendFeishuAttachment(chatId, prepared),
     }).send(attachment);
   }

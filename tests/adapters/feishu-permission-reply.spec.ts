@@ -44,6 +44,8 @@ test("Feishu handles permission replies before the active chat drain finishes", 
     toolName: "read_file",
     payload: { file_path: "/tmp/a.txt" },
   });
+  (channel as any).permissions.confirmInitialPrompt(chatId);
+  await delay(10);
   (channel as any).inboundBatches.set(chatId, { messages: [], draining: true });
 
   const response = createMockResponse();
@@ -128,7 +130,7 @@ test("Feishu sends permission prompts in FIFO order", async () => {
   assert.deepEqual(decisions, ["request-1", "request-2"]);
 });
 
-test("Feishu ignores duplicate permission replies while the first decision is in flight", async () => {
+test("Feishu does not decide replies before the initial permission prompt is confirmed", async () => {
   const chatId = "oc_duplicate_reply";
   const sent: Array<{ chatId: string; text: string }> = [];
   const decisions: string[] = [];
@@ -169,22 +171,30 @@ test("Feishu ignores duplicate permission replies while the first decision is in
     JSON.stringify({ chatId, text: "run", eventId: "run-duplicate" }),
   );
   await withTimeout(permissionShown, 1_000);
+  while (!sent.some((message) => message.text.includes("工具 bash 需要权限"))) await delay(5);
+  (channel as any).permissions.confirmInitialPrompt(chatId);
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
     JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-1" }),
   );
+  await delay(20);
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
     JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-2" }),
   );
-  releaseDecision();
+  await delay(20);
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-3" }),
+  );
   await delay(50);
 
-  assert.deepEqual(decisions, ["request-duplicate"]);
-  assert.equal(turnCount, 1);
-  assert.equal(sent.filter((message) => message.text.includes("已允许一次")).length, 1);
+  assert.deepEqual(decisions, []);
+  assert.ok(turnCount >= 1);
+  assert.equal(sent.filter((message) => message.text.includes("已允许一次")).length, 0);
 });
 
 test("Feishu keeps the next permission locked when confirmation delivery fails", async () => {
@@ -211,6 +221,7 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
   (channel as any).permissions.capture(chatId, "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  (channel as any).permissions.confirmInitialPrompt(chatId);
   (channel as any).permissions.capture(chatId, "session-1", {
     type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
   });

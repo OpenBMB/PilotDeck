@@ -36,6 +36,7 @@ test("ImPermissionHelper resolves pending permission requests in FIFO order", as
     toolName: "read_file",
     payload: { file_path: "/tmp/b.txt" },
   });
+  helper.confirmInitialPrompt("chat-1");
 
   assert.match(first ?? "", /工具 read_file 需要权限/);
   assert.match(first ?? "", /\/tmp\/a\.txt/);
@@ -71,6 +72,7 @@ test("ImPermissionHelper keeps pending requests when the reply is invalid", asyn
     toolName: "read_file",
     payload: { file_path: "/tmp/a.txt" },
   });
+  helper.confirmInitialPrompt("chat-1");
 
   const confirmation = await helper.answer("chat-1", "maybe", gateway);
 
@@ -92,6 +94,7 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   } as unknown as Gateway;
   helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {} });
   helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {} });
+  helper.confirmInitialPrompt("chat-1");
   const first = helper.answer("chat-1", "1", gateway);
   assert.equal(helper.hasPending("chat-1"), true);
   assert.equal(await helper.answer("chat-1", "1", gateway), "权限决定处理中，请稍候。");
@@ -116,9 +119,11 @@ test("ImPermissionHelper does not let a duplicate reply consume the answering lo
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
 
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
   assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
@@ -137,6 +142,7 @@ test("ImPermissionHelper can recover when an adapter cannot deliver confirmation
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
   });
@@ -165,6 +171,7 @@ test("ImPermissionHelper does not resurrect a prompt after clear", async () => {
   helper.capture("chat-1", "old-session", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   const answer = helper.answer("chat-1", "1", gateway);
   helper.clear("chat-1");
   release();
@@ -180,6 +187,7 @@ test("ImPermissionHelper releases generation state after a completed answer", as
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   await helper.answer("chat-1", "1", gateway);
   assert.equal((helper as any).generations.size, 0);
 });
@@ -198,6 +206,7 @@ test("ImPermissionHelper restores the current request when permissionDecide fail
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
   });
@@ -224,6 +233,7 @@ test("ImPermissionHelper queues permission requests captured during a decision",
   assert.match(helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
   }) ?? "", /read_file/);
+  helper.confirmInitialPrompt("chat-1");
   const answer = helper.answer("chat-1", "1", gateway);
   assert.equal(helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
@@ -249,11 +259,13 @@ test("ImPermissionHelper keeps new state intact when an old answer finishes afte
   helper.capture("chat-1", "old-session", {
     type: "permission_request", requestId: "old-request", toolName: "read_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   const oldAnswer = helper.answer("chat-1", "1", gateway);
   helper.clear("chat-1");
   helper.capture("chat-1", "new-session", {
     type: "permission_request", requestId: "new-request", toolName: "write_file", payload: {},
   });
+  helper.confirmInitialPrompt("chat-1");
   const newAnswer = helper.answer("chat-1", "1", gateway);
 
   assert.equal(await newAnswer, "已允许一次，继续执行。");

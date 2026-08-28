@@ -529,7 +529,7 @@ export class WeComChannel implements ChannelAdapter {
       gateway: this.gateway,
       chatId,
       channelKey: "wecom",
-      reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }),
+      reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }).then(() => undefined),
       bindProject: (projectKey) => { this.mapper.bindProject(scopeInput, projectKey); this.onStateChange?.(this.mapper.snapshot()); },
       getProject: () => this.mapper.getProject(scopeInput),
       resetSession: () => { this.mapper.resolve({ ...scopeInput, text: "/new" }); this.onStateChange?.(this.mapper.snapshot()); },
@@ -607,10 +607,7 @@ export class WeComChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
           const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
-          if (nextPrompt) {
-            await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
-            this.permissions.confirmNextPrompt(interactionKey);
-          }
+          if (nextPrompt) this.permissions.confirmNextPrompt(interactionKey, await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId }));
         }
       } catch (e) {
         this.permissions.releaseAnswer(interactionKey);
@@ -919,10 +916,10 @@ export class WeComChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(input.interactionKey, input.sessionKey, event);
-          if (questionText) await this.sendReply(input.chatId, questionText, {
+          if (questionText) { const delivered = await this.sendReply(input.chatId, questionText, {
             chatType: input.chatType,
             replyToMessageId: input.replyToMessageId,
-          });
+          }); this.permissions.confirmInitialPrompt(input.interactionKey, delivered); }
           continue;
         }
         await this.sendEventMedia(input.chatId, event, {
@@ -964,10 +961,10 @@ export class WeComChannel implements ChannelAdapter {
     chatId: string,
     text: string,
     context: { chatType?: "dm" | "group"; replyToMessageId?: string } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!this.ws || this.ws.readyState !== WS_OPEN) {
       this.logger?.warn?.(`wecom: not connected, cannot send to ${chatId}`);
-      return;
+      return false;
     }
 
     const slice = text.slice(0, MAX_MESSAGE_LENGTH);
@@ -982,15 +979,17 @@ export class WeComChannel implements ChannelAdapter {
 
       if (!response) {
         this.logger?.warn?.(`wecom: no reply request id for group chat ${chatId}, cannot send proactive message`);
-        return;
+        return false;
       }
-
       const err = this.responseError(response);
       if (err) {
         this.logger?.error?.(`wecom: sendReply error: ${err}`);
+        return false;
       }
+      return true;
     } catch (e) {
       this.logger?.error?.(`wecom: sendReply failed: ${e}`);
+      return false;
     }
   }
 

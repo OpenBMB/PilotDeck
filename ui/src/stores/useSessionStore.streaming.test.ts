@@ -108,6 +108,21 @@ describe('assistant attachment history reconciliation', () => {
       'persisted-attachment',
     ]);
   });
+
+  it('deduplicates assistant images when history omits live image metadata', () => {
+    const live = textMessage('live-image', '', '2026-05-28T00:00:00.000Z', {
+      runId: 'run-image',
+      turnId: 'run-image',
+      images: [{ data: 'data:image/png;base64,aW1hZ2U=', name: 'screenshot.png', mimeType: 'image/png' }],
+    });
+    const persisted = textMessage('persisted-image', '', '2026-05-28T00:00:01.000Z', {
+      runId: 'run-image',
+      turnId: 'run-image',
+      images: ['data:image/png;base64,aW1hZ2U='],
+    });
+
+    expect(isRealtimeMessageRepresentedOnServer(live, [persisted])).toBe(true);
+  });
 });
 
 describe('cancelRunningAgentActivities', () => {
