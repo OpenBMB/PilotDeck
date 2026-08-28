@@ -132,8 +132,8 @@ export class DiscordChannel implements ChannelAdapter {
           await this.sendReply(chatId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
-            await this.sendReply(chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId);
+            const delivered = await this.sendReply(chatId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered);
           }
         }
       } catch (e) {

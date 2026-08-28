@@ -214,8 +214,8 @@ export class WhatsAppChannel implements ChannelAdapter {
           await this.sendReply(msg.chatId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
           if (nextPrompt) {
-            await this.sendReply(msg.chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(msg.chatId);
+            const delivered = await this.sendReply(msg.chatId, nextPrompt);
+            this.permissions.confirmNextPrompt(msg.chatId, delivered);
           }
         }
       } catch (e) {

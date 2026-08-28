@@ -999,15 +999,26 @@ export class WeComChannel implements ChannelAdapter {
     event: GatewayEvent,
     context: { chatType?: "dm" | "group"; replyToMessageId?: string },
   ): Promise<void> {
-    if (event.type !== "tool_call_finished" || !event.images?.length) return;
+    const images = event.type === "tool_call_finished"
+      ? event.images ?? []
+      : event.type === "assistant_attachment" && event.attachment.type === "image" && event.attachment.content
+        ? [{
+            data: event.attachment.content,
+            mimeType: event.attachment.mimeType ?? "image/png",
+          }]
+        : [];
+    if (images.length === 0) return;
+    let mediaPrefix = "image";
+    if (event.type === "tool_call_finished") mediaPrefix = event.toolCallId;
+    else if (event.type === "assistant_attachment") mediaPrefix = event.attachment.name || "image";
 
-    for (const [index, image] of event.images.entries()) {
+    for (const [index, image] of images.entries()) {
       try {
         const data = Buffer.from(image.data, "base64");
         const prepared = this.prepareOutboundMediaBytes(
           data,
           image.mimeType,
-          `tool-${event.toolCallId || "image"}-${index + 1}${extForMime(image.mimeType) || ".png"}`,
+          `tool-${mediaPrefix}-${index + 1}${extForMime(image.mimeType) || ".png"}`,
         );
         const ok = await this.sendPreparedMedia(chatId, prepared, context);
         if (!ok) {

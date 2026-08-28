@@ -137,8 +137,8 @@ export class SlackChannel implements ChannelAdapter {
           await this.sendReply({ channelId, threadTs }, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
-            await this.sendReply({ channelId, threadTs }, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId);
+            const delivered = await this.sendReply({ channelId, threadTs }, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered);
           }
         }
       } catch (e) {

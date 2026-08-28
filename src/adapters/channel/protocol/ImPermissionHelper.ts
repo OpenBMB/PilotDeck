@@ -52,8 +52,12 @@ export class ImPermissionHelper {
     return prompt;
   }
 
-  confirmNextPrompt(chatId: string): void {
+  confirmNextPrompt(chatId: string, delivered: boolean | void = true): void {
     if (!this.promptDelivering.delete(chatId)) return;
+    if (!delivered) {
+      this.retryPromptPending.add(chatId);
+      return;
+    }
     this.nextPrompts.delete(chatId);
     this.retryPromptPending.delete(chatId);
     this.answering.delete(chatId);

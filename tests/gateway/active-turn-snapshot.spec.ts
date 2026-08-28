@@ -172,6 +172,29 @@ test("submit_turn stream ending without completion emits a terminal gateway erro
   });
 });
 
+test("synthetic terminal errors retain the run id emitted by turn_started", async () => {
+  const socket = new FakeTextWebSocketConnection();
+  const gateway = {
+    describeServer: async () => ({ mode: "in_process" }),
+    async *submitTurn() {
+      yield { type: "turn_started", runId: "generated-run" } as GatewayEvent;
+    },
+  } as unknown as Gateway;
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: "secret", serverVersion: "test", gateway,
+  });
+  socket.dispatch({ type: "hello", protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION, clientName: "test", clientVersion: "test", token: "secret" });
+  await flushAsyncWork();
+  socket.dispatch({ type: "request", id: "submit-generated-run", method: "submit_turn", params: { sessionKey: "web:generated", channelKey: "web", message: "hello" } });
+  await flushAsyncWork();
+  const terminal = socket.sent.find((frame) => (
+    (frame as { type?: string; id?: string; final?: boolean }).type === "event"
+    && (frame as { id?: string }).id === "submit-generated-run"
+    && (frame as { final?: boolean }).final === true
+  )) as { event?: { runId?: string } } | undefined;
+  assert.equal(terminal?.event?.runId, "generated-run");
+});
+
 test("submit_turn stream failure emits a terminal error event", async () => {
   const socket = new FakeTextWebSocketConnection();
   const gateway = {

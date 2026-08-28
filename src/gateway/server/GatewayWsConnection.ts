@@ -88,6 +88,7 @@ export class GatewayWsConnection {
 
   private async handleRequest(frame: WsRequestFrame): Promise<void> {
     let submitTurnSeq = 0;
+    let submitTurnRunId: string | undefined;
     try {
       if (frame.method === "submit_turn") {
         const sessionKey = (frame.params as { sessionKey?: string } | undefined)?.sessionKey;
@@ -96,6 +97,8 @@ export class GatewayWsConnection {
         let lastTerminalError: GatewayEvent | undefined;
         try {
           for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
+            if (event.runId) submitTurnRunId = event.runId;
+            if (event.type === "turn_started") submitTurnRunId = event.runId;
             if (event.type === "turn_completed") {
               lastCompleted = event;
             } else if (event.type === "error") {
@@ -106,7 +109,7 @@ export class GatewayWsConnection {
         } finally {
           if (sessionKey) this.inFlightSessions.delete(sessionKey);
         }
-        const runId = (frame.params as { runId?: string } | undefined)?.runId;
+        const runId = submitTurnRunId ?? (frame.params as { runId?: string } | undefined)?.runId;
         const terminalEvent: GatewayEvent = lastCompleted?.type === "turn_completed"
           ? lastCompleted
           : lastTerminalError?.type === "error"
@@ -134,7 +137,7 @@ export class GatewayWsConnection {
       this.ws.sendText(JSON.stringify({ type: "response", id: frame.id, ok: true, result }));
     } catch (error) {
       if (frame.method === "submit_turn") {
-        const runId = (frame.params as { runId?: string } | undefined)?.runId;
+        const runId = submitTurnRunId ?? (frame.params as { runId?: string } | undefined)?.runId;
         const event: GatewayEvent = {
           type: "error",
           code: "gateway_submit_failed",

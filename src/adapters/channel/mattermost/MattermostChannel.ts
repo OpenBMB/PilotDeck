@@ -179,8 +179,8 @@ export class MattermostChannel implements ChannelAdapter {
           await this.sendReply({ channelId, rootId }, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
-            await this.sendReply({ channelId, rootId }, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId);
+            const delivered = await this.sendReply({ channelId, rootId }, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered);
           }
         }
       } catch (e) {
