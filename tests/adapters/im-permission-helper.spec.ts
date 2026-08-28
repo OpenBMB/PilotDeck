@@ -145,6 +145,7 @@ test("ImPermissionHelper can recover when an adapter cannot deliver confirmation
   assert.equal(helper.isAnswering("chat-1"), true);
   helper.releaseAnswer("chat-1");
   assert.equal(helper.isAnswering("chat-1"), true);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "上一条权限提示发送失败，正在重试。");
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
   helper.confirmNextPrompt("chat-1");
   assert.equal(helper.isAnswering("chat-1"), false);

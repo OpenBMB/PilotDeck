@@ -189,6 +189,7 @@ test("Feishu ignores duplicate permission replies while the first decision is in
 
 test("Feishu keeps the next permission locked when confirmation delivery fails", async () => {
   const chatId = "oc_send_failure";
+  const sent: Array<{ chatId: string; text: string }> = [];
   const decisions: string[] = [];
   let sendCount = 0;
   const gateway = {
@@ -199,9 +200,10 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
   } as unknown as Gateway;
   const channel = new FeishuChannel({
     connectionMode: "webhook",
-    send: async () => {
+    send: async (message) => {
       sendCount += 1;
       if (sendCount === 1) throw new Error("send unavailable");
+      sent.push(message);
     },
   });
   await channel.start({ gateway, logger: {} });
@@ -228,6 +230,7 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
   await delay(20);
 
   assert.deepEqual(decisions, ["request-1"]);
+  assert.match(sent.find((message) => message.text.includes("工具 write_file 需要权限"))?.text ?? "", /write_file/);
 });
 
 function createMockResponse(): { statusCode?: number; body?: string; writeHead(statusCode: number): void; end(body: string): void } {

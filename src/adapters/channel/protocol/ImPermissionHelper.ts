@@ -11,6 +11,7 @@ export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
   private readonly nextPrompts = new Map<string, string>();
   private readonly promptDelivering = new Set<string>();
+  private readonly retryPromptPending = new Set<string>();
   private readonly answering = new Set<string>();
   private readonly inFlight = new Set<string>();
   private readonly generations = new Map<string, number>();
@@ -54,6 +55,7 @@ export class ImPermissionHelper {
   confirmNextPrompt(chatId: string): void {
     if (!this.promptDelivering.delete(chatId)) return;
     this.nextPrompts.delete(chatId);
+    this.retryPromptPending.delete(chatId);
     this.answering.delete(chatId);
   }
 
@@ -62,6 +64,7 @@ export class ImPermissionHelper {
     // Keep the queued prompt and lock intact so a failed delivery cannot let
     // the next inbound message decide the unseen request.
     this.promptDelivering.delete(chatId);
+    if (this.nextPrompts.has(chatId)) this.retryPromptPending.add(chatId);
   }
 
   async answer(chatId: string, text: string, gateway: Gateway): Promise<string | undefined> {
@@ -69,7 +72,8 @@ export class ImPermissionHelper {
       // Keep ordinary messages inside the permission flow while the RPC is
       // pending, but do not return a truthy value after the RPC has completed:
       // adapters use a truthy answer to advance the FIFO prompt.
-      return this.inFlight.has(chatId) ? "权限决定处理中，请稍候。" : undefined;
+      if (this.inFlight.has(chatId)) return "权限决定处理中，请稍候。";
+      return this.retryPromptPending.has(chatId) ? "上一条权限提示发送失败，正在重试。" : undefined;
     }
     const entries = this.pending.get(chatId);
     if (!entries || entries.length === 0) return undefined;
@@ -110,6 +114,7 @@ export class ImPermissionHelper {
         const currentEntries = this.pending.get(chatId) ?? entries;
         this.pending.set(chatId, [entry, ...currentEntries]);
         this.nextPrompts.delete(chatId);
+        this.retryPromptPending.delete(chatId);
         this.answering.delete(chatId);
       }
       throw error;
@@ -135,6 +140,7 @@ export class ImPermissionHelper {
     this.pending.delete(chatId);
     this.nextPrompts.delete(chatId);
     this.promptDelivering.delete(chatId);
+    this.retryPromptPending.delete(chatId);
     this.inFlight.delete(chatId);
     this.answering.delete(chatId);
   }

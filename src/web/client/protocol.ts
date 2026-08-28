@@ -51,6 +51,19 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number }
   | { type: "assistant_text_delta"; text: string }
+  | {
+      type: "assistant_attachment";
+      attachment: {
+        type: "file" | "image" | "text" | "unknown";
+        name?: string;
+        path?: string;
+        mimeType?: string;
+        content?: string;
+        bytes?: number;
+        source: "tool_result" | "media_reference" | "local_path";
+        metadata?: Record<string, unknown>;
+      };
+    }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | {
