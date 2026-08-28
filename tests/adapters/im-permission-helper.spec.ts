@@ -209,6 +209,29 @@ test("ImPermissionHelper restores the current request when permissionDecide fail
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
 });
 
+test("ImPermissionHelper queues permission requests captured during a decision", async () => {
+  const helper = new ImPermissionHelper();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gateway = {
+    permissionDecide: async () => {
+      await gate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+
+  assert.match(helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  }) ?? "", /read_file/);
+  const answer = helper.answer("chat-1", "1", gateway);
+  assert.equal(helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  }), undefined);
+  release();
+  assert.equal(await answer, "已允许一次，继续执行。");
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+});
+
 test("ImPermissionHelper keeps new state intact when an old answer finishes after clear", async () => {
   const helper = new ImPermissionHelper();
   let releaseOld!: () => void;

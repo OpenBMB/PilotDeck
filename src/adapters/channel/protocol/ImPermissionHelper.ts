@@ -25,7 +25,9 @@ export class ImPermissionHelper {
     });
     this.pending.set(chatId, entries);
 
-    return entries.length === 1 ? formatPermissionPrompt(entries[0]!) : undefined;
+    return entries.length === 1 && !this.answering.has(chatId)
+      ? formatPermissionPrompt(entries[0]!)
+      : undefined;
   }
 
   formatPending(chatId: string): string | undefined {
@@ -98,7 +100,8 @@ export class ImPermissionHelper {
         ...(!deny ? { remember: trimmed === "2" } : {}),
       });
       if ((this.generations.get(chatId) ?? 0) !== generation) return undefined;
-      if (entries.length > 0) this.nextPrompts.set(chatId, formatPermissionPrompt(entries[0]!));
+      const remaining = this.pending.get(chatId) ?? entries;
+      if (remaining.length > 0) this.nextPrompts.set(chatId, formatPermissionPrompt(remaining[0]!));
       if (trimmed === "0") return "已拒绝，继续处理。";
       if (trimmed === "2") return "已允许本会话，继续执行。";
       return "已允许一次，继续执行。";
@@ -113,7 +116,9 @@ export class ImPermissionHelper {
     } finally {
       if ((this.generations.get(chatId) ?? 0) === generation) {
         this.inFlight.delete(chatId);
-        if (entries.length === 0) this.answering.delete(chatId);
+        if ((this.pending.get(chatId)?.length ?? 0) === 0 && !this.nextPrompts.has(chatId)) {
+          this.answering.delete(chatId);
+        }
         this.generations.delete(chatId);
       } else if (!this.pending.has(chatId) && !this.inFlight.has(chatId) && !this.answering.has(chatId)) {
         this.generations.delete(chatId);
