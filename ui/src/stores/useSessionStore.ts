@@ -788,6 +788,15 @@ export function isRealtimeMessageRepresentedOnServer(
     case 'text':
     case 'thinking': {
       const content = normalizeRealtimeText(realtimeMessage.content);
+      if (!content && realtimeMessage.kind === 'text' && realtimeMessage.role === 'assistant') {
+        const attachmentKey = assistantAttachmentKey(realtimeMessage);
+        if (!attachmentKey) return false;
+        return candidates.some((message) => (
+          message.kind === 'text'
+          && message.role === 'assistant'
+          && assistantAttachmentKey(message) === attachmentKey
+        ));
+      }
       if (!content) return false;
       if (candidates.some((message) => (
         message.kind === realtimeMessage.kind
@@ -824,6 +833,21 @@ export function isRealtimeMessageRepresentedOnServer(
     default:
       return false;
   }
+}
+
+function assistantAttachmentKey(message: NormalizedMessage): string | undefined {
+  const attachments = Array.isArray(message.attachments)
+    ? message.attachments
+      .filter((attachment) => attachment && typeof attachment.name === 'string')
+      .map((attachment) => [attachment.path || attachment.name, attachment.mimeType || ''].join('\0'))
+    : [];
+  const images = Array.isArray(message.images)
+    ? message.images.map((image) => typeof image === 'string'
+      ? image
+      : `${image.data}\0${image.name || ''}\0${image.mimeType || ''}`)
+    : [];
+  if (attachments.length === 0 && images.length === 0) return undefined;
+  return JSON.stringify({ attachments, images });
 }
 
 const PERSISTED_RENDERABLE_KINDS = new Set<MessageKind>([

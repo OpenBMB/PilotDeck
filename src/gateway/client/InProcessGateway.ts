@@ -1891,13 +1891,12 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         })();
       }
 
-      // Surface inline image blocks (e.g. read_file on a PNG) so hosts can
-      // render them next to the tool row. Without this the picture only
-      // appears on session reload via the persisted canonical message — and
-      // it ends up in the "user" bubble because the wire role for tool
-      // results is `user`. See `projectToolResults`.
+      // Surface read_file image blocks next to the tool row. Other tools use
+      // the assistant_attachment path below so each image has one live
+      // projection instead of appearing in both the tool row and assistant
+      // bubble.
       const images = event.result.content.flatMap((item) =>
-        item.type === "image"
+        item.type === "image" && event.result.toolName === "read_file"
           ? [{
               mimeType: item.mimeType,
               data: item.data,

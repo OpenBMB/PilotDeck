@@ -92,7 +92,8 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {} });
   helper.capture("chat-1", "session-1", { type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {} });
   const first = helper.answer("chat-1", "1", gateway);
-  assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
+  assert.equal(helper.hasPending("chat-1"), true);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "权限决定处理中，请稍候。");
   release();
   assert.equal(await first, "已允许一次，继续执行。");
   assert.deepEqual(decisions, ["request-1"]);

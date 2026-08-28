@@ -33,7 +33,7 @@ export class ImPermissionHelper {
   }
 
   hasPending(chatId: string): boolean {
-    return (this.pending.get(chatId)?.length ?? 0) > 0;
+    return (this.pending.get(chatId)?.length ?? 0) > 0 || this.answering.has(chatId);
   }
 
   isAnswering(chatId: string): boolean {
@@ -58,7 +58,12 @@ export class ImPermissionHelper {
   }
 
   async answer(chatId: string, text: string, gateway: Gateway): Promise<string | undefined> {
-    if (this.answering.has(chatId)) return undefined;
+    if (this.answering.has(chatId)) {
+      // Keep ordinary messages inside the permission flow while the RPC is
+      // pending, but do not return a truthy value after the RPC has completed:
+      // adapters use a truthy answer to advance the FIFO prompt.
+      return this.inFlight.has(chatId) ? "权限决定处理中，请稍候。" : undefined;
+    }
     const entries = this.pending.get(chatId);
     if (!entries || entries.length === 0) return undefined;
 
