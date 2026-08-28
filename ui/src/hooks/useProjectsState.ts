@@ -273,6 +273,7 @@ export function useProjectsState({
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSession, setSelectedSession] = useState<ProjectSession | null>(null);
+  const [draftSessionProjectName, setDraftSessionProjectName] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(readPersistedTab);
 
   useEffect(() => {
@@ -543,6 +544,7 @@ export function useProjectsState({
       const previewProject = resetProjectSessionPreview(project);
       setSelectedProject(previewProject);
       setSelectedSession(null);
+      setDraftSessionProjectName(null);
       setProjects((prevProjects) => prevProjects.map(resetProjectSessionPreview));
       navigate('/');
 
@@ -555,6 +557,7 @@ export function useProjectsState({
 
   const handleSessionSelect = useCallback(
     (session: ProjectSession) => {
+      setDraftSessionProjectName(null);
       setSelectedSession(session);
 
       if (activeTab === 'tasks' || activeTab === 'preview') {
@@ -580,6 +583,7 @@ export function useProjectsState({
       setSelectedProject(project);
       setSelectedSession(null);
       setActiveTab('chat');
+      setDraftSessionProjectName(project.name);
       navigate('/');
 
       if (isMobile) {
@@ -747,6 +751,7 @@ export function useProjectsState({
   const handleDeselectProject = useCallback(() => {
     setSelectedProject(null);
     setSelectedSession(null);
+    setDraftSessionProjectName(null);
     setProjects((prevProjects) => prevProjects.map(resetProjectSessionPreview));
     navigate('/');
   }, [navigate]);
@@ -929,6 +934,7 @@ export function useProjectsState({
     handleDeselectProject,
     handleResetProjectSessionPreview,
     setSelectedProject,
+    draftSessionProjectName,
     handleSidebarRefresh,
     loadMoreSessions,
     loadingMoreProjectIds,

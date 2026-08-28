@@ -38,21 +38,27 @@ const getMenuPosition = (position: {
   if (typeof window === 'undefined') {
     return { position: 'fixed', top: '16px', left: '16px' };
   }
+  const header = document.querySelector('.workspace-header');
+  const headerBottom = header instanceof HTMLElement ? header.getBoundingClientRect().bottom : 0;
+  const bottomOffset = position.bottom ?? Math.max(16, window.innerHeight - position.top);
+  const availableHeight = Math.floor(window.innerHeight - bottomOffset - headerBottom);
+  const maxHeight = Math.min(330, Math.max(1, availableHeight));
+
   if (window.innerWidth < 640) {
     return {
       position: 'fixed',
       bottom: `${position.bottom ?? 90}px`,
       left: '16px',
       right: '16px',
-      maxHeight: 'min(50vh, 320px)',
+      maxHeight: `${Math.min(maxHeight, Math.round(window.innerHeight * 0.5))}px`,
     };
   }
   return {
     position: 'fixed',
-    bottom: `${position.bottom ?? Math.max(16, window.innerHeight - position.top)}px`,
+    bottom: `${bottomOffset}px`,
     left: `${Math.max(8, position.left - 10)}px`,
     width: `${Math.min(position.width ? position.width + 20 : 720, window.innerWidth - 16)}px`,
-    maxHeight: '330px',
+    maxHeight: `${maxHeight}px`,
   };
 };
 

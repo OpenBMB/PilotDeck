@@ -1,7 +1,24 @@
 import type { Project } from '../../types/app';
+import { projectDisplayName } from '../../lib/customNames';
 
 export function isGeneralProject(project: Project): boolean {
   return project.name === 'general' || project.displayName === 'general';
+}
+
+const asTimestamp = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+/** Same order as the sidebar project list: lastActivity desc, then display name. */
+export function compareProjectsBySidebarOrder(left: Project, right: Project): number {
+  const diff = asTimestamp(right.lastActivity) - asTimestamp(left.lastActivity);
+  if (diff !== 0) return diff;
+  return projectDisplayName(left).localeCompare(projectDisplayName(right));
 }
 
 /**

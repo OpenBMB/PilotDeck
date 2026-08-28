@@ -46,7 +46,7 @@ export default function useOnboardingWorkspace() {
 
     try {
       if (isCloneWorkflow('new', draft.githubUrl)) {
-        await cloneWorkspaceWithProgress(
+        return await cloneWorkspaceWithProgress(
           {
             workspacePath: draft.workspacePath.trim(),
             githubUrl: draft.githubUrl.trim(),
@@ -56,10 +56,9 @@ export default function useOnboardingWorkspace() {
           },
           { onProgress: setProgress },
         );
-        return;
       }
 
-      await createWorkspaceRequest({
+      return await createWorkspaceRequest({
         workspaceType: 'new',
         path: draft.workspacePath.trim(),
       });

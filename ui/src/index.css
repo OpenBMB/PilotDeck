@@ -1212,7 +1212,7 @@
   }
 
   .app-shell {
-    --sidebar-width: 248px;
+    --sidebar-width: 220px;
     display: grid;
     grid-template-columns: var(--sidebar-width) 1px minmax(0, 1fr);
     grid-template-rows: 62px minmax(0, 1fr);
@@ -1483,6 +1483,7 @@
     border-radius: 9px;
     background: transparent;
     color: #3f4250;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
   }
@@ -1520,7 +1521,7 @@
     border: 0;
     background: transparent;
     color: #514ac8;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 750;
   }
 
@@ -1548,13 +1549,14 @@
     border-radius: 8px;
     background: transparent;
     color: #565968;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
   }
 
   .tree-row.project-row {
     min-height: 32px;
-    grid-template-columns: 14px 17px minmax(0, 1fr) 16px;
+    grid-template-columns: 14px 17px minmax(0, 1fr);
     gap: 5px;
     padding: 3px 2px;
     border-radius: 6px;
@@ -1564,7 +1566,6 @@
     border-color: transparent;
     background: transparent;
     color: #4543bc;
-    font-weight: 700;
   }
 
   .tree-row.project-row:hover {
@@ -1620,15 +1621,16 @@
     display: grid;
     width: 100%;
     min-width: 0;
-    min-height: 43px;
+    min-height: 32px;
     grid-template-columns: 8px minmax(0, 1fr);
-    align-items: start;
+    align-items: center;
     gap: 5px;
     padding: 6px 7px;
     border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
     color: #5c6070;
+    font-size: 14px;
     text-align: left;
     cursor: pointer;
   }
@@ -1645,22 +1647,16 @@
     color: #3f3a91;
   }
 
-  .project-conversation.active .truncate,
-  .tree-row.chat-row.active .truncate {
-    font-weight: 700;
-  }
-
   .conversation-dot {
     width: 5px;
     height: 5px;
-    margin-top: 4px;
     border-radius: 50%;
     background: #d2d4df;
   }
 
   .settings-entry {
     display: flex;
-    height: 48px;
+    height: 36px;
     flex: 0 0 auto;
     align-items: center;
     gap: 9px;
@@ -1669,6 +1665,7 @@
     border-top: 1px solid rgba(100, 86, 189, 0.12);
     background: #ffffff59;
     color: #6e7080;
+    font-size: 14px;
     cursor: pointer;
   }
 

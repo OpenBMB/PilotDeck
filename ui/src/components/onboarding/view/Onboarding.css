@@ -1610,3 +1610,64 @@
     font-weight: 700;
   }
 }
+
+.create-workspace-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 18, 28, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.onboarding-shell.create-workspace-dialog {
+  position: relative;
+  min-height: 0;
+  width: min(780px, 100%);
+  max-height: min(720px, calc(100vh - 32px));
+  display: block;
+  overflow: auto;
+  border-radius: 18px;
+  background: rgb(255, 255, 255);
+  box-shadow: rgba(32, 39, 53, 0.22) 0 24px 80px;
+}
+
+.onboarding-shell.create-workspace-dialog .create-workspace-dialog-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgb(95, 107, 126);
+}
+
+.onboarding-shell.create-workspace-dialog .create-workspace-dialog-close:hover:not(:disabled) {
+  background: rgb(245, 246, 250);
+  color: var(--ink);
+  transform: none;
+}
+
+.onboarding-shell.create-workspace-dialog .content-page {
+  min-height: 0;
+  margin-top: 20px;
+}
+
+.onboarding-shell.create-workspace-dialog .workspace-setup-page {
+  padding-top: 0;
+}
+
+.onboarding-shell.create-workspace-dialog .page-intro h1 {
+  max-width: 560px;
+  padding-right: 28px;
+  font-size: 26px;
+}

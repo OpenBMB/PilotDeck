@@ -8,7 +8,7 @@ import { useDeviceSettings } from '../../hooks/useDeviceSettings';
 import { useSessionProtection } from '../../hooks/useSessionProtection';
 import { useProjectsState } from '../../hooks/useProjectsState';
 import Settings from '../settings/Settings';
-import ProjectCreationWizard from '../project-creation-wizard';
+import CreateWorkspaceModal from '../onboarding/view/subcomponents/CreateWorkspaceModal';
 import { normalizeProjectForSettings, type SettingsProject } from '../../lib/projectSettings';
 import {
   sessionDisplayTitle,
@@ -151,6 +151,7 @@ export default function AppShellV2() {
     handleDeselectProject,
     handleResetProjectSessionPreview,
     setSelectedProject,
+    draftSessionProjectName,
     loadMoreSessions,
     loadingMoreProjectIds,
     bumpSessionActivity,
@@ -163,6 +164,7 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
+  const [workspaceBinding, setWorkspaceBinding] = useState<Project | null>(null);
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
   const shellActiveTab = dedicatedTab ?? workspaceTab;
 
@@ -401,7 +403,7 @@ export default function AppShellV2() {
     }
   }, [activeTab, isMobile]);
 
-  // Project creation wizard (local existing / new local / github clone). The
+  // Create-workspace dialog (same form as onboarding's last step). The
   // sidebar's Projects-section "+" opens this; row-level "+" is for new sessions.
   const [showNewProject, setShowNewProject] = useState(false);
   const handleOpenNewProject = useCallback(() => setShowNewProject(true), []);
@@ -419,10 +421,15 @@ export default function AppShellV2() {
     const projectName = typeof project?.name === 'string' ? project.name : '';
     if (!projectName) return;
     const newProject = project as Project;
+    if (!selectedSession) {
+      setWorkspaceBinding(newProject);
+      setActiveTab('chat');
+      return;
+    }
     handleNewSession(newProject);
     navigate(`/p/${encodeURIComponent(projectName)}`);
     setActiveTab('chat');
-  }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
+  }, [handleNewSession, navigate, refreshProjectsSilently, selectedSession, setActiveTab]);
 
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
@@ -611,6 +618,31 @@ export default function AppShellV2() {
     [handleNewSession, navigate, selectedProject, setActiveTab],
   );
 
+  const handleHomeNewConversation = useCallback(() => {
+    didDefaultProjectRef.current = true;
+    setWorkspaceBinding(null);
+    setActiveTab('chat');
+    handleDeselectProject();
+  }, [handleDeselectProject, setActiveTab]);
+
+  useEffect(() => {
+    if (selectedSession) setWorkspaceBinding(null);
+  }, [selectedSession]);
+
+  const handleSessionActivityBump = useCallback(
+    (projectName: string, sessionId: string, optimisticTitle?: string) => {
+      bumpSessionActivity(projectName, sessionId, optimisticTitle);
+      if (selectedSession) return;
+      const project =
+        sidebarSharedProps.projects.find((item) => item.name === projectName)
+        ?? (workspaceBinding?.name === projectName ? workspaceBinding : null);
+      if (!project) return;
+      setSelectedProject(project);
+      setWorkspaceBinding(null);
+    },
+    [bumpSessionActivity, selectedSession, sidebarSharedProps.projects, workspaceBinding, setSelectedProject],
+  );
+
   // Wrap the two session-lifecycle callbacks coming out of useSessionProtection
   // so they also reconcile the optimistic placeholder rows in the sidebar:
   //  · `session_created` → swap `new-session-*` in projects.sessions for the
@@ -646,7 +678,8 @@ export default function AppShellV2() {
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
 	      onStartNewSession={handleStartNewSession}
-	      onCreateProject={handleOpenNewProject}
+	      onStartHomeNewConversation={handleHomeNewConversation}
+	      pendingDraftProjectName={draftSessionProjectName}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
 	      onSelectTab={handleSelectTab}
@@ -710,7 +743,7 @@ export default function AppShellV2() {
           onSessionInactive={handleSessionInactive}
           onSessionProcessing={markSessionAsProcessing}
           onSessionNotProcessing={markSessionAsNotProcessing}
-          onSessionActivityBump={bumpSessionActivity}
+          onSessionActivityBump={handleSessionActivityBump}
           processingSessions={processingSessions}
           unreadSessionIds={unreadSessionIds}
           onReplaceTemporarySession={handleReplaceTemporarySession}
@@ -719,6 +752,9 @@ export default function AppShellV2() {
             navigate(`/session/${sid}`);
           }}
           onStartNewSession={handleStartNewSession}
+          onCreateProject={handleOpenNewProject}
+          onSelectWorkspace={(project) => setWorkspaceBinding(project)}
+          workspaceBinding={workspaceBinding}
           onSelectSession={handleSelectSession}
           onShowSettings={onShowSettings}
           onSelectProjectByName={(name: string) => {
@@ -752,7 +788,7 @@ export default function AppShellV2() {
 
       {showNewProject
         ? ReactDOM.createPortal(
-            <ProjectCreationWizard
+            <CreateWorkspaceModal
               onClose={handleCloseNewProject}
               onProjectCreated={handleProjectCreated}
             />,

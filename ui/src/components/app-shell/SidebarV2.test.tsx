@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../types/app';
 import SidebarV2 from './SidebarV2';
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+}));
+
+vi.mock('lucide-react', () => ({
+  ChevronRight: () => null,
+  Folder: () => null,
+  GitBranch: () => null,
+  Pencil: () => null,
+  Trash2: () => null,
+}));
 
 const general: Project = {
   name: 'general',
@@ -30,18 +41,14 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     onSelectProject: vi.fn(),
     onSelectSession: vi.fn(),
     onStartNewSession: vi.fn(),
-    onCreateProject: vi.fn(),
+    onStartHomeNewConversation: vi.fn(),
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
     ...extra,
   };
 
-  return render(
-    <MemoryRouter>
-      <SidebarV2 {...props} />
-    </MemoryRouter>,
-  );
+  return render(<SidebarV2 {...props} />);
 }
 
 afterEach(() => {
@@ -53,12 +60,13 @@ describe('SidebarV2 layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByAltText('PILOTDECK')).toHaveAttribute(
-      'src',
+    expect(screen.getByAltText('PILOTDECK').getAttribute('src')).toBe(
       '/pilotdeck-logo-lockup-transparent.png',
     );
-    expect(screen.getByRole('navigation', { name: 'Quick actions' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
+    expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
     expect(screen.queryByText('New Chat')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
     expect(screen.queryByText('New Project')).toBeNull();
     expect(screen.getByText('Skills')).toBeTruthy();
     expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
@@ -133,15 +141,14 @@ describe('SidebarV2 layout', () => {
 
   it('toggles project and conversation lists only from the chevron buttons', () => {
     const onStartNewSession = vi.fn();
-    const onCreateProject = vi.fn();
-    renderSidebar(general, { onStartNewSession, onCreateProject });
+    renderSidebar(general, { onStartNewSession });
 
     const projectsHeading = screen.getByRole('button', { name: 'Collapse projects' }).closest('.tree-heading') as HTMLElement;
-    const conversationsHeading = screen.getByRole('button', { name: 'Collapse conversations' }).closest('.tree-heading') as HTMLElement;
+    const conversationsHeading = screen.getByRole('button', { name: 'Expand conversations' }).closest('.tree-heading') as HTMLElement;
 
     expect(screen.getByText('PilotDeck')).toBeTruthy();
-    expect(within(projectsHeading).getByRole('button', { name: 'New Project' })).toBeTruthy();
-    expect(within(conversationsHeading).getByRole('button', { name: 'New Chat' })).toBeTruthy();
+    expect(within(projectsHeading).queryByRole('button', { name: 'New Project' })).toBeNull();
+    expect(within(conversationsHeading).queryByRole('button', { name: 'New Chat' })).toBeNull();
 
     fireEvent.click(screen.getByText('Projects'));
     expect(screen.getByText('PilotDeck')).toBeTruthy();
@@ -150,17 +157,34 @@ describe('SidebarV2 layout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand projects' }));
     expect(screen.getByText('PilotDeck')).toBeTruthy();
 
-    fireEvent.click(within(projectsHeading).getByRole('button', { name: 'New Project' }));
-    expect(onCreateProject).toHaveBeenCalledTimes(1);
-
     fireEvent.click(screen.getByText('Conversations'));
-    expect(within(conversationsHeading).getByRole('button', { name: 'Collapse conversations' })).toBeTruthy();
-    fireEvent.click(within(conversationsHeading).getByRole('button', { name: 'Collapse conversations' }));
-    expect(screen.getByRole('button', { name: 'Expand conversations' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Expand conversations' }));
-    expect(within(conversationsHeading).getByRole('button', { name: 'Collapse conversations' })).toBeTruthy();
+    expect(within(conversationsHeading).getByRole('button', { name: 'Expand conversations' })).toBeTruthy();
+    fireEvent.click(within(conversationsHeading).getByRole('button', { name: 'Expand conversations' }));
+    expect(screen.getByRole('button', { name: 'Collapse conversations' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse conversations' }));
+    expect(within(conversationsHeading).getByRole('button', { name: 'Expand conversations' })).toBeTruthy();
+  });
 
-    fireEvent.click(within(conversationsHeading).getByRole('button', { name: 'New Chat' }));
-    expect(onStartNewSession).toHaveBeenCalledWith(general);
+  it('starts conversations collapsed at the bottom of the sidebar', () => {
+    const chattyGeneral: Project = {
+      ...general,
+      sessions: [{ id: 's1', title: 'hello world', lastActivity: '2026-08-01' }],
+    };
+    renderSidebar(chattyGeneral, { projects: [chattyGeneral, project] });
+
+    expect(screen.getByRole('button', { name: 'Expand conversations' })).toBeTruthy();
+    expect(screen.queryByText('hello world')).toBeNull();
+    expect(screen.getByText('PilotDeck')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand conversations' }));
+    expect(screen.getByText('hello world')).toBeTruthy();
+  });
+
+  it('starts a home new conversation from the top-left button', () => {
+    const onStartHomeNewConversation = vi.fn();
+    renderSidebar(general, { onStartHomeNewConversation });
+
+    fireEvent.click(screen.getByText(/New conversation|新对话/));
+    expect(onStartHomeNewConversation).toHaveBeenCalledTimes(1);
   });
 });

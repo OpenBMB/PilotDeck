@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { pickNativeFolder } from '../../../project-creation-wizard/data/workspaceApi';
 import WorkspaceStep from './WorkspaceStep';
 
 vi.mock('react-i18next', async () => {
@@ -15,14 +16,18 @@ vi.mock('react-i18next', async () => {
 
   return {
     useTranslation: () => ({
-      t: lookupTranslation,
+      t: (key: string) => {
+        if (key === 'buttons.cancel') return 'Cancel';
+        if (key === 'buttons.close') return 'Close';
+        return lookupTranslation(key);
+      },
       i18n: { language: 'en', changeLanguage: vi.fn() },
     }),
   };
 });
 
-vi.mock('../../../project-creation-wizard/components/FolderBrowserModal', () => ({
-  default: () => null,
+vi.mock('../../../project-creation-wizard/data/workspaceApi', () => ({
+  pickNativeFolder: vi.fn(),
 }));
 
 const draft = {
@@ -54,6 +59,7 @@ function renderStep(overrides: Partial<Parameters<typeof WorkspaceStep>[0]> = {}
 describe('WorkspaceStep', () => {
   afterEach(() => {
     cleanup();
+    vi.mocked(pickNativeFolder).mockReset();
   });
 
   it('lets Start chatting skip workspace and GitHub validation', () => {
@@ -83,5 +89,41 @@ describe('WorkspaceStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create workspace/ }));
 
     expect(onFinish).toHaveBeenCalledTimes(1);
+  });
+
+  it('dialog variant keeps the workspace form and hides onboarding skip actions', () => {
+    const onCancel = vi.fn();
+    render(
+      <WorkspaceStep
+        variant="dialog"
+        draft={draft}
+        error=""
+        progress=""
+        isCreating={false}
+        onWorkspacePathChange={vi.fn()}
+        onGithubUrlChange={vi.fn()}
+        onCancel={onCancel}
+        onFinish={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Start chatting' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Create workspace/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills the workspace path from the selected folder', async () => {
+    const onWorkspacePathChange = vi.fn();
+    vi.mocked(pickNativeFolder).mockResolvedValueOnce('C:\\Users\\wukai\\Desktop\\office');
+
+    renderStep({ onWorkspacePathChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose file' }));
+
+    await waitFor(() => {
+      expect(pickNativeFolder).toHaveBeenCalledTimes(1);
+      expect(onWorkspacePathChange).toHaveBeenCalledWith('C:\\Users\\wukai\\Desktop\\office');
+    });
   });
 });

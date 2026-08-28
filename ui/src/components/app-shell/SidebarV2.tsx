@@ -13,12 +13,10 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   Folder,
-  MessageSquarePlus,
   Pencil,
   GitBranch,
   Trash2,
 } from 'lucide-react';
-import type { TFunction } from 'i18next';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
@@ -29,6 +27,7 @@ import {
   setSessionCustomTitle,
   useCustomNamesVersion,
 } from '../../lib/customNames';
+import { compareProjectsBySidebarOrder } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -132,25 +131,6 @@ const collectSessionsForProject = (project: Project): FlatSession[] => {
     .sort((a, b) => b.lastActivity - a.lastActivity);
 };
 
-const formatRelative = (ts: number, t: TFunction): string => {
-  if (!ts) return '';
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return t('sidebar:time.justNow', { defaultValue: 'just now' });
-  if (diff < 3_600_000) {
-    const minutes = Math.floor(diff / 60_000);
-    if (minutes === 1) return t('sidebar:time.oneMinuteAgo', { defaultValue: '1 min ago' });
-    return t('sidebar:time.minutesAgo', { count: minutes, defaultValue: `${minutes} mins ago` });
-  }
-  if (diff < 86_400_000) {
-    const hours = Math.floor(diff / 3_600_000);
-    if (hours === 1) return t('sidebar:time.oneHourAgo', { defaultValue: '1 hour ago' });
-    return t('sidebar:time.hoursAgo', { count: hours, defaultValue: `${hours} hours ago` });
-  }
-  const days = Math.floor(diff / 86_400_000);
-  if (days === 1) return t('sidebar:time.oneDayAgo', { defaultValue: '1 day ago' });
-  return t('sidebar:time.daysAgo', { count: days, defaultValue: `${days} days ago` });
-};
-
 type SessionIndicatorStatus = 'processing' | 'unread' | 'idle';
 
 export type SidebarV2Props = {
@@ -165,7 +145,8 @@ export type SidebarV2Props = {
   onSelectProject: (project: Project) => void;
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project | null) => void;
-  onCreateProject: () => void;
+  onStartHomeNewConversation?: () => void;
+  pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
   onSelectTab?: (tab: AppTab) => void;
@@ -207,16 +188,12 @@ const contextMenuPosition = (event: MouseEvent) => {
 
 function SectionHeading({
   title,
-  addLabel,
-  onAdd,
   expanded,
   expandLabel,
   collapseLabel,
   onToggle,
 }: {
   title: string;
-  addLabel: string;
-  onAdd: () => void;
   expanded: boolean;
   expandLabel: string;
   collapseLabel: string;
@@ -227,17 +204,6 @@ function SectionHeading({
     <div className="tree-heading shrink-0">
       <span>{title}</span>
       <div className="tree-heading-actions">
-        <button
-          type="button"
-          onClick={onAdd}
-          aria-label={addLabel}
-          title={addLabel}
-        >
-          <svg aria-hidden="true" className="icon" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
-            <path d="M5 12h14" />
-            <path d="M12 5v14" />
-          </svg>
-        </button>
         <button
           type="button"
           onClick={onToggle}
@@ -277,7 +243,8 @@ export default function SidebarV2({
   onSelectProject,
   onSelectSession,
   onStartNewSession,
-  onCreateProject,
+  onStartHomeNewConversation,
+  pendingDraftProjectName = null,
   onRequestDeleteProject,
   onRequestDeleteSession,
   onSelectTab,
@@ -300,7 +267,7 @@ export default function SidebarV2({
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarRootRef = useRef<HTMLElement | null>(null);
 
-  const [conversationsExpanded, setConversationsExpanded] = useState(true);
+  const [conversationsExpanded, setConversationsExpanded] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const projectsConversationsSplitRef = useRef<HTMLDivElement | null>(null);
   const SIDEBAR_SPLITTER_HEIGHT = 1;
@@ -322,13 +289,14 @@ export default function SidebarV2({
   const SIDEBAR_MIN_WIDTH = 76;
   const SIDEBAR_COMPACT_THRESHOLD = 173;
   const SIDEBAR_MAX_WIDTH = 360;
-  const SIDEBAR_DEFAULT_WIDTH = 248;
+  const SIDEBAR_DEFAULT_WIDTH = 220;
   const SIDEBAR_WIDTH_STORAGE_KEY = 'sidebar-v2-width';
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
     const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
     const parsed = stored ? Number(stored) : NaN;
-    if (!Number.isFinite(parsed)) return SIDEBAR_DEFAULT_WIDTH;
+    // 248 was the previous default; treat it as unset so the narrower start width applies.
+    if (!Number.isFinite(parsed) || parsed === 248) return SIDEBAR_DEFAULT_WIDTH;
     return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizing, setIsResizing] = useState(false);
@@ -483,11 +451,7 @@ export default function SidebarV2({
     // and from the lastActivity comparison. Remaining projects follow the
     // projects API `lastActivity` descending (most recently updated first).
     const remaining = safeProjects.filter((project) => project !== generalProject);
-    return [...remaining].sort((a, b) => {
-      const diff = asTimestamp(b.lastActivity) - asTimestamp(a.lastActivity);
-      if (diff !== 0) return diff;
-      return projectDisplayName(a).localeCompare(projectDisplayName(b));
-    });
+    return [...remaining].sort(compareProjectsBySidebarOrder);
   }, [safeProjects, generalProject]);
 
   const compactRecentItems = useMemo<CompactRecentItem[]>(() => {
@@ -707,7 +671,7 @@ export default function SidebarV2({
       typeof session.id === 'string' && session.id.startsWith('new-session-'),
     );
     const showDraftSession =
-      draftSessionProjectName === project.name &&
+      (draftSessionProjectName === project.name || pendingDraftProjectName === project.name) &&
       selectedProject?.name === project.name &&
       activeTab === 'chat' &&
       !selectedSession &&
@@ -733,7 +697,7 @@ export default function SidebarV2({
       depth: number,
       isForkChild: boolean,
     ): ReactNode => {
-      const { session, sessionId, lastActivity } = node.flat;
+      const { session, sessionId } = node.flat;
       const isSessionActive =
         selectedProject?.name === project.name &&
         selectedSession?.id === sessionId &&
@@ -813,8 +777,7 @@ export default function SidebarV2({
                 <div className="min-w-0">
                   <div
                     className={cn(
-                      'flex min-w-0 items-center gap-1 truncate text-[12.5px]',
-                      isSessionActive ? 'font-bold' : 'font-medium',
+                      'flex min-w-0 items-center gap-1 truncate font-normal',
                       isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
                     )}
                   >
@@ -823,16 +786,16 @@ export default function SidebarV2({
                     ) : null}
                     <span className="truncate">{sessionDisplayTitle(session)}</span>
                   </div>
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    {isOptimisticRow
-                      ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
-                      : isForkChild
-                        ? t('sidebar:sessions.forkedFrom', {
+                  {isOptimisticRow || isForkChild ? (
+                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {isOptimisticRow
+                        ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
+                        : t('sidebar:sessions.forkedFrom', {
                             parent: parentTitle || session.parentSessionId || '',
                             defaultValue: `forked from ${parentTitle || session.parentSessionId || 'parent'}`,
-                          })
-                        : formatRelative(lastActivity, t)}
-                  </div>
+                          })}
+                    </div>
+                  ) : null}
                 </div>
               </button>
             )}
@@ -854,7 +817,7 @@ export default function SidebarV2({
             onClick={(event) => handleNewSession(event, project)}
             className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
           >
-            <div className="truncate text-[12.5px]">
+            <div className="truncate">
               {t('sidebar:sessions.newSession', { defaultValue: 'New Session' })}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -1021,23 +984,9 @@ export default function SidebarV2({
                   <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
                 )}
               </svg>
-              <span className="flex-1 truncate">{label}</span>
+              <span className="flex-1 truncate font-normal">{label}</span>
             </button>
           )}
-
-          {!isRenaming ? (
-            <div className="project-chat-icon">
-              <button
-                type="button"
-                onClick={(event) => handleNewSession(event, project)}
-                aria-label={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                title={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                className="grid place-items-center"
-              >
-                <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {isExpanded ? renderSessionRows(project) : null}
@@ -1088,6 +1037,22 @@ export default function SidebarV2({
         className={isCompact ? 'compact-actions' : 'primary-actions'}
         aria-label={t('sidebar:quickActions.label', { defaultValue: 'Primary actions' }) as string}
       >
+        <button
+          className={cn('primary-action', isCompact && 'compact')}
+          type="button"
+          aria-label={t('sidebar:quickActions.newConversation', { defaultValue: '新对话' }) as string}
+          title={t('sidebar:quickActions.newConversation', { defaultValue: '新对话' }) as string}
+          onClick={() => onStartHomeNewConversation?.()}
+        >
+          <span className="primary-action-icon">
+            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+            </svg>
+          </span>
+          <span className="truncate">
+            {t('sidebar:quickActions.newConversation', { defaultValue: '新对话' })}
+          </span>
+        </button>
         <button
           className={cn('primary-action', isCompact && 'compact', activeTab === 'skills' && 'active')}
           type="button"
@@ -1181,8 +1146,6 @@ export default function SidebarV2({
         >
           <SectionHeading
             title={t('sidebar:projects.title', { defaultValue: 'Projects' })}
-            addLabel={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-            onAdd={onCreateProject}
             expanded={projectsExpanded}
             expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
             collapseLabel={t('sidebar:projects.collapse', { defaultValue: 'Collapse projects' }) as string}
@@ -1253,11 +1216,6 @@ export default function SidebarV2({
           >
           <SectionHeading
             title={t('sidebar:conversations.title', { defaultValue: 'Conversations' })}
-            addLabel={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-            onAdd={() => {
-              if (!generalProject) return;
-              handleNewSession(undefined, generalProject);
-            }}
             expanded={conversationsExpanded}
             expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}
             collapseLabel={t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string}

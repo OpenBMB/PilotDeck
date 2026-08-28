@@ -82,6 +82,7 @@
   "workspace": {
     "title": "Create your workspace",
     "intro": "Create a workspace for long-running work and keep project files together. Or start chatting without creating one.",
+    "dialogIntro": "Create a workspace for long-running work and keep project files together.",
     "typeHeading": "Workspace type",
     "existingTitle": "Existing folder",
     "existingHint": "Add a folder that already exists on this machine.",

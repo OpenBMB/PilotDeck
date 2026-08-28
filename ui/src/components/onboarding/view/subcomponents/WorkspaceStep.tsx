@@ -1,39 +1,77 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import FolderBrowserModal from '../../../project-creation-wizard/components/FolderBrowserModal';
+import { pickNativeFolder } from '../../../project-creation-wizard/data/workspaceApi';
 import type { WorkspaceDraft } from '../types';
 import { ArrowLeftIcon, FolderBrowseIcon, StepCheckIcon } from './icons';
 
-type WorkspaceStepProps = {
+// Restore the in-app folder picker:
+// import FolderBrowserModal from '../../../project-creation-wizard/components/FolderBrowserModal';
+
+type WorkspaceStepBaseProps = {
   draft: WorkspaceDraft;
   error: string;
   progress: string;
   isCreating: boolean;
   onWorkspacePathChange: (workspacePath: string) => void;
   onGithubUrlChange: (githubUrl: string) => void;
-  onBack: () => void;
-  onSkipChat: () => void | Promise<void>;
   onFinish: () => void | Promise<void>;
 };
 
-export default function WorkspaceStep({
-  draft,
-  error,
-  progress,
-  isCreating,
-  onWorkspacePathChange,
-  onGithubUrlChange,
-  onBack,
-  onSkipChat,
-  onFinish,
-}: WorkspaceStepProps) {
+export type WorkspaceStepProps = WorkspaceStepBaseProps & (
+  | {
+      variant?: 'onboarding';
+      onBack: () => void;
+      onSkipChat: () => void | Promise<void>;
+      onCancel?: never;
+    }
+  | {
+      variant: 'dialog';
+      onCancel: () => void;
+      onBack?: never;
+      onSkipChat?: never;
+    }
+);
+
+export default function WorkspaceStep(props: WorkspaceStepProps) {
+  const {
+    draft,
+    error,
+    progress,
+    isCreating,
+    onWorkspacePathChange,
+    onGithubUrlChange,
+    onFinish,
+  } = props;
+  const isDialog = props.variant === 'dialog';
   const { t } = useTranslation('onboarding');
-  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const { t: tCommon } = useTranslation();
   const [pathInvalid, setPathInvalid] = useState(false);
+  const [isPickingFolder, setIsPickingFolder] = useState(false);
+  const [browseError, setBrowseError] = useState('');
+  // Restore the in-app folder picker:
+  // const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
   const handlePathChange = (value: string) => {
     setPathInvalid(false);
     onWorkspacePathChange(value);
+  };
+
+  const handleBrowseFolder = async () => {
+    if (isCreating || isPickingFolder) return;
+    setIsPickingFolder(true);
+    setBrowseError('');
+    try {
+      const selectedPath = await pickNativeFolder();
+      if (selectedPath) {
+        handlePathChange(selectedPath);
+      }
+    } catch (caughtError) {
+      setBrowseError(
+        caughtError instanceof Error ? caughtError.message : String(caughtError),
+      );
+    } finally {
+      setIsPickingFolder(false);
+    }
   };
 
   const handleCreateWorkspace = () => {
@@ -47,8 +85,10 @@ export default function WorkspaceStep({
   return (
     <div className="content-page workspace-setup-page">
       <header className="page-intro">
-        <h1>{t('workspace.title')}</h1>
-        <p className="intro-copy">{t('workspace.intro')}</p>
+        <h1 id={isDialog ? 'create-workspace-dialog-title' : undefined}>{t('workspace.title')}</h1>
+        <p className="intro-copy">
+          {isDialog ? t('workspace.dialogIntro') : t('workspace.intro')}
+        </p>
       </header>
 
       <form className="workspace-simple-form" onSubmit={(event) => event.preventDefault()}>
@@ -69,8 +109,10 @@ export default function WorkspaceStep({
                 className="folder-browse-button"
                 aria-label={t('workspace.browse')}
                 title={t('workspace.browse')}
-                onClick={() => setShowFolderBrowser(true)}
-                disabled={isCreating}
+                onClick={() => {
+                  void handleBrowseFolder();
+                }}
+                disabled={isCreating || isPickingFolder}
               >
                 <FolderBrowseIcon width={20} height={20} />
               </button>
@@ -87,6 +129,7 @@ export default function WorkspaceStep({
               type="url"
               value={draft.githubUrl}
               onChange={(event) => onGithubUrlChange(event.target.value)}
+              placeholder={t('workspace.githubPlaceholder')}
               disabled={isCreating}
             />
             <small>{t('workspace.githubHint')}</small>
@@ -94,28 +137,46 @@ export default function WorkspaceStep({
         </label>
       </form>
 
-      {(error || progress) && (
-        <div className={error ? 'workspace-error' : 'field-help'}>
-          {error || progress}
+      {(error || progress || browseError) && (
+        <div className={error || browseError ? 'workspace-error' : 'field-help'}>
+          {error || browseError || progress}
         </div>
       )}
 
       <div className="footer-actions workspace-create-actions">
-        <button className="button secondary" type="button" onClick={onBack} disabled={isCreating}>
-          <ArrowLeftIcon width={18} height={18} />
-          {t('actions.back')}
-        </button>
-        <div className="workspace-primary-actions">
+        {isDialog ? (
           <button
-            className="button secondary direct-chat-button"
+            className="button secondary"
             type="button"
-            onClick={() => {
-              void onSkipChat();
-            }}
+            onClick={props.onCancel}
             disabled={isCreating}
           >
-            {t('workspace.startChatting')}
+            {tCommon('buttons.cancel')}
           </button>
+        ) : (
+          <button
+            className="button secondary"
+            type="button"
+            onClick={props.onBack}
+            disabled={isCreating}
+          >
+            <ArrowLeftIcon width={18} height={18} />
+            {t('actions.back')}
+          </button>
+        )}
+        <div className="workspace-primary-actions">
+          {isDialog ? null : (
+            <button
+              className="button secondary direct-chat-button"
+              type="button"
+              onClick={() => {
+                void props.onSkipChat();
+              }}
+              disabled={isCreating}
+            >
+              {t('workspace.startChatting')}
+            </button>
+          )}
           <button
             className="button primary"
             type="button"
@@ -128,6 +189,7 @@ export default function WorkspaceStep({
         </div>
       </div>
 
+      {/* Restore the in-app folder picker:
       <FolderBrowserModal
         isOpen={showFolderBrowser}
         autoAdvanceOnSelect
@@ -137,6 +199,7 @@ export default function WorkspaceStep({
           setShowFolderBrowser(false);
         }}
       />
+      */}
     </div>
   );
 }

@@ -463,9 +463,17 @@
     "placeholder": "告诉 PilotDeck 你想完成什么…",
     "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…"
   },
+  "workspacePicker": {
+    "select": "选择工作空间",
+    "search": "搜索项目",
+    "newProject": "新建项目",
+    "workWithoutProject": "不在项目中工作",
+    "empty": "未找到匹配的项目",
+    "selectRequired": "请先选择工作空间"
+  },
   "welcome": {
     "greetingWithProject": "今天想做点什么？",
-    "noProject": "从左侧选择一个项目开始"
+    "noProject": "今天想做点什么？"
   },
   "subagent": {
     "detailTitle": "子任务详情",

@@ -37,6 +37,7 @@
   "quickActions": {
     "label": "快捷操作",
     "newChat": "新建对话",
+    "newConversation": "新对话",
     "newProject": "新建项目",
     "skills": "技能",
     "skillsCompact": "技能工具",

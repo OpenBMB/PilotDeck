@@ -34,6 +34,7 @@ import {
 import { useSessionWatch } from '../../hooks/useSessionWatch';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
+import { isGeneralProject } from '../app-shell/appShellSelection';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
@@ -55,7 +56,7 @@ const EDIT_RECONCILIATION_HINT = [
 //   · ComposerV2     — card textarea + paperclip/at + arrow-up send
 //   · NO provider picker empty state, NO pill bar, NO gradient bubbles
 function ChatInterfaceV2({
-  selectedProject,
+  selectedProject: selectedProjectFromShell,
   selectedSession,
   ws,
   sendMessage,
@@ -84,7 +85,15 @@ function ChatInterfaceV2({
   forceWelcome,
   onExitWelcome,
   compact = false,
+  projects = [],
+  onStartNewSession: _onStartNewSession,
+  onSelectWorkspace,
+  workspaceBinding = null,
+  onCreateProject,
 }: ChatInterfaceProps) {
+  const selectedProject = selectedSession
+    ? selectedProjectFromShell
+    : (workspaceBinding ?? selectedProjectFromShell);
   const { t } = useTranslation('chat');
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
     useTasksSettings();
@@ -716,6 +725,17 @@ function ChatInterfaceV2({
       sendByCtrlEnter={sendByCtrlEnter}
       chromeless={isWelcomeMode && !compact}
       compact={compact}
+      showWorkspacePicker={isWelcomeMode && !compact}
+      workspaceProjects={projects}
+      workspaceSelectedProject={workspaceBinding ?? (!selectedSession ? selectedProjectFromShell : null)}
+      onSelectWorkspaceProject={(project) => {
+        onSelectWorkspace?.(project);
+      }}
+      onSelectWorkspaceNone={() => {
+        const generalProject = projects.find(isGeneralProject);
+        if (generalProject) onSelectWorkspace?.(generalProject);
+      }}
+      onCreateWorkspaceProject={onCreateProject}
     />
   );
   const composerSlot = (
@@ -751,14 +771,10 @@ function ChatInterfaceV2({
         <div className="flex flex-1 flex-col items-center justify-center px-6">
           <div className="w-full max-w-[860px]">
             <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
-              {selectedProject
-                ? t('welcome.greetingWithProject', {
-                    project: projectName,
-                    defaultValue: `What's on the plan today?`,
-                  })
-                : t('welcome.noProject', {
-                    defaultValue: 'Pick a project from the sidebar to get started',
-                  })}
+              {t('welcome.greetingWithProject', {
+                project: projectName,
+                defaultValue: `What's on the plan today?`,
+              })}
             </h1>
             {composerSlot}
           </div>

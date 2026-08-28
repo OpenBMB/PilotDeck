@@ -543,5 +543,17 @@
       "message": "{{message}}",
       "hint": "Retry with a shorter prompt, ask the agent to split large tool inputs into smaller steps, or switch to a model with stronger tool-calling support in Settings → Model Provider."
     }
+  },
+  "workspacePicker": {
+    "select": "Select workspace",
+    "search": "Search projects",
+    "newProject": "New project",
+    "workWithoutProject": "Work without a project",
+    "empty": "No matching projects",
+    "selectRequired": "Select a workspace to send"
+  },
+  "welcome": {
+    "greetingWithProject": "What's on the plan today?",
+    "noProject": "What's on the plan today?"
   }
 }

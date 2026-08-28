@@ -82,6 +82,7 @@
   "workspace": {
     "title": "创建你的工作区",
     "intro": "创建工作区用于长期工作，项目文件存于工作区。可不创建直接开始对话。",
+    "dialogIntro": "创建工作区用于长期工作，项目文件存于工作区。",
     "typeHeading": "工作区类型",
     "existingTitle": "已有文件夹",
     "existingHint": "添加这台机器上已经存在的目录。",

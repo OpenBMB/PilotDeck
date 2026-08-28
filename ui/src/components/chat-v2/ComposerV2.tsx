@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -55,6 +55,8 @@ import {
 } from "./modelCapabilityOptions";
 import DocumentReferenceChip from "./DocumentReferenceChip";
 import ReplyQuoteChip from "./ReplyQuoteChip";
+import WorkspacePickerBar from "./WorkspacePickerBar";
+import type { Project } from "../../types/app";
 
 interface MentionableFile {
   id?: string;
@@ -182,6 +184,12 @@ export type ComposerV2Props = {
 
   chromeless?: boolean;
   compact?: boolean;
+  showWorkspacePicker?: boolean;
+  workspaceProjects?: Project[];
+  workspaceSelectedProject?: Project | null;
+  onSelectWorkspaceProject?: (project: Project) => void;
+  onSelectWorkspaceNone?: () => void;
+  onCreateWorkspaceProject?: () => void;
 };
 
 type ContextStatus = {
@@ -249,6 +257,8 @@ const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
     defaultDescription: "Skip confirmations and allow full access",
   },
 ];
+
+const ADD_MENU_PREFERRED_MAX_HEIGHT = 400;
 
 const COMPOSER_RUN_MODE_OPTIONS: Array<{
   mode: Extract<ChatRunMode, "plan" | "ask">;
@@ -511,6 +521,12 @@ export default function ComposerV2({
   onPlanExecutionApproved,
   chromeless = false,
   compact = false,
+  showWorkspacePicker = false,
+  workspaceProjects = [],
+  workspaceSelectedProject = null,
+  onSelectWorkspaceProject,
+  onSelectWorkspaceNone,
+  onCreateWorkspaceProject,
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
@@ -522,13 +538,37 @@ export default function ComposerV2({
   const [skills, setSkills] = useState<ComposerSkill[]>([]);
   const [isSkillsLoading, setIsSkillsLoading] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const [addMenuMaxHeight, setAddMenuMaxHeight] = useState<number | null>(null);
   const permissionSelectorDisabled = runMode === "plan";
+  const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
 
   useEffect(() => {
     if (permissionSelectorDisabled) {
       setIsPermissionMenuOpen(false);
     }
   }, [permissionSelectorDisabled]);
+
+  useLayoutEffect(() => {
+    if (!isAddMenuOpen) {
+      setAddMenuMaxHeight(null);
+      return undefined;
+    }
+
+    const updateAddMenuMaxHeight = () => {
+      const menu = addMenuRef.current;
+      if (!menu) return;
+      const header = document.querySelector(".workspace-header");
+      const headerBottom =
+        header instanceof HTMLElement ? header.getBoundingClientRect().bottom : 0;
+      const available = Math.floor(menu.getBoundingClientRect().bottom - headerBottom);
+      setAddMenuMaxHeight(Math.min(ADD_MENU_PREFERRED_MAX_HEIGHT, Math.max(1, available)));
+    };
+
+    updateAddMenuMaxHeight();
+    window.addEventListener("resize", updateAddMenuMaxHeight);
+    return () => window.removeEventListener("resize", updateAddMenuMaxHeight);
+  }, [isAddMenuOpen]);
 
   useEffect(() => {
     if (!isAddMenuOpen || !projectKey) return;
@@ -684,7 +724,14 @@ export default function ComposerV2({
 
         {!hasBlockingPermissionPanel ? (
           <form
-            onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void}
+            onSubmit={(event) => {
+              if (showWorkspacePicker && !workspaceSelectedProject) {
+                event.preventDefault();
+                setWorkspaceMenuForceOpen(true);
+                return;
+              }
+              onSubmit(event);
+            }}
             className={cn(
               "pd-composer-container relative",
               compact && "pd-composer-compact",
@@ -842,7 +889,7 @@ export default function ComposerV2({
             <div
               {...getRootProps()}
               className={cn(
-                "group rounded-xl border bg-white p-2 shadow-sm transition-colors",
+                "group relative z-10 rounded-xl border bg-white p-2 shadow-sm transition-colors",
                 "border-neutral-200 focus-within:border-neutral-300",
                 "dark:border-neutral-800 dark:bg-neutral-900 dark:focus-within:border-neutral-700",
                 isDragActive &&
@@ -1029,9 +1076,9 @@ export default function ComposerV2({
                       type="button"
                       onClick={() => setIsAddMenuOpen((open) => !open)}
                       className={cn(
-                        "grid h-8 w-8 place-items-center rounded-full border border-[#b6b1e8] bg-[#faf9ff] p-0 text-[#5d57c5] transition-colors hover:border-[#7770da] hover:bg-[#efedff] hover:text-[#4943b6] dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+                        "grid h-8 w-8 place-items-center rounded-md border-0 bg-transparent p-0 text-[#333333] transition-colors hover:bg-neutral-100 hover:text-black dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white",
                         isAddMenuOpen &&
-                          "border-[#7770da] bg-[#efedff] text-[#4943b6] dark:border-violet-500 dark:bg-violet-950/70 dark:text-violet-200",
+                          "bg-neutral-100 text-black dark:bg-neutral-800 dark:text-white",
                       )}
                       title={
                         t("input.addContext", {
@@ -1046,13 +1093,27 @@ export default function ComposerV2({
                       aria-haspopup="menu"
                       aria-expanded={isAddMenuOpen}
                     >
-                      <Plus className="h-[15px] w-[15px]" strokeWidth={1.8} />
+                      <Plus className="h-4 w-4" strokeWidth={2.25} strokeLinecap="square" strokeLinejoin="miter" />
                     </button>
                     {isAddMenuOpen ? (
                       <div
+                        ref={addMenuRef}
                         role="menu"
-                        className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-xl border border-violet-200 bg-white p-2 text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        style={
+                          addMenuMaxHeight
+                            ? { maxHeight: `${addMenuMaxHeight}px` }
+                            : undefined
+                        }
+                        className="absolute bottom-full left-0 right-0 z-50 mb-2 flex flex-col overflow-hidden rounded-xl border border-violet-200 bg-white p-2 text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
                       >
+                        <div
+                          className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#cbc9d5_transparent] [scrollbar-width:thin]"
+                          style={
+                            addMenuMaxHeight
+                              ? { maxHeight: `${Math.max(80, addMenuMaxHeight - 56)}px` }
+                              : undefined
+                          }
+                        >
                         <button
                           type="button"
                           role="menuitem"
@@ -1131,7 +1192,7 @@ export default function ComposerV2({
                         <div className="mt-1 px-2 py-1 text-[11px] font-medium text-neutral-400">
                           {t("input.skills", { defaultValue: "技能" })}
                         </div>
-                        <div className="grid max-h-[172px] gap-0.5 overflow-y-auto [scrollbar-color:#cbc9d5_transparent] [scrollbar-width:thin]">
+                        <div className="grid gap-0.5">
                           {isSkillsLoading ? (
                             <div className="flex items-center justify-center py-5 text-neutral-400">
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1181,7 +1242,8 @@ export default function ComposerV2({
                             </div>
                           )}
                         </div>
-                        <div className="relative mt-1">
+                        </div>
+                        <div className="relative mt-1 shrink-0">
                           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
                           <input
                             type="search"
@@ -1814,6 +1876,17 @@ export default function ComposerV2({
                 </div>
               </div>
             </div>
+            {showWorkspacePicker ? (
+              <WorkspacePickerBar
+                projects={workspaceProjects}
+                selectedProject={workspaceSelectedProject}
+                forceOpen={workspaceMenuForceOpen}
+                onForceOpenConsumed={() => setWorkspaceMenuForceOpen(false)}
+                onSelectProject={(project) => onSelectWorkspaceProject?.(project)}
+                onSelectNone={() => onSelectWorkspaceNone?.()}
+                onCreateProject={() => onCreateWorkspaceProject?.()}
+              />
+            ) : null}
           </form>
         ) : null}
       </div>

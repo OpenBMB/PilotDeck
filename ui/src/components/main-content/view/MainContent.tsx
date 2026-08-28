@@ -227,6 +227,9 @@ function MainContent({
   onReplaceTemporarySession,
   onNavigateToSession,
   onStartNewSession,
+  onCreateProject,
+  onSelectWorkspace,
+  workspaceBinding,
   onSelectSession,
   onShowSettings,
   onSelectProjectByName,
@@ -514,7 +517,7 @@ function MainContent({
     );
   }
 
-  if (!selectedProject && activeTab !== "dashboard" && activeTab !== "cron") {
+  if (!selectedProject && activeTab !== "dashboard" && activeTab !== "cron" && activeTab !== "chat") {
     return (
       <MainContentStateView
         mode="empty"
@@ -552,6 +555,9 @@ function MainContent({
           onReplaceTemporarySession={onReplaceTemporarySession}
           onNavigateToSession={onNavigateToSession}
           onStartNewSession={onStartNewSession}
+          onCreateProject={onCreateProject}
+          onSelectWorkspace={onSelectWorkspace}
+          workspaceBinding={workspaceBinding}
           onSelectSession={onSelectSession}
           onShowSettings={onShowSettings}
           externalMessageUpdate={externalMessageUpdate}
@@ -639,6 +645,9 @@ type SplitBodyProps = {
   onReplaceTemporarySession: any;
   onNavigateToSession: (sessionId: string) => void;
   onStartNewSession: MainContentProps["onStartNewSession"];
+  onCreateProject?: MainContentProps["onCreateProject"];
+  onSelectWorkspace?: MainContentProps["onSelectWorkspace"];
+  workspaceBinding?: MainContentProps["workspaceBinding"];
   onSelectSession: MainContentProps["onSelectSession"];
   onShowSettings: any;
   externalMessageUpdate: any;
@@ -691,6 +700,9 @@ function SplitBody(props: SplitBodyProps) {
     onReplaceTemporarySession,
     onNavigateToSession,
     onStartNewSession,
+    onCreateProject,
+    onSelectWorkspace,
+    workspaceBinding,
     onSelectSession,
     onShowSettings,
     externalMessageUpdate,
@@ -1534,6 +1546,11 @@ function SplitBody(props: SplitBodyProps) {
               forceWelcome={false}
               onExitWelcome={isFiles ? undefined : () => setActiveTab("chat")}
               compact={isFiles}
+              projects={projects}
+              onStartNewSession={onStartNewSession}
+              onSelectWorkspace={onSelectWorkspace}
+              workspaceBinding={workspaceBinding}
+              onCreateProject={onCreateProject}
             />
           </ErrorBoundary>
         </div>

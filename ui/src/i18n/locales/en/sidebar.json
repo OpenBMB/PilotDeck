@@ -37,6 +37,7 @@
   "quickActions": {
     "label": "Quick actions",
     "newChat": "New Chat",
+    "newConversation": "New conversation",
     "newProject": "New Project",
     "skills": "Skills",
     "skillsCompact": "Skill Tools",

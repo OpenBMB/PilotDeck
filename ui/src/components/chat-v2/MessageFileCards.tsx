@@ -111,88 +111,99 @@ export function MessageFileCard({
     document.body.removeChild(anchor);
   };
 
+  const metaLabel = [typeLabel, sizeLabel].filter(Boolean).join(' · ');
+
+  const actionButtons = (
+    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      {onBrowse ? (
+        <button
+          type="button"
+          onClick={() => { void handleBrowse(); }}
+          className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          title={t('fileArtifacts.browseTitle', { defaultValue: 'Browse' }) as string}
+          aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
+        >
+          <Eye className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      ) : null}
+      {source === 'agent' && canUseWorkspaceActions ? (
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          title={t('fileArtifacts.download', { defaultValue: 'Download / save a copy' }) as string}
+          aria-label={t('fileArtifacts.downloadName', { defaultValue: 'Download {{name}}', name: file.name }) as string}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      ) : null}
+      {canUseWorkspaceActions ? (
+        <button
+          type="button"
+          onClick={handleReference}
+          className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          title={t('fileArtifacts.reference', { defaultValue: 'Reference in chat' }) as string}
+          aria-label={t('fileArtifacts.referenceName', { defaultValue: 'Reference {{name}} in chat', name: file.name }) as string}
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div
       className={cn(
-        'group/file-card flex min-w-0 items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 shadow-sm transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700',
-        compact && 'border-white/70 bg-white/85 shadow-none dark:border-neutral-700/60 dark:bg-neutral-900/55',
+        'group/file-card flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-neutral-200 bg-white shadow-sm transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700',
+        compact ? 'px-2.5 py-2' : 'px-3 py-2.5',
       )}
       title={fullDisplayPath(file.path, project)}
       data-file-artifact={source === 'agent' ? file.path : undefined}
     >
-      <button
-        type="button"
-        onClick={() => { void handleBrowse(); }}
-        disabled={!onBrowse}
-        className={cn(
-          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-          visualClassName,
-          onBrowse && 'cursor-pointer transition-transform hover:scale-[1.03]',
-        )}
-        aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
-      >
-        <FileTypeIcon
-          filename={file.name}
-          mimeType={file.mimeType}
-          className="h-5 w-5"
-          assetClassName="h-8 w-8"
-          strokeWidth={1.8}
-        />
-      </button>
-      <div className="min-w-0 flex-1 text-left">
+      <div className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2 basis-[7.5rem]' : 'gap-3 basis-[10rem]')}>
         <button
           type="button"
           onClick={() => { void handleBrowse(); }}
           disabled={!onBrowse}
-          className="block max-w-full truncate text-left text-[13px] font-medium text-neutral-900 hover:underline disabled:no-underline dark:text-neutral-100"
+          className={cn(
+            'flex shrink-0 items-center justify-center rounded-lg',
+            compact ? 'h-8 w-8' : 'h-10 w-10',
+            visualClassName,
+            onBrowse && 'cursor-pointer transition-transform hover:scale-[1.03]',
+          )}
+          aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
         >
-          {file.name}
+          <FileTypeIcon
+            filename={file.name}
+            mimeType={file.mimeType}
+            className={compact ? 'h-4 w-4' : 'h-5 w-5'}
+            assetClassName={compact ? 'h-6 w-6' : 'h-8 w-8'}
+            strokeWidth={1.8}
+          />
         </button>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
-          <span>{typeLabel}</span>
-          {sizeLabel ? <><span aria-hidden="true">·</span><span>{sizeLabel}</span></> : null}
-          {file.status === 'incomplete' ? (
-            <span className="truncate text-amber-700 dark:text-amber-300">
-              · {t('fileArtifacts.incomplete', { defaultValue: 'Task incomplete' })}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {onBrowse ? (
+        <div className="min-w-0 flex-1 text-left">
           <button
             type="button"
             onClick={() => { void handleBrowse(); }}
-            className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            title={t('fileArtifacts.browseTitle', { defaultValue: 'Browse' }) as string}
-            aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
+            disabled={!onBrowse}
+            className="block w-full truncate text-left text-[13px] font-medium text-neutral-900 hover:underline disabled:no-underline dark:text-neutral-100"
           >
-            <Eye className="h-4 w-4" strokeWidth={1.8} />
+            {file.name}
           </button>
-        ) : null}
-        {source === 'agent' && canUseWorkspaceActions ? (
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            title={t('fileArtifacts.download', { defaultValue: 'Download / save a copy' }) as string}
-            aria-label={t('fileArtifacts.downloadName', { defaultValue: 'Download {{name}}', name: file.name }) as string}
-          >
-            <Download className="h-4 w-4" strokeWidth={1.8} />
-          </button>
-        ) : null}
-        {canUseWorkspaceActions ? (
-          <button
-            type="button"
-            onClick={handleReference}
-            className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            title={t('fileArtifacts.reference', { defaultValue: 'Reference in chat' }) as string}
-            aria-label={t('fileArtifacts.referenceName', { defaultValue: 'Reference {{name}} in chat', name: file.name }) as string}
-          >
-            <MessageSquarePlus className="h-4 w-4" strokeWidth={1.8} />
-          </button>
-        ) : null}
+          {metaLabel || file.status === 'incomplete' ? (
+            <div className="mt-0.5 truncate whitespace-nowrap text-[11px] text-neutral-500 dark:text-neutral-400">
+              {metaLabel}
+              {file.status === 'incomplete' ? (
+                <span className="text-amber-700 dark:text-amber-300">
+                  {metaLabel ? ' · ' : ''}
+                  {t('fileArtifacts.incomplete', { defaultValue: 'Task incomplete' })}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
+      {actionButtons}
     </div>
   );
 }

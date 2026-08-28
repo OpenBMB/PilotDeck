@@ -58,6 +58,7 @@ import JSZip from 'jszip';
 import { readPermissionSettings } from './services/permissionSettings.js';
 import { regenerateLastMessageTransaction } from './services/regenerateLastMessage.js';
 import { getDefaultPtyShell } from './utils/defaultShell.js';
+import { pickNativeFolder } from './utils/nativeFolderPicker.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 
 import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
@@ -1372,6 +1373,24 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error browsing filesystem:', error);
         res.status(500).json({ error: 'Failed to browse filesystem' });
+    }
+});
+
+app.post('/api/browse-filesystem/native-folder', authenticateToken, async (req, res) => {
+    req.setTimeout(0);
+    res.setTimeout(0);
+
+    try {
+        const pickedPath = await pickNativeFolder();
+        if (!pickedPath) {
+            return res.json({ cancelled: true });
+        }
+        return res.json({ path: pickedPath });
+    } catch (error) {
+        console.error('Error opening native folder dialog:', error);
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Failed to open native folder dialog',
+        });
     }
 });
 

@@ -7,6 +7,7 @@ import type {
   CreateWorkspaceResponse,
   CredentialsResponse,
   FolderSuggestion,
+  NativeFolderPickerResponse,
   TokenMode,
 } from '../types';
 
@@ -51,6 +52,21 @@ export const browseFilesystemFolders = async (pathToBrowse: string) => {
     path: data.path || pathToBrowse,
     suggestions: (data.suggestions || []) as FolderSuggestion[],
   };
+};
+
+export const pickNativeFolder = async () => {
+  const response = await api.post('/browse-filesystem/native-folder', {});
+  const data = await parseJson<NativeFolderPickerResponse>(response);
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to open native folder dialog');
+  }
+
+  if (data.cancelled || !data.path) {
+    return null;
+  }
+
+  return data.path;
 };
 
 export const createFolderInFilesystem = async (folderPath: string) => {
