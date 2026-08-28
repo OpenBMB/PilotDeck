@@ -72,6 +72,17 @@ describe('model connection probe request formats', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('classifies text-only content-type validation as image unsupported', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: async () => JSON.stringify({ error: { message: "messages.content.type is invalid, allowed values: ['text']" } }),
+    })));
+    const result = await probeModelConnection({ protocol: 'openai', baseUrl: 'https://example.test', apiKey: 'key', model: 'test-model', image: true });
+    expect(result).toMatchObject({ ok: false, imageUnsupported: true, code: 'IMAGE_TEST_FAILED' });
+  });
+
   it('cancels an active probe when its caller aborts', async () => {
     vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
       options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
@@ -81,5 +92,28 @@ describe('model connection probe request formats', () => {
     const pending = probeModelConnection({ protocol: 'openai', baseUrl: 'https://example.test/v1', apiKey: 'key', model: 'test-model', signal: controller.signal });
     controller.abort(reason);
     await expect(pending).rejects.toBe(reason);
+  });
+
+  it('reports its own timeout as a connection timeout instead of retry abort', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      })));
+      const pending = probeModelConnection({
+        protocol: 'openai',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'key',
+        model: 'test-model',
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(pending).resolves.toMatchObject({
+        ok: false,
+        code: 'ENDPOINT_UNREACHABLE',
+        error: 'Connection timed out after 30s.',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
