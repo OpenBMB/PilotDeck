@@ -31,7 +31,7 @@ import { processSummaryToTrace, type ProcessAttachment } from './processGrouping
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
-import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
+import { AgentAttachmentCards, AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
@@ -615,7 +615,7 @@ function MessageRowV2({
       ) : null}
       {fileAttachments.length > 0 ? (
         <div className={hasAssistantProse || assistantArtifacts.length > 0 ? 'mt-2' : undefined}>
-          <UserAttachmentCards
+          <AgentAttachmentCards
             attachments={fileAttachments}
             project={selectedProject}
             onBrowse={onFileOpen}

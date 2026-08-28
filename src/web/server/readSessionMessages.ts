@@ -659,6 +659,22 @@ function flushBlock(
         ...(resultImages.length > 0 ? { images: resultImages } : {}),
         source: "history",
       });
+      const fileAttachments = readToolResultFileAttachments(block.raw);
+      if (fileAttachments.length > 0) {
+        out.push({
+          id: `${context.sessionKey}-attachment-${context.index}-${out.length}`,
+          sessionKey: context.sessionKey,
+          projectKey: context.projectKey,
+          createdAt: stamp,
+          provider: "pilotdeck",
+          role: "assistant",
+          kind: "text",
+          text: "",
+          attachments: fileAttachments,
+          ...(context.entryId ? { entryId: context.entryId } : {}),
+          source: "history",
+        });
+      }
       return;
     }
     case "tool_result_reference":
@@ -1234,6 +1250,24 @@ function readToolResultToolName(raw: unknown): string | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const toolName = (raw as { toolName?: unknown }).toolName;
   return typeof toolName === "string" && toolName.length > 0 ? toolName : undefined;
+}
+
+function readToolResultFileAttachments(raw: unknown): NonNullable<WebMessage["attachments"]> {
+  if (!raw || typeof raw !== "object") return [];
+  const content = (raw as { content?: unknown }).content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((item) => {
+    if (!item || typeof item !== "object" || (item as { type?: unknown }).type !== "file") return [];
+    const path = (item as { path?: unknown }).path;
+    if (typeof path !== "string" || path.trim().length === 0) return [];
+    const name = path.split(/[\\/]/).pop() || path;
+    const mimeType = (item as { mimeType?: unknown }).mimeType;
+    return [{
+      name,
+      path,
+      ...(typeof mimeType === "string" ? { mimeType } : {}),
+    }];
+  });
 }
 
 function readPlanData(raw: unknown): Record<string, unknown> | undefined {

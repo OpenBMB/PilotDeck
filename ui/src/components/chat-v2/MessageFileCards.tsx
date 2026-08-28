@@ -257,6 +257,36 @@ export function AgentFileArtifactGroup({
   );
 }
 
+export function AgentAttachmentCards({
+  attachments,
+  project,
+  onBrowse,
+}: {
+  attachments: ChatAttachment[];
+  project: Project | null;
+  onBrowse?: (filePath: string) => void;
+}) {
+  return (
+    <div className="mt-3 max-w-xl space-y-2">
+      {attachments.map((attachment) => (
+        <MessageFileCard
+          key={`${attachment.path || attachment.name}`}
+          file={{
+            id: attachment.path || attachment.name,
+            name: attachment.name,
+            path: attachment.path || attachment.filePath || attachment.name,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+          }}
+          project={project}
+          source="agent"
+          onBrowse={onBrowse}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function UserAttachmentCards({
   attachments,
   project,

@@ -175,6 +175,9 @@ function mapWebMessageToNormalized(message, sessionId) {
         ...(Array.isArray(payload.attachments) && payload.attachments.length > 0
           ? { attachments: payload.attachments }
           : {}),
+        ...(Array.isArray(message.attachments) && message.attachments.length > 0
+          ? { attachments: message.attachments }
+          : {}),
         ...(payload.forkUnsupportedContent === true
           ? {
               forkUnsupportedContent: true,

@@ -121,6 +121,12 @@ export type WebMessage = {
     name?: string;
     mimeType?: string;
   }>;
+  attachments?: Array<{
+    name: string;
+    path?: string;
+    mimeType?: string;
+    size?: number;
+  }>;
   artifacts?: import("../../session/artifacts/FileArtifact.js").FileArtifact[];
   /**
    * `PilotDeckToolErrorCode` of the underlying failure when
