@@ -139,6 +139,7 @@ export class SlackChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply({ channelId, threadTs }, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatId);
         this.logger?.error?.(`slack: permission answer error: ${e}`);
       }
       return;

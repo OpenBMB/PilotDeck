@@ -216,6 +216,7 @@ export class WhatsAppChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(msg.chatId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(msg.chatId);
         this.logger?.error?.(`whatsapp: permission answer error: ${e}`);
       }
       return;

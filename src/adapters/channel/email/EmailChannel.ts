@@ -235,6 +235,7 @@ export class EmailChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(chatId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatId);
         this.logger?.error?.(`email: permission answer error: ${e}`);
       }
       return;

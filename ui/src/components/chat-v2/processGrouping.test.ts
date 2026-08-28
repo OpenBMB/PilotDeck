@@ -193,6 +193,30 @@ describe('processGrouping', () => {
     ]);
   });
 
+  it('keeps assistant-only image and file messages visible', () => {
+    const imageOnly: ChatMessage = {
+      id: 'assistant-image-only',
+      type: 'assistant',
+      content: '',
+      timestamp: timestamp(100),
+      images: [{ data: 'data:image/png;base64,abc', name: 'chart.png' }],
+    };
+    const fileOnly: ChatMessage = {
+      id: 'assistant-file-only',
+      type: 'assistant',
+      content: '',
+      timestamp: timestamp(200),
+      attachments: [{ name: 'report.txt', path: 'report.txt' }],
+    };
+
+    expect(buildRenderableMessageItems([imageOnly]).map((item) => item.message.id)).toEqual([
+      'assistant-image-only',
+    ]);
+    expect(buildRenderableMessageItems([fileOnly]).map((item) => item.message.id)).toEqual([
+      'assistant-file-only',
+    ]);
+  });
+
   it('summarizes edit tools with unique edited file count', () => {
     const messages = [
       user('u1'),

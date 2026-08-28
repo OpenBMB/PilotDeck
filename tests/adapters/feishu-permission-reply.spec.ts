@@ -187,6 +187,49 @@ test("Feishu ignores duplicate permission replies while the first decision is in
   assert.equal(sent.filter((message) => message.text.includes("已允许一次")).length, 1);
 });
 
+test("Feishu releases the permission queue when confirmation delivery fails", async () => {
+  const chatId = "oc_send_failure";
+  const decisions: string[] = [];
+  let sendCount = 0;
+  const gateway = {
+    permissionDecide: async ({ requestId }: { requestId: string }) => {
+      decisions.push(requestId);
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  const channel = new FeishuChannel({
+    connectionMode: "webhook",
+    send: async () => {
+      sendCount += 1;
+      if (sendCount === 1) throw new Error("send unavailable");
+    },
+  });
+  await channel.start({ gateway, logger: {} });
+
+  (channel as any).permissions.capture(chatId, "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  (channel as any).permissions.capture(chatId, "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  });
+
+  const response = createMockResponse();
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-send-failure-1" }),
+  );
+  await delay(20);
+  await channel.handleWebhook(
+    {} as IncomingMessage,
+    response as unknown as ServerResponse,
+    JSON.stringify({ chatId, text: "1", eventId: "reply-send-failure-2" }),
+  );
+  await delay(20);
+
+  assert.deepEqual(decisions, ["request-1", "request-2"]);
+});
+
 function createMockResponse(): { statusCode?: number; body?: string; writeHead(statusCode: number): void; end(body: string): void } {
   return {
     writeHead(statusCode: number) {

@@ -147,6 +147,7 @@ export class QQChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(groupOpenId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatKey);
         this.logger?.error?.(`qq: permission answer error: ${e}`);
       }
       return;
@@ -205,6 +206,7 @@ export class QQChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendC2CReply(userOpenId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatKey);
         this.logger?.error?.(`qq: permission answer error (c2c): ${e}`);
       }
       return;

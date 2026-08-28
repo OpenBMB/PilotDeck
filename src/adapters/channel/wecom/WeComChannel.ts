@@ -610,6 +610,7 @@ export class WeComChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
         }
       } catch (e) {
+        this.permissions.releaseAnswer(interactionKey);
         this.logger?.error?.(`wecom: permission answer error: ${e}`);
       }
       return;

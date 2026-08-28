@@ -127,6 +127,23 @@ test("ImPermissionHelper does not let a duplicate reply consume the answering lo
   assert.deepEqual(decisions, ["request-1", "request-2"]);
 });
 
+test("ImPermissionHelper can recover when an adapter cannot deliver confirmation", async () => {
+  const helper = new ImPermissionHelper();
+  const gateway = { permissionDecide: async () => ({ delivered: true }) } as unknown as Gateway;
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  });
+
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+  assert.equal(helper.isAnswering("chat-1"), true);
+  helper.releaseAnswer("chat-1");
+  assert.equal(helper.isAnswering("chat-1"), false);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+});
+
 test("ImPermissionHelper does not resurrect a prompt after clear", async () => {
   const helper = new ImPermissionHelper();
   let release!: () => void;

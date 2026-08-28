@@ -354,6 +354,7 @@ export class FeishuChannel implements ChannelAdapter {
       this.permissionAnsweringChats.add(input.chatId);
       void this.answerPendingPermission(input.chatId, input.text)
         .catch((e: unknown) => {
+          this.permissions.releaseAnswer(input.chatId);
           this.logger?.error?.(`feishu: permission answer error: ${e}`);
         })
         .finally(() => {

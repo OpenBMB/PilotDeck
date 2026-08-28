@@ -160,6 +160,7 @@ export class BlueBubblesChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(chatGuid, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatGuid);
         this.logger?.error?.(`bluebubbles: permission answer error: ${e}`);
       }
       return;

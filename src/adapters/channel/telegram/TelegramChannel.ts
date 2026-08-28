@@ -118,6 +118,7 @@ export class TelegramChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(chatId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(chatId);
         this.logger?.error?.(`telegram: permission answer error: ${e}`);
       }
       return;

@@ -152,6 +152,7 @@ export class MatrixChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(roomId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(roomId);
         this.logger?.error?.(`matrix: permission answer error: ${e}`);
       }
       return;

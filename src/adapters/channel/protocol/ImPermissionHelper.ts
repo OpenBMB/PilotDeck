@@ -48,6 +48,15 @@ export class ImPermissionHelper {
     return prompt;
   }
 
+  /** Release a completed answer when the adapter cannot deliver its reply. */
+  releaseAnswer(chatId: string): void {
+    // A single-request answer already clears `answering` in `finally`; only
+    // a queued next prompt needs recovery after an outbound-send failure.
+    if (!this.nextPrompts.has(chatId)) return;
+    this.nextPrompts.delete(chatId);
+    this.answering.delete(chatId);
+  }
+
   async answer(chatId: string, text: string, gateway: Gateway): Promise<string | undefined> {
     if (this.answering.has(chatId)) return undefined;
     const entries = this.pending.get(chatId);

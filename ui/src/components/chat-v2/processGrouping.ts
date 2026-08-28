@@ -398,7 +398,9 @@ export function isEmptyAssistantShell(message: ChatMessage): boolean {
     !message.isAgentActivity &&
     !message.isAgentActivitySummary &&
     typeof message.content === 'string' &&
-    message.content.trim().length === 0
+    message.content.trim().length === 0 &&
+    (!Array.isArray(message.images) || message.images.length === 0) &&
+    (!Array.isArray(message.attachments) || message.attachments.length === 0)
   );
 }
 

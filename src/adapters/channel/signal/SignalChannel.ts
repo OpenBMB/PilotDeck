@@ -203,6 +203,7 @@ export class SignalChannel implements ChannelAdapter {
           if (nextPrompt) await this.sendReply(sessionChatId, nextPrompt);
         }
       } catch (e) {
+        this.permissions.releaseAnswer(sessionChatId);
         this.logger?.error?.(`signal: permission answer error: ${e}`);
       }
       return;

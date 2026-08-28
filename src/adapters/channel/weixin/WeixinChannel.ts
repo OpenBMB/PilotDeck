@@ -451,6 +451,7 @@ export class WeixinChannel implements ChannelAdapter {
           }
         }
       } catch (e) {
+        this.permissions.releaseAnswer(fromUser);
         this.logger?.error?.(`weixin: permission answer error: ${e}`);
       }
       return;
