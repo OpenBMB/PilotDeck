@@ -120,10 +120,24 @@ function convertSingleMessage(
         };
       } else {
         const text = normalizeAssistantText(content);
+        const assistantImages = Array.isArray(msg.images)
+          ? msg.images.flatMap((image) => {
+              if (typeof image === 'string') {
+                return image.length > 0 ? [{ data: image, name: '' }] : [];
+              }
+              if (!image || typeof image.data !== 'string' || image.data.length === 0) return [];
+              return [{
+                data: image.data,
+                name: typeof image.name === 'string' ? image.name : '',
+                ...(typeof image.mimeType === 'string' ? { mimeType: image.mimeType } : {}),
+                ...(typeof image.size === 'number' ? { size: image.size } : {}),
+              }];
+            })
+          : [];
         const assistantAttachments = Array.isArray(msg.attachments)
           ? msg.attachments.filter((attachment) => attachment && typeof attachment.name === 'string')
           : [];
-        if (!text.trim() && assistantAttachments.length === 0 && !options.preserveEmptyAssistantShell) return null;
+        if (!text.trim() && assistantImages.length === 0 && assistantAttachments.length === 0 && !options.preserveEmptyAssistantShell) return null;
         return {
           id: msg.id,
           entryId: msg.entryId,
@@ -131,6 +145,7 @@ function convertSingleMessage(
           content: text,
           timestamp: msg.timestamp,
           ...turnIdentity,
+          ...(assistantImages.length > 0 ? { images: assistantImages } : {}),
           ...(assistantAttachments.length > 0 ? { attachments: assistantAttachments } : {}),
         };
       }

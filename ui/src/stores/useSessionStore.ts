@@ -61,7 +61,8 @@ export interface NormalizedMessage {
   isSteer?: boolean;
   contentI18n?: { key: string; params?: Record<string, unknown> };
   userHintI18n?: { key: string; params?: Record<string, unknown> };
-  images?: string[];
+  /** Inline images may be plain user data URLs or metadata-rich assistant attachments. */
+  images?: Array<string | { data: string; name?: string; mimeType?: string; size?: number }>;
   attachments?: ChatAttachment[];
   artifacts?: Array<{
     id: string;
@@ -301,7 +302,13 @@ function getConfirmedUserMessageIdentity(message: NormalizedMessage): {
   return {
     text: normalizeRealtimeText(parsed.content),
     attachments: attachments.map(getUserAttachmentIdentity),
-    images: Array.isArray(message.images) ? message.images : [],
+    images: Array.isArray(message.images)
+      ? message.images.flatMap((image) => (
+        typeof image === 'string'
+          ? (image ? [image] : [])
+          : (image && typeof image.data === 'string' && image.data ? [image.data] : [])
+      ))
+      : [],
   };
 }
 

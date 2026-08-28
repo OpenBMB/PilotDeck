@@ -133,9 +133,11 @@ export class SlackChannel implements ChannelAdapter {
     if (this.permissions.hasPending(chatId) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-        if (confirmation) await this.sendReply({ channelId, threadTs }, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(chatId);
-        if (nextPrompt) await this.sendReply({ channelId, threadTs }, nextPrompt);
+        if (confirmation) {
+          await this.sendReply({ channelId, threadTs }, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(chatId);
+          if (nextPrompt) await this.sendReply({ channelId, threadTs }, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`slack: permission answer error: ${e}`);
       }

@@ -100,6 +100,33 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
 });
 
+test("ImPermissionHelper does not let a duplicate reply consume the answering lock", async () => {
+  const helper = new ImPermissionHelper();
+  const decisions: string[] = [];
+  const gateway = {
+    permissionDecide: async ({ requestId }: { requestId: string }) => {
+      decisions.push(requestId);
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  });
+
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+  assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
+  assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
+  assert.deepEqual(decisions, ["request-1"]);
+
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+  assert.deepEqual(decisions, ["request-1", "request-2"]);
+});
+
 test("ImPermissionHelper does not resurrect a prompt after clear", async () => {
   const helper = new ImPermissionHelper();
   let release!: () => void;

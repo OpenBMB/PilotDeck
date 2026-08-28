@@ -209,8 +209,8 @@ export function chatMessageToNormalized(
   }
   // Carry user-attached image data URLs through the normalize round-trip
   // so the optimistic message render and any re-derivation from the
-  // session store both show the thumbnails. NormalizedMessage.images is
-  // `string[]` of data URLs; we only attach it on user-side text frames.
+  // session store both show the thumbnails. User-side text frames normalize
+  // their image entries to data URLs before they reach the session store.
   const images = msg.type === 'user' && Array.isArray(msg.images)
     ? msg.images
         .filter((img) => img && typeof img.data === 'string')

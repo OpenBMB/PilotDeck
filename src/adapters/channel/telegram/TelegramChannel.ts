@@ -112,9 +112,11 @@ export class TelegramChannel implements ChannelAdapter {
     if (this.permissions.hasPending(chatId) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(chatId, msg.text, this.gateway);
-        if (confirmation) await this.sendReply(chatId, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(chatId);
-        if (nextPrompt) await this.sendReply(chatId, nextPrompt);
+        if (confirmation) {
+          await this.sendReply(chatId, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(chatId);
+          if (nextPrompt) await this.sendReply(chatId, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`telegram: permission answer error: ${e}`);
       }

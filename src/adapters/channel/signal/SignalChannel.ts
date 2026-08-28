@@ -197,9 +197,11 @@ export class SignalChannel implements ChannelAdapter {
     if (this.permissions.hasPending(sessionChatId) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(sessionChatId, text, this.gateway);
-        if (confirmation) await this.sendReply(sessionChatId, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(sessionChatId);
-        if (nextPrompt) await this.sendReply(sessionChatId, nextPrompt);
+        if (confirmation) {
+          await this.sendReply(sessionChatId, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(sessionChatId);
+          if (nextPrompt) await this.sendReply(sessionChatId, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`signal: permission answer error: ${e}`);
       }

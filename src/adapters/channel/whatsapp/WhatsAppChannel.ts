@@ -210,9 +210,11 @@ export class WhatsAppChannel implements ChannelAdapter {
     if (this.permissions.hasPending(msg.chatId) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(msg.chatId, msg.text, this.gateway);
-        if (confirmation) await this.sendReply(msg.chatId, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
-        if (nextPrompt) await this.sendReply(msg.chatId, nextPrompt);
+        if (confirmation) {
+          await this.sendReply(msg.chatId, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
+          if (nextPrompt) await this.sendReply(msg.chatId, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`whatsapp: permission answer error: ${e}`);
       }

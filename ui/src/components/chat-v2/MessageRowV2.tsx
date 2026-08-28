@@ -209,6 +209,12 @@ function MessageRowV2({
     [messageAttachments],
   );
   const [userImageLightbox, setUserImageLightbox] = useState<number | null>(null);
+  const [assistantImageLightbox, setAssistantImageLightbox] = useState<number | null>(null);
+  const lightboxImages: LightboxImage[] = messageImages.map((image) => ({
+    data: image.data,
+    name: image.name,
+    mimeType: image.mimeType,
+  }));
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -327,11 +333,6 @@ function MessageRowV2({
   // User: right-aligned grey bubble.
   if (isUser) {
     const messageTime = formatMessageTime(message.timestamp);
-    const lightboxImages: LightboxImage[] = messageImages.map((image) => ({
-      data: image.data,
-      name: image.name,
-      mimeType: image.mimeType,
-    }));
     const submitEdit = async () => {
       const editedText = editDraft.trim();
       if (!onRegenerate || !editedText || isEditSubmitting) return;
@@ -597,7 +598,7 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0 || fileAttachments.length > 0) ? (
+  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0 || fileAttachments.length > 0 || messageImages.length > 0) ? (
     <div className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
@@ -620,6 +621,33 @@ function MessageRowV2({
             onBrowse={onFileOpen}
           />
         </div>
+      ) : null}
+      {messageImages.length > 0 ? (
+        <div className={hasAssistantProse || assistantArtifacts.length > 0 || fileAttachments.length > 0 ? 'mt-2 grid grid-cols-1 gap-2' : 'grid grid-cols-1 gap-2'}>
+          {messageImages.map((image, index) => (
+            <button
+              type="button"
+              key={`${image.name || 'image'}-${index}`}
+              onClick={() => setAssistantImageLightbox(index)}
+              className="block w-72 max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40"
+              aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
+            >
+              <img
+                src={image.data}
+                alt={image.name || 'Generated image'}
+                className="block h-auto max-h-64 w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
+                loading="lazy"
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {assistantImageLightbox !== null && lightboxImages.length > 0 ? (
+        <ImageLightbox
+          images={lightboxImages}
+          startIndex={assistantImageLightbox}
+          onClose={() => setAssistantImageLightbox(null)}
+        />
       ) : null}
       {shouldRenderAssistantActions ? (
         <div

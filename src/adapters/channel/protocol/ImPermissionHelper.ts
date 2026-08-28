@@ -42,6 +42,7 @@ export class ImPermissionHelper {
 
   takeNextPrompt(chatId: string): string | undefined {
     const prompt = this.nextPrompts.get(chatId);
+    if (!prompt) return undefined;
     this.nextPrompts.delete(chatId);
     this.answering.delete(chatId);
     return prompt;

@@ -604,9 +604,11 @@ export class WeComChannel implements ChannelAdapter {
     if (this.permissions.hasPending(interactionKey) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(interactionKey, text, this.gateway);
-        if (confirmation) await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
-        const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
-        if (nextPrompt) await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
+        if (confirmation) {
+          await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
+          const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
+          if (nextPrompt) await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
+        }
       } catch (e) {
         this.logger?.error?.(`wecom: permission answer error: ${e}`);
       }

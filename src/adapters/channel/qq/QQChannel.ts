@@ -141,9 +141,11 @@ export class QQChannel implements ChannelAdapter {
     if (this.permissions.hasPending(chatKey) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(chatKey, text, this.gateway);
-        if (confirmation) await this.sendReply(groupOpenId, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-        if (nextPrompt) await this.sendReply(groupOpenId, nextPrompt);
+        if (confirmation) {
+          await this.sendReply(groupOpenId, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(chatKey);
+          if (nextPrompt) await this.sendReply(groupOpenId, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`qq: permission answer error: ${e}`);
       }
@@ -197,9 +199,11 @@ export class QQChannel implements ChannelAdapter {
     if (this.permissions.hasPending(chatKey) && this.gateway) {
       try {
         const confirmation = await this.permissions.answer(chatKey, rawText, this.gateway);
-        if (confirmation) await this.sendC2CReply(userOpenId, confirmation);
-        const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-        if (nextPrompt) await this.sendC2CReply(userOpenId, nextPrompt);
+        if (confirmation) {
+          await this.sendC2CReply(userOpenId, confirmation);
+          const nextPrompt = this.permissions.takeNextPrompt(chatKey);
+          if (nextPrompt) await this.sendC2CReply(userOpenId, nextPrompt);
+        }
       } catch (e) {
         this.logger?.error?.(`qq: permission answer error (c2c): ${e}`);
       }

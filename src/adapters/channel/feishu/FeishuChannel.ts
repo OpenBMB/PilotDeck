@@ -373,9 +373,11 @@ export class FeishuChannel implements ChannelAdapter {
   private async answerPendingPermission(chatId: string, text: string): Promise<void> {
     if (!this.gateway) return;
     const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-    if (confirmation) await this.send({ chatId, text: confirmation });
-    const nextPrompt = this.permissions.takeNextPrompt(chatId);
-    if (nextPrompt) await this.send({ chatId, text: nextPrompt });
+    if (confirmation) {
+      await this.send({ chatId, text: confirmation });
+      const nextPrompt = this.permissions.takeNextPrompt(chatId);
+      if (nextPrompt) await this.send({ chatId, text: nextPrompt });
+    }
   }
 
   private async drainInboundBatch(chatId: string): Promise<void> {
