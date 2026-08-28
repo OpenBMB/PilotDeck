@@ -377,7 +377,10 @@ export class FeishuChannel implements ChannelAdapter {
     if (confirmation) {
       await this.send({ chatId, text: confirmation });
       const nextPrompt = this.permissions.takeNextPrompt(chatId);
-      if (nextPrompt) await this.send({ chatId, text: nextPrompt });
+      if (nextPrompt) {
+        await this.send({ chatId, text: nextPrompt });
+        this.permissions.confirmNextPrompt(chatId);
+      }
     }
   }
 

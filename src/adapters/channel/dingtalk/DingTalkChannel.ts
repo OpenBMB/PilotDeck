@@ -148,7 +148,10 @@ export class DingTalkChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(chatId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
-          if (nextPrompt) await this.sendReply(chatId, nextPrompt);
+          if (nextPrompt) {
+            await this.sendReply(chatId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(chatId);

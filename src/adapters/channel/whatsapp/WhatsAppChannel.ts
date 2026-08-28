@@ -213,7 +213,10 @@ export class WhatsAppChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(msg.chatId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
-          if (nextPrompt) await this.sendReply(msg.chatId, nextPrompt);
+          if (nextPrompt) {
+            await this.sendReply(msg.chatId, nextPrompt);
+            this.permissions.confirmNextPrompt(msg.chatId);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(msg.chatId);

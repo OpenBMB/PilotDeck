@@ -445,7 +445,11 @@ export class WeixinChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(fromUser, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(fromUser);
-          if (nextPrompt) await this.sendReply(fromUser, nextPrompt);
+          if (nextPrompt) {
+            const delivered = await this.sendReply(fromUser, nextPrompt);
+            if (!delivered) throw new Error("permission prompt delivery failed");
+            this.permissions.confirmNextPrompt(fromUser);
+          }
           if (trimmed === "1" || trimmed === "2") {
             await this.activeLiveReplies.get(fromUser)?.resumeActivity("tool", { immediate: false });
           }

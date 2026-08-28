@@ -187,7 +187,7 @@ test("Feishu ignores duplicate permission replies while the first decision is in
   assert.equal(sent.filter((message) => message.text.includes("已允许一次")).length, 1);
 });
 
-test("Feishu releases the permission queue when confirmation delivery fails", async () => {
+test("Feishu keeps the next permission locked when confirmation delivery fails", async () => {
   const chatId = "oc_send_failure";
   const decisions: string[] = [];
   let sendCount = 0;
@@ -227,7 +227,7 @@ test("Feishu releases the permission queue when confirmation delivery fails", as
   );
   await delay(20);
 
-  assert.deepEqual(decisions, ["request-1", "request-2"]);
+  assert.deepEqual(decisions, ["request-1"]);
 });
 
 function createMockResponse(): { statusCode?: number; body?: string; writeHead(statusCode: number): void; end(body: string): void } {

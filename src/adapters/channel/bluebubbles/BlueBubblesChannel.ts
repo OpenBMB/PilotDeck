@@ -157,7 +157,10 @@ export class BlueBubblesChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(chatGuid, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatGuid);
-          if (nextPrompt) await this.sendReply(chatGuid, nextPrompt);
+          if (nextPrompt) {
+            await this.sendReply(chatGuid, nextPrompt);
+            this.permissions.confirmNextPrompt(chatGuid);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(chatGuid);

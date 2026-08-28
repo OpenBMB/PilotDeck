@@ -638,7 +638,7 @@ function flushBlock(
       const searchData = readSearchToolData(block.raw);
       const resultImages: NonNullable<WebMessage["images"]> = [];
       for (const sub of block.content) {
-        if (sub.type === "image") {
+        if (sub.type === "image" && toolName === "read_file") {
           resultImages.push(toWebMessageImage(sub));
         }
       }
@@ -660,7 +660,10 @@ function flushBlock(
         source: "history",
       });
       const fileAttachments = readToolResultFileAttachments(block.raw);
-      if (fileAttachments.length > 0) {
+      const assistantImages = toolName && toolName !== "read_file"
+        ? block.content.flatMap((sub) => sub.type === "image" ? [toWebMessageImage(sub)] : [])
+        : [];
+      if (fileAttachments.length > 0 || assistantImages.length > 0) {
         out.push({
           id: `${context.sessionKey}-attachment-${context.index}-${out.length}`,
           sessionKey: context.sessionKey,
@@ -670,7 +673,8 @@ function flushBlock(
           role: "assistant",
           kind: "text",
           text: "",
-          attachments: fileAttachments,
+          ...(fileAttachments.length > 0 ? { attachments: fileAttachments } : {}),
+          ...(assistantImages.length > 0 ? { images: assistantImages } : {}),
           ...(context.entryId ? { entryId: context.entryId } : {}),
           source: "history",
         });

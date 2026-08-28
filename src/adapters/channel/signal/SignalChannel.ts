@@ -200,7 +200,10 @@ export class SignalChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(sessionChatId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(sessionChatId);
-          if (nextPrompt) await this.sendReply(sessionChatId, nextPrompt);
+          if (nextPrompt) {
+            await this.sendReply(sessionChatId, nextPrompt);
+            this.permissions.confirmNextPrompt(sessionChatId);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(sessionChatId);

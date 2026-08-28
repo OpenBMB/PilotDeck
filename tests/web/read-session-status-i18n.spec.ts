@@ -52,6 +52,35 @@ test("history replay preserves agent status i18n metadata and user hint", async 
   }
 });
 
+test("history replay projects non-read_file images as assistant images", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-image-history-project-"));
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-image-history-home-"));
+  try {
+    const sessionKey = "web:s_image_history";
+    const storage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId: sessionKey });
+    await storage.transcript.recordDurableMessage(sessionKey, "turn-1", {
+      role: "user",
+      content: [{
+        type: "tool_result",
+        toolCallId: "tool-image-1",
+        content: [{ type: "image", mimeType: "image/png", source: "base64", data: "aW1hZ2U=" }],
+        raw: { toolName: "screenshot" },
+      }],
+    });
+
+    const replay = await readWebSessionMessages({ sessionKey }, { projectRoot, pilotHome });
+    const assistant = replay.messages.find((message) => message.role === "assistant" && message.images?.length);
+    const tool = replay.messages.find((message) => message.kind === "tool_result");
+
+    assert.ok(assistant);
+    assert.equal(assistant.images?.[0]?.data, "data:image/png;base64,aW1hZ2U=");
+    assert.equal(tool?.images, undefined);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+  }
+});
+
 test("history token usage restores latest non-empty turn past latest empty turn result", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-token-usage-project-"));
   const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-token-usage-home-"));

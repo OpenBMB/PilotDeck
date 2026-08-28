@@ -607,7 +607,10 @@ export class WeComChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
           const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
-          if (nextPrompt) await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
+          if (nextPrompt) {
+            await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
+            this.permissions.confirmNextPrompt(interactionKey);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(interactionKey);

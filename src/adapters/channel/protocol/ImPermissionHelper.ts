@@ -10,6 +10,7 @@ type PendingPermission = {
 export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
   private readonly nextPrompts = new Map<string, string>();
+  private readonly promptDelivering = new Set<string>();
   private readonly answering = new Set<string>();
   private readonly inFlight = new Set<string>();
   private readonly generations = new Map<string, number>();
@@ -41,20 +42,24 @@ export class ImPermissionHelper {
   }
 
   takeNextPrompt(chatId: string): string | undefined {
+    if (this.promptDelivering.has(chatId)) return undefined;
     const prompt = this.nextPrompts.get(chatId);
     if (!prompt) return undefined;
+    this.promptDelivering.add(chatId);
+    return prompt;
+  }
+
+  confirmNextPrompt(chatId: string): void {
+    if (!this.promptDelivering.delete(chatId)) return;
     this.nextPrompts.delete(chatId);
     this.answering.delete(chatId);
-    return prompt;
   }
 
   /** Release a completed answer when the adapter cannot deliver its reply. */
   releaseAnswer(chatId: string): void {
-    // A single-request answer already clears `answering` in `finally`; only
-    // a queued next prompt needs recovery after an outbound-send failure.
-    if (!this.nextPrompts.has(chatId)) return;
-    this.nextPrompts.delete(chatId);
-    this.answering.delete(chatId);
+    // Keep the queued prompt and lock intact so a failed delivery cannot let
+    // the next inbound message decide the unseen request.
+    this.promptDelivering.delete(chatId);
   }
 
   async answer(chatId: string, text: string, gateway: Gateway): Promise<string | undefined> {
@@ -124,6 +129,7 @@ export class ImPermissionHelper {
     }
     this.pending.delete(chatId);
     this.nextPrompts.delete(chatId);
+    this.promptDelivering.delete(chatId);
     this.inFlight.delete(chatId);
     this.answering.delete(chatId);
   }

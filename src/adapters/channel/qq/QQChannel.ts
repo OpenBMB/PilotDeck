@@ -144,7 +144,10 @@ export class QQChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendReply(groupOpenId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) await this.sendReply(groupOpenId, nextPrompt);
+          if (nextPrompt) {
+            await this.sendReply(groupOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(chatKey);
@@ -203,7 +206,10 @@ export class QQChannel implements ChannelAdapter {
         if (confirmation) {
           await this.sendC2CReply(userOpenId, confirmation);
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) await this.sendC2CReply(userOpenId, nextPrompt);
+          if (nextPrompt) {
+            await this.sendC2CReply(userOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey);
+          }
         }
       } catch (e) {
         this.permissions.releaseAnswer(chatKey);

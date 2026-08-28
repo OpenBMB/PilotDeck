@@ -50,6 +50,7 @@ test("ImPermissionHelper resolves pending permission requests in FIFO order", as
   ]);
   assert.equal(helper.hasPending("chat-1"), true);
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /\/tmp\/b\.txt/);
+  helper.confirmNextPrompt("chat-1");
   assert.equal(await helper.answer("chat-1", "0", gateway), "已拒绝，继续处理。");
   assert.deepEqual(decisions, [
     { sessionKey: "session-1", requestId: "request-1", decision: "allow", remember: false },
@@ -99,6 +100,7 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   assert.deepEqual(decisions, ["request-1"]);
   assert.equal(await helper.answer("chat-1", "1", gateway), undefined);
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+  helper.confirmNextPrompt("chat-1");
 });
 
 test("ImPermissionHelper does not let a duplicate reply consume the answering lock", async () => {
@@ -124,6 +126,7 @@ test("ImPermissionHelper does not let a duplicate reply consume the answering lo
   assert.deepEqual(decisions, ["request-1"]);
 
   assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+  helper.confirmNextPrompt("chat-1");
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
   assert.deepEqual(decisions, ["request-1", "request-2"]);
 });
@@ -141,6 +144,9 @@ test("ImPermissionHelper can recover when an adapter cannot deliver confirmation
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
   assert.equal(helper.isAnswering("chat-1"), true);
   helper.releaseAnswer("chat-1");
+  assert.equal(helper.isAnswering("chat-1"), true);
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /write_file/);
+  helper.confirmNextPrompt("chat-1");
   assert.equal(helper.isAnswering("chat-1"), false);
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
 });
