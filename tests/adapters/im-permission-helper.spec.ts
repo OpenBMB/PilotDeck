@@ -80,6 +80,29 @@ test("ImPermissionHelper keeps pending requests when the reply is invalid", asyn
   assert.equal(helper.hasPending("chat-1"), true);
 });
 
+test("ImPermissionHelper retries an undelivered initial prompt before accepting a reply", async () => {
+  const helper = new ImPermissionHelper();
+  const decisions: string[] = [];
+  const gateway = {
+    permissionDecide: async ({ requestId }: { requestId: string }) => {
+      decisions.push(requestId);
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+
+  const prompt = helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  assert.match(prompt ?? "", /read_file/);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "权限提示发送中，请稍候。");
+  helper.confirmInitialPrompt("chat-1", false);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "上一条权限提示发送失败，正在重试。");
+  assert.match(helper.takeNextPrompt("chat-1") ?? "", /read_file/);
+  helper.confirmNextPrompt("chat-1", true);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+  assert.deepEqual(decisions, ["request-1"]);
+});
+
 test("ImPermissionHelper ignores concurrent replies while a decision is in flight", async () => {
   const helper = new ImPermissionHelper();
   let release!: () => void;
