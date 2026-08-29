@@ -259,7 +259,8 @@ export class MattermostChannel implements ChannelAdapter {
   private async sendReply(
     ctx: { channelId: string; rootId?: string },
     text: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    let delivered = true;
     const chunks = chunkText(text, MAX_MESSAGE_LENGTH);
     for (const chunk of chunks) {
       try {
@@ -270,8 +271,10 @@ export class MattermostChannel implements ChannelAdapter {
         });
       } catch (e) {
         this.logger?.error?.(`mattermost: post failed: ${e}`);
+        delivered = false;
       }
     }
+    return delivered;
   }
 
   private async rest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {

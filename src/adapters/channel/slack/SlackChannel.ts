@@ -214,8 +214,9 @@ export class SlackChannel implements ChannelAdapter {
   private async sendReply(
     ctx: { channelId: string; threadTs?: string },
     text: string,
-  ): Promise<void> {
-    if (!this.app) return;
+  ): Promise<boolean> {
+    if (!this.app) return false;
+    let delivered = true;
     const formatted = formatSlackMrkdwn(text);
     const chunks = chunkText(formatted, MAX_MESSAGE_LENGTH);
     for (const chunk of chunks) {
@@ -228,8 +229,10 @@ export class SlackChannel implements ChannelAdapter {
         });
       } catch (e) {
         this.logger?.error?.(`slack: postMessage failed: ${e}`);
+        delivered = false;
       }
     }
+    return delivered;
   }
 }
 
