@@ -59,3 +59,32 @@ test("web reducer bounds huge live tool result previews", () => {
   assert.match(text, /head/);
   assert.match(text, /tail/);
 });
+
+test("web reducer projects assistant attachment events", () => {
+  const options = reducerOptions();
+  let state = createWebMessageReducerState();
+  state = applyWebGatewayEvent(state, {
+    type: "assistant_attachment",
+    attachment: {
+      type: "file",
+      name: "report.pdf",
+      path: "/workspace/report.pdf",
+      mimeType: "application/pdf",
+      bytes: 123,
+      source: "media_reference",
+    },
+  }, options);
+
+  assert.deepEqual(state.messages[0], {
+    id: "msg-1",
+    sessionKey: "s1",
+    projectKey: "p1",
+    createdAt: "2026-07-09T00:00:00.000Z",
+    provider: "pilotdeck",
+    role: "assistant",
+    kind: "text",
+    text: "",
+    attachments: [{ name: "report.pdf", path: "/workspace/report.pdf", mimeType: "application/pdf", size: 123 }],
+    source: "live",
+  });
+});

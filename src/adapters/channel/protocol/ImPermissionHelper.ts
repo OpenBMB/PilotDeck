@@ -49,7 +49,10 @@ export class ImPermissionHelper {
   }
 
   takeNextPrompt(chatId: string): string | undefined {
-    if (this.promptDelivering.has(chatId)) return undefined;
+    // Status replies from answer() are non-advancing. Do not let an inbound
+    // reply during initial delivery or an in-flight decision consume the
+    // queued prompt and clear the lock.
+    if (this.promptDelivering.has(chatId) || this.initialPromptPending.has(chatId) || this.inFlight.has(chatId)) return undefined;
     const prompt = this.nextPrompts.get(chatId);
     if (!prompt) return undefined;
     this.promptDelivering.add(chatId);

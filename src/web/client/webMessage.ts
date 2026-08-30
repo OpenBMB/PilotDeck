@@ -270,6 +270,49 @@ export function applyWebGatewayEvent(
       };
     }
 
+    case "assistant_attachment": {
+      const attachment = event.attachment;
+      const name = attachment.name?.trim() || "attachment";
+      const attachmentPath = attachment.path?.trim() || undefined;
+      const attachmentMimeType = attachment.mimeType;
+      if (attachment.type === "image" && !attachmentPath && attachment.content) {
+        const imageData = attachment.content.startsWith("data:")
+          ? attachment.content
+          : `data:${attachmentMimeType || "image/png"};base64,${attachment.content}`;
+        const message: WebMessage = {
+          id: newId(),
+          sessionKey: options.sessionKey,
+          projectKey: options.projectKey,
+          createdAt: stamp,
+          provider: "pilotdeck",
+          role: "assistant",
+          kind: "text",
+          text: "",
+          images: [{ data: imageData, name, ...(attachmentMimeType ? { mimeType: attachmentMimeType } : {}) }],
+          source: "live",
+        };
+        return { ...state, messages: [...state.messages, message] };
+      }
+      const message: WebMessage = {
+        id: newId(),
+        sessionKey: options.sessionKey,
+        projectKey: options.projectKey,
+        createdAt: stamp,
+        provider: "pilotdeck",
+        role: "assistant",
+        kind: "text",
+        text: attachmentPath ? "" : `已生成附件：${name}`,
+        attachments: [{
+          name,
+          ...(attachmentPath ? { path: attachmentPath } : {}),
+          ...(attachmentMimeType ? { mimeType: attachmentMimeType } : {}),
+          ...(typeof attachment.bytes === "number" ? { size: attachment.bytes } : {}),
+        }],
+        source: "live",
+      };
+      return { ...state, messages: [...state.messages, message] };
+    }
+
     case "file_artifacts": {
       const id = newId();
       const message: WebMessage = {

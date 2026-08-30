@@ -103,6 +103,18 @@ test("ImPermissionHelper retries an undelivered initial prompt before accepting 
   assert.deepEqual(decisions, ["request-1"]);
 });
 
+test("ImPermissionHelper does not advance on status replies during prompt delivery", async () => {
+  const helper = new ImPermissionHelper();
+  const gateway = { permissionDecide: async () => ({ delivered: true }) } as unknown as Gateway;
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+
+  assert.equal(await helper.answer("chat-1", "1", gateway), "权限提示发送中，请稍候。");
+  assert.equal(helper.takeNextPrompt("chat-1"), undefined);
+  assert.equal(helper.isAnswering("chat-1"), true);
+});
+
 test("ImPermissionHelper ignores concurrent replies while a decision is in flight", async () => {
   const helper = new ImPermissionHelper();
   let release!: () => void;

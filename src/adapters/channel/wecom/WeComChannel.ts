@@ -1002,6 +1002,17 @@ export class WeComChannel implements ChannelAdapter {
     event: GatewayEvent,
     context: { chatType?: "dm" | "group"; replyToMessageId?: string },
   ): Promise<void> {
+    if (event.type === "assistant_attachment" && event.attachment.path && !event.attachment.content) {
+      try {
+        const prepared = await this.loadOutboundMediaSource(event.attachment.path, event.attachment.name);
+        const ok = await this.sendPreparedMedia(chatId, prepared, context);
+        if (!ok) await this.sendReply(chatId, "附件生成成功，但发送到企业微信失败。", context);
+      } catch (e) {
+        this.logger?.error?.(`wecom: failed to send media attachment: ${e}`);
+        await this.sendReply(chatId, "附件生成成功，但发送到企业微信失败。", context);
+      }
+      return;
+    }
     const images = event.type === "tool_call_finished"
       ? event.images ?? []
       : event.type === "assistant_attachment" && event.attachment.type === "image" && event.attachment.content
