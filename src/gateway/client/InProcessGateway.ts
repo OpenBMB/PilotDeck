@@ -2033,7 +2033,6 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
             toolCallId: block.toolCallId,
             resultPath: block.path,
           });
-          if (block.reason === "media_result_too_large") continue;
           events.push({
             type: "assistant_attachment",
             attachment: {

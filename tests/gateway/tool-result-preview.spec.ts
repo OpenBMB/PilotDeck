@@ -125,3 +125,39 @@ test("mapAgentEvent projects non-read_file images only as assistant attachments"
   assert.equal(attachment.attachment.type, "image");
   assert.equal(attachment.attachment.content, "aW1hZ2U=");
 });
+
+test("mapAgentEvent replays oversized media references as assistant attachments", () => {
+  const frames = mapAgentEvent({
+    type: "tool_results_projected",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    message: {
+      role: "user",
+      content: [{
+        type: "media_reference",
+        toolCallId: "tool-large-image",
+        path: "/workspace/large-image.png",
+        originalBytes: 9_000_000,
+        preview: "[large image]",
+        hasMore: true,
+        mimeType: "image/png",
+        mediaType: "image",
+        reason: "media_result_too_large",
+      }],
+    },
+  }, "run-1");
+
+  const attachment = frames.find((event): event is Extract<GatewayEvent, { type: "assistant_attachment" }> =>
+    event.type === "assistant_attachment"
+  );
+  assert.ok(attachment);
+  assert.deepEqual(attachment.attachment, {
+    type: "image",
+    path: "/workspace/large-image.png",
+    mimeType: "image/png",
+    bytes: 9_000_000,
+    name: "large-image.png",
+    source: "media_reference",
+    metadata: { toolCallId: "tool-large-image", reason: "media_result_too_large" },
+  });
+});
