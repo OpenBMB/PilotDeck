@@ -454,7 +454,11 @@ export class WeixinChannel implements ChannelAdapter {
             if (!delivered) throw new Error("permission prompt delivery failed");
             this.permissions.confirmNextPrompt(fromUser);
           }
-          if (trimmed === "1" || trimmed === "2") {
+          if (
+            (trimmed === "1" || trimmed === "2")
+            && confirmation.startsWith("已允许")
+            && !this.permissions.hasPending(fromUser)
+          ) {
             await this.activeLiveReplies.get(fromUser)?.resumeActivity("tool", { immediate: false });
           }
         }
