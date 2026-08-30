@@ -147,7 +147,11 @@ export class MatrixChannel implements ChannelAdapter {
       try {
         const confirmation = await this.permissions.answer(roomId, text, this.gateway);
         if (confirmation) {
-          await this.sendReply(roomId, confirmation);
+          const confirmationDelivered = await this.sendReply(roomId, confirmation);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(roomId);
+            return;
+          }
           const nextPrompt = this.permissions.takeNextPrompt(roomId);
           if (nextPrompt) {
             const delivered = await this.sendReply(roomId, nextPrompt);

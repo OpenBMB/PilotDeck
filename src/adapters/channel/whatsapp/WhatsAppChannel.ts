@@ -211,7 +211,11 @@ export class WhatsAppChannel implements ChannelAdapter {
       try {
         const confirmation = await this.permissions.answer(msg.chatId, msg.text, this.gateway);
         if (confirmation) {
-          await this.sendReply(msg.chatId, confirmation);
+          const confirmationDelivered = await this.sendReply(msg.chatId, confirmation);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(msg.chatId);
+            return;
+          }
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply(msg.chatId, nextPrompt);

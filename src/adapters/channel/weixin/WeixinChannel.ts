@@ -443,7 +443,11 @@ export class WeixinChannel implements ChannelAdapter {
         const trimmed = text.trim();
         const confirmation = await this.permissions.answer(fromUser, text, this.gateway);
         if (confirmation) {
-          await this.sendReply(fromUser, confirmation);
+          const confirmationDelivered = await this.sendReply(fromUser, confirmation);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(fromUser);
+            return;
+          }
           const nextPrompt = this.permissions.takeNextPrompt(fromUser);
           if (nextPrompt) {
             const delivered = await this.sendReply(fromUser, nextPrompt);

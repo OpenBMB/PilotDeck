@@ -730,6 +730,24 @@ function flushBlock(
         },
         source: "history",
       });
+      out.push({
+        id: `${context.sessionKey}-attachment-${context.index}-${out.length}`,
+        sessionKey: context.sessionKey,
+        projectKey: context.projectKey,
+        createdAt: stamp,
+        provider: "pilotdeck",
+        role: "assistant",
+        kind: "text",
+        text: "",
+        attachments: [{
+          name: block.path.split(/[\\/]/).pop() || block.path,
+          path: block.path,
+          mimeType: block.mimeType,
+          size: block.originalBytes,
+        }],
+        ...(context.entryId ? { entryId: context.entryId } : {}),
+        source: "history",
+      });
       return;
     case "image":
       if (role === "user") {

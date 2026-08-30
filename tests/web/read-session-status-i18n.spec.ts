@@ -81,6 +81,42 @@ test("history replay projects non-read_file images as assistant images", async (
   }
 });
 
+test("history replay projects persisted media references as assistant attachments", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-media-reference-history-project-"));
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-media-reference-history-home-"));
+  try {
+    const sessionKey = "web:s_media_reference_history";
+    const storage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId: sessionKey });
+    await storage.transcript.recordDurableMessage(sessionKey, "turn-1", {
+      role: "user",
+      content: [{
+        type: "media_reference",
+        toolCallId: "tool-large-image",
+        path: "/workspace/large-image.png",
+        originalBytes: 9_000_000,
+        preview: "[large image]",
+        hasMore: true,
+        mimeType: "image/png",
+        mediaType: "image",
+        reason: "media_result_too_large",
+      }],
+    });
+
+    const replay = await readWebSessionMessages({ sessionKey }, { projectRoot, pilotHome });
+    const assistant = replay.messages.find((message) => message.role === "assistant" && message.attachments?.length);
+
+    assert.deepEqual(assistant?.attachments, [{
+      name: "large-image.png",
+      path: "/workspace/large-image.png",
+      mimeType: "image/png",
+      size: 9_000_000,
+    }]);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+  }
+});
+
 test("history token usage restores latest non-empty turn past latest empty turn result", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-token-usage-project-"));
   const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-token-usage-home-"));
