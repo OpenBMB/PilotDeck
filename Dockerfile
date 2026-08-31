@@ -47,6 +47,7 @@ WORKDIR /app
 
 # Runtime system dependencies + tsx/concurrently for process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
     ripgrep git curl procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g tsx concurrently
