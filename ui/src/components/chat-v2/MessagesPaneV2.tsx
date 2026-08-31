@@ -15,6 +15,7 @@ import type { SessionStore } from '../../stores/useSessionStore';
 import { getSessionRequestParams, isReadOnlySession, type Project, type ProjectSession, type SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import MessageRowV2 from './MessageRowV2';
+import AssistantReplyQuoteAction from './AssistantReplyQuoteAction';
 import SubagentDetailModal from './SubagentDetailModal';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import { useRegisterChatHistorySearchControls } from './ChatHistorySearchController';
@@ -35,7 +36,6 @@ import {
   type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
-
 type DiffLine = { type: string; content: string; lineNum: number };
 
 type MessagesPaneV2Props = {
@@ -78,6 +78,7 @@ type MessagesPaneV2Props = {
   planModeActive?: boolean;
   sessionStore?: SessionStore;
   onFork?: (message: ChatMessage, carriedMessageCount: number) => void;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
   forkDisabled?: boolean;
   forkParentSessionTitle?: string | null;
 };
@@ -357,6 +358,7 @@ function MessagesPaneV2({
   planModeActive = false,
   sessionStore,
   onFork,
+  onRegenerate,
   forkDisabled = false,
   forkParentSessionTitle = null,
 }: MessagesPaneV2Props) {
@@ -402,17 +404,12 @@ function MessagesPaneV2({
 
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
     setExpandedProcessRows((currentRows) => {
-      const currentExpanded = currentRows.get(processKey) ?? false;
-      if (currentExpanded === expanded) {
+      if (currentRows.get(processKey) === expanded) {
         return currentRows;
       }
 
       const nextRows = new Map(currentRows);
-      if (expanded) {
-        nextRows.set(processKey, true);
-      } else {
-        nextRows.delete(processKey);
-      }
+      nextRows.set(processKey, expanded);
       return nextRows;
     });
   }, []);
@@ -561,6 +558,12 @@ function MessagesPaneV2({
     })),
     [getMessageKey, messageWindowScope, renderableMessageItems],
   );
+  const lastUserMessageItemKey = useMemo(() => {
+    for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
+      if (keyedMessageItems[index].message.type === 'user') return keyedMessageItems[index].itemKey;
+    }
+    return null;
+  }, [keyedMessageItems]);
   const measuredItemHeights = useMemo(() => {
     void heightVersion;
     return keyedMessageItems.map((item) => measuredHeightsRef.current.get(item.itemKey) ?? item.estimatedHeight);
@@ -690,24 +693,26 @@ function MessagesPaneV2({
       return Boolean(subagentId && currentRunSubagentIds.has(subagentId));
     }) || null;
   }, [activeRunId, currentRunSubagentIds, sessionRuntimeState, subagentActivities]);
-  const streamingThinkingContent = useMemo(() => {
-    if (!showThinking || !isAssistantWorking) {
+  const liveThinkingMessage = useMemo(() => {
+    if (!isAssistantWorking) {
       return null;
     }
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
       const msg = visibleMessages[i];
       if (isStreamingThinkingMessage(msg) && typeof msg.content === 'string' && msg.content.trim()) {
-        return msg.content;
+        return msg;
       }
       if (msg.type === 'user') break;
     }
     return null;
-  }, [showThinking, isAssistantWorking, visibleMessages]);
+  }, [isAssistantWorking, visibleMessages]);
+  const liveThinkingContent = liveThinkingMessage?.content || null;
+  const streamingThinkingContent = showThinking ? liveThinkingContent : null;
   const liveStatusStep = useMemo<ProcessTraceStep>(() => {
-    if (streamingThinkingContent) {
+    if (liveThinkingContent) {
       return {
         id: 'live-thinking',
-        title: t('working.thinking', { defaultValue: 'thinking' }),
+        title: t('working.thinking', { defaultValue: 'Thinking...' }),
         phase: 'thinking',
         state: 'running',
       };
@@ -727,12 +732,17 @@ function MessagesPaneV2({
     hasPendingToolUse,
     nonSubagentLiveActivities,
     runningSubagentActivity,
-    streamingThinkingContent,
+    liveThinkingContent,
     t,
     workingStatus,
   ]);
   const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
   const shouldRenderBottomLiveStatus = isAssistantWorking && !hasOpenEndedLiveProcessGroup;
+  const showStreamingThinkingPanel = Boolean(!inlineThinking && streamingThinkingContent);
+  const bottomLiveProcessKey = liveThinkingMessage
+    ? `live-thinking:${activeRunId || liveThinkingMessage.id || messageWindowScope}`
+    : `bottom-live:${liveStatusStep.id || 'working'}`;
+  const bottomLiveStatusExpanded = isProcessExpanded(bottomLiveProcessKey, showStreamingThinkingPanel);
 
   const bumpHeightVersion = useCallback(() => {
     if (heightVersionRafRef.current !== null) return;
@@ -1033,6 +1043,12 @@ function MessagesPaneV2({
             forkCarriedMessageCount={forkCarriedMessageCount}
             forkDisabled={forkDisabled}
             showAssistantActions={showAssistantActions}
+            canEdit={Boolean(
+              onRegenerate
+              && !sessionIsReadOnly
+              && item.itemKey === lastUserMessageItemKey
+            )}
+            onRegenerate={onRegenerate}
           />
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
@@ -1076,7 +1092,10 @@ function MessagesPaneV2({
     liveProcessStartedAtMs,
     onFileOpen,
     onFork,
+    onRegenerate,
     forkDisabled,
+    lastUserMessageItemKey,
+    sessionIsReadOnly,
     onGrantSessionToolPermission,
     onShowSettings,
     provider,
@@ -1130,7 +1149,7 @@ function MessagesPaneV2({
         data-chat-search-surface
         onWheel={onWheel}
         onTouchMove={onTouchMove}
-        className="h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
+        className="dock-panel-scrollbar h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
       >
       {hasSessionLoadError ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
@@ -1309,20 +1328,29 @@ function MessagesPaneV2({
           ) : null}
 
           {shouldRenderBottomLiveStatus ? (
-            <>
-              <ProcessLiveStatus step={liveStatusStep}>
-                {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
-                  ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
-                  : null}
-              </ProcessLiveStatus>
-              {!inlineThinking && streamingThinkingContent ? (
-                <StreamingThinkingPreview content={streamingThinkingContent} />
-              ) : null}
-            </>
+            <ProcessLiveStatus
+              step={liveStatusStep}
+              expanded={bottomLiveStatusExpanded}
+              onExpandedChange={(expanded) => handleProcessExpandedChange(bottomLiveProcessKey, expanded)}
+              contentClassName={showStreamingThinkingPanel ? 'pl-0' : undefined}
+            >
+              {(liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0)
+                || showStreamingThinkingPanel ? (
+                  <>
+                    {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
+                      ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
+                      : null}
+                    {showStreamingThinkingPanel && streamingThinkingContent ? (
+                      <StreamingThinkingPreview content={streamingThinkingContent} scrollable />
+                    ) : null}
+                  </>
+                ) : null}
+            </ProcessLiveStatus>
           ) : null}
         </div>
       )}
 
+      <AssistantReplyQuoteAction />
       {openSubagentId ? (
         <SubagentDetailModal
           subagentId={openSubagentId}
@@ -1471,9 +1499,9 @@ function getLiveStatusStep(
         state: 'running',
       }
     : {
-        id: 'live-thinking',
-        title: t('working.thinking', { defaultValue: 'Connecting...' }),
-        phase: 'thinking',
+        id: 'live-waiting-for-model',
+        title: t('working.waitingForModel', { defaultValue: 'Waiting for model response...' }),
+        phase: 'generation',
         state: 'running',
       };
 }

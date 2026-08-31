@@ -5,15 +5,19 @@ export const SESSION_TITLE_MAX_INPUT_CHARS = 1200;
 export const SESSION_TITLE_MAX_OUTPUT_CHARS = 80;
 export const SESSION_TITLE_TIMEOUT_MS = 30_000;
 
-const SESSION_TITLE_SYSTEM_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. The title should be clear enough that the user recognizes the session in a list. Use sentence case: capitalize only the first word and proper nouns.
+const SESSION_TITLE_TRUNCATION_MARKER = " ... ";
+
+const SESSION_TITLE_SYSTEM_PROMPT = `Generate a concise title (3-7 words) that captures the main topic or goal of this coding session. The title should be clear enough that the user recognizes the session in a list. For Latin-script languages, use sentence case: capitalize only the first word and proper nouns.
+
+Language requirement (highest priority): write the title in the same natural language as the user's input. Do not translate the user's input into English. If the input contains multiple languages, use the language of the user's main request (or the most recent natural-language request), while leaving product names and code identifiers unchanged. If the user's language cannot be determined, write the title in the system language specified below.
 
 Return JSON with a single "title" field.
 
-Good examples:
+Examples (the title language must still follow the user's input):
 {"title": "Fix login button on mobile"}
 {"title": "Add OAuth authentication"}
-{"title": "Debug failing CI tests"}
-{"title": "Refactor API client error handling"}
+{"title": "修复移动端登录按钮"}
+{"title": "添加 OAuth 认证"}
 
 Bad (too vague): {"title": "Code changes"}
 Bad (too long): {"title": "Investigate and fix the issue where the login button does not respond on mobile devices"}
@@ -34,12 +38,15 @@ export type CreateSessionTitleGeneratorOptions = {
   modelRuntime: Pick<ModelRuntime, "complete">;
   agentModel: PilotAgentModelSelection;
   timeoutMs?: number;
+  /** Locale used when the user's input language cannot be determined. */
+  systemLanguage?: string;
 };
 
 export function createSessionTitleGenerator(
   options: CreateSessionTitleGeneratorOptions,
 ): SessionTitleGenerator {
   const timeoutMs = options.timeoutMs ?? SESSION_TITLE_TIMEOUT_MS;
+  const systemLanguage = options.systemLanguage ?? resolveSystemLanguage();
   return async ({ text, sessionId, turnId, signal }) => {
     const prompt = normalizeSessionTitleInput(text);
     if (!prompt) {
@@ -54,7 +61,7 @@ export function createSessionTitleGenerator(
         {
           provider: options.agentModel.provider,
           model: options.agentModel.model,
-          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+          systemPrompt: `${SESSION_TITLE_SYSTEM_PROMPT}\n\nSystem language: ${systemLanguage}`,
           messages: [
             {
               role: "user",
@@ -80,14 +87,50 @@ export function createSessionTitleGenerator(
   };
 }
 
+/** Resolve the host locale for the rare case where an input has no detectable language. */
+export function resolveSystemLanguage(env: Record<string, string | undefined> = process.env): string {
+  for (const candidate of [
+    env.LC_ALL,
+    env.LC_MESSAGES,
+    env.LANG,
+    Intl.DateTimeFormat().resolvedOptions().locale,
+  ]) {
+    const normalized = normalizeLocale(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "en";
+}
+
+function normalizeLocale(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const locale = value.split(/[.@]/, 1)[0]?.replace(/_/g, "-");
+  if (!locale || /^(?:c|posix|und)$/i.test(locale)) {
+    return null;
+  }
+  try {
+    return Intl.getCanonicalLocales(locale)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeSessionTitleInput(text: string): string | null {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) {
     return null;
   }
-  return normalized.length > SESSION_TITLE_MAX_INPUT_CHARS
-    ? normalized.slice(0, SESSION_TITLE_MAX_INPUT_CHARS)
-    : normalized;
+  if (normalized.length <= SESSION_TITLE_MAX_INPUT_CHARS) {
+    return normalized;
+  }
+
+  const availableChars = SESSION_TITLE_MAX_INPUT_CHARS - SESSION_TITLE_TRUNCATION_MARKER.length;
+  const headChars = Math.floor(availableChars / 2);
+  const tailChars = availableChars - headChars;
+  return `${normalized.slice(0, headChars)}${SESSION_TITLE_TRUNCATION_MARKER}${normalized.slice(-tailChars)}`;
 }
 
 function parseGeneratedTitle(content: Awaited<ReturnType<ModelRuntime["complete"]>>["content"]): string | null {

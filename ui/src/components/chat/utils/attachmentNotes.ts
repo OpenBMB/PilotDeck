@@ -12,6 +12,7 @@ import {
 
 const ATTACHMENT_NOTE_MARKER = '[Files attached by user and available for reading in the project:]';
 const ATTACHMENT_NOTE_END_MARKER = '[End files attached by user]';
+const ATTACHMENT_NOTE_JSON_PREFIX = '- attachment-json: ';
 // Older transcripts have no end marker. Their next canonical text block may
 // be concatenated directly onto the final path during history projection.
 const LEGACY_ATTACHMENT_NOTE_TERMINATORS = [
@@ -30,8 +31,68 @@ type AttachmentPathNoteFile = {
 export function buildAttachmentPathNote(files: AttachmentPathNoteFile[]): string {
   if (files.length === 0) return '';
 
-  const lines = files.map((file) => `- ${file.name}: ${file.path}`);
+  const lines = files.map((file) => (
+    `${ATTACHMENT_NOTE_JSON_PREFIX}${JSON.stringify({ name: file.name, path: file.path })}`
+  ));
   return `\n\n${ATTACHMENT_NOTE_MARKER}\n${lines.join('\n')}\n${ATTACHMENT_NOTE_END_MARKER}\n`;
+}
+
+function parseAttachmentPathNoteLine(line: string): AttachmentPathNoteFile | null {
+  if (line.startsWith(ATTACHMENT_NOTE_JSON_PREFIX)) {
+    try {
+      const parsed = JSON.parse(line.slice(ATTACHMENT_NOTE_JSON_PREFIX.length)) as {
+        name?: unknown;
+        path?: unknown;
+      };
+      if (
+        typeof parsed.name !== 'string'
+        || typeof parsed.path !== 'string'
+        || !parsed.name.trim()
+        || !parsed.path.trim()
+      ) {
+        return null;
+      }
+      return { name: parsed.name, path: parsed.path };
+    } catch {
+      return null;
+    }
+  }
+
+  if (!line.startsWith('- ')) return null;
+  const separator = findLegacyAttachmentSeparator(line);
+  if (separator < 0) return null;
+
+  const name = line.slice(2, separator).trim();
+  const filePath = line.slice(separator + 2).trim();
+  return name && filePath ? { name, path: filePath } : null;
+}
+
+function isLikelyLegacyAttachmentPath(value: string): boolean {
+  return value.startsWith('/')
+    || value.startsWith('\\')
+    || /^[A-Za-z]:[\\/]/.test(value)
+    || value.startsWith('./')
+    || value.startsWith('../');
+}
+
+function findLegacyAttachmentSeparator(line: string): number {
+  const firstSeparator = line.indexOf(': ', 2);
+  if (firstSeparator < 0) return -1;
+
+  // Legacy notes originally used the first delimiter. Prefer it whenever it
+  // clearly starts a path, then allow colon-containing filenames on common
+  // absolute-path records.
+  if (isLikelyLegacyAttachmentPath(line.slice(firstSeparator + 2).trim())) {
+    return firstSeparator;
+  }
+  for (let separator = line.indexOf(': ', firstSeparator + 2);
+    separator >= 0;
+    separator = line.indexOf(': ', separator + 2)) {
+    if (isLikelyLegacyAttachmentPath(line.slice(separator + 2).trim())) {
+      return separator;
+    }
+  }
+  return firstSeparator;
 }
 
 function sliceBeforeFirstMarker(value: string, markers: string[]): string {
@@ -88,29 +149,29 @@ export function parseUserAttachmentNote(content: unknown): {
   }
 
   const visibleContent = text.slice(0, markerIndex).trimEnd();
-  const note = sliceBeforeFirstMarker(
-    text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length),
-    LEGACY_ATTACHMENT_NOTE_TERMINATORS,
-  );
+  const note = text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length);
   const attachments: ChatAttachment[] = [];
 
   for (const rawLine of note.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line.startsWith('- ')) continue;
-    const separator = line.indexOf(': ');
-    if (separator < 0) continue;
+    let line = rawLine.trim();
+    if (line === ATTACHMENT_NOTE_END_MARKER) break;
+    let reachedLegacyTerminator = false;
+    if (!line.startsWith(ATTACHMENT_NOTE_JSON_PREFIX)) {
+      const legacyLine = sliceBeforeFirstMarker(line, LEGACY_ATTACHMENT_NOTE_TERMINATORS);
+      reachedLegacyTerminator = legacyLine.length !== line.length;
+      line = legacyLine.trim();
+      if (!line && reachedLegacyTerminator) break;
+    }
 
-    const name = line.slice(2, separator).trim();
-    const filePath = line.slice(separator + 2).trim();
-    if (!name || !filePath) continue;
-    const mimeType = inferAttachmentMimeType(name, filePath);
-    if (isImageAttachmentMime(mimeType)) continue;
-
-    attachments.push({
-      name,
-      path: filePath,
-      mimeType,
-    });
+    const attachment = parseAttachmentPathNoteLine(line);
+    if (attachment) {
+      const { name, path: filePath } = attachment;
+      const mimeType = inferAttachmentMimeType(name, filePath);
+      if (!isImageAttachmentMime(mimeType)) {
+        attachments.push({ name, path: filePath, mimeType });
+      }
+    }
+    if (reachedLegacyTerminator) break;
   }
 
   return { content: visibleContent, attachments: [...attachments, ...selectionAttachments] };

@@ -852,7 +852,7 @@
         "providerRetry": {
           "requestMaxRetries": { "label": "Request max retries", "description": "Maximum retries for non-streaming requests." },
           "streamMaxRetries": { "label": "Stream max retries", "description": "Maximum retries for streaming requests." },
-          "streamIdleTimeoutMs": { "label": "Stream idle timeout (ms)", "description": "Abort a stream if no data is received for this duration." },
+          "streamIdleTimeoutMs": { "label": "Stream idle timeout (ms)", "description": "Abort a stream if no data is received for this duration. Defaults to 600000 ms." },
           "baseDelayMs": { "label": "Base delay (ms)", "description": "Initial delay before the first retry." },
           "maxDelayMs": { "label": "Max delay (ms)", "description": "Maximum delay between retries." }
         }
@@ -1298,6 +1298,12 @@
     "updateComplete": "Update complete!",
     "updateFailed": "Update failed",
     "restartToApply": "Restart to Apply",
+    "restartingTitle": "Restarting PilotDeck...",
+    "restartingDescription": "Page will reload automatically when server is ready.",
+    "restartWaitingDescription": "Restart may take a little while. Please wait.",
+    "restartFailedTitle": "Automatic restart ran into a problem",
+    "restartFailedDescription": "Restart PilotDeck manually from the command line, then refresh this page.",
+    "refreshPage": "Refresh page",
     "downloadUpdate": "Download Update",
     "downloading": "Downloading... {{percent}}%",
     "downloadComplete": "Download complete",

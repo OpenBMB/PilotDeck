@@ -10,6 +10,7 @@ import {
   cancelRunningAgentActivities,
   createRafNotifyScheduler,
   getFinalizedSubagentThinkingId,
+  getRealtimeMessagesToKeepAfterServerRefresh,
   getUnpersistedRealtimeTurnMessages,
   isRealtimeMessageRepresentedOnServer,
   patchMergedStreamingMessage,
@@ -212,6 +213,502 @@ describe('patchMergedStreamingMessage', () => {
 });
 
 describe('computeMerged', () => {
+  it('deduplicates an optimistic user message from its persisted attachment prompt', () => {
+    const server = [
+      textMessage(
+        'persisted-user',
+        [
+          'Transcribe this audio.',
+          '',
+          '[Files attached by user and available for reading in the project:]',
+          '- meeting.wav: .tmp/meeting.wav',
+          '[End files attached by user]',
+          '',
+          '[Registered attachment files in this session:]',
+          '- meeting.wav: .tmp/meeting.wav',
+          'Use the audio transcription tool for this attachment.',
+        ].join('\n'),
+        '2026-08-16T09:00:00.050Z',
+        { role: 'user' },
+      ),
+    ];
+    const realtime = [
+      textMessage('local_user', 'Transcribe this audio.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        attachments: [{
+          name: 'meeting.wav',
+          path: '.tmp/meeting.wav',
+        }],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-user',
+    ]);
+  });
+
+  it('deduplicates an optimistic user message from its persisted content reference prompt', () => {
+    const server = [
+      textMessage(
+        'persisted-user',
+        [
+          'Summarize this selection.',
+          '',
+          '[Content references selected by user:]',
+          '1. TEXT reference',
+          '   Source: notes.md',
+          '   Reference JSON: {"schemaVersion":1,"kind":"content-reference","id":"content-reference-1","selectionMode":"text","source":{"relativePath":"notes.md","fileName":"notes.md"},"renderer":{"id":"text","backend":"builtin","locatorQuality":"semantic"},"createdAt":"2026-08-16T09:00:00.000Z","locator":{"surface":"document","quote":{"exact":"selection"}},"selectedText":"selection"}',
+        ].join('\n'),
+        '2026-08-16T09:00:00.050Z',
+        { role: 'user' },
+      ),
+    ];
+    const realtime = [
+      textMessage('local_user', 'Summarize this selection.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        attachments: [{
+          kind: 'content-reference',
+          name: 'notes.md',
+          path: 'notes.md',
+          contentReference: {
+            schemaVersion: 1,
+            kind: 'content-reference',
+            id: 'content-reference-1',
+            selectionMode: 'text',
+            source: { relativePath: 'notes.md', fileName: 'notes.md' },
+            renderer: { id: 'text', backend: 'builtin', locatorQuality: 'semantic' },
+            createdAt: '2026-08-16T09:00:00.000Z',
+            locator: { surface: 'document', quote: { exact: 'selection' } },
+            selectedText: 'selection',
+          },
+        }],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-user',
+    ]);
+  });
+
+  it('keeps a second same-text optimistic message with different attachments', () => {
+    const server = [
+      textMessage(
+        'persisted-first-user',
+        [
+          'Please review the attached file(s).',
+          '',
+          '[Files attached by user and available for reading in the project:]',
+          '- first.pdf: .tmp/first.pdf',
+          '[End files attached by user]',
+        ].join('\n'),
+        '2026-08-16T09:00:00.050Z',
+        { role: 'user' },
+      ),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Please review the attached file(s).', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        attachments: [{ name: 'first.pdf', path: '.tmp/first.pdf' }],
+      }),
+      textMessage('local_second', 'Please review the attached file(s).', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+        attachments: [{ name: 'second.pdf', path: '.tmp/second.pdf' }],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-first-user',
+      'local_second',
+    ]);
+  });
+
+  it('keeps a second same-text optimistic message with different image inputs', () => {
+    const server = [
+      textMessage('persisted-first-user', 'Describe this image.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+        images: ['data:image/png;base64,first'],
+      }),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Describe this image.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        images: ['data:image/png;base64,first'],
+      }),
+      textMessage('local_second', 'Describe this image.', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+        images: ['data:image/png;base64,second'],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-first-user',
+      'local_second',
+    ]);
+  });
+
+  it('matches persisted user messages to identical optimistic sends one-to-one', () => {
+    const server = [
+      textMessage('persisted-first-user', 'Continue.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Continue.', '2026-08-16T09:00:00.000Z', { role: 'user' }),
+      textMessage('local_second', 'Continue.', '2026-08-16T09:00:00.100Z', { role: 'user' }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-first-user',
+      'local_second',
+    ]);
+  });
+
+  it('confirms an optimistic user row only from the same persisted turn identity', () => {
+    const server = [
+      textMessage('persisted-user', 'Continue.\n\n[Files attached by user]', '2026-08-16T09:00:30.000Z', {
+        role: 'user',
+        turnId: 'run-user-1',
+        runId: 'run-user-1',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_user', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        runId: 'run-user-1',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime)).toEqual(server);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual([]);
+  });
+
+  it('does not let an older same-text turn confirm a new optimistic send', () => {
+    const server = [
+      textMessage('persisted-old-user', 'Continue.', '2026-08-16T09:00:05.000Z', {
+        role: 'user',
+        turnId: 'run-old',
+        runId: 'run-old',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_new_user', 'Continue.', '2026-08-16T09:00:05.100Z', {
+        role: 'user',
+        runId: 'run-new',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-old-user',
+      'local_new_user',
+    ]);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual(realtime);
+  });
+
+  it('keeps an id-bearing optimistic send after its captured history tail despite clock skew', () => {
+    const server = [
+      textMessage('persisted-old-user', 'Old prompt', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        turnId: 'run-old',
+        runId: 'run-old',
+      }),
+      textMessage('persisted-old-answer', 'Old answer', '2026-08-16T09:00:01.000Z', {
+        role: 'assistant',
+        turnId: 'run-old',
+        runId: 'run-old',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_new_user', 'New prompt', '2026-08-16T08:00:00.000Z', {
+        role: 'user',
+        runId: 'run-new',
+        serverTailIdAtStart: 'persisted-old-answer',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-old-user',
+      'persisted-old-answer',
+      'local_new_user',
+    ]);
+  });
+
+  it('preserves realtime turn order while anchoring optimistic users after the server tail', () => {
+    const server = [
+      textMessage('persisted-old-answer', 'Old answer', '2026-08-16T09:00:01.000Z'),
+    ];
+    const realtime = [
+      textMessage('local_first_user', 'First prompt', '2026-08-16T08:00:00.000Z', {
+        role: 'user',
+        runId: 'run-first',
+        serverTailIdAtStart: 'persisted-old-answer',
+      }),
+      streamingMessage('web:s_test', 'First answer'),
+      textMessage('local_second_user', 'Second prompt', '2026-08-16T08:00:01.000Z', {
+        role: 'user',
+        runId: 'run-second',
+        serverTailIdAtStart: 'persisted-old-answer',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-old-answer',
+      'local_first_user',
+      '__streaming_web:s_test',
+      'local_second_user',
+    ]);
+  });
+
+  it('keeps an unpersisted retry while confirming a same-text send by run id', () => {
+    const server = [
+      textMessage('persisted-second-user', 'Continue.', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+        turnId: 'run-second',
+        runId: 'run-second',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_failed_first', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        runId: 'run-first',
+      }),
+      textMessage('local_confirmed_second', 'Continue.', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+        runId: 'run-second',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'local_failed_first',
+      'persisted-second-user',
+    ]);
+  });
+
+  it('confirms same-text queued sends by run id regardless of message order', () => {
+    const server = [
+      textMessage('persisted-second-user', 'Continue.', '2026-08-16T09:00:09.000Z', {
+        role: 'user',
+        turnId: 'run-second',
+        runId: 'run-second',
+      }),
+      textMessage('persisted-first-user', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        turnId: 'run-first',
+        runId: 'run-first',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Continue.', '2026-08-16T08:59:51.000Z', {
+        role: 'user',
+        runId: 'run-first',
+      }),
+      textMessage('local_second', 'Continue.', '2026-08-16T09:00:05.000Z', {
+        role: 'user',
+        runId: 'run-second',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime)).toEqual(server);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual([]);
+  });
+
+  it('does not mix exact-id and legacy user confirmation', () => {
+    const identitylessServer = [
+      textMessage('persisted-legacy-user', 'Continue.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+      }),
+    ];
+    const identifiedRealtime = [
+      textMessage('local_identified', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        runId: 'run-new',
+      }),
+    ];
+
+    expect(computeMerged(identitylessServer, identifiedRealtime).map((message) => message.id)).toEqual([
+      'local_identified',
+      'persisted-legacy-user',
+    ]);
+  });
+
+  it('matches a persisted send to the closest optimistic timestamp', () => {
+    const server = [
+      textMessage('persisted-second-user', 'Continue.', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_failed_first', 'Continue.', '2026-08-16T09:00:00.000Z', { role: 'user' }),
+      textMessage('local_confirmed_second', 'Continue.', '2026-08-16T09:00:00.100Z', { role: 'user' }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'local_failed_first',
+      'persisted-second-user',
+    ]);
+  });
+
+  it('maximizes confirmed sends before minimizing timestamp distance', () => {
+    const server = [
+      textMessage('tail-before-sends', 'Previous answer', '2026-08-16T08:59:49.000Z'),
+      textMessage('persisted-first-user', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+      }),
+      textMessage('persisted-second-user', 'Continue.', '2026-08-16T09:00:09.000Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Continue.', '2026-08-16T08:59:51.000Z', {
+        role: 'user',
+        serverTailIdAtStart: 'tail-before-sends',
+      }),
+      textMessage('local_second', 'Continue.', '2026-08-16T09:00:05.000Z', {
+        role: 'user',
+        serverTailIdAtStart: 'tail-before-sends',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime)).toEqual(server);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual([]);
+  });
+
+  it('does not confirm a new identical send from the captured server tail', () => {
+    const server = [
+      textMessage('persisted-previous-user', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_new_send', 'Continue.', '2026-08-16T09:00:05.000Z', {
+        role: 'user',
+        serverTailIdAtStart: 'persisted-previous-user',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'persisted-previous-user',
+      'local_new_send',
+    ]);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual(realtime);
+  });
+
+  it('confirms an identical send persisted after the captured server tail', () => {
+    const server = [
+      textMessage('persisted-previous-user', 'Continue.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+      }),
+      textMessage('persisted-new-user', 'Continue.', '2026-08-16T09:00:05.050Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_new_send', 'Continue.', '2026-08-16T09:00:05.000Z', {
+        role: 'user',
+        serverTailIdAtStart: 'persisted-previous-user',
+      }),
+    ];
+
+    expect(computeMerged(server, realtime)).toEqual(server);
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server)).toEqual([]);
+  });
+
+  it('keeps the second identical optimistic send during server-refresh cleanup', () => {
+    const server = [
+      textMessage('persisted-first-user', 'Continue.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_first', 'Continue.', '2026-08-16T09:00:00.000Z', { role: 'user' }),
+      textMessage('local_second', 'Continue.', '2026-08-16T09:00:00.100Z', { role: 'user' }),
+    ];
+    const retained = getRealtimeMessagesToKeepAfterServerRefresh(realtime, server);
+
+    expect(retained.map((message) => message.id)).toEqual(['local_second']);
+  });
+
+  it('uses the closest optimistic timestamp during refresh cleanup', () => {
+    const server = [
+      textMessage('persisted-second-user', 'Continue.', '2026-08-16T09:00:00.100Z', {
+        role: 'user',
+      }),
+    ];
+    const realtime = [
+      textMessage('local_failed_first', 'Continue.', '2026-08-16T09:00:00.000Z', { role: 'user' }),
+      textMessage('local_confirmed_second', 'Continue.', '2026-08-16T09:00:00.100Z', { role: 'user' }),
+    ];
+
+    expect(getRealtimeMessagesToKeepAfterServerRefresh(realtime, server).map((message) => message.id)).toEqual([
+      'local_failed_first',
+    ]);
+  });
+
+  it('keeps optimistic messages whose image input order differs from the persisted message', () => {
+    const server = [
+      textMessage('persisted-user', 'Compare these images.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+        images: ['data:image/png;base64,first', 'data:image/png;base64,second'],
+      }),
+    ];
+    const realtime = [
+      textMessage('local_ws_user', 'Compare these images.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        images: ['data:image/png;base64,second', 'data:image/png;base64,first'],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'local_ws_user',
+      'persisted-user',
+    ]);
+  });
+
+  it('keeps optimistic messages whose attachment input order differs from the persisted message', () => {
+    const server = [
+      textMessage('persisted-user', 'Compare these files.', '2026-08-16T09:00:00.050Z', {
+        role: 'user',
+        attachments: [
+          { name: 'first.pdf', path: '.tmp/first.pdf' },
+          { name: 'second.pdf', path: '.tmp/second.pdf' },
+        ],
+      }),
+    ];
+    const realtime = [
+      textMessage('local_user', 'Compare these files.', '2026-08-16T09:00:00.000Z', {
+        role: 'user',
+        attachments: [
+          { name: 'second.pdf', path: '.tmp/second.pdf' },
+          { name: 'first.pdf', path: '.tmp/first.pdf' },
+        ],
+      }),
+    ];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'local_user',
+      'persisted-user',
+    ]);
+  });
+
+  it('deduplicates a persisted gateway failure from its same-turn realtime status', () => {
+    const persisted: NormalizedMessage = {
+      id: 'persisted-gateway-failure',
+      sessionId: 'web:s_test',
+      timestamp: '2026-08-13T00:00:01.000Z',
+      provider: PROVIDER,
+      kind: 'error',
+      content: 'Unknown projectKey: /Users/example/.pilotdeck',
+      turnId: 'run-failure',
+      runId: 'run-failure',
+    };
+    const realtime: NormalizedMessage = {
+      ...persisted,
+      id: 'realtime-gateway-failure',
+      timestamp: '2026-08-13T00:00:00.000Z',
+    };
+
+    expect(computeMerged([persisted], [realtime])).toEqual([persisted]);
+  });
+
   it('keeps finalized realtime assistant text until an equivalent same-turn server text is persisted', () => {
     const server = [
       textMessage('tail-before-turn', 'Previous answer', '2026-05-28T00:00:00.000Z'),
@@ -479,6 +976,30 @@ describe('turn-scoped server reconciliation', () => {
       'compact-1-live',
     ]);
   });
+
+  it('upserts replayed compact boundaries by turn and compaction id', () => {
+    const firstBoundary: NormalizedMessage = {
+      id: 'compact-live-random-id',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'compact_boundary',
+      runId: 'run-current',
+      compactionId: 'compact-1',
+      preTokens: 120,
+      postTokens: 40,
+    };
+    const replayedBoundary: NormalizedMessage = {
+      ...firstBoundary,
+      id: 'compact-replay-new-random-id',
+      timestamp: '2026-05-28T00:01:00.000Z',
+    };
+
+    const upserted = upsertRealtimeMessages([firstBoundary], [replayedBoundary]);
+
+    expect(upserted).toHaveLength(1);
+    expect(upserted[0]).toBe(replayedBoundary);
+  });
 });
 
 describe('getDuplicateAssistantStreamTextState', () => {
@@ -582,6 +1103,30 @@ describe('getDuplicateAssistantStreamTextState', () => {
 });
 
 describe('getActiveTurnReplayMessagesToApply', () => {
+  it('drops a replayed compact boundary already represented in realtime state', () => {
+    const renderedBoundary: NormalizedMessage = {
+      id: 'compact-live',
+      sessionId: 'web:s_test',
+      timestamp: '2026-05-28T00:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'compact_boundary',
+      runId: 'run-1',
+      compactionId: 'compact-1',
+      preTokens: 120,
+      postTokens: 40,
+    };
+    const replayedBoundary = {
+      ...renderedBoundary,
+      id: 'compact-replayed-with-new-id',
+      timestamp: '2026-05-28T00:01:00.000Z',
+    };
+
+    expect(getActiveTurnReplayMessagesToApply(
+      [replayedBoundary],
+      { realtimeMessages: [renderedBoundary] },
+    )).toEqual([]);
+  });
+
   it('skips active-turn stream replay already represented by finalized realtime text', () => {
     const activeTurnMessages = [
       {

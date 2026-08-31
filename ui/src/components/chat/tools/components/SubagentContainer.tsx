@@ -9,6 +9,7 @@ interface SubagentContainerProps {
     childTools: SubagentChildTool[];
     currentToolIndex: number;
     isComplete: boolean;
+    isFailed?: boolean;
   };
 }
 

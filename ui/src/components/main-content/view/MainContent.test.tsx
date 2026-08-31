@@ -196,9 +196,12 @@ describe('MainContent file workspace routing', () => {
     render(<MainContent {...propsFor('files')} />);
 
     const conversationTrigger = await screen.findByTestId('files-conversation-switcher-trigger');
-    const labels = conversationTrigger.querySelectorAll('span.block');
-    expect(labels[0]?.textContent).toBe('filesWorkbench.assistant');
-    expect(labels[1]?.textContent).toBe('filesWorkbench.conversations.newConversation');
+    expect(conversationTrigger.querySelector('b')?.textContent).toBe(
+      'filesWorkbench.conversations.newConversation',
+    );
+    expect(screen.getByRole('button', {
+      name: 'filesWorkbench.conversations.newConversation',
+    })).toBeTruthy();
 
     const resizeHandle = screen.getByRole('separator', {
       name: 'filesWorkbench.resizeAssistant',
@@ -211,10 +214,10 @@ describe('MainContent file workspace routing', () => {
       expect(localStorage.getItem('pilotdeck:files-assistant-width')).toBe('396');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'filesWorkbench.collapseAssistant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Smart Chat' }));
     expect(screen.queryByRole('separator', { name: 'filesWorkbench.resizeAssistant' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'filesWorkbench.openAssistant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Smart Chat' }));
     expect(screen.getByRole('separator', {
       name: 'filesWorkbench.resizeAssistant',
     }).getAttribute('aria-valuenow')).toBe('396');

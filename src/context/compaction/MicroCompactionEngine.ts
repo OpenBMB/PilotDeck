@@ -4,12 +4,30 @@ import type {
 } from "../../model/index.js";
 import { flattenToolResultBlockText } from "../../model/index.js";
 import { countTokens } from "../budget/tokenizer.js";
-import { COMPACTABLE_TOOL_NAMES } from "./CachedMicroCompactionEngine.js";
 import {
   collectToolNamesByCallId,
   isProtectedToolCallId,
   protectedToolNameSet,
 } from "./protectedContext.js";
+
+export const COMPACTABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "read_file",
+  "Read",
+  "bash",
+  "Bash",
+  "grep",
+  "Grep",
+  "glob",
+  "Glob",
+  "web_search",
+  "WebSearch",
+  "web_fetch",
+  "WebFetch",
+  "edit_file",
+  "Edit",
+  "write_file",
+  "Write",
+]);
 
 export const MICROCOMPACT_CLEARED = "[Old tool result content compacted]";
 export const MICROCOMPACT_FAILURES_FOLDED = "[Repeated tool failures compacted]";

@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { authenticatedFetch } from "../../../../utils/api";
+import { restartAndReload, type RestartUiStatus } from "../../../../utils/restartUi";
 import { cn } from "../../../../lib/utils";
 import type { DesktopVersionCheckResult } from "../../Settings";
 import { SettingsCard } from "../../shared/view";
@@ -30,6 +31,19 @@ type VersionStatus =
   | "upToDate"
   | "unavailable";
 
+type WebUpdateStatusPayload = {
+  updateInProgress?: boolean;
+  lastUpdateResult?: {
+    success?: boolean;
+    alreadyUpToDate?: boolean;
+    needsRestart?: boolean;
+    error?: unknown;
+  } | null;
+};
+
+type WebUpdatePollDecision = "continue" | "stop";
+type RestartModalStatus = Exclude<RestartUiStatus, "confirmed">;
+
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   const d = new Date(value);
@@ -51,17 +65,95 @@ export default function AboutSections({
   const [installing, setInstalling] = useState(false);
   const [localUpdateResult, setLocalUpdateResult] = useState<LocalUpdateResult>(null);
   const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
+  const [restartStatus, setRestartStatus] = useState<RestartModalStatus | null>(null);
+  const webStatusPollRef = useRef<number | null>(null);
+  const hasObservedWebUpdateRef = useRef(false);
   const isDesktop = versionInfo.mode === "desktop";
 
+  const stopWebStatusPolling = useCallback(() => {
+    if (webStatusPollRef.current !== null) {
+      window.clearInterval(webStatusPollRef.current);
+      webStatusPollRef.current = null;
+    }
+  }, []);
+
+  const applyWebUpdateStatus = useCallback((payload: WebUpdateStatusPayload): WebUpdatePollDecision => {
+    const result = payload.lastUpdateResult;
+    if (result?.needsRestart) {
+      hasObservedWebUpdateRef.current = false;
+      setWebUpdating(false);
+      setLocalUpdateResult("webUpdated");
+      return "stop";
+    }
+    if (result?.alreadyUpToDate) {
+      hasObservedWebUpdateRef.current = false;
+      setWebUpdating(false);
+      setLocalUpdateResult("webUpToDate");
+      return "stop";
+    }
+    if (result?.success === false || result?.error) {
+      hasObservedWebUpdateRef.current = false;
+      setWebUpdating(false);
+      setLocalUpdateResult("failed");
+      return "stop";
+    }
+    if (payload.updateInProgress) {
+      hasObservedWebUpdateRef.current = true;
+      setWebUpdating(true);
+      return "continue";
+    }
+    hasObservedWebUpdateRef.current = false;
+    setWebUpdating(false);
+    return "stop";
+  }, []);
+
+  const refreshWebUpdateStatus = useCallback(async (): Promise<WebUpdatePollDecision> => {
+    if (isDesktop) return "stop";
+    try {
+      const res = await authenticatedFetch("/api/update/status");
+      if (!res.ok) return hasObservedWebUpdateRef.current ? "continue" : "stop";
+      const payload = await res.json() as WebUpdateStatusPayload;
+      return applyWebUpdateStatus(payload);
+    } catch {
+      return hasObservedWebUpdateRef.current ? "continue" : "stop";
+    }
+  }, [applyWebUpdateStatus, isDesktop]);
+
+  const startWebStatusPolling = useCallback(() => {
+    if (webStatusPollRef.current !== null) return;
+    webStatusPollRef.current = window.setInterval(() => {
+      void refreshWebUpdateStatus().then((decision) => {
+        if (decision === "stop") stopWebStatusPolling();
+      });
+    }, 1000);
+  }, [refreshWebUpdateStatus, stopWebStatusPolling]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      stopWebStatusPolling();
+      return;
+    }
+
+    let active = true;
+    void refreshWebUpdateStatus().then((decision) => {
+      if (active && decision === "continue") startWebStatusPolling();
+    });
+
+    return () => {
+      active = false;
+      stopWebStatusPolling();
+    };
+  }, [isDesktop, refreshWebUpdateStatus, startWebStatusPolling, stopWebStatusPolling]);
+
   const status: VersionStatus = useMemo(() => {
-    if (checkingVersion) return "checking";
+    if (checkingVersion || webUpdating) return "checking";
     if (localUpdateResult === "installerLaunched") return "installerLaunched";
     if (localUpdateResult === "webUpToDate") return "upToDate";
     if (localUpdateResult === "failed") return "unavailable";
     if (versionInfo.checkUnavailable) return "unavailable";
     if (versionInfo.hasUpdate) return "updateAvailable";
     return "upToDate";
-  }, [checkingVersion, localUpdateResult, versionInfo.checkUnavailable, versionInfo.hasUpdate]);
+  }, [checkingVersion, localUpdateResult, versionInfo.checkUnavailable, versionInfo.hasUpdate, webUpdating]);
 
   const handleDownloadAndInstall = async () => {
     setDownloading(true);
@@ -108,6 +200,7 @@ export default function AboutSections({
   };
 
   const handleWebUpdate = async () => {
+    hasObservedWebUpdateRef.current = true;
     setWebUpdating(true);
     setLocalUpdateResult(null);
     try {
@@ -125,7 +218,11 @@ export default function AboutSections({
             ? "webUpToDate"
             : "webUpdated",
       );
+      hasObservedWebUpdateRef.current = false;
+      stopWebStatusPolling();
     } catch {
+      hasObservedWebUpdateRef.current = false;
+      stopWebStatusPolling();
       setLocalUpdateResult("failed");
     } finally {
       setWebUpdating(false);
@@ -144,17 +241,27 @@ export default function AboutSections({
     }
   };
 
-  const handleWebRestart = async () => {
+  const handleWebRestart = () => {
     setInstalling(true);
-    try {
-      await authenticatedFetch("/api/update/restart", {
+    stopWebStatusPolling();
+    restartAndReload(
+      (context) => authenticatedFetch("/api/update/restart", {
         method: "POST",
-      });
-    } catch {
-      // best effort: server can drop connection while restarting
-    } finally {
-      setInstalling(false);
-    }
+        suppressServerErrorToast: true,
+        signal: context?.signal,
+      }),
+      {
+        copy: {
+          title: t("about.restartingTitle"),
+          description: t("about.restartWaitingDescription"),
+        },
+        onStatusChange: (status) => {
+          if (status === "confirmed") return;
+          setRestartStatus(status);
+          if (status !== "restarting") setInstalling(false);
+        },
+      },
+    );
   };
 
   const showDownloadButton =
@@ -162,7 +269,7 @@ export default function AboutSections({
   const showRestartInstallButton = isDesktop && localUpdateResult === "downloaded";
   const showWebUpdateButton =
     !isDesktop
-    && versionInfo.hasUpdate
+    && (versionInfo.hasUpdate || webUpdating)
     && localUpdateResult !== "webUpdated"
     && localUpdateResult !== "webUpToDate";
   const showWebRestartButton = !isDesktop && localUpdateResult === "webUpdated";
@@ -252,6 +359,41 @@ export default function AboutSections({
           )}
         </div>
       </SettingsCard>
+
+      {restartStatus && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-6 text-center shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
+            {restartStatus === "restarting" ? (
+              <>
+                <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-blue-600" />
+                <h3 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                  {t("about.restartingTitle")}
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  {t("about.restartWaitingDescription")}
+                </p>
+              </>
+            ) : (
+              <>
+                <X className="mx-auto mb-4 h-8 w-8 text-red-500" />
+                <h3 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                  {t("about.restartFailedTitle")}
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  {t("about.restartFailedDescription")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  {t("about.refreshPage")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

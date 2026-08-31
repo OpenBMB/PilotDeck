@@ -14,6 +14,7 @@ import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
+import type { ModelProtocol } from "../../model/index.js";
 
 /**
  * Narrow view of the router that the agent loop actually consumes. Tests can
@@ -104,6 +105,10 @@ export type AgentRuntimeDependencies = {
    */
   getModelMaxOutputTokens?: (provider: string, model: string) => number | undefined;
   getModelTokenLimits?: (provider: string, model: string) => { maxContextTokens: number; maxOutputTokens?: number } | undefined;
+  /** Resolve the actual wire protocol; provider IDs may be compatible gateways. */
+  getModelProtocol?: (provider: string) => ModelProtocol | undefined;
+  /** Resolve prompt-cache support for the concrete provider/model. */
+  getModelSupportsPromptCache?: (provider: string, model: string) => boolean | undefined;
   now?: () => Date;
   uuid?: () => string;
   auditRecorder?: PilotDeckToolAuditRecorder;

@@ -1,9 +1,72 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalizeWorkspaceFilePath,
+  getWorkspaceFileIdentity,
   getWorkspaceRelativePath,
   hasWorkspaceFileMention,
   insertWorkspaceFileMention,
+  isWorkspacePathAtOrBelow,
 } from './workspaceFileMention';
+
+describe('workspace file identity', () => {
+  it('canonicalizes absolute and relative paths inside the same workspace', () => {
+    expect(canonicalizeWorkspaceFilePath(
+      '/workspace/project-a/docs/report.xlsx',
+      '/workspace/project-a',
+    )).toBe('docs/report.xlsx');
+    expect(canonicalizeWorkspaceFilePath(
+      './docs/report.xlsx',
+      '/workspace/project-a',
+    )).toBe('docs/report.xlsx');
+  });
+
+  it('normalizes slash and case differences for a Windows workspace identity', () => {
+    expect(getWorkspaceFileIdentity(
+      'C:\\Work\\PilotDeck\\Docs\\Report.xlsx',
+      'c:\\work\\pilotdeck',
+    )).toBe(getWorkspaceFileIdentity(
+      'docs/report.xlsx',
+      'c:\\work\\pilotdeck',
+    ));
+  });
+
+  it('normalizes Windows file URL pathnames and UNC path casing', () => {
+    expect(getWorkspaceFileIdentity(
+      '/C:/Work/PilotDeck/Docs/Report.xlsx',
+      'c:\\work\\pilotdeck',
+    )).toBe(getWorkspaceFileIdentity(
+      'docs/report.xlsx',
+      'c:\\work\\pilotdeck',
+    ));
+    expect(getWorkspaceFileIdentity(
+      '\\\\server\\share\\pilotdeck\\Docs\\Report.xlsx',
+      '\\\\Server\\Share\\PilotDeck',
+    )).toBe(getWorkspaceFileIdentity(
+      'docs/report.xlsx',
+      '\\\\Server\\Share\\PilotDeck',
+    ));
+  });
+
+  it('keeps files with the same basename in different folders distinct', () => {
+    expect(getWorkspaceFileIdentity('one/report.xlsx', '/workspace/project-a')).not.toBe(
+      getWorkspaceFileIdentity('two/report.xlsx', '/workspace/project-a'),
+    );
+  });
+
+  it('compares Windows paths and descendants case-insensitively', () => {
+    const workspaceRoot = 'C:\\Work\\PilotDeck';
+    expect(isWorkspacePathAtOrBelow(
+      'docs/reports/Annual.xlsx',
+      'Docs/Reports',
+      workspaceRoot,
+    )).toBe(true);
+    expect(isWorkspacePathAtOrBelow(
+      'docs/reports-archive/Annual.xlsx',
+      'Docs/Reports',
+      workspaceRoot,
+    )).toBe(false);
+  });
+});
 
 describe('getWorkspaceRelativePath', () => {
   it('returns a workspace-relative path for POSIX paths', () => {
@@ -16,6 +79,10 @@ describe('getWorkspaceRelativePath', () => {
   it('normalizes Windows paths and compares drive paths case-insensitively', () => {
     expect(getWorkspaceRelativePath(
       'C:\\Work\\PilotDeck\\docs\\report.docx',
+      'c:\\work\\pilotdeck',
+    )).toBe('docs/report.docx');
+    expect(getWorkspaceRelativePath(
+      '/C:/Work/PilotDeck/docs/report.docx',
       'c:\\work\\pilotdeck',
     )).toBe('docs/report.docx');
   });

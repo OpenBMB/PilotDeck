@@ -9,6 +9,19 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
+  ProjectFilesListInput,
+  ProjectFilesListResult,
+  CommandsListInput,
+  CommandsListResult,
+  ModelCatalogListInput,
+  ModelCatalogListResult,
+  SessionModelInput,
+  SessionModelSetInput,
+  SessionModelResult,
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
@@ -25,6 +38,10 @@ import type {
   WebReadSubagentMessagesResult,
   WebForkSessionInput,
   WebForkSessionResult,
+  WebReplaceLastTurnInput,
+  WebReplaceLastTurnResult,
+  WebFinalizeLastTurnReplacementInput,
+  WebFinalizeLastTurnReplacementResult,
 } from "../protocol/types.js";
 import type {
   SkillAddressInput,
@@ -72,6 +89,14 @@ export class RemoteGateway implements Gateway {
     return this.client.stream("submit_turn", input);
   }
 
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    return (await this.client.request("steer_turn", input)) as GatewaySteerTurnResult;
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    return (await this.client.request("cancel_steer", input)) as GatewayCancelSteerResult;
+  }
+
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
     await this.client.request("abort_turn", input);
   }
@@ -98,6 +123,30 @@ export class RemoteGateway implements Gateway {
 
   async describeServer(): Promise<GatewayServerInfo> {
     return (await this.client.request("describe_server", {})) as GatewayServerInfo;
+  }
+
+  async projectFilesList(input: ProjectFilesListInput): Promise<ProjectFilesListResult> {
+    return (await this.client.request("project_files_list", input)) as ProjectFilesListResult;
+  }
+
+  async commandsList(input: CommandsListInput): Promise<CommandsListResult> {
+    return (await this.client.request("commands_list", input)) as CommandsListResult;
+  }
+
+  async modelCatalogList(input: ModelCatalogListInput): Promise<ModelCatalogListResult> {
+    return (await this.client.request("model_catalog_list", input)) as ModelCatalogListResult;
+  }
+
+  async sessionModelGet(input: SessionModelInput): Promise<SessionModelResult> {
+    return (await this.client.request("session_model_get", input)) as SessionModelResult;
+  }
+
+  async sessionModelSet(input: SessionModelSetInput): Promise<SessionModelResult> {
+    return (await this.client.request("session_model_set", input)) as SessionModelResult;
+  }
+
+  async sessionModelClear(input: SessionModelInput): Promise<void> {
+    await this.client.request("session_model_clear", input);
   }
 
   async getActiveTurnSnapshot(input: import("../protocol/types.js").GatewayActiveTurnSnapshotInput): Promise<import("../protocol/types.js").GatewayActiveTurnSnapshot> {
@@ -150,6 +199,19 @@ export class RemoteGateway implements Gateway {
 
   async forkSession(input: WebForkSessionInput): Promise<WebForkSessionResult> {
     return (await this.client.request("fork_session", input)) as WebForkSessionResult;
+  }
+
+  async replaceLastTurn(input: WebReplaceLastTurnInput): Promise<WebReplaceLastTurnResult> {
+    return (await this.client.request("replace_last_turn", input)) as WebReplaceLastTurnResult;
+  }
+
+  async finalizeLastTurnReplacement(
+    input: WebFinalizeLastTurnReplacementInput,
+  ): Promise<WebFinalizeLastTurnReplacementResult> {
+    return (await this.client.request(
+      "finalize_last_turn_replacement",
+      input,
+    )) as WebFinalizeLastTurnReplacementResult;
   }
 
   async listProjects(): Promise<WebListProjectsResult> {

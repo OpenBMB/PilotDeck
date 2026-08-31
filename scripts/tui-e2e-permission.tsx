@@ -26,8 +26,22 @@ const noop = async () => {};
 const stub = <T,>(v: T) => async () => v;
 
 class MockGateway implements Gateway {
+  async steerTurn(): Promise<{ accepted: boolean; reason?: "no_active_turn" }> {
+    return { accepted: false, reason: "no_active_turn" };
+  }
+  async cancelSteer(): Promise<{ cancelled: boolean; reason?: "no_active_turn" }> {
+    return { cancelled: false, reason: "no_active_turn" };
+  }
   private pending = new Map<string, PendingPermission>();
   private aborted = false;
+
+  async replaceLastTurn(): Promise<never> {
+    throw new Error("replaceLastTurn is not used by this TUI test.");
+  }
+
+  async finalizeLastTurnReplacement(): Promise<never> {
+    throw new Error("finalizeLastTurnReplacement is not used by this TUI test.");
+  }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
     this.aborted = false;

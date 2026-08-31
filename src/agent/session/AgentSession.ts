@@ -14,6 +14,13 @@ import {
 } from "./AgentSessionState.js";
 import type { AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { AgentLoopSeedState } from "../loop/AgentLoop.js";
+import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
+import type { CanonicalMessage } from "../../model/index.js";
+import {
+  SteerMailbox,
+  type AgentCancelSteerResult,
+  type AgentSteerResult,
+} from "./SteerMailbox.js";
 
 export type AgentSessionOptions = {
   sessionId: string;
@@ -32,10 +39,12 @@ export type AgentSessionRuntimeReloadSnapshot = {
   transcriptPath: string;
   transcriptWriterState?: AgentTranscriptWriterState;
   fileState?: AgentLoopSeedState;
+  metadata?: SessionMetadataValue;
 };
 
 export class AgentSession {
   private state: AgentSessionStateShape;
+  private readonly steerMailbox = new SteerMailbox();
 
   constructor(private readonly options: AgentSessionOptions) {
     this.state = options.initialState ?? createInitialAgentSessionState(options.sessionId);
@@ -85,7 +94,12 @@ export class AgentSession {
       canPrompt: submitOptions.canPrompt,
       permissionRules: submitOptions.permissionRules,
       syntheticMessages: submitOptions.syntheticMessages,
+      modelOverride: submitOptions.modelOverride,
       abortSignal: this.state.abortController.signal,
+      openSteerMailbox: () => this.steerMailbox.start(turnId),
+      drainSteerMessages: () => this.steerMailbox.drain(turnId),
+      drainOrCloseSteerMailbox: () => this.steerMailbox.drainOrClose(turnId),
+      closeSteerMailbox: () => this.steerMailbox.close(turnId),
     });
 
     this.state.messages = runResult.messages;
@@ -96,6 +110,7 @@ export class AgentSession {
     );
     this.state.status = runResult.result.type === "aborted" ? "aborted" : runResult.result.type === "error" ? "failed" : "idle";
     this.state.currentTurnId = undefined;
+    this.steerMailbox.finish(turnId);
     const sessionEndReason = this.state.status === "aborted" ? "other" : "prompt_input_exit";
     await this.options.lifecycle?.dispatch({
       event: "SessionEnd",
@@ -116,6 +131,29 @@ export class AgentSession {
     this.state.status = "aborted";
   }
 
+  steer(input: {
+    turnId: string;
+    itemId: string;
+    message: CanonicalMessage;
+    allowedReadFiles?: string[];
+  }): AgentSteerResult {
+    if (this.state.status !== "running" || !this.state.currentTurnId) {
+      return { accepted: false, reason: "no_active_turn" };
+    }
+    return this.steerMailbox.enqueue(input.turnId, {
+      itemId: input.itemId,
+      message: input.message,
+      allowedReadFiles: input.allowedReadFiles,
+    });
+  }
+
+  cancelSteer(input: { turnId: string; itemId: string }): AgentCancelSteerResult {
+    if (this.state.status !== "running" || !this.state.currentTurnId) {
+      return { cancelled: false, reason: "no_active_turn" };
+    }
+    return this.steerMailbox.cancel(input.turnId, input.itemId);
+  }
+
   snapshot(): AgentSessionStateShape {
     return snapshotAgentSessionState(this.state);
   }
@@ -128,6 +166,7 @@ export class AgentSession {
       transcriptPath: runtime.runtimeContext.transcriptPath,
       transcriptWriterState: runtime.transcriptWriterState,
       fileState: this.options.turnRunner.snapshotFileState(),
+      metadata: runtime.metadata,
     };
   }
 

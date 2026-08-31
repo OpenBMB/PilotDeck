@@ -192,7 +192,7 @@ function convertSingleMessage(
       const subagentLink = isSubagentContainer && msg.toolId
         ? subagentLinks?.get(msg.toolId)
         : undefined;
-      const msgSubagentId = (msg as Record<string, unknown>).subagentId as string | undefined;
+      const msgSubagentId = (msg as unknown as Record<string, unknown>).subagentId as string | undefined;
 
       return {
         id: msg.id,

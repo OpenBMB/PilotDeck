@@ -28,7 +28,6 @@ export class AutoCompactionPolicy {
     options: { reservedOutputTokens?: number } = {},
   ): AutoCompactionDecision {
     const snapshot = this.tokenBudget.evaluate(messages, maxContextTokens, {
-      usePadding: true,
       reservedOutputTokens: options.reservedOutputTokens,
     });
     return this.evaluateSnapshot(snapshot);

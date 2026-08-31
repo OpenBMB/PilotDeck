@@ -5,6 +5,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
 import MessagesPaneV2 from './MessagesPaneV2';
+import {
+  getChatResponseReserveTarget,
+  shouldKeepChatResponseReservedSpace,
+} from './chatResponseReservedSpace';
 import { getContextStatus } from './ComposerV2';
 
 vi.mock('./SubagentDetailModal', () => ({
@@ -47,6 +51,34 @@ describe('getContextStatus', () => {
     expect(status.state).toBe('blocking');
     expect(status.tone).toBe('red');
   });
+
+  it('prefers the resolved token count over a stale display estimate', () => {
+    const status = getContextStatus({
+      used: 12_080,
+      displayUsed: 11_928,
+      total: 12_000,
+      effectiveTotal: 12_000,
+      state: 'blocking',
+    });
+
+    expect(status.used).toBe(12_080);
+    expect(status.percentLabel).toBe('100%+');
+  });
+
+  it('shows the full context window while calculating percent against the effective budget', () => {
+    const status = getContextStatus({
+      used: 38_161,
+      total: 131_072,
+      effectiveTotal: 98_304,
+      reservedOutputTokens: 32_768,
+      state: 'ok',
+    });
+
+    expect(status.displayTotal).toBe(131_072);
+    expect(status.totalLabel).toBe('131k');
+    expect(status.percentLabel).toBe('39%');
+    expect(status.tone).toBe('normal');
+  });
 });
 
 function makeMessage(index: number): ChatMessage {
@@ -66,6 +98,9 @@ function createPaneElement({
   activeRunId = null,
   runMode = 'agent',
   planModeActive = false,
+  showThinking = true,
+  inlineThinking = false,
+  onRegenerate,
 }: {
   messages: ChatMessage[];
   activityMessages?: ChatMessage[];
@@ -74,6 +109,9 @@ function createPaneElement({
   activeRunId?: string | null;
   runMode?: ChatRunMode;
   planModeActive?: boolean;
+  showThinking?: boolean;
+  inlineThinking?: boolean;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   const scrollContainerRef = React.createRef<HTMLDivElement>();
 
@@ -105,6 +143,9 @@ function createPaneElement({
         activeRunId={activeRunId}
         runMode={runMode}
         planModeActive={planModeActive}
+        showThinking={showThinking}
+        inlineThinking={inlineThinking}
+        onRegenerate={onRegenerate}
       />
     </FindShortcutProvider>
   );
@@ -118,6 +159,9 @@ function renderPane(options: {
   activeRunId?: string | null;
   runMode?: ChatRunMode;
   planModeActive?: boolean;
+  showThinking?: boolean;
+  inlineThinking?: boolean;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   return render(createPaneElement(options));
 }
@@ -158,6 +202,179 @@ function SessionPaneHarness({
 }
 
 describe('MessagesPaneV2 render behavior', () => {
+  it('offers editing only on the latest user message', () => {
+    const now = new Date().toISOString();
+    renderPane({
+      messages: [
+        { id: 'user-old', turnId: 'turn-old', type: 'user', content: 'Old request', timestamp: now },
+        { id: 'assistant-old', turnId: 'turn-old', type: 'assistant', content: 'Old answer', timestamp: now },
+        { id: 'user-latest', turnId: 'turn-latest', type: 'user', content: 'Latest request', timestamp: now },
+        { id: 'assistant-latest', turnId: 'turn-latest', type: 'assistant', content: 'Latest answer', timestamp: now },
+      ],
+      onRegenerate: vi.fn(async () => undefined),
+    });
+
+    expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1);
+    const latestMessageRow = screen.getByText('Latest request').closest('.chat-message');
+    expect(latestMessageRow?.querySelector('[aria-label="Edit message"]')).not.toBeNull();
+    const oldMessageRow = screen.getByText('Old request').closest('.chat-message');
+    expect(oldMessageRow?.querySelector('[aria-label="Edit message"]')).toBeNull();
+  });
+
+  it('shows a waiting state before the model produces content', () => {
+    const now = new Date().toISOString();
+    renderPane({
+      messages: [{
+        id: 'user-waiting',
+        type: 'user',
+        content: 'Please analyze this.',
+        timestamp: now,
+      }],
+      isAssistantWorking: true,
+      sessionRuntimeState: 'running',
+    });
+
+    expect(screen.getByText('Waiting for model response...')).toBeTruthy();
+    expect(screen.queryByText('Thinking...')).toBeNull();
+  });
+
+  it('switches to thinking when live reasoning arrives even if reasoning details are hidden', () => {
+    const now = new Date().toISOString();
+    renderPane({
+      messages: [
+        {
+          id: 'user-thinking',
+          type: 'user',
+          content: 'Please analyze this.',
+          timestamp: now,
+        },
+        {
+          id: '__streaming_thinking_session_run',
+          type: 'assistant',
+          content: 'I am comparing the available approaches.',
+          timestamp: now,
+          isThinking: true,
+          isStreaming: true,
+        },
+      ],
+      isAssistantWorking: true,
+      sessionRuntimeState: 'running',
+      showThinking: false,
+    });
+
+    expect(screen.getByText('Thinking...')).toBeTruthy();
+    expect(screen.queryByText('Waiting for model response...')).toBeNull();
+    expect(screen.queryByText('I am comparing the available approaches.')).toBeNull();
+  });
+
+  it('lets the live thinking status row collapse and restore the scrollable reasoning window', () => {
+    const now = new Date().toISOString();
+    const thinkingContent = Array.from(
+      { length: 12 },
+      (_, index) => `Live thinking line ${index + 1}`,
+    ).join('\n');
+    renderPane({
+      messages: [
+        {
+          id: 'user-live-thinking',
+          type: 'user',
+          content: 'Please think this through.',
+          timestamp: now,
+        },
+        {
+          id: '__streaming_thinking_session_live',
+          type: 'assistant',
+          content: thinkingContent,
+          timestamp: now,
+          isThinking: true,
+          isStreaming: true,
+        },
+      ],
+      isAssistantWorking: true,
+      sessionRuntimeState: 'running',
+    });
+
+    const toggle = screen.getByRole('button', { name: 'Thinking...' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const liveThinkingRegion = screen.getByRole('region', { name: 'Live thinking content' });
+    expect(liveThinkingRegion).toBeTruthy();
+    expect(liveThinkingRegion.closest('[role="status"]')).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
+  });
+
+  it('expands live reasoning when thinking details are enabled during a run', () => {
+    const now = new Date().toISOString();
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-toggle-thinking',
+        type: 'user',
+        content: 'Please think this through.',
+        timestamp: now,
+      },
+      {
+        id: '__streaming_thinking_toggle_details',
+        type: 'assistant',
+        content: 'Reasoning that becomes visible later.',
+        timestamp: now,
+        isThinking: true,
+        isStreaming: true,
+      },
+    ];
+    const options = {
+      messages,
+      isAssistantWorking: true,
+      sessionRuntimeState: 'running' as const,
+    };
+    const view = renderPane({ ...options, showThinking: false });
+
+    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
+
+    view.rerender(createPaneElement({ ...options, showThinking: true }));
+
+    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
+  });
+
+  it('expands the reasoning window when switching away from inline thinking during a run', () => {
+    const now = new Date().toISOString();
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-toggle-inline-thinking',
+        type: 'user',
+        content: 'Please think this through.',
+        timestamp: now,
+      },
+      {
+        id: '__streaming_thinking_toggle_inline',
+        type: 'assistant',
+        content: 'Reasoning that moves out of the inline message.',
+        timestamp: now,
+        isThinking: true,
+        isStreaming: true,
+      },
+    ];
+    const options = {
+      messages,
+      isAssistantWorking: true,
+      sessionRuntimeState: 'running' as const,
+    };
+    const view = renderPane({ ...options, inlineThinking: true });
+
+    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
+
+    view.rerender(createPaneElement({ ...options, inlineThinking: false }));
+
+    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
+  });
+
   it('stops an unfinished subagent from an older run while the next run is active', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
@@ -1018,8 +1235,9 @@ describe('MessagesPaneV2 render behavior', () => {
     const firstStatusContainer = firstStatus.closest('[role="status"]');
     expect(firstStatusContainer).not.toBeNull();
     if (!firstStatusContainer) throw new Error('Expected first inline status container');
-    expect(firstStatusContainer.parentElement?.className).toContain('mt-2');
-    expect(firstStatusContainer.parentElement?.className).toContain('gap-2');
+    const firstProcessRow = firstStatusContainer.closest('.process-live-status');
+    expect(firstProcessRow?.parentElement?.className).toContain('mt-2');
+    expect(firstProcessRow?.parentElement?.className).toContain('gap-2');
     const expandButton = firstStatusContainer.querySelector('button');
     expect(expandButton).not.toBeNull();
 
@@ -1333,5 +1551,21 @@ describe('MessagesPaneV2 render behavior', () => {
 
     expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).toContain('pb-4');
     expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).not.toContain('pb-8');
+  });
+});
+
+describe('chat response reserved space', () => {
+  it('reserves about half the viewport, clamped between 220 and 520', () => {
+    expect(getChatResponseReserveTarget(0)).toBe(220);
+    expect(getChatResponseReserveTarget(400)).toBe(220);
+    expect(getChatResponseReserveTarget(800)).toBe(416);
+    expect(getChatResponseReserveTarget(2000)).toBe(520);
+  });
+
+  it('keeps space for follow-up turns even after the assistant stops', () => {
+    expect(shouldKeepChatResponseReservedSpace(-1, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(0, true)).toBe(true);
+    expect(shouldKeepChatResponseReservedSpace(0, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(true);
   });
 });

@@ -1,16 +1,25 @@
-import type { ReactNode } from 'react';
-import { useAuth } from '../context/AuthContext';
-import Onboarding from '../../onboarding/view/Onboarding';
-import AuthLoadingScreen from './AuthLoadingScreen';
-import LoginForm from './LoginForm';
-import SetupForm from './SetupForm';
+import type { ReactNode } from "react";
+import { useAuth } from "../context/AuthContext";
+import Onboarding from "../../onboarding/view/Onboarding";
+import AuthLoadingScreen from "./AuthLoadingScreen";
+import LoginForm from "./LoginForm";
+import SetupForm from "./SetupForm";
 
 type ProtectedRouteProps = {
   children: ReactNode;
 };
 
+/** TEMP for onboarding UI work. Set back to false when done. */
+// const FORCE_ONBOARDING_FOR_DEV = true;
+
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, isLoading, needsSetup, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
+  const {
+    user,
+    isLoading,
+    needsSetup,
+    hasCompletedOnboarding,
+    refreshOnboardingStatus,
+  } = useAuth();
 
   if (isLoading) {
     return <AuthLoadingScreen />;
@@ -27,6 +36,9 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   if (!hasCompletedOnboarding) {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
   }
+  // if (FORCE_ONBOARDING_FOR_DEV || !hasCompletedOnboarding) {
+  //   return <Onboarding onComplete={refreshOnboardingStatus} />;
+  // }
 
   return <>{children}</>;
 }

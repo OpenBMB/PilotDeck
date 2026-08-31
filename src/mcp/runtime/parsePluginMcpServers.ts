@@ -49,6 +49,7 @@ export function parsePluginMcpServers(
           : undefined,
         env: isStringRecord(v.env) ? expandStringRecord(v.env as Record<string, string>) : undefined,
         cwd: typeof v.cwd === "string" ? expandMcpString(v.cwd) : undefined,
+        callTimeoutMs: positiveFiniteNumber(v.callTimeoutMs),
         perSession: v.perSession === true ? true : undefined,
       });
       continue;
@@ -78,4 +79,8 @@ function isStringRecord(v: unknown): boolean {
     if (typeof value !== "string") return false;
   }
   return true;
+}
+
+function positiveFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }

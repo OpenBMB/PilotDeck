@@ -3,7 +3,7 @@ import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../../../lib/utils.js';
-import { getFileIconData } from '../../../file-tree/constants/fileIcons';
+import { FileTypeIcon } from '../../../file-tree/components/FileTypeIcon';
 import type { CodeEditorFile, CodeEditorTab } from '../../types/types';
 
 type TabMenuState = {
@@ -267,9 +267,6 @@ export default function CodeEditorTabBar({
             const file = getTabFile(tab);
             if (!file) return null;
             const active = tab.id === activeTabId;
-            const iconData = getFileIconData(file.name);
-            const Icon = iconData.icon;
-
             return (
               <div
                 key={tab.id}
@@ -305,7 +302,7 @@ export default function CodeEditorTabBar({
                   onKeyDown={(event) => handleKeyDown(event, index)}
                   className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                 >
-                  <Icon className={cn('h-3.5 w-3.5 shrink-0', iconData.color)} strokeWidth={1.75} />
+                  <FileTypeIcon filename={file.name} className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{file.name}</span>
                   {tab.dirty ? (
                     <span

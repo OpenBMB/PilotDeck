@@ -1,9 +1,9 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PermissionResult, PermissionRule } from "../../permission/index.js";
 import type { PilotDeckToolDefinition, PilotDeckToolRuntimeContext } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
-import { resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
+import { isPathWithinRoot, resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
 
 export type SendAttachmentInput = {
   file_path: string;
@@ -27,6 +27,7 @@ export function createSendAttachmentTool(): PilotDeckToolDefinition<SendAttachme
       "Send a local file back to the user through the current host/channel when supported. "
       + "Use this when the user asks you to send, upload, return, or share an existing local file. "
       + "Do not call read_file first just to send binary files; this tool sends the file bytes as an attachment without parsing them. "
+      + "Files under PILOTDECK_WORK_DIR or workspace .pilotdeck/work are internal candidates and cannot be sent directly; publish the reviewed final artifact outside the internal work directory first. "
       + "Workspace files and registered IM attachment files can be sent directly; paths outside the workspace require explicit user permission before execution.",
     kind: "filesystem",
     inputSchema: {
@@ -61,9 +62,31 @@ export function createSendAttachmentTool(): PilotDeckToolDefinition<SendAttachme
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => false,
+    validateInput: async (input, context) => {
+      const internalRoot = await findInternalWorkRoot(input.file_path, context);
+      if (internalRoot) {
+        return {
+          ok: false,
+          issues: [{
+            path: "file_path",
+            code: "invalid_schema",
+            message: internalAttachmentMessage(input.file_path, internalRoot),
+          }],
+        };
+      }
+      return { ok: true, input };
+    },
     checkPermissions: async (input, context): Promise<PermissionResult> =>
       checkSendAttachmentPermission(input.file_path, context),
     execute: async (input, context) => {
+      const internalRoot = await findInternalWorkRoot(input.file_path, context);
+      if (internalRoot) {
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          internalAttachmentMessage(input.file_path, internalRoot),
+          { filePath: input.file_path, internalWorkRoot: internalRoot },
+        );
+      }
       const resolved = resolvePilotDeckWorkspacePath(input.file_path, context, {
         mustExist: true,
         allowRegisteredReadFiles: true,
@@ -98,6 +121,43 @@ export function createSendAttachmentTool(): PilotDeckToolDefinition<SendAttachme
       };
     },
   };
+}
+
+async function findInternalWorkRoot(
+  inputPath: string,
+  context: PilotDeckToolRuntimeContext,
+): Promise<string | undefined> {
+  const absolutePath = path.resolve(path.isAbsolute(inputPath) ? inputPath : path.join(context.cwd, inputPath));
+  const configuredWorkDir = context.env?.PILOTDECK_WORK_DIR?.trim();
+  const roots = [
+    path.resolve(context.cwd, ".pilotdeck", "work"),
+    ...(configuredWorkDir
+      ? [path.resolve(path.isAbsolute(configuredWorkDir) ? configuredWorkDir : path.join(context.cwd, configuredWorkDir))]
+      : []),
+  ];
+  const lexicalMatch = roots.find((root) => isPathWithinRoot(absolutePath, root));
+  if (lexicalMatch) return lexicalMatch;
+
+  const realCandidate = await tryRealpath(absolutePath);
+  if (!realCandidate) return undefined;
+  const realRoots = await Promise.all(roots.map((root) => tryRealpath(root)));
+  const realMatchIndex = realRoots.findIndex(
+    (root): root is string => Boolean(root && isPathWithinRoot(realCandidate, root)),
+  );
+  return realMatchIndex >= 0 ? roots[realMatchIndex] : undefined;
+}
+
+async function tryRealpath(value: string): Promise<string | undefined> {
+  try {
+    return await realpath(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function internalAttachmentMessage(inputPath: string, internalRoot: string): string {
+  return `Cannot send ${inputPath} directly because it is inside PilotDeck's internal work directory (${internalRoot}). `
+    + "Internal candidates may be incomplete or unreviewed. Publish the reviewed final artifact outside PILOTDECK_WORK_DIR with the relevant skill's delivery workflow (for DOCX, use docx.sh deliver), then send the delivered path.";
 }
 
 function checkSendAttachmentPermission(inputPath: string, context: PilotDeckToolRuntimeContext): PermissionResult {

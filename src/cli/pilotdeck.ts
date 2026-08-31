@@ -774,11 +774,19 @@ function createFallbackGateway(): Gateway {
   }
   return {
     submitTurn: errorStream,
+    steerTurn: async () => ({ accepted: false, reason: "no_active_turn" }),
+    cancelSteer: async () => ({ cancelled: false, reason: "no_active_turn" }),
     abortTurn: async () => undefined,
     listSessions: async () => ({ sessions: [] }),
     resumeSession: async (input) => input,
     newSession: async (input) => ({ sessionKey: `${input.channelKey}:project=${input.projectKey ?? process.cwd()}:s_local` }),
     closeSession: async () => undefined,
+    replaceLastTurn: async () => {
+      throw new Error("Message editing is unavailable while using the fallback gateway.");
+    },
+    finalizeLastTurnReplacement: async () => {
+      throw new Error("Message editing is unavailable while using the fallback gateway.");
+    },
     describeServer: async () => ({ mode: "in_process" }),
     cronCreate: async () => {
       throw new Error("Cron runtime is not configured.");

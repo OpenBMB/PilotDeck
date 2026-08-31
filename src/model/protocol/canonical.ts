@@ -140,9 +140,15 @@ export type CanonicalMessageMetadata = {
   transient?: boolean;
   /** Stable id used by the agent loop to expire transient synthetic prompts. */
   transientId?: string;
+  /** Originating tool call for projected supplemental result messages. */
+  toolCallId?: string;
   /** Message replaces compacted history and is omitted from the visible transcript. */
   compactReplacement?: boolean;
+  /** Compaction id of the effective replacement snapshot persisted in the transcript. */
+  compactSnapshotId?: string;
   purpose?: string;
+  /** Stable queued-input id for a user message injected during an active turn. */
+  queueItemId?: string;
   forkCarryover?: {
     sourceSessionId: string;
     sourceTurnId?: string;
@@ -206,6 +212,17 @@ export type CanonicalOutputSchema = {
   strict?: boolean;
 };
 
+/** Internal provider-boundary prompt-cache layout; never persisted. */
+export type CachePlan = {
+  provider?: string;
+  model?: string;
+  system: boolean;
+  tools: boolean;
+  messages: number[];
+  fingerprint: string;
+  generation: number;
+};
+
 export type CanonicalModelRequest = {
   model: string;
   provider: string;
@@ -215,6 +232,7 @@ export type CanonicalModelRequest = {
   toolChoice?: CanonicalToolChoice;
   maxOutputTokens?: number;
   temperature?: number;
+  speed?: number;
   thinking?: CanonicalThinkingConfig;
   stream?: boolean;
   metadata?: Record<string, unknown>;
@@ -222,10 +240,13 @@ export type CanonicalModelRequest = {
   outputSchema?: CanonicalOutputSchema;
   /**
    * A4: indices into `messages` whose final content block should be marked
-   * `cache_control: { type: "ephemeral" }` when lowered to Anthropic. Other
-   * providers ignore this. Set by `CachedMicroCompactionEngine`.
+   * `cache_control: { type: "ephemeral", ttl: "5m" }` when lowered to
+   * Anthropic. Other providers ignore this. The default context layout marks
+   * the final three non-system messages for the `system + recent3` strategy.
    */
   cacheBreakpoints?: number[];
+  /** Internal prompt-cache layout computed by the context runtime. */
+  cachePlan?: CachePlan;
 };
 
 export type CanonicalUsage = {
@@ -252,6 +273,8 @@ export type CanonicalModelEvent =
       provider: string;
       model: string;
       providerBaseUrl?: string;
+      /** Opaque digest of the exact request dispatched to the provider. */
+      requestFingerprint?: string;
       metadata?: Record<string, unknown>;
     }
   | { type: "message_start"; role: "assistant"; raw?: unknown }
@@ -285,7 +308,7 @@ export type ProviderRetryConfig = {
   requestMaxRetries?: number;
   /** Max retries for dropped SSE streams. Default 2. */
   streamMaxRetries?: number;
-  /** First-token / idle timeout (ms) for streaming responses. Defaults through request timeout when omitted. */
+  /** First-token / idle timeout (ms) for streaming responses. Defaults to 600000ms when omitted. */
   streamIdleTimeoutMs?: number;
   /** Maximum streaming duration (ms). Default disabled. */
   maxStreamingDurationMs?: number;
@@ -299,6 +322,8 @@ export type ProviderRetryConfig = {
   jitter?: number;
 };
 
+export type SpeedMapping = "openai_service_tier" | "anthropic_speed";
+
 export type ProviderConfig = {
   id: string;
   protocol: ModelProtocol;
@@ -308,6 +333,8 @@ export type ProviderConfig = {
   headers: Record<string, string>;
   /** Arbitrary fields merged into every request body (e.g. OpenRouter provider preferences). */
   extraBody?: Record<string, unknown>;
+  /** Explicit native mapping for the normalized model speed preference. */
+  speedMapping?: SpeedMapping;
   retry?: ProviderRetryConfig;
   models: Record<string, ModelDefinition>;
 };

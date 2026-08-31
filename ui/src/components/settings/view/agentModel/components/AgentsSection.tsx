@@ -142,7 +142,7 @@ export default function AgentsSection({ config, onChange }: AgentsSectionProps) 
                   <div className="w-full max-w-[360px]">
                     <NumberInput
                       value={caps.maxOutputTokensOverride}
-                      placeholder={String(caps.catalogModel?.maxOutputTokens ?? 16384)}
+                      placeholder={String(caps.defaultMaxOutputTokens)}
                       onChange={(value) =>
                         setMaxOutputTokens(
                           typeof value === "number" && value > 0
@@ -167,7 +167,7 @@ export default function AgentsSection({ config, onChange }: AgentsSectionProps) 
                   <div className="w-full max-w-[360px]">
                     <NumberInput
                       value={config.agent?.maxContextTokens}
-                      placeholder={String(caps.catalogModel?.maxContextTokens ?? 200000)}
+                      placeholder={String(caps.defaultMaxContextTokens)}
                       onChange={(value) => {
                         if (value === undefined) {
                           const next = { ...(config.agent ?? {}) };

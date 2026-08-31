@@ -6,9 +6,6 @@
   "license": "AGPL-3.0-only",
   "dependencies": {
     "@xmldom/xmldom": "0.9.10",
-    "jszip": "3.10.1",
-    "pptx-automizer": "0.8.2",
-    "pptxgenjs": "4.0.1",
-    "sharp": "0.35.3"
+    "jszip": "3.10.1"
   }
 }

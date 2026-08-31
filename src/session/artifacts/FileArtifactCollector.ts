@@ -426,6 +426,7 @@ function toolResultCouldHaveMutatedWorkspace(result: PilotDeckToolResult): boole
     case "file_conflict":
     case "unsupported_tool":
     case "setup_required":
+    case "tool_unavailable":
     case "plan_mode_violation":
     case "ask_mode_violation":
       return false;

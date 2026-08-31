@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import tempfile
 import zipfile
 from collections import Counter
@@ -100,7 +99,7 @@ def prepare_json_artifact_path(
         protected_path = Path(protected).expanduser().resolve()
         if target == protected_path:
             raise blocked(
-                f"{purpose} must not overwrite an input, output, specification, or script",
+                f"{purpose} must not overwrite an input, output, or script",
                 code="artifact-path-collision",
                 details={
                     "artifact": str(target),
@@ -202,8 +201,8 @@ def assert_internal_control_path(
                 "artifact": str(target),
                 "work_dir": str(work_dir),
                 "next": (
-                    "Move reports, manifests, specifications, helper scripts, "
-                    "renders, and QA output under PILOTDECK_WORK_DIR."
+                    "Move reports, helper scripts, renders, and other temporary "
+                    "artifacts under PILOTDECK_WORK_DIR."
                 ),
             },
         )
@@ -222,7 +221,7 @@ def assert_internal_candidate_path(path: str | Path) -> Path:
             details={
                 "out": str(target),
                 "work_dir": str(work_dir),
-                "next": "Run preflight on an internal candidate, then deliver it.",
+                "next": "Review the internal candidate, then deliver it.",
             },
         )
     return target
@@ -243,84 +242,6 @@ def prepare_output_docx_path(
     if target.exists() and not overwrite:
         raise blocked(
             "Output DOCX already exists; choose a new path or pass --overwrite explicitly",
-            code="output-exists",
-            details={"out": str(target)},
-        )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    return target
-
-
-def prepare_delivery_docx_path(
-    path: str | Path,
-    *,
-    overwrite: bool = False,
-    workspace_root: str | Path | None = None,
-    authorized_external_path: str | Path | None = None,
-    replace_source_path: str | Path | None = None,
-) -> Path:
-    root = (
-        Path(workspace_root).expanduser().resolve()
-        if workspace_root is not None
-        else pilotdeck_workspace_root()
-    )
-    if not root.is_dir():
-        raise blocked(
-            "The frozen workspace root is not an existing directory",
-            code="workspace-root-invalid",
-            details={"workspace_root": str(root)},
-        )
-    raw_target = Path(path).expanduser()
-    target = require_docx_path(
-        raw_target if raw_target.is_absolute() else root / raw_target,
-        must_exist=False,
-    )
-    external = (
-        require_docx_path(authorized_external_path, must_exist=False)
-        if authorized_external_path is not None
-        else None
-    )
-    replace_source = (
-        require_docx_path(replace_source_path, must_exist=False)
-        if replace_source_path is not None
-        else None
-    )
-    if (
-        not _is_relative_to(target, root)
-        and target != external
-        and target != replace_source
-    ):
-        raise blocked(
-            "Final DOCX output must stay inside the current workspace unless "
-            "the user explicitly supplied this exact external destination",
-            code="delivery-output-outside-workspace",
-            details={
-                "out": str(target),
-                "workspace_root": str(root),
-                "authorized_external_path": (
-                    str(external) if external is not None else None
-                ),
-                "next": (
-                    "Choose a path under the workspace, or freeze the exact "
-                    "user-requested external path during prepare."
-                ),
-            },
-        )
-    work_dir = pilotdeck_work_dir()
-    if work_dir is not None and _is_relative_to(target, work_dir):
-        raise blocked(
-            "The delivered DOCX must be outside PILOTDECK_WORK_DIR",
-            code="delivery-output-is-internal",
-            details={"out": str(target), "work_dir": str(work_dir)},
-        )
-    if target.exists() and not target.is_file():
-        raise blocked(
-            "Delivery DOCX path exists but is not a regular file",
-            code="output-path-invalid",
-            details={"out": str(target)},
-        )
-    if target.exists() and not overwrite:
-        raise blocked(
-            "Delivery DOCX already exists; choose a new path or pass --overwrite explicitly",
             code="output-exists",
             details={"out": str(target)},
         )
@@ -651,14 +572,3 @@ def pack_docx(package_dir: str | Path, output: str | Path) -> Path:
         os.replace(temp, target)
     assert_valid_docx(target)
     return target
-
-
-def copy_docx(
-    source: str | Path, output: str | Path, *, overwrite: bool = False
-) -> tuple[Path, Path]:
-    src, dst = require_distinct_paths(source, output, overwrite=overwrite)
-    with temporary_sibling(dst, suffix=".tmp.docx") as temp:
-        shutil.copy2(src, temp)
-        assert_valid_docx(temp)
-        os.replace(temp, dst)
-    return src, dst
