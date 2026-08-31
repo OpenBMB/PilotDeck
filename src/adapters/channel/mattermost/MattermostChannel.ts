@@ -173,23 +173,25 @@ export class MattermostChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply({ channelId, rootId }, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(chatId);
+            this.permissions.releaseAnswer(chatId, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply({ channelId, rootId }, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId, delivered);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(chatId);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
         this.logger?.error?.(`mattermost: permission answer error: ${e}`);
       }
       return;
@@ -240,7 +242,7 @@ export class MattermostChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const chatId = ctx.rootId ? `${ctx.channelId}:${ctx.rootId}` : ctx.channelId;
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), questionText);
           continue;
         }
         const fragment = renderMattermostEvent(event);

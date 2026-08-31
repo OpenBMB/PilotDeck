@@ -152,23 +152,25 @@ export class BlueBubblesChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatGuid) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(chatGuid, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(chatGuid, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(chatGuid);
+            this.permissions.releaseAnswer(chatGuid, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatGuid);
           if (nextPrompt) {
             const delivered = await this.sendReply(chatGuid, nextPrompt);
-            this.permissions.confirmNextPrompt(chatGuid, delivered);
+            this.permissions.confirmNextPrompt(chatGuid, delivered, nextPrompt);
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(chatGuid);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatGuid, answerToken);
         this.logger?.error?.(`bluebubbles: permission answer error: ${e}`);
       }
       return;
@@ -211,7 +213,7 @@ export class BlueBubblesChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatGuid, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatGuid, await this.sendReply(chatGuid, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(chatGuid, await this.sendReply(chatGuid, questionText), questionText);
           continue;
         }
         const fragment = renderBlueBubblesEvent(event);

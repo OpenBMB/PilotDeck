@@ -144,23 +144,25 @@ export class MatrixChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(roomId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(roomId, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(roomId, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(roomId);
+            this.permissions.releaseAnswer(roomId, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(roomId);
           if (nextPrompt) {
             const delivered = await this.sendReply(roomId, nextPrompt);
-            this.permissions.confirmNextPrompt(roomId, delivered);
+            this.permissions.confirmNextPrompt(roomId, delivered, nextPrompt);
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(roomId);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(roomId, answerToken);
         this.logger?.error?.(`matrix: permission answer error: ${e}`);
       }
       return;
@@ -203,7 +205,7 @@ export class MatrixChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(roomId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(roomId, await this.sendReply(roomId, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(roomId, await this.sendReply(roomId, questionText), questionText);
           continue;
         }
         const fragment = renderMatrixEvent(event);

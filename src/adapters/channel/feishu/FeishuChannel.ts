@@ -156,6 +156,8 @@ export class FeishuChannel implements ChannelAdapter {
   private readonly chatState = new ImChatSessionState<QueuedFeishuTurn>({ maxPendingTurns: FEISHU_MAX_PENDING_TURNS_PER_CHAT });
   private readonly inboundBatches = new Map<string, FeishuInboundBatch>();
   private readonly permissionAnsweringChats = new Set<string>();
+  private readonly permissionAnsweringTokens = new Map<string, number>();
+  private nextPermissionAnsweringToken = 1;
   private readonly elicitation = new ImElicitationHelper();
   private readonly permissions = new ImPermissionHelper();
   private readonly attachmentStore = new ImAttachmentStore({
@@ -351,13 +353,16 @@ export class FeishuChannel implements ChannelAdapter {
     }
     if (this.permissions.hasPending(input.chatId) || this.permissionAnsweringChats.has(input.chatId)) {
       if (this.permissionAnsweringChats.has(input.chatId)) return true;
+      const answeringToken = this.nextPermissionAnsweringToken++;
       this.permissionAnsweringChats.add(input.chatId);
+      this.permissionAnsweringTokens.set(input.chatId, answeringToken);
       void this.answerPendingPermission(input.chatId, input.text)
         .catch((e: unknown) => {
-          this.permissions.releaseAnswer(input.chatId);
           this.logger?.error?.(`feishu: permission answer error: ${e}`);
         })
         .finally(() => {
+          if (this.permissionAnsweringTokens.get(input.chatId) !== answeringToken) return;
+          this.permissionAnsweringTokens.delete(input.chatId);
           this.permissionAnsweringChats.delete(input.chatId);
         });
       return true;
@@ -373,19 +378,26 @@ export class FeishuChannel implements ChannelAdapter {
 
   private async answerPendingPermission(chatId: string, text: string): Promise<void> {
     if (!this.gateway) return;
-    const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
-    if (answer?.text) {
-      const confirmationDelivered = await this.send({ chatId, text: answer.text });
-      if (!confirmationDelivered) {
-        this.permissions.releaseAnswer(chatId);
-        return;
+    let answerToken: number | undefined;
+    try {
+      const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+      answerToken = answer?.answerToken;
+      if (answer?.text) {
+        const confirmationDelivered = await this.send({ chatId, text: answer.text });
+        if (!confirmationDelivered) {
+          this.permissions.releaseAnswer(chatId, answer.answerToken);
+          return;
+        }
+        if (!answer.canAdvance && !answer.retryPrompt) return;
+        const nextPrompt = this.permissions.takeNextPrompt(chatId);
+        if (nextPrompt) {
+          const delivered = await this.send({ chatId, text: nextPrompt });
+          this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
+        }
       }
-      if (!answer.canAdvance && !answer.retryPrompt) return;
-      const nextPrompt = this.permissions.takeNextPrompt(chatId);
-      if (nextPrompt) {
-        const delivered = await this.send({ chatId, text: nextPrompt });
-        this.permissions.confirmNextPrompt(chatId, delivered);
-      }
+    } catch (error) {
+      if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
+      throw error;
     }
   }
 
@@ -507,6 +519,7 @@ export class FeishuChannel implements ChannelAdapter {
   private resetChatInteractionState(chatId: string): void {
     this.chatState.resetForNewSession(chatId);
     this.elicitation.clear(chatId);
+    this.permissionAnsweringTokens.delete(chatId);
     this.permissionAnsweringChats.delete(chatId);
     this.permissions.clear(chatId);
     const batch = this.inboundBatches.get(chatId);
@@ -583,7 +596,7 @@ export class FeishuChannel implements ChannelAdapter {
           if (event.type === "permission_request") {
             const questionText = this.permissions.capture(chatId, turn.sessionKey, event);
             await liveReply.pauseActivity();
-            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }));
+            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }), questionText);
             continue;
           }
           if (event.type === "error" && event.code === "agent_aborted") {
@@ -622,8 +635,10 @@ export class FeishuChannel implements ChannelAdapter {
         if (watchdog) clearTimeout(watchdog);
       }
 
-      this.elicitation.clear(chatId);
-      this.permissions.clear(chatId);
+      if (isCurrentTurn()) {
+        this.elicitation.clear(chatId);
+        this.permissions.clear(chatId);
+      }
       await liveReply.flushFinal();
     } finally {
       if (reactionId && turn.messageId) {

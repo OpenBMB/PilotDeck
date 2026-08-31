@@ -224,23 +224,25 @@ export class WeComCallbackChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(chatId, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(chatId);
+            this.permissions.releaseAnswer(chatId, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply(chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId, delivered);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(chatId);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
         this.logger?.error?.(`wecom_callback: permission answer error: ${e}`);
       }
       return;
@@ -283,7 +285,7 @@ export class WeComCallbackChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), questionText);
           continue;
         }
         const fragment = renderWeComCallbackEvent(event);

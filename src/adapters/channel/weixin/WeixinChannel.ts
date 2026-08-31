@@ -439,13 +439,15 @@ export class WeixinChannel implements ChannelAdapter {
     }
 
     if ((this.permissions.hasPending(fromUser) || this.permissions.isAnswering(fromUser)) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const trimmed = text.trim();
         const answer = await this.permissions.answerWithState(fromUser, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(fromUser, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(fromUser);
+            this.permissions.releaseAnswer(fromUser, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
@@ -453,7 +455,7 @@ export class WeixinChannel implements ChannelAdapter {
           if (nextPrompt) {
             const delivered = await this.sendReply(fromUser, nextPrompt);
             if (!delivered) throw new Error("permission prompt delivery failed");
-            this.permissions.confirmNextPrompt(fromUser);
+            this.permissions.confirmNextPrompt(fromUser, true, nextPrompt);
           }
           if (
             (trimmed === "1" || trimmed === "2")
@@ -464,7 +466,7 @@ export class WeixinChannel implements ChannelAdapter {
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(fromUser);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(fromUser, answerToken);
         this.logger?.error?.(`weixin: permission answer error: ${e}`);
       }
       return;
@@ -718,7 +720,7 @@ export class WeixinChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(userId, sessionKey, event);
           await liveReply.pauseActivity();
-          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText), questionText);
           continue;
         }
         if (event.type === "error" && event.code === "agent_aborted") {

@@ -208,23 +208,25 @@ export class WhatsAppChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(msg.chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(msg.chatId, msg.text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(msg.chatId, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(msg.chatId);
+            this.permissions.releaseAnswer(msg.chatId, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply(msg.chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(msg.chatId, delivered);
+            this.permissions.confirmNextPrompt(msg.chatId, delivered, nextPrompt);
           }
         }
       } catch (e) {
-        this.permissions.releaseAnswer(msg.chatId);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(msg.chatId, answerToken);
         this.logger?.error?.(`whatsapp: permission answer error: ${e}`);
       }
       return;
@@ -267,7 +269,7 @@ export class WhatsAppChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText));
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), questionText);
           continue;
         }
         const fragment = renderWhatsAppEvent(event);

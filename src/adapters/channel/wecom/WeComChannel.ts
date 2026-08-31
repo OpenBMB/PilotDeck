@@ -602,20 +602,22 @@ export class WeComChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(interactionKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(interactionKey, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(chatId, answer.text, { chatType, replyToMessageId: messageId });
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(interactionKey);
+            this.permissions.releaseAnswer(interactionKey, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
-          if (nextPrompt) this.permissions.confirmNextPrompt(interactionKey, await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId }));
+          if (nextPrompt) this.permissions.confirmNextPrompt(interactionKey, await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId }), nextPrompt);
         }
       } catch (e) {
-        this.permissions.releaseAnswer(interactionKey);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(interactionKey, answerToken);
         this.logger?.error?.(`wecom: permission answer error: ${e}`);
       }
       return;
@@ -924,7 +926,7 @@ export class WeComChannel implements ChannelAdapter {
           if (questionText) { const delivered = await this.sendReply(input.chatId, questionText, {
             chatType: input.chatType,
             replyToMessageId: input.replyToMessageId,
-          }); this.permissions.confirmInitialPrompt(input.interactionKey, delivered); }
+          }); this.permissions.confirmInitialPrompt(input.interactionKey, delivered, questionText); }
           continue;
         }
         await this.sendEventMedia(input.chatId, event, {

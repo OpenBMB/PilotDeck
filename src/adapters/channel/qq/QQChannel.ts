@@ -139,20 +139,22 @@ export class QQChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(chatKey, text, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendReply(groupOpenId, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(chatKey);
+            this.permissions.releaseAnswer(chatKey, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendReply(groupOpenId, nextPrompt));
+          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendReply(groupOpenId, nextPrompt), nextPrompt);
         }
       } catch (e) {
-        this.permissions.releaseAnswer(chatKey);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
         this.logger?.error?.(`qq: permission answer error: ${e}`);
       }
       return;
@@ -203,20 +205,22 @@ export class QQChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const answer = await this.permissions.answerWithState(chatKey, rawText, this.gateway);
+        answerToken = answer?.answerToken;
         if (answer?.text) {
           const confirmationDelivered = await this.sendC2CReply(userOpenId, answer.text);
           if (!confirmationDelivered) {
-            this.permissions.releaseAnswer(chatKey);
+            this.permissions.releaseAnswer(chatKey, answer.answerToken);
             return;
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendC2CReply(userOpenId, nextPrompt));
+          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendC2CReply(userOpenId, nextPrompt), nextPrompt);
         }
       } catch (e) {
-        this.permissions.releaseAnswer(chatKey);
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
         this.logger?.error?.(`qq: permission answer error (c2c): ${e}`);
       }
       return;
@@ -259,7 +263,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendC2CReplyChunked(userOpenId, questionText, msgId));
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendC2CReplyChunked(userOpenId, questionText, msgId), questionText);
           continue;
         }
         const fragment = renderQQEvent(event);
@@ -334,7 +338,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendReplyChunked(groupOpenId, questionText, msgId));
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendReplyChunked(groupOpenId, questionText, msgId), questionText);
           continue;
         }
         const fragment = renderQQEvent(event);
