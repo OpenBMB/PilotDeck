@@ -209,13 +209,14 @@ export class WhatsAppChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(msg.chatId) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(msg.chatId, msg.text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply(msg.chatId, confirmation);
+        const answer = await this.permissions.answerWithState(msg.chatId, msg.text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(msg.chatId, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(msg.chatId);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply(msg.chatId, nextPrompt);

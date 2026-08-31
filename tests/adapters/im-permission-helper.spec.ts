@@ -141,6 +141,32 @@ test("ImPermissionHelper ignores concurrent replies while a decision is in fligh
   helper.confirmNextPrompt("chat-1");
 });
 
+test("ImPermissionHelper marks an in-flight status reply as non-advancing after completion", async () => {
+  const helper = new ImPermissionHelper();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gateway = {
+    permissionDecide: async () => {
+      await gate;
+      return { delivered: true };
+    },
+  } as unknown as Gateway;
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-1", toolName: "read_file", payload: {},
+  });
+  helper.confirmInitialPrompt("chat-1");
+  helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "request-2", toolName: "write_file", payload: {},
+  });
+
+  const first = helper.answerWithState("chat-1", "1", gateway);
+  const duplicate = await helper.answerWithState("chat-1", "1", gateway);
+  assert.equal(duplicate?.canAdvance, false);
+  release();
+  assert.equal((await first)?.canAdvance, true);
+  assert.equal(duplicate?.text, "权限决定处理中，请稍候。");
+});
+
 test("ImPermissionHelper does not let a duplicate reply consume the answering lock", async () => {
   const helper = new ImPermissionHelper();
   const decisions: string[] = [];

@@ -174,13 +174,14 @@ export class MattermostChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply({ channelId, rootId }, confirmation);
+        const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply({ channelId, rootId }, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(chatId);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
             const delivered = await this.sendReply({ channelId, rootId }, nextPrompt);

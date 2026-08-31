@@ -441,13 +441,14 @@ export class WeixinChannel implements ChannelAdapter {
     if ((this.permissions.hasPending(fromUser) || this.permissions.isAnswering(fromUser)) && this.gateway) {
       try {
         const trimmed = text.trim();
-        const confirmation = await this.permissions.answer(fromUser, text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply(fromUser, confirmation);
+        const answer = await this.permissions.answerWithState(fromUser, text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(fromUser, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(fromUser);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(fromUser);
           if (nextPrompt) {
             const delivered = await this.sendReply(fromUser, nextPrompt);
@@ -456,7 +457,7 @@ export class WeixinChannel implements ChannelAdapter {
           }
           if (
             (trimmed === "1" || trimmed === "2")
-            && confirmation.startsWith("已允许")
+            && answer.text.startsWith("已允许")
             && !this.permissions.hasPending(fromUser)
           ) {
             await this.activeLiveReplies.get(fromUser)?.resumeActivity("tool", { immediate: false });

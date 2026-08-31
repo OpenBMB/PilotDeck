@@ -153,13 +153,14 @@ export class BlueBubblesChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(chatGuid) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(chatGuid, text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply(chatGuid, confirmation);
+        const answer = await this.permissions.answerWithState(chatGuid, text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(chatGuid, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(chatGuid);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatGuid);
           if (nextPrompt) {
             const delivered = await this.sendReply(chatGuid, nextPrompt);

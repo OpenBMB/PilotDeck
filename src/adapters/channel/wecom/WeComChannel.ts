@@ -603,13 +603,14 @@ export class WeComChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(interactionKey) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(interactionKey, text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
+        const answer = await this.permissions.answerWithState(interactionKey, text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(chatId, answer.text, { chatType, replyToMessageId: messageId });
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(interactionKey);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(interactionKey);
           if (nextPrompt) this.permissions.confirmNextPrompt(interactionKey, await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId }));
         }

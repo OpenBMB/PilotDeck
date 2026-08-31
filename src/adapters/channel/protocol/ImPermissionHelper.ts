@@ -7,6 +7,14 @@ type PendingPermission = {
   payload: unknown;
 };
 
+export type ImPermissionAnswerResult = {
+  text?: string;
+  /** True only for the invocation that completed a permission decision. */
+  canAdvance: boolean;
+  /** True when the caller should retry delivery of an already queued prompt. */
+  retryPrompt?: boolean;
+};
+
 export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
   private readonly nextPrompts = new Map<string, string>();
@@ -92,20 +100,26 @@ export class ImPermissionHelper {
   }
 
   async answer(chatId: string, text: string, gateway: Gateway): Promise<string | undefined> {
+    return (await this.answerWithState(chatId, text, gateway))?.text;
+  }
+
+  async answerWithState(chatId: string, text: string, gateway: Gateway): Promise<ImPermissionAnswerResult | undefined> {
     if (this.answering.has(chatId)) {
-      // Keep ordinary messages inside the permission flow while the RPC is
-      // pending, but do not return a truthy value after the RPC has completed:
-      // adapters use a truthy answer to advance the FIFO prompt.
-      if (this.inFlight.has(chatId)) return "权限决定处理中，请稍候。";
-      if (this.initialPromptPending.has(chatId)) return "权限提示发送中，请稍候。";
-      return this.retryPromptPending.has(chatId) ? "上一条权限提示发送失败，正在重试。" : undefined;
+      // Keep ordinary messages inside the permission flow while the RPC or
+      // prompt delivery is pending. The structured result prevents adapters
+      // from treating these status messages as completed decisions.
+      if (this.inFlight.has(chatId)) return { text: "权限决定处理中，请稍候。", canAdvance: false };
+      if (this.initialPromptPending.has(chatId)) return { text: "权限提示发送中，请稍候。", canAdvance: false };
+      return this.retryPromptPending.has(chatId)
+        ? { text: "上一条权限提示发送失败，正在重试。", canAdvance: false, retryPrompt: true }
+        : undefined;
     }
     const entries = this.pending.get(chatId);
     if (!entries || entries.length === 0) return undefined;
 
     const trimmed = text.trim();
     if (trimmed !== "0" && trimmed !== "1" && trimmed !== "2") {
-      return "请回复 1 允许一次，回复 2 允许本会话，回复 0 拒绝。";
+      return { text: "请回复 1 允许一次，回复 2 允许本会话，回复 0 拒绝。", canAdvance: false };
     }
 
     this.answering.add(chatId);
@@ -131,9 +145,9 @@ export class ImPermissionHelper {
       if ((this.generations.get(chatId) ?? 0) !== generation) return undefined;
       const remaining = this.pending.get(chatId) ?? entries;
       if (remaining.length > 0) this.nextPrompts.set(chatId, formatPermissionPrompt(remaining[0]!));
-      if (trimmed === "0") return "已拒绝，继续处理。";
-      if (trimmed === "2") return "已允许本会话，继续执行。";
-      return "已允许一次，继续执行。";
+      if (trimmed === "0") return { text: "已拒绝，继续处理。", canAdvance: true };
+      if (trimmed === "2") return { text: "已允许本会话，继续执行。", canAdvance: true };
+      return { text: "已允许一次，继续执行。", canAdvance: true };
     } catch (error) {
       if ((this.generations.get(chatId) ?? 0) === generation) {
         const currentEntries = this.pending.get(chatId) ?? entries;

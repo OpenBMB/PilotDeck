@@ -140,13 +140,14 @@ export class QQChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(chatKey, text, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendReply(groupOpenId, confirmation);
+        const answer = await this.permissions.answerWithState(chatKey, text, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(groupOpenId, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(chatKey);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
           if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendReply(groupOpenId, nextPrompt));
         }
@@ -203,13 +204,14 @@ export class QQChannel implements ChannelAdapter {
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
       try {
-        const confirmation = await this.permissions.answer(chatKey, rawText, this.gateway);
-        if (confirmation) {
-          const confirmationDelivered = await this.sendC2CReply(userOpenId, confirmation);
+        const answer = await this.permissions.answerWithState(chatKey, rawText, this.gateway);
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendC2CReply(userOpenId, answer.text);
           if (!confirmationDelivered) {
             this.permissions.releaseAnswer(chatKey);
             return;
           }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
           if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendC2CReply(userOpenId, nextPrompt));
         }
