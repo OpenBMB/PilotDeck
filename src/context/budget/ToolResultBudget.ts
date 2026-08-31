@@ -286,6 +286,11 @@ export class ToolResultBudget {
     if (block.type !== "image" && block.type !== "pdf" && block.type !== "audio") {
       return block;
     }
+    // URL-backed media already has a usable remote source; only inline
+    // base64 media can be safely materialized into a local binary reference.
+    if (block.type === "image" && block.source === "url") {
+      return block;
+    }
     const originalBytes = mediaOriginalBytes(block);
     const encodedBytes = Buffer.byteLength(block.data, "utf8");
     if (encodedBytes <= this.maxResultSizeChars) {
@@ -301,7 +306,7 @@ export class ToolResultBudget {
     try {
       await access(path);
     } catch {
-      await writeFile(path, block.data, { flag: "wx", mode: 0o600, encoding: "utf8" });
+      await writeFile(path, mediaDataBuffer(block), { flag: "wx", mode: 0o600 });
     }
 
     const record: MediaReplacementRecord = {
@@ -432,9 +437,16 @@ function isFileExistsError(error: unknown): boolean {
 }
 
 function extensionForMedia(mediaType: "image" | "pdf" | "audio", mimeType: string): string {
-  if (mediaType === "pdf") return "pdf.b64";
+  if (mediaType === "pdf") return "pdf";
   const subType = mimeType.split("/")[1]?.toLowerCase().replace(/[^a-z0-9.+-]/g, "");
-  return `${subType || mediaType}.b64`;
+  return subType || mediaType;
+}
+
+function mediaDataBuffer(block: Extract<CanonicalContentBlock, { type: "image" | "pdf" | "audio" }>): Buffer {
+  if (block.source === "base64") {
+    return Buffer.from(block.data, "base64");
+  }
+  return Buffer.from(block.data, "utf8");
 }
 
 function mediaPreview(

@@ -41,7 +41,7 @@ export class ImAttachmentDelivery {
     const buffer = attachment.content
       ? Buffer.from(attachment.content, "base64")
       : attachment.path
-        ? await readFile(attachment.path)
+        ? await readPersistedAttachment(attachment.path, attachment.source)
         : undefined;
     if (!buffer) throw new Error("attachment has neither content nor path");
     if (buffer.byteLength > this.options.maxBytes) {
@@ -51,6 +51,13 @@ export class ImAttachmentDelivery {
     const fileType = attachment.type === "image" || mimeType?.startsWith("image/") ? "image" : "file";
     return { name, mimeType, buffer, fileType, ...(attachment.path ? { path: attachment.path } : {}) };
   }
+}
+
+async function readPersistedAttachment(path: string, source?: GatewayOutboundAttachment["source"]): Promise<Buffer> {
+  const persisted = await readFile(path);
+  return source === "media_reference" && path.endsWith(".b64")
+    ? Buffer.from(persisted.toString("utf8"), "base64")
+    : persisted;
 }
 
 export function guessMimeTypeFromName(name: string | undefined): string | undefined {

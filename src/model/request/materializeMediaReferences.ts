@@ -48,7 +48,12 @@ async function materializeBlock(
   }
 
   try {
-    const data = await readFile(block.path, "utf8");
+    const persisted = await readFile(block.path);
+    // Older releases stored base64 text in `.b64` references. New references
+    // contain the decoded media bytes and use the real media extension.
+    const data = block.path.endsWith(".b64")
+      ? persisted.toString("utf8")
+      : persisted.toString("base64");
     const materialized = toMediaBlock(block, data);
     if (!materialized) {
       diagnostics.push({
