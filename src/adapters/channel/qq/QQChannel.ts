@@ -151,7 +151,11 @@ export class QQChannel implements ChannelAdapter {
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendReply(groupOpenId, nextPrompt), nextPrompt);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatKey);
+            const delivered = await this.sendReply(groupOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey, delivered, nextPromptRequestId);
+          }
         }
       } catch (e) {
         if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
@@ -217,7 +221,11 @@ export class QQChannel implements ChannelAdapter {
           }
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatKey);
-          if (nextPrompt) this.permissions.confirmNextPrompt(chatKey, await this.sendC2CReply(userOpenId, nextPrompt), nextPrompt);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatKey);
+            const delivered = await this.sendC2CReply(userOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey, delivered, nextPromptRequestId);
+          }
         }
       } catch (e) {
         if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
@@ -263,7 +271,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendC2CReplyChunked(userOpenId, questionText, msgId), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendC2CReplyChunked(userOpenId, questionText, msgId), event.requestId);
           continue;
         }
         const fragment = renderQQEvent(event);
@@ -338,7 +346,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendReplyChunked(groupOpenId, questionText, msgId), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendReplyChunked(groupOpenId, questionText, msgId), event.requestId);
           continue;
         }
         const fragment = renderQQEvent(event);

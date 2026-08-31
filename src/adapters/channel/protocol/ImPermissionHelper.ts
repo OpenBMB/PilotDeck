@@ -7,6 +7,11 @@ type PendingPermission = {
   payload: unknown;
 };
 
+type PendingPrompt = {
+  text: string;
+  requestId: string;
+};
+
 export type ImPermissionAnswerResult = {
   text?: string;
   /** True only for the invocation that completed a permission decision. */
@@ -18,7 +23,7 @@ export type ImPermissionAnswerResult = {
 
 export class ImPermissionHelper {
   private readonly pending = new Map<string, PendingPermission[]>();
-  private readonly nextPrompts = new Map<string, string>();
+  private readonly nextPrompts = new Map<string, PendingPrompt>();
   private readonly promptDelivering = new Set<string>();
   private readonly retryPromptPending = new Set<string>();
   private readonly initialPromptPending = new Set<string>();
@@ -41,7 +46,7 @@ export class ImPermissionHelper {
     if (entries.length !== 1 || this.answering.has(chatId)) return undefined;
     const prompt = formatPermissionPrompt(entries[0]!);
     this.answering.add(chatId);
-    this.nextPrompts.set(chatId, prompt);
+    this.nextPrompts.set(chatId, { text: prompt, requestId: entries[0]!.requestId });
     this.initialPromptPending.add(chatId);
     return prompt;
   }
@@ -67,12 +72,16 @@ export class ImPermissionHelper {
     const prompt = this.nextPrompts.get(chatId);
     if (!prompt) return undefined;
     this.promptDelivering.add(chatId);
-    return prompt;
+    return prompt.text;
   }
 
-  confirmInitialPrompt(chatId: string, delivered: boolean | void = true, expectedPrompt?: string): void {
+  getPromptRequestId(chatId: string): string | undefined {
+    return this.nextPrompts.get(chatId)?.requestId;
+  }
+
+  confirmInitialPrompt(chatId: string, delivered: boolean | void = true, expectedRequestId?: string): void {
     if (!this.answering.has(chatId) || !this.nextPrompts.has(chatId)) return;
-    if (expectedPrompt !== undefined && this.nextPrompts.get(chatId) !== expectedPrompt) return;
+    if (expectedRequestId !== undefined && this.nextPrompts.get(chatId)?.requestId !== expectedRequestId) return;
     if (!delivered) {
       this.initialPromptPending.delete(chatId);
       this.retryPromptPending.add(chatId);
@@ -84,9 +93,9 @@ export class ImPermissionHelper {
     this.answering.delete(chatId);
   }
 
-  confirmNextPrompt(chatId: string, delivered: boolean | void = true, expectedPrompt?: string): void {
+  confirmNextPrompt(chatId: string, delivered: boolean | void = true, expectedRequestId?: string): void {
     if (!this.promptDelivering.has(chatId)) return;
-    if (expectedPrompt !== undefined && this.nextPrompts.get(chatId) !== expectedPrompt) return;
+    if (expectedRequestId !== undefined && this.nextPrompts.get(chatId)?.requestId !== expectedRequestId) return;
     this.promptDelivering.delete(chatId);
     if (!delivered) {
       this.retryPromptPending.add(chatId);
@@ -153,7 +162,12 @@ export class ImPermissionHelper {
       });
       if ((this.generations.get(chatId) ?? 0) !== generation) return undefined;
       const remaining = this.pending.get(chatId) ?? entries;
-      if (remaining.length > 0) this.nextPrompts.set(chatId, formatPermissionPrompt(remaining[0]!));
+      if (remaining.length > 0) {
+        this.nextPrompts.set(chatId, {
+          text: formatPermissionPrompt(remaining[0]!),
+          requestId: remaining[0]!.requestId,
+        });
+      }
       if (trimmed === "0") return { text: "已拒绝，继续处理。", canAdvance: true, answerToken };
       if (trimmed === "2") return { text: "已允许本会话，继续执行。", canAdvance: true, answerToken };
       return { text: "已允许一次，继续执行。", canAdvance: true, answerToken };

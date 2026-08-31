@@ -186,8 +186,10 @@ export class MattermostChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId);
+
             const delivered = await this.sendReply({ channelId, rootId }, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -242,7 +244,7 @@ export class MattermostChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const chatId = ctx.rootId ? `${ctx.channelId}:${ctx.rootId}` : ctx.channelId;
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), event.requestId);
           continue;
         }
         const fragment = renderMattermostEvent(event);

@@ -453,9 +453,10 @@ export class WeixinChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(fromUser);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(fromUser);
             const delivered = await this.sendReply(fromUser, nextPrompt);
             if (!delivered) throw new Error("permission prompt delivery failed");
-            this.permissions.confirmNextPrompt(fromUser, true, nextPrompt);
+            this.permissions.confirmNextPrompt(fromUser, true, nextPromptRequestId);
           }
           if (
             (trimmed === "1" || trimmed === "2")
@@ -720,7 +721,7 @@ export class WeixinChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(userId, sessionKey, event);
           await liveReply.pauseActivity();
-          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText), event.requestId);
           continue;
         }
         if (event.type === "error" && event.code === "agent_aborted") {

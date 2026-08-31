@@ -144,8 +144,10 @@ export class SlackChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId);
+
             const delivered = await this.sendReply({ channelId, threadTs }, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -199,7 +201,7 @@ export class SlackChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), event.requestId);
           continue;
         }
         const fragment = renderSlackEvent(event);

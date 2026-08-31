@@ -237,8 +237,10 @@ export class WeComCallbackChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId);
+
             const delivered = await this.sendReply(chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -285,7 +287,7 @@ export class WeComCallbackChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), event.requestId);
           continue;
         }
         const fragment = renderWeComCallbackEvent(event);

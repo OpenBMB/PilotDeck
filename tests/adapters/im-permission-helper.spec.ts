@@ -233,10 +233,29 @@ test("ImPermissionHelper ignores stale prompt delivery callbacks after chat reus
     type: "permission_request", requestId: "new", toolName: "write_file", payload: { path: "new" },
   });
   assert.ok(newPrompt);
-  helper.confirmInitialPrompt("chat-1", true, oldPrompt);
+  helper.confirmInitialPrompt("chat-1", true, "old");
   assert.equal(helper.isAnswering("chat-1"), true);
   assert.equal(await helper.answer("chat-1", "1", gateway), "权限提示发送中，请稍候。");
-  helper.confirmInitialPrompt("chat-1", true, newPrompt);
+  helper.confirmInitialPrompt("chat-1", true, "new");
+  assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
+});
+
+test("ImPermissionHelper uses requestId when identical prompts are reused", async () => {
+  const helper = new ImPermissionHelper();
+  const gateway = { permissionDecide: async () => ({ delivered: true }) } as unknown as Gateway;
+  const oldPrompt = helper.capture("chat-1", "session-1", {
+    type: "permission_request", requestId: "old-request", toolName: "read_file", payload: { path: "/tmp/same" },
+  });
+  helper.clear("chat-1");
+  const newPrompt = helper.capture("chat-1", "session-2", {
+    type: "permission_request", requestId: "new-request", toolName: "read_file", payload: { path: "/tmp/same" },
+  });
+  assert.equal(oldPrompt, newPrompt);
+
+  helper.confirmInitialPrompt("chat-1", true, "old-request");
+  assert.equal(helper.isAnswering("chat-1"), true);
+  assert.equal(await helper.answer("chat-1", "1", gateway), "权限提示发送中，请稍候。");
+  helper.confirmInitialPrompt("chat-1", true, "new-request");
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
 });
 
@@ -247,7 +266,7 @@ test("ImPermissionHelper ignores stale next-prompt callbacks and answer releases
   const first = helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "first", toolName: "read_file", payload: {},
   });
-  helper.confirmInitialPrompt("chat-1", true, first);
+  helper.confirmInitialPrompt("chat-1", true, "first");
   helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "second", toolName: "write_file", payload: {},
   });
@@ -255,16 +274,18 @@ test("ImPermissionHelper ignores stale next-prompt callbacks and answer releases
   assert.equal(answer?.canAdvance, true);
   const nextPrompt = helper.takeNextPrompt("chat-1");
   assert.ok(nextPrompt);
+  helper.confirmNextPrompt("chat-1", true, "stale-request");
+  assert.equal(helper.isAnswering("chat-1"), true);
   helper.clear("chat-1");
 
   const replacement = helper.capture("chat-1", "session-2", {
     type: "permission_request", requestId: "replacement", toolName: "exec", payload: {},
   });
   assert.ok(replacement);
-  helper.confirmNextPrompt("chat-1", true, nextPrompt);
+  helper.confirmNextPrompt("chat-1", true, "second");
   helper.releaseAnswer("chat-1", answer?.answerToken);
   assert.equal(await helper.answer("chat-1", "1", gateway), "权限提示发送中，请稍候。");
-  helper.confirmInitialPrompt("chat-1", true, replacement);
+  helper.confirmInitialPrompt("chat-1", true, "replacement");
   assert.equal(await helper.answer("chat-1", "1", gateway), "已允许一次，继续执行。");
 });
 
@@ -284,14 +305,14 @@ test("ImPermissionHelper does not let an old release unlock a replacement decisi
   const oldPrompt = helper.capture("chat-1", "session-1", {
     type: "permission_request", requestId: "old", toolName: "read_file", payload: {},
   });
-  helper.confirmInitialPrompt("chat-1", true, oldPrompt);
+  helper.confirmInitialPrompt("chat-1", true, "old");
   const oldAnswer = await helper.answerWithState("chat-1", "1", gateway);
   helper.clear("chat-1");
 
   const newPrompt = helper.capture("chat-1", "session-2", {
     type: "permission_request", requestId: "new", toolName: "write_file", payload: {},
   });
-  helper.confirmInitialPrompt("chat-1", true, newPrompt);
+  helper.confirmInitialPrompt("chat-1", true, "new");
   const newAnswer = helper.answerWithState("chat-1", "1", gateway);
   await new Promise((resolve) => setImmediate(resolve));
   helper.releaseAnswer("chat-1", oldAnswer?.answerToken);

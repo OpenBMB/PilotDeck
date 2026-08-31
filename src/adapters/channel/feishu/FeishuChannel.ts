@@ -391,8 +391,10 @@ export class FeishuChannel implements ChannelAdapter {
         if (!answer.canAdvance && !answer.retryPrompt) return;
         const nextPrompt = this.permissions.takeNextPrompt(chatId);
         if (nextPrompt) {
+          const nextPromptRequestId = this.permissions.getPromptRequestId(chatId);
+
           const delivered = await this.send({ chatId, text: nextPrompt });
-          this.permissions.confirmNextPrompt(chatId, delivered, nextPrompt);
+          this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId);
         }
       }
     } catch (error) {
@@ -596,7 +598,7 @@ export class FeishuChannel implements ChannelAdapter {
           if (event.type === "permission_request") {
             const questionText = this.permissions.capture(chatId, turn.sessionKey, event);
             await liveReply.pauseActivity();
-            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }), questionText);
+            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }), event.requestId);
             continue;
           }
           if (event.type === "error" && event.code === "agent_aborted") {

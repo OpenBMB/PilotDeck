@@ -165,8 +165,10 @@ export class BlueBubblesChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(chatGuid);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatGuid);
+
             const delivered = await this.sendReply(chatGuid, nextPrompt);
-            this.permissions.confirmNextPrompt(chatGuid, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(chatGuid, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -213,7 +215,7 @@ export class BlueBubblesChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatGuid, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatGuid, await this.sendReply(chatGuid, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatGuid, await this.sendReply(chatGuid, questionText), event.requestId);
           continue;
         }
         const fragment = renderBlueBubblesEvent(event);

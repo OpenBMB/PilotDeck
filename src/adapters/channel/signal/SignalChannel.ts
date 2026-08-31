@@ -208,8 +208,10 @@ export class SignalChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(sessionChatId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(sessionChatId);
+
             const delivered = await this.sendReply(sessionChatId, nextPrompt);
-            this.permissions.confirmNextPrompt(sessionChatId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(sessionChatId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -256,7 +258,7 @@ export class SignalChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), event.requestId);
           continue;
         }
         const fragment = renderSignalEvent(event);

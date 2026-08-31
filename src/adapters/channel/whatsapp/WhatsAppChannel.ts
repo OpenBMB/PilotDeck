@@ -221,8 +221,10 @@ export class WhatsAppChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(msg.chatId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(msg.chatId);
+
             const delivered = await this.sendReply(msg.chatId, nextPrompt);
-            this.permissions.confirmNextPrompt(msg.chatId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(msg.chatId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -269,7 +271,7 @@ export class WhatsAppChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), event.requestId);
           continue;
         }
         const fragment = renderWhatsAppEvent(event);

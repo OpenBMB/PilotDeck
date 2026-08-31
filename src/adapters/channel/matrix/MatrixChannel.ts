@@ -157,8 +157,10 @@ export class MatrixChannel implements ChannelAdapter {
           if (!answer.canAdvance && !answer.retryPrompt) return;
           const nextPrompt = this.permissions.takeNextPrompt(roomId);
           if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(roomId);
+
             const delivered = await this.sendReply(roomId, nextPrompt);
-            this.permissions.confirmNextPrompt(roomId, delivered, nextPrompt);
+            this.permissions.confirmNextPrompt(roomId, delivered, nextPromptRequestId);
           }
         }
       } catch (e) {
@@ -205,7 +207,7 @@ export class MatrixChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(roomId, sessionKey, event);
-          if (questionText) this.permissions.confirmInitialPrompt(roomId, await this.sendReply(roomId, questionText), questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(roomId, await this.sendReply(roomId, questionText), event.requestId);
           continue;
         }
         const fragment = renderMatrixEvent(event);
