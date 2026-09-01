@@ -45,14 +45,31 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# Runtime system dependencies + tsx/concurrently for process management
+# Runtime dependencies:
+# - python3-docx / python3-lxml: Word 格式化与校验脚本
+# - fontconfig: fc-cache、fc-list，检查方正字体是否已加载
+# - libreoffice-writer + poppler-utils: DOCX → PDF → 图片的视觉验收
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    ripgrep git curl procps \
+    python3-docx \
+    python3-lxml \
+    fontconfig \
+    libreoffice-writer \
+    poppler-utils \
+    ripgrep \
+    git \
+    curl \
+    procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g tsx concurrently
 
-# Copy built application from builder
+# 已获授权的方正字体。
+# 请在 Docker 构建上下文中准备 docker/fonts/ 目录。
+# 不要把字体文件放进 Skill ZIP。
+COPY docker/fonts/ /usr/local/share/fonts/founder/
+RUN fc-cache -f
+
+# Copy built application from builder.
 COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
 COPY --from=builder /build/tsconfig.json ./
 COPY --from=builder /build/node_modules/ node_modules/
