@@ -31,6 +31,18 @@ import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
+  configuredModelIds,
+  findModelReferences,
+  rewriteModelReferences,
+} from '../services/modelReferences.js';
+import {
+  imageCapabilitiesHandler,
+  connectionTestMatchesProvider,
+  getConnectionTestRecord,
+  modelConnectionTestsHandler,
+  modelTestRateLimiter,
+} from './onboarding.js';
+import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
   OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
   getConfiguredOfficePreviewSettings,
@@ -50,6 +62,8 @@ const router = express.Router();
 const MASKED_SECRET = '********';
 const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
 const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
+const DEFAULT_SERPER_WEB_SEARCH_ENDPOINT = 'https://google.serper.dev/search';
+const DEFAULT_BRAVE_WEB_SEARCH_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
 
 function catalogImageSupport(providerId, modelId) {
   const provider = String(providerId || '').trim();
@@ -103,7 +117,11 @@ function imageSupportResultFromProbe(probe) {
 }
 
 function normalizeWebSearchProvider(provider) {
-  return provider === 'tavily' || provider === 'custom' ? provider : 'glm';
+  return ['glm', 'tavily', 'custom', 'serper', 'brave'].includes(provider) ? provider : 'glm';
+}
+
+function isWebSearchProvider(provider) {
+  return ['glm', 'tavily', 'custom', 'serper', 'brave'].includes(provider);
 }
 
 function normalizeWebSearchCustomAuth(auth) {
@@ -115,9 +133,13 @@ function normalizeWebSearchEndpoint(provider, endpoint) {
   const effective = trimmed || (
     provider === 'tavily'
       ? DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT
-      : provider === 'glm'
-        ? DEFAULT_GLM_WEB_SEARCH_ENDPOINT
-        : ''
+      : provider === 'serper'
+        ? DEFAULT_SERPER_WEB_SEARCH_ENDPOINT
+        : provider === 'brave'
+          ? DEFAULT_BRAVE_WEB_SEARCH_ENDPOINT
+          : provider === 'glm'
+            ? DEFAULT_GLM_WEB_SEARCH_ENDPOINT
+            : ''
   );
   if (!effective) return '';
   try {
@@ -193,7 +215,7 @@ function modelProviderCredentialScope(provider) {
 function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
   if (rawRenames === undefined) return { config: nextConfig };
   if (!Array.isArray(rawRenames) || rawRenames.length > 100) {
-    return { error: 'providerRenames must be an array with at most 100 entries.' };
+    return { error: 'providerRenames must be an array with at most 100 entries.', code: 'RENAME_INVALID' };
   }
   if (rawRenames.length === 0) return { config: nextConfig };
 
@@ -207,7 +229,7 @@ function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
     const from = typeof rename?.from === 'string' ? rename.from.trim() : '';
     const to = typeof rename?.to === 'string' ? rename.to.trim() : '';
     if (!from || !to || from === to) {
-      return { error: 'Each provider rename must contain distinct non-empty from/to IDs.' };
+      return { error: 'Each provider rename must contain distinct non-empty from/to IDs.', code: 'RENAME_INVALID' };
     }
 
     const previousProvider = previousProviders[from];
@@ -218,7 +240,7 @@ function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
       || previousProviders[to] !== undefined
       || nextProviders[from] !== undefined
     ) {
-      return { error: `Provider rename ${from} -> ${to} does not match the saved configuration.` };
+      return { error: `Provider rename ${from} -> ${to} does not match the saved configuration.`, code: 'RENAME_INVALID' };
     }
 
     if (!containsMaskedValue(nextProvider)) continue;
@@ -235,6 +257,178 @@ function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
   }
 
   return { config: nextConfig };
+}
+
+function normalizeRenameEntries(raw, field) {
+  if (raw === undefined) return { entries: [] };
+  if (!Array.isArray(raw) || raw.length > 100) {
+    return { error: `${field} must be an array with at most 100 entries.`, code: 'RENAME_INVALID' };
+  }
+  return {
+    entries: raw.map((entry) => ({
+      from: typeof entry?.from === 'string' ? entry.from.trim() : '',
+      to: typeof entry?.to === 'string' ? entry.to.trim() : '',
+      ...(field === 'modelRenames' ? {
+        providerId: typeof entry?.providerId === 'string' ? entry.providerId.trim() : '',
+      } : {}),
+    })),
+  };
+}
+
+function applyRenameMetadata(nextConfig, previousConfig, rawProviderRenames, rawModelRenames) {
+  if (rawProviderRenames === undefined && rawModelRenames === undefined) return { config: nextConfig };
+  const providers = nextConfig?.model?.providers;
+  const previousProviders = previousConfig?.model?.providers;
+  if (!isRecord(providers) || !isRecord(previousProviders)) {
+    return { error: 'Cannot apply provider/model renames without valid provider maps.', code: 'RENAME_INVALID' };
+  }
+  const providerResult = normalizeRenameEntries(rawProviderRenames, 'providerRenames');
+  if (providerResult.error) return providerResult;
+  const modelResult = normalizeRenameEntries(rawModelRenames, 'modelRenames');
+  if (modelResult.error) return modelResult;
+
+  const providerRenames = new Map();
+  const seenProviderSources = new Set();
+  const seenProviderTargets = new Set();
+  for (const rename of providerResult.entries) {
+    if (!rename.from || !rename.to || rename.from === rename.to
+      || seenProviderSources.has(rename.from) || seenProviderTargets.has(rename.to)
+      || !isRecord(previousProviders[rename.from]) || previousProviders[rename.to] !== undefined
+      || !isRecord(providers[rename.to]) || providers[rename.from] !== undefined) {
+      return { error: 'Provider rename metadata does not match the saved configuration.', code: 'RENAME_INVALID' };
+    }
+    seenProviderSources.add(rename.from);
+    seenProviderTargets.add(rename.to);
+    providerRenames.set(rename.from, rename.to);
+  }
+
+  const modelRenames = new Map();
+  const seenModelSources = new Set();
+  const seenModelTargets = new Set();
+  for (const rename of modelResult.entries) {
+    const providerId = rename.providerId;
+    const sourceProviderId = [...providerRenames.entries()].find(([, to]) => to === providerId)?.[0] || providerId;
+    const previousModels = previousProviders[sourceProviderId]?.models;
+    const nextModels = providers[providerId]?.models;
+    const sourceKey = `${sourceProviderId}/${rename.from}`;
+    const targetKey = `${providerId}/${rename.to}`;
+    if (!providerId || !rename.from || !rename.to || rename.from === rename.to
+      || seenModelSources.has(sourceKey) || seenModelTargets.has(targetKey)
+      || !isRecord(previousModels) || previousModels[rename.from] === undefined
+      || previousModels[rename.to] !== undefined || !isRecord(nextModels)
+      || nextModels[rename.to] === undefined || nextModels[rename.from] !== undefined) {
+      return { error: 'Model rename metadata does not match the saved configuration.', code: 'RENAME_INVALID' };
+    }
+    seenModelSources.add(sourceKey);
+    seenModelTargets.add(targetKey);
+    modelRenames.set(sourceKey, { providerId, modelId: rename.to });
+  }
+
+  rewriteModelReferences(nextConfig, { providerRenames, modelRenames });
+  return { config: nextConfig };
+}
+
+function findDeletedModelReferences(previousConfig, nextConfig) {
+  const previous = configuredModelIds(previousConfig);
+  const next = configuredModelIds(nextConfig);
+  for (const [providerId, previousModels] of previous) {
+    if (!next.has(providerId)) {
+      const references = findModelReferences(nextConfig, { providerId });
+      if (references.length) return { providerId, references };
+      continue;
+    }
+    for (const modelId of previousModels) {
+      if (!next.get(providerId).has(modelId)) {
+        const references = findModelReferences(nextConfig, { providerId, modelId });
+        if (references.length) return { providerId, modelId, references };
+      }
+    }
+  }
+  return null;
+}
+
+function bindModelConnectionTests(config, bindings, userId) {
+  if (bindings === undefined) return { config, bound: new Set() };
+  if (!Array.isArray(bindings) || bindings.some((item) => !item || typeof item !== 'object' || Array.isArray(item) || typeof item.testId !== 'string' || Object.keys(item).some((key) => key !== 'testId'))) {
+    return { error: { status: 400, code: 'INVALID_REQUEST', message: 'modelTestBindings must contain testId objects.' } };
+  }
+  const bound = new Set();
+  for (const binding of bindings) {
+    const result = getConnectionTestRecord(userId, binding.testId.trim());
+    if (result.reason === 'expired') return { error: { status: 410, code: 'TEST_EXPIRED', message: 'Connection test has expired.' } };
+    const record = result.record;
+    if (!record) return { error: { status: 404, code: 'TEST_NOT_FOUND', message: 'Connection test was not found.' } };
+    if (record.status !== 'passed') return { error: { status: 409, code: 'TEST_NOT_PASSED', message: 'Complete a passing connection test before saving.' } };
+    const provider = config?.model?.providers?.[record.provider.providerId];
+    if (!provider || !connectionTestMatchesProvider(record, { ...provider, providerId: record.provider.providerId })) {
+      return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested provider.' } };
+    }
+    for (const tested of record.models) {
+      const model = provider.models?.[tested.modelId];
+      if (!model || typeof model !== 'object' || tested.textInput !== 'supported' || !['supported', 'unsupported'].includes(tested.imageInput)) {
+        return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested models.' } };
+      }
+      model.connectionTest = {
+        status: 'passed',
+        textInput: tested.textInput,
+        imageInput: tested.imageInput,
+        testedAt: record.testedAt,
+      };
+      const multimodal = isRecord(model.multimodal) ? { ...model.multimodal } : {};
+      multimodal.input = tested.imageInput === 'supported' ? ['text', 'image'] : ['text'];
+      model.multimodal = multimodal;
+      bound.add(`${record.provider.providerId}/${tested.modelId}`);
+    }
+  }
+  return { config, bound };
+}
+
+function renamedSourceModelId(providerId, modelId, rawProviderRenames, rawModelRenames) {
+  const modelRename = Array.isArray(rawModelRenames)
+    ? rawModelRenames.find((entry) => entry?.providerId === providerId && entry?.to === modelId)
+    : null;
+  if (modelRename) {
+    const providerRename = Array.isArray(rawProviderRenames)
+      ? rawProviderRenames.find((entry) => entry?.to === providerId)
+      : null;
+    return {
+      providerId: providerRename?.from || providerId,
+      modelId: modelRename.from,
+    };
+  }
+  const providerRename = Array.isArray(rawProviderRenames)
+    ? rawProviderRenames.find((entry) => entry?.to === providerId)
+    : null;
+  return providerRename ? { providerId: providerRename.from, modelId } : null;
+}
+
+function validateNewReferencedModelBindings(previousConfig, nextConfig, bound, rawProviderRenames, rawModelRenames) {
+  const references = findModelReferences(nextConfig);
+  for (const reference of references) {
+    // Connection tests are enforced when a model becomes the primary Agent
+    // model. Other settings references reuse the model-level test state and
+    // must not require each editor to submit a duplicate binding.
+    if (reference.path !== 'agent.model') continue;
+    const [providerId, ...modelParts] = String(reference.value || '').split('/');
+    const modelId = modelParts.join('/');
+    const renamedSource = renamedSourceModelId(providerId, modelId, rawProviderRenames, rawModelRenames);
+    const key = `${providerId}/${modelId}`;
+    const previousProviderId = renamedSource?.providerId || providerId;
+    const previousModelId = renamedSource?.modelId || modelId;
+    const wasPreviouslyReferenced = findModelReferences(previousConfig, {
+      providerId: previousProviderId,
+      modelId: previousModelId,
+    }).some((previousReference) => (
+      previousReference.path !== 'agent.subagents.default'
+      && previousReference.path !== 'memory.model'
+    ));
+    const model = nextConfig?.model?.providers?.[providerId]?.models?.[modelId];
+    const hasPassingTest = isRecord(model?.connectionTest) && model.connectionTest.status === 'passed';
+    if (!wasPreviouslyReferenced && !hasPassingTest && !bound.has(key)) {
+      return { providerId, modelId, reference };
+    }
+  }
+  return null;
 }
 
 function configRevision(raw) {
@@ -387,6 +581,24 @@ router.post('/validate', (req, res) => {
   }
 });
 
+router.get('/model-references', (req, res) => {
+  const providerId = typeof req.query?.providerId === 'string' ? req.query.providerId.trim() : '';
+  const modelId = typeof req.query?.modelId === 'string' ? req.query.modelId.trim() : '';
+  if (!providerId || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(providerId)
+    || (modelId && /\s/.test(modelId))) {
+    return res.status(400).json({ code: 'INVALID_REQUEST', message: 'providerId and modelId must be valid model identifiers.' });
+  }
+  try {
+    const record = readPilotDeckConfigFile();
+    if (record.parseError) {
+      return res.status(400).json({ code: 'INVALID_REQUEST', message: 'pilotdeck.yaml is invalid.' });
+    }
+    return res.json({ providerId, ...(modelId ? { modelId } : {}), references: findModelReferences(record.config, { providerId, modelId }) });
+  } catch (error) {
+    return res.status(500).json({ code: 'CONFIG_READ_FAILED', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 router.get('/office-preview/status', async (req, res) => {
   try {
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
@@ -470,7 +682,7 @@ router.put('/', async (req, res) => {
         req.body?.providerRenames,
       );
       if (renamedProviders.error) {
-        return res.status(400).json({ error: renamedProviders.error });
+        return res.status(400).json({ error: renamedProviders.error, ...(renamedProviders.code ? { code: renamedProviders.code } : {}) });
       }
       const renamedConfig = renamedProviders.config;
       const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
@@ -488,8 +700,45 @@ router.put('/', async (req, res) => {
           error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
         });
       }
+      const renamed = applyRenameMetadata(
+        restored,
+        diskRecord.config,
+        req.body?.providerRenames,
+        req.body?.modelRenames,
+      );
+      if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
+      const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      const invalidTestReference = diskRecord.parseError
+        ? null
+        : validateNewReferencedModelBindings(
+          diskRecord.config,
+          renamed.config,
+          testBinding.bound,
+          req.body?.providerRenames,
+          req.body?.modelRenames,
+        );
+      if (invalidTestReference) {
+        return res.status(409).json({
+          error: 'Referenced model must have a passing connection test.',
+          code: 'MODEL_TEST_REQUIRED',
+          providerId: invalidTestReference.providerId,
+          modelId: invalidTestReference.modelId,
+          reference: invalidTestReference.reference.path,
+        });
+      }
+      const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
+      if (deletedReference) {
+        return res.status(409).json({
+          error: 'Provider or model is still referenced by the current configuration.',
+          code: 'MODEL_IN_USE',
+          providerId: deletedReference.providerId,
+          ...(deletedReference.modelId ? { modelId: deletedReference.modelId } : {}),
+          references: deletedReference.references,
+        });
+      }
       suppressNextWatchEvent();
-      saved = await writeRawPilotDeckYaml(restored);
+      saved = await writeRawPilotDeckYaml(renamed.config);
     } else if (req.body?.config && typeof req.body.config === 'object') {
       if (diskRecord.parseError) {
         return res.status(400).json({
@@ -509,7 +758,7 @@ router.put('/', async (req, res) => {
         req.body?.providerRenames,
       );
       if (renamedProviders.error) {
-        return res.status(400).json({ error: renamedProviders.error });
+        return res.status(400).json({ error: renamedProviders.error, ...(renamedProviders.code ? { code: renamedProviders.code } : {}) });
       }
       const renamedConfig = renamedProviders.config;
       const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config);
@@ -522,8 +771,45 @@ router.put('/', async (req, res) => {
           error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
         });
       }
+      const renamed = applyRenameMetadata(
+        restored,
+        diskRecord.config,
+        req.body?.providerRenames,
+        req.body?.modelRenames,
+      );
+      if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
+      const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      const invalidTestReference = diskRecord.parseError
+        ? null
+        : validateNewReferencedModelBindings(
+          diskRecord.config,
+          renamed.config,
+          testBinding.bound,
+          req.body?.providerRenames,
+          req.body?.modelRenames,
+        );
+      if (invalidTestReference) {
+        return res.status(409).json({
+          error: 'Referenced model must have a passing connection test.',
+          code: 'MODEL_TEST_REQUIRED',
+          providerId: invalidTestReference.providerId,
+          modelId: invalidTestReference.modelId,
+          reference: invalidTestReference.reference.path,
+        });
+      }
+      const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
+      if (deletedReference) {
+        return res.status(409).json({
+          error: 'Provider or model is still referenced by the current configuration.',
+          code: 'MODEL_IN_USE',
+          providerId: deletedReference.providerId,
+          ...(deletedReference.modelId ? { modelId: deletedReference.modelId } : {}),
+          references: deletedReference.references,
+        });
+      }
       suppressNextWatchEvent();
-      saved = await writePilotDeckConfig(restored);
+      saved = await writePilotDeckConfig(renamed.config);
     } else {
       return res.status(400).json({ error: 'raw YAML or config object is required' });
     }
@@ -763,14 +1049,34 @@ router.post('/test-connection', async (req, res) => {
 
 });
 
+// Settings model-pool routes reuse the onboarding probe lifecycle while
+// exposing the API under /api/config for the settings UI.
+async function configModelConnectionTestsHandler(req, res) {
+  req.allowPresetEndpointOverride = true;
+  if (req.body?.apiKey === MASKED_SECRET) {
+    const providerId = typeof req.body?.providerId === 'string' ? req.body.providerId.trim() : '';
+    const current = readPilotDeckConfigFile();
+    const savedKey = current.config?.model?.providers?.[providerId]?.apiKey;
+    if (typeof savedKey === 'string' && savedKey && savedKey !== MASKED_SECRET) {
+      req.body = { ...req.body, apiKey: savedKey };
+    }
+  }
+  return modelConnectionTestsHandler(req, res);
+}
+router.post('/test-connections', modelTestRateLimiter, configModelConnectionTestsHandler);
+router.put('/test-connections/:testId/image-capabilities', imageCapabilitiesHandler);
+
 /**
  * Probe the configured web-search provider. Mirrors
- * `src/tool/builtin/webSearch.ts`'s GLM/Tavily/custom request shape. Returns:
+ * `src/tool/builtin/webSearch.ts`'s five-provider request shape. Returns:
  * `{ ok, error?, latencyMs?, organicCount? }` to match the convention
  * established by `/test-connection`.
  */
 router.post('/test-web-search', async (req, res) => {
   const { provider, apiKey, endpoint, customProvider } = req.body || {};
+  if (provider !== undefined && !isWebSearchProvider(provider)) {
+    return res.status(400).json({ ok: false, error: 'Unsupported web search provider.' });
+  }
   const selectedProvider = normalizeWebSearchProvider(provider);
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = normalizeWebSearchCustomAuth(custom.auth);
@@ -817,6 +1123,9 @@ router.post('/test-web-search', async (req, res) => {
   let requestInit;
   try {
     const url = new URL(effectiveEndpoint);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return res.status(400).json({ ok: false, error: `Invalid endpoint URL: ${effectiveEndpoint}` });
+    }
     if (selectedProvider === 'tavily') {
       requestUrl = effectiveEndpoint;
       requestInit = {
@@ -833,6 +1142,28 @@ router.post('/test-web-search', async (req, res) => {
             search_depth: 'basic',
           }),
         };
+    } else if (selectedProvider === 'serper') {
+      requestUrl = effectiveEndpoint;
+      requestInit = {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': trimmedKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ q: 'hello', num: 3 }),
+      };
+    } else if (selectedProvider === 'brave') {
+      url.searchParams.set('q', 'hello');
+      url.searchParams.set('count', '3');
+      requestUrl = url.toString();
+      requestInit = {
+        method: 'GET',
+        headers: {
+          'X-Subscription-Token': trimmedKey,
+          Accept: 'application/json',
+        },
+      };
     } else if (selectedProvider === 'custom') {
       const headers = { Accept: 'application/json' };
       const body = {};
@@ -916,6 +1247,10 @@ router.post('/test-web-search', async (req, res) => {
 
     const organic = selectedProvider === 'tavily'
       ? raw?.results
+      : selectedProvider === 'serper'
+        ? raw?.organic
+        : selectedProvider === 'brave'
+          ? raw?.web?.results
       : selectedProvider === 'custom' && resultsPath
         ? readPath(raw, resultsPath)
         : (raw?.search_result ?? raw?.results ?? raw?.items ?? raw?.data);

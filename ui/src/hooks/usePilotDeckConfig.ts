@@ -52,6 +52,7 @@ export type ConfigProviderRename = {
 
 export type ConfigSaveOptions = {
   providerRenames?: ConfigProviderRename[];
+  modelTestBindings?: Array<{ testId: string }>;
 };
 
 export type ConfigSaveResult =
@@ -282,6 +283,9 @@ function usePilotDeckConfigState() {
             ...(baseRevision ? { baseRevision } : {}),
             ...(options.providerRenames?.length
               ? { providerRenames: options.providerRenames }
+              : {}),
+            ...(options.modelTestBindings?.length
+              ? { modelTestBindings: options.modelTestBindings }
               : {}),
           }),
         });

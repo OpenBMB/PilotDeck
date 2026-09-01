@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     buildDefaultPilotDeckConfig,
+    buildMemoryLlmOptions,
+    buildRuntimeEnv,
     readPilotDeckConfigFile,
     resolveModel,
     sanitizeProviderCredentials,
@@ -81,6 +83,50 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
 });
 
 describe('validatePilotDeckConfig gateway validation', () => {
+    it('uses catalog default URLs for memory and runtime settings', () => {
+        const config = {
+            agent: { model: 'deepseek/model-a' },
+            model: {
+                providers: {
+                    deepseek: {
+                        protocol: 'openai',
+                        url: '',
+                        apiKey: 'key',
+                        models: { 'model-a': {} },
+                    },
+                },
+            },
+            memory: { enabled: true, model: 'deepseek/model-a' },
+        };
+
+        expect(buildMemoryLlmOptions(config).baseUrl).toBe('https://api.deepseek.com/v1');
+        expect(buildRuntimeEnv(config)).toMatchObject({
+            PILOTDECK_API_BASE_URL: 'https://api.deepseek.com/v1',
+            PILOTDECK_MEMORY_BASE_URL: 'https://api.deepseek.com/v1',
+        });
+    });
+
+    it('accepts an omitted URL for catalog providers', () => {
+        for (const providerId of ['openai', 'minimax']) {
+            const validation = validatePilotDeckConfig({
+                agent: { model: `${providerId}/gpt-test` },
+                model: {
+                    providers: {
+                        [providerId]: {
+                            protocol: 'openai',
+                            url: '',
+                            apiKey: 'key',
+                            models: { 'gpt-test': {} },
+                        },
+                    },
+                },
+            });
+
+            expect(validation.valid).toBe(true);
+            expect(validation.errors).toEqual([]);
+        }
+    });
+
     it('migrates the legacy interactive spreadsheet mode to built-in preview', () => {
         const validation = validatePilotDeckConfig({
             webui: {
@@ -392,5 +438,156 @@ describe('validatePilotDeckConfig gateway validation', () => {
         expect(result.config.agent.subagents.default).toBe('inherit');
         expect(result.config.model.providers).not.toHaveProperty('_placeholder');
         expect(result.configPath).toBe(configPath);
+    });
+});
+
+describe('validatePilotDeckConfig router settings', () => {
+    const base = {
+        agent: { model: 'openai/gpt-test' },
+        model: {
+            providers: {
+                openai: {
+                    protocol: 'openai',
+                    url: 'https://api.example.test/v1',
+                    apiKey: 'test-key',
+                    models: { 'gpt-test': {} },
+                },
+            },
+        },
+    };
+
+    function withRouter(router) {
+        return validatePilotDeckConfig({ ...base, router });
+    }
+
+    it('accepts pricing units and keeps a missing unit backward compatible', () => {
+        const validation = withRouter({
+            stats: {
+                modelPricing: {
+                    'openai/gpt-test': { input: 1, output: 2, cacheRead: 0.5 },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+        expect(validation.config.router.stats.modelPricing['openai/gpt-test']).toEqual({
+            input: 1,
+            output: 2,
+            cacheRead: 0.5,
+        });
+    });
+
+    it('validates router stats baselineModel against configured models', () => {
+        const valid = withRouter({
+            stats: { baselineModel: { provider: 'openai', model: 'gpt-test' } },
+        });
+        expect(valid.valid).toBe(true);
+
+        const invalid = withRouter({
+            stats: { baselineModel: { provider: 'openai', model: 'missing' } },
+        });
+        expect(invalid.valid).toBe(false);
+        expect(invalid.errors).toContain(
+            'router.stats.baselineModel="openai/missing" doesn\'t resolve to a configured provider/model',
+        );
+    });
+
+    it('accepts legacy string baselineModel references', () => {
+        const validation = withRouter({
+            stats: { baselineModel: 'openai/gpt-test' },
+        });
+        expect(validation.valid).toBe(true);
+        expect(validation.errors).toEqual([]);
+    });
+
+    it('rejects invalid pricing values and units', () => {
+        const validation = withRouter({
+            stats: {
+                modelPricing: {
+                    'openai/gpt-test': { input: -1, output: Number.NaN, unit: 'EUR/token' },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toEqual(expect.arrayContaining([
+            'router.stats.modelPricing.openai/gpt-test.input must be a finite non-negative number',
+            'router.stats.modelPricing.openai/gpt-test.output must be a finite non-negative number',
+            'router.stats.modelPricing.openai/gpt-test.unit must be one of $/百万 Token or ¥/百万 Token',
+        ]));
+    });
+
+    it('validates default tier, tier models, and subagent policy', () => {
+        const validation = withRouter({
+            tokenSaver: {
+                judge: 'openai/gpt-test',
+                defaultTier: 'missing',
+                tiers: {
+                    medium: { model: 'openai/missing', description: 42 },
+                },
+                subagent: { policy: 'invalid' },
+            },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toEqual(expect.arrayContaining([
+            'router.tokenSaver.tiers.medium.model="openai/missing" doesn\'t resolve to a configured provider/model',
+            'router.tokenSaver.tiers.medium.description must be a string',
+            'router.tokenSaver.defaultTier="missing" must exist in router.tokenSaver.tiers',
+            'router.tokenSaver.subagent.policy must be one of skip / judge',
+        ]));
+    });
+
+    it('does not validate ignored router children when router is disabled', () => {
+        const validation = withRouter({
+            enabled: false,
+            tokenSaver: { judge: 'missing/model', subagent: { policy: 'invalid' } },
+            stats: {
+                modelPricing: { invalid: { input: -1 } },
+                baselineModel: { provider: 'missing', model: 'model' },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+    });
+});
+
+describe('validatePilotDeckConfig web search settings', () => {
+    const base = {
+        agent: { model: 'openai/gpt-test' },
+        model: {
+            providers: {
+                openai: {
+                    protocol: 'openai',
+                    url: 'https://api.example.test/v1',
+                    apiKey: 'test-key',
+                    models: { 'gpt-test': {} },
+                },
+            },
+        },
+    };
+
+    it('rejects an unknown provider and non-HTTP endpoint through common config validation', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            tools: { webSearch: { provider: 'zai', endpoint: 'ftp://example.test/search' } },
+        });
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toEqual(expect.arrayContaining([
+            expect.stringContaining('tools.webSearch.provider'),
+            expect.stringContaining('tools.webSearch.endpoint'),
+        ]));
+    });
+
+    it('accepts all supported built-in search providers', () => {
+        for (const provider of ['glm', 'tavily', 'custom', 'serper', 'brave']) {
+            const validation = validatePilotDeckConfig({
+                ...base,
+                tools: { webSearch: { provider, ...(provider === 'custom' ? { endpoint: 'https://search.example.test' } : {}) } },
+            });
+            expect(validation.errors).not.toEqual(expect.arrayContaining([
+                expect.stringContaining('tools.webSearch.provider'),
+            ]));
+        }
     });
 });

@@ -9,7 +9,7 @@
  * `tests/web-ui-client/protocol-sync.test.ts`.
  */
 
-export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.0";
+export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.1";
 
 export type WebGatewayMode =
   | "default"
@@ -47,6 +47,8 @@ type WebGatewayEventMetadata = {
 export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "turn_started"; runId: string }
   | { type: "input_accepted"; runId: string }
+  | { type: "steer_applied"; itemId: string; message: import("../../model/index.js").CanonicalMessage }
+  | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number }
   | { type: "assistant_text_delta"; text: string }
   | { type: "assistant_thinking_delta"; text: string }
@@ -121,6 +123,8 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
 
 export type WebGatewayMethod =
   | "submit_turn"
+  | "steer_turn"
+  | "cancel_steer"
   | "abort_turn"
   | "list_sessions"
   | "resume_session"
@@ -180,6 +184,31 @@ export type WebSubmitTurnInput = {
   canPrompt?: boolean;
   runId?: string;
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
+};
+
+export type WebSteerTurnInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+  message: string;
+  projectKey?: string;
+  attachments?: WebChannelAttachment[];
+};
+
+export type WebSteerTurnResult = {
+  accepted: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "turn_closing" | "cancelled";
+};
+
+export type WebCancelSteerInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+};
+
+export type WebCancelSteerResult = {
+  cancelled: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "too_late";
 };
 
 export type WebMatchRange = { field: string; start: number; end: number };

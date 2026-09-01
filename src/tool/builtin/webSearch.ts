@@ -13,7 +13,7 @@ import type {
  * provider. The model still sees one stable tool surface; provider-specific
  * request/response shapes stay behind this adapter.
  */
-export type WebSearchProvider = "glm" | "tavily" | "custom";
+export type WebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
 export type WebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
 export type WebSearchCustomMethod = "GET" | "POST";
 
@@ -34,7 +34,7 @@ export type WebSearchCustomProviderConfig = {
 export type CreateWebSearchToolOptions = {
   provider?: WebSearchProvider;
   apiKey?: string;
-  /** Override provider endpoint. GLM defaults to Z.AI web_search; Tavily defaults to api.tavily.com. */
+  /** Override provider endpoint. */
   endpoint?: string;
   customProvider?: WebSearchCustomProviderConfig;
   /** Override fetch (testing). */
@@ -72,6 +72,8 @@ export type WebSearchOutput = {
 
 const DEFAULT_GLM_ENDPOINT = "https://api.z.ai/api/paas/v4/web_search";
 const DEFAULT_TAVILY_ENDPOINT = "https://api.tavily.com/search";
+const DEFAULT_SERPER_ENDPOINT = "https://google.serper.dev/search";
+const DEFAULT_BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_ORGANIC_LIMIT = 8;
 
@@ -85,15 +87,15 @@ export function createWebSearchTool(
   return {
     name: "web_search",
     aliases: ["WebSearch"],
-    description: `- Searches the web for current information using the configured GLM/Z.AI, Tavily, or custom provider
+    description: `- Searches the web for current information using the configured GLM/Z.AI, Tavily, Serper, Brave, or custom provider
 - Takes a search query and optional country code (\`gl\`) as input
 - Returns structured search data including organic results and, when available, answer box content
 - Use this tool for current events, recent documentation, and information beyond the model's knowledge cutoff
 - Use this tool when API/SDK/framework usage is unknown, version-sensitive, or likely changed since training. Search with package/service name, version, framework, and the specific method/option/error.
 
 Usage notes:
-  - Configure \`tools.webSearch.provider\` as \`glm\`, \`tavily\`, or \`custom\` in \`pilotdeck.yaml\`
-  - Requires \`tools.webSearch.apiKey\`, \`GLM_WEB_SEARCH_API_KEY\`/\`ZAI_API_KEY\`, \`TAVILY_API_KEY\`, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
+  - Configure \`tools.webSearch.provider\` as \`glm\`, \`tavily\`, \`serper\`, \`brave\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
   - The optional \`gl\` parameter is forwarded only by providers that support localization
   - This tool is read-only and does not modify files`,
     kind: "network",
@@ -180,6 +182,28 @@ Usage notes:
           organicLimit,
         });
       }
+      if (provider === "serper") {
+        return performSerperSearch({
+          input,
+          context,
+          apiKey: apiKey ?? "",
+          endpoint: options.endpoint ?? DEFAULT_SERPER_ENDPOINT,
+          fetchImpl,
+          timeoutMs,
+          organicLimit,
+        });
+      }
+      if (provider === "brave") {
+        return performBraveSearch({
+          input,
+          context,
+          apiKey: apiKey ?? "",
+          endpoint: options.endpoint ?? DEFAULT_BRAVE_ENDPOINT,
+          fetchImpl,
+          timeoutMs,
+          organicLimit,
+        });
+      }
       return performGlmSearch({
         input,
         context,
@@ -230,7 +254,17 @@ function resolveProvider(
 ): WebSearchProvider {
   if (optionProvider) return optionProvider;
   if (optionApiKey?.trim()) return "glm";
-  if (readEnv(context, "TAVILY_API_KEY")) return "tavily";
+  const envProviders: Array<[string, WebSearchProvider]> = [
+    ["TAVILY_API_KEY", "tavily"],
+    ["GLM_WEB_SEARCH_API_KEY", "glm"],
+    ["ZAI_API_KEY", "glm"],
+    ["SERPER_API_KEY", "serper"],
+    ["BRAVE_API_KEY", "brave"],
+    ["CUSTOM_WEB_SEARCH_API_KEY", "custom"],
+  ];
+  for (const [name, provider] of envProviders) {
+    if (readEnv(context, name)) return provider;
+  }
   return "glm";
 }
 
@@ -244,6 +278,8 @@ function resolveApiKey(
     return fromOption;
   }
   if (provider === "tavily") return readEnv(context, "TAVILY_API_KEY");
+  if (provider === "serper") return readEnv(context, "SERPER_API_KEY");
+  if (provider === "brave") return readEnv(context, "BRAVE_API_KEY");
   if (provider === "custom") return readEnv(context, "CUSTOM_WEB_SEARCH_API_KEY");
   return readEnv(context, "GLM_WEB_SEARCH_API_KEY") ?? readEnv(context, "ZAI_API_KEY");
 }
@@ -271,6 +307,124 @@ function readEnv(context: PilotDeckToolRuntimeContext, name: string): string | u
   return value && value.length > 0 ? value : undefined;
 }
 
+function assertHttpEndpoint(endpoint: string, provider: WebSearchProvider): void {
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
+  } catch {
+    throw new PilotDeckToolRuntimeError(
+      "setup_required",
+      `web_search (${provider}) requires a valid HTTP(S) endpoint URL.`,
+    );
+  }
+}
+
+type PerformStructuredProviderSearchInput = {
+  provider: "serper" | "brave";
+  input: WebSearchInput;
+  context: PilotDeckToolRuntimeContext;
+  apiKey: string;
+  endpoint: string;
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+  organicLimit: number;
+};
+
+async function performSerperSearch(
+  args: Omit<PerformStructuredProviderSearchInput, "provider">,
+): Promise<PilotDeckToolExecutionOutput<WebSearchOutput>> {
+  return performStructuredProviderSearch({ ...args, provider: "serper" });
+}
+
+async function performBraveSearch(
+  args: Omit<PerformStructuredProviderSearchInput, "provider">,
+): Promise<PilotDeckToolExecutionOutput<WebSearchOutput>> {
+  return performStructuredProviderSearch({ ...args, provider: "brave" });
+}
+
+async function performStructuredProviderSearch(
+  args: PerformStructuredProviderSearchInput,
+): Promise<PilotDeckToolExecutionOutput<WebSearchOutput>> {
+  const { provider, input, context, apiKey, endpoint, fetchImpl, timeoutMs, organicLimit } = args;
+  assertHttpEndpoint(endpoint, provider);
+  const query = input.query.trim();
+  if (!query) {
+    throw new PilotDeckToolRuntimeError(
+      "invalid_tool_input",
+      "web_search requires a non-empty `query`.",
+    );
+  }
+
+  const url = new URL(endpoint);
+  let requestUrl = url.toString();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let body: string | undefined;
+  if (provider === "serper") {
+    headers["X-API-KEY"] = apiKey;
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({ q: query, num: organicLimit, ...(input.gl?.trim() ? { gl: input.gl.trim() } : {}) });
+  } else {
+    headers["X-Subscription-Token"] = apiKey;
+    url.searchParams.set("q", query);
+    url.searchParams.set("count", String(organicLimit));
+    if (input.gl?.trim()) url.searchParams.set("country", input.gl.trim());
+    requestUrl = url.toString();
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const detachAbort = forwardAbort(context.abortSignal, controller);
+  let response: Response;
+  try {
+    response = await networkFetch(requestUrl, {
+      method: provider === "serper" ? "POST" : "GET",
+      headers,
+      ...(body ? { body } : {}),
+      signal: controller.signal,
+    }, {
+      timeoutMs,
+      signal: controller.signal,
+      fetchImpl,
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: provider === "serper" },
+    });
+  } catch (error) {
+    if (isLocalTimeout(error, controller.signal, context.abortSignal)) {
+      throw new PilotDeckToolRuntimeError(
+        "tool_timeout",
+        `web_search (${provider}) timed out after ${timeoutMs}ms.`,
+      );
+    }
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `web_search (${provider}) request failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    clearTimeout(timeout);
+    detachAbort?.();
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `${provider} API error (${response.status}): ${truncate(detail, 500)}`,
+    );
+  }
+
+  const raw = (await response.json()) as Record<string, unknown>;
+  const resultValue = provider === "brave" ? readPath(raw, "web.results") : raw.organic;
+  const organic = parseGlmResults(resultValue, organicLimit);
+  const output: WebSearchOutput = { query, organic };
+  return {
+    content: [
+      { type: "text", text: formatTextSummary(output) },
+      { type: "json", value: output },
+    ],
+    data: output,
+    metadata: { provider, endpoint, organicCount: organic.length },
+  };
+}
+
 type PerformTavilySearchInput = {
   input: WebSearchInput;
   context: PilotDeckToolRuntimeContext;
@@ -285,6 +439,7 @@ async function performTavilySearch(
   args: PerformTavilySearchInput,
 ): Promise<PilotDeckToolExecutionOutput<WebSearchOutput>> {
   const { input, context, apiKey, endpoint, fetchImpl, timeoutMs, organicLimit } = args;
+  assertHttpEndpoint(endpoint, "tavily");
   const query = input.query.trim();
   if (!query) {
     throw new PilotDeckToolRuntimeError(
@@ -401,6 +556,7 @@ async function performGlmSearch(
     timeoutMs,
     organicLimit,
   } = args;
+  assertHttpEndpoint(endpoint, "glm");
   const query = input.query.trim();
   if (!query) {
     throw new PilotDeckToolRuntimeError(
@@ -519,6 +675,7 @@ async function performCustomSearch(
   let url: URL;
   try {
     url = new URL(endpoint);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
   } catch {
     throw new PilotDeckToolRuntimeError(
       "invalid_tool_input",
@@ -645,7 +802,7 @@ function parseGlmResults(value: unknown, limit: number): WebSearchOrganicResult[
   return (value as Array<Record<string, unknown>>).slice(0, limit).map((entry) => ({
     title: readString(entry.title) ?? readString(entry.name),
     link: readString(entry.url) ?? readString(entry.link) ?? readString(entry.href),
-    snippet: readString(entry.snippet) ?? readString(entry.summary) ?? readString(entry.content) ?? readString(entry.text),
+    snippet: readString(entry.snippet) ?? readString(entry.summary) ?? readString(entry.content) ?? readString(entry.description) ?? readString(entry.text),
     source: readString(entry.source) ?? readString(entry.site) ?? readString(entry.media),
     publishedAt: readString(entry.publishedAt) ?? readString(entry.published_at) ?? readString(entry.publish_date) ?? readString(entry.date),
   }));

@@ -130,7 +130,7 @@ export type PilotGatewayConfig = {
   maxPerSessionMcpInstances?: number;
 };
 
-export type PilotWebSearchProvider = "glm" | "tavily" | "custom";
+export type PilotWebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
 export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
 export type PilotWebSearchCustomMethod = "GET" | "POST";
 
@@ -194,6 +194,7 @@ export type PilotAdaptersConfig = {
     defaultSessionLabel: string;
     connectionMode?: "stream" | "webhook";
     domainName?: "feishu" | "lark";
+    permissionMode?: "default" | "bypassPermissions";
   };
   weixin?: { enabled: boolean };
   qq?: {

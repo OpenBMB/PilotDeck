@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { Gateway } from "../../gateway/index.js";
 import type { PilotDeckToolDefinition } from "../../tool/index.js";
-import type { AlwaysOnConfig } from "../config/parseAlwaysOnConfig.js";
+import { DEFAULT_SNAPSHOT_MAX_BYTES, type AlwaysOnConfig } from "../config/parseAlwaysOnConfig.js";
 import { resolveAlwaysOnPaths, type AlwaysOnPaths } from "../storage/AlwaysOnPaths.js";
 import { DiscoveryPlanStore } from "../storage/DiscoveryPlanStore.js";
 import { WorkCycleStore } from "../storage/WorkCycleStore.js";
@@ -123,8 +123,6 @@ export class AlwaysOnRuntime {
     this.paths = resolveAlwaysOnPaths({
       pilotHome: options.pilotHome,
       projectKey: this.projectKey,
-      worktreesBaseDir: options.config.workspace.gitWorktreeBaseDir,
-      snapshotsBaseDir: options.config.workspace.snapshotBaseDir,
     });
     this.logger = options.logger ?? NOOP_LOGGER;
     this.now = options.now ?? (() => new Date());
@@ -227,10 +225,6 @@ export class AlwaysOnRuntime {
   }
 
   async start(): Promise<void> {
-    if (!this.config.enabled) {
-      this.logger.info("always-on disabled in config; runtime is a no-op.");
-      return;
-    }
     if (!this.scheduler) {
       throw new Error("AlwaysOnRuntime.start called before bindGateway.");
     }
@@ -301,7 +295,7 @@ export class AlwaysOnRuntime {
     registry.add(
       new SnapshotCopyProvider({
         baseDir: this.paths.snapshotsDir,
-        maxBytes: this.config.workspace.snapshotMaxBytes,
+        maxBytes: DEFAULT_SNAPSHOT_MAX_BYTES,
       }),
     );
     return registry;

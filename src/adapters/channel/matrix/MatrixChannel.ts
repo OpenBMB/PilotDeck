@@ -144,10 +144,27 @@ export class MatrixChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(roomId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(roomId, text, this.gateway);
-        if (confirmation) await this.sendReply(roomId, confirmation);
+        const answer = await this.permissions.answerWithState(roomId, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(roomId, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(roomId, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(roomId, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(roomId, answer.answerToken);
+
+            const delivered = await this.sendReply(roomId, nextPrompt);
+            this.permissions.confirmNextPrompt(roomId, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(roomId, answerToken);
         this.logger?.error?.(`matrix: permission answer error: ${e}`);
       }
       return;
@@ -190,7 +207,7 @@ export class MatrixChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(roomId, sessionKey, event);
-          if (questionText) await this.sendReply(roomId, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(roomId, await this.sendReply(roomId, questionText), event.requestId);
           continue;
         }
         const fragment = renderMatrixEvent(event);
@@ -202,7 +219,7 @@ export class MatrixChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(roomId);
-    this.permissions.clear(roomId);
+    this.permissions.clearAfterTurn(roomId);
 
     const finalText = replyText.trim();
     if (finalText) {

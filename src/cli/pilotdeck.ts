@@ -61,7 +61,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     };
 
     function buildAlwaysOn(config: AlwaysOnConfig | undefined): AlwaysOnManager | undefined {
-      if (!config?.enabled) return undefined;
+      if (!config) return undefined;
+      const hasEnabledProject = Object.values(config.projects).some((p) => p.enabled);
+      if (!hasEnabledProject) return undefined;
       return createAlwaysOnManager({
         config,
         pilotHome,
@@ -277,6 +279,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           verifyToken: fCfg.verifyToken,
           connectionMode: fCfg.connectionMode,
           domainName: fCfg.domainName,
+          permissionMode: fCfg.permissionMode,
           mapper: savedFeishu ? new FeishuSessionMapper(savedFeishu) : undefined,
           onStateChange: (state) => channelStatePersistence.save("feishu", state),
         });
@@ -342,6 +345,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           verifyToken: feishuCfg.verifyToken,
           connectionMode: feishuCfg.connectionMode,
           domainName: feishuCfg.domainName,
+          permissionMode: feishuCfg.permissionMode,
           mapper: savedFeishuState ? new FeishuSessionMapper(savedFeishuState) : undefined,
           onStateChange: (state) => channelStatePersistence.save("feishu", state),
         })
@@ -774,6 +778,8 @@ function createFallbackGateway(): Gateway {
   }
   return {
     submitTurn: errorStream,
+    steerTurn: async () => ({ accepted: false, reason: "no_active_turn" }),
+    cancelSteer: async () => ({ cancelled: false, reason: "no_active_turn" }),
     abortTurn: async () => undefined,
     listSessions: async () => ({ sessions: [] }),
     resumeSession: async (input) => input,

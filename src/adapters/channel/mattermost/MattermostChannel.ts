@@ -173,10 +173,27 @@ export class MattermostChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-        if (confirmation) await this.sendReply({ channelId, rootId }, confirmation);
+        const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply({ channelId, rootId }, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(chatId, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(chatId, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId, answer.answerToken);
+
+            const delivered = await this.sendReply({ channelId, rootId }, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
         this.logger?.error?.(`mattermost: permission answer error: ${e}`);
       }
       return;
@@ -227,7 +244,7 @@ export class MattermostChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const chatId = ctx.rootId ? `${ctx.channelId}:${ctx.rootId}` : ctx.channelId;
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) await this.sendReply(ctx, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), event.requestId);
           continue;
         }
         const fragment = renderMattermostEvent(event);
@@ -240,7 +257,7 @@ export class MattermostChannel implements ChannelAdapter {
 
     const chatId = ctx.rootId ? `${ctx.channelId}:${ctx.rootId}` : ctx.channelId;
     this.elicitation.clear(chatId);
-    this.permissions.clear(chatId);
+    this.permissions.clearAfterTurn(chatId);
 
     const finalText = replyText.trim();
     if (finalText) {
@@ -251,7 +268,8 @@ export class MattermostChannel implements ChannelAdapter {
   private async sendReply(
     ctx: { channelId: string; rootId?: string },
     text: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    let delivered = true;
     const chunks = chunkText(text, MAX_MESSAGE_LENGTH);
     for (const chunk of chunks) {
       try {
@@ -262,8 +280,10 @@ export class MattermostChannel implements ChannelAdapter {
         });
       } catch (e) {
         this.logger?.error?.(`mattermost: post failed: ${e}`);
+        delivered = false;
       }
     }
+    return delivered;
   }
 
   private async rest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {

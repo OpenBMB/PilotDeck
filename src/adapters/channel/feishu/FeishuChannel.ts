@@ -78,6 +78,8 @@ export type FeishuChannelOptions = {
   connectionMode?: FeishuConnectionMode;
   /** "feishu" (open.feishu.cn) or "lark" (open.larksuite.com). */
   domainName?: "feishu" | "lark";
+  /** Optional per-channel permission mode forwarded to Gateway turns. */
+  permissionMode?: "default" | "bypassPermissions";
   mapper?: FeishuSessionMapper;
   /**
    * Optional override for outbound delivery (used in tests). When omitted the
@@ -142,6 +144,7 @@ export class FeishuChannel implements ChannelAdapter {
   private verifyToken?: string;
   private connectionMode: FeishuConnectionMode;
   private domainName: "feishu" | "lark";
+  private permissionMode?: "default" | "bypassPermissions";
 
   private gateway?: Gateway;
   private logger?: ChannelLogger;
@@ -152,6 +155,9 @@ export class FeishuChannel implements ChannelAdapter {
   private readonly activeChats = new Set<string>();
   private readonly chatState = new ImChatSessionState<QueuedFeishuTurn>({ maxPendingTurns: FEISHU_MAX_PENDING_TURNS_PER_CHAT });
   private readonly inboundBatches = new Map<string, FeishuInboundBatch>();
+  private readonly permissionAnsweringChats = new Set<string>();
+  private readonly permissionAnsweringTokens = new Map<string, number>();
+  private nextPermissionAnsweringToken = 1;
   private readonly elicitation = new ImElicitationHelper();
   private readonly permissions = new ImPermissionHelper();
   private readonly attachmentStore = new ImAttachmentStore({
@@ -173,6 +179,7 @@ export class FeishuChannel implements ChannelAdapter {
     this.verifyToken = options.verifyToken;
     this.connectionMode = options.connectionMode ?? "stream";
     this.domainName = options.domainName ?? "feishu";
+    this.permissionMode = options.permissionMode;
     this.onStateChange = options.onStateChange;
   }
 
@@ -186,6 +193,7 @@ export class FeishuChannel implements ChannelAdapter {
       this.appSecret = this.appSecret || cfg.appSecret || "";
       this.encryptKey = this.encryptKey ?? cfg.encryptKey;
       this.verifyToken = this.verifyToken ?? cfg.verifyToken;
+      this.permissionMode = this.permissionMode ?? cfg.permissionMode;
     }
 
     if (!this.explicitSend && (!this.appId || !this.appSecret)) {
@@ -343,10 +351,20 @@ export class FeishuChannel implements ChannelAdapter {
       });
       return true;
     }
-    if (this.permissions.hasPending(input.chatId)) {
-      void this.answerPendingPermission(input.chatId, input.text).catch((e: unknown) => {
-        this.logger?.error?.(`feishu: permission answer error: ${e}`);
-      });
+    if (this.permissions.hasPending(input.chatId) || this.permissionAnsweringChats.has(input.chatId)) {
+      if (this.permissionAnsweringChats.has(input.chatId)) return true;
+      const answeringToken = this.nextPermissionAnsweringToken++;
+      this.permissionAnsweringChats.add(input.chatId);
+      this.permissionAnsweringTokens.set(input.chatId, answeringToken);
+      void this.answerPendingPermission(input.chatId, input.text)
+        .catch((e: unknown) => {
+          this.logger?.error?.(`feishu: permission answer error: ${e}`);
+        })
+        .finally(() => {
+          if (this.permissionAnsweringTokens.get(input.chatId) !== answeringToken) return;
+          this.permissionAnsweringTokens.delete(input.chatId);
+          this.permissionAnsweringChats.delete(input.chatId);
+        });
       return true;
     }
     return false;
@@ -360,8 +378,29 @@ export class FeishuChannel implements ChannelAdapter {
 
   private async answerPendingPermission(chatId: string, text: string): Promise<void> {
     if (!this.gateway) return;
-    const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-    if (confirmation) await this.send({ chatId, text: confirmation });
+    let answerToken: number | undefined;
+    try {
+      const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+      answerToken = answer?.answerToken;
+      if (answer?.text) {
+        const confirmationDelivered = await this.send({ chatId, text: answer.text });
+        if (!confirmationDelivered) {
+          this.permissions.releaseAnswer(chatId, answer.answerToken);
+          return;
+        }
+        if (!answer.canAdvance && !answer.retryPrompt) return;
+        const nextPrompt = this.permissions.takeNextPrompt(chatId, answer.answerToken);
+        if (nextPrompt) {
+          const nextPromptRequestId = this.permissions.getPromptRequestId(chatId, answer.answerToken);
+
+          const delivered = await this.send({ chatId, text: nextPrompt });
+          this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId, answer.answerToken);
+        }
+      }
+    } catch (error) {
+      if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
+      throw error;
+    }
   }
 
   private async drainInboundBatch(chatId: string): Promise<void> {
@@ -445,7 +484,7 @@ export class FeishuChannel implements ChannelAdapter {
         gateway: this.gateway,
         chatId,
         channelKey: "feishu",
-        reply: (msg) => this.send({ chatId, text: msg }),
+        reply: (msg) => this.send({ chatId, text: msg }).then(() => undefined),
         bindProject: (projectKey) => { this.mapper.bindProject(chatId, projectKey); this.onStateChange?.(this.mapper.snapshot()); },
         getProject: () => this.mapper.getProject(chatId),
         resetSession: () => { this.mapper.resolve({ chatId, text: "/new" }); this.onStateChange?.(this.mapper.snapshot()); },
@@ -482,6 +521,8 @@ export class FeishuChannel implements ChannelAdapter {
   private resetChatInteractionState(chatId: string): void {
     this.chatState.resetForNewSession(chatId);
     this.elicitation.clear(chatId);
+    this.permissionAnsweringTokens.delete(chatId);
+    this.permissionAnsweringChats.delete(chatId);
     this.permissions.clear(chatId);
     const batch = this.inboundBatches.get(chatId);
     if (batch?.timer) clearTimeout(batch.timer);
@@ -539,6 +580,7 @@ export class FeishuChannel implements ChannelAdapter {
           message: turn.message,
           ...(turn.attachments.length > 0 ? { attachments: turn.attachments } : {}),
           allowPlanModeTools: false,
+          ...(this.permissionMode ? { mode: this.permissionMode, basePermissionMode: this.permissionMode } : {}),
           timeoutMs: turnTimeoutMs,
           ...(turn.projectKey ? { projectKey: turn.projectKey } : {}),
         })) {
@@ -556,7 +598,7 @@ export class FeishuChannel implements ChannelAdapter {
           if (event.type === "permission_request") {
             const questionText = this.permissions.capture(chatId, turn.sessionKey, event);
             await liveReply.pauseActivity();
-            if (questionText) await this.send({ chatId, text: questionText });
+            if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.send({ chatId, text: questionText }), event.requestId);
             continue;
           }
           if (event.type === "error" && event.code === "agent_aborted") {
@@ -595,8 +637,10 @@ export class FeishuChannel implements ChannelAdapter {
         if (watchdog) clearTimeout(watchdog);
       }
 
-      this.elicitation.clear(chatId);
-      this.permissions.clear(chatId);
+      if (isCurrentTurn()) {
+        this.elicitation.clear(chatId);
+        this.permissions.clearAfterTurn(chatId);
+      }
       await liveReply.flushFinal();
     } finally {
       if (reactionId && turn.messageId) {
@@ -639,15 +683,15 @@ export class FeishuChannel implements ChannelAdapter {
     };
   }
 
-  private async send(message: FeishuOutboundMessage): Promise<void> {
-    await this.sendTextMessage(message);
+  private async send(message: FeishuOutboundMessage): Promise<boolean> {
+    return (await this.sendTextMessage(message)) !== false;
   }
 
   private async sendAttachment(chatId: string, attachment: Parameters<ImAttachmentDelivery["send"]>[0]): Promise<boolean> {
     return new ImAttachmentDelivery({
       maxBytes: FEISHU_MAX_ATTACHMENT_BYTES,
       logger: this.logger,
-      sendTextFallback: (text) => this.send({ chatId, text }),
+      sendTextFallback: (text) => this.send({ chatId, text }).then(() => undefined),
       sendPrepared: (prepared) => this.uploadAndSendFeishuAttachment(chatId, prepared),
     }).send(attachment);
   }
@@ -772,8 +816,13 @@ export class FeishuChannel implements ChannelAdapter {
 
   private async sendTextMessage(message: FeishuOutboundMessage): Promise<string | undefined | false> {
     if (this.explicitSend) {
-      await this.explicitSend(message);
-      return undefined;
+      try {
+        await this.explicitSend(message);
+        return undefined;
+      } catch (error) {
+        this.logger?.error?.(`feishu: custom send failed: ${error}`);
+        return false;
+      }
     }
     return this.sendRawMessage(message.chatId, "text", { text: message.text });
   }

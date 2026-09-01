@@ -361,6 +361,9 @@ export class DiscoveryFire {
       const wsResult = await this.runWorkspacePhase({ runId, state, planTitle: planRecord.title });
       workspace = wsResult.handle;
       workCycle = wsResult.cycle;
+      if (!wsResult.reused) {
+        this.assertWorkspaceCwdSafe(workspace);
+      }
     } catch (error) {
       const finishedAt = this.deps.now();
       const code = error instanceof AlwaysOnError ? error.code : "workspace_prepare_failed";
@@ -370,8 +373,6 @@ export class DiscoveryFire {
       await this.deps.reportStore.appendHistory({ ...baseHistory, outcome: "failed", finishedAt: finishedAt.toISOString(), error: { code, message } });
       return { outcome: "failed", runId, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), planId, error: { code, message } };
     }
-
-    this.assertWorkspaceCwdSafe(workspace);
     workspace.metadata.startedAt = startedAt.toISOString();
     this.emitEvent(runId, "workspace_ready", { planId });
 
@@ -627,9 +628,7 @@ export class DiscoveryFire {
         runId,
         now: finishedAt,
       });
-      if (this.deps.config.dormancy.enabled) {
-        await this.deps.stateStore.setDormant(finishedAt);
-      }
+      await this.deps.stateStore.setDormant(finishedAt);
       await this.deps.reportStore.appendHistory({
         ...baseHistory,
         finishedAt: finishedAt.toISOString(),
@@ -654,6 +653,9 @@ export class DiscoveryFire {
       const wsResult = await this.runWorkspacePhase({ runId, state, planTitle: planRecord.title });
       workspace = wsResult.handle;
       workCycle = wsResult.cycle;
+      if (!wsResult.reused) {
+        this.assertWorkspaceCwdSafe(workspace);
+      }
     } catch (error) {
       const finishedAt = this.deps.now();
       const code = error instanceof AlwaysOnError ? error.code : "workspace_prepare_failed";
@@ -686,8 +688,6 @@ export class DiscoveryFire {
         error: { code, message },
       };
     }
-
-    this.assertWorkspaceCwdSafe(workspace);
     workspace.metadata.startedAt = startedAt.toISOString();
     this.emitEvent(runId, "workspace_ready", { planId: planRecord.id });
 
@@ -930,7 +930,7 @@ export class DiscoveryFire {
     runId: string;
     state: AlwaysOnDiscoveryState;
     planTitle: string;
-  }): Promise<{ handle: WorkspaceHandle; cycle: WorkCycleRecord }> {
+  }): Promise<{ handle: WorkspaceHandle; cycle: WorkCycleRecord; reused: boolean }> {
     const { runId, state, planTitle } = input;
 
     // ── Deterministic reuse check ──
@@ -946,6 +946,7 @@ export class DiscoveryFire {
             metadata: { ...activeCycle.workspace.metadata },
           },
           cycle: activeCycle,
+          reused: true,
         };
       }
     }
@@ -1004,7 +1005,7 @@ export class DiscoveryFire {
         this.deps.now(),
       );
       await this.deps.stateStore.setActiveWorkCycleId(cycle.id, this.deps.now());
-      return { handle: workspaceCtx.handle, cycle };
+      return { handle: workspaceCtx.handle, cycle, reused: false };
     }
 
     const ensured = await ensureActiveWorkCycle({
@@ -1018,7 +1019,7 @@ export class DiscoveryFire {
       cycleStore: this.deps.cycleStore,
       now: this.deps.now,
     });
-    return { handle: ensured.handle, cycle: ensured.cycle };
+    return { handle: ensured.handle, cycle: ensured.cycle, reused: ensured.reused };
   }
 
   private assertWorkspaceCwdSafe(workspace: WorkspaceHandle): void {

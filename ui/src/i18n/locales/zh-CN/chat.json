@@ -8,6 +8,26 @@
     "emptyTitle": "就这个项目询问 PilotDeck",
     "emptyDescription": "需要把文件加入上下文时，请用 @ 引用工作区文件。"
   },
+  "inputQueue": {
+    "label": "排队消息",
+    "resume": "继续",
+    "pausedAfterStop": "由于你中断了当前响应，队列已暂停",
+    "pausedAfterFailure": "上一轮响应失败，队列已暂停",
+    "pausedAfterRestart": "已恢复排队消息，队列处于暂停状态",
+    "pausedAfterUncertainDelivery": "有消息可能已在重启前发送；仅在确有需要时重试",
+    "retryUncertain": "重试",
+    "deliveryUncertain": "发送状态不确定",
+    "attachmentOnly": "附件消息",
+    "steer": "调整方向",
+    "steerHint": "在当前响应的下一个安全边界加入这条消息",
+    "delete": "删除排队消息",
+    "more": "更多队列操作",
+    "moveToFront": "移到最前",
+    "resumeFailed": "无法继续队列。",
+    "steerFailed": "消息仍保留在队列中。",
+    "deleteFailed": "无法删除排队消息。",
+    "moveFailed": "无法调整队列顺序。"
+  },
   "copyMessage": {
     "copy": "复制消息",
     "copied": "消息已复制",

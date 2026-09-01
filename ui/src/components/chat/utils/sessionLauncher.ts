@@ -31,12 +31,11 @@ type StartSessionOptions = {
   alwaysOnPlanId?: string;
   alwaysOnExecutionToken?: string;
   workspaceCwd?: string;
-  forceStart?: boolean;
 };
 
 type RegenerateLastSessionOptions = Omit<
   StartSessionOptions,
-  'temporarySessionId' | 'alwaysOnPlanId' | 'alwaysOnExecutionToken' | 'forceStart'
+  'temporarySessionId' | 'alwaysOnPlanId' | 'alwaysOnExecutionToken'
 > & {
   requestId: string;
   sessionId: string;
@@ -136,7 +135,6 @@ export function startSessionCommand({
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
-  forceStart,
 }: StartSessionOptions): string {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
@@ -169,7 +167,6 @@ export function startSessionCommand({
         ? { uploadedAttachments }
         : {}),
       ...(workspaceCwd ? { workspaceCwd } : {}),
-      ...(forceStart ? { forceStart: true } : {}),
     },
   });
 

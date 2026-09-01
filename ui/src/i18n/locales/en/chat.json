@@ -8,6 +8,26 @@
     "emptyTitle": "Ask PilotDeck about this project",
     "emptyDescription": "Reference a workspace file with @ when you want it included."
   },
+  "inputQueue": {
+    "label": "Queued messages",
+    "resume": "Continue",
+    "pausedAfterStop": "You stopped the current response, so the queue is paused",
+    "pausedAfterFailure": "The previous response failed, so the queue is paused",
+    "pausedAfterRestart": "Queued messages were restored and are paused",
+    "pausedAfterUncertainDelivery": "A message may already have been sent before restart. Retry only if needed",
+    "retryUncertain": "Retry",
+    "deliveryUncertain": "Delivery status uncertain",
+    "attachmentOnly": "Attachment message",
+    "steer": "Adjust direction",
+    "steerHint": "Add this message at the next safe boundary of the current response",
+    "delete": "Delete queued message",
+    "more": "More queue actions",
+    "moveToFront": "Move to front",
+    "resumeFailed": "Failed to resume the queue.",
+    "steerFailed": "The message remains queued.",
+    "deleteFailed": "Failed to delete the queued message.",
+    "moveFailed": "Failed to reorder the queue."
+  },
   "copyMessage": {
     "copy": "Copy message",
     "copied": "Message copied",

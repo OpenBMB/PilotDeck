@@ -146,6 +146,40 @@ describe("usePilotDeckConfig saves", () => {
     expect(result.current.saving).toBe(false);
   });
 
+  it("serializes model test bindings with a config save", async () => {
+    const writeBodies: string[] = [];
+    mocks.authenticatedFetch.mockImplementation(
+      (url: string, options?: RequestInit) => {
+        if (url === "/api/config" && !options?.method) {
+          return Promise.resolve(response(configResponse("initial")));
+        }
+        if (url === "/api/config" && options?.method === "PUT") {
+          writeBodies.push(String(options.body));
+          return Promise.resolve(response(configResponse("saved")));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    const { result } = renderHook(() => usePilotDeckConfig(), { wrapper: ConfigWrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.setRaw("draft");
+    });
+    let saveResult!: Awaited<ReturnType<typeof result.current.save>>;
+    await act(async () => {
+      saveResult = await result.current.save({ modelTestBindings: [{ testId: "test_123" }] });
+    });
+
+    expect(saveResult).toEqual({ ok: true });
+    expect(JSON.parse(writeBodies[0])).toMatchObject({
+      raw: "draft",
+      baseRevision: "revision-initial",
+      modelTestBindings: [{ testId: "test_123" }],
+    });
+  });
+
   it("tracks the saved disk snapshot without replacing a newer raw draft", async () => {
     const write = deferred<TestResponse>();
     let writeStarted = false;

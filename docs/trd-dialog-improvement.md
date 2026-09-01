@@ -206,6 +206,8 @@ type UploadedAttachmentRef = {
 4. 生效模式写入 turn metadata；会话恢复不继承下一轮临时覆盖。
 
 权限请求继续使用现有 `permission_request` / `permission_decide` 事件和 RPC。
+文本 IM 权限请求按 chat 维度 FIFO 串行处理；下一条提示发送成功前保持锁定，发送失败时保留待发送提示，不允许后续入站消息越过当前请求。
+`permission_decide` 返回 `delivered: false` 表示 request 已失效；渠道应丢弃该 request 并推进队列，不能重复提交同一个 requestId。确认消息和下一条权限提示均须在渠道确认发送完成后再释放锁；turn stream 的结束清理不得抢先清除正在投递的回答状态。
 
 ## 9. 模型目录与会话覆盖
 

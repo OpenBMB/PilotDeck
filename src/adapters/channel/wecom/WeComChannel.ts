@@ -529,7 +529,7 @@ export class WeComChannel implements ChannelAdapter {
       gateway: this.gateway,
       chatId,
       channelKey: "wecom",
-      reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }),
+      reply: (msg) => this.sendReply(chatId, msg, { chatType, replyToMessageId: messageId }).then(() => undefined),
       bindProject: (projectKey) => { this.mapper.bindProject(scopeInput, projectKey); this.onStateChange?.(this.mapper.snapshot()); },
       getProject: () => this.mapper.getProject(scopeInput),
       resetSession: () => { this.mapper.resolve({ ...scopeInput, text: "/new" }); this.onStateChange?.(this.mapper.snapshot()); },
@@ -602,10 +602,26 @@ export class WeComChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(interactionKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(interactionKey, text, this.gateway);
-        if (confirmation) await this.sendReply(chatId, confirmation, { chatType, replyToMessageId: messageId });
+        const answer = await this.permissions.answerWithState(interactionKey, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(chatId, answer.text, { chatType, replyToMessageId: messageId });
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(interactionKey, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(interactionKey, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(interactionKey, answer.answerToken);
+            const delivered = await this.sendReply(chatId, nextPrompt, { chatType, replyToMessageId: messageId });
+            this.permissions.confirmNextPrompt(interactionKey, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(interactionKey, answerToken);
         this.logger?.error?.(`wecom: permission answer error: ${e}`);
       }
       return;
@@ -911,10 +927,10 @@ export class WeComChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(input.interactionKey, input.sessionKey, event);
-          if (questionText) await this.sendReply(input.chatId, questionText, {
+          if (questionText) { const delivered = await this.sendReply(input.chatId, questionText, {
             chatType: input.chatType,
             replyToMessageId: input.replyToMessageId,
-          });
+          }); this.permissions.confirmInitialPrompt(input.interactionKey, delivered, event.requestId); }
           continue;
         }
         await this.sendEventMedia(input.chatId, event, {
@@ -930,7 +946,7 @@ export class WeComChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(input.interactionKey);
-    this.permissions.clear(input.interactionKey);
+    this.permissions.clearAfterTurn(input.interactionKey);
     const finalText = replyText.trim();
     if (!finalText) return;
 
@@ -956,10 +972,10 @@ export class WeComChannel implements ChannelAdapter {
     chatId: string,
     text: string,
     context: { chatType?: "dm" | "group"; replyToMessageId?: string } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!this.ws || this.ws.readyState !== WS_OPEN) {
       this.logger?.warn?.(`wecom: not connected, cannot send to ${chatId}`);
-      return;
+      return false;
     }
 
     const slice = text.slice(0, MAX_MESSAGE_LENGTH);
@@ -974,15 +990,17 @@ export class WeComChannel implements ChannelAdapter {
 
       if (!response) {
         this.logger?.warn?.(`wecom: no reply request id for group chat ${chatId}, cannot send proactive message`);
-        return;
+        return false;
       }
-
       const err = this.responseError(response);
       if (err) {
         this.logger?.error?.(`wecom: sendReply error: ${err}`);
+        return false;
       }
+      return true;
     } catch (e) {
       this.logger?.error?.(`wecom: sendReply failed: ${e}`);
+      return false;
     }
   }
 
@@ -992,8 +1010,10 @@ export class WeComChannel implements ChannelAdapter {
     context: { chatType?: "dm" | "group"; replyToMessageId?: string },
   ): Promise<void> {
     if (event.type !== "tool_call_finished" || !event.images?.length) return;
+    const images = event.images;
+    if (images.length === 0) return;
 
-    for (const [index, image] of event.images.entries()) {
+    for (const [index, image] of images.entries()) {
       try {
         const data = Buffer.from(image.data, "base64");
         const prepared = this.prepareOutboundMediaBytes(

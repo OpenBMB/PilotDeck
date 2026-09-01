@@ -135,7 +135,6 @@ export type DiscoveryRunHistoryEvent = {
 };
 
 export type GateBlockReason =
-  | "disabled"
   | "project_disabled"
   | "project_missing"
   | "dormant_no_signal"

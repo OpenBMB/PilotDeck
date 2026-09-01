@@ -1031,6 +1031,8 @@
           "description": "当前启用的搜索服务。",
           "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
+          "serper": "Serper",
+          "brave": "Brave Search",
           "custom": "自定义"
         },
         "apiKey": {

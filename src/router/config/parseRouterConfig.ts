@@ -10,6 +10,7 @@ import {
   DEFAULT_ZERO_USAGE_MAX_ATTEMPTS,
   LITELLM_ROUTER_MAX_FALLBACKS,
   resolveProviderRef,
+  ROUTER_PRICING_UNITS,
   type RouterAutoOrchestrateConfig,
   type RouterConfig,
   type RouterCustomRouterConfig,
@@ -18,6 +19,7 @@ import {
   type RouterScenariosConfig,
   type RouterStatsConfig,
   type RouterTokenSaverConfig,
+  type RouterPricingUnit,
 } from "./schema.js";
 import type { RouterScenarioType } from "../protocol/decision.js";
 
@@ -269,7 +271,24 @@ function parseTokenSaver(
     return undefined;
   }
 
-  const enabled = typeof raw.enabled === "boolean" ? raw.enabled : true;
+  let enabled = true;
+  if (raw.enabled !== undefined) {
+    if (typeof raw.enabled === "boolean") {
+      enabled = raw.enabled;
+    } else {
+      diagnostics.push({
+        code: "ROUTER_TOKEN_SAVER_ENABLED_INVALID",
+        severity: "fatal",
+        path: "router.tokenSaver.enabled",
+        message: "tokenSaver.enabled must be a boolean.",
+      });
+    }
+  }
+  if (!enabled) {
+    // Disabled Token Saver does not require judge/tier settings. Runtime
+    // paths guard on `enabled` before reading those fields.
+    return { enabled } as RouterTokenSaverConfig;
+  }
   const judgeRef = consumeRef(raw.judge, "router.tokenSaver.judge", modelConfig, diagnostics);
   if (!judgeRef) {
     return undefined;
@@ -461,7 +480,7 @@ function parseAutoOrchestrate(
   if (raw.triggerTiers !== undefined) {
     if (Array.isArray(raw.triggerTiers) && raw.triggerTiers.every((entry) => typeof entry === "string")) {
       triggerTiers = raw.triggerTiers as string[];
-      if (tokenSaver) {
+      if (tokenSaver?.enabled) {
         for (const tier of triggerTiers) {
           if (!tokenSaver.tiers[tier]) {
             diagnostics.push({
@@ -575,7 +594,19 @@ function parseStats(
     });
     return undefined;
   }
-  const enabled = typeof raw.enabled === "boolean" ? raw.enabled : true;
+  let enabled = true;
+  if (raw.enabled !== undefined) {
+    if (typeof raw.enabled === "boolean") {
+      enabled = raw.enabled;
+    } else {
+      diagnostics.push({
+        code: "ROUTER_STATS_ENABLED_INVALID",
+        severity: "fatal",
+        path: "router.stats.enabled",
+        message: "router.stats.enabled must be a boolean.",
+      });
+    }
+  }
   let modelPricing: RouterStatsConfig["modelPricing"];
   if (raw.modelPricing !== undefined) {
     if (!isRecord(raw.modelPricing)) {
@@ -589,22 +620,42 @@ function parseStats(
       modelPricing = {};
       for (const [key, body] of Object.entries(raw.modelPricing)) {
         if (!isRecord(body)) {
+          diagnostics.push({
+            code: "ROUTER_STATS_PRICING_ENTRY_INVALID",
+            severity: "fatal",
+            path: `router.stats.modelPricing.${key}`,
+            message: "modelPricing entries must be objects.",
+          });
           continue;
         }
+        const ref = consumeRef(key, `router.stats.modelPricing.${key}`, modelConfig, diagnostics);
+        if (!ref) continue;
+        const input = pricingNumber(body.input, `router.stats.modelPricing.${key}.input`, diagnostics);
+        const output = pricingNumber(body.output, `router.stats.modelPricing.${key}.output`, diagnostics);
+        const cacheRead = pricingNumber(body.cacheRead, `router.stats.modelPricing.${key}.cacheRead`, diagnostics);
+        let unit: RouterPricingUnit | undefined;
+        if (body.unit !== undefined) {
+          if (typeof body.unit === "string" && (ROUTER_PRICING_UNITS as readonly string[]).includes(body.unit)) {
+            unit = body.unit as RouterPricingUnit;
+          } else {
+            diagnostics.push({
+              code: "ROUTER_STATS_PRICING_UNIT_INVALID",
+              severity: "fatal",
+              path: `router.stats.modelPricing.${key}.unit`,
+              message: "unit must be one of $/百万 Token or ¥/百万 Token.",
+            });
+          }
+        }
         modelPricing[key] = {
-          input: numberOrUndefined(body.input),
-          output: numberOrUndefined(body.output),
-          cacheRead: numberOrUndefined(body.cacheRead),
+          ...(input === undefined ? {} : { input }),
+          ...(output === undefined ? {} : { output }),
+          ...(cacheRead === undefined ? {} : { cacheRead }),
+          ...(unit === undefined ? {} : { unit }),
         };
       }
     }
   }
-  const baselineModel = optionalRef(
-    raw.baselineModel,
-    "router.stats.baselineModel",
-    modelConfig,
-    diagnostics,
-  );
+  const baselineModel = optionalBaselineModel(raw.baselineModel, modelConfig, diagnostics);
   return { enabled, modelPricing, baselineModel };
 }
 
@@ -657,8 +708,38 @@ function optionalRef(
   return consumeRef(raw, path, modelConfig, diagnostics);
 }
 
-function numberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function optionalBaselineModel(
+  raw: unknown,
+  modelConfig: ModelConfig,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterModelRef | undefined {
+  const path = "router.stats.baselineModel";
+  if (raw === undefined) return undefined;
+  if (isRecord(raw) && typeof raw.provider === "string" && typeof raw.model === "string") {
+    const provider = raw.provider.trim();
+    const model = raw.model.trim();
+    if (provider && model) return consumeRef(`${provider}/${model}`, path, modelConfig, diagnostics);
+  }
+  if (typeof raw === "string") return optionalRef(raw, path, modelConfig, diagnostics);
+  diagnostics.push({
+    code: "ROUTER_REF_INVALID",
+    severity: "fatal",
+    path,
+    message: `${path} must be an object with provider and model.`,
+  });
+  return undefined;
+}
+
+function pricingNumber(value: unknown, path: string, diagnostics: RouterConfigDiagnostic[]): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  diagnostics.push({
+    code: "ROUTER_STATS_PRICING_VALUE_INVALID",
+    severity: "fatal",
+    path,
+    message: "pricing values must be finite non-negative numbers.",
+  });
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

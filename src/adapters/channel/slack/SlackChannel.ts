@@ -131,10 +131,27 @@ export class SlackChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-        if (confirmation) await this.sendReply({ channelId, threadTs }, confirmation);
+        const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply({ channelId, threadTs }, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(chatId, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(chatId, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId, answer.answerToken);
+
+            const delivered = await this.sendReply({ channelId, threadTs }, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
         this.logger?.error?.(`slack: permission answer error: ${e}`);
       }
       return;
@@ -184,7 +201,7 @@ export class SlackChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) await this.sendReply(ctx, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(ctx, questionText), event.requestId);
           continue;
         }
         const fragment = renderSlackEvent(event);
@@ -196,7 +213,7 @@ export class SlackChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(chatId);
-    this.permissions.clear(chatId);
+    this.permissions.clearAfterTurn(chatId);
     const finalText = replyText.trim();
     if (finalText) {
       await this.sendReply(ctx, finalText);
@@ -206,8 +223,9 @@ export class SlackChannel implements ChannelAdapter {
   private async sendReply(
     ctx: { channelId: string; threadTs?: string },
     text: string,
-  ): Promise<void> {
-    if (!this.app) return;
+  ): Promise<boolean> {
+    if (!this.app) return false;
+    let delivered = true;
     const formatted = formatSlackMrkdwn(text);
     const chunks = chunkText(formatted, MAX_MESSAGE_LENGTH);
     for (const chunk of chunks) {
@@ -220,8 +238,10 @@ export class SlackChannel implements ChannelAdapter {
         });
       } catch (e) {
         this.logger?.error?.(`slack: postMessage failed: ${e}`);
+        delivered = false;
       }
     }
+    return delivered;
   }
 }
 

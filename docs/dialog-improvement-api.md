@@ -488,6 +488,9 @@ type SetSessionModelRequest = {
 5. 非法组合返回 `INVALID_PERMISSION_MODE`，且不得启动模型调用。
 
 权限确认继续通过 `permission_request` 事件和 `permission_decide` RPC 完成。
+文本 IM 渠道对同一会话内的多个权限请求按 FIFO 顺序逐条发送和确认；每次 `1/2/0` 只决策当前请求，完成后再发送下一条提示。
+下一条提示只有在渠道确认发送成功后才会解除队列锁；发送失败时保留提示和锁，避免用户尚未看到提示就决策后续请求。
+`permission_decide` 返回 `{ delivered: false }` 时，requestId 已未知或所属 turn 已结束；IM helper 丢弃该失效请求并为队列中的下一条请求建立提示，不重试同一个 requestId。确认消息投递期间到达的新权限请求仍按 FIFO 排队，且 turn 完成清理必须等待当前回答的投递确认。
 
 ## 8. 提交对话
 

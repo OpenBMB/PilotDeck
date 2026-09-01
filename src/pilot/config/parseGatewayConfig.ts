@@ -124,6 +124,7 @@ function parseFeishu(raw: unknown): PilotAdaptersConfig["feishu"] {
   }
   const mode = stringField(raw, "connectionMode");
   const domain = stringField(raw, "domainName");
+  const permissionMode = stringField(raw, "permissionMode");
   return {
     enabled: booleanField(raw, "enabled", false),
     appId: stringField(raw, "appId"),
@@ -133,6 +134,7 @@ function parseFeishu(raw: unknown): PilotAdaptersConfig["feishu"] {
     defaultSessionLabel: stringField(raw, "defaultSessionLabel", "general") ?? "general",
     connectionMode: mode === "stream" || mode === "webhook" ? mode : undefined,
     domainName: domain === "feishu" || domain === "lark" ? domain : undefined,
+    permissionMode: permissionMode === "default" || permissionMode === "bypassPermissions" ? permissionMode : undefined,
   };
 }
 

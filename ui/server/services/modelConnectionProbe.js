@@ -185,7 +185,7 @@ function requestFor({ protocol, apiKey, model, image, maxTokens, imageProbe }) {
  */
 // Onboarding needs enough output budget for reasoning models to emit their
 // visible answer. The legacy config endpoint passes its historical 8/16 value.
-export async function probeModelConnection({ protocol, baseUrl, endpointUrl, apiKey = '', model, image = false, maxTokens = 256, signal }) {
+export async function probeModelConnection({ protocol, baseUrl, endpointUrl, apiKey = '', model, image = false, maxTokens = 256, signal, retryPolicy = {} }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', 'Connection timed out.')), TIMEOUT_MS);
   const forwardAbort = () => controller.abort(signal.reason);
@@ -201,7 +201,12 @@ export async function probeModelConnection({ protocol, baseUrl, endpointUrl, api
         method: 'POST', headers: request.headers, body: JSON.stringify(request.body), signal: controller.signal,
       }, {
         signal: controller.signal, fetchImpl: fetch,
-        retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: true },
+        retry: {
+          maxRetries: Number.isInteger(retryPolicy?.maxRetries) ? retryPolicy.maxRetries : 2,
+          baseDelayMs: Number.isInteger(retryPolicy?.baseDelayMs) ? retryPolicy.baseDelayMs : 500,
+          maxDelayMs: Number.isInteger(retryPolicy?.maxDelayMs) ? retryPolicy.maxDelayMs : 5_000,
+          retryOnPost: true,
+        },
       });
       const responseText = await response.text();
       if (response.ok) {

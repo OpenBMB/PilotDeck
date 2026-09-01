@@ -1031,6 +1031,8 @@
           "description": "The active search service.",
           "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
+          "serper": "Serper",
+          "brave": "Brave Search",
           "custom": "Custom"
         },
         "apiKey": {

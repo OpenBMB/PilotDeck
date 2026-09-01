@@ -14,7 +14,7 @@ import type {
  *   tools:
  *     webSearch:
  *       enabled: true
- *       provider: glm                    # glm | tavily | custom
+ *       provider: glm                    # glm | tavily | custom | serper | brave
  *       apiKey: "..."
  *       endpoint: https://api.z.ai/api/paas/v4/web_search
  *
@@ -94,12 +94,22 @@ function parseWebSearch(
     }
   }
 
+  if (result.enabled === false) {
+    return { enabled: false };
+  }
+
   if (raw.provider !== undefined) {
-    if (raw.provider !== "glm" && raw.provider !== "tavily" && raw.provider !== "custom") {
+    if (
+      raw.provider !== "glm"
+      && raw.provider !== "tavily"
+      && raw.provider !== "custom"
+      && raw.provider !== "serper"
+      && raw.provider !== "brave"
+    ) {
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_PROVIDER_INVALID",
         severity: "fatal",
-        message: "tools.webSearch.provider must be \"glm\", \"tavily\", or \"custom\".",
+        message: "tools.webSearch.provider must be \"glm\", \"tavily\", \"custom\", \"serper\", or \"brave\".",
         path: "tools.webSearch.provider",
         recoverable: false,
       });
@@ -132,7 +142,20 @@ function parseWebSearch(
         recoverable: false,
       });
     } else {
-      result.endpoint = raw.endpoint.trim();
+      const endpoint = raw.endpoint.trim();
+      try {
+        const parsed = new URL(endpoint);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
+        result.endpoint = endpoint;
+      } catch {
+        diagnostics.push({
+          code: "TOOLS_WEB_SEARCH_ENDPOINT_INVALID",
+          severity: "fatal",
+          message: "tools.webSearch.endpoint must be an HTTP(S) URL.",
+          path: "tools.webSearch.endpoint",
+          recoverable: false,
+        });
+      }
     }
   }
 

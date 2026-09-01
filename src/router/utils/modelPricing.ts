@@ -2,9 +2,13 @@ export type RouterModelPricing = {
   input?: number;
   output?: number;
   cacheRead?: number;
+  /** Display currency/unit metadata; it does not affect cost arithmetic. */
+  unit?: RouterPricingUnit;
 };
 
 export type RouterModelPricingMap = Record<string, RouterModelPricing>;
+
+export type RouterPricingUnit = "$/百万 Token" | "¥/百万 Token";
 
 // $/million tokens – fallback when neither nativeCost nor user modelPricing is available
 const DEFAULT_PRICING: Array<{ pattern: RegExp; input: number; output: number; cacheRead?: number }> = [

@@ -1,6 +1,10 @@
 import type { ModelConfig } from "../../model/index.js";
 import type { RouterScenarioType } from "../protocol/decision.js";
-import type { RouterModelPricingMap } from "../utils/modelPricing.js";
+import type { RouterModelPricingMap, RouterPricingUnit } from "../utils/modelPricing.js";
+
+export type { RouterPricingUnit } from "../utils/modelPricing.js";
+
+export const ROUTER_PRICING_UNITS: readonly RouterPricingUnit[] = ["$/百万 Token", "¥/百万 Token"];
 
 export type RouterModelRef = {
   /** Original "provider/model" string. */
