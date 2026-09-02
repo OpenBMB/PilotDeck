@@ -26,6 +26,7 @@
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prestart": "node ../scripts/bootstrap-pilotdeck-config.mjs",
     "start": "npm run build && npm run start:built",
     "start:built": "node server/webRuntimeSupervisor.js start-built",
     "postinstall": "node scripts/fix-node-pty.js"
