@@ -148,7 +148,10 @@ export class AttachmentResolver {
         diagnostics: [
           {
             code: "attachment_unsupported",
-            severity: "warning",
+            // Office and archive formats are expected to be available only as
+            // registered paths. They need a document tool or conversion, but
+            // are not an upload failure that belongs in the user's message.
+            severity: BINARY_CONTAINER_EXTENSIONS.has(ext) ? "info" : "warning",
             message: unsupportedFileMessage(absolute, ext),
           },
         ],

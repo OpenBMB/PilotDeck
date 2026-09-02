@@ -75,7 +75,7 @@ test("uploaded text uses its original name when its staged path has no extension
   }
 });
 
-test("registered Office attachments are still described as not directly inspectable", async () => {
+test("registered Office attachments receive conversion guidance without raw diagnostics", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
     const docxPath = join(root, "sample.docx");
@@ -103,6 +103,7 @@ test("registered Office attachments are still described as not directly inspecta
     const text = inputText(capturedInput);
     assert.match(text, /sample\.docx/);
     assert.match(text, /not directly inspectable with read_file/);
+    assert.doesNotMatch(text, /\[Attachment diagnostics\]/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
