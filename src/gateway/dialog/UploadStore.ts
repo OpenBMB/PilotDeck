@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { EventEmitter } from "node:events";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -147,7 +147,10 @@ export class UploadStore {
       throw new DialogGatewayError("UPLOAD_MANIFEST_MISMATCH", `Unexpected or duplicate file part: ${clientFileId}`);
     }
     record = await this.mutate(record, (next) => { next.status = "uploading"; });
-    const destination = join(this.filesDir(record), clientFileId);
+    // Keep the original extension in the staged filename. Downstream tools use
+    // the registered path to distinguish text, Office, and other binary files;
+    // storing only the opaque clientFileId loses that information.
+    const destination = join(this.filesDir(record), `${clientFileId}${extname(expected.relativePath)}`);
     const hash = createHash("sha256");
     let bytes = 0;
     let pendingProgressBytes = 0;

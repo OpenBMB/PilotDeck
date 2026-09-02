@@ -42,6 +42,39 @@ test("registered plain-text attachments with non-whitelisted names are described
   }
 });
 
+test("uploaded text uses its original name when its staged path has no extension", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const stagedPath = join(root, "file-0-opaque-upload-id");
+    await writeFile(stagedPath, "心理学科百年纪念会材料");
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "feishu",
+      message: "根据附件起草讲话稿",
+      attachments: [{
+        type: "file",
+        path: stagedPath,
+        name: "心理学科百年材料.md",
+        metadata: { channelKey: "feishu" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /心理学科百年纪念会材料/);
+    assert.doesNotMatch(text, /File extension \(none\) is not in the inline text whitelist/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("registered Office attachments are still described as not directly inspectable", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {

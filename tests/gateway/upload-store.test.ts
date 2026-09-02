@@ -10,14 +10,15 @@ test("upload store persists, verifies, and resolves streamed attachments", async
   const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-"));
   t.after(() => rm(project, { recursive: true, force: true }));
   const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
-  const created = await store.create(project, [{ clientFileId: "one", name: "one.txt", relativePath: "folder/one.txt", size: 5 }], "retry-key");
-  const duplicate = await store.create(project, [{ clientFileId: "one", name: "one.txt", relativePath: "folder/one.txt", size: 5 }], "retry-key");
+  const created = await store.create(project, [{ clientFileId: "file-0-opaque-upload-id", name: "one.txt", relativePath: "folder/one.txt", size: 5 }], "retry-key");
+  const duplicate = await store.create(project, [{ clientFileId: "file-0-opaque-upload-id", name: "one.txt", relativePath: "folder/one.txt", size: 5 }], "retry-key");
   assert.equal(duplicate.uploadId, created.uploadId);
-  await store.writePart(created.uploadId, "one", Readable.from([Buffer.from("hello")]));
+  await store.writePart(created.uploadId, "file-0-opaque-upload-id", Readable.from([Buffer.from("hello")]));
   const completed = await store.complete(created.uploadId);
   assert.equal(completed.status, "completed");
   assert.equal(completed.uploadedBytes, 5);
   const attachments = await store.verifyAttachment(created.uploadId, project);
+  assert.match(attachments[0]!.path, /file-0-opaque-upload-id\.txt$/);
   assert.equal(await readFile(attachments[0]!.path, "utf8"), "hello");
 });
 

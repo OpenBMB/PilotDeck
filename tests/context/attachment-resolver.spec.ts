@@ -23,3 +23,23 @@ test("Office attachments are reported unsupported before size checks", async () 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("original name classifies text staged under an opaque upload ID", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-resolver-"));
+  try {
+    const filePath = join(root, "file-0-opaque-upload-id");
+    await writeFile(filePath, "心理学科百年纪念会材料");
+
+    const result = await new AttachmentResolver().resolve({
+      type: "file",
+      path: filePath,
+      name: "纪念会材料.md",
+    });
+
+    assert.equal(result.diagnostics.length, 0);
+    assert.equal(result.blocks.length, 1);
+    assert.match(result.blocks[0]?.type === "text" ? result.blocks[0].text : "", /心理学科百年纪念会材料/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
