@@ -439,6 +439,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
           mimeType: attachment.mimeType,
           bytes: attachment.bytes,
           metadata: {
+            channelKey: "web",
             uploadId,
             attachmentId: attachment.attachmentId,
             relativePath: attachment.relativePath,

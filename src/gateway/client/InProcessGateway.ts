@@ -2479,7 +2479,9 @@ function buildAttachmentPathNote(
   }
 
   if (lines.length === 0) return undefined;
-  const guidance = hasDiagnostics || attachments.some(isAudioAttachment)
+  const guidance = hasDiagnostics
+    || attachments.some(isAudioAttachment)
+    || attachments.some((attachment) => !isReadFileInspectableAttachment(attachment))
     ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot, installCommand)
     : "These are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.";
   return {
@@ -2524,7 +2526,9 @@ function isReadFileInspectableAttachment(attachment: ChannelAttachment): boolean
   if (mimeType === "application/json" || mimeType.endsWith("+json")) return true;
 
   const pathOrName = attachment.path || attachment.name || "";
-  const extension = extname(pathOrName).toLowerCase();
+  // Upload staging paths can be opaque IDs for legacy attachments. Prefer the
+  // original name so Office files still receive conversion guidance.
+  const extension = extname(attachment.name ?? "").toLowerCase() || extname(pathOrName).toLowerCase();
   if (extension === ".pdf" || extension === ".ipynb") return true;
   if (READ_FILE_BINARY_ATTACHMENT_EXTENSIONS.has(extension)) return false;
   return true;

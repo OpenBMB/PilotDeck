@@ -42,7 +42,7 @@ test("registered plain-text attachments with non-whitelisted names are described
   }
 });
 
-test("registered Office attachments are still described as not directly inspectable", async () => {
+test("registered Office attachments receive conversion guidance without raw diagnostics", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
     const docxPath = join(root, "sample.docx");
@@ -70,6 +70,42 @@ test("registered Office attachments are still described as not directly inspecta
     const text = inputText(capturedInput);
     assert.match(text, /sample\.docx/);
     assert.match(text, /not directly inspectable with read_file/);
+    assert.doesNotMatch(text, /\[Attachment diagnostics\]/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("registered PDF attachments retain their original name in the history path note", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const pdfPath = join(root, "file-0-opaque-upload-id.pdf");
+    await writeFile(pdfPath, Buffer.from("%PDF-1.7"));
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "web",
+      message: "分析附件",
+      attachments: [{
+        type: "file",
+        path: pdfPath,
+        name: "心理学科百年材料.pdf",
+        mimeType: "application/pdf",
+        metadata: { channelKey: "web" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /\[Registered attachment files in this session:\]/);
+    assert.match(text, /心理学科百年材料\.pdf/);
+    assert.match(text, new RegExp(pdfPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
