@@ -10,7 +10,10 @@
  */
 export class AsyncQueue<T> {
   private readonly buffer: T[] = [];
-  private readonly waiters: Array<{ resolve(value: IteratorResult<T>): void }> = [];
+  private readonly waiters: Array<{
+    resolve(value: IteratorResult<T>): void;
+    reject(error: Error): void;
+  }> = [];
   private closed = false;
   private error: Error | undefined;
 
@@ -33,7 +36,11 @@ export class AsyncQueue<T> {
 
   fail(error: Error): void {
     this.error = error;
-    this.close();
+    this.closed = true;
+    // Reject all pending waiters with the error
+    while (this.waiters.length > 0) {
+      this.waiters.shift()!.reject(error);
+    }
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -50,8 +57,8 @@ export class AsyncQueue<T> {
         if (this.closed) {
           return Promise.resolve({ value: undefined as unknown as T, done: true });
         }
-        return new Promise<IteratorResult<T>>((resolve) => {
-          this.waiters.push({ resolve });
+        return new Promise<IteratorResult<T>>((resolve, reject) => {
+          this.waiters.push({ resolve, reject });
         });
       },
     };
