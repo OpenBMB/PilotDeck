@@ -48,6 +48,15 @@ Follow supplied templates and explicit visual requirements. Without either, use 
 
 For Word-specific behavior such as fields, revisions, comments, pagination, and renderer differences, read [word-specifics.md](references/word-specifics.md) only when relevant.
 
+### Deployment-managed fonts
+
+Fonts are installed by deployment operations, never copied into this Skill or a generated document package. A mounted font is available to the document tools but is not an automatic typography choice.
+
+- If the user or a supplied template requires a named font, verify it before creating or rendering the document: `fc-match "$FONT_NAME"`.
+- Use the actual installed family name reported by `fc-match` or `fc-scan`; configure it explicitly in the DOCX, including the East Asian (`w:eastAsia`) font setting for Chinese text when applicable.
+- Do not silently replace a requested named font with a generic system font. If it is unavailable, report that fact and ask the user for a replacement or a corrected deployment.
+- A document-wide font policy, such as the title/body/heading mapping for Chinese official documents, must come from the user or a supplied template. Do not invent one.
+
 ## Review
 
 Judge the document against the user's requested outcome, not whether a tool ran successfully. Choose evidence according to consequence and uncertainty:

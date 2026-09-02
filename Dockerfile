@@ -47,7 +47,7 @@ WORKDIR /app
 
 # Runtime dependencies:
 # - python3-docx / python3-lxml: Word 格式化与校验脚本
-# - fontconfig: fc-cache、fc-list，检查方正字体是否已加载
+# - fontconfig: discover and cache fonts mounted by deployment operations
 # - libreoffice-writer + poppler-utils: DOCX → PDF → 图片的视觉验收
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
@@ -62,12 +62,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g tsx concurrently
-
-# 已获授权的方正字体。
-# 请在 Docker 构建上下文中准备 docker/fonts/ 目录。
-# 不要把字体文件放进 Skill ZIP。
-COPY docker/fonts/ /usr/local/share/fonts/founder/
-RUN fc-cache -f
 
 # Copy built application from builder.
 COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
