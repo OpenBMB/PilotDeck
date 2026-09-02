@@ -1,7 +1,52 @@
-import { findCatalogProviderById } from "../../../../../shared/catalogProviders";
+import {
+  CATALOG_PROVIDERS,
+  type CatalogModel,
+  type CatalogProvider,
+  DEFAULT_MODEL_TOKEN_LIMITS,
+  findCatalogProviderById,
+} from "../../../../../shared/catalogProviders";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
 import type { ActiveModelCapabilities } from "../types";
+
+type CatalogLookupResult = {
+  provider?: CatalogProvider;
+  model?: CatalogModel;
+};
+
+export function lookupCatalogModel(providerId: string, modelId: string): CatalogLookupResult {
+  const provider = findCatalogProviderById(providerId);
+  const local = findCatalogModel(provider, modelId);
+  if (local) return { provider, model: local };
+
+  const crossProvider = findAcrossCatalog(modelId);
+  if (crossProvider) return { provider: provider ?? crossProvider.provider, model: crossProvider.model };
+
+  const slashIndex = modelId.indexOf("/");
+  if (slashIndex >= 0) {
+    const prefixed = findAcrossCatalog(modelId.slice(slashIndex + 1));
+    if (prefixed) return { provider: provider ?? prefixed.provider, model: prefixed.model };
+  }
+
+  return { provider };
+}
+
+function findCatalogModel(provider: CatalogProvider | undefined, modelId: string): CatalogModel | undefined {
+  return provider?.models.find((model) => model.id === modelId)
+    ?? provider?.models.find((model) => model.aliases?.includes(modelId));
+}
+
+function findAcrossCatalog(modelId: string): { provider: CatalogProvider; model: CatalogModel } | undefined {
+  for (const provider of CATALOG_PROVIDERS) {
+    const model = provider.models.find((entry) => entry.id === modelId);
+    if (model) return { provider, model };
+  }
+  for (const provider of CATALOG_PROVIDERS) {
+    const model = provider.models.find((entry) => entry.aliases?.includes(modelId));
+    if (model) return { provider, model };
+  }
+  return undefined;
+}
 
 export function splitModelRef(
   ref: string | undefined,
@@ -141,8 +186,11 @@ export function activeModelCapabilities(
       maxOutputTokensOverride = v;
     }
   }
-  const catalogProvider = findCatalogProviderById(providerId);
-  const catalogModel = catalogProvider?.models.find((m) => m.id === modelId);
+  const catalogLookup = lookupCatalogModel(providerId, modelId);
+  const catalogProvider = catalogLookup.provider;
+  const catalogModel = catalogLookup.model;
+  const protocol = provider.protocol ?? catalogProvider?.protocol ?? "openai";
+  const protocolDefaults = DEFAULT_MODEL_TOKEN_LIMITS[protocol];
   return {
     ref,
     providerId,
@@ -151,5 +199,9 @@ export function activeModelCapabilities(
     catalogProvider,
     multimodalInput,
     maxOutputTokensOverride,
+    defaultMaxContextTokens:
+      catalogModel?.maxContextTokens ?? protocolDefaults.maxContextTokens,
+    defaultMaxOutputTokens:
+      catalogModel?.maxOutputTokens ?? protocolDefaults.maxOutputTokens,
   };
 }

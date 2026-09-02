@@ -2308,7 +2308,7 @@ export class LlmMemoryExtractor {
       url = `${selection.baseUrl}/v1/messages`;
       body = {
         model: selection.model,
-        max_tokens: 65536,
+        max_tokens: 32768,
         temperature: 0,
         system: input.systemPrompt,
         messages: [

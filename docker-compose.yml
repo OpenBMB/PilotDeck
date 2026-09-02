@@ -8,6 +8,9 @@ services:
       # Persist all PilotDeck state: generated config, auth DB, permissions,
       # sessions/projects, memory, skills/plugins, and router stats.
       - pilotdeck-home:/root/.pilotdeck
+      # Fonts are deployment-managed assets: do not put them in Git, the image,
+      # or Skill ZIPs. The required variable prevents an unconfigured startup.
+      - ${PILOTDECK_FONTS_DIR:?请设置 PILOTDECK_FONTS_DIR}:/usr/local/share/fonts/founder:ro
       # Optional: mount an existing config file instead of generating one from env vars.
       # Create the host file first, then uncomment this line.
       # - ${PILOTDECK_CONFIG:-${HOME}/.pilotdeck/pilotdeck.yaml}:/root/.pilotdeck/pilotdeck.yaml:ro

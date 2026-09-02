@@ -10,6 +10,7 @@ import type {
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import {
   getUnpersistedRealtimeTurnMessages,
+  isRealtimeMessageRepresentedOnServer,
   type SessionStore,
   type NormalizedMessage,
 } from '../../../stores/useSessionStore';
@@ -187,6 +188,21 @@ function hasRenderedVolatileReplayBlock(
   return messages.some((message) => isRenderedVolatileBlockCandidate(block, message));
 }
 
+function hasRenderedNonVolatileReplayMessage(
+  message: LatestChatMessage,
+  state: ActiveTurnReplayState,
+): boolean {
+  const renderedMessages = [
+    ...(state.realtimeMessages || []),
+    ...(state.serverMessages || []),
+  ];
+  if (renderedMessages.length === 0) return false;
+  return isRealtimeMessageRepresentedOnServer(
+    message as NormalizedMessage,
+    renderedMessages,
+  );
+}
+
 export function getActiveTurnReplayMessagesToApply(
   activeTurnMessages: LatestChatMessage[],
   state: ActiveTurnReplayState = {},
@@ -237,7 +253,9 @@ export function getActiveTurnReplayMessagesToApply(
     }
 
     flushBlock();
-    output.push(message);
+    if (!hasRenderedNonVolatileReplayMessage(message, state)) {
+      output.push(message);
+    }
   }
 
   flushBlock();
@@ -433,6 +451,56 @@ export function useChatRealtimeHandlers({
           return;
         }
 
+        case 'session-turn-replaced': {
+          const replacedSessionId = resolveSessionId(msg);
+          const replacedTurnId = typeof msg.replacedTurnId === 'string'
+            ? msg.replacedTurnId.trim()
+            : '';
+          const replacementRunId = typeof msg.replacementRunId === 'string'
+            ? msg.replacementRunId.trim()
+            : '';
+          if (!replacedSessionId || !replacedTurnId || !replacementRunId) return;
+
+          clearAccumulators();
+          sessionStore.setActiveSession(replacedSessionId);
+          sessionStore.replaceLastTurn?.(
+            replacedSessionId,
+            replacedTurnId,
+            {
+              id: `local_${replacementRunId}`,
+              sessionId: replacedSessionId,
+              timestamp: new Date().toISOString(),
+              provider,
+              kind: 'text',
+              role: 'user',
+              content: typeof msg.content === 'string' ? msg.content : '',
+              images: Array.isArray(msg.images)
+                ? msg.images.flatMap((image) => {
+                    if (typeof image === 'string') return image ? [image] : [];
+                    return image && typeof image.data === 'string' ? [image.data] : [];
+                  })
+                : [],
+              attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
+              runId: replacementRunId,
+              turnId: replacementRunId,
+            },
+          );
+          setPendingPermissionRequests((previous) => (
+            previous.filter((request) => request.sessionId !== replacedSessionId)
+          ));
+          if (isSessionForActiveView(replacedSessionId, activeViewSessionId)) {
+            updateActiveRunId(replacementRunId);
+            setSessionRuntimeState('running');
+            setIsLoading(true);
+            setCanAbortSession(true);
+            setIsAborting(false);
+            setClaudeStatus(null);
+            setPilotDeckStatus(null);
+          }
+          onSessionProcessing?.(replacedSessionId);
+          return;
+        }
+
         case 'session-status': {
           const statusSessionId = msg.sessionId;
           if (!statusSessionId) return;
@@ -614,6 +682,13 @@ export function useChatRealtimeHandlers({
     }
 
     if (msg.kind === 'text' && msg.role === 'user') {
+      // A mid-turn steer is a real user-message boundary inside the same
+      // runId. Close the preceding assistant blocks so the next model call
+      // starts fresh instead of appending into the old streaming rows.
+      if (msg.isSteer) {
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
+        sessionStore.finalizeStreaming(sid, msgRunId);
+      }
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
       }

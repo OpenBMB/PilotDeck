@@ -18,7 +18,7 @@ describe('attachment path notes', () => {
       '',
       '',
       marker,
-      '- 报告.xlsx: .tmp/chat-attachments/run/1-报告.xlsx',
+      '- attachment-json: {"name":"报告.xlsx","path":".tmp/chat-attachments/run/1-报告.xlsx"}',
       '[End files attached by user]',
       '',
     ].join('\n'));
@@ -39,6 +39,109 @@ describe('attachment path notes', () => {
       name: '卫星信息20240802.xlsx',
       path: filePath,
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }]);
+  });
+
+  it('hides PDF runtime metadata after refresh and restores the attachment', () => {
+    const filePath = '/workspace/政研室/.tmp/chat-uploads/run/files/file-0-report.pdf';
+    const parsed = parseUserAttachmentNote([
+      '分析一下这个文件内容，总结给我',
+      `[PDF attachment: ${filePath}, 54858 bytes, estimated 1 pages. Use read_file on this registered attachment path to inspect it.]`,
+      '[Registered attachment files in this session:]',
+      `- 年度报告.pdf: ${filePath}`,
+    ].join('\n'));
+
+    expect(parsed).toEqual({
+      content: '分析一下这个文件内容，总结给我',
+      attachments: [{
+        name: '年度报告.pdf',
+        path: filePath,
+        mimeType: 'application/pdf',
+      }],
+    });
+  });
+
+  it('hides standalone Office diagnostics after refresh and restores the attachment', () => {
+    const filePath = '/workspace/政研室/.tmp/chat-uploads/run/files/file-0-report.docx';
+    const parsed = parseUserAttachmentNote([
+      '分析一下这个文件内容，总结给我',
+      '[Attachment diagnostics]',
+      `- Attachment ${filePath} has Office/archive/binary extension .docx; it was registered as a file path but not shown inline.`,
+    ].join('\n'));
+
+    expect(parsed).toEqual({
+      content: '分析一下这个文件内容，总结给我',
+      attachments: [{
+        name: 'file-0-report.docx',
+        path: filePath,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }],
+    });
+  });
+
+  it('preserves a colon in the attachment filename', () => {
+    const filePath = '/tmp/1-report__final.pdf';
+    const parsed = parseUserAttachmentNote([
+      'Review this report',
+      '',
+      marker,
+      `- report: final.pdf: ${filePath}`,
+      '[End files attached by user]',
+    ].join('\n'));
+
+    expect(parsed.attachments).toEqual([{
+      name: 'report: final.pdf',
+      path: filePath,
+      mimeType: 'application/pdf',
+    }]);
+  });
+
+  it('preserves a colon and space in a legacy attachment path', () => {
+    const parsed = parseUserAttachmentNote([
+      'Review this report',
+      '',
+      marker,
+      '- report.pdf: /tmp/Project: Docs/report.pdf',
+      '[End files attached by user]',
+    ].join('\n'));
+
+    expect(parsed.attachments).toEqual([{
+      name: 'report.pdf',
+      path: '/tmp/Project: Docs/report.pdf',
+      mimeType: 'application/pdf',
+    }]);
+  });
+
+  it('round trips colons in both attachment names and paths', () => {
+    const parsed = parseUserAttachmentNote([
+      'Review this report',
+      buildAttachmentPathNote([{
+        name: 'report: final.pdf',
+        path: '/tmp/project: docs/report: final.pdf',
+      }]),
+    ].join(''));
+
+    expect(parsed).toEqual({
+      content: 'Review this report',
+      attachments: [{
+        name: 'report: final.pdf',
+        path: '/tmp/project: docs/report: final.pdf',
+        mimeType: 'application/pdf',
+      }],
+    });
+  });
+
+  it('round trips an end marker substring inside a JSON attachment path', () => {
+    const filePath = '/tmp/[End files attached by user]/report.pdf';
+    const parsed = parseUserAttachmentNote([
+      'Review this report',
+      buildAttachmentPathNote([{ name: 'report.pdf', path: filePath }]),
+    ].join(''));
+
+    expect(parsed.attachments).toEqual([{
+      name: 'report.pdf',
+      path: filePath,
+      mimeType: 'application/pdf',
     }]);
   });
 

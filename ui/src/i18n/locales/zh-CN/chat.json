@@ -8,12 +8,41 @@
     "emptyTitle": "就这个项目询问 PilotDeck",
     "emptyDescription": "需要把文件加入上下文时，请用 @ 引用工作区文件。"
   },
+  "inputQueue": {
+    "label": "排队消息",
+    "resume": "继续",
+    "pausedAfterStop": "由于你中断了当前响应，队列已暂停",
+    "pausedAfterFailure": "上一轮响应失败，队列已暂停",
+    "pausedAfterRestart": "已恢复排队消息，队列处于暂停状态",
+    "pausedAfterUncertainDelivery": "有消息可能已在重启前发送；仅在确有需要时重试",
+    "retryUncertain": "重试",
+    "deliveryUncertain": "发送状态不确定",
+    "attachmentOnly": "附件消息",
+    "steer": "调整方向",
+    "steerHint": "在当前响应的下一个安全边界加入这条消息",
+    "delete": "删除排队消息",
+    "more": "更多队列操作",
+    "moveToFront": "移到最前",
+    "resumeFailed": "无法继续队列。",
+    "steerFailed": "消息仍保留在队列中。",
+    "deleteFailed": "无法删除排队消息。",
+    "moveFailed": "无法调整队列顺序。"
+  },
   "copyMessage": {
     "copy": "复制消息",
     "copied": "消息已复制",
     "selectFormat": "选择复制格式",
     "copyAsMarkdown": "复制为 Markdown",
     "copyAsText": "复制为纯文本"
+  },
+  "edit": {
+    "message": "修改消息",
+    "cancel": "取消",
+    "send": "发送",
+    "failed": "无法修改这条消息。",
+    "cancelled": "已取消修改消息。",
+    "missingTarget": "最后一条消息已无法修改。",
+    "timeout": "修改请求超时，请重试。"
   },
   "messageTypes": {
     "user": "U",
@@ -57,7 +86,8 @@
   "working": {
     "default": "处理中",
     "processing": "处理中",
-    "thinking": "连接中...",
+    "thinking": "思考中...",
+    "waitingForModel": "等待模型响应...",
     "callingModel": "调用模型中...",
     "executingTool": "执行工具中...",
     "generating": "正在生成回复",
@@ -158,7 +188,8 @@
   "thinking": {
     "title": "思考中...",
     "completed": "思考过程",
-    "emoji": "💭 思考中..."
+    "emoji": "💭 思考中...",
+    "liveContentLabel": "实时思考内容"
   },
   "json": {
     "response": "JSON 响应"
@@ -262,6 +293,16 @@
       "agentDescription": "直接处理并执行任务",
       "planDescription": "先产出计划，确认后再执行",
       "askDescription": "仅回答问题，不修改文件"
+    },
+    "models": {
+      "select": "选择模型",
+      "change": "选择模型",
+      "search": "搜索模型",
+      "empty": "没有匹配的模型",
+      "advanced": "高级设置",
+      "reasoning": "推理强度",
+      "speed": "速度",
+      "temperature": "温度"
     }
   },
   "documentReferences": {
@@ -269,6 +310,13 @@
     "pages": "第 {{pages}} 页",
     "pageUnknown": "页码未知",
     "remove": "删除引用"
+  },
+  "replyQuotes": {
+    "addToChat": "添加到PilotDeck对话",
+    "chip": "{{count}}条标签",
+    "remove": "删除这条标签",
+    "removeAll": "删除全部标签",
+    "panelLabel": "已引用的回复内容"
   },
   "commandMenu": {
     "empty": "暂无可用命令",
@@ -460,6 +508,7 @@
         "auth": "请在“设置 → 模型 Provider”中更新 {{provider}} 的 API Key 或访问权限，或运行 pilotdeck setup。",
         "modelNotFound": "请在“设置 → 模型 Provider”中为 {{provider}} 选择有效模型，或在 pilotdeck.yaml 的 model.providers.<id>.models 下添加该模型。",
         "timeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 timeoutMs，或检查本机网络、代理和 provider 状态。",
+        "streamIdleTimeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 streamIdleTimeoutMs，或检查本机网络、代理和 provider 状态。",
         "rateLimit": "请等待 provider 限流窗口恢复、减少并发请求，或在设置中切换 provider/model。",
         "billing": "请在 provider API 侧充值或恢复 quota，或在设置中切换 provider/model。",
         "contextOverflow": "请运行 /compact、开启新会话、移除大型附件，或在设置中切换到更大上下文模型。",

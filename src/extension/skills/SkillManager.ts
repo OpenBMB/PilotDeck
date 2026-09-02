@@ -168,25 +168,59 @@ export class SkillManager {
     const userSlugs = new Set(userSkills.map((skill) => skill.slug));
     const projectSlugs = new Set(projectSkills.map((skill) => skill.slug));
 
-    return {
-      builtin: builtinSkills.map((skill) => ({
+    const builtin = builtinSkills.map((skill) => ({
         ...skill,
         ...(projectSlugs.has(skill.slug)
           ? { overriddenBy: "project" as const }
           : userSlugs.has(skill.slug)
             ? { overriddenBy: "user" as const }
             : {}),
-      })),
-      user: userSkills.map((skill) => ({
+      }));
+    const user = userSkills.map((skill) => ({
         ...skill,
         ...(builtinSlugs.has(skill.slug) ? { overridesBuiltin: true } : {}),
         ...(projectSlugs.has(skill.slug) ? { overriddenBy: "project" as const } : {}),
-      })),
-      project: projectSkills.map((skill) => ({
+      }));
+    const project = projectSkills.map((skill) => ({
         ...skill,
         ...(builtinSlugs.has(skill.slug) ? { overridesBuiltin: true } : {}),
-      })),
+      }));
+    const scope = input.scope ?? "all";
+    if (!(["builtin", "user", "project", "plugin", "all"] as const).includes(scope)) {
+      throw new SkillManagerError("invalid_input", `Invalid skill scope: ${String(scope)}.`);
+    }
+    const query = (input.query ?? "").trim().toLocaleLowerCase();
+    if (query.length > 256) throw new SkillManagerError("invalid_input", "query must not exceed 256 characters.");
+    const limit = input.limit ?? 10;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new SkillManagerError("invalid_input", "limit must be an integer between 1 and 50.");
+    }
+    const signature = Buffer.from(JSON.stringify({ projectKey: effectiveProject, query, scope })).toString("base64url");
+    const offset = decodeListCursor(input.cursor, signature);
+    const selected = scope === "builtin" ? builtin
+      : scope === "user" ? user
+        : scope === "project" ? project
+          : scope === "plugin" ? []
+            : [...builtin, ...user, ...project];
+    const searchable = selected
+      .map((skill) => ({ ...skill, command: `/${skill.slug}`, matches: skillMatches(skill, query) }))
+      .filter((skill) => !query || skill.matches.length > 0)
+      .sort((left, right) => left.command.localeCompare(right.command));
+    const items = searchable.slice(offset, offset + limit).map((item) => ({
+      ...item,
+      ...(item.matches.length > 0 ? { matches: item.matches } : {}),
+    }));
+    const nextOffset = offset + items.length;
+
+    return {
+      builtin,
+      user,
+      project,
       projectPath: effectiveProject,
+      items,
+      ...(nextOffset < searchable.length
+        ? { nextCursor: Buffer.from(JSON.stringify({ offset: nextOffset, signature })).toString("base64url") }
+        : {}),
     };
   }
 
@@ -849,6 +883,49 @@ function extOf(name: string): string {
   const idx = name.lastIndexOf(".");
   if (idx <= 0) return "";
   return name.slice(idx);
+}
+
+function skillMatches(
+  skill: SkillSummary,
+  query: string,
+): Array<{ field: "name" | "description"; start: number; end: number }> {
+  if (!query) return [];
+  const matches: Array<{ field: "name" | "description"; start: number; end: number }> = [];
+  appendSkillMatches(matches, "name", skill.name, query);
+  appendSkillMatches(matches, "description", skill.description, query);
+  return matches;
+}
+
+function appendSkillMatches(
+  output: Array<{ field: "name" | "description"; start: number; end: number }>,
+  field: "name" | "description",
+  value: string,
+  query: string,
+): void {
+  const searchable = value.toLocaleLowerCase();
+  let offset = 0;
+  while (offset <= searchable.length - query.length) {
+    const start = searchable.indexOf(query, offset);
+    if (start < 0) break;
+    output.push({ field, start, end: start + query.length });
+    offset = start + Math.max(query.length, 1);
+  }
+}
+
+function decodeListCursor(value: string | undefined, signature: string): number {
+  if (!value) return 0;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
+      offset?: unknown;
+      signature?: unknown;
+    };
+    if (!Number.isInteger(parsed.offset) || (parsed.offset as number) < 0 || parsed.signature !== signature) {
+      throw new Error("invalid cursor");
+    }
+    return parsed.offset as number;
+  } catch {
+    throw new SkillManagerError("invalid_input", "cursor is invalid or does not match the query.");
+  }
 }
 
 function validateFromManifest(

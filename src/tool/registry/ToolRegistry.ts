@@ -1,9 +1,24 @@
 import type { CanonicalToolSchema } from "../../model/index.js";
-import type { PilotDeckToolDefinition } from "../protocol/types.js";
+import type {
+  PilotDeckToolAvailability,
+  PilotDeckToolDefinition,
+} from "../protocol/types.js";
+
+export type ToolUnavailableDiagnostic = {
+  toolName: string;
+  code: Exclude<PilotDeckToolAvailability, { ok: true }>["code"];
+  reason: string;
+};
+
+export type ToolUnavailableDiagnosticEntry = {
+  diagnostic: ToolUnavailableDiagnostic;
+  aliases: string[];
+};
 
 export class ToolRegistry {
   private readonly toolsByName = new Map<string, PilotDeckToolDefinition>();
   private readonly aliases = new Map<string, string>();
+  private readonly unavailable = new Map<string, ToolUnavailableDiagnostic>();
 
   register(tool: PilotDeckToolDefinition): void {
     if (this.toolsByName.has(tool.name)) {
@@ -24,8 +39,10 @@ export class ToolRegistry {
     }
 
     this.toolsByName.set(tool.name, tool);
+    this.unavailable.delete(tool.name);
     for (const alias of tool.aliases ?? []) {
       this.aliases.set(alias, tool.name);
+      this.unavailable.delete(alias);
     }
   }
 
@@ -40,6 +57,39 @@ export class ToolRegistry {
 
   list(): PilotDeckToolDefinition[] {
     return [...this.toolsByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  markUnavailable(diagnostic: ToolUnavailableDiagnostic, aliases: readonly string[] = []): void {
+    this.unavailable.set(diagnostic.toolName, diagnostic);
+    for (const alias of aliases) {
+      this.unavailable.set(alias, diagnostic);
+    }
+  }
+
+  getUnavailable(name: string): ToolUnavailableDiagnostic | undefined {
+    const realName = this.aliases.get(name) ?? name;
+    return this.unavailable.get(realName) ?? this.unavailable.get(name);
+  }
+
+  listUnavailable(): ToolUnavailableDiagnostic[] {
+    return this.listUnavailableEntries().map(({ diagnostic }) => diagnostic);
+  }
+
+  listUnavailableEntries(): ToolUnavailableDiagnosticEntry[] {
+    const entries = new Map<string, ToolUnavailableDiagnosticEntry>();
+    for (const [name, diagnostic] of this.unavailable) {
+      let entry = entries.get(diagnostic.toolName);
+      if (!entry) {
+        entry = { diagnostic, aliases: [] };
+        entries.set(diagnostic.toolName, entry);
+      }
+      if (name !== diagnostic.toolName && !entry.aliases.includes(name)) {
+        entry.aliases.push(name);
+      }
+    }
+    return [...entries.values()]
+      .map((entry) => ({ ...entry, aliases: [...entry.aliases].sort() }))
+      .sort((a, b) => a.diagnostic.toolName.localeCompare(b.diagnostic.toolName));
   }
 
   toCanonicalSchemas(): CanonicalToolSchema[] {
@@ -63,6 +113,9 @@ export class ToolRegistry {
     for (const [alias, realName] of this.aliases) {
       copy.aliases.set(alias, realName);
     }
+    for (const [name, diagnostic] of this.unavailable) {
+      copy.unavailable.set(name, diagnostic);
+    }
     return copy;
   }
 
@@ -75,8 +128,10 @@ export class ToolRegistry {
     if (!tool) return false;
     for (const alias of tool.aliases ?? []) {
       this.aliases.delete(alias);
+      this.unavailable.delete(alias);
     }
     this.toolsByName.delete(name);
+    this.unavailable.delete(name);
     return true;
   }
 
@@ -93,8 +148,10 @@ export class ToolRegistry {
     }
     for (const alias of existing.aliases ?? []) {
       this.aliases.delete(alias);
+      this.unavailable.delete(alias);
     }
     this.toolsByName.set(tool.name, tool);
+    this.unavailable.delete(tool.name);
     for (const alias of tool.aliases ?? []) {
       this.aliases.set(alias, tool.name);
     }

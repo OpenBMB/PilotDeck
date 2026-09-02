@@ -20,6 +20,11 @@ export function isWorkspaceFileMentionRequest(
 
 const normalizeSlashes = (value: string) => value.replace(/\\/g, '/');
 
+const normalizePathSyntax = (value: string) => {
+  const normalized = normalizeSlashes(value);
+  return /^\/[A-Za-z]:\//.test(normalized) ? normalized.slice(1) : normalized;
+};
+
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function hasWorkspaceFileMention(input: string, relativePath: string): boolean {
@@ -27,8 +32,10 @@ export function hasWorkspaceFileMention(input: string, relativePath: string): bo
   return new RegExp(`(?:^|\\s)${escapeRegExp(relativePath)}(?=$|\\s)`).test(input);
 }
 
-const isAbsolutePath = (value: string) =>
-  value.startsWith('/') || /^[A-Za-z]:\//.test(value) || value.startsWith('//');
+const isWindowsPath = (value: string) =>
+  /^[A-Za-z]:\//.test(value) || value.startsWith('//');
+
+const isAbsolutePath = (value: string) => value.startsWith('/') || isWindowsPath(value);
 
 const trimTrailingSlashes = (value: string) => {
   if (value === '/' || /^[A-Za-z]:\/$/.test(value)) return value;
@@ -47,8 +54,8 @@ export function getWorkspaceRelativePath(
   filePath: string,
   workspaceRoot: string,
 ): string | null {
-  const normalizedFilePath = trimTrailingSlashes(normalizeSlashes(filePath));
-  const normalizedRoot = trimTrailingSlashes(normalizeSlashes(workspaceRoot));
+  const normalizedFilePath = trimTrailingSlashes(normalizePathSyntax(filePath));
+  const normalizedRoot = trimTrailingSlashes(normalizePathSyntax(workspaceRoot));
 
   if (!normalizedFilePath || !normalizedRoot) return null;
 
@@ -56,7 +63,7 @@ export function getWorkspaceRelativePath(
     return normalizeRelativePath(normalizedFilePath);
   }
 
-  const caseInsensitive = /^[A-Za-z]:\//.test(normalizedRoot);
+  const caseInsensitive = isWindowsPath(normalizedRoot);
   const comparableFilePath = caseInsensitive ? normalizedFilePath.toLowerCase() : normalizedFilePath;
   const comparableRoot = caseInsensitive ? normalizedRoot.toLowerCase() : normalizedRoot;
 
@@ -65,6 +72,47 @@ export function getWorkspaceRelativePath(
 
   const relativePath = normalizedFilePath.slice(rootPrefix.length);
   return normalizeRelativePath(relativePath);
+}
+
+export function canonicalizeWorkspaceFilePath(
+  filePath: string,
+  workspaceRoot = '',
+): string {
+  const normalizedFilePath = trimTrailingSlashes(normalizePathSyntax(filePath.trim()));
+  if (!normalizedFilePath) return '';
+
+  if (workspaceRoot) {
+    const relativePath = getWorkspaceRelativePath(normalizedFilePath, workspaceRoot);
+    if (relativePath) return relativePath;
+  }
+
+  if (!isAbsolutePath(normalizedFilePath)) {
+    return normalizeRelativePath(normalizedFilePath) || normalizedFilePath;
+  }
+
+  return normalizedFilePath;
+}
+
+export function getWorkspaceFileIdentity(
+  filePath: string,
+  workspaceRoot = '',
+): string {
+  const canonicalPath = canonicalizeWorkspaceFilePath(filePath, workspaceRoot);
+  const normalizedRoot = normalizePathSyntax(workspaceRoot);
+  const caseInsensitive = isWindowsPath(normalizedRoot) || isWindowsPath(canonicalPath);
+  return caseInsensitive ? canonicalPath.toLowerCase() : canonicalPath;
+}
+
+export function isWorkspacePathAtOrBelow(
+  candidatePath: string,
+  parentPath: string,
+  workspaceRoot = '',
+): boolean {
+  const candidateIdentity = getWorkspaceFileIdentity(candidatePath, workspaceRoot);
+  const parentIdentity = getWorkspaceFileIdentity(parentPath, workspaceRoot);
+  if (!candidateIdentity || !parentIdentity) return false;
+  return candidateIdentity === parentIdentity
+    || candidateIdentity.startsWith(`${parentIdentity}/`);
 }
 
 export type FileMentionInsertion = {

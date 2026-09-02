@@ -43,6 +43,98 @@ test("unknown custom models default to text-only input", () => {
   assert.deepEqual(config.providers.custom.models["text-model"].multimodal.input, ["text"]);
 });
 
+test("custom models default to thinking support and opt into speed explicitly", () => {
+  const defaulted = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        models: { "default-model": {} },
+      },
+    },
+  });
+  assert.equal(defaulted.providers.custom.models["default-model"].capabilities.supportsThinking, true);
+  assert.equal(defaulted.providers.custom.models["default-model"].capabilities.supportsSpeed, undefined);
+
+  const configured = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        models: {
+          "speed-model": { capabilities: { supportsThinking: false, supportsSpeed: true } },
+        },
+      },
+    },
+  });
+  assert.equal(configured.providers.custom.models["speed-model"].capabilities.supportsThinking, false);
+  assert.equal(configured.providers.custom.models["speed-model"].capabilities.supportsSpeed, true);
+});
+
+test("official openai and anthropic catalog models default to supporting speed", () => {
+  const config = parseModelConfig({
+    providers: {
+      openai: { models: { "gpt-4o-mini": {} } },
+      anthropic: { models: { "claude-sonnet-4-5-20250929": {} } },
+    },
+  }, { env: { OPENAI_API_KEY: "k", ANTHROPIC_API_KEY: "k" } });
+
+  assert.equal(config.providers.openai.models["gpt-4o-mini"].capabilities.supportsSpeed, true);
+  assert.equal(config.providers.anthropic.models["claude-sonnet-4-5-20250929"].capabilities.supportsSpeed, true);
+});
+
+test("all protocol defaults enable thinking for undeclared models", () => {
+  for (const protocol of ["openai", "anthropic", "google"] as const) {
+    const config = parseModelConfig({
+      providers: {
+        [`custom-${protocol}`]: {
+          protocol,
+          url: "https://example.test/v1",
+          apiKey: "test-key",
+          models: { "undeclared-model": {} },
+        },
+      },
+    });
+    assert.equal(
+      config.providers[`custom-${protocol}`].models["undeclared-model"].capabilities.supportsThinking,
+      true,
+      protocol,
+    );
+  }
+});
+
+test("custom providers require an explicit protocol-compatible speed mapping", () => {
+  const config = parseModelConfig({
+    providers: {
+      custom: {
+        protocol: "openai",
+        url: "https://example.test/v1",
+        apiKey: "test-key",
+        speedMapping: "openai_service_tier",
+        models: { "speed-model": {} },
+      },
+    },
+  });
+  assert.equal(config.providers.custom.speedMapping, "openai_service_tier");
+
+  assert.throws(
+    () => parseModelConfig({
+      providers: {
+        custom: {
+          protocol: "openai",
+          url: "https://example.test/v1",
+          apiKey: "test-key",
+          speedMapping: "anthropic_speed",
+          models: { "speed-model": {} },
+        },
+      },
+    }),
+    (error: unknown) => (error as { code?: string }).code === "invalid_config_value",
+  );
+});
+
 test("custom providers do not infer image input from a cross-provider model name", () => {
   const config = parseModelConfig({
     providers: {

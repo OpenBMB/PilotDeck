@@ -7,8 +7,10 @@ import {
     DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB,
     getChatAttachmentLimits,
     readPilotDeckConfigFile,
+    resolveModel,
     sanitizeProviderCredentials,
     validatePilotDeckConfig,
+    writePilotDeckConfig,
 } from './pilotdeckConfig.js';
 
 const tempDirs = [];
@@ -271,6 +273,141 @@ describe('validatePilotDeckConfig gateway validation', () => {
         expect(validation.errors).toEqual([]);
     });
 
+    it('accepts null model definitions as empty objects', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'ollama/qwen3:0.6b' },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': null,
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+        expect(validation.errors).toEqual([]);
+        expect(validation.config.model.providers.ollama.models['qwen3:0.6b']).toBeNull();
+        expect(resolveModel(validation.config, 'ollama/qwen3:0.6b').def).toEqual({});
+    });
+
+    it('still treats absent model keys as missing', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'ollama/missing-model' },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': null,
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'agent.model="ollama/missing-model" doesn\'t resolve to a configured provider/model',
+        );
+    });
+
+    it('still rejects non-object model definitions', () => {
+        expect(() => resolveModel({
+            agent: { model: 'ollama/qwen3:0.6b' },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': 'invalid',
+                        },
+                    },
+                },
+            },
+        }, 'ollama/qwen3:0.6b')).toThrow(
+            'Model definition for provider "ollama" must be an object: qwen3:0.6b',
+        );
+    });
+
+    it('warns instead of failing when agent.subagents.default references a missing provider', () => {
+        const validation = validatePilotDeckConfig({
+            agent: {
+                model: 'ollama/qwen3:0.6b',
+                subagents: { default: 'missing/qwen3:0.6b' },
+            },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+        expect(validation.warnings).toContain(
+            'agent.subagents.default="missing/qwen3:0.6b" doesn\'t resolve to a configured provider/model; subagents will inherit agent.model',
+        );
+    });
+
+    it('warns instead of failing when agent.subagents.default references a missing model', () => {
+        const validation = validatePilotDeckConfig({
+            agent: {
+                model: 'ollama/qwen3:0.6b',
+                subagents: { default: 'ollama/missing-model' },
+            },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(true);
+        expect(validation.warnings).toContain(
+            'agent.subagents.default="ollama/missing-model" doesn\'t resolve to a configured provider/model; subagents will inherit agent.model',
+        );
+    });
+
+    it('rejects agent.model when the configured model is missing', () => {
+        const validation = validatePilotDeckConfig({
+            agent: { model: 'ollama/missing-model' },
+            model: {
+                providers: {
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'agent.model="ollama/missing-model" doesn\'t resolve to a configured provider/model',
+        );
+    });
+
     it('removes blank Ollama apiKeys during sanitization', () => {
         const config = sanitizeProviderCredentials({
             model: {
@@ -289,5 +426,39 @@ describe('validatePilotDeckConfig gateway validation', () => {
 
         expect(config.model.providers.ollama).not.toHaveProperty('apiKey');
         expect(config.model.providers.ollama.url).toBe('http://localhost:11434/v1');
+    });
+
+    it('resets a placeholder subagent default when writing config', async () => {
+        const configPath = useTempConfig(null);
+
+        const result = await writePilotDeckConfig({
+            agent: {
+                model: 'ollama/qwen3:0.6b',
+                subagents: { default: '_placeholder/_placeholder' },
+            },
+            model: {
+                providers: {
+                    _placeholder: {
+                        protocol: 'openai',
+                        url: 'https://example.invalid/v1',
+                        apiKey: 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE',
+                        models: {
+                            _placeholder: {},
+                        },
+                    },
+                    ollama: {
+                        protocol: 'openai',
+                        url: 'http://localhost:11434/v1',
+                        models: {
+                            'qwen3:0.6b': {},
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(result.config.agent.subagents.default).toBe('inherit');
+        expect(result.config.model.providers).not.toHaveProperty('_placeholder');
+        expect(result.configPath).toBe(configPath);
     });
 });

@@ -537,6 +537,7 @@ for (`$i = 0; `$i -lt `$args.Count; `$i++) {
 }
 
 `$env:PILOTDECK_CONFIG_PATH = `$ConfigPath
+`$env:PILOTDECK_RESTART_MODE = 'start-built'
 `$env:SERVER_PORT = [string](Find-FreePort `$ServerPort)
 `$env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort `$GatewayPort)
 `$env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:`$env:PILOTDECK_GATEWAY_PORT/ws"
@@ -566,6 +567,7 @@ Ensure-ClawHubCli
 Write-CmdLauncher
 
 $env:PILOTDECK_CONFIG_PATH = $ConfigPath
+$env:PILOTDECK_RESTART_MODE = 'start-built'
 $env:SERVER_PORT = [string](Find-FreePort $ServerPort)
 $env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort $GatewayPort)
 $env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:$env:PILOTDECK_GATEWAY_PORT/ws"

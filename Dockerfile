@@ -45,13 +45,25 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# Runtime system dependencies + tsx/concurrently for process management
+# Runtime dependencies:
+# - python3-docx / python3-lxml: Word 格式化与校验脚本
+# - fontconfig: discover and cache fonts mounted by deployment operations
+# - libreoffice-writer + poppler-utils: DOCX → PDF → 图片的视觉验收
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ripgrep git curl procps \
+    python3 \
+    python3-docx \
+    python3-lxml \
+    fontconfig \
+    libreoffice-writer \
+    poppler-utils \
+    ripgrep \
+    git \
+    curl \
+    procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g tsx concurrently
 
-# Copy built application from builder
+# Copy built application from builder.
 COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
 COPY --from=builder /build/tsconfig.json ./
 COPY --from=builder /build/node_modules/ node_modules/

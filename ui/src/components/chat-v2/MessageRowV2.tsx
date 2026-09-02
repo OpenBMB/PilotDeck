@@ -1,8 +1,9 @@
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, ChevronRight, Copy, GitBranch, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { isImeEnterEvent } from '../../utils/ime.js';
 import { cn } from '../../lib/utils.js';
 import type { Project, SessionProvider } from '../../types/app';
 import {
@@ -14,6 +15,7 @@ import {
   normalizeContentReference,
   type ContentReference,
 } from '../../types/contentReference';
+import { partitionContentReferences } from '../../types/assistantReplyReference';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -30,9 +32,32 @@ import { processSummaryToTrace, type ProcessAttachment } from './processGrouping
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
+import ReplyQuoteChip from './ReplyQuoteChip';
 import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
 
 type DiffLine = { type: string; content: string; lineNum: number };
+
+function formatMessageTime(timestamp: ChatMessage['timestamp']): {
+  dateTime: string;
+  label: string;
+  title: string;
+} | null {
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    dateTime: date.toISOString(),
+    label: new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(date),
+    title: new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date),
+  };
+}
 
 function attachmentToDocumentReference(attachment: ChatAttachment): ContentReference | null {
   const structured = normalizeContentReference(attachment.contentReference);
@@ -86,6 +111,8 @@ type MessageRowV2Props = {
   forkCarriedMessageCount?: number;
   forkDisabled?: boolean;
   showAssistantActions?: boolean;
+  canEdit?: boolean;
+  onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 };
 
 // Fall back to the heavy legacy renderer for anything that isn't a vanilla
@@ -130,6 +157,8 @@ function MessageRowV2({
   forkCarriedMessageCount = 0,
   forkDisabled = false,
   showAssistantActions,
+  canEdit = false,
+  onRegenerate,
 }: MessageRowV2Props) {
   const { t } = useTranslation('chat');
   const delegate = useMemo(() => shouldDelegate(message), [message]);
@@ -157,6 +186,10 @@ function MessageRowV2({
       .filter((reference): reference is ContentReference => Boolean(reference)),
     [messageAttachments],
   );
+  const { fileReferences: fileDocumentReferences, replyQuotes: replyQuoteReferences } = useMemo(
+    () => partitionContentReferences(documentReferenceAttachments),
+    [documentReferenceAttachments],
+  );
   const referenceImageNames = useMemo(
     () => new Set(documentReferenceAttachments
       .filter((reference) => reference.selectionMode === 'region')
@@ -182,6 +215,17 @@ function MessageRowV2({
     [messageAttachments],
   );
   const [userImageLightbox, setUserImageLightbox] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (!isEditing || !editTextareaRef.current) return;
+    const textarea = editTextareaRef.current;
+    textarea.style.height = '0px';
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 84), 360)}px`;
+  }, [editDraft, isEditing]);
   const hasForkUnsupportedContent =
     Boolean(message.forkUnsupportedContent) ||
     messageImages.length > 0 ||
@@ -286,38 +330,58 @@ function MessageRowV2({
   const isUser = message.type === 'user';
   const isError = message.type === 'error';
 
-  // User: right-aligned grey bubble.
+  // User: right-aligned bubble.
   if (isUser) {
+    const messageTime = formatMessageTime(message.timestamp);
     const lightboxImages: LightboxImage[] = messageImages.map((image) => ({
       data: image.data,
       name: image.name,
       mimeType: image.mimeType,
     }));
+    const submitEdit = async () => {
+      const editedText = editDraft.trim();
+      if (!onRegenerate || !editedText || isEditSubmitting) return;
+      setIsEditSubmitting(true);
+      setEditError(null);
+      try {
+        await onRegenerate(message, editedText);
+        setIsEditing(false);
+      } catch (error) {
+        setEditError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsEditSubmitting(false);
+      }
+    };
+    const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (isImeEnterEvent(event)) return;
+
+      if (event.key === 'Escape' && !isEditSubmitting) {
+        event.preventDefault();
+        setIsEditing(false);
+        setEditError(null);
+        return;
+      }
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        void submitEdit();
+      }
+    };
     return withProcessRows(
-      <div className="group/user-msg flex w-full items-end justify-end gap-1.5">
-        {onFork ? (
-          <ForkMessageButton
-            carriedMessageCount={forkCarriedMessageCount}
-            disabled={forkDisabled || isSessionRunning || !message.entryId || hasForkUnsupportedContent}
-            disabledReason={hasForkUnsupportedContent
-              ? String(message.forkUnsupportedReason || t('fork.unsupportedAttachments', {
-                  defaultValue: 'Forking messages with attachments or media is not supported yet',
-                }))
-              : undefined}
-            onFork={() => {
-              if (message.entryId && !hasForkUnsupportedContent) onFork(message, forkCarriedMessageCount);
-            }}
-            t={t}
-          />
-        ) : null}
-        <div className="min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100">
+      <div className="group/user-msg flex w-full flex-col items-end">
+        <div className={cn(
+          'min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
+          isEditing && 'w-full',
+        )}>
           {message.isStreaming && !formattedContent ? (
             <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
           ) : (
             <>
-              {documentReferenceAttachments.length > 0 ? (
+              {fileDocumentReferences.length > 0 || replyQuoteReferences.length > 0 ? (
                 <div className={formattedContent || fileAttachments.length > 0 ? 'mb-2 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
-                  {documentReferenceAttachments.map((reference) => (
+                  {replyQuoteReferences.length > 0 ? (
+                    <ReplyQuoteChip quotes={replyQuoteReferences} />
+                  ) : null}
+                  {fileDocumentReferences.map((reference) => (
                     <DocumentReferenceChip
                       key={reference.id}
                       reference={reference}
@@ -359,13 +423,97 @@ function MessageRowV2({
                   ))}
                 </div>
               ) : null}
-              {formattedContent ? (
+              {isEditing ? (
+                <div className="mt-1">
+                  <textarea
+                    ref={editTextareaRef}
+                    value={editDraft}
+                    onChange={(event) => setEditDraft(event.target.value)}
+                    onKeyDown={handleEditKeyDown}
+                    disabled={isEditSubmitting}
+                    autoFocus
+                    aria-label={t('edit.message', { defaultValue: 'Edit message' })}
+                    className="block min-h-[84px] w-full resize-none bg-transparent text-[14px] leading-relaxed outline-none placeholder:text-neutral-400 disabled:opacity-60 dark:text-neutral-100"
+                  />
+                  {editError ? <p className="mt-1 text-xs text-red-500">{editError}</p> : null}
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditError(null);
+                      }}
+                      disabled={isEditSubmitting}
+                      className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      {t('edit.cancel', { defaultValue: 'Cancel' })}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitEdit()}
+                      disabled={!editDraft.trim() || isEditSubmitting}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+                    >
+                      {isEditSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {t('edit.send', { defaultValue: 'Send' })}
+                    </button>
+                  </div>
+                </div>
+              ) : formattedContent ? (
                 <Markdown className="prose prose-sm prose-neutral min-w-0 max-w-none break-words [overflow-wrap:anywhere] dark:prose-invert prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0" projectName={selectedProject?.name}
           onFileOpen={onFileOpen}>{formattedContent}</Markdown>
               ) : null}
             </>
           )}
         </div>
+        {!isEditing ? (
+          <div
+            data-testid="user-message-actions"
+            className="pointer-events-none mt-1 flex h-6 items-center justify-end gap-1 pr-1 opacity-0 transition-opacity duration-150 group-hover/user-msg:pointer-events-auto group-hover/user-msg:opacity-100 group-focus-within/user-msg:pointer-events-auto group-focus-within/user-msg:opacity-100"
+          >
+            {messageTime ? (
+              <time
+                dateTime={messageTime.dateTime}
+                title={messageTime.title}
+                className="mr-1 text-xs tabular-nums text-neutral-400 dark:text-neutral-500"
+              >
+                {messageTime.label}
+              </time>
+            ) : null}
+            <CopyMarkdownButton content={String(message.content ?? '')} t={t} />
+            {canEdit && onRegenerate ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditDraft(String(message.content ?? ''));
+                  setEditError(null);
+                  setIsEditing(true);
+                }}
+                className="rounded p-1 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
+                aria-label={t('edit.message', { defaultValue: 'Edit message' })}
+                title={t('edit.message', { defaultValue: 'Edit message' })}
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            ) : null}
+            {onFork ? (
+              <ForkMessageButton
+                carriedMessageCount={forkCarriedMessageCount}
+                disabled={forkDisabled || isSessionRunning || !message.entryId || hasForkUnsupportedContent}
+                disabledReason={hasForkUnsupportedContent
+                  ? String(message.forkUnsupportedReason || t('fork.unsupportedAttachments', {
+                      defaultValue: 'Forking messages with attachments or media is not supported yet',
+                    }))
+                  : undefined}
+                onFork={() => {
+                  if (message.entryId && !hasForkUnsupportedContent) onFork(message, forkCarriedMessageCount);
+                }}
+                t={t}
+                variant="action-row"
+              />
+            ) : null}
+          </div>
+        ) : null}
         {userImageLightbox !== null && lightboxImages.length > 0 ? (
           <ImageLightbox
             images={lightboxImages}
@@ -401,7 +549,7 @@ function MessageRowV2({
       return withProcessRows(
         <div className="min-w-0 text-[14px] leading-relaxed">
           <details className="group" open={(isThinkingStreaming ? thinkingDisplayText.length > 12 : false) || undefined}>
-            <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
+            <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
               {isThinkingStreaming
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
                 : <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />}
@@ -430,7 +578,7 @@ function MessageRowV2({
     return withProcessRows(
       <div className="min-w-0 text-[14px] leading-relaxed">
         <details className="group">
-          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+          <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
             <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
             <span>{t('thinking.completed', { defaultValue: 'Thought process' })}</span>
           </summary>
@@ -447,19 +595,31 @@ function MessageRowV2({
   const hasAssistantProse = contentDisplayText.trim().length > 0;
   const showStreamingCursor = Boolean(message.isStreaming && !contentDisplayText);
   const resolvedShowAssistantActions = showAssistantActions ?? true;
+  const assistantMessageTime = resolvedShowAssistantActions
+    ? formatMessageTime(message.timestamp)
+    : null;
   const showAssistantCopyButton = resolvedShowAssistantActions && hasAssistantProse;
   const canRenderAssistantForkButton = Boolean(resolvedShowAssistantActions && onFork && hasAssistantProse);
-  const shouldRenderAssistantActions = showAssistantCopyButton || canRenderAssistantForkButton;
+  const shouldRenderAssistantActions = Boolean(
+    assistantMessageTime || showAssistantCopyButton || canRenderAssistantForkButton,
+  );
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
   const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0) ? (
-    <div className="min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
+    <div className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
-        <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
-        onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        <div
+          {...(!message.isStreaming ? {
+            'data-assistant-quote-source': '',
+            'data-assistant-quote-message-id': message.id || message.entryId || message.turnId || '',
+          } : {})}
+        >
+          <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
+          onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        </div>
       )}
       {assistantArtifacts.length > 0 ? (
         <AgentFileArtifactGroup
@@ -469,7 +629,20 @@ function MessageRowV2({
         />
       ) : null}
       {shouldRenderAssistantActions ? (
-        <div className="mt-1.5 flex justify-end gap-1">
+        <div
+          data-testid="assistant-message-actions"
+          className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100"
+        >
+          {assistantMessageTime ? (
+            <time
+              dateTime={assistantMessageTime.dateTime}
+              title={assistantMessageTime.title}
+              className="mr-1 text-xs tabular-nums text-neutral-400 dark:text-neutral-500"
+            >
+              {assistantMessageTime.label}
+            </time>
+          ) : null}
+          {showAssistantCopyButton ? <CopyMarkdownButton content={formattedContent} t={t} /> : null}
           {canRenderAssistantForkButton ? (
             <ForkMessageButton
               carriedMessageCount={forkCarriedMessageCount}
@@ -481,7 +654,6 @@ function MessageRowV2({
               variant="action-row"
             />
           ) : null}
-          {showAssistantCopyButton ? <CopyMarkdownButton content={formattedContent} /> : null}
         </div>
       ) : null}
     </div>
@@ -494,7 +666,7 @@ function MessageRowV2({
   return withProcessRows(assistantBody);
 }
 
-function CopyMarkdownButton({ content }: { content: string }) {
+function CopyMarkdownButton({ content, t }: { content: string; t: TFunction }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -511,8 +683,8 @@ function CopyMarkdownButton({ content }: { content: string }) {
       type="button"
       onClick={handleClick}
       className="rounded p-1 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
-      aria-label={copied ? 'Copied' : 'Copy'}
-      title={copied ? 'Copied' : 'Copy'}
+      aria-label={copied ? t('copyMessage.copied', { defaultValue: 'Copied' }) : t('copyMessage.copy', { defaultValue: 'Copy message' })}
+      title={copied ? t('copyMessage.copied', { defaultValue: 'Copied' }) : t('copyMessage.copy', { defaultValue: 'Copy message' })}
     >
       {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={2} />}
     </button>

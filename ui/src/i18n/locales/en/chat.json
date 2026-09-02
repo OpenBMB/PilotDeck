@@ -8,12 +8,41 @@
     "emptyTitle": "Ask PilotDeck about this project",
     "emptyDescription": "Reference a workspace file with @ when you want it included."
   },
+  "inputQueue": {
+    "label": "Queued messages",
+    "resume": "Continue",
+    "pausedAfterStop": "You stopped the current response, so the queue is paused",
+    "pausedAfterFailure": "The previous response failed, so the queue is paused",
+    "pausedAfterRestart": "Queued messages were restored and are paused",
+    "pausedAfterUncertainDelivery": "A message may already have been sent before restart. Retry only if needed",
+    "retryUncertain": "Retry",
+    "deliveryUncertain": "Delivery status uncertain",
+    "attachmentOnly": "Attachment message",
+    "steer": "Adjust direction",
+    "steerHint": "Add this message at the next safe boundary of the current response",
+    "delete": "Delete queued message",
+    "more": "More queue actions",
+    "moveToFront": "Move to front",
+    "resumeFailed": "Failed to resume the queue.",
+    "steerFailed": "The message remains queued.",
+    "deleteFailed": "Failed to delete the queued message.",
+    "moveFailed": "Failed to reorder the queue."
+  },
   "copyMessage": {
     "copy": "Copy message",
     "copied": "Message copied",
     "selectFormat": "Select copy format",
     "copyAsMarkdown": "Copy as markdown",
     "copyAsText": "Copy as text"
+  },
+  "edit": {
+    "message": "Edit message",
+    "cancel": "Cancel",
+    "send": "Send",
+    "failed": "Could not edit this message.",
+    "cancelled": "Message edit was cancelled.",
+    "missingTarget": "The last message can no longer be edited.",
+    "timeout": "Editing timed out. Please try again."
   },
   "messageTypes": {
     "user": "U",
@@ -57,7 +86,8 @@
   "working": {
     "default": "Working",
     "processing": "Processing",
-    "thinking": "thinking",
+    "thinking": "Thinking...",
+    "waitingForModel": "Waiting for model response...",
     "callingModel": "Calling model...",
     "executingTool": "Running tool...",
     "generating": "Generating response",
@@ -158,7 +188,8 @@
   "thinking": {
     "title": "Thinking...",
     "completed": "Thought process",
-    "emoji": "💭 Thinking..."
+    "emoji": "💭 Thinking...",
+    "liveContentLabel": "Live thinking content"
   },
   "json": {
     "response": "JSON Response"
@@ -279,6 +310,16 @@
       "agentDescription": "Directly process and execute the task",
       "planDescription": "Generate a plan first, then execute after confirmation",
       "askDescription": "Only answers questions without modifying files"
+    },
+    "models": {
+      "select": "Select model",
+      "change": "Select model",
+      "search": "Search models",
+      "empty": "No matching models",
+      "advanced": "Advanced settings",
+      "reasoning": "Reasoning",
+      "speed": "Speed",
+      "temperature": "Temperature"
     }
   },
   "documentReferences": {
@@ -286,6 +327,15 @@
     "pages": "p. {{pages}}",
     "pageUnknown": "page unknown",
     "remove": "Remove reference"
+  },
+  "replyQuotes": {
+    "addToChat": "Add to PilotDeck chat",
+    "chip": "{{count}} quotes",
+    "chip_one": "{{count}} quote",
+    "chip_other": "{{count}} quotes",
+    "remove": "Remove this quote",
+    "removeAll": "Remove all quotes",
+    "panelLabel": "Quoted assistant replies"
   },
   "commandMenu": {
     "empty": "No commands available",
@@ -472,6 +522,7 @@
         "auth": "Update the API key or access permissions for {{provider}} in Settings → Model Provider, or run pilotdeck setup.",
         "modelNotFound": "Choose a valid model for {{provider}} in Settings → Model Provider, or add it under model.providers.<id>.models in pilotdeck.yaml.",
         "timeout": "Increase timeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
+        "streamIdleTimeout": "Increase streamIdleTimeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
         "rateLimit": "Wait for the provider rate limit to reset, reduce concurrency, or switch to another provider/model in Settings.",
         "billing": "Top up billing/quota on the provider API side, or switch to another provider/model in Settings.",
         "contextOverflow": "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.",

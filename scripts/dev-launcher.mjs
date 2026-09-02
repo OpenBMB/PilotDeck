@@ -119,13 +119,14 @@ async function main() {
     PILOTDECK_GATEWAY_PORT: String(gateway.port),
     PILOTDECK_GATEWAY_URL:
       process.env.PILOTDECK_GATEWAY_URL ?? `ws://127.0.0.1:${gateway.port}/ws`,
+    PILOTDECK_RESTART_MODE: 'dev',
     VITE_PORT: String(vite.port),
   };
 
   const child = spawn(
-    'npm',
-    ['--workspace', 'ui', 'run', 'dev:concurrent'],
-    { cwd: repoRoot, env, stdio: 'inherit', shell: true },
+    process.execPath,
+    ['ui/server/webRuntimeSupervisor.js', 'dev'],
+    { cwd: repoRoot, env, stdio: 'inherit' },
   );
 
   const forward = (signal) => {

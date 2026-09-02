@@ -1,6 +1,6 @@
 import { agentError, normalizeAgentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
-import type { AgentInput } from "../protocol/input.js";
+import type { AgentInput, AgentModelOverride } from "../protocol/input.js";
 import type { AgentRunMode } from "../protocol/input.js";
 import type { AgentTurnResult } from "../protocol/result.js";
 import type { AgentLoop, AgentLoopSeedState } from "../loop/AgentLoop.js";
@@ -11,9 +11,11 @@ import type { LifecycleRuntime } from "../../lifecycle/index.js";
 import type { PermissionMode, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentStatusMessageInput, AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
+import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import { FileArtifactCollector, type FileArtifact } from "../../session/artifacts/index.js";
+import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 
 export type TurnRunnerOptions = {
   sessionId: string;
@@ -33,6 +35,11 @@ export type TurnRunnerOptions = {
   abortSignal?: AbortSignal;
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
   syntheticMessages?: CanonicalMessage[];
+  modelOverride?: AgentModelOverride;
+  openSteerMailbox?: () => void;
+  drainSteerMessages?: () => AgentSteerMessage[];
+  drainOrCloseSteerMailbox?: () => { messages: AgentSteerMessage[]; closed: boolean };
+  closeSteerMailbox?: () => AgentSteerMessage[];
 };
 
 export type TurnRunnerResult = {
@@ -50,6 +57,7 @@ export type TurnRunnerRuntimeContext = {
 export type TurnRunnerRuntimeReloadSnapshot = {
   runtimeContext: TurnRunnerRuntimeContext;
   transcriptWriterState?: AgentTranscriptWriterState;
+  metadata?: SessionMetadataValue;
 };
 
 export type TurnRunnerDependencies = {
@@ -66,6 +74,8 @@ type PendingSessionTitle = {
   /** Settles when the title generation finishes (success, failure, or timeout). */
   promise: Promise<void>;
 };
+
+const SESSION_LISTING_PROMPT_MAX_CHARS = 1_200;
 
 export class TurnRunner {
   private pendingSessionTitle: PendingSessionTitle | undefined;
@@ -93,6 +103,25 @@ export class TurnRunner {
           now: this.now,
         }).catch(() => undefined);
     try {
+      const unacknowledgedSteers = new Map<string, AgentSteerMessage>();
+      const trackDrainedSteers = (steers: AgentSteerMessage[]): AgentSteerMessage[] => {
+        for (const steer of steers) unacknowledgedSteers.set(steer.itemId, steer);
+        return steers;
+      };
+      const closeSteerMailbox = (): AgentEvent[] => {
+        const unapplied = new Map(unacknowledgedSteers);
+        for (const steer of options.closeSteerMailbox?.() ?? []) {
+          unapplied.set(steer.itemId, steer);
+        }
+        unacknowledgedSteers.clear();
+        return [...unapplied.values()].map((steer) => ({
+          type: "steer_unapplied" as const,
+          sessionId: options.sessionId,
+          turnId: options.turnId,
+          itemId: steer.itemId,
+          reason: "turn_ended" as const,
+        }));
+      };
       let artifactsFinished = false;
       const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
         if (!artifactCollector || artifactsFinished) return [];
@@ -132,6 +161,7 @@ export class TurnRunner {
         return { result, messages: options.messages };
       }
 
+      await this.persistListingPromptMetadata(options, accepted.messages);
       yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
 
       const prompt = inputToPromptText(options.input);
@@ -160,6 +190,7 @@ export class TurnRunner {
         }
         const status = await this.recordTurnFailureStatus(options, error);
         yield this.toAgentStatusEvent(options, status);
+        await this.finalizeSessionMetadata(options);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
@@ -181,12 +212,13 @@ export class TurnRunner {
         }
         const status = await this.recordTurnFailureStatus(options, error);
         yield this.toAgentStatusEvent(options, status);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
       }
 
+      options.openSteerMailbox?.();
       try {
         let hasRecordedVisibleFailureStatus = false;
         const generator = this.loop.run({
@@ -201,7 +233,22 @@ export class TurnRunner {
           allowPlanModeTools: options.allowPlanModeTools,
           canPrompt: options.canPrompt,
           permissionRules: options.permissionRules,
+          modelOverride: options.modelOverride,
           abortSignal: options.abortSignal,
+          drainSteerMessages: options.drainSteerMessages
+            ? () => trackDrainedSteers(options.drainSteerMessages?.() ?? [])
+            : undefined,
+          drainOrCloseSteerMailbox: options.drainOrCloseSteerMailbox
+            ? () => {
+                const drained = options.drainOrCloseSteerMailbox?.() ?? { messages: [], closed: true };
+                return { ...drained, messages: trackDrainedSteers(drained.messages) };
+              }
+            : undefined,
+          onSteerApplied: (itemId) => {
+            const applied = unacknowledgedSteers.get(itemId);
+            if (applied) messages.push(applied.message);
+            unacknowledgedSteers.delete(itemId);
+          },
           onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
           onAgentStatusMessage: async (status) => {
             if (isVisibleFailureStatus(status)) {
@@ -243,17 +290,18 @@ export class TurnRunner {
           yield event;
         }
 
+        const unappliedSteers = closeSteerMailbox();
         const artifacts = await finishArtifacts(runResult.result);
         if (artifacts.length > 0) {
           yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
-        if (turnCompletedEvent) {
-          yield turnCompletedEvent;
-        }
+        for (const event of unappliedSteers) yield event;
+        if (turnCompletedEvent) yield turnCompletedEvent;
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         return runResult;
       } catch (error) {
+        const unappliedSteers = closeSteerMailbox();
         const normalized = normalizeAgentError(error);
         const result = this.createErrorResult(options, normalized);
         const artifacts = await finishArtifacts(result);
@@ -263,12 +311,14 @@ export class TurnRunner {
         await Promise.resolve(this.transcript.recordTurnResult(options.sessionId, options.turnId, result)).catch(() => {});
         const status = await this.recordTurnFailureStatus(options, normalized);
         yield this.toAgentStatusEvent(options, status);
-        await this.flushReadySessionTitle(options, sessionTitle);
+        await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
+        for (const event of unappliedSteers) yield event;
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
       }
     } finally {
+      options.closeSteerMailbox?.();
       artifactCollector?.dispose();
     }
   }
@@ -277,6 +327,7 @@ export class TurnRunner {
     return {
       runtimeContext: { ...this.runtimeContext },
       transcriptWriterState: this.transcript.snapshotState?.(),
+      metadata: this.turnDependencies.metadataStore?.getSnapshot(),
     };
   }
 
@@ -418,6 +469,33 @@ export class TurnRunner {
       return;
     }
     await metadataStore.saveAiTitle(pending.title, options.turnId);
+  }
+
+  private async finalizeSessionMetadata(
+    options: TurnRunnerOptions,
+    pending?: PendingSessionTitle,
+  ): Promise<void> {
+    await this.flushReadySessionTitle(options, pending);
+    await this.turnDependencies.metadataStore?.reappendTail(options.turnId).catch(() => {});
+  }
+
+  private async persistListingPromptMetadata(
+    options: TurnRunnerOptions,
+    acceptedMessages: CanonicalMessage[],
+  ): Promise<void> {
+    const metadataStore = this.turnDependencies.metadataStore;
+    if (!metadataStore) return;
+
+    const snapshot = metadataStore.getSnapshot();
+    const prompt = allHumanText(acceptedMessages);
+    if (!prompt) return;
+
+    const boundedPrompt = prompt.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
+    await metadataStore.record(options.turnId, {
+      ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
+      lastPrompt: boundedPrompt,
+      updatedAt: this.now().toISOString(),
+    }).catch(() => {});
   }
 }
 

@@ -1,5 +1,3 @@
-import type { LucideIcon } from 'lucide-react';
-
 export type FileTreeViewMode = 'simple' | 'compact' | 'detailed';
 
 export type FileTreeItemType = 'file' | 'directory';
@@ -21,10 +19,3 @@ export interface FileTreeImageSelection {
   projectPath?: string;
   projectName: string;
 }
-
-export interface FileIconData {
-  icon: LucideIcon;
-  color: string;
-}
-
-export type FileIconMap = Record<string, FileIconData>;

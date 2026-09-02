@@ -12,6 +12,13 @@ import {
 
 const ATTACHMENT_NOTE_MARKER = '[Files attached by user and available for reading in the project:]';
 const ATTACHMENT_NOTE_END_MARKER = '[End files attached by user]';
+const ATTACHMENT_NOTE_JSON_PREFIX = '- attachment-json: ';
+const GENERATED_ATTACHMENT_BLOCK_MARKERS = [
+  '[Attachment diagnostics]',
+  '[Registered attachment files in this session:]',
+  '[PDF attachment:',
+  '<attachment ',
+];
 // Older transcripts have no end marker. Their next canonical text block may
 // be concatenated directly onto the final path during history projection.
 const LEGACY_ATTACHMENT_NOTE_TERMINATORS = [
@@ -30,8 +37,68 @@ type AttachmentPathNoteFile = {
 export function buildAttachmentPathNote(files: AttachmentPathNoteFile[]): string {
   if (files.length === 0) return '';
 
-  const lines = files.map((file) => `- ${file.name}: ${file.path}`);
+  const lines = files.map((file) => (
+    `${ATTACHMENT_NOTE_JSON_PREFIX}${JSON.stringify({ name: file.name, path: file.path })}`
+  ));
   return `\n\n${ATTACHMENT_NOTE_MARKER}\n${lines.join('\n')}\n${ATTACHMENT_NOTE_END_MARKER}\n`;
+}
+
+function parseAttachmentPathNoteLine(line: string): AttachmentPathNoteFile | null {
+  if (line.startsWith(ATTACHMENT_NOTE_JSON_PREFIX)) {
+    try {
+      const parsed = JSON.parse(line.slice(ATTACHMENT_NOTE_JSON_PREFIX.length)) as {
+        name?: unknown;
+        path?: unknown;
+      };
+      if (
+        typeof parsed.name !== 'string'
+        || typeof parsed.path !== 'string'
+        || !parsed.name.trim()
+        || !parsed.path.trim()
+      ) {
+        return null;
+      }
+      return { name: parsed.name, path: parsed.path };
+    } catch {
+      return null;
+    }
+  }
+
+  if (!line.startsWith('- ')) return null;
+  const separator = findLegacyAttachmentSeparator(line);
+  if (separator < 0) return null;
+
+  const name = line.slice(2, separator).trim();
+  const filePath = line.slice(separator + 2).trim();
+  return name && filePath ? { name, path: filePath } : null;
+}
+
+function isLikelyLegacyAttachmentPath(value: string): boolean {
+  return value.startsWith('/')
+    || value.startsWith('\\')
+    || /^[A-Za-z]:[\\/]/.test(value)
+    || value.startsWith('./')
+    || value.startsWith('../');
+}
+
+function findLegacyAttachmentSeparator(line: string): number {
+  const firstSeparator = line.indexOf(': ', 2);
+  if (firstSeparator < 0) return -1;
+
+  // Legacy notes originally used the first delimiter. Prefer it whenever it
+  // clearly starts a path, then allow colon-containing filenames on common
+  // absolute-path records.
+  if (isLikelyLegacyAttachmentPath(line.slice(firstSeparator + 2).trim())) {
+    return firstSeparator;
+  }
+  for (let separator = line.indexOf(': ', firstSeparator + 2);
+    separator >= 0;
+    separator = line.indexOf(': ', separator + 2)) {
+    if (isLikelyLegacyAttachmentPath(line.slice(separator + 2).trim())) {
+      return separator;
+    }
+  }
+  return firstSeparator;
 }
 
 function sliceBeforeFirstMarker(value: string, markers: string[]): string {
@@ -71,6 +138,81 @@ function isImageAttachmentMime(mimeType: string | undefined): boolean {
   return Boolean(mimeType?.toLowerCase().startsWith('image/'));
 }
 
+function toChatAttachment(file: AttachmentPathNoteFile): ChatAttachment {
+  return {
+    name: file.name,
+    path: file.path,
+    mimeType: inferAttachmentMimeType(file.name, file.path),
+  };
+}
+
+function attachmentFromGeneratedPath(path: string, name?: string): AttachmentPathNoteFile | null {
+  const filePath = path.trim();
+  if (!isLikelyLegacyAttachmentPath(filePath)) return null;
+
+  const fallbackName = filePath.split(/[\\/]/).pop()?.trim();
+  const fileName = name?.trim() || fallbackName;
+  return fileName ? { name: fileName, path: filePath } : null;
+}
+
+function appendUniqueAttachment(
+  attachments: AttachmentPathNoteFile[],
+  seen: Set<string>,
+  candidate: AttachmentPathNoteFile | null,
+): void {
+  if (!candidate) return;
+  const key = candidate.path;
+  if (seen.has(key)) return;
+  seen.add(key);
+  attachments.push(candidate);
+}
+
+function generatedAttachmentBlockStart(value: string): number {
+  let start = -1;
+  for (const marker of GENERATED_ATTACHMENT_BLOCK_MARKERS) {
+    const index = value.indexOf(marker);
+    if (index >= 0 && (start < 0 || index < start)) start = index;
+  }
+  return start;
+}
+
+function parseGeneratedAttachmentBlocks(value: string): {
+  content: string;
+  attachments: AttachmentPathNoteFile[];
+} | null {
+  const start = generatedAttachmentBlockStart(value);
+  if (start < 0) return null;
+
+  const generated = value.slice(start);
+  const attachments: AttachmentPathNoteFile[] = [];
+  const seen = new Set<string>();
+  const registeredMarker = '[Registered attachment files in this session:]';
+  const registeredIndex = generated.indexOf(registeredMarker);
+  if (registeredIndex >= 0) {
+    const registeredLines = generated.slice(registeredIndex + registeredMarker.length).split(/\r?\n/);
+    for (const rawLine of registeredLines) {
+      appendUniqueAttachment(attachments, seen, parseAttachmentPathNoteLine(rawLine.trim()));
+    }
+  }
+
+  const inlineAttachmentPattern = /<attachment\s+path="([^"]+)"/giu;
+  for (const match of generated.matchAll(inlineAttachmentPattern)) {
+    appendUniqueAttachment(attachments, seen, attachmentFromGeneratedPath(match[1] ?? ''));
+  }
+
+  const pdfAttachmentPattern = /\[PDF attachment:\s*(.+?),\s*\d+\s+bytes,\s*estimated\s+\d+\s+pages?\.\s*Use read_file on this registered attachment path to inspect it\.\]/giu;
+  for (const match of generated.matchAll(pdfAttachmentPattern)) {
+    appendUniqueAttachment(attachments, seen, attachmentFromGeneratedPath(match[1] ?? ''));
+  }
+
+  const officeDiagnosticPattern = /Attachment\s+(.+?)\s+has Office\/archive\/binary extension\s+[^;]+;/giu;
+  for (const match of generated.matchAll(officeDiagnosticPattern)) {
+    appendUniqueAttachment(attachments, seen, attachmentFromGeneratedPath(match[1] ?? ''));
+  }
+
+  return { content: value.slice(0, start).trimEnd(), attachments };
+}
+
 export function parseUserAttachmentNote(content: unknown): {
   content: string;
   attachments: ChatAttachment[];
@@ -84,33 +226,39 @@ export function parseUserAttachmentNote(content: unknown): {
     ...parsedContentReferences.references.map(contentReferenceToAttachment),
   ];
   if (markerIndex < 0) {
-    return { content: text, attachments: selectionAttachments };
+    const generated = parseGeneratedAttachmentBlocks(text);
+    return {
+      content: generated?.content ?? text,
+      attachments: [
+        ...(generated?.attachments.map(toChatAttachment) ?? []),
+        ...selectionAttachments,
+      ],
+    };
   }
 
   const visibleContent = text.slice(0, markerIndex).trimEnd();
-  const note = sliceBeforeFirstMarker(
-    text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length),
-    LEGACY_ATTACHMENT_NOTE_TERMINATORS,
-  );
+  const note = text.slice(markerIndex + ATTACHMENT_NOTE_MARKER.length);
   const attachments: ChatAttachment[] = [];
 
   for (const rawLine of note.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line.startsWith('- ')) continue;
-    const separator = line.indexOf(': ');
-    if (separator < 0) continue;
+    let line = rawLine.trim();
+    if (line === ATTACHMENT_NOTE_END_MARKER) break;
+    let reachedLegacyTerminator = false;
+    if (!line.startsWith(ATTACHMENT_NOTE_JSON_PREFIX)) {
+      const legacyLine = sliceBeforeFirstMarker(line, LEGACY_ATTACHMENT_NOTE_TERMINATORS);
+      reachedLegacyTerminator = legacyLine.length !== line.length;
+      line = legacyLine.trim();
+      if (!line && reachedLegacyTerminator) break;
+    }
 
-    const name = line.slice(2, separator).trim();
-    const filePath = line.slice(separator + 2).trim();
-    if (!name || !filePath) continue;
-    const mimeType = inferAttachmentMimeType(name, filePath);
-    if (isImageAttachmentMime(mimeType)) continue;
-
-    attachments.push({
-      name,
-      path: filePath,
-      mimeType,
-    });
+    const attachment = parseAttachmentPathNoteLine(line);
+    if (attachment) {
+      const chatAttachment = toChatAttachment(attachment);
+      if (!isImageAttachmentMime(chatAttachment.mimeType)) {
+        attachments.push(chatAttachment);
+      }
+    }
+    if (reachedLegacyTerminator) break;
   }
 
   return { content: visibleContent, attachments: [...attachments, ...selectionAttachments] };

@@ -145,6 +145,19 @@ if [ -n "${PILOTDECK_PROXY:-}" ]; then
   echo "[pilotdeck-docker] Proxy set to $PILOTDECK_PROXY"
 fi
 
+# ── Validate and cache deployment-managed fonts ──────────────────────
+FONT_DIR="/usr/local/share/fonts/founder"
+if ! command -v fc-cache >/dev/null 2>&1 || ! command -v fc-scan >/dev/null 2>&1; then
+  echo "[pilotdeck-docker] ERROR: fontconfig is unavailable." >&2
+  exit 1
+fi
+if ! find "$FONT_DIR" -maxdepth 1 -type f -iname '*.ttf' -print -quit | grep -q .; then
+  echo "[pilotdeck-docker] ERROR: no TTF fonts are mounted at $FONT_DIR." >&2
+  exit 1
+fi
+fc-cache -f "$FONT_DIR"
+echo "[pilotdeck-docker] Deployment-managed fonts are available at $FONT_DIR"
+
 echo "[pilotdeck-docker] Starting PilotDeck (gateway + UI server)..."
 echo "[pilotdeck-docker] Config: $CONFIG_FILE"
 echo "[pilotdeck-docker] UI will be available at http://0.0.0.0:${SERVER_PORT:-3001}"

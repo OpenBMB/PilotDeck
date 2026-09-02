@@ -42,7 +42,40 @@ test("registered plain-text attachments with non-whitelisted names are described
   }
 });
 
-test("registered Office attachments are still described as not directly inspectable", async () => {
+test("uploaded text uses its original name when its staged path has no extension", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const stagedPath = join(root, "file-0-opaque-upload-id");
+    await writeFile(stagedPath, "心理学科百年纪念会材料");
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "feishu",
+      message: "根据附件起草讲话稿",
+      attachments: [{
+        type: "file",
+        path: stagedPath,
+        name: "心理学科百年材料.md",
+        metadata: { channelKey: "feishu" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /心理学科百年纪念会材料/);
+    assert.doesNotMatch(text, /File extension \(none\) is not in the inline text whitelist/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("registered Office attachments receive conversion guidance without raw diagnostics", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
     const docxPath = join(root, "sample.docx");
@@ -70,16 +103,18 @@ test("registered Office attachments are still described as not directly inspecta
     const text = inputText(capturedInput);
     assert.match(text, /sample\.docx/);
     assert.match(text, /not directly inspectable with read_file/);
+    assert.doesNotMatch(text, /\[Attachment diagnostics\]/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("registered audio attachments retain their exact path for the recording transcription skill", async () => {
+test("registered PDF attachments retain their original name in the history path note", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
-    const audioPath = join(root, "meeting.m4a");
-    await writeFile(audioPath, "audio bytes");
+    const pdfPath = join(root, "file-0-opaque-upload-id.pdf");
+    await writeFile(pdfPath, Buffer.from("%PDF-1.7"));
+
     let capturedInput: AgentInput | undefined;
     const gateway = createGateway((input) => {
       capturedInput = input;
@@ -88,15 +123,61 @@ test("registered audio attachments retain their exact path for the recording tra
     for await (const _event of gateway.submitTurn({
       sessionKey: "session-1",
       channelKey: "web",
-      message: "请整理这段录音",
-      attachments: [{ type: "file", path: audioPath, name: "meeting.m4a", metadata: { channelKey: "web" } }],
+      message: "分析附件",
+      attachments: [{
+        type: "file",
+        path: pdfPath,
+        name: "心理学科百年材料.pdf",
+        mimeType: "application/pdf",
+        metadata: { channelKey: "web" },
+      }],
     })) {
       // Drain the stream so the fake session runs to completion.
     }
 
     const text = inputText(capturedInput);
-    assert.match(text, /meeting\.m4a/);
+    assert.match(text, /\[Registered attachment files in this session:\]/);
+    assert.match(text, /心理学科百年材料\.pdf/);
+    assert.match(text, new RegExp(pdfPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("registered audio attachments advertise FunASR paths instead of read_file conversion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const audioPath = join(root, "meeting.wav");
+    await writeFile(audioPath, Buffer.from("RIFF"));
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "feishu",
+      projectKey: root,
+      message: "please transcribe this recording",
+      attachments: [{
+        type: "file",
+        path: audioPath,
+        name: "meeting.wav",
+        mimeType: "audio/wav",
+        metadata: { channelKey: "feishu" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /meeting\.wav/);
+    assert.match(text, /transcribe_audio/);
     assert.match(text, new RegExp(audioPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(text, /retry the tool in this session/);
+    assert.match(text, /npm --prefix/);
+    assert.doesNotMatch(text, /not directly inspectable with read_file/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

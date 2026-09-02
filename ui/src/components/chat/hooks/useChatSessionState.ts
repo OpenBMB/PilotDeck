@@ -156,7 +156,7 @@ export function getStreamContentKey(messages: ChatMessage[]): string {
 /*  Helper: Convert a ChatMessage to a NormalizedMessage for the store */
 /* ------------------------------------------------------------------ */
 
-function chatMessageToNormalized(
+export function chatMessageToNormalized(
   msg: ChatMessage,
   sessionId: string,
   provider: SessionProvider,
@@ -167,7 +167,14 @@ function chatMessageToNormalized(
     : typeof msg.timestamp === 'number'
       ? new Date(msg.timestamp).toISOString()
       : String(msg.timestamp);
-  const base = { id, sessionId, timestamp: ts, provider };
+  const base = {
+    id,
+    sessionId,
+    timestamp: ts,
+    provider,
+    ...(msg.runId ? { runId: msg.runId } : {}),
+    ...(msg.turnId ? { turnId: msg.turnId } : {}),
+  };
 
   if (msg.isToolUse) {
     return {

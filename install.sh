@@ -1440,6 +1440,7 @@ PILOTDECK_GATEWAY_PORT="$(find_free_port "$GATEWAY_BASE")" || fail "could not fi
 PILOTDECK_GATEWAY_URL="ws://127.0.0.1:${PILOTDECK_GATEWAY_PORT}/ws"
 
 export PILOTDECK_CONFIG_PATH="$CONFIG_FILE"
+export PILOTDECK_RESTART_MODE="start-built"
 export SERVER_PORT PILOTDECK_GATEWAY_PORT PILOTDECK_GATEWAY_URL
 
 if [[ "$SERVER_PORT" != "$SERVER_BASE" ]]; then
@@ -1540,6 +1541,7 @@ else
 fi
 echo ""
 export PILOTDECK_CONFIG_PATH="$CONFIG_FILE"
+export PILOTDECK_RESTART_MODE="start-built"
 resolve_runtime_ports
 node "$INSTALL_DIR/scripts/bootstrap-pilotdeck-config.mjs"
 echo -e "  UI:             ${DIM}http://localhost:${SERVER_PORT}${RESET}"

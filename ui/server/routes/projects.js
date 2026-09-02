@@ -631,7 +631,7 @@ router.get('/clone-progress', async (req, res) => {
 /**
  * Helper function to clone a GitHub repository
  */
-function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null) {
+export function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null, options = {}) {
   return new Promise((resolve, reject) => {
     let cloneUrl = githubUrl;
 
@@ -646,7 +646,17 @@ function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null) {
       }
     }
 
-    const gitProcess = spawn('git', ['clone', '--progress', cloneUrl, destinationPath], {
+    const isScpLikeSsh = /^(?:[\w.-]+@)?[\w.-]+:[^\s]+$/.test(cloneUrl);
+    try {
+      const protocol = new URL(cloneUrl).protocol;
+      if (!['http:', 'https:', 'ssh:'].includes(protocol)) {
+        return reject(new Error('Git URL must use HTTP(S) or SSH'));
+      }
+    } catch {
+      if (!isScpLikeSsh) return reject(new Error('Git URL must use HTTP(S) or SSH'));
+    }
+
+    const gitProcess = spawn('git', ['clone', '--progress', '--', cloneUrl, destinationPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -657,7 +667,41 @@ function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null) {
 
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let terminationError = null;
+    let forceKillTimer;
+    let timeout;
+    const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : 5 * 60 * 1000;
 
+    const cleanup = () => {
+      clearTimeout(timeout);
+      clearTimeout(forceKillTimer);
+      options.signal?.removeEventListener('abort', abortClone);
+    };
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const terminate = (error) => {
+      if (settled || terminationError) return;
+      terminationError = error;
+      gitProcess.kill('SIGTERM');
+      if (settled) return;
+      forceKillTimer = setTimeout(() => {
+        gitProcess.kill('SIGKILL');
+        finish(terminationError);
+      }, 5_000);
+      forceKillTimer.unref?.();
+    };
+    const abortClone = () => {
+      const error = new Error('Git clone aborted.');
+      error.name = 'AbortError';
+      error.code = 'ABORT_ERR';
+      terminate(error);
+    };
     gitProcess.stdout.on('data', (data) => {
       stdout += data.toString();
     });
@@ -667,8 +711,9 @@ function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null) {
     });
 
     gitProcess.on('close', (code) => {
+      if (terminationError) return finish(terminationError);
       if (code === 0) {
-        resolve({ stdout, stderr });
+        finish(null, { stdout, stderr });
       } else {
         let errorMessage = 'Git clone failed';
 
@@ -682,17 +727,27 @@ function cloneGitHubRepository(githubUrl, destinationPath, githubToken = null) {
           errorMessage = stderr;
         }
 
-        reject(new Error(errorMessage));
+        finish(new Error(errorMessage));
       }
     });
 
     gitProcess.on('error', (error) => {
       if (error.code === 'ENOENT') {
-        reject(new Error('Git is not installed or not in PATH'));
+        finish(new Error('Git is not installed or not in PATH'));
       } else {
-        reject(error);
+        finish(error);
       }
     });
+
+    timeout = setTimeout(() => {
+      const error = new Error(`Git clone timed out after ${timeoutMs}ms.`);
+      error.code = 'GIT_CLONE_TIMEOUT';
+      terminate(error);
+    }, timeoutMs);
+    timeout.unref?.();
+
+    if (options.signal?.aborted) abortClone();
+    else options.signal?.addEventListener('abort', abortClone, { once: true });
   });
 }
 

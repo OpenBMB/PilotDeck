@@ -62,9 +62,11 @@ export {
   type TokenWarningState,
 } from "./budget/TokenBudgetManager.js";
 export {
+  actualInputTokensFromUsage,
   TokenAccountingRuntime,
   type CountRequestInputOptions,
   type EvaluateRequestBudgetOptions,
+  type TokenCalibrationBaseline,
   type TokenAccountingRuntimeOptions,
   type TokenCountResult,
   type TokenCountSource,
@@ -96,12 +98,8 @@ export {
   type MicroCompactionResult,
 } from "./compaction/MicroCompactionEngine.js";
 export {
-  CachedMicroCompactionEngine,
   COMPACTABLE_TOOL_NAMES,
-  type CachedMicroCompactionInput,
-  type CachedMicroCompactionOptions,
-  type CachedMicroCompactionResult,
-} from "./compaction/CachedMicroCompactionEngine.js";
+} from "./compaction/MicroCompactionEngine.js";
 export { stripMultimediaFromMessages } from "./compaction/stripMultimedia.js";
 export {
   SnipEngine,

@@ -5,6 +5,8 @@ export type ToolNameRepairResult = {
   reason: "configured_alias" | "builtin_alias" | "normalized_match" | "fuzzy_match";
 };
 
+export type ToolNameRepairTarget = Pick<PilotDeckToolDefinition, "name" | "aliases">;
+
 const BUILTIN_ALIASES: Record<string, string[]> = {
   run: ["bash"],
   shell: ["bash"],
@@ -87,8 +89,9 @@ export function repairToolName(
   rawName: string,
   tools: PilotDeckToolDefinition[],
   configuredAliases?: Record<string, string>,
+  additionalTools: ToolNameRepairTarget[] = [],
 ): ToolNameRepairResult | undefined {
-  const index = buildToolNameIndex(tools);
+  const index = buildToolNameIndex([...tools, ...additionalTools]);
   const variants = normalizedVariants(rawName);
   if (variants.length === 0) {
     return undefined;
@@ -128,7 +131,7 @@ type ToolNameIndex = {
   spellings: { normalized: string; canonicalName: string }[];
 };
 
-function buildToolNameIndex(tools: PilotDeckToolDefinition[]): ToolNameIndex {
+function buildToolNameIndex(tools: ToolNameRepairTarget[]): ToolNameIndex {
   const byNormalizedName = new Map<string, Set<string>>();
   const spellings: { normalized: string; canonicalName: string }[] = [];
 

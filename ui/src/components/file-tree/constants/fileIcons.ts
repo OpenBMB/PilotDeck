@@ -1,224 +1,217 @@
-import {
-  Archive,
-  Binary,
-  Blocks,
-  BookOpen,
-  Box,
-  Braces,
-  Code2,
-  Cog,
-  Coffee,
-  Cpu,
-  Database,
-  File,
-  FileCheck,
-  FileCode,
-  FileCode2,
-  FileSpreadsheet,
-  FileText,
-  FileType,
-  Flame,
-  FlaskConical,
-  Gem,
-  Globe,
-  Hash,
-  Hexagon,
-  Image,
-  Lock,
-  Music2,
-  NotebookPen,
-  Palette,
-  Scroll,
-  Settings,
-  Shield,
-  SquareFunction,
-  Terminal,
-  Video,
-  Workflow,
-} from 'lucide-react';
-import type { FileIconData, FileIconMap } from '../types/types';
+import { Image, Video, type LucideIcon } from 'lucide-react';
+import archiveIcon from '../../../assets/file-categories/archive.svg';
+import audioIcon from '../../../assets/file-categories/audio.svg';
+import codeIcon from '../../../assets/file-categories/code.svg';
+import dataIcon from '../../../assets/file-categories/data.svg';
+import documentIcon from '../../../assets/file-categories/document.svg';
+import presentationIcon from '../../../assets/file-categories/presentation.svg';
+import spreadsheetIcon from '../../../assets/file-categories/spreadsheet.svg';
 
 export const ICON_SIZE_CLASS = 'w-4 h-4 flex-shrink-0';
 
-const FILE_ICON_MAP: FileIconMap = {
-  js: { icon: FileCode, color: 'text-yellow-500' },
-  jsx: { icon: FileCode, color: 'text-yellow-500' },
-  mjs: { icon: FileCode, color: 'text-yellow-500' },
-  cjs: { icon: FileCode, color: 'text-yellow-500' },
-  ts: { icon: FileCode2, color: 'text-blue-500' },
-  tsx: { icon: FileCode2, color: 'text-blue-500' },
-  mts: { icon: FileCode2, color: 'text-blue-500' },
-  py: { icon: Code2, color: 'text-emerald-500' },
-  pyw: { icon: Code2, color: 'text-emerald-500' },
-  pyi: { icon: Code2, color: 'text-emerald-400' },
-  ipynb: { icon: NotebookPen, color: 'text-orange-500' },
-  rs: { icon: Cog, color: 'text-orange-600' },
-  toml: { icon: Settings, color: 'text-gray-500' },
-  go: { icon: Hexagon, color: 'text-cyan-500' },
-  rb: { icon: Gem, color: 'text-red-500' },
-  erb: { icon: Gem, color: 'text-red-400' },
-  php: { icon: Blocks, color: 'text-violet-500' },
-  java: { icon: Coffee, color: 'text-red-600' },
-  jar: { icon: Coffee, color: 'text-red-500' },
-  kt: { icon: Hexagon, color: 'text-violet-500' },
-  kts: { icon: Hexagon, color: 'text-violet-400' },
-  c: { icon: Cpu, color: 'text-blue-600' },
-  h: { icon: Cpu, color: 'text-blue-400' },
-  cpp: { icon: Cpu, color: 'text-blue-700' },
-  hpp: { icon: Cpu, color: 'text-blue-500' },
-  cc: { icon: Cpu, color: 'text-blue-700' },
-  cs: { icon: Hexagon, color: 'text-purple-600' },
-  swift: { icon: Flame, color: 'text-orange-500' },
-  lua: { icon: SquareFunction, color: 'text-blue-500' },
-  r: { icon: FlaskConical, color: 'text-blue-600' },
-  html: { icon: Globe, color: 'text-orange-600' },
-  htm: { icon: Globe, color: 'text-orange-600' },
-  css: { icon: Hash, color: 'text-blue-500' },
-  scss: { icon: Hash, color: 'text-pink-500' },
-  sass: { icon: Hash, color: 'text-pink-400' },
-  less: { icon: Hash, color: 'text-indigo-500' },
-  vue: { icon: FileCode2, color: 'text-emerald-500' },
-  svelte: { icon: FileCode2, color: 'text-orange-500' },
-  json: { icon: Braces, color: 'text-yellow-600' },
-  jsonc: { icon: Braces, color: 'text-yellow-500' },
-  json5: { icon: Braces, color: 'text-yellow-500' },
-  yaml: { icon: Settings, color: 'text-purple-400' },
-  yml: { icon: Settings, color: 'text-purple-400' },
-  xml: { icon: FileCode, color: 'text-orange-500' },
-  csv: { icon: FileSpreadsheet, color: 'text-green-600' },
-  tsv: { icon: FileSpreadsheet, color: 'text-green-500' },
-  sql: { icon: Database, color: 'text-blue-500' },
-  graphql: { icon: Workflow, color: 'text-pink-500' },
-  gql: { icon: Workflow, color: 'text-pink-500' },
-  proto: { icon: Box, color: 'text-green-500' },
-  env: { icon: Shield, color: 'text-yellow-600' },
-  md: { icon: BookOpen, color: 'text-blue-500' },
-  mdx: { icon: BookOpen, color: 'text-blue-400' },
-  txt: { icon: FileText, color: 'text-gray-500' },
-  doc: { icon: FileText, color: 'text-blue-600' },
-  docx: { icon: FileText, color: 'text-blue-600' },
-  pdf: { icon: FileCheck, color: 'text-red-600' },
-  rtf: { icon: FileText, color: 'text-gray-500' },
-  tex: { icon: Scroll, color: 'text-teal-600' },
-  rst: { icon: FileText, color: 'text-gray-400' },
-  sh: { icon: Terminal, color: 'text-green-500' },
-  bash: { icon: Terminal, color: 'text-green-500' },
-  zsh: { icon: Terminal, color: 'text-green-400' },
-  fish: { icon: Terminal, color: 'text-green-400' },
-  ps1: { icon: Terminal, color: 'text-blue-400' },
-  bat: { icon: Terminal, color: 'text-gray-500' },
-  cmd: { icon: Terminal, color: 'text-gray-500' },
-  png: { icon: Image, color: 'text-purple-500' },
-  jpg: { icon: Image, color: 'text-purple-500' },
-  jpeg: { icon: Image, color: 'text-purple-500' },
-  gif: { icon: Image, color: 'text-purple-400' },
-  webp: { icon: Image, color: 'text-purple-400' },
-  ico: { icon: Image, color: 'text-purple-400' },
-  bmp: { icon: Image, color: 'text-purple-400' },
-  tiff: { icon: Image, color: 'text-purple-400' },
-  svg: { icon: Palette, color: 'text-amber-500' },
-  mp3: { icon: Music2, color: 'text-pink-500' },
-  wav: { icon: Music2, color: 'text-pink-500' },
-  ogg: { icon: Music2, color: 'text-pink-400' },
-  flac: { icon: Music2, color: 'text-pink-400' },
-  aac: { icon: Music2, color: 'text-pink-400' },
-  m4a: { icon: Music2, color: 'text-pink-400' },
-  mp4: { icon: Video, color: 'text-rose-500' },
-  mov: { icon: Video, color: 'text-rose-500' },
-  avi: { icon: Video, color: 'text-rose-500' },
-  webm: { icon: Video, color: 'text-rose-400' },
-  mkv: { icon: Video, color: 'text-rose-400' },
-  ttf: { icon: FileType, color: 'text-red-500' },
-  otf: { icon: FileType, color: 'text-red-500' },
-  woff: { icon: FileType, color: 'text-red-400' },
-  woff2: { icon: FileType, color: 'text-red-400' },
-  eot: { icon: FileType, color: 'text-red-400' },
-  zip: { icon: Archive, color: 'text-amber-600' },
-  tar: { icon: Archive, color: 'text-amber-600' },
-  gz: { icon: Archive, color: 'text-amber-600' },
-  bz2: { icon: Archive, color: 'text-amber-600' },
-  rar: { icon: Archive, color: 'text-amber-500' },
-  '7z': { icon: Archive, color: 'text-amber-500' },
-  lock: { icon: Lock, color: 'text-gray-500' },
-  exe: { icon: Binary, color: 'text-gray-500' },
-  bin: { icon: Binary, color: 'text-gray-500' },
-  dll: { icon: Binary, color: 'text-gray-400' },
-  so: { icon: Binary, color: 'text-gray-400' },
-  dylib: { icon: Binary, color: 'text-gray-400' },
-  wasm: { icon: Binary, color: 'text-purple-500' },
-  ini: { icon: Settings, color: 'text-gray-500' },
-  cfg: { icon: Settings, color: 'text-gray-500' },
-  conf: { icon: Settings, color: 'text-gray-500' },
-  log: { icon: Scroll, color: 'text-gray-400' },
-  map: { icon: File, color: 'text-gray-400' },
+export type FileVisualCategory =
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'code'
+  | 'data'
+  | 'archive'
+  | 'audio'
+  | 'image'
+  | 'video';
+
+export type FileIconData = {
+  category: FileVisualCategory;
+  asset?: string;
+  icon?: LucideIcon;
+  color?: string;
+  containerClass: string;
 };
 
-const FILENAME_ICON_MAP: FileIconMap = {
-  Dockerfile: { icon: Box, color: 'text-blue-500' },
-  'docker-compose.yml': { icon: Box, color: 'text-blue-500' },
-  'docker-compose.yaml': { icon: Box, color: 'text-blue-500' },
-  '.dockerignore': { icon: Box, color: 'text-gray-500' },
-  '.gitignore': { icon: Settings, color: 'text-gray-500' },
-  '.gitmodules': { icon: Settings, color: 'text-gray-500' },
-  '.gitattributes': { icon: Settings, color: 'text-gray-500' },
-  '.editorconfig': { icon: Settings, color: 'text-gray-500' },
-  '.prettierrc': { icon: Settings, color: 'text-pink-400' },
-  '.prettierignore': { icon: Settings, color: 'text-gray-500' },
-  '.eslintrc': { icon: Settings, color: 'text-violet-500' },
-  '.eslintrc.js': { icon: Settings, color: 'text-violet-500' },
-  '.eslintrc.json': { icon: Settings, color: 'text-violet-500' },
-  '.eslintrc.cjs': { icon: Settings, color: 'text-violet-500' },
-  'eslint.config.js': { icon: Settings, color: 'text-violet-500' },
-  'eslint.config.mjs': { icon: Settings, color: 'text-violet-500' },
-  '.env': { icon: Shield, color: 'text-yellow-600' },
-  '.env.local': { icon: Shield, color: 'text-yellow-600' },
-  '.env.development': { icon: Shield, color: 'text-yellow-500' },
-  '.env.production': { icon: Shield, color: 'text-yellow-600' },
-  '.env.example': { icon: Shield, color: 'text-yellow-400' },
-  'package.json': { icon: Braces, color: 'text-green-500' },
-  'package-lock.json': { icon: Lock, color: 'text-gray-500' },
-  'yarn.lock': { icon: Lock, color: 'text-blue-400' },
-  'pnpm-lock.yaml': { icon: Lock, color: 'text-orange-400' },
-  'bun.lockb': { icon: Lock, color: 'text-gray-400' },
-  'Cargo.toml': { icon: Cog, color: 'text-orange-600' },
-  'Cargo.lock': { icon: Lock, color: 'text-orange-400' },
-  Gemfile: { icon: Gem, color: 'text-red-500' },
-  'Gemfile.lock': { icon: Lock, color: 'text-red-400' },
-  Makefile: { icon: Terminal, color: 'text-gray-500' },
-  'CMakeLists.txt': { icon: Cog, color: 'text-blue-500' },
-  'tsconfig.json': { icon: Braces, color: 'text-blue-500' },
-  'jsconfig.json': { icon: Braces, color: 'text-yellow-500' },
-  'vite.config.ts': { icon: Flame, color: 'text-purple-500' },
-  'vite.config.js': { icon: Flame, color: 'text-purple-500' },
-  'webpack.config.js': { icon: Cog, color: 'text-blue-500' },
-  'tailwind.config.js': { icon: Hash, color: 'text-cyan-500' },
-  'tailwind.config.ts': { icon: Hash, color: 'text-cyan-500' },
-  'postcss.config.js': { icon: Cog, color: 'text-red-400' },
-  'babel.config.js': { icon: Settings, color: 'text-yellow-500' },
-  '.babelrc': { icon: Settings, color: 'text-yellow-500' },
-  'README.md': { icon: BookOpen, color: 'text-blue-500' },
-  LICENSE: { icon: FileCheck, color: 'text-gray-500' },
-  'LICENSE.md': { icon: FileCheck, color: 'text-gray-500' },
-  'CHANGELOG.md': { icon: Scroll, color: 'text-blue-400' },
-  'requirements.txt': { icon: FileText, color: 'text-emerald-400' },
-  'go.mod': { icon: Hexagon, color: 'text-cyan-500' },
-  'go.sum': { icon: Lock, color: 'text-cyan-400' },
+const CATEGORY_EXTENSIONS: ReadonlyArray<readonly [FileVisualCategory, ReadonlySet<string>]> = [
+  ['spreadsheet', new Set([
+    'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm',
+    'ods', 'fods', 'et', 'ett', 'csv', 'tsv', 'numbers',
+  ])],
+  ['presentation', new Set([
+    'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm',
+    'odp', 'dps', 'key',
+  ])],
+  ['code', new Set([
+    'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hxx', 'cs',
+    'java', 'kt', 'kts', 'scala', 'groovy',
+    'py', 'pyw', 'pyi', 'ipynb',
+    'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts',
+    'go', 'rs', 'rb', 'erb', 'php', 'swift', 'm', 'mm',
+    'lua', 'r', 'dart', 'ex', 'exs', 'erl', 'hrl', 'fs', 'fsx',
+    'html', 'htm', 'xhtml', 'css', 'scss', 'sass', 'less',
+    'vue', 'svelte', 'astro',
+    'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    'sql', 'graphql', 'gql', 'proto', 'sol', 'wasm',
+  ])],
+  ['data', new Set([
+    'json', 'jsonc', 'json5', 'xml', 'yaml', 'yml', 'toml',
+    'ini', 'cfg', 'conf', 'env', 'log', 'map', 'lock',
+    'db', 'sqlite', 'sqlite3', 'parquet', 'avro', 'ndjson', 'jsonl',
+  ])],
+  ['archive', new Set([
+    'zip', 'tar', 'tar.gz', 'tgz', 'gz', 'tar.bz2', 'tbz', 'tbz2', 'bz2',
+    'tar.xz', 'txz', 'xz', 'rar', '7z', 'jar', 'war', 'iso', 'dmg',
+  ])],
+  ['audio', new Set([
+    'mp3', 'wav', 'ogg', 'oga', 'flac', 'aac', 'm4a', 'wma', 'opus', 'aif', 'aiff',
+  ])],
+  ['image', new Set([
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico',
+    'tif', 'tiff', 'avif', 'heic', 'heif',
+  ])],
+  ['video', new Set([
+    'mp4', 'mov', 'avi', 'webm', 'mkv', 'flv', 'wmv', 'm4v', 'mpeg', 'mpg', '3gp',
+  ])],
+  ['document', new Set([
+    'doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'wps', 'odt',
+    'pdf', 'md', 'mdx', 'txt', 'rtf', 'tex', 'rst', 'pages', 'epub', 'mobi',
+  ])],
+];
+
+const CATEGORY_BY_EXTENSION = new Map<string, FileVisualCategory>();
+for (const [category, extensions] of CATEGORY_EXTENSIONS) {
+  for (const extension of extensions) CATEGORY_BY_EXTENSION.set(extension, category);
+}
+
+const SPECIAL_FILENAME_CATEGORIES = new Map<string, FileVisualCategory>([
+  ['dockerfile', 'code'],
+  ['makefile', 'code'],
+  ['cmakelists.txt', 'code'],
+  ['gemfile', 'code'],
+  ['rakefile', 'code'],
+  ['jenkinsfile', 'code'],
+  ['procfile', 'code'],
+  ['readme', 'document'],
+  ['license', 'document'],
+]);
+
+const COMPOUND_EXTENSIONS = ['tar.gz', 'tar.bz2', 'tar.xz'] as const;
+
+const CATEGORY_ASSETS: Partial<Record<FileVisualCategory, string>> = {
+  document: documentIcon,
+  spreadsheet: spreadsheetIcon,
+  presentation: presentationIcon,
+  code: codeIcon,
+  data: dataIcon,
+  archive: archiveIcon,
+  audio: audioIcon,
 };
 
-// Icon resolution is deterministic: exact filename, then .env prefixes, then extension, then fallback.
-export function getFileIconData(filename: string): FileIconData {
-  if (FILENAME_ICON_MAP[filename]) {
-    return FILENAME_ICON_MAP[filename];
-  }
+const CATEGORY_CONTAINER_CLASSES: Record<FileVisualCategory, string> = {
+  document: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300',
+  spreadsheet: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300',
+  presentation: 'bg-orange-50 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300',
+  code: 'bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300',
+  data: 'bg-teal-50 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300',
+  archive: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300',
+  audio: 'bg-pink-50 text-pink-700 dark:bg-pink-950/70 dark:text-pink-300',
+  image: 'bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300',
+  video: 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300',
+};
 
-  if (filename.startsWith('.env')) {
-    return { icon: Shield, color: 'text-yellow-600' };
-  }
+function basenameOf(filename: string): string {
+  const withoutQuery = filename.split(/[?#]/, 1)[0] || filename;
+  return withoutQuery.split(/[\\/]/).pop()?.toLowerCase() || '';
+}
 
-  const extension = filename.split('.').pop()?.toLowerCase();
-  if (extension && FILE_ICON_MAP[extension]) {
-    return FILE_ICON_MAP[extension];
-  }
+function extensionOf(filename: string): string {
+  const basename = basenameOf(filename);
+  const compound = COMPOUND_EXTENSIONS.find((extension) => basename.endsWith(`.${extension}`));
+  if (compound) return compound;
+  const dotIndex = basename.lastIndexOf('.');
+  return dotIndex >= 0 && dotIndex < basename.length - 1 ? basename.slice(dotIndex + 1) : '';
+}
 
-  return { icon: File, color: 'text-muted-foreground' };
+function categoryFromMimeType(mimeType?: string): FileVisualCategory | null {
+  const mime = mimeType?.split(';', 1)[0]?.trim().toLowerCase();
+  if (!mime || mime === 'application/octet-stream') return null;
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (
+    mime.startsWith('application/vnd.ms-excel')
+    || mime.startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml')
+    || mime === 'application/vnd.oasis.opendocument.spreadsheet'
+    || mime === 'application/vnd.apple.numbers'
+    || mime === 'text/csv'
+    || mime === 'text/tab-separated-values'
+  ) return 'spreadsheet';
+  if (
+    mime.startsWith('application/vnd.ms-powerpoint')
+    || mime.startsWith('application/vnd.openxmlformats-officedocument.presentationml')
+    || mime === 'application/vnd.oasis.opendocument.presentation'
+    || mime === 'application/vnd.apple.keynote'
+  ) return 'presentation';
+  if (
+    mime === 'application/json'
+    || mime.endsWith('+json')
+    || mime === 'application/xml'
+    || mime === 'text/xml'
+  ) return 'data';
+  if (
+    mime.includes('javascript')
+    || mime === 'text/css'
+    || mime === 'text/html'
+    || mime.startsWith('text/x-')
+  ) return 'code';
+  if (
+    mime.includes('zip')
+    || mime.includes('compressed')
+    || mime.includes('archive')
+    || mime === 'application/x-tar'
+  ) return 'archive';
+  if (
+    mime === 'application/pdf'
+    || mime === 'application/msword'
+    || mime.startsWith('application/vnd.ms-word')
+    || mime.startsWith('application/vnd.openxmlformats-officedocument.wordprocessingml')
+    || mime === 'application/vnd.oasis.opendocument.text'
+    || mime === 'text/markdown'
+    || mime === 'text/plain'
+  ) return 'document';
+  return null;
+}
+
+export function getFileVisualCategory(filename: string, mimeType?: string): FileVisualCategory {
+  const basename = basenameOf(filename);
+  if (basename.startsWith('.env')) return 'data';
+
+  const specialCategory = SPECIAL_FILENAME_CATEGORIES.get(basename);
+  if (specialCategory) return specialCategory;
+
+  const extensionCategory = CATEGORY_BY_EXTENSION.get(extensionOf(basename));
+  if (extensionCategory) return extensionCategory;
+
+  return categoryFromMimeType(mimeType) || 'document';
+}
+
+export function getFileIconData(filename: string, mimeType?: string): FileIconData {
+  const category = getFileVisualCategory(filename, mimeType);
+  if (category === 'image') {
+    return {
+      category,
+      icon: Image,
+      color: 'text-purple-500 dark:text-purple-400',
+      containerClass: CATEGORY_CONTAINER_CLASSES[category],
+    };
+  }
+  if (category === 'video') {
+    return {
+      category,
+      icon: Video,
+      color: 'text-rose-500 dark:text-rose-400',
+      containerClass: CATEGORY_CONTAINER_CLASSES[category],
+    };
+  }
+  return {
+    category,
+    asset: CATEGORY_ASSETS[category] || documentIcon,
+    containerClass: CATEGORY_CONTAINER_CLASSES[category],
+  };
 }

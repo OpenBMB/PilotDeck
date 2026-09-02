@@ -9,6 +9,8 @@ export {
   PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB,
   type WebActiveTurnSnapshot,
   type WebActiveTurnSnapshotInput,
+  type WebCancelSteerInput,
+  type WebCancelSteerResult,
   type WebChannelAttachment,
   type WebElicitationAnswer,
   type WebElicitationQuestion,
@@ -32,6 +34,8 @@ export {
   type WebRequestFrame,
   type WebResponseFrame,
   type WebSessionInfo,
+  type WebSteerTurnInput,
+  type WebSteerTurnResult,
   type WebSubmitTurnInput,
 } from "./protocol.js";
 export {

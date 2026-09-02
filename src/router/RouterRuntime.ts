@@ -12,7 +12,6 @@ import {
   LITELLM_MAX_RETRY_DELAY_MS,
   LITELLM_RETRY_JITTER,
 } from "../model/streaming/streamModel.js";
-import { buildLiteLLMContinuationRequest } from "../model/streaming/continuationRequest.js";
 import {
   DEFAULT_SUBAGENT_POLICY,
   type RouterConfig,
@@ -550,12 +549,21 @@ export function createRouterRuntime(
     if (decision.mutations.subagentTagStripped) {
       messages = stripSubagentTagFromMessages(messages);
     }
+    const routedCachePlan = request.cachePlan &&
+      (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
+      (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
+      ? request.cachePlan
+      : undefined;
     return clampMaxOutputTokensToModelCap({
       ...request,
       ...decision.requestPatch,
       provider: decision.provider,
       model: decision.model,
       messages,
+      cacheBreakpoints: request.cachePlan !== undefined
+        ? routedCachePlan?.messages
+        : request.cacheBreakpoints,
+      cachePlan: routedCachePlan,
     }, deps.modelRuntime);
   }
 
@@ -565,10 +573,19 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
+      const routedCachePlan = request.cachePlan &&
+        (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
+        (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
+        ? request.cachePlan
+        : undefined;
       const passthroughRequest: CanonicalModelRequest = {
         ...request,
         provider: decision.provider,
         model: decision.model,
+        cacheBreakpoints: request.cachePlan !== undefined
+          ? routedCachePlan?.messages
+          : request.cacheBreakpoints,
+        cachePlan: routedCachePlan,
       };
       const downgradedPassthrough = downgradeRequestForAttempt(
         passthroughRequest,
@@ -834,37 +851,6 @@ export function createRouterRuntime(
             await abortableDelay(delay, ctx.abortSignal);
             transientRetryCount++;
             continue;
-          }
-          if (
-            hasYieldedContent &&
-            isMidStreamRateLimitError(outcome.error) &&
-            transientRetryCount < transientRetryMax
-          ) {
-            const partialText = extractPartialText(outcome.buffered);
-            if (partialText.length > 0) {
-              const midDelay = outcome.error.retryAfterMs != null
-                ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
-                : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
-              console.warn(
-                `[PilotDeck] midStreamRetry: ${outcome.error.code} after partial content ` +
-                `(attempt ${transientRetryCount + 1}/${transientRetryMax}, delay=${Math.round(midDelay)}ms)`,
-              );
-              events.emit({
-                type: "pilotdeck_router_retry_progress",
-                sessionId: ctx.sessionId,
-                turnId: ctx.turnId,
-                attempt: transientRetryCount + 1,
-                maxAttempts: transientRetryMax,
-                delayMs: Math.round(midDelay),
-                reason: classifyRetryReason(outcome.error.code),
-                provider: attempt.provider,
-                model: attempt.model,
-              });
-              await abortableDelay(midDelay, ctx.abortSignal);
-              attemptRequest = buildLiteLLMContinuationRequest(attemptRequest, partialText);
-              transientRetryCount++;
-              continue;
-            }
           }
           for (const queued of pending) {
             yield queued;
@@ -1292,10 +1278,6 @@ function classifyNetworkErrorCode(error: unknown): string {
   return "network_error";
 }
 
-function isMidStreamRateLimitError(error: import("../model/index.js").CanonicalModelError): boolean {
-  return error.code === "rate_limit_error" || error.code === "overloaded_error";
-}
-
 function classifyRetryReason(errorCode: string): "rate_limit" | "server_error" | "network_error" | "zero_usage" | "overloaded" {
   if (errorCode === "rate_limit_error") return "rate_limit";
   if (errorCode === "overloaded_error") return "overloaded";
@@ -1327,14 +1309,4 @@ function createUnsupportedMediaError(
       `that supports required input modalities: ${requiredText}. Missing: ${missingText}.`,
     retryable: false,
   };
-}
-
-function extractPartialText(buffered: CanonicalModelEvent[]): string {
-  let text = "";
-  for (const ev of buffered) {
-    if (ev.type === "text_delta") {
-      text += ev.text;
-    }
-  }
-  return text;
 }

@@ -21,7 +21,7 @@ export function buildModelRequest(
   const { provider, model } = validateModelRequest(request, config);
 
   if (provider.protocol === "anthropic") {
-    return buildAnthropicRequest(request, model);
+    return buildAnthropicRequest(request, model, provider);
   }
 
   if (provider.protocol === "google") {

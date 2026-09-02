@@ -26,10 +26,11 @@ Work with PDFs through the bundled `pdf.sh` workflow. Treat structure extraction
 
 ## Prepare the runtime
 
-Resolve the directory containing this file as `PDF_SKILL_ROOT`, then run:
+Resolve the CLI once:
 
 ```bash
-PDF_TOOL="$PDF_SKILL_ROOT/scripts/pdf.sh"
+SKILL_ROOT={{SKILL_ROOT_SHELL}}
+PDF_TOOL="$SKILL_ROOT/scripts/pdf.sh"
 bash "$PDF_TOOL" check || bash "$PDF_TOOL" fix
 ```
 

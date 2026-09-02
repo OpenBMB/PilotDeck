@@ -1,4 +1,4 @@
-import { File, FileSpreadsheet, FileText, Scan, X, type LucideIcon } from 'lucide-react';
+import { Scan, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils.js';
 import {
@@ -7,10 +7,14 @@ import {
   type ContentReference,
 } from '../../types/contentReference';
 import type { DocumentSelectionReference } from '../../types/documentSelection';
+import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
+import {
+  getFileVisualCategory,
+  type FileVisualCategory,
+} from '../file-tree/constants/fileIcons';
 
 type DocumentReferenceFileMeta = {
   label: string;
-  Icon: LucideIcon;
   className: string;
 };
 
@@ -25,36 +29,52 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
   if (extension === 'pdf') {
     return {
       label: 'PDF',
-      Icon: FileText,
       className: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300',
     };
   }
-  if (['doc', 'docx', 'odt'].includes(extension)) {
-    return {
-      label: 'DOC',
-      Icon: FileText,
+
+  const category = getFileVisualCategory(fileName);
+  const metaByCategory: Record<FileVisualCategory, DocumentReferenceFileMeta> = {
+    document: {
+      label: ['doc', 'docx', 'docm', 'odt'].includes(extension)
+        ? 'DOC'
+        : extension.slice(0, 3).toUpperCase() || 'FILE',
       className: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
-    };
-  }
-  if (['xls', 'xlsx', 'ods', 'csv', 'tsv'].includes(extension)) {
-    return {
+    },
+    spreadsheet: {
       label: 'XLS',
-      Icon: FileSpreadsheet,
       className: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
-    };
-  }
-  if (['ppt', 'pptx', 'odp'].includes(extension)) {
-    return {
+    },
+    presentation: {
       label: 'PPT',
-      Icon: FileText,
       className: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300',
-    };
-  }
-  return {
-    label: extension ? extension.slice(0, 3).toUpperCase() : 'FILE',
-    Icon: File,
-    className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+    },
+    code: {
+      label: 'CODE',
+      className: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+    },
+    data: {
+      label: 'DATA',
+      className: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-300',
+    },
+    archive: {
+      label: 'ZIP',
+      className: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
+    },
+    audio: {
+      label: 'AUDIO',
+      className: 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-300',
+    },
+    image: {
+      label: 'IMG',
+      className: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+    },
+    video: {
+      label: 'VIDEO',
+      className: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300',
+    },
   };
+  return metaByCategory[category];
 }
 
 type DocumentReferenceChipProps = {
@@ -80,7 +100,6 @@ export default function DocumentReferenceChip({
   const normalized = normalizeContentReference(reference);
   if (!normalized) return null;
   const meta = getDocumentReferenceFileMeta(normalized.source.fileName);
-  const ReferenceIcon = meta.Icon;
   const summary = getContentReferenceSummary(
     normalized,
     summaryLength,
@@ -137,7 +156,13 @@ export default function DocumentReferenceChip({
         >
           {normalized.selectionMode === 'region'
             ? <Scan className="h-3 w-3" strokeWidth={2} />
-            : <ReferenceIcon className="h-3 w-3" strokeWidth={2} />}
+            : (
+              <FileTypeIcon
+                filename={normalized.source.fileName}
+                className="h-3 w-3"
+                assetClassName="h-3 w-3"
+              />
+            )}
           {meta.label}
         </span>
         <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] leading-5">

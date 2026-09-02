@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent, AgentInput, AgentTurnResult } from "../../agent/index.js";
 import {
@@ -29,6 +29,10 @@ import type {
   GatewaySessionPermissionGrantInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
@@ -47,6 +51,20 @@ import type {
   WebReadSubagentMessagesResult,
   WebForkSessionInput,
   WebForkSessionResult,
+  WebReplaceLastTurnInput,
+  WebReplaceLastTurnResult,
+  WebFinalizeLastTurnReplacementInput,
+  WebFinalizeLastTurnReplacementResult,
+  ProjectFilesListInput,
+  ProjectFilesListResult,
+  CommandsListInput,
+  CommandsListResult,
+  ModelCatalogListInput,
+  ModelCatalogListResult,
+  SessionModelInput,
+  SessionModelSetInput,
+  SessionModelResult,
+  UploadedAttachmentRef,
 } from "../protocol/types.js";
 import type {
   CronCreateInput,
@@ -65,6 +83,7 @@ import type {
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
 import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
+import { getPilotDeckInstallCommand } from "../../mcp/runtime/projectMcpSpec.js";
 import { AttachmentResolver, type AttachmentRequest } from "../../context/attachments/AttachmentResolver.js";
 import type {
   SkillAddressInput,
@@ -87,12 +106,17 @@ import type {
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
+import { DialogGatewayError } from "../dialog/errors.js";
+import { listProjectFiles } from "../dialog/projectFiles.js";
 
 const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个新功能";
 const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
 const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
+const DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS = 60_000;
 
 export type InProcessGatewayOptions = {
+  /** Absolute command used by the model to install bundled FunASR assets. */
+  funasrInstallCommand?: string;
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
@@ -105,12 +129,31 @@ export type InProcessGatewayOptions = {
   readSessionMessages?: (input: WebReadSessionMessagesInput) => Promise<WebReadSessionMessagesResult>;
   readSubagentMessages?: (input: WebReadSubagentMessagesInput) => Promise<WebReadSubagentMessagesResult>;
   forkSession?: (input: WebForkSessionInput) => Promise<WebForkSessionResult>;
+  replaceLastTurn?: (input: WebReplaceLastTurnInput) => Promise<WebReplaceLastTurnResult>;
+  finalizeLastTurnReplacement?: (
+    input: WebFinalizeLastTurnReplacementInput,
+  ) => Promise<WebFinalizeLastTurnReplacementResult>;
+  /** Roll back a prepared edit that never reaches durable input acceptance. */
+  replacementTransactionTimeoutMs?: number;
   recordAgentStatusMessage?: (input: GatewayRecordAgentStatusMessageInput) => Promise<{ recorded: boolean }>;
   /**
    * Web Phase 3 — pluggable project enumerator + describer.
    */
   listProjects?: () => Promise<WebListProjectsResult>;
   describeProject?: (input: WebDescribeProjectInput) => Promise<WebProjectSummary>;
+  commandsList?: (input: CommandsListInput) => Promise<CommandsListResult>;
+  modelCatalogList?: (input: ModelCatalogListInput) => Promise<ModelCatalogListResult>;
+  sessionModelGet?: (input: SessionModelInput) => Promise<SessionModelResult>;
+  sessionModelSet?: (input: SessionModelSetInput) => Promise<SessionModelResult>;
+  sessionModelClear?: (input: SessionModelInput) => Promise<void>;
+  resolveUploadedAttachments?: (input: {
+    projectKey: string;
+    uploads: UploadedAttachmentRef[];
+  }) => Promise<ChannelAttachment[]>;
+  resolveTurnModelSelection?: (input: GatewaySubmitTurnInput) => Promise<{
+    selection?: import("../protocol/types.js").ExplicitModelSelection;
+    source: "turn" | "session" | "router" | "default";
+  }>;
   /**
    * Pluggable config-reload handler wired by `createLocalGateway`.
    * When set, `reloadConfig()` delegates to this callback which owns
@@ -177,9 +220,18 @@ type ActiveTurnReplay = {
   truncated: boolean;
 };
 
+type PendingTurnReplacement = {
+  transactionId: string;
+  replacementTurnId: string;
+  projectKey?: string;
+  timeout?: ReturnType<typeof setTimeout>;
+  phase: "prepared" | "submitting" | "finalizing";
+};
+
 export class InProcessGateway implements Gateway {
   private readonly now: () => Date;
   private readonly uuid: () => string;
+  private readonly replacementTransactionTimeoutMs: number;
   /**
    * B1 — registry of active per-session emit sinks. The gateway shares this
    * map with the per-session `GatewayElicitationChannel` so an `askUser`
@@ -188,6 +240,8 @@ export class InProcessGateway implements Gateway {
    */
   private readonly emitSinks = new Map<string, (event: GatewayEvent) => void>();
   private readonly activeTurnReplays = new Map<string, ActiveTurnReplay>();
+  private readonly transcriptWriteReservations = new Set<string>();
+  private readonly pendingTurnReplacements = new Map<string, PendingTurnReplacement>();
   /** B1 — pending askUser() promises keyed by sessionKey + requestId. */
   private readonly elicitationBus = new GatewayElicitationBus();
   /**
@@ -212,6 +266,10 @@ export class InProcessGateway implements Gateway {
   ) {
     this.now = options.now ?? (() => new Date());
     this.uuid = options.uuid ?? randomUUID;
+    this.replacementTransactionTimeoutMs = Math.max(
+      1,
+      options.replacementTransactionTimeoutMs ?? DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS,
+    );
   }
 
   /**
@@ -276,6 +334,16 @@ export class InProcessGateway implements Gateway {
   }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+    const invalidPermission = validateGatewayPermissionModes(input);
+    if (invalidPermission) {
+      yield {
+        type: "error",
+        code: "INVALID_PERMISSION_MODE",
+        message: invalidPermission,
+        recoverable: true,
+      };
+      return;
+    }
     const plannedInput = normalizePlanCommandInput(input);
     if (!plannedInput) {
       yield {
@@ -291,20 +359,35 @@ export class InProcessGateway implements Gateway {
     }
     input = plannedInput;
 
-    // Per-turn config refresh (defensive). The fs watcher path already
-    // catches most edits, but this guarantees a fresh apiKey/url is in
-    // effect for the very next turn even when watcher events are
-    // dropped or coalesced.
-    if (this.options.refreshConfigBeforeTurn) {
-      try {
-        await this.options.refreshConfigBeforeTurn();
-      } catch {
-        // Intentional: keep streaming on the previous snapshot rather
-        // than failing a turn over a transient yaml read error.
-      }
-    }
     const runId = input.runId ?? this.uuid();
+    const replacementClaim = this.claimPendingTurnReplacement(input.sessionKey, runId);
+    if (replacementClaim === "conflict") {
+      const message = "This session is waiting for its edited replacement turn to be accepted.";
+      yield {
+        type: "error",
+        runId,
+        code: "replace_turn_pending",
+        message,
+        recoverable: true,
+        userHint: "Wait for the edited message transaction to finish, then try again.",
+      };
+      return;
+    }
+
+    if (this.transcriptWriteReservations.has(input.sessionKey)) {
+      this.releasePendingTurnReplacementClaim(input.sessionKey, runId);
+      yield {
+        type: "error",
+        runId,
+        code: "replace_turn_pending",
+        message: "This session transcript is currently being updated.",
+        recoverable: true,
+        userHint: "Wait for the session update to finish, then try again.",
+      };
+      return;
+    }
     if (!this.router.beginTurn(input.sessionKey, runId)) {
+      this.releasePendingTurnReplacementClaim(input.sessionKey, runId);
       const message = `Session ${input.sessionKey} already has an active turn.`;
       const userHint = "Wait for the current turn to finish or stop it before sending another message.";
       yield {
@@ -352,6 +435,7 @@ export class InProcessGateway implements Gateway {
       });
       const statusEvent: GatewayEvent = {
         type: "agent_status",
+        runId,
         event: status.event,
         detail: status.detail,
       };
@@ -371,6 +455,18 @@ export class InProcessGateway implements Gateway {
     // Background pump: agent events → queue.
     const pump = (async () => {
       try {
+        // Refresh only after beginTurn has reserved the session. Replacement
+        // submissions claim their transaction before this await, so an
+        // expiration callback cannot roll the transcript back underneath a
+        // submission that is already starting.
+        if (this.options.refreshConfigBeforeTurn) {
+          try {
+            await this.options.refreshConfigBeforeTurn();
+          } catch {
+            // Keep streaming on the previous snapshot rather than failing a
+            // turn over a transient yaml read error.
+          }
+        }
         const session = await this.router.getOrCreate({
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
@@ -434,17 +530,44 @@ export class InProcessGateway implements Gateway {
         // Promote a text-only turn to blocks when the host channel attached
         // files/images. UI uploads come through this path; resolving them here
         // keeps attachment semantics in the gateway for every client.
-        const allowedReadFiles = await collectRegisteredAttachmentReadFiles(input.attachments);
+        const uploaded = input.uploadedAttachments?.length
+          ? await this.resolveUploadedAttachments(input)
+          : [];
+        const attachments = [...(input.attachments ?? []), ...uploaded];
+        const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
         const agentInput = await buildAgentInputWithAttachments(
           input.message,
-          input.attachments,
+          attachments,
           allowedReadFiles,
+          input.projectKey,
+          this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
         );
         const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
           role: "user" as const,
           content: [{ type: "text" as const, text: s.text }],
           metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
         }));
+        const modelSelection = this.options.resolveTurnModelSelection
+          ? await this.options.resolveTurnModelSelection(input)
+          : input.modelOverride
+            ? { selection: input.modelOverride, source: "turn" as const }
+            : { source: "default" as const };
+        let lastEmittedModel: string | undefined;
+        if (modelSelection.selection) {
+          const event: GatewayEvent = {
+            type: "model_selection_changed",
+            provider: modelSelection.selection.provider,
+            model: modelSelection.selection.model,
+            source: modelSelection.source,
+            reasoning: modelSelection.selection.reasoning,
+            temperature: modelSelection.selection.temperature,
+            speed: modelSelection.selection.speed,
+            runId,
+          };
+          this.recordActiveTurnEvent(input.sessionKey, event);
+          queue.enqueue(event);
+          lastEmittedModel = `${modelSelection.selection.provider}\0${modelSelection.selection.model}`;
+        }
         for await (const event of session.submit(
           agentInput,
           {
@@ -461,6 +584,20 @@ export class InProcessGateway implements Gateway {
               allow: [...sessionAllowRules, ...persistedRules.allow],
             },
             ...(syntheticMessages.length > 0 ? { syntheticMessages } : {}),
+            ...(modelSelection.selection ? {
+              modelOverride: {
+                provider: modelSelection.selection.provider,
+                model: modelSelection.selection.model,
+                temperature: modelSelection.selection.temperature,
+                speed: modelSelection.selection.speed,
+                ...(modelSelection.selection.reasoning !== undefined ? {
+                  thinking: {
+                    enabled: modelSelection.selection.reasoning > 0,
+                    mode: reasoningValueToMode(modelSelection.selection.reasoning),
+                  },
+                } : {}),
+              },
+            } : {}),
           },
         )) {
           if (this.turnCompletions.get(input.sessionKey) !== turnDone) {
@@ -475,6 +612,22 @@ export class InProcessGateway implements Gateway {
             executionKind: telemetryContext.executionKind,
             phase: telemetryContext.phase,
           });
+          if (event.type === "input_accepted") {
+            await this.commitAcceptedTurnReplacement(input.sessionKey, runId);
+          }
+          if (event.type === "model_event" && event.event.type === "request_started"
+            && lastEmittedModel !== `${event.event.provider}\0${event.event.model}`) {
+            const selectionEvent: GatewayEvent = {
+              type: "model_selection_changed",
+              provider: event.event.provider,
+              model: event.event.model,
+              source: modelSelection.source,
+              runId,
+            };
+            this.recordActiveTurnEvent(input.sessionKey, selectionEvent);
+            queue.enqueue(selectionEvent);
+            lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
+          }
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
             if (gatewayEvent.type === "context_budget") {
               this.recordGatewayStatusMessage({
@@ -565,12 +718,55 @@ export class InProcessGateway implements Gateway {
         this.turnCompletions.delete(input.sessionKey);
       }
       resolveTurnDone();
+      this.releasePendingTurnReplacementClaim(input.sessionKey, runId);
       this.options.afterTurnCompleted?.({
         sessionKey: input.sessionKey,
         projectKey: input.projectKey,
         runId,
       });
     }
+  }
+
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
+
+    const uploaded = input.uploadedAttachments?.length
+      ? await this.resolveUploadedAttachments(input)
+      : [];
+    const attachments = [...(input.attachments ?? []), ...uploaded];
+    const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
+    const agentInput = await buildAgentInputWithAttachments(
+      input.message,
+      attachments,
+      allowedReadFiles,
+      input.projectKey,
+      this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
+    );
+    const message: CanonicalMessage = {
+      role: "user",
+      content: agentInput.type === "text"
+        ? [{ type: "text", text: agentInput.text }]
+        : agentInput.content,
+      metadata: { purpose: "mid_turn_steer", queueItemId: input.itemId },
+    };
+    return this.router.steer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+      message,
+      allowedReadFiles,
+    });
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { cancelled: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { cancelled: false, reason: "turn_mismatch" };
+    return this.router.cancelSteer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+    });
   }
 
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
@@ -624,11 +820,85 @@ export class InProcessGateway implements Gateway {
   }
 
   async describeServer(): Promise<GatewayServerInfo> {
+    const capabilities = [
+      ...(this.options.listProjects ? ["project_files_list" as const] : []),
+      ...(this.options.commandsList ? ["commands_list" as const] : []),
+      ...(this.options.modelCatalogList ? ["model_catalog_list" as const] : []),
+      ...(this.options.sessionModelGet ? ["session_model_get" as const] : []),
+      ...(this.options.sessionModelSet ? ["session_model_set" as const] : []),
+      ...(this.options.sessionModelClear ? ["session_model_clear" as const] : []),
+    ] as GatewayServerInfo["capabilities"];
     return {
       mode: "in_process",
       sessionCount: this.router.sessionCount(),
       ...this.options.serverInfo,
+      capabilities,
     };
+  }
+
+  async projectFilesList(input: ProjectFilesListInput): Promise<ProjectFilesListResult> {
+    if (!this.options.listProjects) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "project_files_list is unavailable.");
+    const projects = await this.listProjects();
+    const requested = resolve(input.projectKey);
+    const registered = projects.projects.find((project) => resolve(project.projectKey) === requested);
+    if (!registered) {
+      throw new DialogGatewayError("PROJECT_NOT_FOUND", `Unknown projectKey: ${input.projectKey}`);
+    }
+    return listProjectFiles({ ...input, projectKey: registered.projectKey });
+  }
+
+  async commandsList(input: CommandsListInput): Promise<CommandsListResult> {
+    if (!this.options.commandsList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "commands_list is unavailable.");
+    return this.options.commandsList(input);
+  }
+
+  async modelCatalogList(input: ModelCatalogListInput): Promise<ModelCatalogListResult> {
+    if (!this.options.modelCatalogList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "model_catalog_list is unavailable.");
+    return this.options.modelCatalogList(input);
+  }
+
+  async sessionModelGet(input: SessionModelInput): Promise<SessionModelResult> {
+    if (!this.options.sessionModelGet) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_get is unavailable.");
+    return this.options.sessionModelGet(input);
+  }
+
+  async sessionModelSet(input: SessionModelSetInput): Promise<SessionModelResult> {
+    if (!this.options.sessionModelSet) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_set is unavailable.");
+    this.reserveTranscriptWrite(input.sessionKey, "change the session model");
+    try {
+      return await this.options.sessionModelSet(input);
+    } finally {
+      this.transcriptWriteReservations.delete(input.sessionKey);
+    }
+  }
+
+  async sessionModelClear(input: SessionModelInput): Promise<void> {
+    if (!this.options.sessionModelClear) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "session_model_clear is unavailable.");
+    this.reserveTranscriptWrite(input.sessionKey, "clear the session model");
+    try {
+      await this.options.sessionModelClear(input);
+    } finally {
+      this.transcriptWriteReservations.delete(input.sessionKey);
+    }
+  }
+
+  private reserveTranscriptWrite(sessionKey: string, operation: string): void {
+    if (
+      this.transcriptWriteReservations.has(sessionKey)
+      || this.pendingTurnReplacements.has(sessionKey)
+    ) {
+      throw new DialogGatewayError(
+        "SESSION_BUSY",
+        `Cannot ${operation} while another transcript update is pending.`,
+      );
+    }
+    this.transcriptWriteReservations.add(sessionKey);
+  }
+
+  private async resolveUploadedAttachments(input: Pick<GatewaySubmitTurnInput, "projectKey" | "uploadedAttachments">): Promise<ChannelAttachment[]> {
+    if (!input.projectKey) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploaded attachments.");
+    if (!this.options.resolveUploadedAttachments) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Uploaded attachments are unavailable.");
+    return this.options.resolveUploadedAttachments({ projectKey: input.projectKey, uploads: input.uploadedAttachments ?? [] });
   }
 
   async getActiveTurnSnapshot(input: GatewayActiveTurnSnapshotInput): Promise<GatewayActiveTurnSnapshot> {
@@ -739,6 +1009,220 @@ export class InProcessGateway implements Gateway {
       );
     }
     return this.options.forkSession(input);
+  }
+
+  async replaceLastTurn(input: WebReplaceLastTurnInput): Promise<WebReplaceLastTurnResult> {
+    if (!this.options.replaceLastTurn) {
+      throw new Error(
+        "replace_last_turn is not configured. Wire `replaceLastTurn` via createLocalGateway.",
+      );
+    }
+    if (typeof input.replacementTurnId !== "string" || !input.replacementTurnId.trim()) {
+      throw new DialogGatewayError("replace_invalid_input", "replacementTurnId is required.");
+    }
+    if (
+      this.transcriptWriteReservations.has(input.sessionKey)
+      || this.pendingTurnReplacements.has(input.sessionKey)
+    ) {
+      throw new DialogGatewayError(
+        "replace_turn_pending",
+        "A replacement transaction is already pending for this session.",
+      );
+    }
+
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (activeRunId && activeRunId !== input.expectedTurnId) {
+      throw new DialogGatewayError(
+        "replace_turn_conflict",
+        "The selected message is no longer the active turn.",
+        { activeRunId, expectedTurnId: input.expectedTurnId },
+      );
+    }
+    if (!this.options.finalizeLastTurnReplacement) {
+      throw new Error(
+        "finalize_last_turn_replacement is required when replace_last_turn is configured.",
+      );
+    }
+    this.transcriptWriteReservations.add(input.sessionKey);
+    let result: WebReplaceLastTurnResult | undefined;
+    try {
+      // Reserve before awaiting the abort so a new turn cannot start between
+      // the expected writer unwinding and the transcript rewrite beginning.
+      // Only abort the expected turn; a stale edit must never stop a newer run.
+      if (activeRunId) {
+        await this.abortTurn({
+          sessionKey: input.sessionKey,
+          runId: activeRunId,
+          reason: "message_replaced",
+        });
+      }
+
+      result = await this.options.replaceLastTurn(input);
+      this.pendingTurnReplacements.set(input.sessionKey, {
+        transactionId: result.transactionId,
+        replacementTurnId: input.replacementTurnId,
+        projectKey: input.projectKey,
+        phase: "prepared",
+      });
+      this.scheduleReplacementTimeout(input.sessionKey);
+      // The cached AgentSession and transcript writer still reflect the old tail.
+      // Evict them so the replacement submit resumes from the rewritten JSONL.
+      await this.router.close(input.sessionKey);
+      return result;
+    } catch (error) {
+      this.clearPendingTurnReplacement(input.sessionKey);
+      if (result && this.options.finalizeLastTurnReplacement) {
+        await this.options.finalizeLastTurnReplacement({
+          sessionKey: input.sessionKey,
+          projectKey: input.projectKey,
+          transactionId: result.transactionId,
+          action: "rollback",
+        }).catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      this.transcriptWriteReservations.delete(input.sessionKey);
+    }
+  }
+
+  private async commitAcceptedTurnReplacement(sessionKey: string, runId: string): Promise<void> {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (
+      !pending
+      || pending.replacementTurnId !== runId
+      || pending.phase !== "submitting"
+      || !this.options.finalizeLastTurnReplacement
+    ) {
+      return;
+    }
+    pending.phase = "finalizing";
+    if (pending.timeout) clearTimeout(pending.timeout);
+    try {
+      await this.options.finalizeLastTurnReplacement({
+        sessionKey,
+        projectKey: pending.projectKey,
+        transactionId: pending.transactionId,
+        action: "commit",
+      });
+    } catch (error) {
+      // accepted_input is already durable. A stale backup is safe to leave for
+      // cleanup, but it must not block later turns in the live session.
+      console.warn("[pilotdeck] failed to remove accepted replacement backup:", error);
+    } finally {
+      this.clearPendingTurnReplacement(sessionKey);
+    }
+  }
+
+  private claimPendingTurnReplacement(
+    sessionKey: string,
+    runId: string,
+  ): "none" | "claimed" | "conflict" {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (!pending) return "none";
+    if (pending.replacementTurnId !== runId || pending.phase !== "prepared") {
+      return "conflict";
+    }
+    pending.phase = "submitting";
+    if (pending.timeout) {
+      clearTimeout(pending.timeout);
+      pending.timeout = undefined;
+    }
+    return "claimed";
+  }
+
+  private releasePendingTurnReplacementClaim(sessionKey: string, runId: string): void {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (!pending || pending.replacementTurnId !== runId || pending.phase !== "submitting") return;
+    pending.phase = "prepared";
+    this.scheduleReplacementTimeout(sessionKey);
+  }
+
+  private scheduleReplacementTimeout(sessionKey: string): void {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (!pending || pending.phase !== "prepared") return;
+    if (pending.timeout) clearTimeout(pending.timeout);
+    pending.timeout = setTimeout(() => {
+      void this.rollbackExpiredTurnReplacement(sessionKey, pending.transactionId);
+    }, this.replacementTransactionTimeoutMs);
+    pending.timeout.unref?.();
+  }
+
+  private clearPendingTurnReplacement(sessionKey: string): void {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (pending?.timeout) clearTimeout(pending.timeout);
+    this.pendingTurnReplacements.delete(sessionKey);
+  }
+
+  private async rollbackExpiredTurnReplacement(
+    sessionKey: string,
+    transactionId: string,
+  ): Promise<void> {
+    const pending = this.pendingTurnReplacements.get(sessionKey);
+    if (!pending || pending.transactionId !== transactionId || pending.phase !== "prepared") return;
+    if (this.router.hasActiveTurn(sessionKey)) {
+      this.scheduleReplacementTimeout(sessionKey);
+      return;
+    }
+    if (!this.options.finalizeLastTurnReplacement) return;
+
+    pending.phase = "finalizing";
+    try {
+      await this.router.close(sessionKey);
+      await this.options.finalizeLastTurnReplacement({
+        sessionKey,
+        projectKey: pending.projectKey,
+        transactionId: pending.transactionId,
+        action: "rollback",
+      });
+      this.clearPendingTurnReplacement(sessionKey);
+    } catch (error) {
+      pending.phase = "prepared";
+      console.warn("[pilotdeck] failed to roll back expired replacement transaction:", error);
+      this.scheduleReplacementTimeout(sessionKey);
+    }
+  }
+
+  async finalizeLastTurnReplacement(
+    input: WebFinalizeLastTurnReplacementInput,
+  ): Promise<WebFinalizeLastTurnReplacementResult> {
+    if (!this.options.finalizeLastTurnReplacement) {
+      throw new Error(
+        "finalize_last_turn_replacement is not configured. Wire `finalizeLastTurnReplacement` via createLocalGateway.",
+      );
+    }
+    const pending = this.pendingTurnReplacements.get(input.sessionKey);
+    if (!pending || pending.transactionId !== input.transactionId) {
+      throw new DialogGatewayError(
+        "replace_transaction_conflict",
+        "The replacement transaction is no longer pending.",
+      );
+    }
+    if (pending.phase !== "prepared") {
+      throw new DialogGatewayError(
+        "replace_transaction_pending",
+        "The replacement transaction is already being finalized.",
+      );
+    }
+    pending.phase = "finalizing";
+    if (pending.timeout) clearTimeout(pending.timeout);
+    try {
+      if (input.action === "rollback") {
+        if (this.router.hasActiveTurn(input.sessionKey)) {
+          throw new DialogGatewayError(
+            "replace_transaction_active",
+            "The replacement cannot be rolled back while its turn is active.",
+          );
+        }
+        await this.router.close(input.sessionKey);
+      }
+      const result = await this.options.finalizeLastTurnReplacement(input);
+      this.clearPendingTurnReplacement(input.sessionKey);
+      return result;
+    } catch (error) {
+      pending.phase = "prepared";
+      this.scheduleReplacementTimeout(input.sessionKey);
+      throw error;
+    }
   }
 
   async listProjects(): Promise<WebListProjectsResult> {
@@ -976,7 +1460,30 @@ export function normalizeGatewayModeForLegacyInput(value: unknown): GatewaySubmi
   if (value === "default" || value === "plan" || value === "bypassPermissions") {
     return value;
   }
-  return "default";
+  return undefined;
+}
+
+function validateGatewayPermissionModes(input: GatewaySubmitTurnInput): string | undefined {
+  const mode = (input as { mode?: unknown }).mode;
+  if (mode !== undefined && mode !== null && mode !== ""
+    && mode !== "default" && mode !== "plan" && mode !== "bypassPermissions") {
+    return `Invalid mode: ${String(mode)}.`;
+  }
+  const baseMode = (input as { basePermissionMode?: unknown }).basePermissionMode;
+  if (baseMode !== undefined && baseMode !== null && baseMode !== ""
+    && baseMode !== "default" && baseMode !== "bypassPermissions") {
+    return `Invalid basePermissionMode: ${String(baseMode)}.`;
+  }
+  return undefined;
+}
+
+function reasoningValueToMode(value: number): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" {
+  const modes = new Map<number, "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max">([
+    [0, "off"], [0.2, "minimal"], [0.4, "low"], [0.6, "medium"], [0.8, "high"], [0.9, "xhigh"], [1, "max"],
+  ]);
+  const mode = modes.get(value);
+  if (!mode) throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", `Unsupported reasoning value: ${value}`);
+  return mode;
 }
 
 export function normalizeGatewayRunMode(value: unknown): GatewaySubmitTurnInput["runMode"] | undefined {
@@ -1345,6 +1852,12 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
   switch (event.type) {
     case "turn_started":
       return [{ type: "turn_started", runId }];
+    case "input_accepted":
+      return [{ type: "input_accepted", runId }];
+    case "steer_applied":
+      return [{ type: "steer_applied", itemId: event.itemId, message: event.message }];
+    case "steer_unapplied":
+      return [{ type: "steer_unapplied", itemId: event.itemId, reason: event.reason }];
     case "model_request_started":
       return [{ type: "model_request_started", model: event.model, provider: event.provider }];
     case "model_event":
@@ -1579,8 +2092,7 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{
         type: "context_budget",
         used: event.snapshot.tokens,
-        displayUsed: event.snapshot.displayTokens,
-        budgetUsed: event.snapshot.budgetTokens,
+        displayUsed: event.snapshot.tokens,
         total: totalContextTokens,
         effectiveTotal: event.snapshot.effectiveContextTokens ?? event.snapshot.maxContextTokens,
         reservedOutputTokens,
@@ -1898,6 +2410,8 @@ async function buildAgentInputWithAttachments(
   message: string,
   attachments: ChannelAttachment[] | undefined,
   allowedReadFiles: string[],
+  projectRoot?: string,
+  funasrInstallCommand?: string,
 ): Promise<AgentInput> {
   const resolvedAttachments = await attachmentsToContentBlocks(attachments);
   const attachmentBlocks = resolvedAttachments.blocks;
@@ -1906,6 +2420,8 @@ async function buildAgentInputWithAttachments(
     new Set(allowedReadFiles),
     resolvedAttachments.directContentPaths,
     resolvedAttachments.hasDiagnostics,
+    projectRoot,
+    funasrInstallCommand,
   );
   if (attachmentBlocks.length === 0 && !pathNote) {
     return { type: "text", text: message };
@@ -1928,6 +2444,8 @@ function buildAttachmentPathNote(
   allowedReadFiles: Set<string>,
   directContentPaths: Set<string>,
   hasDiagnostics: boolean,
+  projectRoot?: string,
+  installCommand = "npm run install:asr",
 ): CanonicalContentBlock | undefined {
   if (!attachments || attachments.length === 0) return undefined;
   const seen = new Set<string>();
@@ -1947,7 +2465,9 @@ function buildAttachmentPathNote(
 
   if (lines.length === 0) return undefined;
   const guidance = hasDiagnostics
-    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles)
+    || attachments.some(isAudioAttachment)
+    || attachments.some((attachment) => !isReadFileInspectableAttachment(attachment))
+    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot, installCommand)
     : "These are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.";
   return {
     type: "text",
@@ -1958,7 +2478,20 @@ function buildAttachmentPathNote(
 function attachmentDiagnosticsGuidance(
   attachments: ChannelAttachment[],
   allowedReadFiles: Set<string>,
+  projectRoot?: string,
+  installCommand = "npm run install:asr",
 ): string {
+  const audioAttachments = attachments.filter((attachment) => isAudioAttachment(attachment));
+  if (audioAttachments.length > 0) {
+    const audioPaths = audioAttachments
+      .map((attachment) => attachment.path && mapAudioPathForFunAsr(attachment.path, projectRoot))
+      .filter((path): path is string => Boolean(path));
+    const mappedHint = audioPaths.length > 0
+      ? ` Pass the registered project-local path${audioPaths.length === 1 ? ` ${audioPaths[0]}` : "s " + audioPaths.join(", ")} to transcribe_audio.`
+      : " Pass a project-local host path to transcribe_audio; paths outside this project are rejected.";
+    return `Audio attachments are not readable with read_file. When the user asks for transcription, subtitles, or audio analysis, use the funasr MCP server's mcp__funasr__transcribe_audio tool.${mappedHint} If that tool reports that its runtime is missing, run ${installCommand} and retry the tool in this session.`;
+  }
+
   const hasInspectableAttachment = attachments.some((attachment) => {
     if (!attachment.path) return false;
     if (!safeAllowedAttachmentPath(attachment.path, allowedReadFiles)) return false;
@@ -1978,7 +2511,9 @@ function isReadFileInspectableAttachment(attachment: ChannelAttachment): boolean
   if (mimeType === "application/json" || mimeType.endsWith("+json")) return true;
 
   const pathOrName = attachment.path || attachment.name || "";
-  const extension = extname(pathOrName).toLowerCase();
+  // Upload staging paths can be opaque IDs for legacy attachments. Prefer the
+  // original name so Office files still receive conversion guidance.
+  const extension = extname(attachment.name ?? "").toLowerCase() || extname(pathOrName).toLowerCase();
   if (extension === ".pdf" || extension === ".ipynb") return true;
   if (READ_FILE_BINARY_ATTACHMENT_EXTENSIONS.has(extension)) return false;
   return true;
@@ -2042,6 +2577,12 @@ async function attachmentsToContentBlocks(
     }
 
     if (!att.path) continue;
+    if (isAudioAttachment(att)) {
+      // Keep audio as a registered path reference. The ASR Skill invokes the
+      // FunASR MCP tool on demand, so audio should not be sent through the
+      // text/image/PDF attachment resolver.
+      continue;
+    }
     if (att.type === "image" || att.mimeType?.startsWith("image/")) {
       resolverRequests.push({ type: "image", path: att.path, mimeType: att.mimeType });
       resolverRequestPaths.push(resolve(att.path));
@@ -2049,7 +2590,7 @@ async function attachmentsToContentBlocks(
       resolverRequests.push({ type: "pdf", path: att.path });
       resolverRequestPaths.push(resolve(att.path));
     } else {
-      resolverRequests.push({ type: "file", path: att.path });
+      resolverRequests.push({ type: "file", path: att.path, name: att.name });
       resolverRequestPaths.push(resolve(att.path));
     }
   }
@@ -2077,6 +2618,23 @@ async function attachmentsToContentBlocks(
   }
 
   return { blocks, directContentPaths, hasDiagnostics: diagnostics.length > 0 };
+}
+
+function isAudioAttachment(attachment: ChannelAttachment): boolean {
+  if (attachment.mimeType?.toLowerCase().startsWith("audio/")) return true;
+  const pathOrName = attachment.path || attachment.name || "";
+  return /\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/iu.test(pathOrName);
+}
+
+function mapAudioPathForFunAsr(audioPath: string, projectRoot?: string): string | undefined {
+  if (!projectRoot) return undefined;
+  const absoluteRoot = resolve(projectRoot);
+  const absolutePath = resolve(audioPath);
+  const relativePath = relative(absoluteRoot, absolutePath);
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    return undefined;
+  }
+  return absolutePath;
 }
 
 function sanitizeAttachmentName(name: string): string {

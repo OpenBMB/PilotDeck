@@ -3,7 +3,7 @@ import { extname, resolve } from "node:path";
 import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.js";
 
 export type AttachmentRequest =
-  | { type: "file"; path: string }
+  | { type: "file"; path: string; name?: string }
   | { type: "image"; path: string; mimeType?: string }
   | { type: "pdf"; path: string };
 
@@ -98,7 +98,7 @@ export class AttachmentResolver {
   async resolve(request: AttachmentRequest): Promise<ResolvedAttachment> {
     switch (request.type) {
       case "file":
-        return this.resolveFile(request.path);
+        return this.resolveFile(request.path, request.name);
       case "image":
         return this.resolveImage(request.path, request.mimeType);
       case "pdf":
@@ -121,7 +121,7 @@ export class AttachmentResolver {
     return { role: "user", content: attachment.blocks };
   }
 
-  private async resolveFile(path: string): Promise<ResolvedAttachment> {
+  private async resolveFile(path: string, name?: string): Promise<ResolvedAttachment> {
     const absolute = resolve(path);
     let info;
     try {
@@ -138,14 +138,20 @@ export class AttachmentResolver {
         ],
       };
     }
-    const ext = extname(absolute).toLowerCase();
+    // Uploaded files are stored under an opaque upload ID. Prefer the original
+    // name when available so that a storage path without an extension does not
+    // turn a text or Office attachment into an unknown file type.
+    const ext = extname(name ?? "").toLowerCase() || extname(absolute).toLowerCase();
     if (!TEXT_EXTENSIONS.has(ext)) {
       return {
         blocks: [],
         diagnostics: [
           {
             code: "attachment_unsupported",
-            severity: "warning",
+            // Office and archive formats are expected to be available only as
+            // registered paths. They need a document tool or conversion, but
+            // are not an upload failure that belongs in the user's message.
+            severity: BINARY_CONTAINER_EXTENSIONS.has(ext) ? "info" : "warning",
             message: unsupportedFileMessage(absolute, ext),
           },
         ],

@@ -13,6 +13,7 @@ import { resolvePilotHome } from '../utils/pilotPaths.js';
 import { executeTurnkeySlashCommand } from '../turnkey-slash.js';
 import { getRegisteredCommands } from '../../../src/adapters/channel/protocol/ChannelCommandRegistry.js';
 import { runChatSearchFormatted } from '../../../src/cli/commands/chatSearch.js';
+import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -884,81 +885,60 @@ Custom commands can be created in:
  */
 router.post('/list', async (req, res) => {
   try {
-    const { projectPath } = req.body;
-    const pilotHome = resolvePilotHome(process.env);
-
-    const customCommandSources = [];
-
-    if (projectPath) {
-      const projectCommandsDir = path.join(projectPath, '.pilotdeck', 'commands');
-      const projectSkillsDir = path.join(projectPath, '.pilotdeck', 'skills');
-      const [projectCommands, projectSkills] = await Promise.all([
-        scanCommandsDirectory(projectCommandsDir, projectCommandsDir, 'project'),
-        scanSkillsDirectory(projectSkillsDir, 'project'),
-      ]);
-      customCommandSources.push(...projectCommands, ...projectSkills);
+    const { projectKey, projectPath, query, cursor, limit } = req.body || {};
+    const gateway = await getPilotDeckGateway();
+    const serverInfo = await gateway.describeServer();
+    if (!serverInfo.capabilities?.includes('commands_list')) {
+      const legacy = await listLegacyCommands(projectKey || projectPath);
+      return res.json({ ...legacy, count: legacy.builtIn.length + legacy.custom.length });
     }
-
-    const userCommandsDir = path.join(pilotHome, 'commands');
-    const userSkillsDir = path.join(pilotHome, 'skills');
-    const [userCommands, userSkills] = await Promise.all([
-      scanCommandsDirectory(userCommandsDir, userCommandsDir, 'user'),
-      scanSkillsDirectory(userSkillsDir, 'user'),
-    ]);
-    customCommandSources.push(...userCommands, ...userSkills);
-
-    // Track every name we've committed so far to a single namespace. Built-in
-    // names take precedence over disk customs and bundled stubs (their server-
-    // side handlers in `builtInHandlers` are authoritative).
-    const seenNames = new Set(builtInCommands.map((cmd) => cmd.name));
-
-    const dedupedCustom = [];
-    for (const cmd of customCommandSources) {
-      if (seenNames.has(cmd.name)) continue;
-      seenNames.add(cmd.name);
-      dedupedCustom.push(cmd);
-    }
-
-    const builtInsWithBundled = [...builtInCommands];
-    for (const stub of BUNDLED_SKILL_STUBS) {
-      if (seenNames.has(stub.name)) continue;
-      builtInsWithBundled.push({
-        ...stub,
-        namespace: 'builtin',
-      });
-      seenNames.add(stub.name);
-    }
-
-    dedupedCustom.sort((a, b) => a.name.localeCompare(b.name));
-
-    const pinnedSet = new Set(PINNED_COMMAND_NAMES);
-    const promote = (cmd) =>
-      pinnedSet.has(cmd.name) ? { ...cmd, namespace: 'pinned' } : cmd;
-    const builtIn = builtInsWithBundled.map(promote);
-    const custom = dedupedCustom.map(promote);
-
-    const indexByName = new Map();
-    for (const cmd of [...builtIn, ...custom]) {
-      if (!indexByName.has(cmd.name)) indexByName.set(cmd.name, cmd);
-    }
-    const pinnedOrdered = PINNED_COMMAND_NAMES
-      .map((name) => indexByName.get(name))
-      .filter(Boolean);
-
+    const data = await gateway.commandsList({
+      projectKey: projectKey || projectPath,
+      query,
+      cursor,
+      limit,
+    });
     res.json({
-      builtIn,
-      custom,
-      pinned: pinnedOrdered,
-      count: builtIn.length + custom.length,
+      ...data,
+      count: data.builtIn.length + data.custom.length,
     });
   } catch (error) {
     console.error('Error listing commands:', error);
-    res.status(500).json({
-      error: 'Failed to list commands',
-      message: error.message,
-    });
+    const code = error?.code || 'gateway_request_failed';
+    const status = ['PROJECT_NOT_FOUND'].includes(code) ? 404
+      : ['INVALID_QUERY', 'INVALID_CURSOR', 'INVALID_LIMIT'].includes(code) ? 400
+        : code === 'CAPABILITY_UNAVAILABLE' ? 501 : 500;
+    res.status(status).json({ error: { code, message: error.message || String(error), ...(req.id ? { requestId: req.id } : {}) } });
   }
 });
+
+async function listLegacyCommands(projectPath) {
+  const pilotHome = resolvePilotHome(process.env);
+  const sources = [];
+  if (projectPath) {
+    const commandsDir = path.join(projectPath, '.pilotdeck', 'commands');
+    const skillsDir = path.join(projectPath, '.pilotdeck', 'skills');
+    const [commands, skills] = await Promise.all([
+      scanCommandsDirectory(commandsDir, commandsDir, 'project'),
+      scanSkillsDirectory(skillsDir, 'project'),
+    ]);
+    sources.push(...commands, ...skills);
+  }
+  const userCommandsDir = path.join(pilotHome, 'commands');
+  const [userCommands, userSkills] = await Promise.all([
+    scanCommandsDirectory(userCommandsDir, userCommandsDir, 'user'),
+    scanSkillsDirectory(path.join(pilotHome, 'skills'), 'user'),
+  ]);
+  sources.push(...userCommands, ...userSkills);
+  const seen = new Set(builtInCommands.map((item) => item.name));
+  const custom = sources.filter((item) => !seen.has(item.name) && Boolean(seen.add(item.name))).sort((a, b) => a.name.localeCompare(b.name));
+  const builtIn = [...builtInCommands];
+  for (const stub of BUNDLED_SKILL_STUBS) {
+    if (!seen.has(stub.name)) { builtIn.push({ ...stub, namespace: 'builtin' }); seen.add(stub.name); }
+  }
+  const index = new Map([...builtIn, ...custom].map((item) => [item.name, item]));
+  return { builtIn, custom, pinned: PINNED_COMMAND_NAMES.map((name) => index.get(name)).filter(Boolean) };
+}
 
 /**
  * POST /api/commands/load

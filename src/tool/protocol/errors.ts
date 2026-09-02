@@ -1,5 +1,6 @@
 export type PilotDeckToolErrorCode =
   | "tool_not_found"
+  | "tool_unavailable"
   | "invalid_tool_input"
   | "permission_denied"
   | "permission_cancelled"
