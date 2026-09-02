@@ -25,12 +25,14 @@ export class TelemetrySender {
 
   private timer: NodeJS.Timeout | undefined;
   private flushing = false;
+  private hasBeenEnabled: boolean;
 
   constructor(
     private config: TelemetryConfig,
     deps: TelemetrySenderDeps = {},
   ) {
     this.fetchImpl = deps.fetchImpl ?? fetch;
+    this.hasBeenEnabled = this.config.enabled;
     this.restoreQueue();
     if (this.config.enabled) {
       this.timer = setInterval(() => {
@@ -44,6 +46,7 @@ export class TelemetrySender {
     if (this.config.enabled === enabled) return;
     this.config = { ...this.config, enabled };
     if (enabled) {
+      this.hasBeenEnabled = true;
       if (!this.timer) {
         this.timer = setInterval(() => {
           void this.flush();
@@ -114,7 +117,9 @@ export class TelemetrySender {
       this.timer = undefined;
     }
     await this.flush();
-    this.persistQueue();
+    if (this.hasBeenEnabled) {
+      this.persistQueue();
+    }
   }
 
   snapshot(): TelemetrySenderMetrics {

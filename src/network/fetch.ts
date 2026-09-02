@@ -66,9 +66,6 @@ export async function networkFetch(
     const timeout = options.timeoutMs && options.timeoutMs > 0
       ? setTimeout(() => controller.abort(new NetworkFetchError("network_timeout", `Network request timed out after ${options.timeoutMs}ms.`)), options.timeoutMs)
       : undefined;
-    if (timeout && typeof timeout === "object" && "unref" in timeout) {
-      (timeout as NodeJS.Timeout).unref();
-    }
 
     try {
       const response = await performFetch(input, {
@@ -233,21 +230,13 @@ function parseRetryAfterHeader(headerValue: string | null | undefined): number |
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    if (typeof timer === "object" && "unref" in timer) {
-      (timer as NodeJS.Timeout).unref();
-    }
-  });
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
   if (signal.aborted) return Promise.reject(new NetworkFetchError("network_abort", "Network retry aborted.", signal.reason));
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       signal.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
-    if (typeof timer === "object" && "unref" in timer) {
-      (timer as NodeJS.Timeout).unref();
-    }
     const onAbort = () => {
       clearTimeout(timer);
       reject(new NetworkFetchError("network_abort", "Network retry aborted.", signal.reason));
