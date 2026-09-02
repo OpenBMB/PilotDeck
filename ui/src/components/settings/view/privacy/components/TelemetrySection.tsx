@@ -1,6 +1,6 @@
-import { Activity } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { SettingsCard, SettingsRow, SettingsToggle } from "../../../shared/view";
+import { SettingsToggle } from "../../../shared/view";
 
 type TelemetrySectionProps = {
   enabled: boolean;
@@ -16,28 +16,29 @@ export default function TelemetrySection({
   const { t } = useTranslation("settings");
 
   return (
-    <>
-      <h3 className="text-xl font-semibold text-foreground">
+    <section
+      className="security-section security-telemetry-section"
+      aria-labelledby="security-telemetry-section-title"
+    >
+      <h2 id="security-telemetry-section-title">
         {t("settingsHome.telemetry.title")}
-      </h3>
-      <SettingsCard divided>
-        <SettingsRow
-          label={
-            <span className="inline-flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              {t("settingsHome.telemetry.title")}
-            </span>
-          }
-          description={t("settingsHome.telemetry.detail")}
-        >
-          <SettingsToggle
-            checked={enabled}
-            onChange={onToggle}
-            ariaLabel={t("settingsHome.telemetry.title")}
-            disabled={loading}
-          />
-        </SettingsRow>
-      </SettingsCard>
-    </>
+      </h2>
+      <div className="security-card security-telemetry-card">
+        <span className="security-telemetry-icon" aria-hidden="true">
+          <Share2 size={19} />
+        </span>
+        <div className="security-telemetry-copy">
+          <strong>{t("permissions.telemetry.title")}</strong>
+          <p>{t("permissions.telemetry.description")}</p>
+        </div>
+        <SettingsToggle
+          checked={enabled}
+          onChange={onToggle}
+          ariaLabel={t("permissions.telemetry.title")}
+          disabled={loading}
+          suppressNextSaveToast
+        />
+      </div>
+    </section>
   );
 }

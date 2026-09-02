@@ -1,16 +1,14 @@
 import type { ReactNode } from "react";
-import {
-  ArrowUpDown,
-  Globe2,
-  Palette,
-  type LucideIcon,
-} from "lucide-react";
+import { Palette, SlidersHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../../../contexts/ThemeContext";
 import { languages } from "../../../../i18n/languages";
-import { cn } from "../../../../lib/utils";
-import { PageSectionHeader, SettingsCard } from "../../shared/view";
 import type { ProjectSortOrder } from "../../shared/types";
+import {
+  GENERAL_LANGUAGE_ICON,
+  GENERAL_PROJECT_SORT_ICON,
+} from "./icons";
+import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
 
 type ThemeMode = "system" | "light" | "dark";
 
@@ -19,55 +17,58 @@ type GeneralSettingsSectionProps = {
   onProjectSortOrderChange: (value: ProjectSortOrder) => void;
 };
 
+function ChevronIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
+      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" />
+    </svg>
+  );
+}
+
 function SelectControl({
   value,
   onChange,
   options,
-  className,
+  compact = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
-  className?: string;
+  compact?: boolean;
 }) {
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(
-        "h-9 rounded-lg border border-transparent bg-muted px-3 text-[13px] font-medium text-foreground outline-none transition-colors",
-        "hover:bg-accent focus:border-ring focus:bg-card focus:ring-1 focus:ring-ring",
-        className,
-      )}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div className={compact ? "general-select-wrap compact" : "general-select-wrap"}>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronIcon />
+    </div>
   );
 }
 
-function MenuRow({
-  icon: Icon,
+function SelectRow({
+  icon,
   title,
   detail,
   children,
 }: {
-  icon: LucideIcon;
+  icon: ReactNode;
   title: string;
   detail: string;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[58px] items-center gap-3 px-4 py-2.5">
-      <Icon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium leading-5 text-foreground">{title}</div>
-        <div className="mt-0.5 text-xs leading-[18px] text-muted-foreground">{detail}</div>
+    <div className="general-setting-row general-select-row">
+      <span className="general-setting-icon">{icon}</span>
+      <div className="general-setting-copy">
+        <strong className="general-setting-title">{title}</strong>
+        <p>{detail}</p>
       </div>
-      <div className="flex-shrink-0">{children}</div>
+      {children}
     </div>
   );
 }
@@ -89,50 +90,85 @@ export default function GeneralSettingsSection({
     : "en";
 
   return (
-    <section className="space-y-2.5">
-      <PageSectionHeader title={t("mainTabs.appearance")} />
-      <SettingsCard className="overflow-hidden bg-card/60" divided>
-        <MenuRow
-          icon={Palette}
+    <section className="general-section">
+      <article className="general-card">
+        <header className="general-card-header">
+          <span className="general-card-header-icon">
+            <SlidersHorizontal size={16} strokeWidth={1.8} />
+          </span>
+          <h2>{t("mainTabs.appearance")}</h2>
+        </header>
+
+        <SelectRow
+          icon={<Palette size={16} strokeWidth={1.8} />}
           title={t("settingsHome.appearanceMode.title")}
           detail={t("settingsHome.appearanceMode.detail")}
         >
           <SelectControl
             value={themeMode}
-            onChange={(value) => setThemeMode?.(value as ThemeMode)}
+            onChange={(value) => {
+              setThemeMode?.(value as ThemeMode);
+              const label = value === "light"
+                ? t("settingsHome.appearanceMode.light")
+                : value === "dark"
+                  ? t("settingsHome.appearanceMode.dark")
+                  : t("settingsHome.appearanceMode.system");
+              showSettingsSuccess(`外观模式已切换为${label}`);
+            }}
             options={[
               { value: "system", label: t("settingsHome.appearanceMode.system") },
               { value: "light", label: t("settingsHome.appearanceMode.light") },
               { value: "dark", label: t("settingsHome.appearanceMode.dark") },
             ]}
-            className="w-44"
           />
-        </MenuRow>
+        </SelectRow>
 
-        <MenuRow
-          icon={Globe2}
+        <SelectRow
+          icon={
+            <span
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: GENERAL_LANGUAGE_ICON }}
+            />
+          }
           title={t("account.languageLabel")}
           detail={t("account.languageDescription")}
         >
           <SelectControl
             value={currentLanguage}
-            onChange={(value) => void i18n.changeLanguage(value)}
+            onChange={(value) => {
+              void i18n.changeLanguage(value).then(() => {
+                const label =
+                  languages.find((language) => language.value === value)
+                    ?.nativeName ?? value;
+                showSettingsSuccess(`语言已切换为${label}`);
+              });
+            }}
             options={languages.map((language) => ({
               value: language.value,
               label: language.nativeName,
             }))}
-            className="w-44"
           />
-        </MenuRow>
+        </SelectRow>
 
-        <MenuRow
-          icon={ArrowUpDown}
+        <SelectRow
+          icon={
+            <span
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: GENERAL_PROJECT_SORT_ICON }}
+            />
+          }
           title={t("appearanceSettings.projectSorting.label")}
           detail={t("appearanceSettings.projectSorting.description")}
         >
           <SelectControl
             value={projectSortOrder}
-            onChange={(value) => onProjectSortOrderChange(value as ProjectSortOrder)}
+            onChange={(value) => {
+              onProjectSortOrderChange(value as ProjectSortOrder);
+              const label = value === "name"
+                ? t("appearanceSettings.projectSorting.alphabetical")
+                : t("appearanceSettings.projectSorting.recentActivity");
+              showSettingsSuccess(`项目排序已切换为${label}`);
+            }}
             options={[
               {
                 value: "name",
@@ -143,10 +179,9 @@ export default function GeneralSettingsSection({
                 label: t("appearanceSettings.projectSorting.recentActivity"),
               },
             ]}
-            className="w-48"
           />
-        </MenuRow>
-      </SettingsCard>
+        </SelectRow>
+      </article>
     </section>
   );
 }

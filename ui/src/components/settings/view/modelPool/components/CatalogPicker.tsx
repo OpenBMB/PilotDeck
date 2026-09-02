@@ -1,79 +1,99 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
-import { Button } from "../../../../../shared/view/ui";
 import {
   CATALOG_PROVIDERS,
   type CatalogProvider,
 } from "../../../../../shared/catalogProviders";
+import ProviderAvatar from "./ProviderAvatar";
+import { XIcon } from "./icons";
 
 type CatalogPickerProps = {
+  open: boolean;
   existingIds: Set<string>;
   onPick: (catalog: CatalogProvider) => void;
   onCustom: () => void;
+  onClose: () => void;
 };
 
 export default function CatalogPicker({
+  open,
   existingIds,
   onPick,
   onCustom,
+  onClose,
 }: CatalogPickerProps) {
   const { t } = useTranslation("settings");
-  const [open, setOpen] = useState(false);
+  if (!open) return null;
+
   const available = CATALOG_PROVIDERS.filter((p) => !existingIds.has(p.id));
 
-  if (!open) {
-    return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Plus className="mr-1 h-3.5 w-3.5" />
-        {t("pilotDeckConfig.panels.models.addProvider")}
-      </Button>
-    );
-  }
-
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium text-foreground">
-          {t("pilotDeckConfig.panels.models.addProviderTitle")}
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-          {t("pilotDeckConfig.panels.models.cancel")}
-        </Button>
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {available.map((p) => (
+    <div
+      className="modal-backdrop provider-picker-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="provider-picker" role="dialog" aria-modal="true" aria-labelledby="provider-picker-title">
+        <header className="provider-picker-header">
+          <div>
+            <h2 id="provider-picker-title">{t("pilotDeckConfig.panels.models.addProviderTitle")}</h2>
+            <p>{t("pilotDeckConfig.panels.models.providerPickerDescription")}</p>
+          </div>
           <button
-            key={p.id}
             type="button"
-            onClick={() => {
-              onPick(p);
-              setOpen(false);
-            }}
-            className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
+            className="icon-button"
+            aria-label={t("pilotDeckConfig.panels.models.close")}
+            onClick={onClose}
           >
-            <div className="font-medium text-foreground">{p.displayName}</div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {t("pilotDeckConfig.panels.models.modelCount", { count: p.models.length })}
-            </div>
+            <XIcon size={20} />
           </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            onCustom();
-            setOpen(false);
-          }}
-          className="rounded-md border border-dashed border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-foreground/40 hover:bg-muted"
-        >
-          <div className="font-medium text-foreground">
-            + {t("pilotDeckConfig.panels.models.customProvider")}
-          </div>
-          <div className="mt-0.5 text-[10px] text-muted-foreground">
-            {t("pilotDeckConfig.panels.models.manualSetup")}
-          </div>
-        </button>
-      </div>
+        </header>
+        <div className="provider-picker-grid">
+          <button
+            type="button"
+            className="provider-option selected"
+            aria-pressed="true"
+            onClick={() => {
+              onCustom();
+              onClose();
+            }}
+          >
+            <ProviderAvatar
+              providerId="__custom__"
+              size={22}
+              className="provider-option-icon"
+            />
+            <span className="provider-option-copy">
+              <strong>{t("pilotDeckConfig.panels.models.customProvider")}</strong>
+              <small>{t("pilotDeckConfig.panels.models.manualSetup")}</small>
+            </span>
+            <span className="provider-option-radio" aria-hidden="true" />
+          </button>
+          {available.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="provider-option"
+              onClick={() => {
+                onPick(p);
+                onClose();
+              }}
+            >
+              <ProviderAvatar
+                providerId={p.id}
+                catalogEntry={p}
+                size={22}
+                className="provider-option-icon"
+              />
+              <span className="provider-option-copy">
+                <strong>{p.displayName}</strong>
+              </span>
+              <span className="provider-option-radio" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

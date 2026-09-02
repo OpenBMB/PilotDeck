@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { Button } from "../../../../../shared/view/ui";
-import { cn } from "../../../../../lib/utils";
 import type { KeyValueRow } from "../types/mcp";
-import { INPUT_CLASS } from "../utils/constants";
 import { newId } from "../utils/mcpServerForm";
 
 export function Field({
@@ -14,49 +11,32 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
-      <span className="text-sm font-medium text-foreground">{label}</span>
+    <label className="mcp-form-field">
+      <span className="mcp-field-label">{label}</span>
       {children}
     </label>
   );
 }
 
-export function ToggleButton({
-  active,
+export function IconButton({
   onClick,
-  children,
+  disabled,
+  label,
 }: {
-  active: boolean;
   onClick: () => void;
-  children: ReactNode;
+  disabled?: boolean;
+  label: string;
 }) {
   return (
     <button
       type="button"
+      className="mcp-icon-button danger"
       onClick={onClick}
-      className={cn(
-        "rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
+      disabled={disabled}
+      aria-label={label}
     >
-      {children}
+      <Trash2 size={16} />
     </button>
-  );
-}
-
-export function IconButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
-      onClick={onClick}
-    >
-      <Trash2 className="h-4 w-4" />
-    </Button>
   );
 }
 
@@ -66,19 +46,22 @@ export function StringListEditor({
   placeholder,
   addLabel,
   onChange,
+  disabled = false,
 }: {
   label: string;
   values: string[];
   placeholder: string;
   addLabel: string;
   onChange: (values: string[]) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-foreground">{label}</div>
-      <div className="space-y-2">
+    <div className="mcp-repeatable-field">
+      <span className="mcp-field-label">{label}</span>
+      <div className="mcp-repeatable-list">
+        {values.length === 0 && disabled ? <span className="mcp-empty-field-value">无</span> : null}
         {values.map((value, index) => (
-          <div key={index} className="flex gap-2">
+          <div key={index} className="mcp-repeatable-row single">
             <input
               value={value}
               onChange={(event) =>
@@ -89,20 +72,26 @@ export function StringListEditor({
                 )
               }
               placeholder={placeholder}
-              className={INPUT_CLASS}
+              aria-label={`${label} ${index + 1}`}
+              title={value}
+              disabled={disabled}
             />
-            <IconButton onClick={() => onChange(values.filter((_, i) => i !== index))} />
+            <IconButton
+              label={`${label} ${index + 1}`}
+              disabled={disabled}
+              onClick={() => onChange(values.filter((_, i) => i !== index))}
+            />
           </div>
         ))}
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-full"
+        <button
+          type="button"
+          className="mcp-add-row-button"
+          disabled={disabled}
           onClick={() => onChange([...values, ""])}
         >
-          <Plus className="h-4 w-4" />
+          <Plus size={15} />
           {addLabel}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -115,6 +104,7 @@ export function KeyValueEditor({
   valuePlaceholder,
   addLabel,
   onChange,
+  disabled = false,
 }: {
   label: string;
   rows: KeyValueRow[];
@@ -122,13 +112,15 @@ export function KeyValueEditor({
   valuePlaceholder: string;
   addLabel: string;
   onChange: (rows: KeyValueRow[]) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-foreground">{label}</div>
-      <div className="space-y-2">
+    <div className="mcp-repeatable-field">
+      <span className="mcp-field-label">{label}</span>
+      <div className="mcp-repeatable-list">
+        {rows.length === 0 && disabled ? <span className="mcp-empty-field-value">无</span> : null}
         {rows.map((row) => (
-          <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div key={row.id} className="mcp-repeatable-row pair">
             <input
               value={row.key}
               onChange={(event) =>
@@ -141,7 +133,7 @@ export function KeyValueEditor({
                 )
               }
               placeholder={keyPlaceholder}
-              className={INPUT_CLASS}
+              disabled={disabled}
             />
             <input
               value={row.value}
@@ -155,20 +147,24 @@ export function KeyValueEditor({
                 )
               }
               placeholder={valuePlaceholder}
-              className={INPUT_CLASS}
+              disabled={disabled}
             />
-            <IconButton onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))} />
+            <IconButton
+              label={label}
+              disabled={disabled}
+              onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))}
+            />
           </div>
         ))}
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-full"
+        <button
+          type="button"
+          className="mcp-add-row-button"
+          disabled={disabled}
           onClick={() => onChange([...rows, { id: newId(), key: "", value: "" }])}
         >
-          <Plus className="h-4 w-4" />
+          <Plus size={15} />
           {addLabel}
-        </Button>
+        </button>
       </div>
     </div>
   );

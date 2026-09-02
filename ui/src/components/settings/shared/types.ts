@@ -26,10 +26,9 @@ export type CodeEditorSettingsState = {
 };
 
 export type SettingsProps = {
-  isOpen: boolean;
   onClose: () => void;
   projects?: SettingsProject[];
-  initialTab?: string;
+  section?: string;
 };
 
 export type SetState<T> = Dispatch<SetStateAction<T>>;

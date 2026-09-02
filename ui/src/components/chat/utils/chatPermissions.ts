@@ -143,10 +143,12 @@ export function grantPilotDeckToolPermission(entry: string | null): PermissionGr
   const settings = getPilotDeckSettings();
   const alreadyAllowed = settings.allowedTools.includes(entry);
   const nextAllowed = alreadyAllowed ? settings.allowedTools : [...settings.allowedTools, entry];
+  const nextAsk = settings.askTools.filter((tool) => tool !== entry);
   const nextDisallowed = settings.disallowedTools.filter((tool) => tool !== entry);
   const updatedSettings = {
     ...settings,
     allowedTools: nextAllowed,
+    askTools: nextAsk,
     disallowedTools: nextDisallowed,
     lastUpdated: new Date().toISOString(),
   };
@@ -154,6 +156,7 @@ export function grantPilotDeckToolPermission(entry: string | null): PermissionGr
   safeLocalStorage.setItem(PILOTDECK_SETTINGS_KEY, JSON.stringify(updatedSettings));
   savePilotDeckPermissionSettings({
     allowedTools: nextAllowed,
+    askTools: nextAsk,
     disallowedTools: nextDisallowed,
   }).catch((error) => {
     console.error('Failed to persist granted permission to backend:', error);

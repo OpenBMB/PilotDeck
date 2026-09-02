@@ -7,7 +7,7 @@ type GeneralSectionsProps = {
   title: string;
 };
 
-export default function GeneralSections({ title }: GeneralSectionsProps) {
+export default function GeneralSections({ title: _title }: GeneralSectionsProps) {
   const {
     projectSortOrder,
     setProjectSortOrder,
@@ -16,8 +16,7 @@ export default function GeneralSections({ title }: GeneralSectionsProps) {
   } = useSettingsController({ isOpen: true, initialTab: "appearance" });
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="general-page-content">
       <GeneralSettingsSection
         projectSortOrder={projectSortOrder}
         onProjectSortOrderChange={setProjectSortOrder}

@@ -50,6 +50,9 @@ describe("WeixinChannelSection", () => {
     );
 
     fireEvent.click(
+      screen.getByRole("button", { name: /gateway\.weixin\.title/ }),
+    );
+    fireEvent.click(
       screen.getByRole("button", { name: "gateway.weixin.qrLogin" }),
     );
 
@@ -153,6 +156,9 @@ describe("WeixinChannelSection", () => {
       />,
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: /gateway\.weixin\.title/ }),
+    );
     await act(async () => {
       fireEvent.click(
         screen.getByRole("button", { name: "gateway.weixin.qrLogin" }),

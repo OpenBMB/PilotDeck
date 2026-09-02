@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Shield } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
 import {
@@ -8,23 +8,13 @@ import {
   getPilotDeckSettings,
   safeLocalStorage,
 } from "../../../chat/utils/chatStorage";
-import type { PilotDeckSettings } from "../../../chat/types/types";
-import { ConfigSaveError, PageSectionHeader } from "../../shared/view";
-import type { StatusBanner } from "./types";
+import { ConfigSaveError } from "../../shared/view";
 import { QUICK_ADD_TOOLS, QUICK_BLOCK_TOOLS } from "./utils/constants";
-import {
-  addUnique,
-  buildExportPayload,
-  downloadJson,
-  mergeUnique,
-  parsePermissionsImport,
-  persistPermissionSettings,
-  removeValue,
-} from "./utils/permissions";
+import { addUnique, persistPermissionSettings, removeValue } from "./utils/permissions";
 import { readTelemetryEnabled, setTelemetryEnabled } from "./utils/telemetry";
-import PermissionControlSection from "./components/PermissionControlSection";
 import PermissionRulesSection from "./components/PermissionRulesSection";
 import TelemetrySection from "./components/TelemetrySection";
+import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
 
 type PrivacySectionsProps = {
   title: string;
@@ -34,19 +24,15 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
   const { t } = useTranslation("settings");
   const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
-  const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
-  const [skipPermissions, setSkipPermissions] = useState(false);
+  const [askTools, setAskTools] = useState<string[]>([]);
   const [newAllowed, setNewAllowed] = useState("");
-  const [newBlocked, setNewBlocked] = useState("");
-  const [banner, setBanner] = useState<StatusBanner>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [newApproval, setNewApproval] = useState("");
   const telemetryEnabled = useMemo(() => readTelemetryEnabled(raw), [raw]);
 
   const reload = useCallback(() => {
     const settings = getPilotDeckSettings();
     setAllowedTools(settings.allowedTools);
-    setDisallowedTools(settings.disallowedTools);
-    setSkipPermissions(settings.skipPermissions);
+    setAskTools(settings.askTools);
   }, []);
 
   useEffect(() => {
@@ -54,9 +40,13 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
     fetchPilotDeckPermissionSettings()
       .then((settings) => {
         safeLocalStorage.setItem(PILOTDECK_SETTINGS_KEY, JSON.stringify(settings));
+        // The bypass control was removed from this page. Keep the effective
+        // policy in confirmation mode so explicit ask rules can take effect.
+        if (settings.skipPermissions) {
+          persistPermissionSettings({ skipPermissions: false });
+        }
         setAllowedTools(settings.allowedTools);
-        setDisallowedTools(settings.disallowedTools);
-        setSkipPermissions(settings.skipPermissions);
+        setAskTools(settings.askTools);
       })
       .catch((error) => {
         console.error("Failed to load permission settings from backend:", error);
@@ -77,34 +67,51 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
   const handleAddAllowed = (value: string) => {
     const next = addUnique(allowedTools, value);
     if (next === allowedTools) return;
+    const tool = value.trim();
+    const settings = getPilotDeckSettings();
+    const nextAsk = removeValue(askTools, tool);
+    const nextDisallowed = removeValue(settings.disallowedTools, tool);
     setAllowedTools(next);
-    persistPermissionSettings({ allowedTools: next });
+    setAskTools(nextAsk);
+    persistPermissionSettings({
+      allowedTools: next,
+      askTools: nextAsk,
+      disallowedTools: nextDisallowed,
+    });
     setNewAllowed("");
+    showSettingsSuccess(t("permissions.feedback.allowedAdded", { tool }));
   };
 
   const handleRemoveAllowed = (value: string) => {
     const next = removeValue(allowedTools, value);
     setAllowedTools(next);
     persistPermissionSettings({ allowedTools: next });
+    showSettingsSuccess(t("permissions.feedback.allowedRemoved", { tool: value }));
   };
 
-  const handleAddBlocked = (value: string) => {
-    const next = addUnique(disallowedTools, value);
-    if (next === disallowedTools) return;
-    setDisallowedTools(next);
-    persistPermissionSettings({ disallowedTools: next });
-    setNewBlocked("");
+  const handleAddApproval = (value: string) => {
+    const next = addUnique(askTools, value);
+    if (next === askTools) return;
+    const tool = value.trim();
+    const settings = getPilotDeckSettings();
+    const nextAllowed = removeValue(allowedTools, tool);
+    const nextDisallowed = removeValue(settings.disallowedTools, tool);
+    setAskTools(next);
+    setAllowedTools(nextAllowed);
+    persistPermissionSettings({
+      askTools: next,
+      allowedTools: nextAllowed,
+      disallowedTools: nextDisallowed,
+    });
+    setNewApproval("");
+    showSettingsSuccess(t("permissions.feedback.approvalAdded", { tool }));
   };
 
-  const handleRemoveBlocked = (value: string) => {
-    const next = removeValue(disallowedTools, value);
-    setDisallowedTools(next);
-    persistPermissionSettings({ disallowedTools: next });
-  };
-
-  const handleSkipPermissionsChange = (value: boolean) => {
-    setSkipPermissions(value);
-    persistPermissionSettings({ skipPermissions: value });
+  const handleRemoveApproval = (value: string) => {
+    const next = removeValue(askTools, value);
+    setAskTools(next);
+    persistPermissionSettings({ askTools: next });
+    showSettingsSuccess(t("permissions.feedback.approvalRemoved", { tool: value }));
   };
 
   const handleTelemetryToggle = useCallback(
@@ -117,150 +124,43 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
     [raw, save, setRaw],
   );
 
-  useEffect(() => {
-    if (!banner) return;
-    const timer = window.setTimeout(() => setBanner(null), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [banner]);
-
-  const handleExport = () => {
-    try {
-      const payload = buildExportPayload();
-      const stamp = new Date().toISOString().slice(0, 10);
-      downloadJson(`pilotdeck-permissions-${stamp}.json`, payload);
-      setBanner({
-        kind: "success",
-        message: t("permissions.exportSuccess", {
-          allowed: payload.allowedTools.length,
-          blocked: payload.disallowedTools.length,
-          defaultValue: "Exported {{allowed}} allowed and {{blocked}} blocked tools.",
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to export permissions:", error);
-      setBanner({
-        kind: "error",
-        message: t("permissions.exportError", {
-          defaultValue: "Failed to export permissions.",
-        }),
-      });
-    }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChosen = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    let fileRaw = "";
-    try {
-      fileRaw = await file.text();
-    } catch (error) {
-      console.error("Failed to read import file:", error);
-      setBanner({
-        kind: "error",
-        message: t("permissions.importReadError", {
-          defaultValue: "Could not read the selected file.",
-        }),
-      });
-      return;
-    }
-
-    const parsed = parsePermissionsImport(fileRaw);
-    if (!parsed) {
-      setBanner({
-        kind: "error",
-        message: t("permissions.importInvalid", {
-          defaultValue:
-            "Not a valid permissions export. Expected JSON with allowedTools / disallowedTools.",
-        }),
-      });
-      return;
-    }
-
-    const summary = t("permissions.importConfirmBody", {
-      allowed: parsed.allowedTools.length,
-      blocked: parsed.disallowedTools.length,
-      defaultValue:
-        "Merge {{allowed}} allowed and {{blocked}} blocked tools into your existing permissions?",
-    });
-    if (!window.confirm(summary)) {
-      setBanner(null);
-      return;
-    }
-
-    const current = getPilotDeckSettings();
-    const nextAllowed = mergeUnique(current.allowedTools, parsed.allowedTools);
-    const nextBlocked = mergeUnique(current.disallowedTools, parsed.disallowedTools);
-    const updates: Partial<PilotDeckSettings> = {
-      allowedTools: nextAllowed,
-      disallowedTools: nextBlocked,
-      ...(parsed.skipPermissions !== undefined
-        ? { skipPermissions: parsed.skipPermissions }
-        : {}),
-    };
-    persistPermissionSettings(updates);
-
-    setAllowedTools(nextAllowed);
-    setDisallowedTools(nextBlocked);
-    if (parsed.skipPermissions !== undefined) {
-      setSkipPermissions(parsed.skipPermissions);
-    }
-
-    const addedAllowed = nextAllowed.length - current.allowedTools.length;
-    const addedBlocked = nextBlocked.length - current.disallowedTools.length;
-    setBanner({
-      kind: "success",
-      message: t("permissions.importSuccess", {
-        addedAllowed,
-        addedBlocked,
-        defaultValue:
-          "Imported. Added {{addedAllowed}} allowed and {{addedBlocked}} blocked tools.",
-      }),
-    });
-  };
-
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="security-page-content">
+      <span className="sr-only">{title}</span>
       <ConfigSaveError error={error} />
-      <PageSectionHeader title={t("permissions.controlTitle")} />
-
-      <PermissionControlSection
-        fileInputRef={fileInputRef}
-        onFileChosen={handleFileChosen}
-        onExport={handleExport}
-        onImportClick={handleImportClick}
-        banner={banner}
-        skipPermissions={skipPermissions}
-        onSkipPermissionsChange={handleSkipPermissionsChange}
-      />
-
-      <PermissionRulesSection
-        mode="allowed"
-        tools={allowedTools}
-        newValue={newAllowed}
-        onNewValueChange={setNewAllowed}
-        onAdd={handleAddAllowed}
-        onRemove={handleRemoveAllowed}
-        quickTools={QUICK_ADD_TOOLS}
-        icon={Shield}
-      />
-
-      <PermissionRulesSection
-        mode="blocked"
-        tools={disallowedTools}
-        newValue={newBlocked}
-        onNewValueChange={setNewBlocked}
-        onAdd={handleAddBlocked}
-        onRemove={handleRemoveBlocked}
-        quickTools={QUICK_BLOCK_TOOLS}
-        icon={AlertTriangle}
-      />
+      <section className="security-section" aria-labelledby="security-permissions-title">
+        <div className="security-card security-permissions-card">
+          <header className="security-card-header">
+            <span className="security-card-header-icon" aria-hidden="true">
+              <ShieldCheck size={19} />
+            </span>
+            <div>
+              <h2 id="security-permissions-title">{t("permissions.controlTitle")}</h2>
+              <p>{t("permissions.controlDescription")}</p>
+            </div>
+          </header>
+          <div className="security-permission-grid">
+            <PermissionRulesSection
+              mode="allowed"
+              tools={allowedTools}
+              newValue={newAllowed}
+              onNewValueChange={setNewAllowed}
+              onAdd={handleAddAllowed}
+              onRemove={handleRemoveAllowed}
+              quickTools={QUICK_ADD_TOOLS}
+            />
+            <PermissionRulesSection
+              mode="approval"
+              tools={askTools}
+              newValue={newApproval}
+              onNewValueChange={setNewApproval}
+              onAdd={handleAddApproval}
+              onRemove={handleRemoveApproval}
+              quickTools={QUICK_BLOCK_TOOLS}
+            />
+          </div>
+        </div>
+      </section>
 
       <TelemetrySection
         enabled={telemetryEnabled}

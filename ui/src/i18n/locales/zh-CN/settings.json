@@ -10,7 +10,7 @@
     "title": "账户",
     "language": "语言",
     "languageLabel": "显示语言",
-    "languageDescription": "选择您偏好的界面语言",
+    "languageDescription": "选择您偏好的界面语言。",
     "username": "用户名",
     "email": "邮箱",
     "profile": "个人资料",
@@ -56,7 +56,9 @@
       "cancel": "取消"
     },
     "backToApp": "返回应用",
+    "backToProjects": "返回项目",
     "backToSettings": "返回设置",
+    "breadcrumb": "设置",
     "menu": {
       "general": "通用",
       "modelPool": "模型池",
@@ -68,12 +70,35 @@
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
       "integrations": "外部集成",
+      "messageChannels": "消息渠道",
+      "external": "外部集成",
       "extensions": "扩展",
       "mcpServers": "MCP 服务器",
       "officePreview": "Office 预览",
       "privacy": "安全隐私",
       "advanced": "高级",
+      "system": "高级",
       "about": "关于"
+    },
+    "descriptions": {
+      "general": "设置 PilotDeck 的界面外观、聊天输入和代码编辑体验。",
+      "modelPool": "集中管理模型提供商、连接凭据和可用模型。已启用模型将供智能体、路由和记忆功能使用。",
+      "agentModel": "为智能体选择默认模型。",
+      "agentRoute": "按任务复杂度选择模型，在保证效果的基础上节省token成本。",
+      "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
+      "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
+      "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
+      "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
+      "integrations": "连接常用通讯工具，让智能体可以从飞书、微信与企业微信接收消息并回复。",
+      "mcpServers": "连接本地工具与远程服务，让智能体可以安全使用外部能力和上下文。",
+      "officePreview": "选择 Office 文档的只读预览方式。PDF 始终使用 PilotDeck 内置浏览器，不受此设置影响。",
+      "privacy": "管理智能体的工具权限和匿名使用数据，敏感操作始终由你决定。",
+      "advanced": "管理应用级的重试、服务与环境变量配置。",
+      "about": "查看当前版本并检查更新。"
+    },
+    "status": {
+      "localReady": "本地安全存储",
+      "localReadyDetail": "配置保存在本机，修改后立即生效"
     },
     "titles": {
       "general": "通用",
@@ -136,7 +161,7 @@
       "inputSettings": "输入设置"
     },
     "darkMode": "深色模式",
-    "autoExpandTools": "自动展开工具",
+    "autoExpandTools": "显示调用工具",
     "showRawParameters": "显示原始参数",
     "showThinking": "显示思考过程",
     "inlineThinking": "内联思考（打字机动画）",
@@ -202,7 +227,7 @@
       "dark": "深色"
     },
     "chatInput": {
-      "title": "聊天与输入",
+      "title": "聊天",
       "detail": "工具显示、滚动行为和发送快捷键"
     },
     "codeEditor": {
@@ -245,7 +270,7 @@
     },
     "projectSorting": {
       "label": "项目排序",
-      "description": "项目在侧边栏中的排列方式",
+      "description": "项目在侧边栏中的排列方式。",
       "alphabetical": "按字母顺序",
       "recentActivity": "最近活动"
     },
@@ -257,15 +282,15 @@
       },
       "wordWrap": {
         "label": "自动换行",
-        "description": "在编辑器中默认启用自动换行"
+        "description": "在编辑器中默认启用自动换行。"
       },
       "showMinimap": {
         "label": "显示缩略图",
-        "description": "在差异视图中显示缩略图以便于导航"
+        "description": "在差异视图中显示缩略图以便于导航。"
       },
       "lineNumbers": {
         "label": "显示行号",
-        "description": "在编辑器中显示行号"
+        "description": "在编辑器中显示行号。"
       },
       "fontSize": {
         "label": "字体大小",
@@ -462,6 +487,9 @@
   "permissions": {
     "title": "权限设置",
     "controlTitle": "权限控制",
+    "controlDescription": "控制智能体调用工具时是否需要你的确认。",
+    "quickAdd": "快捷添加",
+    "quickAddComplete": "常用工具均已添加",
     "description": "管理助手可以无需询问即可运行的工具。从聊天中点击「添加权限」授予的项也会落到这里。",
     "export": "导出",
     "import": "导入",
@@ -478,11 +506,17 @@
       "warning": "当前已跳过权限确认。下方允许/禁用规则仍会保存，但这个全局模式会让智能体无需询问即可运行工具。"
     },
     "allowedTools": {
-      "title": "允许的工具",
+      "title": "自动允许",
       "description": "无需权限提示即可自动使用的工具",
-      "placeholder": "例如：\"Bash(git log:*)\" 或 \"Write\"",
+      "placeholder": "输入工具或命令规则",
       "quickAdd": "快速添加常用工具：",
-      "empty": "未配置允许的工具"
+      "empty": "还没有工具规则"
+    },
+    "approvalTools": {
+      "title": "执行前确认",
+      "description": "使用这些工具前始终请求确认",
+      "placeholder": "输入工具或命令规则",
+      "empty": "还没有工具规则"
     },
     "blockedTools": {
       "title": "禁用的工具",
@@ -539,7 +573,18 @@
     },
     "actions": {
       "add": "添加",
-      "remove": "移除"
+      "remove": "移除",
+      "removeTool": "移除 {{tool}}"
+    },
+    "feedback": {
+      "allowedAdded": "“{{tool}}”已加入自动允许",
+      "allowedRemoved": "“{{tool}}”已从自动允许移除",
+      "approvalAdded": "“{{tool}}”已设为执行前确认",
+      "approvalRemoved": "“{{tool}}”已从执行前确认移除"
+    },
+    "telemetry": {
+      "title": "匿名使用数据",
+      "description": "发送匿名功能使用与性能数据，帮助改进 PilotDeck。不会包含对话、文件内容或凭据。"
     }
   },
   "mcpServers": {
@@ -591,8 +636,42 @@
     "addRemote": "添加远程模板",
     "saved": "MCP 配置已保存。新的会话和下一次运行时重建会使用它。",
     "fixJsonBeforeTemplate": "请先修复 JSON，再插入模板。",
+    "invalidJson": "配置 JSON 无效",
+    "invalidJsonHelp": "请在下方“高级：原始 JSON”中修复后再继续编辑。",
     "empty": "还没有配置 MCP 服务器。",
+    "emptyHelp": "使用下方按钮添加 STDIO 或远程服务器。",
+    "selectOrAddServer": "选择或添加一台服务器",
+    "selectOrAddServerHelp": "在左侧选择服务器后，可在这里编辑完整连接配置。",
+    "addStdioServer": "添加 STDIO 服务器",
+    "globalTitle": "全局 MCP 服务器",
+    "projectTitle": "项目 MCP 服务器",
+    "globalLocation": "位于 ~/.pilotdeck/mcp.json，在所有项目中可用。",
+    "projectLocation": "位于 .pilotdeck/mcp.json，同名服务器会覆盖全局配置。",
+    "servers": "服务器",
+    "projects": "项目",
+    "searchServer": "搜索服务器",
+    "searchProject": "搜索项目",
+    "noProjects": "没有可用项目",
+    "noProjectSelected": "未选择项目",
+    "serverUnit": "{{count}} 台服务器",
+    "remoteTemplate": "远程模版",
+    "addressPending": "待配置地址",
+    "localProcess": "本地进程 · 标准输入输出",
+    "remoteService": "远程服务 · 流式 HTTP",
+    "transportLabel": "传输方式",
+    "credentialsNote": "敏感凭据请优先从环境变量读取，避免以明文写入项目配置。",
+    "removeTitle": "移除 MCP 服务器？",
+    "removeGlobalDescription": "将从全局配置中移除 {{server}}。",
+    "removeProjectDescription": "将从 {{project}} 项目配置中移除 {{server}}。",
+    "removed": "MCP 服务器已移除。",
+    "close": "关闭",
     "advanced": "高级：原始 JSON",
+    "advancedDescription": "直接查看或编辑全局及当前项目的 MCP 配置。",
+    "applyJsonHint": "应用后立即更新当前配置。",
+    "resetJson": "重置",
+    "applyJson": "应用 JSON",
+    "globalRaw": "全局配置",
+    "projectRaw": "项目配置 · {{project}}",
     "expand": "展开",
     "unnamed": "未命名服务器",
     "noSummary": "未配置命令或 URL",
@@ -607,13 +686,14 @@
       "env": "环境变量",
       "envPassThrough": "环境变量传递",
       "perSession": "每个会话独立启动",
-      "perSessionHelp": "每个 Agent 会话启动一个新的 MCP 进程。",
+      "perSessionHelp": "每个 Agent 会话启动一个新的 MCP 进程，隔离会话内状态。",
       "url": "URL",
       "headers": "请求头"
     },
     "placeholders": {
       "key": "键",
-      "value": "值"
+      "value": "值",
+      "arg": "输入一个参数"
     },
     "actions": {
       "addArg": "添加参数",
@@ -746,6 +826,22 @@
       }
     },
     "panels": {
+      "advancedPage": {
+        "configFilePrefix": "PILOTDECK 的配置文件存放于",
+        "configFileSuffix": "，若有需求可直接编辑。"
+      },
+      "advancedRetry": {
+        "title": "高级重试设置",
+        "description": "连接不稳定时的自动恢复策略",
+        "fields": {
+          "requestMaxRetries": { "label": "请求最大重试次数", "description": "非流式请求的最大重试次数。" },
+          "streamMaxRetries": { "label": "流式最大重试次数", "description": "流式请求的最大重试次数。" },
+          "streamIdleTimeoutMs": { "label": "流式空闲超时（毫秒）", "description": "在此时间内没有收到数据则中止流。" },
+          "judgeTimeoutMs": { "label": "判定超时（毫秒）", "description": "等待判定结果的最长时间。" },
+          "baseDelayMs": { "label": "基础延迟（毫秒）", "description": "首次重试前的初始等待时间。" },
+          "maxDelayMs": { "label": "最大延迟（毫秒）", "description": "两次重试之间的最长等待时间。" }
+        }
+      },
       "runtime": {
         "title": "服务",
         "description": "配置服务端口、数据路径和网络代理。修改端口或路径后通常需要重启服务。",
@@ -757,8 +853,8 @@
           "apiTimeout": { "label": "API 超时（毫秒）", "description": "每次请求的上游超时。" },
           "databasePath": { "label": "数据库路径", "description": "SQLite 认证/项目数据库（~ 展开为主目录）。" },
           "workspacesRoot": { "label": "工作区根目录", "description": "项目扫描的根目录。" },
-          "proxyUrl": { "label": "HTTPS 代理", "description": "出站 HTTPS 代理 URL，同时作用于 Gateway 和 UI Server（对应 pilotdeck.yaml 中的 proxy.url）。" },
-          "proxyNoProxy": { "label": "代理排除列表", "description": "逗号分隔的主机名/IP，这些地址不走代理（对应 pilotdeck.yaml 中的 proxy.noProxy）。127.0.0.1 和 localhost 始终排除。" }
+          "proxyUrl": { "label": "HTTPS 代理", "description": "出站 HTTPS 代理 URL，同时作用于 Gateway 和 UI Server。" },
+          "proxyNoProxy": { "label": "代理排除列表", "description": "逗号分隔的主机名/IP，这些地址不走代理。" }
         }
       },
       "officePreview": {
@@ -771,7 +867,7 @@
           },
           "binaryPath": {
             "label": "LibreOffice 可执行文件路径",
-            "description": "可选。自定义安装位置时填写 soffice/libreoffice 的完整路径；留空则自动探测。",
+            "description": "可选。自定义安装位置时填写 soffice 的完整路径；留空后可使用自动扫描。",
             "placeholder": "/Applications/LibreOffice.app/Contents/MacOS/soffice"
           },
           "detectedBinaryPath": {
@@ -802,6 +898,8 @@
           "error": "无法检查 LibreOffice 状态",
           "refresh": "重新检查",
           "noDetectedPaths": "暂未扫描到可用候选路径。你仍然可以手动填写完整路径后重新检查。",
+          "pathLabel": "路径",
+          "versionLabel": "版本",
           "path": "路径：{{path}}",
           "version": "版本：{{version}}"
         },
@@ -810,16 +908,25 @@
       },
       "models": {
         "title": "模型池",
-        "description": "配置想使用的模型提供商、API 密钥、接口地址与启用模型。智能体、记忆和路由会从这里的已启用模型中选择。",
+        "description": "集中管理模型提供商、连接凭据和可用模型。已启用模型将供智能体、路由和记忆功能使用。",
         "providerIdDuplicate": "已有同名 Provider id。",
+        "providersKicker": "提供商",
+        "connectionCount": "{{count}} 个连接",
+        "searchProviders": "搜索提供商",
+        "noMatchingProviders": "没有匹配的提供商",
         "addProvider": "添加提供商",
-        "addProviderTitle": "添加提供商",
+        "addProviderShort": "添加",
+        "addProviderTitle": "选择你的模型服务",
+        "providerPickerDescription": "预置服务商可直接使用；自定义服务商需手动填写连接信息。",
+        "close": "关闭",
         "cancel": "取消",
         "customProvider": "自定义",
         "manualSetup": "手动配置",
         "modelCount": "共 {{count}} 个模型",
-        "emptyProviders": "尚未配置提供商。点击“添加提供商”开始配置。",
+        "modelCountShort": "{{count}} 个模型",
+        "emptyProviders": "尚未配置提供商。点击“添加”开始配置。",
         "providerId": "ID",
+        "providerAria": "{{name}} 配置",
         "protocol": "协议",
         "protocolOptions": {
           "openai": "openai（聊天补全）",
@@ -832,15 +939,53 @@
         "defaultsTo": "默认使用目录中的",
         "fromCatalog": "。",
         "effective": "实际地址：",
+        "connectionInfo": "连接信息",
+        "connected": "已连接",
+        "pending": "待配置",
         "apiKey": "API 密钥",
+        "apiKeyPlaceholder": "请输入 API 密钥",
         "optional": "可选",
         "maskedKeyPlaceholder": "已保留现有密钥，如需替换请重新输入",
         "keyHidden": "密钥已隐藏；留空会继续保留，重新输入可替换。",
+        "keySaved": "密钥已安全保存。",
         "enabledModels": "已启用模型",
+        "candidateModels": "备选模型",
+        "searchCandidateModels": "搜索模型 ID",
+        "maxOutputTokens": "最大输出 Token",
+        "maxContextTokens": "最大上下文 Token",
+        "addModel": "添加模型",
+        "addModelId": "添加模型 ID",
+        "removeModelAria": "删除 {{name}}",
         "supportsImageInput": "支持图片输入",
         "clickEnable": "点击启用",
         "clickDisable": "点击禁用",
-        "customModelPlaceholder": "自定义模型 ID",
+        "customModelPlaceholder": "输入自定义模型 ID",
+        "customModelIdPlaceholder": "model-id",
+        "fetchApiModels": "拉取 API 模型",
+        "testConnection": "测试连接",
+        "retest": "重新测试",
+        "connectionNormal": "连接正常",
+        "testing": "正在测试…",
+        "testCostNote": "将检测所有已启用模型的文字和图片处理能力，会产生少量 API 费用。",
+        "testNeedModel": "请先启用至少一个模型。",
+        "testNeedUrl": "请先填写接口地址。",
+        "testNeedKey": "请先填写 API 密钥。",
+        "testSuccess": "连接成功。",
+        "testFailed": "连接失败。",
+        "manualImageRequired": "需要确认模型是否支持图片输入。",
+        "deleteDialog": {
+          "modelTitle": "删除“{{name}}”模型？",
+          "modelBlockedTitle": "无法删除“{{name}}”模型",
+          "providerTitle": "移除模型提供商“{{name}}”？",
+          "modelInUse": "此模型正在被以下配置使用。请分别进入对应位置修改所用模型后，再删除模型。",
+          "providerInUse": "移除后，以下配置将无法正常调用模型。请分别进入对应位置修改所用模型后，再移除提供商。",
+          "modelConfirm": "删除“{{name}}”后无法恢复，确定继续吗？",
+          "providerConfirm": "移除模型提供商“{{name}}”后无法恢复，确定继续吗？",
+          "usageAria": "模型使用位置",
+          "checking": "正在检查模型使用情况…",
+          "checkFailed": "无法检查模型使用情况，请稍后重试。",
+          "delete": "删除"
+        },
         "providerAdvancedToggle": "高级重试设置",
         "providerRetry": {
           "requestMaxRetries": { "label": "请求最大重试次数", "description": "非流式请求的最大重试次数。" },
@@ -881,6 +1026,8 @@
         }
       },
       "customEnv": {
+        "variableName": "环境变量名",
+        "variableValue": "环境变量值",
         "title": "环境变量",
         "description": "注入到每个智能体会话里的自定义环境变量。持久化到配置文件，切换会话不必重新配置。",
         "empty": "未配置自定义环境变量。",
@@ -896,14 +1043,22 @@
         "enabled": { "label": "启用", "description": "常驻后台智能体的总开关。" },
         "trigger": {
           "title": "触发",
-          "description": "控制自动发现何时、多久触发一次。",
+          "description": "在合适的时机主动发现可推进的工作，并避免频繁打扰。",
           "autoDiscovery": { "label": "自动发现", "description": "启用后，常驻模式会定期检查已接入的工作区并提出后续计划。" },
-          "tickInterval": { "label": "检查间隔（分钟）", "description": "守护进程检查已接入工作区的频率。" },
-          "cooldown": { "label": "冷却时间（分钟）", "description": "每个工作区两次发现运行之间的最短间隔。" },
-          "dailyBudget": { "label": "每日预算", "description": "每个工作区每天最多自动发现运行次数。" },
+          "tickInterval": { "label": "检查间隔（分钟）", "description": "后台检查工作区状态的频率。" },
+          "cooldown": { "label": "冷却时间（分钟）", "description": "每个工作区两次运行之间的最短间隔。" },
+          "dailyBudget": { "label": "每日预算", "description": "每个工作区每天最多可运行的计划数。" },
           "heartbeatStale": { "label": "心跳过期（秒）", "description": "超过此时间的心跳视为过期。" },
           "recentUserMsg": { "label": "最近用户消息（分钟）", "description": "仅在用户于此时间窗口内发送过消息时触发。" },
-          "preferChannel": { "label": "首选频道", "description": "发现智能体偏好使用的交互频道。" }
+          "preferChannel": {
+            "label": "首选频道",
+            "description": "常驻智能体向你发送进展的默认频道。",
+            "options": {
+              "desktop": "桌面通知",
+              "current": "当前对话",
+              "silent": "仅任务中心"
+            }
+          }
         },
         "dormancy": {
           "title": "休眠",
@@ -929,33 +1084,38 @@
           "timeout": { "label": "超时（分钟）", "description": "每次运行的硬性超时。" }
         },
         "workspaceOptIn": {
-          "title": "工作区接入",
-          "description": "只有勾选的工作区会收到常驻模式心跳和定时发现检查。",
-          "empty": "尚未识别到项目。请先添加或打开一个工作区。"
+          "title": "项目",
+          "description": "选择启用常驻的项目。",
+          "empty": "尚未识别到项目。请先添加或打开一个工作区。",
+          "searchPlaceholder": "检索项目",
+          "searchAria": "检索支持常驻的项目",
+          "searchEmpty": "没有匹配的项目。",
+          "toggleAria": "{{name}}常驻支持"
         }
       },
       "cron": {
         "title": "Cron",
         "description": "配置 Cron 任务使用的后台调度器。任务创建和管理在 Cron 模块中完成。",
+        "configAria": "定时任务运行设置",
         "enabled": {
           "label": "启用",
           "description": "定时 Cron 后台任务的总开关。"
         },
         "timezone": {
           "label": "时区",
-          "description": "调度器默认使用的 IANA 时区。"
+          "description": "定时任务将按照此时区计算和触发。"
         },
         "maxConcurrentRuns": {
           "label": "最大并发运行数",
-          "description": "同一时间允许执行的 Cron 运行数量上限。"
+          "description": "同一时间允许执行的定时任务数量上限。"
         }
       },
       "memory": {
         "title": "记忆",
         "description": "配置记忆服务、自动构建间隔，以及项目记忆的数据管理。",
         "enabled": {
-          "label": "启用",
-          "description": "启用记忆服务的总开关。"
+          "label": "启用记忆",
+          "description": ""
         },
         "model": {
           "label": "记忆模型",
@@ -982,15 +1142,17 @@
         },
         "intervalUnits": {
           "minutes": "分钟",
-          "hours": "小时"
+          "hours": "小时",
+          "days": "天",
+          "weeks": "周"
         },
         "data": {
           "title": "数据管理",
-          "description": "导出、导入或清空某个项目，或全部记忆。",
+          "description": "操作某项目或全部记忆。",
           "target": {
             "label": "管理对象",
-            "description": "选择要管理的项目或全部记忆。",
-            "all": "全部记忆",
+            "description": "",
+            "all": "general（智能体全部记忆）",
             "projectFallback": "未命名项目"
           },
           "actions": {
@@ -1010,7 +1172,11 @@
             "importProject": "导入会覆盖“{{target}}”的项目记忆。确认继续吗？",
             "importAll": "导入会覆盖全部记忆。确认继续吗？",
             "clearProject": "确认清空“{{target}}”的项目记忆吗？",
-            "clearAll": "确认清空全部记忆吗？这会删除所有项目记忆和全局用户背景。"
+            "clearAll": "确认清空全部记忆吗？这会删除所有项目记忆和全局用户背景。",
+            "clearModalTitle": "清空“{{name}}”项目记忆？",
+            "clearModalDescription": "此操作会永久删除所选范围内的索引与整理结果，且无法撤销。",
+            "clearModalConfirm": "确认清空",
+            "clearModalClose": "关闭"
           },
           "errors": {
             "missingProject": "没有可用项目。",
@@ -1021,29 +1187,32 @@
       },
       "tools": {
         "title": "搜索",
-        "description": "配置智能体 web_search 工具使用的搜索服务。",
+        "description": "配置智能体 Web 搜索使用的服务。",
+        "configAria": "搜索服务配置",
         "enabled": {
           "label": "启用 Web 搜索",
-          "description": "关闭后，智能体将不会获得 web_search 工具。"
+          "description": "关闭后，智能体将不会获得 web_search 工具。",
+          "aria": "Web 搜索开关"
         },
         "provider": {
           "label": "搜索提供商",
-          "description": "当前启用的搜索服务。",
+          "description": "选择智能体当前使用的搜索服务。",
           "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "自定义"
         },
         "apiKey": {
           "label": "API 密钥",
-          "description": "当前提供商的 API 密钥。",
+          "description": "密钥仅保存在本地，用于当前提供商的请求鉴权。",
           "placeholder": "提供商 API Key",
+          "providerPlaceholder": "输入 {{provider}} API Key",
           "maskedPlaceholder": "已保留现有密钥，如需替换请重新输入",
           "keyHidden": "密钥已隐藏；留空会继续保留，重新输入可替换。"
         },
         "endpoint": {
-          "label": "接口地址",
-          "description": "自定义接口地址，留空使用默认地址。",
-          "placeholder": "默认接口地址"
+          "label": "连接地址",
+          "description": "自定义搜索服务的 HTTP(S) 请求地址。",
+          "placeholder": "https://example.com/search"
         },
         "custom": {
           "name": {
@@ -1074,8 +1243,14 @@
         "test": {
           "button": "测试连接",
           "testing": "测试中…",
+          "incompleteTitle": "配置不完整",
+          "failureTitle": "连接失败",
+          "successTitle": "连接正常",
           "needsKey": "请先填写 API Key。",
-          "success": "连接正常：{{count}} 条结果，{{latency}}ms。",
+          "needsEndpoint": "请先填写自定义搜索服务的连接地址。",
+          "needsEndpointAndKey": "请先填写连接地址和 API 密钥",
+          "success": "服务返回 {{count}} 条结果，耗时 {{latency}}ms",
+          "failureDetail": "{{error}}",
           "failedPrefix": "连接失败：{{error}}"
         }
       },
@@ -1178,7 +1353,7 @@
       "gateway": {
         "title": "网关",
         "description": "消息网关（飞书 / Telegram / Discord / Slack）—— 频道级密钥建议用原始 YAML 编辑。",
-        "enabled": { "label": "启用", "description": "启用后，网关主目录将被生成，配有凭据的频道将上线。" },
+        "enabled": { "label": "启用网关", "description": "统一管理外部消息的接收、路由与回复。" },
         "home": { "label": "网关主目录", "description": "网关状态和各频道配置的工作目录。" }
       },
       "subsystemReload": {
@@ -1255,7 +1430,7 @@
   },
   "gateway": {
     "title": "IM 通道",
-    "description": "配置即时通讯通道（飞书、微信、企业微信），让 Agent 可通过 IM 应用被访问。",
+    "description": "配置即时通讯通道，让 Agent 可以通过 IM 应用被访问。",
     "connected": "已连接",
     "notConfigured": "未配置",
     "enabled": "已启用",
@@ -1270,17 +1445,20 @@
     "feishu": {
       "title": "飞书 / Lark",
       "label": "飞书机器人",
+      "summary": "通过自建机器人连接飞书组织与群聊",
       "domain": "域名",
       "domainOptions": {
         "feishu": "feishu.cn（飞书）",
         "lark": "larksuite.com（Lark）"
       },
       "connectionMode": "连接方式",
-      "chooseMethod": "选择配置飞书机器人的方式：",
+      "chooseMethod": "选择连接方式",
+      "chooseHint": "推荐扫码创建，约 1 分钟即可完成",
       "qrScan": "扫码创建",
-      "qrScanDesc": "用飞书 App 扫码自动创建机器人",
+      "qrScanDesc": "用飞书 App扫码，自动创建机器人",
       "manualInput": "手动输入",
-      "manualInputDesc": "从开发者后台获取 App ID 和 Secret",
+      "manualInputDesc": "使用已有应用的 App ID 和 Secret",
+      "generateQrAria": "生成飞书或 Lark 二维码",
       "startQr": "生成二维码",
       "connecting": "正在连接飞书…",
       "scanPrompt": "请打开飞书 / Lark App 扫描二维码",
@@ -1288,8 +1466,9 @@
       "retry": "重试"
     },
     "weixin": {
-      "title": "微信 (iLink)",
+      "title": "微信",
       "label": "微信机器人",
+      "summary": "扫码绑定微信机器人，在私聊中访问 Agent",
       "qrLogin": "扫码登录",
       "relogin": "重新登录",
       "loadingQr": "正在生成二维码…",
@@ -1305,6 +1484,7 @@
     "wecom": {
       "title": "企业微信 WeCom",
       "label": "企业微信机器人",
+      "summary": "连接企业微信 AI Bot，让 Agent 可在企业会话中使用",
       "chooseMethod": "选择配置企业微信 AI Bot 的方式：",
       "qrSetup": "扫码配置",
       "qrSetupDesc": "用企业微信 App 扫码自动创建或获取机器人凭据",

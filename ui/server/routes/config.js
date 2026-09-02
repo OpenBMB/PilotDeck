@@ -190,6 +190,30 @@ function modelProviderCredentialScope(provider) {
   };
 }
 
+function resolveSavedProviderApiKey(providerId) {
+  const requested = String(providerId || '').trim();
+  if (!requested) return '';
+  try {
+    const record = readPilotDeckConfigFile();
+    const providers = record.config?.model?.providers;
+    if (!isRecord(providers)) return '';
+    const direct = providers[requested];
+    if (isRecord(direct) && typeof direct.apiKey === 'string' && direct.apiKey.trim() && direct.apiKey !== MASKED_SECRET) {
+      return direct.apiKey.trim();
+    }
+    const lower = requested.toLowerCase();
+    for (const [id, provider] of Object.entries(providers)) {
+      if (id.toLowerCase() !== lower || !isRecord(provider)) continue;
+      if (typeof provider.apiKey === 'string' && provider.apiKey.trim() && provider.apiKey !== MASKED_SECRET) {
+        return provider.apiKey.trim();
+      }
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 function restoreRenamedProviderSecrets(nextConfig, previousConfig, rawRenames) {
   if (rawRenames === undefined) return { config: nextConfig };
   if (!Array.isArray(rawRenames) || rawRenames.length > 100) {
@@ -688,7 +712,10 @@ router.post('/models', async (req, res) => {
 router.post('/test-connection', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey, model } = req.body || {};
   const normalizedProviderId = String(providerId || '').trim().toLowerCase();
-  const effectiveApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  let effectiveApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (effectiveApiKey === MASKED_SECRET) {
+    effectiveApiKey = resolveSavedProviderApiKey(providerId);
+  }
   const apiKeyRequired = normalizedProviderId !== 'ollama';
   if (!baseUrl || !model || (apiKeyRequired && !effectiveApiKey)) {
     return res.status(400).json({

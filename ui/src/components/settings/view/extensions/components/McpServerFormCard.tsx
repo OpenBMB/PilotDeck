@@ -1,108 +1,113 @@
-import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Code2, Globe2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "../../../../../shared/view/ui";
-import { INPUT_CLASS } from "../utils/constants";
+import { cn } from "../../../../../lib/utils";
 import type { McpServerForm } from "../types/mcp";
-import {
-  Field,
-  KeyValueEditor,
-  StringListEditor,
-  ToggleButton,
-} from "./FormEditors";
+import { Field, KeyValueEditor, StringListEditor } from "./FormEditors";
 
 type McpServerFormCardProps = {
   server: McpServerForm;
+  editing: boolean;
+  saving?: boolean;
   onChange: (patch: Partial<McpServerForm>) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
   onRemove: () => void;
 };
 
 export default function McpServerFormCard({
   server,
+  editing,
+  saving = false,
   onChange,
+  onEdit,
+  onCancel,
+  onSave,
   onRemove,
 }: McpServerFormCardProps) {
   const { t } = useTranslation("settings");
-  const summary =
-    server.transport === "stdio"
-      ? [server.command, ...server.args].filter(Boolean).join(" ")
-      : server.url;
-  const shouldOpenByDefault =
-    server.name.startsWith("new-stdio-server") ||
-    server.name.startsWith("new-remote-server");
-  const [isOpen, setIsOpen] = useState(shouldOpenByDefault);
 
   return (
-    <details
-      className="overflow-hidden rounded-lg border border-border bg-background"
-      open={isOpen}
-      onToggle={(event) => setIsOpen(event.currentTarget.open)}
-    >
-      <summary className="cursor-pointer list-none px-4 py-3 transition-colors hover:bg-accent/25 [&::-webkit-details-marker]:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">
+    <div className="mcp-detail-panel">
+      <header className="mcp-detail-header">
+        <span className={cn("mcp-transport-icon", server.transport)}>
+          {server.transport === "stdio" ? <Code2 size={19} /> : <Globe2 size={19} />}
+        </span>
+        <div className="mcp-detail-title">
+          <div className="mcp-detail-title-line">
+            {editing ? (
+              <input
+                className="mcp-inline-title-input"
+                value={server.name}
+                onChange={(event) => onChange({ name: event.target.value })}
+                aria-label={t("mcpConfig.fields.name")}
+              />
+            ) : (
+              <strong className="mcp-server-title">
                 {server.name || t("mcpConfig.unnamed")}
-              </span>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold uppercase text-muted-foreground">
-                {server.transport === "stdio" ? "STDIO" : t("mcpConfig.transport.http")}
-              </span>
-            </div>
-            <div className="mt-1 truncate text-xs text-muted-foreground">
-              {summary || t("mcpConfig.noSummary")}
-            </div>
+              </strong>
+            )}
+            <span className={cn("mcp-detail-type", server.transport)}>
+              {server.transport === "stdio" ? "STDIO" : "HTTP"}
+            </span>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">
-            {t("mcpConfig.expand")}
-          </span>
+          <small>
+            {server.transport === "stdio"
+              ? t("mcpConfig.localProcess")
+              : t("mcpConfig.remoteService")}
+          </small>
         </div>
-      </summary>
-
-      <div className="space-y-4 border-t border-border p-4">
-        <Field label={t("mcpConfig.fields.name")}>
-          <input
-            value={server.name}
-            onChange={(event) => onChange({ name: event.target.value })}
-            placeholder="MCP server name"
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-muted/40 p-1">
-          <ToggleButton
-            active={server.transport === "stdio"}
-            onClick={() => onChange({ transport: "stdio" })}
-          >
-            STDIO
-          </ToggleButton>
-          <ToggleButton
-            active={server.transport === "http"}
-            onClick={() => onChange({ transport: "http" })}
-          >
-            {t("mcpConfig.transport.http")}
-          </ToggleButton>
+        <div className="mcp-detail-actions">
+          {editing ? (
+            <>
+              <button className="mcp-edit-server-button secondary" type="button" onClick={onCancel}>
+                <X size={14} />
+                {t("settingsPage.actions.cancel")}
+              </button>
+              <button
+                className="mcp-edit-server-button primary"
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+              >
+                <Save size={14} />
+                {t("settingsPage.actions.save")}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="mcp-edit-server-button" type="button" onClick={onEdit}>
+                <Pencil size={14} />
+                {t("settingsPage.actions.edit")}
+              </button>
+              <button className="mcp-remove-server-button" type="button" onClick={onRemove}>
+                <Trash2 size={15} />
+                {t("pilotDeckConfig.actions.remove")}
+              </button>
+            </>
+          )}
         </div>
+      </header>
 
+      <div className={cn("mcp-server-editor", editing ? "editing" : "readonly")}>
         {server.transport === "stdio" ? (
-          <div className="space-y-4">
+          <>
             <Field label={t("mcpConfig.fields.command")}>
               <input
                 value={server.command}
                 onChange={(event) => onChange({ command: event.target.value })}
-                placeholder="npx"
-                className={INPUT_CLASS}
+                placeholder="npx、uvx 或可执行文件路径"
+                disabled={!editing}
               />
             </Field>
-
             <StringListEditor
               label={t("mcpConfig.fields.args")}
               values={server.args}
-              placeholder="-y"
+              placeholder={t("mcpConfig.placeholders.arg")}
               addLabel={t("mcpConfig.actions.addArg")}
               onChange={(args) => onChange({ args })}
+              disabled={!editing}
             />
-
             <KeyValueEditor
               label={t("mcpConfig.fields.env")}
               rows={server.env}
@@ -110,41 +115,42 @@ export default function McpServerFormCard({
               valuePlaceholder={t("mcpConfig.placeholders.value")}
               addLabel={t("mcpConfig.actions.addEnv")}
               onChange={(env) => onChange({ env })}
+              disabled={!editing}
             />
-
             <StringListEditor
               label={t("mcpConfig.fields.envPassThrough")}
               values={server.envPassThrough}
-              placeholder="GITHUB_TOKEN"
+              placeholder="API_KEY"
               addLabel={t("mcpConfig.actions.addVariable")}
               onChange={(envPassThrough) => onChange({ envPassThrough })}
+              disabled={!editing}
             />
-
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
-              <span>
-                <span className="block text-sm font-medium text-foreground">
-                  {t("mcpConfig.fields.perSession")}
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  {t("mcpConfig.fields.perSessionHelp")}
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={server.perSession}
-                onChange={(event) => onChange({ perSession: event.target.checked })}
-                className="h-4 w-4"
-              />
-            </label>
-          </div>
+            <div className="mcp-session-row">
+              <div>
+                <strong>{t("mcpConfig.fields.perSession")}</strong>
+                <p>{t("mcpConfig.fields.perSessionHelp")}</p>
+              </div>
+              <button
+                className={cn("route-switch", server.perSession && "on")}
+                type="button"
+                role="switch"
+                aria-checked={server.perSession}
+                aria-label={t("mcpConfig.fields.perSession")}
+                onClick={() => onChange({ perSession: !server.perSession })}
+                disabled={!editing}
+              >
+                <span />
+              </button>
+            </div>
+          </>
         ) : (
-          <div className="space-y-4">
+          <>
             <Field label={t("mcpConfig.fields.url")}>
               <input
                 value={server.url}
                 onChange={(event) => onChange({ url: event.target.value })}
                 placeholder="https://example.com/mcp"
-                className={INPUT_CLASS}
+                disabled={!editing}
               />
             </Field>
             <KeyValueEditor
@@ -154,22 +160,15 @@ export default function McpServerFormCard({
               valuePlaceholder="Bearer ${env:MCP_TOKEN}"
               addLabel={t("mcpConfig.actions.addHeader")}
               onChange={(headers) => onChange({ headers })}
+              disabled={!editing}
             />
-          </div>
+            <div className="mcp-http-note" role="note">
+              <ShieldCheck size={15} />
+              {t("mcpConfig.credentialsNote")}
+            </div>
+          </>
         )}
       </div>
-
-      <div className="flex justify-end border-t border-border bg-muted/20 px-4 py-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          className="text-destructive hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-          {t("pilotDeckConfig.actions.remove")}
-        </Button>
-      </div>
-    </details>
+    </div>
   );
 }

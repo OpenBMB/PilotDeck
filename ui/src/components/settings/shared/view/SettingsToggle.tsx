@@ -1,10 +1,16 @@
 import { cn } from "../../../../lib/utils";
+import {
+  queueSettingsSaveSuccess,
+  showSettingsSuccess,
+} from "../SettingsSuccessToast";
 
 type SettingsToggleProps = {
   checked: boolean;
   onChange: (value: boolean) => void;
   ariaLabel: string;
   disabled?: boolean;
+  suppressNextSaveToast?: boolean;
+  successLabel?: string;
 };
 
 export default function SettingsToggle({
@@ -12,7 +18,19 @@ export default function SettingsToggle({
   onChange,
   ariaLabel,
   disabled,
+  suppressNextSaveToast = false,
+  successLabel = ariaLabel,
 }: SettingsToggleProps) {
+  const handleClick = () => {
+    const nextValue = !checked;
+    const message = `${successLabel}已${nextValue ? "开启" : "关闭"}`;
+    if (suppressNextSaveToast) {
+      queueSettingsSaveSuccess(message);
+    }
+    onChange(nextValue);
+    if (!suppressNextSaveToast) showSettingsSuccess(message);
+  };
+
   return (
     <button
       type="button"
@@ -20,22 +38,10 @@ export default function SettingsToggle({
       aria-checked={checked}
       aria-label={ariaLabel}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative inline-flex h-7 w-12 flex-shrink-0 touch-manipulation cursor-pointer items-center rounded-full border-2 transition-colors duration-200",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        checked ? "border-primary bg-primary" : "border-border bg-muted",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
+      onClick={handleClick}
+      className={cn("route-switch", checked && "on")}
     >
-      <span
-        className={cn(
-          "pointer-events-none inline-block h-5 w-5 rounded-full shadow-sm transition-transform duration-200",
-          checked
-            ? "translate-x-[22px] bg-white"
-            : "translate-x-[2px] bg-foreground/60 dark:bg-foreground/80",
-        )}
-      />
+      <span />
     </button>
   );
 }

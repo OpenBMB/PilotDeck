@@ -11,7 +11,9 @@ type IntegrationsSectionsProps = {
   title: string;
 };
 
-export default function IntegrationsSections({ title }: IntegrationsSectionsProps) {
+export default function IntegrationsSections({
+  title: _title,
+}: IntegrationsSectionsProps) {
   const { t } = useTranslation("settings");
   const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
@@ -26,8 +28,7 @@ export default function IntegrationsSections({ title }: IntegrationsSectionsProp
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="integration-page-content">
       <ConfigSaveError error={error} />
       {loading ? (
         <div className="py-6 text-xs text-muted-foreground">

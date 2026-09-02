@@ -1,13 +1,9 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  PageSectionHeader,
-  SettingsCard,
-  SettingsRow,
-  SettingsToggle,
-} from "../../../shared/view";
-import { FormRow, TextInput } from "../../../shared/components/Inputs";
+import { SettingsToggle } from "../../../shared/view";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
+import { Info, Plug, X } from "../im/icons";
 
 type GatewayConfigSectionProps = {
   config: PilotDeckConfig;
@@ -20,42 +16,101 @@ export default function GatewayConfigSection({
 }: GatewayConfigSectionProps) {
   const { t } = useTranslation("settings");
   const gateway = config.gateway ?? {};
+  const home = gateway.home ?? "~/.pilotdeck/gateway";
+  const [editingHome, setEditingHome] = useState(false);
+  const [homeDraft, setHomeDraft] = useState(home);
+
+  useEffect(() => {
+    if (!editingHome) setHomeDraft(home);
+  }, [editingHome, home]);
+
+  const saveHome = () => {
+    const next = homeDraft.trim();
+    if (!next) return;
+    onChange(patch(config, ["gateway", "home"], next));
+    setEditingHome(false);
+  };
 
   return (
-    <div className="space-y-2.5">
-      <PageSectionHeader
-        title={t("pilotDeckConfig.panels.gateway.title")}
-        description={t("pilotDeckConfig.panels.gateway.description")}
-      />
-      <SettingsCard divided>
-        <SettingsRow
-          label={t("pilotDeckConfig.panels.gateway.enabled.label")}
-          description={t("pilotDeckConfig.panels.gateway.enabled.description")}
-        >
+    <section
+      className="integration-section"
+      aria-label={t("pilotDeckConfig.panels.gateway.title")}
+    >
+      <div
+        className={`general-card integration-gateway-card${gateway.enabled ? " enabled" : ""}`}
+      >
+        <div className="integration-gateway-enable-row">
+          <span className="integration-gateway-icon">
+            <Plug size={22} />
+          </span>
+          <div className="integration-gateway-copy">
+            <strong>{t("pilotDeckConfig.panels.gateway.enabled.label")}</strong>
+            <p>{t("pilotDeckConfig.panels.gateway.enabled.description")}</p>
+          </div>
           <SettingsToggle
             checked={Boolean(gateway.enabled)}
             ariaLabel={t("pilotDeckConfig.panels.gateway.enabled.label")}
             onChange={(value) =>
               onChange(patch(config, ["gateway", "enabled"], value))
             }
+            suppressNextSaveToast
           />
-        </SettingsRow>
+        </div>
         {gateway.enabled && (
-          <FormRow
-            label={t("pilotDeckConfig.panels.gateway.home.label")}
-            description={t("pilotDeckConfig.panels.gateway.home.description")}
-          >
-            <TextInput
-              value={gateway.home}
-              placeholder="~/.pilotdeck/gateway"
-              monospace
-              onChange={(value) =>
-                onChange(patch(config, ["gateway", "home"], value))
-              }
+          <div className="integration-gateway-directory-row">
+            <div className="integration-gateway-copy">
+              <label htmlFor="gateway-directory">
+                {t("pilotDeckConfig.panels.gateway.home.label")}
+              </label>
+              <p>{t("pilotDeckConfig.panels.gateway.home.description")}</p>
+            </div>
+            <input
+              id="gateway-directory"
+              value={editingHome ? homeDraft : home}
+              readOnly={!editingHome}
+              aria-invalid={editingHome && !homeDraft.trim()}
+              onChange={(event) => setHomeDraft(event.target.value)}
             />
-          </FormRow>
+            <div className="integration-gateway-directory-actions">
+              {editingHome ? (
+                <>
+                  <button
+                    className="button secondary compact"
+                    type="button"
+                    onClick={() => {
+                      setHomeDraft(home);
+                      setEditingHome(false);
+                    }}
+                  >
+                    <X size={15} />
+                    {t("settingsPage.actions.cancel")}
+                  </button>
+                  <button
+                    className="button primary compact"
+                    type="button"
+                    disabled={!homeDraft.trim() || homeDraft.trim() === home}
+                    onClick={saveHome}
+                  >
+                    {t("settingsPage.actions.save")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="button secondary compact"
+                  type="button"
+                  onClick={() => setEditingHome(true)}
+                >
+                  {t("settingsPage.actions.edit")}
+                </button>
+              )}
+            </div>
+          </div>
         )}
-      </SettingsCard>
-    </div>
+      </div>
+      <div className="integration-gateway-note" role="note">
+        <Info size={16} />
+        <span>{t("pilotDeckConfig.panels.gateway.description")}</span>
+      </div>
+    </section>
   );
 }

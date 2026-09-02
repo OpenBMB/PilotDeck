@@ -15,7 +15,7 @@ type ModelPoolSectionsProps = {
   title: string;
 };
 
-export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
+export default function ModelPoolSections({ title: _title }: ModelPoolSectionsProps) {
   const { t } = useTranslation("settings");
   const {
     raw,
@@ -36,7 +36,7 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
       const nextRaw = configToYamlString(next);
       setRaw(nextRaw);
       const result = await save(options);
-      if (!result.ok && options?.providerRenames?.length) {
+      if (!result.ok) {
         restoreRawIfCurrent(nextRaw, previousRaw);
       }
       return result;
@@ -51,35 +51,26 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-        <div className="py-6 text-xs text-muted-foreground">
-          {t("pilotDeckConfig.loading")}
-        </div>
+      <div className="model-pool-page-content">
+        <div className="provider-empty">{t("pilotDeckConfig.loading")}</div>
       </div>
     );
   }
 
   if (!parsedConfig) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          {t("settingsPage.invalidYaml.modelPool")}
-        </div>
+      <div className="model-pool-page-content">
+        <div className="field-error banner">{t("settingsPage.invalidYaml.modelPool")}</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="model-pool-page-content">
       <ConfigSaveError error={error} />
-      {parsedConfig ? (
-        <FieldSaveModeProvider mode="immediate">
-          <ModelsSection config={parsedConfig} onChange={onFormChange} />
-        </FieldSaveModeProvider>
-      ) : null}
+      <FieldSaveModeProvider mode="immediate">
+        <ModelsSection config={parsedConfig} onChange={onFormChange} />
+      </FieldSaveModeProvider>
     </div>
   );
 }

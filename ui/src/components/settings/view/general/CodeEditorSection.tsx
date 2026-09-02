@@ -1,12 +1,8 @@
 import { useTranslation } from "react-i18next";
-import { cn } from "../../../../lib/utils";
-import {
-  PageSectionHeader,
-  SettingsCard,
-  SettingsRow,
-  SettingsToggle,
-} from "../../shared/view";
+import { SettingsToggle } from "../../shared/view";
 import type { CodeEditorSettingsState } from "../../shared/types";
+import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
+import { GENERAL_CODE_EDITOR_ICON } from "./icons";
 
 type CodeEditorSectionProps = {
   codeEditorSettings: CodeEditorSettingsState;
@@ -16,33 +12,33 @@ type CodeEditorSectionProps = {
   onFontSizeChange: (value: string) => void;
 };
 
-function SelectControl({
-  value,
+function ChevronIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
+      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" />
+    </svg>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
   onChange,
-  options,
-  className,
 }: {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ value: string; label: string }>;
-  className?: string;
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
 }) {
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(
-        "h-9 rounded-lg border border-transparent bg-muted px-3 text-[13px] font-medium text-foreground outline-none transition-colors",
-        "hover:bg-accent focus:border-ring focus:bg-card focus:ring-1 focus:ring-ring",
-        className,
-      )}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div className="general-setting-row general-toggle-row">
+      <div className="general-setting-copy">
+        <strong className="general-setting-title">{label}</strong>
+        {description ? <p>{description}</p> : null}
+      </div>
+      <SettingsToggle checked={checked} onChange={onChange} ariaLabel={label} />
+    </div>
   );
 }
 
@@ -56,56 +52,62 @@ export default function CodeEditorSection({
   const { t } = useTranslation("settings");
 
   return (
-    <section className="space-y-2.5">
-      <PageSectionHeader title={t("appearanceSettings.codeEditor.title")} />
-      <SettingsCard divided>
-        <SettingsRow
+    <section className="general-section general-code-section">
+      <article className="general-card">
+        <header className="general-card-header">
+          <span
+            className="general-card-header-icon"
+            aria-hidden="true"
+            dangerouslySetInnerHTML={{ __html: GENERAL_CODE_EDITOR_ICON }}
+          />
+          <h2>{t("appearanceSettings.codeEditor.title")}</h2>
+        </header>
+
+        <ToggleRow
           label={t("appearanceSettings.codeEditor.wordWrap.label")}
           description={t("appearanceSettings.codeEditor.wordWrap.description")}
-        >
-          <SettingsToggle
-            checked={codeEditorSettings.wordWrap}
-            onChange={onWordWrapChange}
-            ariaLabel={t("appearanceSettings.codeEditor.wordWrap.label")}
-          />
-        </SettingsRow>
-        <SettingsRow
+          checked={codeEditorSettings.wordWrap}
+          onChange={onWordWrapChange}
+        />
+        <ToggleRow
           label={t("appearanceSettings.codeEditor.showMinimap.label")}
           description={t("appearanceSettings.codeEditor.showMinimap.description")}
-        >
-          <SettingsToggle
-            checked={codeEditorSettings.showMinimap}
-            onChange={onShowMinimapChange}
-            ariaLabel={t("appearanceSettings.codeEditor.showMinimap.label")}
-          />
-        </SettingsRow>
-        <SettingsRow
+          checked={codeEditorSettings.showMinimap}
+          onChange={onShowMinimapChange}
+        />
+        <ToggleRow
           label={t("appearanceSettings.codeEditor.lineNumbers.label")}
           description={t("appearanceSettings.codeEditor.lineNumbers.description")}
-        >
-          <SettingsToggle
-            checked={codeEditorSettings.lineNumbers}
-            onChange={onLineNumbersChange}
-            ariaLabel={t("appearanceSettings.codeEditor.lineNumbers.label")}
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={t("appearanceSettings.codeEditor.fontSize.label")}
-          description={t("appearanceSettings.codeEditor.fontSize.description")}
-        >
-          <SelectControl
-            value={codeEditorSettings.fontSize}
-            onChange={onFontSizeChange}
-            options={["10", "11", "12", "13", "14", "15", "16", "18", "20"].map(
-              (size) => ({
-                value: size,
-                label: `${size}px`,
-              }),
-            )}
-            className="w-32"
-          />
-        </SettingsRow>
-      </SettingsCard>
+          checked={codeEditorSettings.lineNumbers}
+          onChange={onLineNumbersChange}
+        />
+
+        <div className="general-setting-row general-font-row">
+          <div className="general-setting-copy">
+            <strong className="general-setting-title">
+              {t("appearanceSettings.codeEditor.fontSize.label")}
+            </strong>
+            <p>{t("appearanceSettings.codeEditor.fontSize.description")}</p>
+          </div>
+          <div className="general-select-wrap compact">
+            <select
+              value={codeEditorSettings.fontSize}
+              onChange={(event) => {
+                const value = event.target.value;
+                onFontSizeChange(value);
+                showSettingsSuccess(`编辑器字号已设为 ${value}px`);
+              }}
+            >
+              {["10", "11", "12", "13", "14", "15", "16", "18", "20"].map((size) => (
+                <option key={size} value={size}>
+                  {size}px
+                </option>
+              ))}
+            </select>
+            <ChevronIcon />
+          </div>
+        </div>
+      </article>
     </section>
   );
 }

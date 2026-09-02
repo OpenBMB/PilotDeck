@@ -288,8 +288,6 @@ export function useProjectsState({
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
   const [externalMessageUpdate, setExternalMessageUpdate] = useState(0);
 
   const loadingProgressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -344,11 +342,6 @@ export function useProjectsState({
     // Keep chat view stable while still syncing sidebar/session metadata in background.
     await fetchProjects({ showLoadingState: false });
   }, [fetchProjects]);
-
-  const openSettings = useCallback((tab = 'appearance') => {
-    setSettingsInitialTab(tab);
-    setShowSettings(true);
-  }, []);
 
   useEffect(() => {
     void fetchProjects();
@@ -881,10 +874,6 @@ export function useProjectsState({
       isLoading: isLoadingProjects,
       loadingProgress,
       onRefresh: handleSidebarRefresh,
-      onShowSettings: () => setShowSettings(true),
-      showSettings,
-      settingsInitialTab,
-      onCloseSettings: () => setShowSettings(false),
       isMobile,
     }),
     [
@@ -898,10 +887,8 @@ export function useProjectsState({
       isMobile,
       loadingProgress,
       projects,
-      settingsInitialTab,
       selectedProject,
       selectedSession,
-      showSettings,
     ],
   );
 
@@ -914,15 +901,11 @@ export function useProjectsState({
     isLoadingProjects,
     loadingProgress,
     isInputFocused,
-    showSettings,
-    settingsInitialTab,
     externalMessageUpdate,
     setActiveTab,
     setSelectedSession,
     setSidebarOpen,
     setIsInputFocused,
-    setShowSettings,
-    openSettings,
     fetchProjects,
     refreshProjectsSilently,
     sidebarSharedProps,

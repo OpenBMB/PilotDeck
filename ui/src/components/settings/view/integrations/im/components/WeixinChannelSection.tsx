@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, CheckCircle2, Loader2, MessageSquare, QrCode } from "lucide-react";
 import { Button } from "../../../../../../shared/view/ui";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  QrCode,
+  WechatIcon,
+} from "../icons";
 import { authenticatedFetch } from "../../../../../../utils/api";
 import { cn } from "../../../../../../lib/utils";
-import { SettingsCard, SettingsSection } from "../../../../shared/view";
+import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import type { RefreshGatewayStatus } from "../hooks/useGatewayStatus";
 import type { GatewayStatus } from "../types";
 
@@ -49,6 +57,9 @@ export default function WeixinChannelSection({
   );
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(
+    status.enabled && status.runtime?.state === "waiting_for_login",
+  );
   const pollRef = useRef<number | null>(null);
   const prepareTimeoutRef = useRef<number | null>(null);
   const requestedAtRef = useRef<string | null>(null);
@@ -117,6 +128,7 @@ export default function WeixinChannelSection({
         if (pollData.ok) {
           clearLoginTimers();
           setPhase("success");
+          showSettingsSuccess();
           void onSaved();
           return;
         }
@@ -247,7 +259,9 @@ export default function WeixinChannelSection({
   const handleDisable = async () => {
     try {
       clearLoginTimers();
-      await authenticatedFetch("/api/gateway/weixin/disable", { method: "POST" });
+      const response = await authenticatedFetch("/api/gateway/weixin/disable", { method: "POST" });
+      if (!response.ok) return;
+      showSettingsSuccess();
       onSaved();
     } catch {
       // ignore
@@ -255,50 +269,43 @@ export default function WeixinChannelSection({
   };
 
   return (
-    <SettingsSection title={t("gateway.weixin.title")}>
-      <SettingsCard>
-        <div className="space-y-4 p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <div className="text-[13px] font-medium text-foreground">
-                  {t("gateway.weixin.label")}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {statusText}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {status.enabled && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    badgeTone === "amber"
-                      && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-                    badgeTone === "red"
-                      && "bg-red-500/10 text-red-700 dark:text-red-400",
-                    badgeTone === "green"
-                      && "bg-green-500/10 text-green-600 dark:text-green-400",
-                    badgeTone === "muted" && "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      badgeTone === "amber" && "bg-amber-500",
-                      badgeTone === "red" && "bg-red-500",
-                      badgeTone === "green" && "bg-green-500",
-                      badgeTone === "muted" && "bg-muted-foreground",
-                    )}
-                  />
-                  {runtimeLabel ?? t("gateway.enabled")}
-                </span>
-              )}
-            </div>
-          </div>
+    <section className={`integration-channel${expanded ? " expanded" : ""}`}>
+      <button
+        className="integration-channel-summary"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="integration-platform-icon wechat">
+          <WechatIcon size={21} />
+        </span>
+        <span className="integration-channel-copy">
+          <strong>
+            {t("gateway.weixin.title")} <em>iLink</em>
+          </strong>
+          <small>
+            {status.enabled ? statusText : t("gateway.weixin.summary")}
+          </small>
+        </span>
+        <span
+          className={cn(
+            "integration-status",
+            badgeTone === "green" && "enabled",
+            badgeTone === "amber" && "connected",
+          )}
+        >
+          {status.enabled ? <i /> : null}
+          {status.enabled
+            ? runtimeLabel ?? t("gateway.enabled")
+            : t("gateway.notConfigured")}
+        </span>
+        <span className="integration-channel-toggle">
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
 
+      {expanded ? (
+        <div className="integration-channel-detail">
           {phase === "idle" && (
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={startQRLogin}>
@@ -383,7 +390,7 @@ export default function WeixinChannelSection({
             </div>
           )}
         </div>
-      </SettingsCard>
-    </SettingsSection>
+      ) : null}
+    </section>
   );
 }

@@ -1,62 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PilotDeckConfigProvider } from "../../hooks/usePilotDeckConfig";
 import { authenticatedFetch } from "../../utils/api";
 import type { SettingsProps } from "./shared/types";
 import type { SettingsMenuKey } from "./types";
-import { mapInitialTabToMenuKey } from "./navigation";
+import { getSettingsPath, mapSettingsSectionToMenuKey } from "./navigation";
+import {
+  normalizeDesktopVersionResult,
+  normalizeWebVersionResult,
+  type DesktopVersionCheckResult,
+} from "./version";
 import SettingsSidebar from "./view/SettingsSidebar";
 import SettingsContent from "./view/SettingsContent";
+import { SettingsSuccessToastProvider } from "./shared/SettingsSuccessToast";
+import "./settings-page.css";
 
-export type DesktopVersionCheckResult = {
-  mode: "desktop" | "web";
-  hasUpdate: boolean;
-  checkUnavailable: boolean;
-  currentVersion: string;
-  latestVersion: string | null;
-  latestPublishedAt: string | null;
-  buildTime: string | null;
-};
-
-function normalizeDesktopVersionResult(payload: any): DesktopVersionCheckResult {
-  return {
-    mode: "desktop",
-    hasUpdate: Boolean(payload?.hasUpdate),
-    checkUnavailable: Boolean(payload?.checkUnavailable),
-    currentVersion: payload?.current?.version ?? "unknown",
-    latestVersion: payload?.latest?.version ?? null,
-    latestPublishedAt: payload?.latest?.publishedAt ?? null,
-    buildTime: payload?.current?.buildTime ?? null,
-  };
-}
-
-function normalizeWebVersionResult(payload: any): DesktopVersionCheckResult {
-  return {
-    mode: "web",
-    hasUpdate: Boolean(payload?.hasUpdate),
-    checkUnavailable: Boolean(payload?.checkUnavailable),
-    currentVersion: payload?.localHead ?? "unknown",
-    latestVersion: payload?.remoteHead ?? null,
-    latestPublishedAt: null,
-    buildTime: null,
-  };
-}
+export type { DesktopVersionCheckResult } from "./version";
 
 function SettingsInner({
-  isOpen,
   onClose,
   projects = [],
-  initialTab,
+  section,
 }: SettingsProps) {
+  const navigate = useNavigate();
   const isDesktopApp =
     typeof window !== "undefined" && !!(window as any).pilotdeckDesktop;
-  const initialKey = useMemo(
-    () => mapInitialTabToMenuKey(initialTab),
-    [initialTab],
-  );
-  const [selectedKey, setSelectedKey] =
-    useState<SettingsMenuKey>(initialKey);
+  const selectedKey = mapSettingsSectionToMenuKey(section);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(
-    initialKey === "general",
+    selectedKey === "general",
   );
   const [versionInfo, setVersionInfo] = useState<DesktopVersionCheckResult>({
     mode: isDesktopApp ? "desktop" : "web",
@@ -100,51 +71,49 @@ function SettingsInner({
   }, [isDesktopApp]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const nextKey = mapInitialTabToMenuKey(initialTab);
-    setSelectedKey(nextKey);
-    setMobileNavigationOpen(nextKey === "general");
     void checkVersion();
-  }, [isOpen, initialTab, checkVersion]);
+  }, [checkVersion]);
 
-  const selectMenuItem = useCallback((key: SettingsMenuKey) => {
-    setSelectedKey(key);
-    setMobileNavigationOpen(false);
-  }, []);
+  useEffect(() => {
+    setMobileNavigationOpen(selectedKey === "general");
+  }, [selectedKey]);
 
-  if (!isOpen) {
-    return null;
-  }
+  const selectMenuItem = useCallback(
+    (key: SettingsMenuKey) => {
+      setMobileNavigationOpen(false);
+      navigate(getSettingsPath(key));
+    },
+    [navigate],
+  );
 
   return (
-    <div className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm md:p-4">
-      <div className="relative flex h-full w-full overflow-hidden border border-border bg-background shadow-2xl md:h-[90vh] md:max-w-7xl md:rounded-xl">
-        <div className="flex h-full w-full flex-col md:flex-row">
-          <SettingsSidebar
-            selectedKey={selectedKey}
-            onSelect={selectMenuItem}
-            onClose={onClose}
-            showAboutDot={versionInfo.hasUpdate}
-            mobileVisible={mobileNavigationOpen}
-          />
-          <SettingsContent
-            selectedKey={selectedKey}
-            projects={projects}
-            versionInfo={versionInfo}
-            checkingVersion={checkingVersion}
-            mobileVisible={!mobileNavigationOpen}
-            onOpenMobileNavigation={() => setMobileNavigationOpen(true)}
-          />
-        </div>
-      </div>
+    <div className="pilotdeck-settings-app">
+      <SettingsSidebar
+        selectedKey={selectedKey}
+        onSelect={selectMenuItem}
+        onClose={onClose}
+        showAboutDot={versionInfo.hasUpdate}
+        mobileVisible={mobileNavigationOpen}
+      />
+      <SettingsContent
+        selectedKey={selectedKey}
+        projects={projects}
+        versionInfo={versionInfo}
+        checkingVersion={checkingVersion}
+        onCloseSettings={onClose}
+        mobileVisible={!mobileNavigationOpen}
+        onOpenMobileNavigation={() => setMobileNavigationOpen(true)}
+      />
     </div>
   );
 }
 
 export default function Settings(props: SettingsProps) {
   return (
-    <PilotDeckConfigProvider>
-      <SettingsInner {...props} />
-    </PilotDeckConfigProvider>
+    <SettingsSuccessToastProvider>
+      <PilotDeckConfigProvider>
+        <SettingsInner {...props} />
+      </PilotDeckConfigProvider>
+    </SettingsSuccessToastProvider>
   );
 }

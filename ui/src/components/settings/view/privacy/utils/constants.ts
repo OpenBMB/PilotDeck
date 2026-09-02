@@ -23,9 +23,6 @@ const QUICK_BLOCK_TOOLS_WINDOWS = [
   "bash:rm:*",
   "bash:Remove-Item:*",
   "bash:del /s:*",
-  "bash:rd /s:*",
-  "bash:Format-Volume:*",
-  "bash:Start-Process:*",
 ];
 
 export const QUICK_BLOCK_TOOLS = IS_WINDOWS

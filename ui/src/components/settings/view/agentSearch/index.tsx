@@ -10,7 +10,9 @@ type AgentSearchSectionsProps = {
   title: string;
 };
 
-export default function AgentSearchSections({ title }: AgentSearchSectionsProps) {
+export default function AgentSearchSections({
+  title: _title,
+}: AgentSearchSectionsProps) {
   const { t } = useTranslation("settings");
   const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
@@ -26,8 +28,7 @@ export default function AgentSearchSections({ title }: AgentSearchSectionsProps)
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+      <div className="search-page-content">
         <div className="py-6 text-xs text-muted-foreground">
           {t("pilotDeckConfig.loading")}
         </div>
@@ -37,8 +38,7 @@ export default function AgentSearchSections({ title }: AgentSearchSectionsProps)
 
   if (!parsedConfig) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+      <div className="search-page-content">
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {t("settingsPage.invalidYaml.agentSearch")}
         </div>
@@ -47,8 +47,7 @@ export default function AgentSearchSections({ title }: AgentSearchSectionsProps)
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="search-page-content">
       <ConfigSaveError error={error} />
       <ToolsSection config={parsedConfig} onChange={onFormChange} />
     </div>

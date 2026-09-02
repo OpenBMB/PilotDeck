@@ -1,19 +1,16 @@
-import type { LucideIcon } from "lucide-react";
-import { Plus, X } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
-import { SettingsCard, SettingsSection } from "../../../shared/view";
 
 type PermissionRulesSectionProps = {
-  mode: "allowed" | "blocked";
+  mode: "allowed" | "approval";
   tools: string[];
   newValue: string;
   onNewValueChange: (value: string) => void;
   onAdd: (value: string) => void;
   onRemove: (value: string) => void;
   quickTools: string[];
-  icon: LucideIcon;
 };
 
 export default function PermissionRulesSection({
@@ -24,128 +21,125 @@ export default function PermissionRulesSection({
   onAdd,
   onRemove,
   quickTools,
-  icon: Icon,
 }: PermissionRulesSectionProps) {
   const { t } = useTranslation("settings");
   const isAllowed = mode === "allowed";
-  const sectionKey = isAllowed ? "allowedTools" : "blockedTools";
+  const sectionKey = isAllowed ? "allowedTools" : "approvalTools";
+  const [adding, setAdding] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const availableQuickTools = quickTools.filter((tool) => !tools.includes(tool));
+
+  useEffect(() => {
+    if (adding) inputRef.current?.focus();
+  }, [adding]);
+
+  const closeForm = () => {
+    setAdding(false);
+    onNewValueChange("");
+  };
+
+  const submit = () => {
+    if (!newValue.trim()) return;
+    onAdd(newValue);
+    setAdding(false);
+  };
 
   return (
-    <SettingsSection
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Icon
-            className={
-              isAllowed
-                ? "h-4 w-4 text-green-600 dark:text-green-400"
-                : "h-4 w-4 text-red-600 dark:text-red-400"
-            }
-          />
-          {t(`permissions.${sectionKey}.title`, {
-            defaultValue: isAllowed ? "Allowed tools" : "Blocked tools",
-          })}
-        </span>
-      }
-      description={t(`permissions.${sectionKey}.description`, {
-        defaultValue: isAllowed
-          ? "Tools that auto-run without prompting."
-          : "Tools the assistant is never allowed to use.",
-      })}
+    <section
+      className={`security-permission-column ${isAllowed ? "allowed" : "approval"}`}
+      aria-labelledby={`security-${sectionKey}-title`}
     >
-      <SettingsCard className="space-y-3 p-3">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            value={newValue}
-            onChange={(event) => onNewValueChange(event.target.value)}
-            placeholder={t(`permissions.${sectionKey}.placeholder`, {
-              defaultValue: isAllowed ? 'e.g. "bash:git log:*" or "write_file"' : 'e.g. "Bash(rm:*)"',
-            })}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                if (isImeEnterEvent(event)) return;
-                event.preventDefault();
-                onAdd(newValue);
-              }
-            }}
-            className="h-10 flex-1"
-          />
-          <Button
-            onClick={() => onAdd(newValue)}
-            disabled={!newValue.trim()}
-            size="sm"
-            className="h-10 px-4"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t("permissions.actions.add", { defaultValue: "Add" })}
-          </Button>
-        </div>
+      <header className="security-permission-heading">
+        <span className="security-permission-icon" aria-hidden="true">
+          {isAllowed ? <CircleCheck size={14} /> : <CircleAlert size={14} />}
+        </span>
+        <h3 id={`security-${sectionKey}-title`}>
+          {t(`permissions.${sectionKey}.title`)}
+        </h3>
+        <span className="security-permission-count">{tools.length}</span>
+      </header>
 
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            {t("permissions.allowedTools.quickAdd", { defaultValue: "Quick add:" })}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {quickTools.map((tool) => (
-              <Button
-                key={tool}
-                variant="outline"
-                size="sm"
-                onClick={() => onAdd(tool)}
-                disabled={tools.includes(tool)}
-                className="h-7 text-xs"
-              >
-                {tool}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          {tools.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border py-5 text-center text-xs text-muted-foreground">
-              {t(`permissions.${sectionKey}.empty`, {
-                defaultValue: isAllowed
-                  ? "No allowed tools configured yet."
-                  : "No blocked tools configured.",
-              })}
-            </div>
-          ) : (
-            tools.map((tool) => (
-              <div
-                key={tool}
-                className={
-                  isAllowed
-                    ? "flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-900/50 dark:bg-green-950/30"
-                    : "flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/50 dark:bg-red-950/30"
+      <div
+        className="security-tool-flow"
+        role="list"
+        aria-label={t(`permissions.${sectionKey}.title`)}
+      >
+        {tools.length === 0 && !adding ? (
+          <span className="security-tool-empty">{t(`permissions.${sectionKey}.empty`)}</span>
+        ) : null}
+        {tools.map((tool) => (
+          <span className="security-tool-tag" role="listitem" key={tool}>
+            <code title={tool}>{tool}</code>
+            <button
+              type="button"
+              onClick={() => onRemove(tool)}
+              aria-label={t("permissions.actions.removeTool", { tool })}
+            >
+              <X size={13} />
+            </button>
+          </span>
+        ))}
+        {adding ? (
+          <div className="security-add-form">
+            <input
+              ref={inputRef}
+              value={newValue}
+              onChange={(event) => onNewValueChange(event.target.value)}
+              placeholder={t(`permissions.${sectionKey}.placeholder`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  if (isImeEnterEvent(event)) return;
+                  event.preventDefault();
+                  submit();
+                } else if (event.key === "Escape") {
+                  closeForm();
                 }
-              >
-                <code
-                  className={
-                    isAllowed
-                      ? "font-mono text-xs text-green-800 dark:text-green-200"
-                      : "font-mono text-xs text-red-800 dark:text-red-200"
-                  }
-                >
-                  {tool}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onRemove(tool)}
-                  className={
-                    isAllowed
-                      ? "h-7 w-7 p-0 text-green-700 hover:text-green-900 dark:text-green-300"
-                      : "h-7 w-7 p-0 text-red-700 hover:text-red-900 dark:text-red-300"
-                  }
-                  aria-label={t("permissions.actions.remove", { defaultValue: "Remove" })}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+              }}
+            />
+            <button
+              type="button"
+              className="security-add-cancel"
+              onClick={closeForm}
+              aria-label={t("settingsPage.actions.cancel")}
+            >
+              <X size={14} />
+            </button>
+            <button
+              type="button"
+              className="security-add-confirm"
+              onClick={submit}
+              disabled={!newValue.trim()}
+              aria-label={t("permissions.actions.add")}
+            >
+              <Check size={14} />
+            </button>
+          </div>
+        ) : (
+          <button
+            className="security-add-button"
+            type="button"
+            onClick={() => setAdding(true)}
+          >
+            <Plus size={15} />
+            {t("permissions.actions.add")}
+          </button>
+        )}
+      </div>
+
+      <div className="security-quick-add">
+        <span>{t("permissions.quickAdd")}</span>
+        <div>
+          {availableQuickTools.length > 0 ? (
+            availableQuickTools.map((tool) => (
+              <button type="button" key={tool} onClick={() => onAdd(tool)}>
+                {tool}
+              </button>
             ))
+          ) : (
+            <small>{t("permissions.quickAddComplete")}</small>
           )}
         </div>
-      </SettingsCard>
-    </SettingsSection>
+      </div>
+    </section>
   );
 }

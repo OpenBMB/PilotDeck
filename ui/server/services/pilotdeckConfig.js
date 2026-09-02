@@ -4,6 +4,8 @@ import os from 'os';
 import path from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { parseGatewayConfig } from '../../../src/pilot/config/parseGatewayConfig.js';
+import { parseToolsConfig } from '../../../src/pilot/config/parseToolsConfig.js';
+import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -30,6 +32,20 @@ const MASK = '********';
 
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|auth[_-]?token|access[_-]?token|bot[_-]?token|app[_-]?token|encoding[_-]?aes[_-]?key)$/i;
 const SECRET_EXACT_KEYS = new Set(['key', 'apiKey', 'api_key', 'authToken', 'accessToken']);
+const CATALOG_PROVIDER_DEFAULT_URLS = {
+  anthropic: 'https://api.anthropic.com',
+  openai: 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
+  dashscope: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  google: 'https://generativelanguage.googleapis.com',
+  moonshot: 'https://api.moonshot.cn/v1',
+  minimax: 'https://api.minimax.io/v1',
+  volc_ark: 'https://ark.cn-beijing.volces.com/api/v3',
+  zhipu: 'https://api.z.ai/api/paas/v4',
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama: 'http://localhost:11434/v1',
+};
 let configWriteQueue = Promise.resolve();
 
 // Serialize every read-modify-write caller against the same local YAML file.
@@ -234,7 +250,9 @@ function validateProvider(id, provider, errors) {
   else if (protocol !== 'openai' && protocol !== 'openai-responses' && protocol !== 'anthropic' && protocol !== 'google') {
     errors.push(`model.providers.${id}.protocol must be "openai", "openai-responses", "anthropic", or "google"`);
   }
-  if (!normalizeString(provider.url)) errors.push(`model.providers.${id}.url is required`);
+  if (!normalizeString(provider.url) && !Object.hasOwn(CATALOG_PROVIDER_DEFAULT_URLS, id)) {
+    errors.push(`model.providers.${id}.url is required`);
+  }
   if (!allowsMissingApiKey(id) && !normalizeString(provider.apiKey)) {
     errors.push(`model.providers.${id}.apiKey is required`);
   }
@@ -246,6 +264,44 @@ function validateModelRef(config, ref, label, errors) {
   if (!resolveModel(config, modelRef, { allowMissing: true })) {
     errors.push(`${label}="${modelRef}" doesn't resolve to a configured provider/model`);
   }
+}
+
+function validateRequiredModelRef(config, ref, label, errors) {
+  if (typeof ref !== 'string' || !normalizeString(ref)) {
+    errors.push(`${label} must use provider/model format`);
+    return;
+  }
+  const modelRef = normalizeString(ref);
+  if (!splitModelRef(modelRef)) {
+    errors.push(`${label} must use provider/model format`);
+    return;
+  }
+  validateModelRef(config, modelRef, label, errors);
+}
+
+function validateBaselineModelRef(config, ref, errors) {
+  const label = 'router.stats.baselineModel';
+  if (ref === undefined) return;
+  if (typeof ref === 'string') {
+    const modelRef = normalizeString(ref);
+    if (!splitModelRef(modelRef)) {
+      errors.push(`${label} must use provider/model format`);
+      return;
+    }
+    validateModelRef(config, modelRef, label, errors);
+    return;
+  }
+  if (!isRecord(ref)) {
+    errors.push(`${label} must be an object with provider and model`);
+    return;
+  }
+  const provider = normalizeString(ref.provider);
+  const model = normalizeString(ref.model);
+  if (!provider || !model) {
+    errors.push(`${label} must contain provider and model`);
+    return;
+  }
+  validateModelRef(config, `${provider}/${model}`, label, errors);
 }
 
 function validateOptionalSubagentDefault(config, warnings) {
@@ -262,10 +318,15 @@ function validateRouterModelRefs(config, errors) {
   const router = config.router;
   if (!isRecord(router)) return;
   if (router.enabled === false) return;
+  validateBaselineModelRef(config, router.stats?.baselineModel, errors);
+
+  if (router.enabled !== undefined && typeof router.enabled !== 'boolean') {
+    errors.push('router.enabled must be a boolean');
+  }
 
   if (isRecord(router.scenarios)) {
     for (const [key, ref] of Object.entries(router.scenarios)) {
-      validateModelRef(config, ref, `router.scenarios.${key}`, errors);
+      validateRequiredModelRef(config, ref, `router.scenarios.${key}`, errors);
     }
   }
 
@@ -276,15 +337,85 @@ function validateRouterModelRefs(config, errors) {
     }
   }
 
+  validateRouterPricing(config, router.stats, errors);
   const tokenSaver = router.tokenSaver;
   if (!isRecord(tokenSaver)) return;
 
-  validateModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
+  if (tokenSaver.enabled !== undefined && typeof tokenSaver.enabled !== 'boolean') {
+    errors.push('router.tokenSaver.enabled must be a boolean');
+  }
+  if (tokenSaver.enabled === false) return;
+  validateRequiredModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
+
+  if (tokenSaver.defaultTier !== undefined && typeof tokenSaver.defaultTier !== 'string') {
+    errors.push('router.tokenSaver.defaultTier must be a string');
+  }
+  if (tokenSaver.tiers !== undefined && !isRecord(tokenSaver.tiers)) {
+    errors.push('router.tokenSaver.tiers must be a non-empty object');
+  }
 
   if (isRecord(tokenSaver.tiers)) {
+    if (Object.keys(tokenSaver.tiers).length === 0) {
+      errors.push('router.tokenSaver.tiers must be a non-empty object');
+    }
     for (const [key, tier] of Object.entries(tokenSaver.tiers)) {
-      if (!isRecord(tier)) continue;
-      validateModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+      if (!isRecord(tier)) {
+        errors.push(`router.tokenSaver.tiers.${key} must be an object with model`);
+        continue;
+      }
+      validateRequiredModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+      if (tier.label !== undefined && typeof tier.label !== 'string') {
+        errors.push(`router.tokenSaver.tiers.${key}.label must be a string`);
+      }
+      if (tier.description !== undefined && typeof tier.description !== 'string') {
+        errors.push(`router.tokenSaver.tiers.${key}.description must be a string`);
+      }
+    }
+    if (typeof tokenSaver.defaultTier === 'string' && !Object.prototype.hasOwnProperty.call(tokenSaver.tiers, tokenSaver.defaultTier)) {
+      errors.push(`router.tokenSaver.defaultTier="${tokenSaver.defaultTier}" must exist in router.tokenSaver.tiers`);
+    }
+  }
+
+  if (tokenSaver.subagent !== undefined) {
+    if (!isRecord(tokenSaver.subagent)) {
+      errors.push('router.tokenSaver.subagent must be an object');
+    } else if (!['skip', 'judge'].includes(tokenSaver.subagent.policy)) {
+      errors.push('router.tokenSaver.subagent.policy must be one of skip / judge');
+    }
+  }
+
+}
+
+function validateRouterPricing(config, stats, errors) {
+  if (stats === undefined) return;
+  if (!isRecord(stats)) {
+    errors.push('router.stats must be an object');
+    return;
+  }
+  if (stats.enabled !== undefined && typeof stats.enabled !== 'boolean') {
+    errors.push('router.stats.enabled must be a boolean');
+  }
+  if (stats.modelPricing === undefined) return;
+  if (!isRecord(stats.modelPricing)) {
+    errors.push('router.stats.modelPricing must be an object keyed by provider/model');
+    return;
+  }
+  for (const [key, pricing] of Object.entries(stats.modelPricing)) {
+    const label = `router.stats.modelPricing.${key}`;
+    if (!splitModelRef(key) || !resolveModel(config, key, { allowMissing: true })) {
+      errors.push(`${label} must reference a configured provider/model`);
+    }
+    if (!isRecord(pricing)) {
+      errors.push(`${label} must be an object`);
+      continue;
+    }
+    for (const field of ['input', 'output', 'cacheRead']) {
+      if (pricing[field] !== undefined && (typeof pricing[field] !== 'number' || !Number.isFinite(pricing[field]) || pricing[field] < 0)) {
+        errors.push(`${label}.${field} must be a finite non-negative number`);
+      }
+    }
+    if (pricing.unit !== undefined && !['$/百万 Token', '¥/百万 Token'].includes(pricing.unit)) {
+      errors.push(`${label}.unit must be one of $/百万 Token or ¥/百万 Token`);
     }
   }
 }
@@ -299,6 +430,16 @@ function validateGatewayConfig(config, errors, warnings) {
     } else {
       errors.push(message);
     }
+  }
+}
+
+function validateToolsConfig(config, errors, warnings) {
+  const diagnostics = [];
+  parseToolsConfig(config.tools, diagnostics);
+  for (const diagnostic of diagnostics) {
+    const message = diagnostic.path ? `${diagnostic.path}: ${diagnostic.message}` : diagnostic.message;
+    if (diagnostic.severity === 'warning') warnings.push(message);
+    else errors.push(message);
   }
 }
 
@@ -332,6 +473,7 @@ export function validatePilotDeckConfig(config) {
   validateOptionalSubagentDefault(normalized, warnings);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
+  validateToolsConfig(normalized, errors, warnings);
 
   if (normalized.webui?.runtime?.contextWindow !== undefined) {
     warnings.push(
@@ -409,6 +551,16 @@ function providerProtocolToMemoryApi(protocol) {
   return 'openai-completions';
 }
 
+function effectiveProviderUrl(providerId, provider) {
+  const configured = normalizeString(provider?.url);
+  if (configured) return configured;
+  const catalog = lookupCatalogProvider(providerId);
+  if (provider?.protocol === 'openai' && providerId === 'google') {
+    return 'https://generativelanguage.googleapis.com/v1beta/openai';
+  }
+  return catalog?.defaultUrl || '';
+}
+
 export function buildRuntimeEnv(config) {
   const normalized = normalizePilotDeckConfig(config);
   const main = resolveModel(normalized, normalized.agent.model, { allowMissing: true });
@@ -433,10 +585,11 @@ export function buildRuntimeEnv(config) {
   }
 
   if (main) {
-    env.PILOTDECK_API_BASE_URL = main.provider.url || '';
+    const mainUrl = effectiveProviderUrl(main.providerId, main.provider);
+    env.PILOTDECK_API_BASE_URL = mainUrl;
     env.PILOTDECK_API_KEY = main.provider.apiKey || '';
     env.PILOTDECK_MODEL = main.model;
-    env.OPENAI_BASE_URL = main.provider.url || '';
+    env.OPENAI_BASE_URL = mainUrl;
     env.OPENAI_API_KEY = main.provider.apiKey || '';
     env.OPENAI_MODEL = main.model;
     env.ANTHROPIC_API_KEY = main.provider.apiKey || '';
@@ -474,7 +627,7 @@ export function buildRuntimeEnv(config) {
   if (memory) {
     env.PILOTDECK_MEMORY_MODEL = memory.model;
     env.PILOTDECK_MEMORY_PROVIDER = memory.providerId;
-    env.PILOTDECK_MEMORY_BASE_URL = memory.provider.url || '';
+    env.PILOTDECK_MEMORY_BASE_URL = effectiveProviderUrl(memory.providerId, memory.provider);
     env.PILOTDECK_MEMORY_API_KEY = memory.provider.apiKey || '';
     env.PILOTDECK_MEMORY_API_TYPE = normalizeString(normalized.memory?.apiType)
       || providerProtocolToMemoryApi(memory.provider.protocol);
@@ -506,7 +659,7 @@ export function buildMemoryLlmOptions(config) {
     model: memory.model,
     apiType: normalizeString(normalized.memory?.apiType)
       || providerProtocolToMemoryApi(memory.provider.protocol),
-    baseUrl: memory.provider.url || '',
+    baseUrl: effectiveProviderUrl(memory.providerId, memory.provider),
     apiKey: memory.provider.apiKey || '',
     headers: isRecord(memory.provider.headers) ? memory.provider.headers : {},
   };

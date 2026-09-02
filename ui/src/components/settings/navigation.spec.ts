@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { mapInitialTabToMenuKey } from "./navigation";
+import {
+  getSettingsPath,
+  getSettingsPathFromTab,
+  mapInitialTabToMenuKey,
+  mapSettingsSectionToMenuKey,
+} from "./navigation";
 
 describe("mapInitialTabToMenuKey", () => {
   it("routes the Office preview deep link to its dedicated page", () => {
@@ -32,5 +37,32 @@ describe("mapInitialTabToMenuKey", () => {
     expect(mapInitialTabToMenuKey("appearance")).toBe("general");
     expect(mapInitialTabToMenuKey("unknown")).toBe("general");
     expect(mapInitialTabToMenuKey(undefined)).toBe("general");
+  });
+
+  it("maps URL slugs used by the settings route", () => {
+    expect(mapInitialTabToMenuKey("models")).toBe("modelPool");
+    expect(mapInitialTabToMenuKey("agent-search")).toBe("agentSearch");
+    expect(mapInitialTabToMenuKey("privacy")).toBe("privacy");
+  });
+});
+
+describe("settings route paths", () => {
+  it("uses /settings for the general page", () => {
+    expect(getSettingsPath("general")).toBe("/settings");
+    expect(getSettingsPathFromTab("appearance")).toBe("/settings");
+  });
+
+  it("maps menu keys and legacy tabs onto dedicated settings URLs", () => {
+    expect(getSettingsPath("modelPool")).toBe("/settings/models");
+    expect(getSettingsPath("agentSearch")).toBe("/settings/agent-search");
+    expect(getSettingsPathFromTab("config:tools")).toBe("/settings/agent-search");
+    expect(getSettingsPathFromTab("permissions")).toBe("/settings/privacy");
+  });
+
+  it("reads the active menu key back from the URL section", () => {
+    expect(mapSettingsSectionToMenuKey(undefined)).toBe("general");
+    expect(mapSettingsSectionToMenuKey("models")).toBe("modelPool");
+    expect(mapSettingsSectionToMenuKey("mcp")).toBe("mcpServers");
+    expect(mapSettingsSectionToMenuKey("office")).toBe("officePreview");
   });
 });

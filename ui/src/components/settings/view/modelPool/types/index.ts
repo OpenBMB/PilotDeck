@@ -131,7 +131,12 @@ export type PilotDeckConfig = {
       enabled?: boolean;
       modelPricing?: Record<
         string,
-        { input?: number; output?: number; cacheRead?: number }
+        {
+          input?: number;
+          output?: number;
+          cacheRead?: number;
+          unit?: "$/百万 Token" | "¥/百万 Token";
+        }
       >;
     };
     tokenSaver?: {
@@ -143,7 +148,10 @@ export type PilotDeckConfig = {
         policy?: string;
       };
       judge?: string;
-      tiers?: Record<string, { model?: string; description?: string }>;
+      tiers?: Record<
+        string,
+        { model?: string; label?: string; description?: string }
+      >;
     };
   };
 };

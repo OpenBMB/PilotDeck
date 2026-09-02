@@ -13,7 +13,7 @@ type AgentResidentSectionsProps = {
 };
 
 export default function AgentResidentSections({
-  title,
+  title: _title,
   projects,
 }: AgentResidentSectionsProps) {
   const { t } = useTranslation("settings");
@@ -31,8 +31,7 @@ export default function AgentResidentSections({
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+      <div className="resident-page-content">
         <div className="py-6 text-xs text-muted-foreground">
           {t("pilotDeckConfig.loading")}
         </div>
@@ -42,8 +41,7 @@ export default function AgentResidentSections({
 
   if (!parsedConfig) {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+      <div className="resident-page-content">
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {t("settingsPage.invalidYaml.agentResident")}
         </div>
@@ -52,8 +50,7 @@ export default function AgentResidentSections({
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
+    <div className="resident-page-content">
       <ConfigSaveError error={error} />
       <AlwaysOnSection
         config={parsedConfig}

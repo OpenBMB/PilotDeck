@@ -56,7 +56,9 @@
       "cancel": "Cancel"
     },
     "backToApp": "Back to app",
+    "backToProjects": "Back to projects",
     "backToSettings": "Back to settings",
+    "breadcrumb": "Settings",
     "menu": {
       "general": "General",
       "modelPool": "Model Pool",
@@ -68,12 +70,35 @@
       "agentSearch": "Search",
       "agentSchedule": "Scheduled Tasks",
       "integrations": "Integrations",
+      "messageChannels": "Message Channels",
+      "external": "External Systems",
       "extensions": "Extensions",
       "mcpServers": "MCP Servers",
       "officePreview": "Office Preview",
       "privacy": "Security & Privacy",
       "advanced": "Advanced",
+      "system": "System",
       "about": "About"
+    },
+    "descriptions": {
+      "general": "Set PilotDeck's interface appearance, chat input, and code editing experience.",
+      "modelPool": "Centrally manage model providers, connection credentials, and available models. Enabled models are used by agents, routing, and memory.",
+      "agentModel": "Choose which models each agent uses.",
+      "agentRoute": "Configure agent routing, model tiers, and fallbacks.",
+      "agentMemory": "Manage memory, summarization intervals, and project memory data.",
+      "agentResident": "Keep watching workspace changes after you leave, and advance work or sync progress at the right time.",
+      "agentSearch": "Let agents retrieve real-time web information and add current external facts to their answers.",
+      "agentSchedule": "Wake agents automatically at scheduled times to run tasks without requiring you to stay online.",
+      "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
+      "mcpServers": "Connect local tools and remote services so agents can safely use external capabilities and context.",
+      "officePreview": "Configure Office file preview.",
+      "privacy": "Manage agent tool permissions and anonymous usage data. Sensitive actions always stay under your control.",
+      "advanced": "Manage application retry, service, and environment variable settings.",
+      "about": "View the current version and check for updates."
+    },
+    "status": {
+      "localReady": "Local secure storage",
+      "localReadyDetail": "Settings are stored on this machine and apply immediately"
     },
     "titles": {
       "general": "General",
@@ -462,6 +487,9 @@
   "permissions": {
     "title": "Permission Settings",
     "controlTitle": "Permission Control",
+    "controlDescription": "Choose whether the agent needs your confirmation before using tools.",
+    "quickAdd": "Quick add",
+    "quickAddComplete": "All common rules have been added",
     "description": "Manage which tools the assistant can run without asking. Grants from the chat \"Add permission\" button land here too.",
     "export": "Export",
     "import": "Import",
@@ -478,11 +506,17 @@
       "warning": "Permission prompts are currently bypassed. Allowed and blocked rules below are still saved, but this global mode lets the agent run without asking."
     },
     "allowedTools": {
-      "title": "Allowed Tools",
+      "title": "Automatically allow",
       "description": "Tools that are automatically allowed without prompting for permission",
-      "placeholder": "e.g., \"Bash(git log:*)\" or \"Write\"",
+      "placeholder": "Enter a tool rule",
       "quickAdd": "Quick add common tools:",
-      "empty": "No allowed tools configured"
+      "empty": "No tool rules yet"
+    },
+    "approvalTools": {
+      "title": "Confirm before running",
+      "description": "Always ask before using these tools",
+      "placeholder": "Enter a tool rule",
+      "empty": "No tool rules yet"
     },
     "blockedTools": {
       "title": "Blocked Tools",
@@ -539,7 +573,18 @@
     },
     "actions": {
       "add": "Add",
-      "remove": "Remove"
+      "remove": "Remove",
+      "removeTool": "Remove {{tool}}"
+    },
+    "feedback": {
+      "allowedAdded": "\"{{tool}}\" will now run automatically",
+      "allowedRemoved": "\"{{tool}}\" was removed from automatic approval",
+      "approvalAdded": "\"{{tool}}\" now requires confirmation",
+      "approvalRemoved": "\"{{tool}}\" no longer has an explicit confirmation rule"
+    },
+    "telemetry": {
+      "title": "Anonymous usage data",
+      "description": "Send anonymous feature usage and performance data to help improve PilotDeck. Conversations, file contents, and credentials are never included."
     }
   },
   "mcpServers": {
@@ -591,8 +636,42 @@
     "addRemote": "Add remote template",
     "saved": "MCP config saved. New sessions and the next runtime rebuild will use it.",
     "fixJsonBeforeTemplate": "Fix the JSON before inserting a template.",
+    "invalidJson": "Invalid configuration JSON",
+    "invalidJsonHelp": "Fix it in Advanced: raw JSON below before editing the form.",
     "empty": "No MCP servers configured yet.",
+    "emptyHelp": "Add a STDIO or remote server using the buttons below.",
+    "selectOrAddServer": "Select or add a server",
+    "selectOrAddServerHelp": "Select a server on the left to edit its complete connection configuration here.",
+    "addStdioServer": "Add STDIO server",
+    "globalTitle": "Global MCP servers",
+    "projectTitle": "Project MCP servers",
+    "globalLocation": "Stored in ~/.pilotdeck/mcp.json and available to every project.",
+    "projectLocation": "Stored in .pilotdeck/mcp.json; servers with the same name override global config.",
+    "servers": "Servers",
+    "projects": "Projects",
+    "searchServer": "Search servers",
+    "searchProject": "Search projects",
+    "noProjects": "No projects available",
+    "noProjectSelected": "No project selected",
+    "serverUnit": "{{count}} servers",
+    "remoteTemplate": "Remote template",
+    "addressPending": "Address not configured",
+    "localProcess": "Local process · standard input/output",
+    "remoteService": "Remote service · streamable HTTP",
+    "transportLabel": "Transport",
+    "credentialsNote": "Prefer environment variables for sensitive credentials instead of storing them in project config.",
+    "removeTitle": "Remove MCP server?",
+    "removeGlobalDescription": "This will remove {{server}} from the global configuration.",
+    "removeProjectDescription": "This will remove {{server}} from the {{project}} project configuration.",
+    "removed": "MCP server removed.",
+    "close": "Close",
     "advanced": "Advanced: raw JSON",
+    "advancedDescription": "View or edit the global and current project MCP configuration directly.",
+    "applyJsonHint": "Applying immediately updates the current configuration.",
+    "resetJson": "Reset",
+    "applyJson": "Apply JSON",
+    "globalRaw": "Global config",
+    "projectRaw": "Project config · {{project}}",
     "expand": "Expand",
     "unnamed": "Unnamed server",
     "noSummary": "No command or URL configured",
@@ -613,7 +692,8 @@
     },
     "placeholders": {
       "key": "Key",
-      "value": "Value"
+      "value": "Value",
+      "arg": "Enter an argument"
     },
     "actions": {
       "addArg": "Add argument",
@@ -746,6 +826,22 @@
       }
     },
     "panels": {
+      "advancedPage": {
+        "configFilePrefix": "PILOTDECK configuration is stored at",
+        "configFileSuffix": " and can be edited directly when needed."
+      },
+      "advancedRetry": {
+        "title": "Advanced retry settings",
+        "description": "Automatic recovery policy for unstable connections",
+        "fields": {
+          "requestMaxRetries": { "label": "Request max retries", "description": "Maximum retries for non-streaming requests." },
+          "streamMaxRetries": { "label": "Stream max retries", "description": "Maximum retries for streaming requests." },
+          "streamIdleTimeoutMs": { "label": "Stream idle timeout (ms)", "description": "Abort the stream when no data arrives within this duration." },
+          "judgeTimeoutMs": { "label": "Judge timeout (ms)", "description": "Maximum time to wait for a routing decision." },
+          "baseDelayMs": { "label": "Base delay (ms)", "description": "Initial wait before the first retry." },
+          "maxDelayMs": { "label": "Maximum delay (ms)", "description": "Maximum wait between retries." }
+        }
+      },
       "runtime": {
         "title": "Service",
         "description": "Configure service ports, data paths, and network proxy. Changes to ports or paths usually require restarting the service.",
@@ -802,6 +898,8 @@
           "error": "Could not check LibreOffice status",
           "refresh": "Check again",
           "noDetectedPaths": "No candidate paths were found yet. You can still enter a full path manually and check again.",
+          "pathLabel": "Path",
+          "versionLabel": "Version",
           "path": "Path: {{path}}",
           "version": "Version: {{version}}"
         },
@@ -810,16 +908,25 @@
       },
       "models": {
         "title": "Model Pool",
-        "description": "Configure model providers, API keys, base URLs, and enabled models. Agents, memory, and routing choose from the enabled models here.",
+        "description": "Centrally manage model providers, connection credentials, and available models. Enabled models are used by agents, routing, and memory.",
         "providerIdDuplicate": "A Provider id with this name already exists.",
+        "providersKicker": "Providers",
+        "connectionCount": "{{count}} connections",
+        "searchProviders": "Search providers",
+        "noMatchingProviders": "No matching providers",
         "addProvider": "Add provider",
-        "addProviderTitle": "Add a provider",
+        "addProviderShort": "Add",
+        "addProviderTitle": "Choose your model service",
+        "providerPickerDescription": "Preset providers are ready to use; custom providers require manual connection details.",
+        "close": "Close",
         "cancel": "Cancel",
         "customProvider": "Custom",
         "manualSetup": "Manual setup",
         "modelCount": "{{count}} models",
-        "emptyProviders": "No providers configured yet. Click \"Add provider\" to get started.",
+        "modelCountShort": "{{count}} models",
+        "emptyProviders": "No providers configured yet. Click \"Add\" to get started.",
         "providerId": "id",
+        "providerAria": "{{name}} configuration",
         "protocol": "Protocol",
         "protocolOptions": {
           "openai": "openai (chat-completions)",
@@ -832,15 +939,53 @@
         "defaultsTo": "Defaults to",
         "fromCatalog": "from catalog.",
         "effective": "Effective:",
+        "connectionInfo": "Connection",
+        "connected": "Connected",
+        "pending": "Needs setup",
         "apiKey": "API key",
+        "apiKeyPlaceholder": "Enter API key",
         "optional": "optional",
         "maskedKeyPlaceholder": "Existing key kept — type to replace",
         "keyHidden": "Key hidden; leave as-is to keep, retype to replace.",
+        "keySaved": "Key securely saved.",
         "enabledModels": "Enabled models",
+        "candidateModels": "Candidate models",
+        "searchCandidateModels": "Search model ID",
+        "maxOutputTokens": "Max output tokens",
+        "maxContextTokens": "Max context tokens",
+        "addModel": "Add model",
+        "addModelId": "Add model ID",
+        "removeModelAria": "Remove {{name}}",
         "supportsImageInput": "supports image input",
         "clickEnable": "Click to enable",
         "clickDisable": "Click to disable",
-        "customModelPlaceholder": "Custom model ID",
+        "customModelPlaceholder": "Enter a custom model ID",
+        "customModelIdPlaceholder": "model-id",
+        "fetchApiModels": "Fetch API models",
+        "testConnection": "Test connection",
+        "retest": "Retest",
+        "connectionNormal": "Connection healthy",
+        "testing": "Testing…",
+        "testCostNote": "This checks every enabled model's text and image handling and may incur a small API charge.",
+        "testNeedModel": "Enable at least one model first.",
+        "testNeedUrl": "Enter a base URL first.",
+        "testNeedKey": "Enter an API key first.",
+        "testSuccess": "Connected successfully.",
+        "testFailed": "Connection failed.",
+        "manualImageRequired": "Confirm whether the models support image input.",
+        "deleteDialog": {
+          "modelTitle": "Delete “{{name}}” model?",
+          "modelBlockedTitle": "Unable to delete “{{name}}” model",
+          "providerTitle": "Remove model provider “{{name}}”?",
+          "modelInUse": "This model is used by the following settings. Change those settings before deleting the model.",
+          "providerInUse": "Removing this provider would break the following model settings. Change them before removing the provider.",
+          "modelConfirm": "Deleting “{{name}}” cannot be undone. Continue?",
+          "providerConfirm": "Removing model provider “{{name}}” cannot be undone. Continue?",
+          "usageAria": "Model usage locations",
+          "checking": "Checking model usage…",
+          "checkFailed": "Unable to check model usage. Try again later.",
+          "delete": "Delete"
+        },
         "providerAdvancedToggle": "Advanced retry settings",
         "providerRetry": {
           "requestMaxRetries": { "label": "Request max retries", "description": "Maximum retries for non-streaming requests." },
@@ -881,6 +1026,8 @@
         }
       },
       "customEnv": {
+        "variableName": "Environment variable name",
+        "variableValue": "Environment variable value",
         "title": "Environment Variables",
         "description": "Custom env vars injected into every agent session. Persisted in config.yaml — no need to reconfigure after switching sessions.",
         "empty": "No custom environment variables configured.",
@@ -896,14 +1043,22 @@
         "enabled": { "label": "Enabled", "description": "Master switch for Always-On background agent." },
         "trigger": {
           "title": "Trigger",
-          "description": "Controls when and how often discovery runs fire.",
+          "description": "Discover work worth advancing at the right time, without interrupting too often.",
           "autoDiscovery": { "label": "Auto discovery", "description": "When enabled, Always-On periodically inspects opted-in workspaces and proposes follow-up plans." },
-          "tickInterval": { "label": "Tick interval (minutes)", "description": "How often the daemon checks opted-in workspaces." },
-          "cooldown": { "label": "Cooldown (minutes)", "description": "Minimum time between discovery runs per workspace." },
-          "dailyBudget": { "label": "Daily budget", "description": "Maximum automatic discovery runs per workspace per day." },
+          "tickInterval": { "label": "Check interval (minutes)", "description": "How often the background agent checks workspace status." },
+          "cooldown": { "label": "Cooldown (minutes)", "description": "Minimum time between runs per workspace." },
+          "dailyBudget": { "label": "Daily budget", "description": "Maximum number of plans that can run per workspace each day." },
           "heartbeatStale": { "label": "Heartbeat stale (seconds)", "description": "Heartbeats older than this are considered stale." },
-          "recentUserMsg": { "label": "Recent user msg (minutes)", "description": "Only fire if the user sent a message within this window." },
-          "preferChannel": { "label": "Preferred channel", "description": "Channel the discovery agent prefers to interact through." }
+          "recentUserMsg": { "label": "Recent user message (minutes)", "description": "Only fire if the user sent a message within this window." },
+          "preferChannel": {
+            "label": "Preferred channel",
+            "description": "Default channel for always-on progress updates.",
+            "options": {
+              "desktop": "Desktop notifications",
+              "current": "Current conversation",
+              "silent": "Task center only"
+            }
+          }
         },
         "dormancy": {
           "title": "Dormancy",
@@ -929,25 +1084,30 @@
           "timeout": { "label": "Timeout (minutes)", "description": "Hard timeout for each run." }
         },
         "workspaceOptIn": {
-          "title": "Workspace opt-in",
-          "description": "Only enabled workspaces receive Always-On heartbeats and scheduled discovery checks.",
-          "empty": "No recognized projects yet. Add or open a workspace first."
+          "title": "Projects",
+          "description": "Choose which projects enable Always-On.",
+          "empty": "No recognized projects yet. Add or open a workspace first.",
+          "searchPlaceholder": "Search projects",
+          "searchAria": "Search projects that support Always-On",
+          "searchEmpty": "No matching projects.",
+          "toggleAria": "Always-On for {{name}}"
         }
       },
       "cron": {
         "title": "Cron",
         "description": "Configure the background scheduler used by Cron jobs. Create and manage jobs from the Cron module.",
+        "configAria": "Scheduled task runtime settings",
         "enabled": {
           "label": "Enabled",
           "description": "Master switch for scheduled Cron background tasks."
         },
         "timezone": {
           "label": "Timezone",
-          "description": "IANA timezone used as the scheduler default."
+          "description": "Scheduled tasks are calculated and triggered in this timezone."
         },
         "maxConcurrentRuns": {
           "label": "Max concurrent runs",
-          "description": "Maximum number of Cron runs that may execute at the same time."
+          "description": "Maximum number of scheduled tasks allowed to run at the same time."
         }
       },
       "memory": {
@@ -982,7 +1142,9 @@
         },
         "intervalUnits": {
           "minutes": "Minutes",
-          "hours": "Hours"
+          "hours": "Hours",
+          "days": "Days",
+          "weeks": "Weeks"
         },
         "data": {
           "title": "Data management",
@@ -990,7 +1152,7 @@
           "target": {
             "label": "Managed target",
             "description": "Choose a project or all memory.",
-            "all": "All memory",
+            "all": "general (all agent memory)",
             "projectFallback": "Untitled project"
           },
           "actions": {
@@ -1010,7 +1172,11 @@
             "importProject": "Importing will overwrite memory for \"{{target}}\". Continue?",
             "importAll": "Importing will overwrite all memory. Continue?",
             "clearProject": "Clear memory for \"{{target}}\"?",
-            "clearAll": "Clear all memory? This deletes every project's memory and the global user background."
+            "clearAll": "Clear all memory? This deletes every project's memory and the global user background.",
+            "clearModalTitle": "Clear memory for \"{{name}}\"?",
+            "clearModalDescription": "This permanently deletes indexed and consolidated memory in the selected scope and cannot be undone.",
+            "clearModalConfirm": "Clear memory",
+            "clearModalClose": "Close"
           },
           "errors": {
             "missingProject": "No project is available.",
@@ -1021,29 +1187,32 @@
       },
       "tools": {
         "title": "Search",
-        "description": "Configure the search service used by the agent's web_search tool.",
+        "description": "Configure the service used by agent web search.",
+        "configAria": "Search service configuration",
         "enabled": {
           "label": "Enable web search",
-          "description": "When disabled, the agent will not receive the web_search tool."
+          "description": "When disabled, the agent will not receive the web_search tool.",
+          "aria": "Web search switch"
         },
         "provider": {
           "label": "Search provider",
-          "description": "The active search service.",
+          "description": "Choose the search service currently used by the agent.",
           "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "Custom"
         },
         "apiKey": {
           "label": "API key",
-          "description": "API key for the selected provider.",
+          "description": "Stored locally and used to authenticate requests to the selected provider.",
           "placeholder": "provider API key",
+          "providerPlaceholder": "Enter {{provider}} API key",
           "maskedPlaceholder": "Existing key kept — type to replace",
           "keyHidden": "Key hidden; leave as-is to keep, retype to replace."
         },
         "endpoint": {
           "label": "Endpoint",
-          "description": "Custom endpoint. Leave empty to use the default.",
-          "placeholder": "Default endpoint"
+          "description": "HTTP(S) request URL for the custom search service.",
+          "placeholder": "https://example.com/search"
         },
         "custom": {
           "name": {
@@ -1074,8 +1243,14 @@
         "test": {
           "button": "Test connection",
           "testing": "Testing…",
+          "incompleteTitle": "Incomplete configuration",
+          "failureTitle": "Connection failed",
+          "successTitle": "Connection available",
           "needsKey": "Enter an API key first.",
-          "success": "Connected: {{count}} result(s), {{latency}}ms.",
+          "needsEndpoint": "Enter the custom search service endpoint first.",
+          "needsEndpointAndKey": "Enter the endpoint and API key first.",
+          "success": "The service returned {{count}} result(s) in {{latency}}ms.",
+          "failureDetail": "{{error}}",
           "failedPrefix": "Connection failed: {{error}}"
         }
       },
@@ -1276,6 +1451,7 @@
     "feishu": {
       "title": "Feishu / Lark",
       "label": "Feishu Bot",
+      "summary": "Connect Feishu organizations and chats through a custom bot",
       "domain": "Domain",
       "domainOptions": {
         "feishu": "feishu.cn (Feishu)",
@@ -1283,10 +1459,12 @@
       },
       "connectionMode": "Connection Mode",
       "chooseMethod": "Choose how to configure the Feishu bot:",
+      "chooseHint": "QR setup is recommended and takes about one minute",
       "qrScan": "QR Code Scan",
       "qrScanDesc": "Scan with Feishu app to auto-create a bot",
       "manualInput": "Manual Input",
       "manualInputDesc": "Enter App ID and Secret from Developer Console",
+      "generateQrAria": "Generate a Feishu or Lark QR code",
       "startQr": "Generate QR Code",
       "connecting": "Connecting to Feishu…",
       "scanPrompt": "Open Feishu / Lark app and scan the QR code",
@@ -1294,8 +1472,9 @@
       "retry": "Retry"
     },
     "weixin": {
-      "title": "WeChat (iLink)",
+      "title": "WeChat",
       "label": "WeChat Bot",
+      "summary": "Bind a WeChat bot by QR code and access the Agent in direct chats",
       "qrLogin": "QR Code Login",
       "relogin": "Re-login",
       "loadingQr": "Generating QR code…",
@@ -1311,6 +1490,7 @@
     "wecom": {
       "title": "Enterprise WeChat / WeCom",
       "label": "WeCom Bot",
+      "summary": "Connect a WeCom AI Bot for Agent access in enterprise chats",
       "chooseMethod": "Choose how to configure the WeCom AI Bot:",
       "qrSetup": "QR Code Setup",
       "qrSetupDesc": "Scan with WeCom to create or retrieve bot credentials",

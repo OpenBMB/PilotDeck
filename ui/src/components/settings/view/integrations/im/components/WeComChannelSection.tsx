@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "../../../../../../shared/view/ui";
 import {
   AlertCircle,
+  Building2,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   KeyRound,
   Loader2,
-  MessageSquare,
   QrCode,
   XCircle,
-} from "lucide-react";
-import { Button } from "../../../../../../shared/view/ui";
+} from "../icons";
 import { authenticatedFetch } from "../../../../../../utils/api";
-import { SettingsCard, SettingsSection } from "../../../../shared/view";
+import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import { cn } from "../../../../../../lib/utils";
 import type { GatewayStatus, TestResult, WeComAccessPolicy } from "../types";
 
@@ -104,6 +106,7 @@ export default function WeComChannelSection({
           }
           if (pollData.ok) {
             setQrPhase("success");
+            showSettingsSuccess();
             onSaved();
           } else {
             setQrPhase("error");
@@ -148,7 +151,9 @@ export default function WeComChannelSection({
       });
       const data = await res.json();
       if (data.ok) {
-        setSaveResult({ ok: true, message: data.message || t("gateway.wecom.saveSuccess") });
+        const message = data.message || t("gateway.wecom.saveSuccess");
+        setSaveResult({ ok: true, message });
+        showSettingsSuccess(message);
         onSaved();
         setExpanded(false);
         setSetupMode("choose");
@@ -166,7 +171,9 @@ export default function WeComChannelSection({
 
   const handleDisable = async () => {
     try {
-      await authenticatedFetch("/api/gateway/wecom/disable", { method: "POST" });
+      const response = await authenticatedFetch("/api/gateway/wecom/disable", { method: "POST" });
+      if (!response.ok) return;
+      showSettingsSuccess();
       onSaved();
     } catch {
       // ignore
@@ -180,42 +187,35 @@ export default function WeComChannelSection({
   };
 
   return (
-    <SettingsSection title={t("gateway.wecom.title")}>
-      <SettingsCard>
-        <div className="space-y-4 p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <div className="text-[13px] font-medium text-foreground">
-                  {t("gateway.wecom.label")}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {status.enabled && status.hasSecret
-                    ? `${t("gateway.connected")}${status.botId ? ` · ${status.botId}` : ""}`
-                    : t("gateway.notConfigured")}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {status.enabled && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  {t("gateway.enabled")}
-                </span>
-              )}
-              {!expanded && (
-                <Button
-                  variant={status.enabled ? "ghost" : "outline"}
-                  size="sm"
-                  onClick={() => setExpanded(true)}
-                >
-                  {status.enabled ? t("gateway.edit") : t("gateway.setup")}
-                </Button>
-              )}
-            </div>
-          </div>
+    <section className={`integration-channel${expanded ? " expanded" : ""}`}>
+      <button
+        className="integration-channel-summary"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => (expanded ? closeExpanded() : setExpanded(true))}
+      >
+        <span className="integration-platform-icon wecom">
+          <Building2 size={21} />
+        </span>
+        <span className="integration-channel-copy">
+          <strong>{t("gateway.wecom.title")}</strong>
+          <small>
+            {status.enabled && status.hasSecret
+              ? `${t("gateway.connected")}${status.botId ? ` · ${status.botId}` : ""}`
+              : t("gateway.wecom.summary")}
+          </small>
+        </span>
+        <span className={`integration-status${status.enabled ? " enabled" : ""}`}>
+          {status.enabled ? <i /> : null}
+          {status.enabled ? t("gateway.enabled") : t("gateway.notConfigured")}
+        </span>
+        <span className="integration-channel-toggle">
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
 
+      {expanded ? (
+        <div className="integration-channel-detail">
           {expanded && setupMode === "choose" && (
             <div className="space-y-3 border-t border-border pt-4">
               <p className="text-xs text-muted-foreground">{t("gateway.wecom.chooseMethod")}</p>
@@ -247,8 +247,8 @@ export default function WeComChannelSection({
                   </span>
                 </button>
               </div>
-              <div className="flex items-center gap-2">
-                {status.enabled && (
+              {status.enabled && (
+                <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -257,11 +257,8 @@ export default function WeComChannelSection({
                   >
                     {t("gateway.disable")}
                   </Button>
-                )}
-                <Button variant="ghost" size="sm" onClick={closeExpanded}>
-                  {t("gateway.cancel")}
-                </Button>
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -488,7 +485,7 @@ export default function WeComChannelSection({
             </div>
           )}
         </div>
-      </SettingsCard>
-    </SettingsSection>
+      ) : null}
+    </section>
   );
 }

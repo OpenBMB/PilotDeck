@@ -186,6 +186,7 @@ export interface PilotDeckWorkStatus {
 
 export interface PilotDeckSettings {
   allowedTools: string[];
+  askTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
   projectSortOrder: string;

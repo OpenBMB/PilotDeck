@@ -1,24 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Download,
-  Loader2,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { Button } from "../../../../shared/view/ui";
 import { cn } from "../../../../lib/utils";
 import { authenticatedFetch } from "../../../../utils/api";
 import type { SettingsProject } from "../../shared/types";
-import { FormRow, Select } from "../../shared/components/Inputs";
-import { SettingsCard, SettingsSection } from "../../shared/view";
-
-type MemoryActionState = {
-  kind: "idle" | "busy" | "success" | "error";
-  message?: string;
-};
 
 type MemoryProjectTarget = {
   value: string;
@@ -30,17 +14,17 @@ type MemoryDataSectionProps = {
   projects: SettingsProject[];
 };
 
-const MEMORY_ALL_TARGET = "all_memory";
+const MEMORY_GENERAL_TARGET = "general";
 
 function memoryProjectPath(project: SettingsProject): string {
   return (project.fullPath || project.path || "").trim();
 }
 
-function memoryProjectLabel(
+function memoryProjectName(
   project: SettingsProject,
   fallback: string,
 ): string {
-  const direct = (project.displayName || project.name || "").trim();
+  const direct = (project.name || project.displayName || "").trim();
   if (direct) return direct;
 
   const root = memoryProjectPath(project);
@@ -52,12 +36,10 @@ function memoryProjectLabel(
   return tail || fallback;
 }
 
-function memoryProjectTargetValue(projectPath: string): string {
-  return `project:${projectPath}`;
-}
-
-function memoryProjectPathFromTarget(target: string): string {
-  return target.startsWith("project:") ? target.slice("project:".length) : "";
+function isGeneralProject(project: SettingsProject): boolean {
+  const name = (project.name || "").trim();
+  const displayName = (project.displayName || "").trim();
+  return name === MEMORY_GENERAL_TARGET || displayName === MEMORY_GENERAL_TARGET;
 }
 
 function withMemoryProjectPath(url: string, projectPath: string): string {
@@ -107,27 +89,109 @@ function safeDownloadToken(value: string): string {
   );
 }
 
+function ChevronIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      aria-hidden="true"
+    >
+      <path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z" />
+    </svg>
+  );
+}
+
+function ExportIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="currentColor"
+      viewBox="0 0 256 256"
+    >
+      <path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z" />
+    </svg>
+  );
+}
+
+function ImportIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="currentColor"
+      viewBox="0 0 256 256"
+    >
+      <path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z" />
+    </svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="currentColor"
+      viewBox="0 0 256 256"
+    >
+      <path d="M216,48H180V36A28,28,0,0,0,152,8H104A28,28,0,0,0,76,36V48H40a12,12,0,0,0,0,24h4V208a20,20,0,0,0,20,20H192a20,20,0,0,0,20-20V72h4a12,12,0,0,0,0-24ZM100,36a4,4,0,0,1,4-4h48a4,4,0,0,1,4,4V48H100Zm88,168H68V72H188ZM116,104v64a12,12,0,0,1-24,0V104a12,12,0,0,1,24,0Zm48,0v64a12,12,0,0,1-24,0V104a12,12,0,0,1,24,0Z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="currentColor"
+      viewBox="0 0 256 256"
+    >
+      <path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" />
+    </svg>
+  );
+}
+
 export default function MemoryDataSection({
   projects,
 }: MemoryDataSectionProps) {
   const { t } = useTranslation("settings");
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [memoryAction, setMemoryAction] = useState<MemoryActionState>({
-    kind: "idle",
-  });
+  const [actionBusy, setActionBusy] = useState(false);
+  const [clearModalOpen, setClearModalOpen] = useState(false);
+
+  const generalProjectPath = useMemo(() => {
+    const general = projects.find(isGeneralProject);
+    return general ? memoryProjectPath(general) : "";
+  }, [projects]);
 
   const projectTargets = useMemo(() => {
-    const seen = new Set<string>();
+    const seenNames = new Set<string>([MEMORY_GENERAL_TARGET]);
+    const seenPaths = new Set<string>();
     const fallback = t(
       "pilotDeckConfig.panels.memory.data.target.projectFallback",
     );
     return projects.reduce<MemoryProjectTarget[]>((items, project) => {
+      if (isGeneralProject(project)) return items;
       const path = memoryProjectPath(project);
-      if (!path || seen.has(path)) return items;
-      seen.add(path);
+      if (!path || seenPaths.has(path)) return items;
+      seenPaths.add(path);
+      let value = memoryProjectName(project, fallback);
+      if (seenNames.has(value)) {
+        value = `${value}-${items.length + 1}`;
+      }
+      seenNames.add(value);
       items.push({
-        value: memoryProjectTargetValue(path),
-        label: memoryProjectLabel(project, fallback),
+        value,
+        label: value,
         path,
       });
       return items;
@@ -135,19 +199,19 @@ export default function MemoryDataSection({
   }, [projects, t]);
 
   const [selectedMemoryTarget, setSelectedMemoryTarget] = useState(
-    () => projectTargets[0]?.value ?? MEMORY_ALL_TARGET,
+    MEMORY_GENERAL_TARGET,
   );
 
   const memoryTargetOptions = useMemo(
     () => [
+      {
+        value: MEMORY_GENERAL_TARGET,
+        label: t("pilotDeckConfig.panels.memory.data.target.all"),
+      },
       ...projectTargets.map((target) => ({
         value: target.value,
         label: target.label,
       })),
-      {
-        value: MEMORY_ALL_TARGET,
-        label: t("pilotDeckConfig.panels.memory.data.target.all"),
-      },
     ],
     [projectTargets, t],
   );
@@ -158,27 +222,24 @@ export default function MemoryDataSection({
         (option) => option.value === selectedMemoryTarget,
       )
     ) {
-      setSelectedMemoryTarget(
-        projectTargets[0]?.value ?? MEMORY_ALL_TARGET,
-      );
+      setSelectedMemoryTarget(MEMORY_GENERAL_TARGET);
     }
-  }, [memoryTargetOptions, projectTargets, selectedMemoryTarget]);
+  }, [memoryTargetOptions, selectedMemoryTarget]);
 
-  const targetIsAllMemory = selectedMemoryTarget === MEMORY_ALL_TARGET;
-  const selectedProjectPath = targetIsAllMemory
-    ? ""
-    : memoryProjectPathFromTarget(selectedMemoryTarget);
-  const selectedProjectTarget =
-    projectTargets.find((target) => target.path === selectedProjectPath) ??
-    null;
+  const targetIsAllMemory = selectedMemoryTarget === MEMORY_GENERAL_TARGET;
+  const selectedProjectTarget = targetIsAllMemory
+    ? null
+    : projectTargets.find((target) => target.value === selectedMemoryTarget) ??
+      null;
+  const selectedProjectPath = selectedProjectTarget?.path ?? "";
   const dashboardProjectPath =
-    selectedProjectPath || projectTargets[0]?.path || "";
+    selectedProjectPath || generalProjectPath || projectTargets[0]?.path || "";
   const selectedTargetLabel = targetIsAllMemory
     ? t("pilotDeckConfig.panels.memory.data.target.all")
     : selectedProjectTarget?.label ??
       t("pilotDeckConfig.panels.memory.data.target.projectFallback");
-  const actionBusy = memoryAction.kind === "busy";
   const canManageTarget = targetIsAllMemory || Boolean(selectedProjectPath);
+  const actionsDisabled = actionBusy || !canManageTarget;
 
   const readMemoryResponse = async (response: Response) => {
     const raw = await response.text();
@@ -189,47 +250,10 @@ export default function MemoryDataSection({
     return { raw, body };
   };
 
-  const setActionBusy = (messageKey: string) => {
-    setMemoryAction({
-      kind: "busy",
-      message: t(messageKey, { target: selectedTargetLabel }),
-    });
-  };
-
-  const setActionSuccess = (messageKey: string, warnings?: unknown) => {
-    const warningList = Array.isArray(warnings)
-      ? warnings.filter(
-          (warning): warning is string =>
-            typeof warning === "string" && warning.trim().length > 0,
-        )
-      : [];
-    setMemoryAction({
-      kind: "success",
-      message: `${t(messageKey, { target: selectedTargetLabel })}${
-        warningList.length > 0 ? ` ${warningList.join(" ")}` : ""
-      }`,
-    });
-  };
-
-  const setActionError = (error: unknown) => {
-    setMemoryAction({
-      kind: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  };
-
   const handleExportMemory = async () => {
-    if (!canManageTarget) {
-      setMemoryAction({
-        kind: "error",
-        message: t(
-          "pilotDeckConfig.panels.memory.data.errors.missingProject",
-        ),
-      });
-      return;
-    }
+    if (!canManageTarget) return;
 
-    setActionBusy("pilotDeckConfig.panels.memory.data.status.exporting");
+    setActionBusy(true);
     try {
       const url = targetIsAllMemory
         ? "/api/memory/export/all-projects"
@@ -241,32 +265,20 @@ export default function MemoryDataSection({
         suppressServerErrorToast: true,
       });
       const { raw, body } = await readMemoryResponse(response);
-      if (!body) {
-        throw new Error(
-          t("pilotDeckConfig.panels.memory.data.errors.invalidExport"),
-        );
-      }
+      if (!body) return;
       const prefix = targetIsAllMemory
         ? "pilotdeck-memory-all"
         : `pilotdeck-memory-${safeDownloadToken(selectedTargetLabel)}`;
       downloadMemoryText(raw, `${prefix}-${Date.now()}.json`);
-      setActionSuccess("pilotDeckConfig.panels.memory.data.status.exported");
-    } catch (error) {
-      setActionError(error);
+    } catch {
+      // Status banners on this page are intentionally omitted.
+    } finally {
+      setActionBusy(false);
     }
   };
 
   const handleImportMemoryFile = async (file: File | null) => {
-    if (!file) return;
-    if (!canManageTarget) {
-      setMemoryAction({
-        kind: "error",
-        message: t(
-          "pilotDeckConfig.panels.memory.data.errors.missingProject",
-        ),
-      });
-      return;
-    }
+    if (!file || !canManageTarget) return;
 
     let payload: Record<string, unknown> | null = null;
     try {
@@ -274,15 +286,7 @@ export default function MemoryDataSection({
     } catch {
       payload = null;
     }
-    if (!payload) {
-      setMemoryAction({
-        kind: "error",
-        message: t(
-          "pilotDeckConfig.panels.memory.data.errors.invalidImport",
-        ),
-      });
-      return;
-    }
+    if (!payload) return;
 
     const confirmKey = targetIsAllMemory
       ? "pilotDeckConfig.panels.memory.data.confirm.importAll"
@@ -291,7 +295,7 @@ export default function MemoryDataSection({
       return;
     }
 
-    setActionBusy("pilotDeckConfig.panels.memory.data.status.importing");
+    setActionBusy(true);
     try {
       const url = targetIsAllMemory
         ? "/api/memory/import/all-projects"
@@ -299,40 +303,32 @@ export default function MemoryDataSection({
             "/api/memory/import/current-project",
             selectedProjectPath,
           );
-      const response = await authenticatedFetch(url, {
+      await authenticatedFetch(url, {
         method: "POST",
         body: JSON.stringify(payload),
         suppressServerErrorToast: true,
-      });
-      const { body } = await readMemoryResponse(response);
-      setActionSuccess(
-        "pilotDeckConfig.panels.memory.data.status.imported",
-        body?.warnings,
-      );
-    } catch (error) {
-      setActionError(error);
+      }).then(readMemoryResponse);
+    } catch {
+      // Status banners on this page are intentionally omitted.
+    } finally {
+      setActionBusy(false);
     }
   };
 
-  const handleClearMemory = async () => {
-    if (!canManageTarget) {
-      setMemoryAction({
-        kind: "error",
-        message: t(
-          "pilotDeckConfig.panels.memory.data.errors.missingProject",
-        ),
-      });
-      return;
-    }
+  const closeClearModal = () => {
+    if (actionBusy) return;
+    setClearModalOpen(false);
+  };
 
-    const confirmKey = targetIsAllMemory
-      ? "pilotDeckConfig.panels.memory.data.confirm.clearAll"
-      : "pilotDeckConfig.panels.memory.data.confirm.clearProject";
-    if (!window.confirm(t(confirmKey, { target: selectedTargetLabel }))) {
-      return;
-    }
+  const handleClearMemory = () => {
+    if (!canManageTarget) return;
+    setClearModalOpen(true);
+  };
 
-    setActionBusy("pilotDeckConfig.panels.memory.data.status.clearing");
+  const confirmClearMemory = async () => {
+    if (!canManageTarget) return;
+
+    setActionBusy(true);
     try {
       const response = await authenticatedFetch("/api/memory/clear", {
         method: "POST",
@@ -352,111 +348,180 @@ export default function MemoryDataSection({
         suppressServerErrorToast: true,
       });
       await readMemoryResponse(response);
-      setActionSuccess("pilotDeckConfig.panels.memory.data.status.cleared");
-    } catch (error) {
-      setActionError(error);
+      setClearModalOpen(false);
+    } catch {
+      // Status banners on this page are intentionally omitted.
+    } finally {
+      setActionBusy(false);
     }
   };
 
-  const memoryActionTone =
-    memoryAction.kind === "error"
-      ? "border-destructive/30 bg-destructive/10 text-destructive"
-      : memoryAction.kind === "success"
-        ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-        : "border-border bg-muted/40 text-muted-foreground";
+  useEffect(() => {
+    if (!clearModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeClearModal();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [actionBusy, clearModalOpen]);
 
   return (
-    <SettingsSection
-      title={t("pilotDeckConfig.panels.memory.data.title")}
-      description={t("pilotDeckConfig.panels.memory.data.description")}
+    <>
+    <section
+      className="memory-data-section"
+      aria-labelledby="memory-data-title"
     >
-      <SettingsCard divided>
-        <FormRow
-          label={t("pilotDeckConfig.panels.memory.data.target.label")}
-          description={t(
-            "pilotDeckConfig.panels.memory.data.target.description",
-          )}
-        >
-          <Select
-            value={selectedMemoryTarget}
-            options={memoryTargetOptions}
-            onChange={(value) => {
-              setSelectedMemoryTarget(value);
-              setMemoryAction({ kind: "idle" });
-            }}
-          />
-        </FormRow>
-        <div className="px-4 py-3">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 px-2.5 text-xs"
-              disabled={actionBusy || !canManageTarget}
-              onClick={() => void handleExportMemory()}
-            >
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              {t("pilotDeckConfig.panels.memory.data.actions.export")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 px-2.5 text-xs"
-              disabled={actionBusy || !canManageTarget}
-              onClick={() => importInputRef.current?.click()}
-            >
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              {t("pilotDeckConfig.panels.memory.data.actions.import")}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="h-8 gap-1.5 px-2.5 text-xs"
-              disabled={actionBusy || !canManageTarget}
-              onClick={() => void handleClearMemory()}
-            >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              {t("pilotDeckConfig.panels.memory.data.actions.clear")}
-            </Button>
+      <div className="memory-card memory-data-card">
+        <header className="memory-data-header">
+          <div>
+            <h2 id="memory-data-title">
+              {t("pilotDeckConfig.panels.memory.data.title")}
+            </h2>
+            <p>{t("pilotDeckConfig.panels.memory.data.description")}</p>
           </div>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={(event) => {
-              const input = event.currentTarget;
-              void handleImportMemoryFile(input.files?.[0] ?? null).finally(
-                () => {
-                  input.value = "";
-                },
-              );
-            }}
-          />
-          {memoryAction.kind !== "idle" && memoryAction.message && (
-            <div
-              className={cn(
-                "mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs leading-5",
-                memoryActionTone,
-              )}
-            >
-              {memoryAction.kind === "busy" && (
-                <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin" />
-              )}
-              {memoryAction.kind === "success" && (
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5" />
-              )}
-              {memoryAction.kind === "error" && (
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5" />
-              )}
-              <span>{memoryAction.message}</span>
+        </header>
+        <div className="memory-data-selector-row">
+          <div className="memory-setting-copy">
+            <label htmlFor="memory-project">
+              {t("pilotDeckConfig.panels.memory.data.target.label")}
+            </label>
+          </div>
+          <div className="memory-data-controls">
+            <div className="memory-select-wrap memory-project-select">
+              <select
+                id="memory-project"
+                value={selectedMemoryTarget}
+                onChange={(event) => {
+                  setSelectedMemoryTarget(event.target.value);
+                }}
+              >
+                {memoryTargetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronIcon />
             </div>
-          )}
+            <div className="memory-data-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={actionsDisabled}
+                onClick={() => void handleExportMemory()}
+              >
+                <ExportIcon />
+                {t("pilotDeckConfig.panels.memory.data.actions.export")}
+              </button>
+              <label
+                className={cn(
+                  "button secondary memory-import-button",
+                  actionsDisabled && "disabled",
+                )}
+              >
+                <ImportIcon />
+                <span>
+                  {t("pilotDeckConfig.panels.memory.data.actions.import")}
+                </span>
+                <input
+                  ref={importInputRef}
+                  className="memory-import-input"
+                  accept="application/json,.json"
+                  aria-label={t(
+                    "pilotDeckConfig.panels.memory.data.actions.import",
+                  )}
+                  type="file"
+                  disabled={actionsDisabled}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    void handleImportMemoryFile(input.files?.[0] ?? null).finally(
+                      () => {
+                        input.value = "";
+                      },
+                    );
+                  }}
+                />
+              </label>
+              <button
+                className="button danger memory-clear-button"
+                type="button"
+                disabled={actionsDisabled}
+                onClick={handleClearMemory}
+              >
+                <ClearIcon />
+                {t("pilotDeckConfig.panels.memory.data.actions.clear")}
+              </button>
+            </div>
+          </div>
         </div>
-      </SettingsCard>
-    </SettingsSection>
+      </div>
+    </section>
+    {clearModalOpen ? (
+      <div
+        className="modal-backdrop"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeClearModal();
+        }}
+      >
+        <section
+          className="modal memory-clear-modal simple-delete-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+        >
+          <header className="modal-header">
+            <div>
+              <h2 id="modal-title">
+                {t(
+                  "pilotDeckConfig.panels.memory.data.confirm.clearModalTitle",
+                  { name: selectedMemoryTarget },
+                )}
+              </h2>
+              <p>
+                {t(
+                  "pilotDeckConfig.panels.memory.data.confirm.clearModalDescription",
+                )}
+              </p>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label={t(
+                "pilotDeckConfig.panels.memory.data.confirm.clearModalClose",
+              )}
+              disabled={actionBusy}
+              onClick={closeClearModal}
+            >
+              <CloseIcon />
+            </button>
+          </header>
+          <footer className="modal-actions">
+            <button
+              className="button secondary"
+              type="button"
+              disabled={actionBusy}
+              onClick={closeClearModal}
+            >
+              {t("settingsPage.actions.cancel")}
+            </button>
+            <button
+              className="button danger"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => void confirmClearMemory()}
+            >
+              {t(
+                "pilotDeckConfig.panels.memory.data.confirm.clearModalConfirm",
+              )}
+            </button>
+          </footer>
+        </section>
+      </div>
+    ) : null}
+    </>
   );
 }

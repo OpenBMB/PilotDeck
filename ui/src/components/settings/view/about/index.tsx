@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { authenticatedFetch } from "../../../../utils/api";
 import { restartAndReload, type RestartUiStatus } from "../../../../utils/restartUi";
 import { cn } from "../../../../lib/utils";
-import type { DesktopVersionCheckResult } from "../../Settings";
+import type { DesktopVersionCheckResult } from "../../version";
 import { SettingsCard } from "../../shared/view";
 import {
   launchDesktopInstaller,
@@ -15,6 +15,7 @@ type AboutSectionsProps = {
   title: string;
   versionInfo: DesktopVersionCheckResult;
   checkingVersion: boolean;
+  onRestartConfirmed?: () => void;
 };
 
 type LocalUpdateResult =
@@ -55,9 +56,10 @@ function formatDateTime(value: string | null): string {
 }
 
 export default function AboutSections({
-  title,
+  title: _title,
   versionInfo,
   checkingVersion,
+  onRestartConfirmed,
 }: AboutSectionsProps) {
   const { t } = useTranslation("settings");
   const [downloading, setDownloading] = useState(false);
@@ -256,7 +258,10 @@ export default function AboutSections({
           description: t("about.restartWaitingDescription"),
         },
         onStatusChange: (status) => {
-          if (status === "confirmed") return;
+          if (status === "confirmed") {
+            onRestartConfirmed?.();
+            return;
+          }
           setRestartStatus(status);
           if (status !== "restarting") setInstalling(false);
         },
@@ -286,9 +291,7 @@ export default function AboutSections({
   const statusIconClass = "h-3.5 w-3.5";
 
   return (
-    <div className="space-y-8">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-
+    <div className="about-page-content">
       <SettingsCard className="overflow-hidden">
         <div className="grid min-h-[64px] grid-cols-[1fr_auto_auto] items-center gap-4 px-5 py-4">
           <div className="min-w-0 text-sm text-foreground">

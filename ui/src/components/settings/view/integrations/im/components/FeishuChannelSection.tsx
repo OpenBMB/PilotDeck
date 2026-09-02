@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "../../../../../../shared/view/ui";
 import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   KeyRound,
   Loader2,
-  MessageSquare,
   QrCode,
   Radio,
+  Send,
   XCircle,
-} from "lucide-react";
-import { Button } from "../../../../../../shared/view/ui";
+} from "../icons";
 import { authenticatedFetch } from "../../../../../../utils/api";
-import { SettingsCard, SettingsSection } from "../../../../shared/view";
+import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import { cn } from "../../../../../../lib/utils";
 import type { GatewayStatus, TestResult } from "../types";
 
@@ -85,6 +87,7 @@ export default function FeishuChannelSection({
           }
           if (pollData.ok) {
             setQrPhase("success");
+            showSettingsSuccess();
             onSaved();
           } else {
             setQrPhase("error");
@@ -142,6 +145,7 @@ export default function FeishuChannelSection({
       });
       const data = await res.json();
       if (data.ok) {
+        showSettingsSuccess();
         onSaved();
         setExpanded(false);
       } else {
@@ -156,7 +160,9 @@ export default function FeishuChannelSection({
 
   const handleDisable = async () => {
     try {
-      await authenticatedFetch("/api/gateway/feishu/disable", { method: "POST" });
+      const response = await authenticatedFetch("/api/gateway/feishu/disable", { method: "POST" });
+      if (!response.ok) return;
+      showSettingsSuccess();
       onSaved();
     } catch {
       // ignore
@@ -170,77 +176,73 @@ export default function FeishuChannelSection({
   };
 
   return (
-    <SettingsSection title={t("gateway.feishu.title")}>
-      <SettingsCard>
-        <div className="space-y-4 p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <div className="text-[13px] font-medium text-foreground">
-                  {t("gateway.feishu.label")}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {status.enabled
-                    ? `${t("gateway.connected")} · ${status.appId}`
-                    : t("gateway.notConfigured")}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {status.enabled && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  {t("gateway.enabled")}
-                </span>
-              )}
-              {!expanded && (
-                <Button
-                  variant={status.enabled ? "ghost" : "outline"}
-                  size="sm"
-                  onClick={() => setExpanded(true)}
-                >
-                  {status.enabled ? t("gateway.edit") : t("gateway.setup")}
-                </Button>
-              )}
-            </div>
-          </div>
+    <section className={`integration-channel${expanded ? " expanded" : ""}`}>
+      <button
+        className="integration-channel-summary"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => (expanded ? closeExpanded() : setExpanded(true))}
+      >
+        <span className="integration-platform-icon feishu">
+          <Send size={20} />
+        </span>
+        <span className="integration-channel-copy">
+          <strong>{t("gateway.feishu.title")}</strong>
+          <small>
+            {status.enabled
+              ? `${t("gateway.connected")} · ${status.appId}`
+              : t("gateway.feishu.summary")}
+          </small>
+        </span>
+        <span className={`integration-status${status.enabled ? " enabled" : ""}`}>
+          {status.enabled ? <i /> : null}
+          {status.enabled ? t("gateway.enabled") : t("gateway.notConfigured")}
+        </span>
+        <span className="integration-channel-toggle">
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
 
+      {expanded ? (
+        <div className="integration-channel-detail">
           {expanded && setupMode === "choose" && (
-            <div className="space-y-3 border-t border-border pt-4">
-              <p className="text-xs text-muted-foreground">
-                {t("gateway.feishu.chooseMethod")}
-              </p>
-              <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="integration-detail-heading">
+                <strong>{t("gateway.feishu.chooseMethod")}</strong>
+                <span>{t("gateway.feishu.chooseHint")}</span>
+              </div>
+              <div className="integration-setup-choices">
                 <button
                   type="button"
                   onClick={() => setSetupMode("qr")}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center transition-colors hover:border-ring hover:bg-accent/30"
+                  className="integration-setup-choice"
                 >
-                  <QrCode className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-[13px] font-medium text-foreground">
-                    {t("gateway.feishu.qrScan")}
+                  <span className="integration-choice-icon">
+                    <QrCode size={22} />
                   </span>
-                  <span className="text-[11px] leading-4 text-muted-foreground">
-                    {t("gateway.feishu.qrScanDesc")}
+                  <span className="integration-choice-copy">
+                    <strong>{t("gateway.feishu.qrScan")}</strong>
+                    <small>{t("gateway.feishu.qrScanDesc")}</small>
                   </span>
+                  <span className="integration-choice-check" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setSetupMode("manual")}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center transition-colors hover:border-ring hover:bg-accent/30"
+                  className="integration-setup-choice"
                 >
-                  <KeyRound className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-[13px] font-medium text-foreground">
-                    {t("gateway.feishu.manualInput")}
+                  <span className="integration-choice-icon">
+                    <KeyRound size={22} />
                   </span>
-                  <span className="text-[11px] leading-4 text-muted-foreground">
-                    {t("gateway.feishu.manualInputDesc")}
+                  <span className="integration-choice-copy">
+                    <strong>{t("gateway.feishu.manualInput")}</strong>
+                    <small>{t("gateway.feishu.manualInputDesc")}</small>
                   </span>
+                  <span className="integration-choice-check" />
                 </button>
               </div>
-              <div className="flex items-center gap-2">
-                {status.enabled && (
+              {status.enabled && (
+                <div className="flex items-center gap-2 pt-3">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -249,51 +251,51 @@ export default function FeishuChannelSection({
                   >
                     {t("gateway.disable")}
                   </Button>
-                )}
-                <Button variant="ghost" size="sm" onClick={closeExpanded}>
-                  {t("gateway.cancel")}
-                </Button>
-              </div>
+                </div>
+              )}
             </div>
           )}
 
           {expanded && setupMode === "qr" && (
             <div className="space-y-3 border-t border-border pt-4">
               {qrPhase === "idle" && (
-                <div className="space-y-3">
-                  <label className="block space-y-1">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("gateway.feishu.domain")}
+                <section
+                  className="integration-setup-panel integration-scan-launcher"
+                  aria-label={t("gateway.feishu.generateQrAria")}
+                >
+                  <label className="integration-select-field integration-scan-domain">
+                    <span>{t("gateway.feishu.domain")}</span>
+                    <span className="integration-select-control">
+                      <select
+                        value={qrDomain}
+                        onChange={(event) =>
+                          setQrDomain(event.target.value as "feishu" | "lark")
+                        }
+                      >
+                        <option value="feishu">
+                          {t("gateway.feishu.domainOptions.feishu")}
+                        </option>
+                        <option value="lark">
+                          {t("gateway.feishu.domainOptions.lark")}
+                        </option>
+                      </select>
+                      <ChevronDown size={16} />
                     </span>
-                    <select
-                      value={qrDomain}
-                      onChange={(e) =>
-                        setQrDomain(e.target.value as "feishu" | "lark")
-                      }
-                      className="h-9 w-full rounded-lg border border-border bg-muted px-3 text-[13px] text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
-                    >
-                      <option value="feishu">
-                        {t("gateway.feishu.domainOptions.feishu")}
-                      </option>
-                      <option value="lark">
-                        {t("gateway.feishu.domainOptions.lark")}
-                      </option>
-                    </select>
                   </label>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={startQR}>
-                      <QrCode className="mr-1.5 h-3 w-3" />
+                  <div className="integration-setup-actions integration-scan-launcher-actions">
+                    <button className="button primary compact" type="button" onClick={startQR}>
+                      <QrCode size={15} />
                       {t("gateway.feishu.startQr")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    </button>
+                    <button
+                      className="button secondary compact"
+                      type="button"
                       onClick={() => setSetupMode("choose")}
                     >
                       {t("gateway.cancel")}
-                    </Button>
+                    </button>
                   </div>
-                </div>
+                </section>
               )}
 
               {qrPhase === "connecting" && (
@@ -468,7 +470,7 @@ export default function FeishuChannelSection({
             </div>
           )}
         </div>
-      </SettingsCard>
-    </SettingsSection>
+      ) : null}
+    </section>
   );
 }

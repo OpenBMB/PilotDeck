@@ -1,161 +1,178 @@
-import { Info, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { KeyRound, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
-import { SettingsCard } from "../../../shared/view";
 import type { PilotDeckConfig } from "../../modelPool/types";
-import { SecretTextInput } from "../../../shared/components/Inputs";
 import { patch } from "../../modelPool/utils/patch";
-import { isMaskedSecret } from "../../modelPool/utils/providerRefs";
 import { WELL_KNOWN_ENV_KEYS } from "../utils/constants";
 
 type CustomEnvSectionProps = {
   config: PilotDeckConfig;
-  onChange: (next: PilotDeckConfig) => void;
+  onSave: (next: PilotDeckConfig) => Promise<boolean>;
+  saving: boolean;
 };
 
-export default function CustomEnvSection({ config, onChange }: CustomEnvSectionProps) {
+export default function CustomEnvSection({
+  config,
+  onSave,
+  saving,
+}: CustomEnvSectionProps) {
   const { t } = useTranslation("settings");
-  const envMap = config.customEnv ?? {};
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const editing = draft !== null;
+  const envMap = draft ?? config.customEnv ?? {};
   const entries = Object.entries(envMap);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
-
-  const setEnv = (key: string, value: string) => {
-    onChange(patch(config, ["customEnv", key], value));
-  };
+  const newValueInputRef = useRef<HTMLInputElement>(null);
 
   const removeEnv = (key: string) => {
     const next = { ...envMap };
     delete next[key];
-    onChange(patch(config, ["customEnv"], next));
+    setDraft(next);
   };
 
   const addEntry = () => {
     const key = newKey.trim();
-    if (!key) return;
-    onChange(patch(config, ["customEnv", key], newValue));
+    if (!key || envMap[key] !== undefined) return;
+    setDraft((current) => ({ ...(current ?? {}), [key]: newValue }));
     setNewKey("");
     setNewValue("");
   };
 
   const addWellKnown = (key: string) => {
     if (envMap[key] !== undefined) return;
-    onChange(patch(config, ["customEnv", key], ""));
+    setNewKey(key);
+    setNewValue("");
+    requestAnimationFrame(() => newValueInputRef.current?.focus());
   };
 
   const unusedWellKnown = WELL_KNOWN_ENV_KEYS.filter(
     (entry) => envMap[entry.key] === undefined,
   );
 
+  const cancel = () => {
+    setDraft(null);
+    setNewKey("");
+    setNewValue("");
+  };
+
+  const commit = async () => {
+    if (draft && (await onSave(patch(config, ["customEnv"], draft)))) cancel();
+  };
+
   return (
-    <SettingsCard className="space-y-3 p-4">
-      {entries.map(([key, value]) => {
-        const masked = isMaskedSecret(value);
-        return (
-          <div key={key} className="space-y-1">
-            <div className="flex items-center gap-2">
-              <input
-                value={key}
-                readOnly
-                className="w-[200px] shrink-0 rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs text-foreground outline-none"
-              />
-              <span className="text-muted-foreground">=</span>
-              <SecretTextInput
-                value={value}
-                placeholder={
-                  masked
-                    ? t("pilotDeckConfig.panels.customEnv.existingValueKept")
-                    : "value"
-                }
-                monospace
-                className="min-w-0 flex-1"
-                onChange={(next) => setEnv(key, next)}
-              />
-              <button
-                type="button"
-                onClick={() => removeEnv(key)}
-                className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                title={t("pilotDeckConfig.actions.remove")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+    <section className="advanced-system-section" aria-labelledby="advanced-environment-title">
+      <div className="advanced-settings-card">
+        <header className="agent-retry-header advanced-card-header">
+          <span className="agent-retry-icon"><KeyRound size={19} /></span>
+          <span>
+            <strong id="advanced-environment-title">
+              {t("pilotDeckConfig.panels.customEnv.title")}
+            </strong>
+            <small>{t("pilotDeckConfig.panels.customEnv.description")}</small>
+          </span>
+          <div className="agent-retry-actions">
+            {editing ? (
+              <>
+                <button className="button secondary compact" type="button" onClick={cancel} disabled={saving}>
+                  {t("settingsPage.actions.cancel")}
+                </button>
+                <button className="button primary compact" type="button" onClick={() => void commit()} disabled={saving}>
+                  <Save size={16} />
+                  {t("actions.saveChanges")}
+                </button>
+              </>
+            ) : (
+              <button className="button secondary compact edit-provider-button" type="button" onClick={() => setDraft({ ...(config.customEnv ?? {}) })}>
+                <Pencil size={16} />
+                {t("settingsPage.actions.edit")}
               </button>
-            </div>
-            {masked ? (
-              <div className="ml-[216px] flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Info className="h-3 w-3" />
-                {t("pilotDeckConfig.panels.customEnv.valueHidden")}
-              </div>
-            ) : null}
+            )}
           </div>
-        );
-      })}
+        </header>
+        <div className="advanced-environment-card">
+          {entries.length > 0 ? (
+            <div className="advanced-environment-list">
+              {entries.map(([key]) => (
+                <div className="advanced-environment-item" key={key}>
+                  <code>{key}</code>
+                  <span>••••••••</span>
+                  <button type="button" onClick={() => removeEnv(key)} disabled={!editing || saving} aria-label={t("pilotDeckConfig.actions.remove")}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="advanced-environment-empty">
+              {t("pilotDeckConfig.panels.customEnv.empty")}
+            </div>
+          )}
 
-      {entries.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-          {t("pilotDeckConfig.panels.customEnv.empty")}
-        </div>
-      ) : null}
-
-      <div className="border-t border-border pt-3">
-        <div className="mb-2 text-xs font-medium text-foreground">
-          {t("pilotDeckConfig.panels.customEnv.addVariable")}
-        </div>
-        <div className="flex items-center gap-2">
+          <div className="advanced-environment-compose">
+            <strong>{t("pilotDeckConfig.panels.customEnv.addVariable")}</strong>
+            <div className="advanced-environment-form">
           <input
             value={newKey}
             onChange={(event) =>
               setNewKey(event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
             }
             placeholder="KEY_NAME"
-            className="w-[200px] shrink-0 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+            aria-label={t("pilotDeckConfig.panels.customEnv.variableName")}
+            disabled={!editing || saving}
           />
-          <span className="text-muted-foreground">=</span>
+          <span>=</span>
           <input
+            ref={newValueInputRef}
             value={newValue}
             onChange={(event) => setNewValue(event.target.value)}
             placeholder="value"
             type="password"
-            className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+            aria-label={t("pilotDeckConfig.panels.customEnv.variableValue")}
+            disabled={!editing || saving}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !isImeEnterEvent(event)) addEntry();
             }}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
+          <button
+            className="button secondary advanced-environment-add"
+            type="button"
             onClick={addEntry}
-            disabled={!newKey.trim()}
+            disabled={
+              !editing ||
+              saving ||
+              !newKey.trim() ||
+              envMap[newKey.trim()] !== undefined
+            }
           >
-            <Plus className="mr-1 h-3.5 w-3.5" />
+            <Plus size={16} />
             {t("pilotDeckConfig.panels.customEnv.add")}
-          </Button>
-        </div>
-      </div>
-
-      {unusedWellKnown.length > 0 ? (
-        <div className="border-t border-border pt-3">
-          <div className="mb-2 text-xs text-muted-foreground">
-            {t("pilotDeckConfig.panels.customEnv.quickAddKeys")}
+          </button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+
+          <div className="advanced-environment-quick">
+            <span>
+            {t("pilotDeckConfig.panels.customEnv.quickAddKeys")}
+            </span>
+            <div>
             {unusedWellKnown.map((entry) => (
               <button
                 key={entry.key}
                 type="button"
                 onClick={() => addWellKnown(entry.key)}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-ring hover:text-foreground"
                 title={entry.hint}
+                disabled={!editing || saving}
               >
-                <Plus className="h-3 w-3" />
+                <Plus size={14} />
                 {entry.key}
               </button>
             ))}
+            </div>
           </div>
         </div>
-      ) : null}
-    </SettingsCard>
+      </div>
+    </section>
   );
 }

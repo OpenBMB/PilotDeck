@@ -12,10 +12,12 @@ import {
   isMaskedSecret,
   secretDisplayValue,
 } from "../utils/secret";
+import { queueSettingsSaveSuccess } from "../SettingsSuccessToast";
 
 type InputSaveMode = "explicit" | "immediate";
 
 const InputSaveModeContext = createContext<InputSaveMode>("explicit");
+const FieldLabelContext = createContext<string | null>(null);
 
 export function FieldSaveModeProvider({
   mode,
@@ -80,6 +82,7 @@ function EditableInputShell({
 }) {
   const { t } = useTranslation("settings");
   const mode = useContext(InputSaveModeContext);
+  const fieldLabel = useContext(FieldLabelContext);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -104,6 +107,7 @@ function EditableInputShell({
 
   const save = () => {
     if (!isCommitAllowed) return;
+    if (fieldLabel) queueSettingsSaveSuccess(`${fieldLabel}已保存`);
     onCommit(draft);
     setEditing(false);
   };
@@ -284,6 +288,7 @@ export function TextAreaInput({
 }) {
   const { t } = useTranslation("settings");
   const mode = useContext(InputSaveModeContext);
+  const fieldLabel = useContext(FieldLabelContext);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const readonlyValue = value ?? "";
@@ -308,6 +313,7 @@ export function TextAreaInput({
   }
 
   const save = () => {
+    if (fieldLabel) queueSettingsSaveSuccess(`${fieldLabel}已保存`);
     onChange(draft);
     setEditing(false);
   };
@@ -381,6 +387,7 @@ export function Select({
   options: Array<{ value: string; label: string; disabled?: boolean }>;
   disabled?: boolean;
 }) {
+  const fieldLabel = useContext(FieldLabelContext);
   const selectedOption = options.find((opt) => opt.value === value);
   const selectedLabel = selectedOption?.label ?? "";
   return (
@@ -402,7 +409,18 @@ export function Select({
       </span>
       <select
         value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          const nextValue = e.target.value;
+          const nextLabel =
+            options.find((option) => option.value === nextValue)?.label ??
+            nextValue;
+          if (fieldLabel) {
+            queueSettingsSaveSuccess(
+              `${fieldLabel}已切换为 ${nextLabel}`,
+            );
+          }
+          onChange(nextValue);
+        }}
         disabled={disabled}
         className={cn(
           "absolute inset-0 h-full w-full opacity-0",
@@ -424,13 +442,22 @@ export function FormRow({
   label,
   description,
   children,
+  announceChanges = true,
+  className,
 }: {
   label: string;
   description?: string;
   children: ReactNode;
+  announceChanges?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="grid grid-cols-1 items-start gap-2 px-4 py-2.5 sm:grid-cols-[180px_1fr] sm:gap-4">
+    <div
+      className={cn(
+        "grid grid-cols-1 items-start gap-2 px-4 py-2.5 sm:grid-cols-[180px_1fr] sm:gap-4",
+        className,
+      )}
+    >
       <div className="min-w-0">
         <div className="text-[13px] font-medium leading-5 text-foreground">
           {label}
@@ -441,7 +468,9 @@ export function FormRow({
           </div>
         )}
       </div>
-      <div className="min-w-0">{children}</div>
+      <FieldLabelContext.Provider value={announceChanges ? label : null}>
+        <div className="min-w-0">{children}</div>
+      </FieldLabelContext.Provider>
     </div>
   );
 }

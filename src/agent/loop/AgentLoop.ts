@@ -3417,7 +3417,7 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
   }
   if (error.code === "timeout") {
     if (error.settingsFix?.configPath === "model.providers.<id>.retry.streamIdleTimeoutMs") {
-      const hint = `Increase streamIdleTimeoutMs for${providerLabel} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`;
+      const hint = `Increase streamIdleTimeoutMs for${providerLabel} in Settings → Advanced, or check local network/proxy and provider status.`;
       return modelFailureActionResult(hint, "network", "streamIdleTimeout", { provider: error.provider ?? "the provider" });
     }
     const hint = `Increase timeoutMs for${providerLabel} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`;

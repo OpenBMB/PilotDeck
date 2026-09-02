@@ -6,6 +6,7 @@ import type { PermissionRule, PermissionRuleSet } from "./protocol/types.js";
 export type PermissionSettings = {
   version: 1;
   allowedTools: string[];
+  askTools: string[];
   disallowedTools: string[];
   skipPermissions: boolean;
   lastUpdated?: string;
@@ -14,8 +15,9 @@ export type PermissionSettings = {
 export const DEFAULT_PERMISSION_SETTINGS: PermissionSettings = {
   version: 1,
   allowedTools: [],
+  askTools: [],
   disallowedTools: [],
-  skipPermissions: true,
+  skipPermissions: false,
 };
 
 const TOOL_NAME_ALIASES = new Map<string, string>([
@@ -66,7 +68,7 @@ export function permissionSettingsToRuleSet(settings: PermissionSettings): Permi
   return {
     allow: settings.allowedTools.map((entry) => permissionEntryToRule(entry, "allow")),
     deny: settings.disallowedTools.map((entry) => permissionEntryToRule(entry, "deny")),
-    ask: [],
+    ask: settings.askTools.map((entry) => permissionEntryToRule(entry, "ask")),
   };
 }
 
@@ -88,6 +90,7 @@ export function normalizePermissionSettings(value: unknown): PermissionSettings 
   return {
     version: 1,
     allowedTools: normalizeStringArray(record.allowedTools),
+    askTools: normalizeStringArray(record.askTools),
     disallowedTools: normalizeStringArray(record.disallowedTools),
     skipPermissions: Boolean(record.skipPermissions),
     lastUpdated: typeof record.lastUpdated === "string" ? record.lastUpdated : undefined,
@@ -96,7 +99,7 @@ export function normalizePermissionSettings(value: unknown): PermissionSettings 
 
 export function permissionEntryToRule(
   entry: string,
-  behavior: "allow" | "deny",
+  behavior: "allow" | "ask" | "deny",
   source: PermissionRule["source"] = "user",
 ): PermissionRule {
   const normalized = normalizePermissionEntry(entry);

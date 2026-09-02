@@ -10,6 +10,10 @@ import {
 } from 'react';
 import { authenticatedFetch } from '../utils/api';
 import { useWebSocket } from '../contexts/WebSocketContext';
+import {
+  notifySettingsSaveSuccess,
+  takeSettingsSaveSuccess,
+} from '../components/settings/shared/SettingsSuccessToast';
 
 type ConfigValidation = {
   valid: boolean;
@@ -266,6 +270,7 @@ function usePilotDeckConfigState() {
 
   const save = useCallback((options: ConfigSaveOptions = {}): Promise<ConfigSaveResult> => {
     const draft = rawRef.current;
+    const successMessage = takeSettingsSaveSuccess();
     const sequence = ++saveSequenceRef.current;
     pendingSaveCountRef.current += 1;
     setSaving(true);
@@ -306,6 +311,7 @@ function usePilotDeckConfigState() {
           revisionRef.current = data.revision;
           setRevision(data.revision);
         }
+        notifySettingsSaveSuccess(successMessage);
 
         // Immediate-mode fields can enqueue another draft before this request
         // finishes. Only the newest response may replace the editor state;

@@ -5,14 +5,16 @@ import { resolvePilotHome } from '../utils/pilotPaths.js';
 const DEFAULT_SETTINGS = {
   version: 1,
   allowedTools: [],
+  askTools: [],
   disallowedTools: [],
-  skipPermissions: true,
+  skipPermissions: false,
 };
 
 const TOOL_NAME_ALIASES = new Map([
   ['Read', 'read_file'],
   ['Write', 'write_file'],
   ['Edit', 'edit_file'],
+  ['NotebookEdit', 'edit_notebook'],
   ['MultiEdit', 'edit_file'],
   ['Glob', 'glob'],
   ['Grep', 'grep'],
@@ -43,6 +45,7 @@ export function normalizePermissionSettings(value) {
   return {
     version: 1,
     allowedTools: normalizeStringArray(obj.allowedTools),
+    askTools: normalizeStringArray(obj.askTools),
     disallowedTools: normalizeStringArray(obj.disallowedTools),
     skipPermissions: Boolean(obj.skipPermissions),
     lastUpdated: typeof obj.lastUpdated === 'string' ? obj.lastUpdated : undefined,

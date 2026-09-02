@@ -15,6 +15,8 @@ export type RouterScenariosConfig = {
 
 export type RouterTierConfig = {
   model: RouterModelRef;
+  /** Human-readable tier name shown in settings. */
+  label?: string;
   description?: string;
 };
 

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DesktopVersionCheckResult } from "../../Settings";
+import type { DesktopVersionCheckResult } from "../../version";
 import { authenticatedFetch } from "../../../../utils/api";
 import AboutSections from ".";
 
