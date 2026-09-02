@@ -90,6 +90,15 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     ],
   },
   {
+    id: 'atlas_cloud',
+    displayName: 'Atlas Cloud',
+    protocol: 'openai',
+    defaultUrl: 'https://api.atlascloud.ai/v1',
+    models: [
+      { id: 'qwen/qwen3.8-max', displayName: 'Qwen3.8 Max', supportsImage: true, maxContextTokens: 1_000_000, maxOutputTokens: 131_072 },
+    ],
+  },
+  {
     id: 'dashscope',
     displayName: '阿里云百炼 (DashScope)',
     protocol: 'openai',

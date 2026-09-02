@@ -423,6 +423,20 @@ model:
       apiKey: sk-your-api-key
 ```
 
+Atlas Cloud is available in the Web UI provider catalog. It can also be configured with the default endpoint and environment variable:
+
+```yaml
+schemaVersion: 1
+agent:
+  model: atlas_cloud/qwen/qwen3.8-max
+model:
+  providers:
+    atlas_cloud:
+      apiKey: ${ATLASCLOUD_API_KEY}
+      models:
+        qwen/qwen3.8-max: {}
+```
+
 Native Gemini can be configured with `protocol: google`:
 
 ```yaml
