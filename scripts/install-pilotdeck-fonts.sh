@@ -166,7 +166,7 @@ docker compose up -d --build --force-recreate pilotdeck
 
 container_id="$(docker compose ps -q pilotdeck)"
 [ -n "$container_id" ] || fail "PilotDeck container was not created."
-mount_report="$(docker inspect "$container_id" --format '{{range .Mounts}}{{println .Source "->" .Destination "rw=" .RW}}{{end}}')"
+mount_report="$(docker inspect "$container_id" --format '{{range .Mounts}}{{printf "%s -> %s rw=%t\\n" .Source .Destination .RW}}{{end}}')"
 printf '%s\n' "$mount_report"
 printf '%s' "$mount_report" | grep -Fq "$FONT_DIR -> /usr/local/share/fonts/founder rw=false" || fail \
   "font mount is missing or is not read-only."
