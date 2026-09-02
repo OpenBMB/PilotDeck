@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 利润池图：X 轴 = 价值链环节累计营收占比，Y 轴 = margin。矩形面积 ≈ 利润池绝对额 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 800" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .axis { stroke: #C9A87C; stroke-width: 2; }
+      .axis-label { fill: #C9A87C; font-size: 14px; font-weight: 600; }
+      .axis-tick { fill: #8B8680; font-size: 11px; }
+      .grid-line { stroke: #2A2A2E; stroke-width: 1; stroke-dasharray: 3,5; }
+      .segment { fill-opacity: 0.75; stroke: #C9A87C; stroke-width: 1.5; }
+      .seg-high { fill: #4A90E2; }
+      .seg-mid { fill: #C9A87C; }
+      .seg-low { fill: #6B5D45; }
+      .seg-neg { fill: #C04040; }
+      .segment-label { fill: #0F1115; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .segment-sublabel { fill: #0F1115; font-size: 10px; text-anchor: middle; }
+      .title { fill: #E5E0D8; font-size: 26px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+      .insight { fill: #C9A87C; font-size: 12px; font-style: italic; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1400" height="800"/>
+
+  <text class="title" x="50" y="50">{{INDUSTRY_NAME}} 利润池分布</text>
+  <text class="subtitle" x="50" y="74">X 轴 = 营收占比累计 · Y 轴 = 经营 margin（%） · 矩形面积 ≈ 利润绝对额 · {{AS_OF_DATE}}</text>
+
+  <!-- 坐标系 (100,100) - (1300,700)，X 0-100%, Y -20% 到 +60% -->
+  <line class="axis" x1="100" y1="500" x2="1300" y2="500"/>
+  <line class="axis" x1="100" y1="100" x2="100" y2="700"/>
+
+  <!-- X 轴刻度 0%-100%（每 20%） -->
+  <text class="axis-tick" x="100" y="720" text-anchor="middle">0%</text>
+  <text class="axis-tick" x="340" y="720" text-anchor="middle">20%</text>
+  <text class="axis-tick" x="580" y="720" text-anchor="middle">40%</text>
+  <text class="axis-tick" x="820" y="720" text-anchor="middle">60%</text>
+  <text class="axis-tick" x="1060" y="720" text-anchor="middle">80%</text>
+  <text class="axis-tick" x="1300" y="720" text-anchor="middle">100%</text>
+  <text class="axis-label" x="700" y="754" text-anchor="middle">营收占比累计（{{TOTAL_REVENUE}}）</text>
+
+  <!-- Y 轴刻度：500 = 0%, 100 = +60%, 700 = -20%。每 10% = 67px -->
+  <text class="axis-tick" x="90" y="504" text-anchor="end">0%</text>
+  <text class="axis-tick" x="90" y="437" text-anchor="end">10%</text>
+  <text class="axis-tick" x="90" y="370" text-anchor="end">20%</text>
+  <text class="axis-tick" x="90" y="303" text-anchor="end">30%</text>
+  <text class="axis-tick" x="90" y="236" text-anchor="end">40%</text>
+  <text class="axis-tick" x="90" y="169" text-anchor="end">50%</text>
+  <text class="axis-tick" x="90" y="102" text-anchor="end">60%</text>
+  <text class="axis-tick" x="90" y="571" text-anchor="end">-10%</text>
+  <text class="axis-tick" x="90" y="638" text-anchor="end">-20%</text>
+  <text class="axis-label" x="50" y="400" text-anchor="middle" transform="rotate(-90 50 400)">Margin (%)</text>
+
+  <line class="grid-line" x1="100" y1="500" x2="1300" y2="500"/>
+
+  <!-- 利润池矩形示例（5 个环节） -->
+  <!-- Segment 1: 营收 0-15%, margin 50% (高，蓝色) -->
+  <rect class="segment seg-high" x="100" y="167" width="180" height="333"/>
+  <text class="segment-label" x="190" y="330">{{SEG_1_NAME}}</text>
+  <text class="segment-sublabel" x="190" y="350">{{SEG_1_REV}} · margin {{SEG_1_MARGIN}}</text>
+
+  <!-- Segment 2: 营收 15-40%, margin 25% -->
+  <rect class="segment seg-mid" x="280" y="333" width="300" height="167"/>
+  <text class="segment-label" x="430" y="420">{{SEG_2_NAME}}</text>
+  <text class="segment-sublabel" x="430" y="438">{{SEG_2_REV}} · margin {{SEG_2_MARGIN}}</text>
+
+  <!-- Segment 3: 营收 40-70%, margin 10% -->
+  <rect class="segment seg-low" x="580" y="433" width="360" height="67"/>
+  <text class="segment-label" x="760" y="470">{{SEG_3_NAME}} · margin {{SEG_3_MARGIN}}</text>
+
+  <!-- Segment 4: 营收 70-90%, margin 35% (高利润但小体量) -->
+  <rect class="segment seg-mid" x="940" y="267" width="240" height="233"/>
+  <text class="segment-label" x="1060" y="380">{{SEG_4_NAME}}</text>
+  <text class="segment-sublabel" x="1060" y="398">{{SEG_4_REV}} · margin {{SEG_4_MARGIN}}</text>
+
+  <!-- Segment 5: 营收 90-100%, margin -5% (亏损段) -->
+  <rect class="segment seg-neg" x="1180" y="500" width="120" height="33"/>
+  <text class="segment-label" x="1240" y="522">{{SEG_5_NAME}} ({{SEG_5_MARGIN}})</text>
+
+  <!-- 战略洞察 -->
+  <g transform="translate(50,760)">
+    <text class="insight">洞察：{{PROFIT_POOL_INSIGHT}}</text>
+  </g>
+</svg>
