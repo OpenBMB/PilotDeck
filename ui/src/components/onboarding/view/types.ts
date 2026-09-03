@@ -39,6 +39,7 @@ export type LlmSetupController = {
   modelListStatus: ModelListStatus;
   modelListMessage: string;
   customProviderId: string;
+  customProviderIdError: string;
   customProtocol: CatalogProviderProtocol;
   isCustomMode: boolean;
   selectedModels: Array<{ id: string; displayName: string }>;

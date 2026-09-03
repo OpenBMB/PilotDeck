@@ -38,6 +38,7 @@
     "provider": "服务商",
     "providerId": "服务商 ID",
     "providerIdHint": "会作为 YAML 键名。请使用小写、不含空格。",
+    "providerIdReserved": "该服务商 ID 已被内置服务商占用，请换一个。",
     "protocol": "协议",
     "protocolOpenai": "openai (Chat Completions)",
     "protocolOpenaiResponses": "openai-responses (Responses API)",

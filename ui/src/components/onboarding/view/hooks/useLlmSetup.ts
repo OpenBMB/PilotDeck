@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authenticatedFetch } from '../../../../utils/api';
 import { findCatalogProviderByUrl, type CatalogProvider, type CatalogProviderProtocol } from '../../../../shared/catalogProviders';
 import { fetchProviderModels, fetchRemoteDefaultModels, type ApiModelListItem } from '../../../../shared/modelListApi';
-import { CUSTOM_PROVIDER_ID, DEFAULT_PROVIDER, MAX_ONBOARDING_MODELS } from '../constants';
+import { CUSTOM_PROVIDER_ID, DEFAULT_PROVIDER, MAX_ONBOARDING_MODELS, RESERVED_CUSTOM_PROVIDER_IDS } from '../constants';
 import { hasUsableApiKey, providerIdFromEndpoint, requiresApiKey, uniqueModelIds, unknownImageProbeCount } from '../llmSetupUtils';
 import type { LlmSetupController, ModelImageSupport, ModelListStatus, TestStatus } from '../types';
 
@@ -27,6 +27,8 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [modelListMessage, setModelListMessage] = useState('');
   const [customProviderId, setCustomProviderId] = useState('');
   const [customProtocol, setCustomProtocol] = useState<CatalogProviderProtocol>('openai');
+  const testGenerationRef = useRef(0);
+  const testAbortRef = useRef<AbortController | null>(null);
 
   const isCustomMode = selectedProvider?.id === CUSTOM_PROVIDER_ID;
   const selectedModels = apiModels ?? selectedProvider?.models ?? [];
@@ -38,14 +40,18 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     ? customProtocol
     : (selectedProvider?.protocol ?? 'openai');
   const effectiveProviderId = isCustomMode
-    ? (customProviderId.trim() || providerIdFromEndpoint(effectiveUrl))
+    ? (customProviderId.trim().toLowerCase() || providerIdFromEndpoint(effectiveUrl))
     : (selectedProvider?.id ?? '');
+  const customProviderIdError = isCustomMode && RESERVED_CUSTOM_PROVIDER_IDS.has(effectiveProviderId)
+    ? t('connection.providerIdReserved')
+    : '';
   const selectedProviderRequiresApiKey = requiresApiKey(selectedProvider);
   const modelListRequiresApiKey = selectedProvider?.modelListRequiresApiKey === true;
   const canFetchModels = Boolean(
     selectedProvider
       && effectiveProviderId
       && effectiveUrl
+      && !customProviderIdError
       && (!modelListRequiresApiKey || hasUsableApiKey(apiKey)),
   );
   const canTest = Boolean(
@@ -53,6 +59,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     (!selectedProviderRequiresApiKey || apiKey.trim()) &&
     effectiveModelId &&
     effectiveProviderId &&
+    !customProviderIdError &&
     (!isCustomMode || effectiveUrl.trim()),
   );
   const unknownProbeCount = unknownImageProbeCount(isCustomMode ? null : selectedProvider, effectiveModelIds);
@@ -61,6 +68,9 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     && effectiveModelIds.every((id) => typeof modelImageSupport[id]?.supportsImage === 'boolean');
 
   const resetTest = useCallback(() => {
+    testGenerationRef.current += 1;
+    testAbortRef.current?.abort();
+    testAbortRef.current = null;
     setTestStatus('idle');
     setTestMessage('');
     setModelImageSupport({});
@@ -218,11 +228,15 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       setTestMessage(t('connection.testNeedApiKey'));
       return;
     }
-    if (!effectiveProviderId || (isCustomMode && !effectiveUrl.trim())) {
+    if (!effectiveProviderId || customProviderIdError || (isCustomMode && !effectiveUrl.trim())) {
       setTestStatus('error');
-      setTestMessage(t('connection.testNeedConnection'));
+      setTestMessage(customProviderIdError || t('connection.testNeedConnection'));
       return;
     }
+    const generation = testGenerationRef.current;
+    const controller = new AbortController();
+    testAbortRef.current?.abort();
+    testAbortRef.current = controller;
     setTestStatus('testing');
     setTestMessage('');
     setManualModelIds([]);
@@ -241,8 +255,11 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
             model: modelId,
             skipImage,
           }),
+          signal: controller.signal,
         });
+        if (controller.signal.aborted || generation !== testGenerationRef.current) return;
         const data = await res.json();
+        if (controller.signal.aborted || generation !== testGenerationRef.current) return;
         if (!data.ok) {
           setModelImageSupport(nextSupport);
           setTestStatus('error');
@@ -258,6 +275,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
           source,
         };
       }
+      if (controller.signal.aborted || generation !== testGenerationRef.current) return;
       setModelImageSupport(nextSupport);
       const unresolved = effectiveModelIds.filter((id) => nextSupport[id]?.supportsImage == null);
       if (unresolved.length > 0) {
@@ -269,10 +287,13 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       setTestStatus('success');
       setTestMessage('Connected successfully.');
     } catch (err) {
+      if (controller.signal.aborted || generation !== testGenerationRef.current) return;
       setTestStatus('error');
       setTestMessage(err instanceof Error ? err.message : 'Connection failed.');
+    } finally {
+      if (testAbortRef.current === controller) testAbortRef.current = null;
     }
-  }, [apiKey, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, isCustomMode, modelImageSupport, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
+  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, isCustomMode, modelImageSupport, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
 
   const submitManualImageSupport = useCallback((values: Record<string, boolean>) => {
     setModelImageSupport((current) => {
@@ -290,11 +311,11 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const cancelManualImageSupport = useCallback(() => {
     setManualModelIds([]);
     setTestStatus('error');
-    setTestMessage('Image capability must be confirmed before continuing.');
+    setTestMessage('Image capability confirmation cancelled.');
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!selectedProvider) return;
+    if (!selectedProvider || customProviderIdError) return;
     setSaving(true);
     try {
       const { stringify: stringifyYaml, parse: parseYaml } = await import('yaml');
@@ -388,7 +409,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     } finally {
       setSaving(false);
     }
-  }, [selectedProvider, effectiveUrl, effectiveModelId, effectiveModelIds, apiKey, effectiveProtocol, effectiveProviderId, modelImageSupport, onSaved]);
+  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, onSaved, selectedProvider]);
 
   return {
     selectedProvider,
@@ -402,6 +423,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     modelListStatus,
     modelListMessage,
     customProviderId,
+    customProviderIdError,
     customProtocol,
     isCustomMode,
     selectedModels,

@@ -8,6 +8,26 @@ export type OnboardingStepId = (typeof ONBOARDING_STEP_IDS)[number];
 
 export const CUSTOM_PROVIDER_ID = '__custom__';
 
+export const RESERVED_CUSTOM_PROVIDER_IDS = new Set([
+  'anthropic',
+  'bailian',
+  'custom',
+  'dashscope',
+  'deepseek',
+  'gemini',
+  'google',
+  'kimi',
+  'minimax',
+  'moonshot',
+  'ollama',
+  'openai',
+  'openai-responses',
+  'openrouter',
+  'volc_ark',
+  'volcengine',
+  'zhipu',
+]);
+
 export const CUSTOM_PROVIDER: CatalogProvider = {
   id: CUSTOM_PROVIDER_ID,
   displayName: 'Custom',

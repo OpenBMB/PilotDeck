@@ -807,6 +807,14 @@
   font-weight: 450;
 }
 
+.onboarding-shell .field-error {
+  display: block;
+  margin-top: 4px;
+  color: #c2410c;
+  font-size: 10px;
+  font-weight: 500;
+}
+
 .onboarding-shell .field-help svg {
   color: var(--success);
 }
