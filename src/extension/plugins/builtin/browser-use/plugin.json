@@ -2,10 +2,12 @@
   "name": "browser-use",
   "version": "1.0.0",
   "description": "Browser automation powered by @playwright/mcp (Microsoft)",
+  "skills": "skills",
   "mcpServers": {
     "browser-use": {
-      "command": "/usr/local/bin/playwright-mcp",
+      "command": "__PILOTDECK_NODE_EXECUTABLE__",
       "args": [
+        "__PILOTDECK_PLAYWRIGHT_MCP_ENTRYPOINT__",
         "--browser",
         "chromium",
         "--allow-unrestricted-file-access"

@@ -32,6 +32,7 @@ export class CommandHookExecutor {
       env: options.env,
       shell: true,
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: process.platform === "win32",
     });
 
     let stdout = "";

@@ -48,7 +48,7 @@ If `process.arch` does not match the Mac you are deploying on, reinstall Node.js
 Some Python distributions, especially Python 3.12 installed through package managers, may not include `distutils`, which older `node-gyp` versions still need when native packages compile from source. The one-line installer tries to auto-select a Python that provides `distutils`. If you run npm commands manually and see `ModuleNotFoundError: No module named 'distutils'`, use a Python that provides it, for example:
 
 ```bash
-PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile
+PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
 A CLT-only installation is enough; full Xcode is not required. If the tools are installed but `xcrun --find clang` fails, run `sudo xcode-select --reset` or reinstall Xcode Command Line Tools before retrying.
@@ -225,7 +225,7 @@ node --version
 npm.cmd --version
 ```
 
-With portable Node, keep using the source install commands below: `corepack pnpm install --frozen-lockfile`, `corepack pnpm run build`, and `corepack pnpm --prefix ui run build`. Use `npm.cmd` only when you need to invoke npm directly and PowerShell blocks `npm.ps1`.
+With portable Node, keep using the source install commands below: `corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`, `corepack pnpm run build`, and `corepack pnpm --prefix ui run build`. Use `npm.cmd` only when you need to invoke npm directly and PowerShell blocks `npm.ps1`.
 
 ## Clone the Repository
 
@@ -247,17 +247,17 @@ git lfs pull
 ```bash
 node --version          # must be v22.13.0 or newer, and below v23
 corepack enable         # enables the pinned pnpm version from package.json
-corepack pnpm install --frozen-lockfile
+corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
 If Corepack is unavailable, or if you are using a user-directory Portable Node installation, install the pinned pnpm version globally instead:
 
 ```bash
 npm install -g pnpm@10.32.1
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
-Use the committed `pnpm-lock.yaml` for source installs. Do not replace this step with `npm install`; the lockfile and workspace build settings are maintained for pnpm, and pnpm is the path tested by the one-line installer.
+Use the committed `pnpm-lock.yaml` for source installs. The workspace filters intentionally exclude Electron packaging dependencies from Web-only source installs. Do not replace this step with `npm install`; the lockfile and workspace build settings are maintained for pnpm, and pnpm is the path tested by the one-line installer.
 
 The app uses `better-sqlite3` and Node.js 22's built-in `node:sqlite`. It does not require the legacy `sqlite` or `sqlite3` npm packages.
 
@@ -311,10 +311,10 @@ SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0
 ## Troubleshooting
 
 - `Node.js >=22.13.0 and <23 is required`: switch to Node.js 22.13.0 or newer within the Node.js 22 line, then reinstall dependencies.
-- Native package build errors: make sure Python 3, `make`, and a C/C++ compiler are installed, then rerun `corepack pnpm install --frozen-lockfile`.
+- Native package build errors: make sure Python 3, `make`, and a C/C++ compiler are installed, then rerun `corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`.
 - Linux `node-pty` or `better-sqlite3` builds time out while downloading `node-v*-headers.tar.gz`: run `export npm_config_disturl=https://npmmirror.com/mirrors/node`, then reinstall dependencies.
-- `pnpm install --frozen-lockfile` times out while downloading npm packages: run `pnpm config set registry https://registry.npmmirror.com`, then retry.
-- `ModuleNotFoundError: No module named 'distutils'` on macOS: the one-line installer tries to auto-select a compatible Python; for manual npm commands, retry with `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile`, or use another Python that includes `distutils`.
+- `pnpm install --frozen-lockfile` times out while downloading npm packages: run `pnpm config set registry https://registry.npmmirror.com`, then retry the filtered install command above.
+- `ModuleNotFoundError: No module named 'distutils'` on macOS: the one-line installer tries to auto-select a compatible Python; for manual npm commands, retry with `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`, or use another Python that includes `distutils`.
 - Missing compiler tools on macOS: full Xcode is not required, but `xcrun --find clang` must work. Reinstall Xcode Command Line Tools with `xcode-select --install`, or run `sudo xcode-select --reset` if CLT is already installed.
 - `EADDRINUSE` on startup: the default `3001` or `18789` port is already in use. Set `SERVER_PORT`, `PILOTDECK_GATEWAY_PORT`, and `PILOTDECK_GATEWAY_URL`, then retry.
 - `~/.pilotdeck/pilotdeck.yaml` exists but the UI still opens onboarding: check whether the config still contains `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` or `_placeholder/_placeholder`; replace them with a real provider, API key, and model.

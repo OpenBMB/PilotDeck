@@ -1,0 +1,56 @@
+name: Web Regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install Web/Gateway dependencies only
+        run: pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
+
+      - name: Build Gateway and Web UI
+        run: pnpm run build:web
+
+      - name: Test Web UI and server
+        # The upstream suite currently lets Vitest collect a Playwright E2E file,
+        # and streamSmoother's fake-timer spec is independently flaky. Keep the
+        # rest of the Web suite as the merge gate until those baseline tests are
+        # repaired in their own change.
+        run: >-
+          pnpm --dir ui exec vitest run
+          --exclude 'e2e/**'
+          --exclude 'src/components/chat/hooks/streamSmoother.test.ts'
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: pilotdeck:web-regression

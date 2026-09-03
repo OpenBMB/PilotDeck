@@ -7,6 +7,7 @@
     "node": ">=22.13.0 <23"
   },
   "workspaces": [
+    "apps/desktop",
     "ui"
   ],
   "bin": {
@@ -18,6 +19,9 @@
     "install:asr": "node scripts/install-asr.mjs",
     "prebuild": "npm run check:runtime && node scripts/bootstrap-pilotdeck-config.mjs && cd src/context/memory/edgeclaw-memory-core && npm run build",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/extension/plugins/builtin','dist/src/extension/plugins/builtin',{recursive:true})\"",
+    "build:web": "npm run build && pnpm --dir ui run build",
+    "build:desktop": "pnpm --filter pilotdeck-desktop run compile",
+    "package:desktop": "pnpm --filter pilotdeck-desktop run pack",
     "server": "npm run check:runtime && tsx src/cli/pilotdeck.ts server",
     "server:built": "npm run check:runtime && node dist/src/cli/pilotdeck.js server",
     "skills:migrate": "tsx src/cli/pilotdeck.ts skills migrate",
@@ -38,6 +42,7 @@
     "@google/genai": "^2.10.0",
     "@larksuiteoapi/node-sdk": "^1.65.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@playwright/mcp": "0.0.75",
     "@types/react": "^19.2.14",
     "@types/turndown": "^5.0.6",
     "@vscode/ripgrep": "^1.18.0",

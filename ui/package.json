@@ -76,6 +76,7 @@
     "better-sqlite3": "^12.6.2",
     "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
+    "clawhub": "^0.23.0",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "cross-spawn": "^7.0.3",

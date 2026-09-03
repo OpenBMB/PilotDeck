@@ -24,7 +24,7 @@ export type PermissionContext = {
   additionalWorkingDirectories: string[];
   canPrompt: boolean;
   bypassAvailable: boolean;
-  /** Absolute path of the project-local `.pilotdeck/plans` directory. */
+  /** Absolute path of the current writable plan directory. */
   planDirectoryPath?: string;
 };
 

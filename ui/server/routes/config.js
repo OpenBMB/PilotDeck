@@ -1285,12 +1285,12 @@ router.post('/open', async (_req, res) => {
     const command = process.platform === 'darwin'
       ? 'open'
       : process.platform === 'win32'
-        ? 'cmd'
+        ? 'explorer.exe'
         : 'xdg-open';
     const args = process.platform === 'darwin'
       ? ['-R', configPath]
       : process.platform === 'win32'
-        ? ['/c', 'start', '', configPath]
+        ? [`/select,${configPath}`]
         : [path.dirname(configPath)];
     const child = spawn(command, args, prepareBackgroundSpawnOptions({ stdio: 'ignore', detached: true }));
     child.unref();

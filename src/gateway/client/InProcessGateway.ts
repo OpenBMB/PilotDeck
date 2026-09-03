@@ -113,10 +113,13 @@ const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个
 const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
 const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 const DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS = 60_000;
+const DEFAULT_ABORT_TURN_TIMEOUT_MS = 30_000;
 
 export type InProcessGatewayOptions = {
   /** Absolute command used by the model to install bundled FunASR assets. */
   funasrInstallCommand?: string;
+  /** Maximum time to wait for an aborted turn to finish unwinding. */
+  abortTurnTimeoutMs?: number;
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
@@ -232,6 +235,7 @@ export class InProcessGateway implements Gateway {
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly replacementTransactionTimeoutMs: number;
+  private readonly abortTurnTimeoutMs: number;
   /**
    * B1 — registry of active per-session emit sinks. The gateway shares this
    * map with the per-session `GatewayElicitationChannel` so an `askUser`
@@ -270,6 +274,7 @@ export class InProcessGateway implements Gateway {
       1,
       options.replacementTransactionTimeoutMs ?? DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS,
     );
+    this.abortTurnTimeoutMs = Math.max(1, options.abortTurnTimeoutMs ?? DEFAULT_ABORT_TURN_TIMEOUT_MS);
   }
 
   /**
@@ -776,7 +781,20 @@ export class InProcessGateway implements Gateway {
     // `session_busy`.
     const pending = this.turnCompletions.get(input.sessionKey);
     if (!pending) return;
-    await pending;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const completed = await Promise.race([
+      pending.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), this.abortTurnTimeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!completed) {
+      console.warn(
+        `[pilotdeck] abortTurn timed out after ${this.abortTurnTimeoutMs}ms for session ${input.sessionKey}.`,
+      );
+    }
   }
 
   async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {

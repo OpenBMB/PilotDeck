@@ -19,7 +19,10 @@ type ProcessResult = { exitCode: number; stdout: string; stderr: string };
 
 async function runProcess(bin: string, args: string[]): Promise<ProcessResult> {
   return new Promise<ProcessResult>((resolve) => {
-    const child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(bin, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: process.platform === "win32",
+    });
     let stdout = "";
     let stderr = "";
     child.stdin?.end();
@@ -157,6 +160,7 @@ export async function applyWorktreeToProject(
   const applyResult = await new Promise<ProcessResult>((resolve) => {
     const child = spawn(gitBin, ["-C", projectRoot, "apply", "--3way"], {
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: process.platform === "win32",
     });
     let stdout = "";
     let stderr = "";

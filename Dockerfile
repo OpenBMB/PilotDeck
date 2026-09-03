@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package manifests first for layer caching.
-# ui/ is a npm workspace — root pnpm install handles both.
+# Root and UI are the only workspaces needed by the Web image.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 # NOTE: edgeclaw-memory-core is consumed via a local `file:` dependency.
 # Copy the full directory before install so pnpm snapshots complete sources/types.
@@ -17,12 +17,13 @@ COPY src/context/memory/edgeclaw-memory-core/ src/context/memory/edgeclaw-memory
 COPY ui/package.json ui/
 COPY ui/scripts/ ui/scripts/
 
-# Single pnpm install resolves root + workspace (ui) + file dep (edgeclaw-memory-core).
+# Install only the Web/Gateway workspaces. The Electron workspace is kept out
+# of the Docker context and must never add desktop dependencies to this image.
 # Pin pnpm so CI builds do not pick up stricter build-script policy changes
 # before the lockfile/workspace config is updated.
 RUN npm install -g pnpm@10.32.1 \
     && pnpm --version \
-    && HUSKY=0 pnpm install --frozen-lockfile
+    && HUSKY=0 pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 
 # Copy all source files
 COPY src/ src/

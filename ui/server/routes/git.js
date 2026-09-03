@@ -4,6 +4,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { extractProjectDirectory } from '../projects.js';
 import { runChatViaGateway } from '../pilotdeck-bridge.js';
+import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 
 const router = express.Router();
 const COMMIT_DIFF_CHARACTER_LIMIT = 500_000;
@@ -70,8 +71,7 @@ function validateFilePath(file, projectPath) {
   // and ensure the result stays within the project directory
   if (projectPath) {
     const resolved = path.resolve(projectPath, file);
-    const normalizedRoot = path.resolve(projectPath) + path.sep;
-    if (!resolved.startsWith(normalizedRoot) && resolved !== path.resolve(projectPath)) {
+    if (!isPathInsideOrEqual(projectPath, resolved)) {
       throw new Error('Invalid file path: path traversal detected');
     }
   }

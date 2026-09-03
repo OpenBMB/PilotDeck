@@ -1135,7 +1135,8 @@ else
   echo "$(L "Installing dependencies..." "正在安装依赖...")"
   echo -e "  ${DIM}$(L "This can take several minutes — native modules use prebuilt packages when available, and pnpm output is quiet." "这一步可能需要数分钟 —— 原生模块会优先使用预编译包,且 pnpm 输出为静默模式。")${RESET}"
   cd "$INSTALL_DIR"
-  HUSKY=0 run_pnpm install --frozen-lockfile --reporter=append-only </dev/null
+  HUSKY=0 run_pnpm install --frozen-lockfile --reporter=append-only \
+    --filter pilotdeck --filter pilotdeck-ui </dev/null
   ok "$(L "Dependencies installed" "依赖已安装")"
   warn "$(L "Keeping dev dependencies because runtime uses source tooling." "保留 dev 依赖,因为运行时需使用源码工具链。")"
   echo ""

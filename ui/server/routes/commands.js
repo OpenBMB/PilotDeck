@@ -10,6 +10,7 @@ import { parseFrontmatter } from '../utils/frontmatter.js';
 import { getClaudeRuntimeModelConfig, getClaudeRuntimeModelValues } from '../utils/claude-runtime-config.js';
 import { readPilotDeckConfigFile, resolveModel } from '../services/pilotdeckConfig.js';
 import { resolvePilotHome } from '../utils/pilotPaths.js';
+import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 import { executeTurnkeySlashCommand } from '../turnkey-slash.js';
 import { getRegisteredCommands } from '../../../src/adapters/channel/protocol/ChannelCommandRegistry.js';
 import { runChatSearchFormatted } from '../../../src/cli/commands/chatSearch.js';
@@ -1091,10 +1092,7 @@ router.post('/execute', async (req, res) => {
           path.resolve(path.join(context.projectPath, '.pilotdeck', 'skills')),
         );
       }
-      const isUnder = (base) => {
-        const rel = path.relative(base, resolvedPath);
-        return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-      };
+      const isUnder = (base) => isPathInsideOrEqual(base, resolvedPath) && path.resolve(base) !== resolvedPath;
       if (!allowedBases.some(isUnder)) {
         return res.status(403).json({
           error: 'Access denied',

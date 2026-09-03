@@ -71,6 +71,7 @@ export class WhatsAppChannel implements ChannelAdapter {
     try {
       this.child = spawn(process.execPath, [this.bridgePath], {
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: process.platform === "win32",
         env: {
           ...process.env,
           ...(bridgePort != null ? { BRIDGE_PORT: String(bridgePort) } : {}),

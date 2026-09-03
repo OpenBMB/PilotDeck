@@ -1,0 +1,223 @@
+name: Desktop Build
+
+on:
+  workflow_call:
+    inputs:
+      release_date:
+        description: Release date in YYYY-MM-DD (Asia/Shanghai)
+        required: true
+        type: string
+      revision:
+        description: Zero-based same-day build revision
+        required: false
+        default: "0"
+        type: string
+      require_macos_signing:
+        description: Fail when macOS signing and notarization credentials are missing
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64:
+        required: false
+      MACOS_DEVELOPER_ID_APPLICATION_PASSWORD:
+        required: false
+      MACOS_KEYCHAIN_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+  workflow_dispatch:
+    inputs:
+      release_date:
+        description: Optional YYYY-MM-DD release date; defaults to today in Asia/Shanghai
+        required: false
+        type: string
+      revision:
+        description: Zero-based same-day build revision
+        required: false
+        default: "0"
+        type: string
+      require_macos_signing:
+        description: Require production macOS signing and notarization credentials
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PILOTDECK_UPDATE_REPOSITORY: ${{ github.repository }}
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+            host_arch: arm64
+            binary_arch: arm64
+          - arch: x64
+            runner: macos-15-intel
+            host_arch: x86_64
+            binary_arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      PILOTDECK_DESKTOP_RELEASE_DATE: ${{ inputs.release_date }}
+      PILOTDECK_DESKTOP_REVISION: ${{ inputs.revision }}
+      PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
+      PILOTDECK_DESKTOP_REQUIRE_SIGNING: ${{ inputs.require_macos_signing && '1' || '0' }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify macOS build host
+        env:
+          EXPECTED_HOST_ARCH: ${{ matrix.host_arch }}
+        run: test "$(uname -m)" = "$EXPECTED_HOST_ARCH"
+
+      - name: Set desktop release metadata
+        run: node apps/desktop/scripts/set-ci-version.mjs
+
+      - name: Import Developer ID certificate
+        if: ${{ inputs.require_macos_signing }}
+        shell: bash
+        env:
+          CERTIFICATE_PATH: ${{ runner.temp }}/developer-id-application.p12
+          KEYCHAIN_PATH: ${{ runner.temp }}/pilotdeck-signing.keychain-db
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_APPLICATION_PASSWORD }}
+          KEYCHAIN_PASSWORD_SECRET: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE_BASE64" ] || [ -z "$CERTIFICATE_PASSWORD" ]; then
+            echo "::error::macOS release signing certificate secrets are required."
+            exit 1
+          fi
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::error::Apple notarization secrets are required."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          Path(os.environ["CERTIFICATE_PATH"]).write_bytes(base64.b64decode(os.environ["CERTIFICATE_BASE64"]))
+          PY
+          keychain_password="${KEYCHAIN_PASSWORD_SECRET:-pilotdeck-ci-keychain}"
+          security create-keychain -p "$keychain_password" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "CSC_IDENTITY_AUTO_DISCOVERY=true" >> "$GITHUB_ENV"
+
+      - name: Build macOS ${{ matrix.arch }} installer
+        run: pnpm --filter pilotdeck-desktop run dist:mac:${{ matrix.arch }}
+
+      - name: Verify macOS artifact
+        shell: bash
+        env:
+          MACOS_ARCH: ${{ matrix.arch }}
+          MACH_ARCH: ${{ matrix.binary_arch }}
+        run: |
+          app_path="$(find apps/desktop/dist-electron -mindepth 2 -maxdepth 2 -type d -name 'PilotDeck.app' -print -quit)"
+          dmg_path="$(find apps/desktop/dist-electron -maxdepth 1 -name "*-mac-${MACOS_ARCH}.dmg" -print -quit)"
+          test -n "$app_path"
+          test -n "$dmg_path"
+          test "$(lipo -archs "$app_path/Contents/MacOS/PilotDeck")" = "$MACH_ARCH"
+          test "$(lipo -archs "$app_path/Contents/Resources/node/bin/node")" = "$MACH_ARCH"
+          native_path="$(find "$app_path/Contents/Resources/runtime/node_modules/better-sqlite3" -name '*.node' -print -quit)"
+          test -n "$native_path"
+          test "$(lipo -archs "$native_path")" = "$MACH_ARCH"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          hdiutil verify "$dmg_path"
+
+      - name: Verify production macOS identity and notarization
+        if: ${{ inputs.require_macos_signing }}
+        shell: bash
+        run: |
+          app_path="$(find apps/desktop/dist-electron -mindepth 2 -maxdepth 2 -type d -name 'PilotDeck.app' -print -quit)"
+          test -n "$app_path"
+          codesign -dv --verbose=4 "$app_path" 2>&1 | grep -q 'Authority=Developer ID Application:'
+          xcrun stapler validate "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilotdeck-desktop-macos-${{ matrix.arch }}
+          path: apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PILOTDECK_DESKTOP_RELEASE_DATE: ${{ inputs.release_date }}
+      PILOTDECK_DESKTOP_REVISION: ${{ inputs.revision }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set desktop release metadata
+        run: node apps/desktop/scripts/set-ci-version.mjs
+
+      - name: Disable Windows signing
+        shell: pwsh
+        run: '"CSC_IDENTITY_AUTO_DISCOVERY=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
+
+      - name: Build Windows x64 installer
+        run: pnpm --filter pilotdeck-desktop run dist:win
+
+      - name: Verify Windows artifact
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'apps/desktop/dist-electron/*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not generated.' }
+          if ($installer.Length -le 0) { throw 'Windows installer is empty.' }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilotdeck-desktop-windows
+          path: apps/desktop/dist-electron/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14

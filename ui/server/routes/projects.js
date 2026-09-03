@@ -16,6 +16,7 @@ import {
   applyWorkCycle,
   archiveWorkCycle,
 } from '../discovery-plans.js';
+import { normalizePathForComparison } from '../utils/pathSafety.js';
 
 const router = express.Router();
 
@@ -56,16 +57,21 @@ export const FORBIDDEN_PATHS = [
 
 function isForbiddenWorkspacePath(inputPath) {
   const normalizedPath = path.normalize(path.resolve(inputPath));
-  if (normalizedPath === '/' || FORBIDDEN_PATHS.includes(normalizedPath)) {
+  const comparablePath = normalizePathForComparison(inputPath);
+  if (normalizedPath === '/') {
     return true;
   }
 
   for (const forbidden of FORBIDDEN_PATHS) {
-    if (normalizedPath === forbidden || normalizedPath.startsWith(forbidden + path.sep)) {
+    const comparableForbidden = normalizePathForComparison(forbidden);
+    if (comparablePath === comparableForbidden || comparablePath.startsWith(comparableForbidden + path.sep)) {
       // Exception: allow user-accessible temporary folders under /var.
       if (
         forbidden === '/var' &&
-        (normalizedPath.startsWith('/var/tmp') || normalizedPath.startsWith('/var/folders'))
+        (
+          comparablePath.startsWith(normalizePathForComparison('/var/tmp')) ||
+          comparablePath.startsWith(normalizePathForComparison('/var/folders'))
+        )
       ) {
         continue;
       }

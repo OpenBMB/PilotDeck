@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../../scripts/check-node-runtime.mjs';
 // Load environment variables before other imports execute
 import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
@@ -138,6 +139,7 @@ import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
+import { isPathInsideOrEqual } from './utils/pathSafety.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
 // cursor-cli, openai-codex, gemini-cli) has been removed.
@@ -1069,7 +1071,7 @@ const getWindowsDriveSuggestions = async () => {
             return {
                 path: drivePath,
                 name: drivePath,
-                type: 'directory',
+                type: 'drive',
             };
         } catch (error) {
             return null;
@@ -1084,9 +1086,7 @@ function resolvePathInProject(projectRoot, targetPath = '') {
     const resolved = path.isAbsolute(targetPath)
         ? path.resolve(targetPath)
         : path.resolve(projectRoot, targetPath);
-    const normalizedRoot = path.resolve(projectRoot);
-
-    if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + path.sep)) {
+    if (!isPathInsideOrEqual(projectRoot, resolved)) {
         return { valid: false, error: 'Path must be under project root' };
     }
 
@@ -1313,6 +1313,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
             return res.json({
                 path: '/',
                 suggestions,
+                rootsPath: '/',
             });
         }
 
@@ -1379,7 +1380,8 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
 
         res.json({
             path: resolvedPath,
-            suggestions: suggestions
+            suggestions: suggestions,
+            ...(process.platform === 'win32' ? { rootsPath: '/' } : {}),
         });
 
     } catch (error) {
@@ -1467,8 +1469,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) =
         const resolved = path.isAbsolute(filePath)
             ? path.resolve(filePath)
             : path.resolve(projectRoot, filePath);
-        const normalizedRoot = path.resolve(projectRoot) + path.sep;
-        if (!resolved.startsWith(normalizedRoot)) {
+        if (!isPathInsideOrEqual(projectRoot, resolved)) {
             return res.status(403).json({ error: 'Path must be under project root' });
         }
 
@@ -1871,8 +1872,7 @@ app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) =
         const resolved = path.isAbsolute(filePath)
             ? path.resolve(filePath)
             : path.resolve(projectRoot, filePath);
-        const normalizedRoot = path.resolve(projectRoot) + path.sep;
-        if (!resolved.startsWith(normalizedRoot)) {
+        if (!isPathInsideOrEqual(projectRoot, resolved)) {
             return res.status(403).json({ error: 'Path must be under project root' });
         }
 
@@ -1940,8 +1940,7 @@ function validatePathInProject(projectRoot, targetPath) {
     const resolved = path.isAbsolute(targetPath)
         ? path.resolve(targetPath)
         : path.resolve(projectRoot, targetPath);
-    const normalizedRoot = path.resolve(projectRoot) + path.sep;
-    if (!resolved.startsWith(normalizedRoot)) {
+    if (!isPathInsideOrEqual(projectRoot, resolved)) {
         return { valid: false, error: 'Path must be under project root' };
     }
     return { valid: true, resolved };

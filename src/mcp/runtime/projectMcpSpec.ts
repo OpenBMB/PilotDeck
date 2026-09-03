@@ -8,6 +8,7 @@ export const PILOTDECK_NODE_EXECUTABLE_MARKER = "__PILOTDECK_NODE_EXECUTABLE__";
 export const PILOTDECK_FUNASR_MCP_ENTRYPOINT_MARKER = "__PILOTDECK_FUNASR_MCP_ENTRYPOINT__";
 export const PILOTDECK_FUNASR_RUNTIME_ROOT_MARKER = "__PILOTDECK_FUNASR_RUNTIME_ROOT__";
 export const PILOTDECK_FUNASR_INSTALL_COMMAND_MARKER = "__PILOTDECK_FUNASR_INSTALL_COMMAND__";
+export const PILOTDECK_PLAYWRIGHT_MCP_ENTRYPOINT_MARKER = "__PILOTDECK_PLAYWRIGHT_MCP_ENTRYPOINT__";
 
 const MODULE_DIR = (() => {
   try { return resolve(fileURLToPath(import.meta.url), ".."); } catch { return resolve(process.cwd()); }
@@ -33,13 +34,39 @@ function funasrEntrypoint(): string {
   return resolve(MODULE_DIR, "../../extension/plugins/builtin/funasr/funasr-local-mcp.mjs");
 }
 
+function playwrightMcpEntrypoint(): string {
+  const candidates = [
+    process.env.PILOTDECK_RUNTIME_ROOT
+      ? resolve(process.env.PILOTDECK_RUNTIME_ROOT, "node_modules", "@playwright", "mcp", "cli.js")
+      : "",
+    resolve(MODULE_DIR, "../../../node_modules/@playwright/mcp/cli.js"),
+    resolve(MODULE_DIR, "../../../../node_modules/@playwright/mcp/cli.js"),
+    resolve(process.cwd(), "node_modules/@playwright/mcp/cli.js"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
 /** Resolve placeholders used only by the built-in project-scoped FunASR MCP. */
 export function patchProjectScopedMcpSpec(
   spec: PilotDeckMcpServerSpec,
   projectRoot: string,
   pilotHome: string,
 ): PilotDeckMcpServerSpec {
-  if (spec.id !== "funasr" || spec.transport !== "stdio") return spec;
+  if (spec.transport !== "stdio") return spec;
+
+  if (spec.id === "browser-use") {
+    const replaceBrowserMarkers = (value: string) => value
+      .replaceAll(PILOTDECK_NODE_EXECUTABLE_MARKER, process.execPath)
+      .replaceAll(PILOTDECK_PLAYWRIGHT_MCP_ENTRYPOINT_MARKER, playwrightMcpEntrypoint());
+    return {
+      ...spec,
+      command: replaceBrowserMarkers(spec.command),
+      cwd: resolve(projectRoot),
+      args: spec.args?.map(replaceBrowserMarkers),
+    };
+  }
+
+  if (spec.id !== "funasr") return spec;
 
   const replacements: Record<string, string> = {
     [PILOTDECK_PROJECT_ROOT_MARKER]: resolve(projectRoot),

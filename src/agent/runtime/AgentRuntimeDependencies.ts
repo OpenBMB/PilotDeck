@@ -134,7 +134,7 @@ export type AgentRuntimeDependencies = {
    */
   fileUpdateNotifier?: PilotDeckFileUpdateNotifier;
   /**
-   * Plan file manager — resolves the project-local `.pilotdeck/plans`
+   * Plan file manager — resolves the current writable plan directory
    * directory and reads explicitly submitted plan documents for
    * `enter_plan_mode` / `exit_plan_mode`. Absent in headless / test runtimes.
    */

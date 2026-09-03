@@ -320,7 +320,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         parts.push("wecom=started");
       }
 
-      const extraChannels = await loadEnabledChannels(config.adapters);
+      const extraChannels = await loadEnabledChannels(config.adapters, { pilotHome });
       for (const ch of extraChannels) {
         await serverRef.hotStartChannel(ch);
         parts.push(`${ch.channelKey}=started`);
@@ -334,7 +334,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     // --- Server startup ---
 
     const envPort = Number.parseInt(env.PILOTDECK_GATEWAY_PORT ?? "", 10);
-    const extraChannels = await loadEnabledChannels(snapshot.config.adapters);
+    const extraChannels = await loadEnabledChannels(snapshot.config.adapters, { pilotHome });
     const feishuCfg = snapshot.config.adapters?.feishu;
     const savedFeishuState = await channelStatePersistence.load<FeishuSessionMapperState>("feishu");
     const feishuChannel = feishuCfg?.enabled === true

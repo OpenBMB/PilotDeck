@@ -117,9 +117,18 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
     return answers;
   }, [questions, selections, otherActive, otherTexts]);
 
+  const hasSelectionForStep = useCallback((qIdx: number) => {
+    const selected = selections.get(qIdx) || new Set<string>();
+    const isOther = otherActive.get(qIdx) || false;
+    const otherText = (otherTexts.get(qIdx) || '').trim();
+    return selected.size > 0 || (isOther && otherText.length > 0);
+  }, [selections, otherActive, otherTexts]);
+
   const handleSubmit = useCallback(() => {
-    onDecision(request.requestId, { allow: true, updatedInput: { ...input, answers: buildAnswers() } });
-  }, [onDecision, request.requestId, input, buildAnswers]);
+    const answers = buildAnswers();
+    if (Object.keys(answers).length !== questions.length) return;
+    onDecision(request.requestId, { allow: true, updatedInput: { ...input, answers } });
+  }, [onDecision, request.requestId, input, buildAnswers, questions.length]);
 
   const handleSkip = useCallback(() => {
     onDecision(request.requestId, { allow: true, updatedInput: { ...input, answers: {} } });
@@ -156,6 +165,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
         return;
       }
       e.preventDefault();
+      if (!hasSelectionForStep(currentStep)) return;
       const isLast = currentStep === questions.length - 1;
       if (isLast) handleSubmit();
       else setCurrentStep(s => s + 1);
@@ -168,7 +178,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
       handleSkip();
       return;
     }
-  }, [currentStep, questions, toggleOption, toggleOther, handleSubmit, handleSkip]);
+  }, [currentStep, questions, toggleOption, toggleOther, handleSubmit, handleSkip, hasSelectionForStep]);
 
   if (questions.length === 0) return null;
 
@@ -180,7 +190,8 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
   const isOtherOn = otherActive.get(currentStep) || false;
   const isLast = currentStep === total - 1;
   const isFirst = currentStep === 0;
-  const hasCurrentSelection = selected.size > 0 || (isOtherOn && (otherTexts.get(currentStep) || '').trim().length > 0);
+  const hasCurrentSelection = hasSelectionForStep(currentStep);
+  const allQuestionsAnswered = questions.every((_, idx) => hasSelectionForStep(idx));
 
   return (
     <div
@@ -354,6 +365,10 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                       }
                       if (e.key === 'Enter') {
                         e.preventDefault();
+                        if (!hasSelectionForStep(currentStep)) {
+                          e.stopPropagation();
+                          return;
+                        }
                         if (isLast) handleSubmit();
                         else setCurrentStep(s => s + 1);
                       }
@@ -403,7 +418,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               type="button"
               size="sm"
               onClick={isLast ? handleSubmit : () => setCurrentStep(s => s + 1)}
-              disabled={isLast && !hasCurrentSelection && !Object.keys(buildAnswers()).length}
+              disabled={!hasCurrentSelection || (isLast && !allQuestionsAnswered)}
               className="h-7 gap-1 px-3 text-[11px] font-medium"
             >
               {isLast ? 'Submit' : 'Next'}

@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   MemoryBundleValidationError,
-} from '../../../src/context/memory/edgeclaw-memory-core/lib/index.js';
+} from 'edgeclaw-memory-core';
 import {
   readPilotDeckConfigFile,
   withPilotDeckConfigWrite,
@@ -29,7 +29,7 @@ const __dirname = path.dirname(__filename);
 
 export const MEMORY_DASHBOARD_DIR = path.resolve(
   __dirname,
-  '../../../src/context/memory/edgeclaw-memory-core/ui-source',
+  '../../../node_modules/edgeclaw-memory-core/ui-source',
 );
 
 function parseLimit(value, fallback) {

@@ -7,7 +7,7 @@ export type TokenMode = 'stored' | 'new' | 'none';
 export type FolderSuggestion = {
   name: string;
   path: string;
-  type?: string;
+  type?: 'directory' | 'drive';
 };
 
 export type GithubTokenCredential = {
@@ -24,6 +24,7 @@ export type CredentialsResponse = {
 export type BrowseFilesystemResponse = {
   path?: string;
   suggestions?: FolderSuggestion[];
+  rootsPath?: string;
   error?: string;
 };
 

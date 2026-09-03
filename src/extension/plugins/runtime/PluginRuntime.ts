@@ -209,7 +209,7 @@ export class PluginRuntime {
       projectRoot: this.options.projectRoot,
       pilotHome: this.options.pilotHome,
     });
-    const [discovered, discoveredSkills] = await Promise.all([
+    const [discovered, discoveredSkills, loadedBuiltins] = await Promise.all([
       discoverPluginPaths([
         { path: paths.globalPluginsDir, source: "global" },
         { path: paths.projectPluginsDir, source: "project" },
@@ -221,6 +221,11 @@ export class PluginRuntime {
         { path: paths.globalSkillsDir, source: "global" },
         { path: paths.projectSkillsDir, source: "project" },
       ]),
+      Promise.all(
+        (this.options.builtinPlugins ?? []).map((plugin) =>
+          loadPluginFromPath(plugin.path, "builtin").catch(() => plugin),
+        ),
+      ),
     ]);
     const [loaded, loadedSkills] = await Promise.all([
       Promise.all(
@@ -231,7 +236,7 @@ export class PluginRuntime {
       ),
     ]);
     const plugins = [
-      ...enabledBuiltinPlugins(this.options.builtinPlugins ?? [], this.options.builtinPluginsEnabled ?? {}),
+      ...enabledBuiltinPlugins(loadedBuiltins, this.options.builtinPluginsEnabled ?? {}),
       ...loaded.filter(isLoadedPlugin),
       ...loadedSkills.filter(isLoadedPlugin),
     ];

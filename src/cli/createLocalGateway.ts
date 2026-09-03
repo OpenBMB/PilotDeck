@@ -61,7 +61,14 @@ import {
 } from "../mcp/index.js";
 import { createModelRuntime, type ModelRuntime } from "../model/index.js";
 import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
-import { loadPilotConfig, resolvePilotHome, type PilotProxyConfig } from "../pilot/index.js";
+import {
+  ensureWritableDirectory,
+  loadPilotConfig,
+  resolvePilotHome,
+  resolveProjectStorageId,
+  resolveRuntimeArtifactFallbackDir,
+  type PilotProxyConfig,
+} from "../pilot/index.js";
 import { createPilotConfigStoreSync, type PilotConfigStore } from "../pilot/config/PilotConfigStore.js";
 import type { PilotAgentModelSelection, PilotConfigSnapshot } from "../pilot/config/types.js";
 import { DEFAULT_JUDGE_TIMEOUT_MS, DEFAULT_ALLOWED_TOOLS, DEFAULT_TRIGGER_TIERS, type RouterConfig } from "../router/config/schema.js";
@@ -169,6 +176,24 @@ export type CreateLocalGatewayResult = {
    */
   updateSubsystems: (update: SubsystemUpdate) => void;
 };
+
+export function resolveBrowserUseOutputDir(input: {
+  pilotHome: string;
+  projectRoot: string;
+  sessionKey: string;
+}): string {
+  const projectId = resolveProjectStorageId(input.projectRoot, input.pilotHome);
+  const sessionId = sanitizeSessionIdForPath(input.sessionKey);
+  return ensureWritableDirectory({
+    preferredDir: joinPath(input.pilotHome, "browser_screenshots", projectId, sessionId),
+    fallbackDir: resolveRuntimeArtifactFallbackDir({
+      pilotHome: input.pilotHome,
+      purpose: "browser_screenshots",
+      key: `${projectId}-${sessionId}`,
+    }),
+    purpose: "browser_screenshots",
+  }).dir;
+}
 
 export function createLocalGateway(options: CreateLocalGatewayOptions = {}): CreateLocalGatewayResult {
   const baseEnv = options.env ?? process.env;
@@ -308,7 +333,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         }
       : undefined,
   });
-  const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot });
+  const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot, env });
   const dialogProjects = createDialogProjectRegistry({
     pilotHome,
     listProjects: async () => (await listWebProjects({ pilotHome })).projects,
@@ -1081,12 +1106,11 @@ class ProjectRuntimeRegistry {
       this.evictSessionMcp(context.sessionKey);
       const patchedPerSpecs = perSpecs.map((spec) => {
         if (spec.transport === "stdio" && spec.id === "browser-use") {
-          const outDir = joinPath(
-            runtime.projectRoot,
-            ".pilotdeck",
-            "browser_screenshots",
-            sanitizeSessionIdForPath(context.sessionKey),
-          );
+          const outDir = resolveBrowserUseOutputDir({
+            pilotHome: this.options.pilotHome,
+            projectRoot: runtime.projectRoot,
+            sessionKey: context.sessionKey,
+          });
           mkdirSyncFs(outDir, { recursive: true });
           return {
             ...spec,
@@ -1390,7 +1414,11 @@ class ProjectRuntimeRegistry {
           };
         },
       };
-      const planFileManager = createPlanFileManager({ projectRoot });
+      const planFileManager = createPlanFileManager({
+        projectRoot,
+        pilotHome: this.options.pilotHome,
+        env: this.options.env,
+      });
       const planTodoManager = createPlanTodoStateManager();
       return {
         context: contextRuntime,

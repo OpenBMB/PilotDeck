@@ -82,7 +82,7 @@ node -p "process.arch" # Intel Mac 上应输出 x64
 某些 Python 发行版（尤其是通过包管理器安装的 Python 3.12）可能不包含 `distutils`，而旧版 `node-gyp` 在源码编译原生包时仍会用到它。一键安装脚本会尝试自动选择带 `distutils` 的 Python。如果你手动运行 npm 命令并看到 `ModuleNotFoundError: No module named 'distutils'`，请使用带 `distutils` 的 Python，例如：
 
 ```bash
-PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile
+PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
 只安装 CLT 即可，不需要完整 Xcode。如果已安装但 `xcrun --find clang` 仍失败，请运行 `sudo xcode-select --reset`，或重新安装 Xcode Command Line Tools 后重试。
@@ -244,7 +244,7 @@ node --version
 npm.cmd --version
 ```
 
-使用 Portable Node 时，仍然请按下面的源码安装命令执行：`corepack pnpm install --frozen-lockfile`、`corepack pnpm run build` 和 `corepack pnpm --prefix ui run build`。只有在确实需要直接调用 npm 且 PowerShell 拦截 `npm.ps1` 时，才改用 `npm.cmd`。
+使用 Portable Node 时，仍然请按下面的源码安装命令执行：`corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`、`corepack pnpm run build` 和 `corepack pnpm --prefix ui run build`。只有在确实需要直接调用 npm 且 PowerShell 拦截 `npm.ps1` 时，才改用 `npm.cmd`。
 
 ## 克隆仓库
 
@@ -266,17 +266,17 @@ git lfs pull
 ```bash
 node --version          # 必须为 v22.13.0 或更新版本，且低于 v23
 corepack enable         # 启用 package.json 中固定的 pnpm 版本
-corepack pnpm install --frozen-lockfile
+corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
 如果当前环境没有 Corepack，或正在使用用户目录安装的 Portable Node，可改用固定版本的全局 pnpm：
 
 ```bash
 npm install -g pnpm@10.32.1
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
-源码安装请使用仓库提交的 `pnpm-lock.yaml`。不要把这一步替换成 `npm install`；当前 lockfile 和 workspace 构建配置按 pnpm 维护，一键安装脚本验证的也是这条路径。
+源码安装请使用仓库提交的 `pnpm-lock.yaml`。上述 workspace 过滤参数会排除 Web 部署不需要的 Electron 打包依赖。不要把这一步替换成 `npm install`；当前 lockfile 和 workspace 构建配置按 pnpm 维护，一键安装脚本验证的也是这条路径。
 
 当前应用使用 `better-sqlite3` 和 Node.js 22 内置的 `node:sqlite`，不需要旧的 `sqlite` 或 `sqlite3` npm 包。
 
@@ -330,10 +330,10 @@ SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0
 ## 常见问题
 
 - 出现 `Node.js >=22.13.0 and <23 is required`：切换到 Node.js 22.13.0 或更新的 Node.js 22 版本，并重新安装依赖。
-- 原生包编译失败：确认已安装 Python 3、`make` 和 C/C++ 编译器，然后重新运行 `corepack pnpm install --frozen-lockfile`。
+- 原生包编译失败：确认已安装 Python 3、`make` 和 C/C++ 编译器，然后重新运行 `corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`。
 - Linux 上 `node-pty`、`better-sqlite3` 编译时下载 `node-v*-headers.tar.gz` 超时：先运行 `export npm_config_disturl=https://npmmirror.com/mirrors/node`，再重新安装依赖。
-- `pnpm install --frozen-lockfile` 下载 npm 包超时：运行 `pnpm config set registry https://registry.npmmirror.com` 后重试。
-- macOS 出现 `ModuleNotFoundError: No module named 'distutils'`：一键安装脚本会尝试自动选择兼容 Python；手动运行 npm 命令时，可用 `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile` 重试，或切换到其他带 `distutils` 的 Python。
+- `pnpm install --frozen-lockfile` 下载 npm 包超时：运行 `pnpm config set registry https://registry.npmmirror.com` 后重试上面的过滤安装命令。
+- macOS 出现 `ModuleNotFoundError: No module named 'distutils'`：一键安装脚本会尝试自动选择兼容 Python；手动运行 npm 命令时，可用 `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui` 重试，或切换到其他带 `distutils` 的 Python。
 - macOS 缺少编译工具：不需要完整 Xcode，但 `xcrun --find clang` 必须可用。可运行 `xcode-select --install` 重新安装 Xcode Command Line Tools；如果已安装但状态异常，可运行 `sudo xcode-select --reset` 后重试。
 - 启动时报 `EADDRINUSE`：默认 `3001` 或 `18789` 已被占用，设置 `SERVER_PORT`、`PILOTDECK_GATEWAY_PORT` 和 `PILOTDECK_GATEWAY_URL` 后重试。
 - 已有 `~/.pilotdeck/pilotdeck.yaml` 但仍进入 onboarding：检查配置里是否仍是 `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` 或 `_placeholder/_placeholder`，需要替换为真实 Provider、API Key 和模型。
