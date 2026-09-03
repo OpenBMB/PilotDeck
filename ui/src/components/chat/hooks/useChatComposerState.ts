@@ -188,6 +188,33 @@ export function shouldCycleRunModeOnKeyDown(
   return event.key === 'Tab' && event.shiftKey && !showFileDropdown && !showCommandMenu;
 }
 
+export function shouldRoutePreparedInputThroughQueue(
+  queueTargetSessionId: string | null | undefined,
+): queueTargetSessionId is string {
+  return Boolean(queueTargetSessionId);
+}
+
+export function resolvePreparedInputQueueTarget({
+  submitTargetSessionId,
+  currentSessionId,
+  pendingViewSessionId,
+  pendingSessionId,
+  requiresExistingQueueTarget,
+}: {
+  submitTargetSessionId: string | null | undefined;
+  currentSessionId: string | null | undefined;
+  pendingViewSessionId: string | null | undefined;
+  pendingSessionId: string | null | undefined;
+  requiresExistingQueueTarget: boolean;
+}): string | undefined {
+  const candidates = requiresExistingQueueTarget
+    ? [submitTargetSessionId, currentSessionId, pendingViewSessionId, pendingSessionId]
+    : [submitTargetSessionId];
+  return candidates.find(
+    (sessionId): sessionId is string => Boolean(sessionId) && !isTemporarySessionId(sessionId),
+  );
+}
+
 export type AttachmentAddResult = {
   files: File[];
   droppedCount: number;
