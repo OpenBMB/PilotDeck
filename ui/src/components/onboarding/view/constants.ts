@@ -1,5 +1,4 @@
 import {
-  CATALOG_PROVIDERS,
   type CatalogProvider,
 } from '../../../shared/catalogProviders';
 
@@ -17,8 +16,7 @@ export const CUSTOM_PROVIDER: CatalogProvider = {
   models: [],
 };
 
-export const DEFAULT_PROVIDER =
-  CATALOG_PROVIDERS.find((provider) => provider.id === 'openrouter') ?? CATALOG_PROVIDERS[0];
+export const DEFAULT_PROVIDER = CUSTOM_PROVIDER;
 
 export const PLACEHOLDER_API_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
 export const MASKED_SECRET = '********';

@@ -69,7 +69,11 @@
 }
 
 .onboarding-shell.prototype-shell {
-  padding-top: 64px;
+  box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 24px;
 }
 
 .onboarding-shell *,
@@ -127,10 +131,10 @@
 }
 
 .onboarding-shell .onboarding-frame {
-  width: min(1180px, calc(100vw - 56px));
-  height: min(820px, calc(100vh - 72px));
-  min-height: 680px;
-  margin: 12px auto;
+  width: min(1180px, calc(100vw - 48px));
+  height: min(820px, calc(100vh - 48px));
+  min-height: min(680px, calc(100vh - 48px));
+  margin: 0;
   display: grid;
   grid-template-columns: 306px 1fr;
   overflow: hidden;
@@ -820,6 +824,7 @@
 
 .onboarding-shell .model-id-fieldset legend {
   padding: 0;
+  margin-bottom: 10px;
   color: rgb(77, 86, 103);
   font-size: 12px;
   font-weight: 650;
@@ -831,14 +836,18 @@
   min-width: 0;
   min-height: 0;
   flex: 1;
+  gap: 10px;
 }
 
 .onboarding-shell .model-id-section {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 8px 12px;
-  padding: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgb(247, 248, 252);
 }
 
 .onboarding-shell .model-id-section.available {
@@ -846,7 +855,6 @@
   min-height: 0;
   align-items: stretch;
   grid-template-rows: minmax(0, 1fr);
-  border-top: 1px solid var(--line);
 }
 
 .onboarding-shell .model-id-section-label {
@@ -855,6 +863,10 @@
   font-size: 12px;
   font-weight: 650;
   line-height: 16px;
+}
+
+.onboarding-shell .model-id-section:not(.available) .model-id-section-label {
+  padding-top: 0;
 }
 
 .onboarding-shell .model-id-available-body {
@@ -919,18 +931,49 @@
   align-content: flex-start;
   gap: 10px 12px;
   min-width: 0;
-  padding: 8px 10px 8px 6px;
+  padding: 8px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+.onboarding-shell .model-id-chips::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.onboarding-shell .model-id-chips::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.onboarding-shell .model-id-chips::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.onboarding-shell .model-id-chips::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 999px;
+}
+
+.onboarding-shell .model-id-chips::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.55);
 }
 
 .onboarding-shell .model-id-section:not(.available) .model-id-chips {
   max-height: 90px;
+  min-height: 36px;
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 8px 10px 4px 4px;
 }
 
 .onboarding-shell .model-id-section.available .model-id-chips {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 8px 10px 4px 4px;
 }
 
 .onboarding-shell .model-id-empty {
@@ -997,7 +1040,7 @@
 
 .onboarding-shell .model-chip-remove {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   top: -7px;
   right: -7px;
   width: 16px;
@@ -1547,7 +1590,7 @@
 
 @media (max-width: 1080px) {
   .onboarding-shell .onboarding-frame {
-    width: calc(100vw - 28px);
+    width: min(1180px, 100%);
     grid-template-columns: 270px 1fr;
   }
 
@@ -1564,14 +1607,15 @@
 
 @media (max-width: 900px) {
   .onboarding-shell.prototype-shell {
-    padding-top: 58px;
+    padding: 12px;
   }
 
   .onboarding-shell .onboarding-frame {
     width: calc(100vw - 24px);
     height: auto;
-    min-height: calc(100vh - 82px);
-    margin: 12px;
+    min-height: calc(100vh - 24px);
+    min-height: calc(100dvh - 24px);
+    margin: 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
     border-radius: 18px;
@@ -1682,9 +1726,15 @@
 }
 
 @media (max-width: 640px) {
+  .onboarding-shell.prototype-shell {
+    padding: 6px;
+  }
+
   .onboarding-shell .onboarding-frame {
     width: calc(100vw - 12px);
-    margin: 6px;
+    min-height: calc(100vh - 12px);
+    min-height: calc(100dvh - 12px);
+    margin: 0;
     border-radius: 14px;
   }
 

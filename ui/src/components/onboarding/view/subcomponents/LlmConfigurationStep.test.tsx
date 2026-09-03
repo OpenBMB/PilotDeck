@@ -78,13 +78,8 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.authenticatedFetch).toHaveBeenCalledWith('/api/v1/providers', expect.anything());
       expect(screen.getByRole('button', { name: /^Ollama$/ }).querySelector('img')?.getAttribute('src'))
         .toBe('/onboarding/providers/ollama.svg');
-    });
-
-    await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
     });
 
     mocks.fetchRemoteDefaultModels.mockClear();
@@ -115,7 +110,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     mocks.fetchRemoteDefaultModels.mockClear();
 
@@ -131,7 +126,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     mocks.fetchRemoteDefaultModels.mockClear();
 
@@ -145,6 +140,11 @@ describe('LlmConfigurationStep', () => {
 
   it('keeps Test connection clickable before an API key is entered', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^OpenRouter$/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'anthropic/claude-sonnet-4.6' })).toBeTruthy();
+    });
 
     const button = await screen.findByRole('button', { name: /Test connection/i });
     expect((button as HTMLButtonElement).disabled).toBe(false);
@@ -167,7 +167,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
 
@@ -193,7 +193,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
@@ -234,7 +234,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
@@ -256,7 +256,7 @@ describe('LlmConfigurationStep', () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mocks.fetchRemoteDefaultModels).toHaveBeenCalledWith('openrouter');
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
 

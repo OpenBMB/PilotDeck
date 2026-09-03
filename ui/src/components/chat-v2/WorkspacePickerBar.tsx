@@ -136,7 +136,7 @@ export default function WorkspacePickerBar({
     <div ref={rootRef} className="relative z-0 mx-auto w-[calc(100%-36px)]">
       <div
         className={cn(
-          '-mt-1.5 flex items-center rounded-b-xl bg-[#f5f6f8] px-2 pb-1 pt-2.5',
+          '-mt-1.5 flex items-center rounded-b-xl bg-[#f5f6f8] px-2 pb-2.5 pt-4',
           'dark:bg-neutral-800/50',
         )}
       >
@@ -146,7 +146,7 @@ export default function WorkspacePickerBar({
           aria-haspopup="listbox"
           onClick={() => setOpen((previous) => !previous)}
           className={cn(
-            'inline-flex max-w-[70%] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[13px] leading-none',
+            'inline-flex max-w-[70%] items-center gap-1.5 rounded-md px-1.5 py-1.5 text-[13px] leading-none',
             'bg-[#eceef2] text-neutral-700 transition-colors hover:bg-[#e2e4ea]',
             'dark:bg-neutral-700/80 dark:text-neutral-200 dark:hover:bg-neutral-600',
             !selectedProject && 'text-neutral-500 dark:text-neutral-400',
