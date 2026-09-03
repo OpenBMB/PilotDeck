@@ -1264,18 +1264,14 @@ const officePreviewPdfRateLimiter = createRouteRateLimiter({
     message: 'Too many Office preview conversion requests',
 });
 
-// Use express-rate-limit so CodeQL's js/missing-rate-limiting query recognizes
-// throttling on this expensive authenticated filesystem route.
+// express-rate-limit must be the first middleware on this route so CodeQL's
+// js/missing-rate-limiting query associates the limiter with the handler.
 const nativeFolderPickerRateLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => (
-        req.user?.id
-            ? `user:${req.user.id}`
-            : ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'anonymous')
-    ),
+    keyGenerator: (req) => ipKeyGenerator(req.ip || '127.0.0.1'),
     message: {
         error: 'Too many native folder picker requests',
         code: 'RATE_LIMITED',
@@ -1409,7 +1405,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/browse-filesystem/native-folder', authenticateToken, nativeFolderPickerRateLimiter, async (req, res) => {
+app.post('/api/browse-filesystem/native-folder', nativeFolderPickerRateLimiter, authenticateToken, async (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);
 
