@@ -291,15 +291,7 @@ clawhub --version
 
 ## 首次 Onboarding
 
-PilotDeck 读取 `~/.pilotdeck/pilotdeck.yaml`。如果本机还没有配置文件，生产模式启动前请先准备 Web UI 的首次 onboarding 流程：
-
-```bash
-node scripts/bootstrap-pilotdeck-config.mjs
-```
-
-该命令会初始化 `~/.pilotdeck/pilotdeck.yaml`，让 Gateway 可以启动并进入首次 onboarding。随后打开 Web UI，在 onboarding/设置面板中完成 Provider 和 API Key 配置。
-
-注意：首次生成的配置只是占位配置，包含 `_placeholder/_placeholder`、`https://placeholder.invalid` 和 `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE`。它的作用是让 Gateway 和 Web UI 可以启动；在填写真实 Provider、API Key 和模型前，UI 仍会进入 onboarding，这是预期行为。
+PilotDeck 读取 `~/.pilotdeck/pilotdeck.yaml`。如果文件不存在，直接正常启动 PilotDeck：Web UI 会在不启动 Gateway 的情况下进入 onboarding。保存真实的 Provider、API Key 和模型后，PilotDeck 会写入配置并自动启动 Gateway。
 
 ## 启动 PilotDeck
 
@@ -336,6 +328,6 @@ SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0
 - macOS 出现 `ModuleNotFoundError: No module named 'distutils'`：一键安装脚本会尝试自动选择兼容 Python；手动运行 npm 命令时，可用 `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui` 重试，或切换到其他带 `distutils` 的 Python。
 - macOS 缺少编译工具：不需要完整 Xcode，但 `xcrun --find clang` 必须可用。可运行 `xcode-select --install` 重新安装 Xcode Command Line Tools；如果已安装但状态异常，可运行 `sudo xcode-select --reset` 后重试。
 - 启动时报 `EADDRINUSE`：默认 `3001` 或 `18789` 已被占用，设置 `SERVER_PORT`、`PILOTDECK_GATEWAY_PORT` 和 `PILOTDECK_GATEWAY_URL` 后重试。
-- 已有 `~/.pilotdeck/pilotdeck.yaml` 但仍进入 onboarding：检查配置里是否仍是 `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` 或 `_placeholder/_placeholder`，需要替换为真实 Provider、API Key 和模型。
+- 旧版 `~/.pilotdeck/pilotdeck.yaml` 仍进入 onboarding：`PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE`、`_placeholder/_placeholder` 等历史占位值会在保存真实 Provider、API Key 和模型时自动迁移。
 - 缺少演示图片/视频：安装 Git LFS 后，在仓库根目录运行 `git lfs pull`。
 - 提示找不到 `rg`：安装 ripgrep 以启用完整的文件/搜索工具能力。

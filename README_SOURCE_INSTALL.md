@@ -272,15 +272,7 @@ On Windows, use `npm.cmd install -g clawhub` if PowerShell blocks `npm.ps1`. Wit
 
 ## First-Run Onboarding
 
-PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. If you do not already have a config file, prepare the Web UI onboarding flow before starting in production mode:
-
-```bash
-node scripts/bootstrap-pilotdeck-config.mjs
-```
-
-This initializes `~/.pilotdeck/pilotdeck.yaml` for first-run onboarding so the Gateway can boot. Then open the Web UI and finish provider/API key setup in the onboarding/settings panel.
-
-Note: the generated first-run config is a placeholder. It contains `_placeholder/_placeholder`, `https://placeholder.invalid`, and `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE`. Its purpose is to let the Gateway and Web UI boot; the UI still routes to onboarding until you provide a real provider, API key, and model.
+PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. If the file is missing, start PilotDeck normally: the Web UI opens onboarding without starting the Gateway. After you save a real provider, API key, and model, PilotDeck writes the config and starts the Gateway automatically.
 
 ## Start PilotDeck
 
@@ -317,6 +309,6 @@ SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0
 - `ModuleNotFoundError: No module named 'distutils'` on macOS: the one-line installer tries to auto-select a compatible Python; for manual npm commands, retry with `PYTHON=/usr/bin/python3 corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui`, or use another Python that includes `distutils`.
 - Missing compiler tools on macOS: full Xcode is not required, but `xcrun --find clang` must work. Reinstall Xcode Command Line Tools with `xcode-select --install`, or run `sudo xcode-select --reset` if CLT is already installed.
 - `EADDRINUSE` on startup: the default `3001` or `18789` port is already in use. Set `SERVER_PORT`, `PILOTDECK_GATEWAY_PORT`, and `PILOTDECK_GATEWAY_URL`, then retry.
-- `~/.pilotdeck/pilotdeck.yaml` exists but the UI still opens onboarding: check whether the config still contains `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` or `_placeholder/_placeholder`; replace them with a real provider, API key, and model.
+- An older `~/.pilotdeck/pilotdeck.yaml` still opens onboarding: historical placeholder values such as `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` or `_placeholder/_placeholder` are migrated when you save a real provider, API key, and model.
 - Missing demo images/videos: install Git LFS and run `git lfs pull` from the repo root.
 - `rg` not found: install ripgrep for full file/search tool support.

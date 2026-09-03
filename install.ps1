@@ -15,11 +15,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$LaunchDirectory = (Get-Location).Path
 
 if (-not $RepoUrl) { $RepoUrl = 'https://github.com/OpenBMB/PilotDeck.git' }
 if (-not $Branch) { $Branch = 'main' }
 if (-not $InstallDir) { $InstallDir = Join-Path $HOME '.pilotdeck\app' }
 if (-not $ConfigPath) { $ConfigPath = Join-Path $HOME '.pilotdeck\pilotdeck.yaml' }
+if (-not [System.IO.Path]::IsPathRooted($ConfigPath)) {
+  $ConfigPath = [System.IO.Path]::GetFullPath((Join-Path $LaunchDirectory $ConfigPath))
+}
 
 $MinimumNodeVersion = [version]'22.13.0'
 $MaximumNodeMajor = 22
@@ -494,6 +498,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0pilotdeck.ps1" %*
   @"
 `$ErrorActionPreference = 'Stop'
 `$InstallDir = '$escapedInstallDir'
+`$LaunchDirectory = (Get-Location).Path
 `$ConfigPath = if (`$env:PILOTDECK_CONFIG_PATH) { `$env:PILOTDECK_CONFIG_PATH } else { '$escapedConfigPath' }
 `$ServerPort = if (`$env:SERVER_PORT) { [int]`$env:SERVER_PORT } else { 3001 }
 `$GatewayPort = if (`$env:PILOTDECK_GATEWAY_PORT) { [int]`$env:PILOTDECK_GATEWAY_PORT } else { 18789 }
@@ -501,6 +506,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0pilotdeck.ps1" %*
 `$NodeDir = '$escapedNodeDir'
 `$NpmPath = '$escapedNpmPath'
 if (`$NodeDir -and (Test-Path `$NodeDir)) { `$env:Path = "`$NodeDir;`$env:Path" }
+
+function Resolve-LaunchPath([string]`$Value) {
+  if ([System.IO.Path]::IsPathRooted(`$Value)) {
+    return [System.IO.Path]::GetFullPath(`$Value)
+  }
+  return [System.IO.Path]::GetFullPath((Join-Path `$LaunchDirectory `$Value))
+}
+
+`$ConfigPath = Resolve-LaunchPath `$ConfigPath
 
 function Test-PortFree([int]`$Port) {
   try {
@@ -536,12 +550,13 @@ for (`$i = 0; `$i -lt `$args.Count; `$i++) {
   }
 }
 
+`$ConfigPath = Resolve-LaunchPath `$ConfigPath
+
 `$env:PILOTDECK_CONFIG_PATH = `$ConfigPath
 `$env:PILOTDECK_RESTART_MODE = 'start-built'
 `$env:SERVER_PORT = [string](Find-FreePort `$ServerPort)
 `$env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort `$GatewayPort)
 `$env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:`$env:PILOTDECK_GATEWAY_PORT/ws"
-& node (Join-Path `$InstallDir 'scripts\bootstrap-pilotdeck-config.mjs')
 Write-Host "pilotdeck: starting at http://localhost:`$env:SERVER_PORT"
 Set-Location (Join-Path `$InstallDir 'ui')
 & `$NpmPath run start:built
@@ -549,12 +564,6 @@ Set-Location (Join-Path `$InstallDir 'ui')
 
   if (-not $NoPathUpdate) { Add-UserPath $binDir }
   Write-Ok "pilotdeck launcher written to $cmdPath"
-}
-
-function Bootstrap-Config {
-  $env:PILOTDECK_CONFIG_PATH = $ConfigPath
-  & node (Join-Path $InstallDir 'scripts\bootstrap-pilotdeck-config.mjs')
-  if ($LASTEXITCODE -ne 0) { Write-Fail 'Config bootstrap failed' }
 }
 
 Ensure-NodeRuntime
@@ -571,8 +580,6 @@ $env:PILOTDECK_RESTART_MODE = 'start-built'
 $env:SERVER_PORT = [string](Find-FreePort $ServerPort)
 $env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort $GatewayPort)
 $env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:$env:PILOTDECK_GATEWAY_PORT/ws"
-Bootstrap-Config
-
 Write-Host ''
 Write-Host 'Installation complete!' -ForegroundColor Green
 Write-Host "  App location: $InstallDir"

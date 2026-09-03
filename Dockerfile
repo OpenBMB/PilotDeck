@@ -46,11 +46,11 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# Runtime system dependencies + tsx/concurrently for process management
+# Runtime system dependencies + tsx for the UI server
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep git curl procps \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g tsx concurrently
+    && npm install -g tsx
 
 # Copy built application from builder
 COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./

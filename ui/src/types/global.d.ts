@@ -13,6 +13,9 @@ declare global {
       getRuntimeInfo: () => Promise<{
         serverPort: number;
         gatewayPort: number;
+        gateway:
+          | { state: 'stopped' | 'starting' | 'ready' }
+          | { state: 'error'; error: string };
         runtimeRoot: string;
         logPath: string;
       } | null>;

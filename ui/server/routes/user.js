@@ -2,49 +2,10 @@ import express from 'express';
 import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
-import {
-  readPilotDeckConfigFile,
-  resolveConfiguredProviderApiKey,
-  resolveConfiguredProviderUrl,
-} from '../services/pilotdeckConfig.js';
+import { runtimeCoordination } from '../services/runtimeCoordination.js';
 import { spawn } from 'child_process';
 
 const router = express.Router();
-
-// Sentinel api-key written by scripts/bootstrap-pilotdeck-config.mjs so the
-// engine can boot. Treated as "not configured" so the UI routes to onboarding.
-const PLACEHOLDER_API_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
-
-function providerAllowsMissingApiKey(providerId) {
-  return providerId === 'ollama';
-}
-
-function hasUsablePilotDeckConfig() {
-  const record = readPilotDeckConfigFile();
-  if (!record.exists) return false;
-
-  const mainRef = typeof record.config?.agent?.model === 'string'
-    ? record.config.agent.model.trim()
-    : '';
-  if (!mainRef) return false;
-
-  const slash = mainRef.indexOf('/');
-  if (slash <= 0 || slash === mainRef.length - 1) return false;
-  const providerId = mainRef.slice(0, slash);
-  const modelId = mainRef.slice(slash + 1);
-
-  const provider = record.config?.model?.providers?.[providerId];
-  if (!provider || typeof provider !== 'object') return false;
-
-  const hasUrl = Boolean(resolveConfiguredProviderUrl(providerId, provider));
-  const apiKey = resolveConfiguredProviderApiKey(providerId, provider);
-  const hasRequiredCredential = providerAllowsMissingApiKey(providerId)
-    ? apiKey !== PLACEHOLDER_API_KEY
-    : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
-  const hasModel = provider.models && typeof provider.models === 'object' && modelId in provider.models;
-
-  return Boolean(hasUrl && hasRequiredCredential && hasModel);
-}
 
 function spawnAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -136,9 +97,18 @@ router.post('/git-config', authenticateToken, async (req, res) => {
 
 router.post('/complete-onboarding', authenticateToken, async (req, res) => {
   try {
+    const configuration = runtimeCoordination.publishConfigurationState();
+    if (configuration.state !== 'ready') {
+      return res.status(409).json({
+        error: 'Model configuration is not ready',
+        configuration,
+      });
+    }
     res.json({
       success: true,
-      message: 'Onboarding completed successfully'
+      message: 'Onboarding completed successfully',
+      configuration,
+      gateway: runtimeCoordination.getGatewayState(),
     });
   } catch (error) {
     console.error('Error completing onboarding:', error);
@@ -148,15 +118,54 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const hasCompleted = hasUsablePilotDeckConfig();
+    const configuration = runtimeCoordination.publishConfigurationState();
 
     res.json({
       success: true,
-      hasCompletedOnboarding: hasCompleted
+      configuration,
+      gateway: runtimeCoordination.getGatewayState(),
+      hasCompletedOnboarding: configuration.state === 'ready'
     });
   } catch (error) {
     console.error('Error checking onboarding status:', error);
     res.status(500).json({ error: 'Failed to check onboarding status' });
+  }
+});
+
+router.get('/runtime-status', authenticateToken, async (req, res) => {
+  try {
+    const configuration = runtimeCoordination.getConfigurationState()
+      ?? runtimeCoordination.publishConfigurationState();
+    return res.json({
+      success: true,
+      configuration,
+      gateway: runtimeCoordination.getGatewayState(),
+    });
+  } catch (error) {
+    console.error('Error checking runtime status:', error);
+    return res.status(500).json({ error: 'Failed to check runtime status' });
+  }
+});
+
+router.post('/runtime/gateway/retry', authenticateToken, async (req, res) => {
+  try {
+    const configuration = runtimeCoordination.publishConfigurationState();
+    if (configuration.state !== 'ready') {
+      return res.status(409).json({
+        error: 'Model configuration is not ready',
+        configuration,
+      });
+    }
+    if (!runtimeCoordination.requestGatewayRetry()) {
+      return res.status(409).json({
+        error: 'Gateway is not managed by this UI server',
+        gateway: runtimeCoordination.getGatewayState(),
+      });
+    }
+    return res.status(202).json({ success: true });
+  } catch (error) {
+    console.error('Error restarting Gateway:', error);
+    return res.status(500).json({ error: 'Failed to restart Gateway' });
   }
 });
 

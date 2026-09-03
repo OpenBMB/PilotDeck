@@ -32,6 +32,7 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: true,
+      configuration: { state: 'ready', modelRef: 'ollama/qwen3:0.6b' },
     });
   });
 
@@ -58,6 +59,7 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: false,
+      configuration: { state: 'needs_configuration', reason: 'missing_credential' },
     });
   });
 
@@ -84,6 +86,59 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: true,
+      configuration: { state: 'ready', modelRef: 'openai/gpt-4.1-mini' },
+    });
+  });
+
+  it('only completes onboarding after model configuration is ready', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'openai/gpt-4.1-mini' },
+        model: {
+          providers: {
+            openai: {
+              protocol: 'openai',
+              url: 'https://api.openai.com/v1',
+              models: { 'gpt-4.1-mini': {} },
+            },
+          },
+        },
+      },
+    });
+
+    const data = await request('/api/user/complete-onboarding', { method: 'POST' });
+
+    expect(data).toMatchObject({
+      error: 'Model configuration is not ready',
+      configuration: { state: 'needs_configuration', reason: 'missing_credential' },
+    });
+  });
+
+  it('accepts a ready configuration even when Gateway is managed elsewhere', async () => {
+    const { request } = await createUserApp({
+      exists: true,
+      config: {
+        agent: { model: 'ollama/qwen3:0.6b' },
+        model: {
+          providers: {
+            ollama: {
+              protocol: 'openai',
+              url: 'http://localhost:11434/v1',
+              models: { 'qwen3:0.6b': {} },
+            },
+          },
+        },
+      },
+    });
+
+    const data = await request('/api/user/complete-onboarding', { method: 'POST' });
+
+    expect(data).toMatchObject({
+      success: true,
+      configuration: { state: 'ready' },
+      gateway: { state: 'unmanaged' },
     });
   });
 });

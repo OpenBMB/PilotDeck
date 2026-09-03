@@ -32,6 +32,12 @@ const ENV_CONFIG_OVERRIDES = [
   ["PILOT_AGENT_MODEL", ["agent", "model"]],
 ] as const;
 
+export function resolvePilotConfigPath(options: PilotConfigLoadOptions = {}): string {
+  const env = options.env ?? process.env;
+  const envConfigPath = env.PILOTDECK_CONFIG_PATH?.trim();
+  return options.configPath ?? envConfigPath ?? getPilotConfigFilePath(resolvePilotHome(env));
+}
+
 export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConfigSnapshot {
   const env = options.env ?? process.env;
   const loadedAt = new Date();
@@ -49,7 +55,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     });
   }
 
-  const defaultConfigPath = getPilotConfigFilePath(pilotHome);
+  const defaultConfigPath = resolvePilotConfigPath(options);
   const defaultConfig = readYamlSource(defaultConfigPath, "default", 10, loadedAt, diagnostics, sources);
 
   const envConfig = readEnvOverrides(env);
