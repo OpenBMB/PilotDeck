@@ -543,6 +543,27 @@ export function useChatSessionState({
     });
   }, [scrollToBottom]);
 
+  useEffect(() => {
+    if (!autoScrollToBottom || typeof ResizeObserver === 'undefined') return undefined;
+    const container = scrollContainerRef.current;
+    const content = container?.querySelector<HTMLElement>('[data-chat-scroll-content]');
+    if (!container || !content) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      scheduleScrollToBottom();
+    });
+    observer.observe(content);
+    scheduleScrollToBottom();
+
+    return () => observer.disconnect();
+  }, [
+    activeScrollKey,
+    autoScrollToBottom,
+    chatMessages.length,
+    isLoadingSessionMessages,
+    scheduleScrollToBottom,
+  ]);
+
   const scrollToBottomAndReset = useCallback(() => {
     scrollToBottom();
     if (allMessagesLoaded) {
@@ -877,7 +898,7 @@ export function useChatSessionState({
             ...sessionRequestParams,
           });
 
-          if (Boolean(autoScrollToBottom) && isNearBottom()) {
+          if (autoScrollToBottom) {
             setTimeout(() => scrollToBottom(), 200);
           }
         }
@@ -890,7 +911,6 @@ export function useChatSessionState({
   }, [
     autoScrollToBottom,
     externalMessageUpdate,
-    isNearBottom,
     scrollToBottom,
     selectedProject,
     selectedSession,
@@ -1033,6 +1053,7 @@ export function useChatSessionState({
     () => getStreamContentKey(visibleMessages),
     [visibleMessages],
   );
+  const activityContentKey = getStreamContentKey(activityMessages);
 
   useEffect(() => {
     if (!autoScrollToBottom && scrollContainerRef.current) {
@@ -1047,7 +1068,7 @@ export function useChatSessionState({
     if (searchScrollActiveRef.current) return;
 
     if (autoScrollToBottom) {
-      if (!isUserScrolledUp) scheduleScrollToBottom();
+      scheduleScrollToBottom();
       return;
     }
 
@@ -1059,9 +1080,9 @@ export function useChatSessionState({
     if (heightDiff > 0 && prevTop > 0) container.scrollTop = prevTop + heightDiff;
   }, [
     autoScrollToBottom,
+    activityContentKey,
     chatMessages.length,
     isLoadingMoreMessages,
-    isUserScrolledUp,
     scheduleScrollToBottom,
     streamContentKey,
   ]);

@@ -1526,7 +1526,7 @@ export default function ComposerV2({
                               autoFocus
                             />
                           </div>
-                          <div className="max-h-64 overflow-y-auto">
+                          <div className="max-h-64 overflow-y-auto [scrollbar-color:#c1c1c1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c1c1c1] [&::-webkit-scrollbar-track]:bg-transparent">
                             {isModelCatalogLoading ? (
                               <div className="flex justify-center py-8 text-neutral-400">
                                 <Loader2 className="h-4 w-4 animate-spin" />

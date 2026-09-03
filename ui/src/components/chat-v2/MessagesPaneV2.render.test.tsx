@@ -1568,4 +1568,16 @@ describe('chat response reserved space', () => {
     expect(shouldKeepChatResponseReservedSpace(0, false)).toBe(false);
     expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(true);
   });
+
+  it('renders the latest follow-up turn inside the reserved response area', () => {
+    const { container } = renderPane({
+      messages: [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)],
+    });
+
+    const reservedArea = container.querySelector('[data-chat-response-reserved-space="true"]');
+    expect(reservedArea).not.toBeNull();
+    expect((reservedArea as HTMLElement).style.minHeight).toBe('220px');
+    expect(within(reservedArea as HTMLElement).getByText('Message 3')).toBeTruthy();
+    expect(within(reservedArea as HTMLElement).queryByText('Message 2')).toBeNull();
+  });
 });

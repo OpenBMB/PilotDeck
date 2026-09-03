@@ -2057,6 +2057,34 @@
     background-color: #b3b0c6;
   }
 
+  .chat-panel-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #c1c1c1 transparent;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #c1c1c1;
+    border-radius: 999px;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #a9a9a9;
+  }
+
   .file-tree-scroll {
     min-height: 0;
     flex: 1;
