@@ -144,11 +144,87 @@ test("registered PDF attachments retain their original name in the history path 
   }
 });
 
-test("registered audio attachments advertise FunASR paths instead of read_file conversion", async () => {
+test("registered Web recordings advertise trans_speech paths instead of read_file conversion", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
     const audioPath = join(root, "meeting.wav");
     await writeFile(audioPath, Buffer.from("RIFF"));
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "web",
+      projectKey: root,
+      message: "please transcribe this recording",
+      attachments: [{
+        type: "file",
+        path: audioPath,
+        name: "meeting.wav",
+        mimeType: "audio/wav",
+        metadata: { channelKey: "web" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /meeting\.wav/);
+    assert.match(text, /trans_speech/);
+    assert.match(text, /"action":"start"/);
+    assert.match(text, new RegExp(audioPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(text, /funasr/i);
+    assert.doesNotMatch(text, /install:asr/);
+    assert.doesNotMatch(text, /not directly inspectable with read_file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("unsupported audio formats are not directed to trans_speech", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const audioPath = join(root, "meeting.webm");
+    await writeFile(audioPath, Buffer.from("webm"));
+
+    let capturedInput: AgentInput | undefined;
+    const gateway = createGateway((input) => {
+      capturedInput = input;
+    });
+
+    for await (const _event of gateway.submitTurn({
+      sessionKey: "session-1",
+      channelKey: "web",
+      projectKey: root,
+      message: "please transcribe this recording",
+      attachments: [{
+        type: "file",
+        path: audioPath,
+        name: "meeting.webm",
+        mimeType: "audio/webm",
+        metadata: { channelKey: "web" },
+      }],
+    })) {
+      // Drain the stream so the fake session runs to completion.
+    }
+
+    const text = inputText(capturedInput);
+    assert.match(text, /WAV, MP3, M4A, and FLAC/);
+    assert.doesNotMatch(text, /use trans_speech/i);
+    assert.doesNotMatch(text, /funasr/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("non-Web recordings are not directed to trans_speech", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
+  try {
+    const audioPath = join(root, "meeting.m4a");
+    await writeFile(audioPath, Buffer.from("m4a"));
 
     let capturedInput: AgentInput | undefined;
     const gateway = createGateway((input) => {
@@ -163,8 +239,8 @@ test("registered audio attachments advertise FunASR paths instead of read_file c
       attachments: [{
         type: "file",
         path: audioPath,
-        name: "meeting.wav",
-        mimeType: "audio/wav",
+        name: "meeting.m4a",
+        mimeType: "audio/mp4",
         metadata: { channelKey: "feishu" },
       }],
     })) {
@@ -172,12 +248,9 @@ test("registered audio attachments advertise FunASR paths instead of read_file c
     }
 
     const text = inputText(capturedInput);
-    assert.match(text, /meeting\.wav/);
-    assert.match(text, /transcribe_audio/);
-    assert.match(text, new RegExp(audioPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(text, /retry the tool in this session/);
-    assert.match(text, /npm --prefix/);
-    assert.doesNotMatch(text, /not directly inspectable with read_file/);
+    assert.match(text, /only Web-uploaded audio/);
+    assert.doesNotMatch(text, /use trans_speech/i);
+    assert.doesNotMatch(text, /funasr/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

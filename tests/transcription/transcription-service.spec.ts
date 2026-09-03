@@ -13,7 +13,6 @@ import {
   TRANSCRIPTION_TASK_DIRECTORY,
   TRANSCRIPTION_TASK_INFO_FILE,
   TRANSCRIPTION_TRANSCRIPT_FILE,
-  MAX_TRANSCRIPTION_FILE_BYTES,
   type TranscriptionTaskInfo,
 } from "../../src/transcription/types.js";
 
@@ -581,20 +580,25 @@ test("tasks from the same workspace wait for configured capacity", async () => {
   }
 });
 
-test("rejects paths outside chat attachments, unsupported formats, and files above the upload limit", async () => {
+test("rejects paths outside Web uploads, unsupported formats, and files above the configured limit", async () => {
   const fixture = await createFixture();
   try {
-    const service = new TranscriptionService({ config, fetchImpl: completeFetch() });
+    const maxFileSizeBytes = 64;
+    const service = new TranscriptionService({ config, maxFileSizeBytes, fetchImpl: completeFetch() });
     const outsideAudio = join(fixture.workspace, "outside.wav");
+    const unmanagedCurrentUpload = join(fixture.workspace, ".tmp", "chat-uploads", "unmanaged.wav");
     const unsupported = join(fixture.uploadDirectory, "meeting.txt");
     const empty = join(fixture.uploadDirectory, "empty.mp3");
     const tooLarge = join(fixture.uploadDirectory, "too-large.mp3");
     await writeFile(outsideAudio, "outside");
+    await mkdir(join(fixture.workspace, ".tmp", "chat-uploads"), { recursive: true });
+    await writeFile(unmanagedCurrentUpload, "unmanaged");
     await writeFile(unsupported, "not audio");
     await writeFile(empty, "");
-    await writeFile(tooLarge, Buffer.alloc(MAX_TRANSCRIPTION_FILE_BYTES + 1));
+    await writeFile(tooLarge, Buffer.alloc(maxFileSizeBytes + 1));
 
     await assert.rejects(service.start(fixture.workspace, { audioPath: outsideAudio }), { code: "path_not_allowed" });
+    await assert.rejects(service.start(fixture.workspace, { audioPath: unmanagedCurrentUpload }), { code: "path_not_allowed" });
     await assert.rejects(service.start(fixture.workspace, { audioPath: unsupported }), { code: "invalid_tool_input" });
     await assert.rejects(service.start(fixture.workspace, { audioPath: empty }), { code: "invalid_tool_input" });
     await assert.rejects(service.start(fixture.workspace, { audioPath: tooLarge }), { code: "invalid_tool_input" });
@@ -604,11 +608,13 @@ test("rejects paths outside chat attachments, unsupported formats, and files abo
   }
 });
 
-test("accepts all supported audio extensions and the exact 20MB boundary", async () => {
+test("accepts all supported audio extensions and the configured size boundary", async () => {
   const fixture = await createFixture();
   try {
+    const maxFileSizeBytes = 64;
     const service = new TranscriptionService({
       config: { ...config, generate: { polish: false, minutes: false, actions: false } },
+      maxFileSizeBytes,
       fetchImpl: completeFetch(),
     });
     for (const extension of [".WAV", ".MP3", ".M4A", ".FLAC"]) {
@@ -619,9 +625,31 @@ test("accepts all supported audio extensions and the exact 20MB boundary", async
     }
 
     const atLimit = join(fixture.uploadDirectory, "at-limit.mp3");
-    await writeFile(atLimit, Buffer.alloc(MAX_TRANSCRIPTION_FILE_BYTES, 1));
+    await writeFile(atLimit, Buffer.alloc(maxFileSizeBytes, 1));
     const result = await service.start(fixture.workspace, { audioPath: atLimit, forceDuplicate: true });
-    assert.equal(result.task.source.bytes, MAX_TRANSCRIPTION_FILE_BYTES);
+    assert.equal(result.task.source.bytes, maxFileSizeBytes);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("accepts both current and legacy Web upload directories", async () => {
+  const fixture = await createFixture();
+  try {
+    const currentUploadDirectory = join(fixture.workspace, ".tmp", "chat-uploads", "upload-2", "files");
+    const currentAudio = join(currentUploadDirectory, "recording.flac");
+    await mkdir(currentUploadDirectory, { recursive: true });
+    await writeFile(currentAudio, "current Web upload");
+
+    const service = new TranscriptionService({
+      config: { ...config, generate: { polish: false, minutes: false, actions: false } },
+      fetchImpl: completeFetch(),
+    });
+    const legacy = await service.start(fixture.workspace, { audioPath: fixture.audioPath });
+    const current = await service.start(fixture.workspace, { audioPath: currentAudio });
+
+    assert.equal(legacy.task.status, "pending_review");
+    assert.equal(current.task.status, "pending_review");
   } finally {
     await fixture.cleanup();
   }

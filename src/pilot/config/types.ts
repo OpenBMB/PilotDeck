@@ -55,6 +55,13 @@ export type PilotExtensionConfig = {
   includeHookEvents: boolean;
 };
 
+/** The Web upload limit shared by the Web server and recording transcription. */
+export type PilotWebUiConfig = {
+  attachments: {
+    maxFileSizeMB: number;
+  };
+};
+
 export type PilotAgentModelSelection = {
   id: string;
   provider: string;
@@ -268,6 +275,7 @@ export type PilotConfig = {
   tools?: PilotToolsConfig;
   telemetry?: PilotTelemetryConfig;
   proxy?: PilotProxyConfig;
+  webui?: PilotWebUiConfig;
 };
 
 export type PilotConfigSnapshot = {
