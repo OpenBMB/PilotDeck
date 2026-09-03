@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -55,6 +55,16 @@ function useTempConfig(contents) {
 }
 
 describe('model configuration state', () => {
+  it('does not create a config file while detecting first-run state', () => {
+    const configPath = useTempConfig(null);
+
+    expect(getModelConfigurationState()).toMatchObject({
+      state: 'needs_configuration',
+      reason: 'missing_config',
+    });
+    expect(existsSync(configPath)).toBe(false);
+  });
+
   it('distinguishes a missing file from a file with no selected model', () => {
     expect(evaluateModelConfigurationState(record({}, { exists: false }))).toMatchObject({
       state: 'needs_configuration',

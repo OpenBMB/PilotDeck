@@ -100,7 +100,7 @@ print_getting_started_en() {
   echo "==============="
   echo ""
   echo -e "  ${BOLD}1. Configure your model & API key${RESET}"
-  echo -e "     PilotDeck ships with a placeholder config, so your first stop is onboarding."
+  echo -e "     If no model is configured, PilotDeck starts the Web UI directly in onboarding."
   echo -e "     Open ${GREEN}${ui_url}${RESET} — it redirects to the onboarding screen where you"
   echo -e "     choose a provider, paste an API key, and pick a model."
   echo -e "     ${DIM}Supported: OpenAI, Anthropic, Google Gemini, DeepSeek, Qwen, Kimi, MiniMax,${RESET}"
@@ -137,7 +137,7 @@ print_getting_started_zh() {
   echo "========"
   echo ""
   echo -e "  ${BOLD}1. 配置模型与 API Key${RESET}"
-  echo -e "     PilotDeck 初始使用占位配置,因此第一步是完成引导配置。"
+  echo -e "     如果尚未配置模型,PilotDeck 会直接启动 Web UI 并进入引导界面。"
   echo -e "     打开 ${GREEN}${ui_url}${RESET} — 页面会自动跳转到引导界面,"
   echo -e "     在这里选择服务商、粘贴 API Key 并选择模型。"
   echo -e "     ${DIM}已支持:OpenAI、Anthropic、Google Gemini、DeepSeek、Qwen、Kimi、MiniMax,${RESET}"
@@ -167,7 +167,7 @@ print_getting_started_zh() {
   echo ""
 }
 
-# Sentinel written by scripts/bootstrap-pilotdeck-config.mjs for an unconfigured install.
+# Historical sentinels are still treated as unconfigured during upgrades.
 ONBOARD_SENTINEL="PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE"
 
 # True when the config already holds a real provider/model (not the placeholder).
@@ -1451,8 +1451,6 @@ if [[ "$PILOTDECK_GATEWAY_PORT" != "$GATEWAY_BASE" ]]; then
   warn "Gateway port ${GATEWAY_BASE} is busy; using ${PILOTDECK_GATEWAY_PORT} instead."
 fi
 
-node "$INSTALL_DIR/scripts/bootstrap-pilotdeck-config.mjs"
-
 printf "pilotdeck: starting at http://localhost:%s\n" "$SERVER_PORT"
 cd "$INSTALL_DIR/ui"
 exec npm run start:built
@@ -1544,7 +1542,6 @@ echo ""
 export PILOTDECK_CONFIG_PATH="$CONFIG_FILE"
 export PILOTDECK_RESTART_MODE="start-built"
 resolve_runtime_ports
-node "$INSTALL_DIR/scripts/bootstrap-pilotdeck-config.mjs"
 echo -e "  UI:             ${DIM}http://localhost:${SERVER_PORT}${RESET}"
 echo -e "  Gateway:        ${DIM}${PILOTDECK_GATEWAY_URL}${RESET}"
 

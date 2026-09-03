@@ -15,6 +15,7 @@ function createFakeChild() {
   child.kill = vi.fn((signal) => {
     child.killed = true;
     child.killedSignal = signal;
+    queueMicrotask(() => child.emit('close', null, signal));
   });
   return child;
 }
@@ -72,6 +73,20 @@ describe('web runtime supervisor', () => {
     expect(dev.spawnImpl).toHaveBeenCalledTimes(2);
     expect(dev.supervisor.children.has('server')).toBe(true);
     expect(dev.supervisor.children.has('client')).toBe(true);
+  });
+
+  it('keeps Gateway stopped while configuration is missing', () => {
+    const { supervisor, spawnImpl } = createHarness();
+    const server = supervisor.children.get('server');
+
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'needs_configuration', reason: 'missing_config' },
+    });
+
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+    expect(supervisor.children.has('server')).toBe(true);
+    expect(supervisor.children.has('gateway')).toBe(false);
   });
 
   it('starts Gateway once after ready configuration and reports readiness', async () => {
@@ -136,11 +151,11 @@ describe('web runtime supervisor', () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
-  it('exits the runtime when the UI server exits without a restart request', () => {
+  it('exits the runtime when the UI server exits without a restart request', async () => {
     const { supervisor, exit } = createHarness();
     supervisor.children.get('server').emit('close', 1, null);
 
-    expect(exit).toHaveBeenCalledWith(1);
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
   });
 
   it('retries Gateway without duplicating it', () => {
@@ -179,7 +194,27 @@ describe('web runtime supervisor', () => {
     });
   });
 
-  it('restarts the server and client after a supervised update request', () => {
+  it('waits for a stopped Gateway before starting it again', async () => {
+    const { supervisor, spawnImpl } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'invalid', revision: 'two' },
+    });
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'three' },
+    });
+
+    expect(spawnImpl).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalledTimes(3));
+  });
+
+  it('restarts the server and client after a supervised update request', async () => {
     const { supervisor, spawnImpl, exit } = createHarness({
       mode: 'dev',
       requestExists: true,
@@ -187,13 +222,14 @@ describe('web runtime supervisor', () => {
     const server = supervisor.children.get('server');
     server.emit('close', 42, null);
 
-    expect(spawnImpl).toHaveBeenCalledTimes(4);
+    expect(spawnImpl).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalledTimes(4));
     expect(exit).not.toHaveBeenCalled();
     expect(supervisor.children.has('server')).toBe(true);
     expect(supervisor.children.has('client')).toBe(true);
   });
 
-  it('stops all managed processes on SIGINT', () => {
+  it('stops all managed processes on SIGINT', async () => {
     const processLike = createFakeProcess();
     const children = [createFakeChild(), createFakeChild()];
     const exit = vi.fn();
@@ -210,6 +246,6 @@ describe('web runtime supervisor', () => {
 
     processLike.emitSignal('SIGINT');
 
-    expect(exit).toHaveBeenCalledWith(0);
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
   });
 });

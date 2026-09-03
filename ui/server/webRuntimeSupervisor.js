@@ -105,6 +105,8 @@ export function createRuntimeSupervisor({
   let configuration = null;
   let stopping = false;
   let handlingCriticalExit = false;
+  let gatewayStopPromise = null;
+  let shutdownSignal = null;
 
   const sendGatewayState = (state, gatewayError) => {
     const server = children.get('server');
@@ -135,17 +137,51 @@ export function createRuntimeSupervisor({
 
   const stopChild = (name, signal = 'SIGTERM') => {
     const child = children.get(name);
-    if (!child) return;
+    if (!child) return Promise.resolve();
     children.delete(name);
-    if (!child.killed && child.exitCode == null) child.kill(signal);
+    if (child.exitCode != null) return Promise.resolve();
+    return new Promise((resolveStop) => {
+      let settled = false;
+      let timer;
+      let forceExitTimer;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(forceExitTimer);
+        resolveStop();
+      };
+      timer = setTimeout(() => {
+        if (child.exitCode == null) child.kill('SIGKILL');
+        forceExitTimer = setTimeout(finish, 1_000);
+      }, 3_000);
+      child.once('close', finish);
+      if (!child.killed) child.kill(signal);
+    });
   };
 
   const stopAll = (signal = 'SIGTERM') => {
-    for (const name of [...children.keys()].reverse()) stopChild(name, signal);
+    const pendingStops = [...children.keys()]
+      .reverse()
+      .map((name) => stopChild(name, signal));
+    if (gatewayStopPromise) pendingStops.push(gatewayStopPromise);
+    return Promise.all(pendingStops);
+  };
+
+  const stopGateway = (signal = 'SIGTERM') => {
+    if (!children.has('gateway')) return gatewayStopPromise ?? Promise.resolve();
+    gatewayStopPromise = stopChild('gateway', signal).finally(() => {
+      gatewayStopPromise = null;
+    });
+    return gatewayStopPromise;
   };
 
   const startGateway = () => {
     if (configuration?.state !== 'ready' || children.has('gateway') || stopping) return;
+    if (gatewayStopPromise) {
+      void gatewayStopPromise.then(() => startGateway());
+      return;
+    }
     sendGatewayState('starting');
     const { child } = spawnProcess('gateway');
     let reportedFailure = false;
@@ -176,9 +212,8 @@ export function createRuntimeSupervisor({
       })
       .catch((waitError) => {
         if (children.get('gateway') !== child) return;
-        children.delete('gateway');
         reportedFailure = true;
-        child.kill('SIGTERM');
+        void stopGateway();
         const detail = waitError instanceof Error ? waitError.message : String(waitError);
         error(`[runtime-supervisor] Gateway failed readiness check: ${detail}`);
         sendGatewayState('error', detail);
@@ -191,7 +226,7 @@ export function createRuntimeSupervisor({
       if (configuration.state === 'ready') {
         startGateway();
       } else {
-        stopChild('gateway');
+        void stopGateway();
         sendGatewayState('stopped');
       }
       return;
@@ -205,7 +240,12 @@ export function createRuntimeSupervisor({
     if (handlingCriticalExit) return;
     handlingCriticalExit = true;
     stopping = true;
-    stopAll();
+    await stopAll();
+
+    if (shutdownSignal) {
+      exit(shutdownSignal === 'SIGINT' ? 0 : 1);
+      return;
+    }
 
     if (exists(requestFile)) {
       try {
@@ -249,16 +289,17 @@ export function createRuntimeSupervisor({
     }
   };
 
-  const stop = (signal) => {
+  const stop = async (signal) => {
+    shutdownSignal = signal;
     if (stopping) return;
     stopping = true;
-    stopAll(signal);
+    await stopAll(signal);
     exit(signal === 'SIGINT' ? 0 : 1);
   };
 
   const run = () => {
-    processLike.on('SIGINT', () => stop('SIGINT'));
-    processLike.on('SIGTERM', () => stop('SIGTERM'));
+    processLike.on('SIGINT', () => void stop('SIGINT'));
+    processLike.on('SIGTERM', () => void stop('SIGTERM'));
     startRuntime();
   };
 

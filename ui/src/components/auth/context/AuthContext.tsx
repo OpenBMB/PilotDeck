@@ -12,6 +12,7 @@ import type {
   GatewayRuntimeState,
   ModelConfigurationState,
   OnboardingStatusPayload,
+  RuntimeStatusPayload,
 } from '../types';
 import { parseJsonSafely, resolveApiErrorMessage } from '../utils';
 
@@ -57,8 +58,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearStoredToken();
   }, []);
 
-  const checkOnboardingStatus = useCallback(async (showLoading = true) => {
-    if (showLoading) setModelConfiguration({ state: 'loading' });
+  const checkOnboardingStatus = useCallback(async () => {
+    setModelConfiguration({ state: 'loading' });
     try {
       const response = await api.user.onboardingStatus();
       const payload = await parseJsonSafely<OnboardingStatusPayload>(response);
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       // Compatibility with older UI servers during rolling upgrades.
+      setGatewayRuntime({ state: 'unmanaged' });
       setModelConfiguration(payload?.hasCompletedOnboarding
         ? { state: 'ready', modelRef: '', configPath: null, revision: '' }
         : {
@@ -100,18 +102,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await checkOnboardingStatus();
   }, [checkOnboardingStatus]);
 
+  const checkRuntimeStatus = useCallback(async () => {
+    try {
+      const response = await api.user.runtimeStatus();
+      const payload = await parseJsonSafely<RuntimeStatusPayload>(response);
+      if (!response.ok) return;
+      if (payload?.configuration) setModelConfiguration(payload.configuration);
+      if (payload?.gateway) setGatewayRuntime(payload.gateway);
+    } catch (caughtError) {
+      console.error('Error checking runtime status:', caughtError);
+    }
+  }, []);
+
   useEffect(() => {
     if (
       modelConfiguration.state !== 'ready'
-      || (gatewayRuntime.state !== 'stopped' && gatewayRuntime.state !== 'starting')
+      || gatewayRuntime.state === 'unmanaged'
+      || gatewayRuntime.state === 'error'
     ) {
       return undefined;
     }
-    const timer = window.setTimeout(() => {
-      void checkOnboardingStatus(false);
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [checkOnboardingStatus, gatewayRuntime.state, modelConfiguration.state]);
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = () => {
+      timer = window.setTimeout(async () => {
+        await checkRuntimeStatus();
+        if (!cancelled) poll();
+      }, gatewayRuntime.state === 'ready' ? 3_000 : 500);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [checkRuntimeStatus, gatewayRuntime.state, modelConfiguration.state]);
 
   const retryGateway = useCallback(async () => {
     setGatewayRuntime({ state: 'starting' });
@@ -125,14 +149,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
         return;
       }
-      await checkOnboardingStatus(false);
+      await checkRuntimeStatus();
     } catch (caughtError) {
       setGatewayRuntime({
         state: 'error',
         error: caughtError instanceof Error ? caughtError.message : 'Failed to restart Gateway',
       });
     }
-  }, [checkOnboardingStatus]);
+  }, [checkRuntimeStatus]);
 
   const checkAuthStatus = useCallback(async () => {
     try {

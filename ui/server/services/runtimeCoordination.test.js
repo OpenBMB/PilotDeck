@@ -20,6 +20,7 @@ describe('runtime coordination', () => {
     });
 
     expect(coordination.publishConfigurationState()).toBe(configuration);
+    expect(coordination.getConfigurationState()).toBe(configuration);
     expect(processLike.send).toHaveBeenCalledWith({
       type: 'pilotdeck:configuration-state',
       configuration,

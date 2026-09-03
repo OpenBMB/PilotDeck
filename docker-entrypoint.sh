@@ -21,7 +21,7 @@ fi
 if [ ! -f "$CONFIG_FILE" ]; then
   MODEL="${PILOTDECK_MODEL:-openrouter/deepseek/deepseek-v4-flash}"
   LIGHT_MODEL="${PILOTDECK_LIGHT_MODEL:-openrouter/qwen/qwen3-8b}"
-  API_KEY="${PILOTDECK_API_KEY:-PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE}"
+  API_KEY="${PILOTDECK_API_KEY:-}"
   API_URL="${PILOTDECK_API_URL:-https://openrouter.ai/api/v1}"
 
   # Derive provider name from model string (e.g. "openrouter/deepseek/deepseek-v4-flash" -> "openrouter")
@@ -30,6 +30,10 @@ if [ ! -f "$CONFIG_FILE" ]; then
   # Model ID is everything after the first slash
   MODEL_ID="${MODEL#*/}"
   LIGHT_MODEL_ID="${LIGHT_MODEL#*/}"
+
+  if [ -z "$API_KEY" ]; then
+    echo "[pilotdeck-docker] No model credential supplied; starting the Web UI for onboarding."
+  else
 
   # Router section shared by both same-provider and cross-provider branches
   ROUTER_SECTION="router:
@@ -134,6 +138,7 @@ YAML
   fi
 
   echo "[pilotdeck-docker] Generated config at $CONFIG_FILE (provider=$PROVIDER, model=$MODEL, light=$LIGHT_MODEL)"
+  fi
 fi
 
 # ── Forward proxy env vars ────────────────────────────────────────────
@@ -145,49 +150,16 @@ if [ -n "${PILOTDECK_PROXY:-}" ]; then
   echo "[pilotdeck-docker] Proxy set to $PILOTDECK_PROXY"
 fi
 
-echo "[pilotdeck-docker] Starting PilotDeck (gateway + UI server)..."
+echo "[pilotdeck-docker] Starting PilotDeck Web UI; Gateway will start after model configuration is ready..."
 echo "[pilotdeck-docker] Config: $CONFIG_FILE"
 echo "[pilotdeck-docker] UI will be available at http://0.0.0.0:${SERVER_PORT:-3001}"
 
 # ── Remove stale auth token so the bridge never uses a leftover value ──
 rm -f "$PILOT_HOME/server-token"
 
-# ── Start gateway + UI server via concurrently ────────────────────────
-# The bridge retries for PILOTDECK_BRIDGE_TIMEOUT ms (default 30s) which
-# may be too short on cold Docker starts. We first wait for the gateway
-# health endpoint before launching the bridge, eliminating the race.
+# ── Start supervised runtime ──────────────────────────────────────────
 cd /app
 
 GATEWAY_PORT="${PILOTDECK_GATEWAY_PORT:-18789}"
-GATEWAY_HEALTH_URL="http://127.0.0.1:${GATEWAY_PORT}/health"
-GATEWAY_READY_TIMEOUT="${PILOTDECK_GATEWAY_READY_TIMEOUT:-120}"
-
-wait_for_gateway() {
-  echo "[pilotdeck-docker] Waiting for gateway to become ready (timeout=${GATEWAY_READY_TIMEOUT}s)..."
-  local elapsed=0
-  while [ "$elapsed" -lt "$GATEWAY_READY_TIMEOUT" ]; do
-    if curl -sf "$GATEWAY_HEALTH_URL" > /dev/null 2>&1; then
-      echo "[pilotdeck-docker] Gateway is ready (took ${elapsed}s)."
-      return 0
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-  echo "[pilotdeck-docker] WARNING: Gateway did not become ready within ${GATEWAY_READY_TIMEOUT}s, starting bridge anyway." >&2
-  return 0
-}
-
-node dist/src/cli/pilotdeck.js server &
-GATEWAY_PID=$!
-
-wait_for_gateway
-
-node --import tsx ui/server/index.js &
-BRIDGE_PID=$!
-
-# If either process exits, kill the other and propagate the exit code.
-wait -n $GATEWAY_PID $BRIDGE_PID 2>/dev/null
-EXIT_CODE=$?
-kill $GATEWAY_PID $BRIDGE_PID 2>/dev/null
-wait $GATEWAY_PID $BRIDGE_PID 2>/dev/null
-exit $EXIT_CODE
+export PILOTDECK_GATEWAY_URL="${PILOTDECK_GATEWAY_URL:-ws://127.0.0.1:${GATEWAY_PORT}/ws}"
+exec node ui/server/webRuntimeSupervisor.js start-built

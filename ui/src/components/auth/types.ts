@@ -31,6 +31,12 @@ export type OnboardingStatusPayload = {
   error?: string;
 };
 
+export type RuntimeStatusPayload = {
+  configuration?: ServerModelConfigurationState;
+  gateway?: GatewayRuntimeState;
+  error?: string;
+};
+
 export type ModelConfigurationReason =
   | 'missing_config'
   | 'missing_model'

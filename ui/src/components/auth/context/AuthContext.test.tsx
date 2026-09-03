@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 
 const mocks = vi.hoisted(() => ({
   onboardingStatus: vi.fn(),
+  runtimeStatus: vi.fn(),
 }));
 
 vi.mock('../../../constants/config', () => ({
@@ -15,7 +16,11 @@ vi.mock('../../../constants/config', () => ({
 vi.mock('../../../utils/api', () => ({
   api: {
     auth: {},
-    user: { onboardingStatus: mocks.onboardingStatus, retryGateway: vi.fn() },
+    user: {
+      onboardingStatus: mocks.onboardingStatus,
+      runtimeStatus: mocks.runtimeStatus,
+      retryGateway: vi.fn(),
+    },
   },
 }));
 
@@ -27,6 +32,7 @@ function StateProbe() {
 describe('AuthContext model configuration state', () => {
   beforeEach(() => {
     mocks.onboardingStatus.mockReset();
+    mocks.runtimeStatus.mockReset();
   });
 
   afterEach(() => {
@@ -61,5 +67,51 @@ describe('AuthContext model configuration state', () => {
     await waitFor(() => {
       expect(screen.getByText('needs_configuration')).toBeTruthy();
     });
+  });
+
+  it('keeps polling while Gateway remains in its starting state', async () => {
+    mocks.onboardingStatus.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        configuration: {
+          state: 'ready',
+          modelRef: 'openai/gpt-5',
+          configPath: '/tmp/pilotdeck.yaml',
+          revision: 'revision',
+        },
+        gateway: { state: 'starting' },
+      }),
+    });
+    mocks.runtimeStatus
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          configuration: {
+            state: 'ready',
+            modelRef: 'openai/gpt-5',
+            configPath: '/tmp/pilotdeck.yaml',
+            revision: 'revision',
+          },
+          gateway: { state: 'starting' },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          configuration: {
+            state: 'ready',
+            modelRef: 'openai/gpt-5',
+            configPath: '/tmp/pilotdeck.yaml',
+            revision: 'revision',
+          },
+          gateway: { state: 'ready' },
+        }),
+      });
+
+    render(<AuthProvider><StateProbe /></AuthProvider>);
+
+    await waitFor(() => {
+      expect(mocks.runtimeStatus).toHaveBeenCalledTimes(2);
+    }, { timeout: 2_000 });
   });
 });

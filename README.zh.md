@@ -399,16 +399,10 @@ corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 PilotDeck 使用仓库提交的 `pnpm-lock.yaml` 保证源码安装可复现。上述过滤参数会避免 Web 部署安装 Electron 打包依赖。请优先使用上面的 `corepack pnpm ...`，不要改用 `npm install`；在 macOS 上，这也能减少原生依赖不必要地回退到源码编译的概率。
 
 **2. 配置模型 Provider**
-PilotDeck 依赖 `~/.pilotdeck/pilotdeck.yaml` 进行配置。您可以手动创建、运行启动脚本自动生成，**或者在启动 Web UI 后直接在设置界面中进行可视化配置**。
+PilotDeck 依赖 `~/.pilotdeck/pilotdeck.yaml` 进行配置。您可以手动创建，**或者启动 Web UI 后直接在 onboarding 中进行可视化配置**。
 支持 OpenAI、Anthropic、原生 Google Gemini、DeepSeek、Qwen、Kimi、MiniMax 等多种协议。
 
-如果本机还没有配置文件，生产模式启动前请先准备 Web UI 的首次 onboarding 流程：
-
-```bash
-node scripts/bootstrap-pilotdeck-config.mjs
-```
-
-该命令会初始化 `~/.pilotdeck/pilotdeck.yaml`，让 Gateway 可以启动并进入首次 onboarding。随后打开 Web UI，在 onboarding/设置面板中完成 Provider 和 API Key 配置。
+如果配置文件不存在，PilotDeck 会先启动 Web UI 而不启动 Gateway，并直接进入 onboarding。保存有效的 Provider、API Key 和模型后，PilotDeck 会写入配置并自动启动 Gateway。
 
 ```yaml
 schemaVersion: 1

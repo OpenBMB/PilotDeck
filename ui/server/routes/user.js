@@ -2,7 +2,6 @@ import express from 'express';
 import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
-import { getModelConfigurationState } from '../services/modelConfigurationState.js';
 import { runtimeCoordination } from '../services/runtimeCoordination.js';
 import { spawn } from 'child_process';
 
@@ -119,7 +118,7 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const configuration = getModelConfigurationState();
+    const configuration = runtimeCoordination.publishConfigurationState();
 
     res.json({
       success: true,
@@ -133,21 +132,41 @@ router.get('/onboarding-status', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/runtime/gateway/retry', authenticateToken, async (req, res) => {
-  const configuration = runtimeCoordination.publishConfigurationState();
-  if (configuration.state !== 'ready') {
-    return res.status(409).json({
-      error: 'Model configuration is not ready',
+router.get('/runtime-status', authenticateToken, async (req, res) => {
+  try {
+    const configuration = runtimeCoordination.getConfigurationState()
+      ?? runtimeCoordination.publishConfigurationState();
+    return res.json({
+      success: true,
       configuration,
-    });
-  }
-  if (!runtimeCoordination.requestGatewayRetry()) {
-    return res.status(409).json({
-      error: 'Gateway is not managed by this UI server',
       gateway: runtimeCoordination.getGatewayState(),
     });
+  } catch (error) {
+    console.error('Error checking runtime status:', error);
+    return res.status(500).json({ error: 'Failed to check runtime status' });
   }
-  return res.status(202).json({ success: true });
+});
+
+router.post('/runtime/gateway/retry', authenticateToken, async (req, res) => {
+  try {
+    const configuration = runtimeCoordination.publishConfigurationState();
+    if (configuration.state !== 'ready') {
+      return res.status(409).json({
+        error: 'Model configuration is not ready',
+        configuration,
+      });
+    }
+    if (!runtimeCoordination.requestGatewayRetry()) {
+      return res.status(409).json({
+        error: 'Gateway is not managed by this UI server',
+        gateway: runtimeCoordination.getGatewayState(),
+      });
+    }
+    return res.status(202).json({ success: true });
+  } catch (error) {
+    console.error('Error restarting Gateway:', error);
+    return res.status(500).json({ error: 'Failed to restart Gateway' });
+  }
 });
 
 export default router;

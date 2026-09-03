@@ -489,6 +489,7 @@ export const api = {
         body: JSON.stringify({ gitName, gitEmail }),
       }),
     onboardingStatus: () => authenticatedFetch('/api/user/onboarding-status'),
+    runtimeStatus: () => authenticatedFetch('/api/user/runtime-status'),
     retryGateway: () => authenticatedFetch('/api/user/runtime/gateway/retry', {
       method: 'POST',
     }),

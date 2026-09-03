@@ -32,10 +32,9 @@
  *     re-shapes gateway events into the legacy NormalizedMessage frames
  *     the React frontend reducer still expects.
  *
- * The pair is started together via `cd ui && npm run dev` (or
- * `npm start`), which uses `concurrently` to launch both. Either order
- * is fine — the bridge retries the WebSocket handshake for
- * `GATEWAY_CONNECT_TIMEOUT_MS` so race conditions resolve themselves.
+ * The runtime supervisor starts the UI server first, then starts the Gateway
+ * after model configuration is ready. The bridge still retries the WebSocket
+ * handshake for `GATEWAY_CONNECT_TIMEOUT_MS` while Gateway is starting.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -76,10 +75,8 @@ const GATEWAY_URL =
 const GATEWAY_TOKEN_PATH =
     process.env.PILOTDECK_GATEWAY_TOKEN_PATH ||
     path.join(GENERAL_HOME, 'server-token');
-// The two processes (gateway + bridge) are typically started in
-// parallel by `concurrently`. We allow up to 30 s for the gateway to
-// come up before failing the first call — covers cold MCP startup on
-// slower machines.
+// Gateway starts only after model configuration is ready. Allow enough time
+// for a cold MCP startup before failing the first call.
 const GATEWAY_CONNECT_TIMEOUT_MS =
     Number.parseInt(process.env.PILOTDECK_BRIDGE_TIMEOUT ?? '', 10) || 60_000;
 const GATEWAY_CONNECT_RETRY_INTERVAL_MS = 500;

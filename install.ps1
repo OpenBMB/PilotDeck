@@ -541,7 +541,6 @@ for (`$i = 0; `$i -lt `$args.Count; `$i++) {
 `$env:SERVER_PORT = [string](Find-FreePort `$ServerPort)
 `$env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort `$GatewayPort)
 `$env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:`$env:PILOTDECK_GATEWAY_PORT/ws"
-& node (Join-Path `$InstallDir 'scripts\bootstrap-pilotdeck-config.mjs')
 Write-Host "pilotdeck: starting at http://localhost:`$env:SERVER_PORT"
 Set-Location (Join-Path `$InstallDir 'ui')
 & `$NpmPath run start:built
@@ -549,12 +548,6 @@ Set-Location (Join-Path `$InstallDir 'ui')
 
   if (-not $NoPathUpdate) { Add-UserPath $binDir }
   Write-Ok "pilotdeck launcher written to $cmdPath"
-}
-
-function Bootstrap-Config {
-  $env:PILOTDECK_CONFIG_PATH = $ConfigPath
-  & node (Join-Path $InstallDir 'scripts\bootstrap-pilotdeck-config.mjs')
-  if ($LASTEXITCODE -ne 0) { Write-Fail 'Config bootstrap failed' }
 }
 
 Ensure-NodeRuntime
@@ -571,8 +564,6 @@ $env:PILOTDECK_RESTART_MODE = 'start-built'
 $env:SERVER_PORT = [string](Find-FreePort $ServerPort)
 $env:PILOTDECK_GATEWAY_PORT = [string](Find-FreePort $GatewayPort)
 $env:PILOTDECK_GATEWAY_URL = "ws://127.0.0.1:$env:PILOTDECK_GATEWAY_PORT/ws"
-Bootstrap-Config
-
 Write-Host ''
 Write-Host 'Installation complete!' -ForegroundColor Green
 Write-Host "  App location: $InstallDir"

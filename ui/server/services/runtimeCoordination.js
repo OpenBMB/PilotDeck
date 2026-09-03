@@ -12,6 +12,7 @@ export function createRuntimeCoordination({
   const supervised = env.PILOTDECK_RUNTIME_SUPERVISED === '1'
     && typeof processLike.send === 'function';
   let gateway = supervised ? { state: 'stopped' } : { state: 'unmanaged' };
+  let configuration = null;
 
   const onMessage = (message) => {
     if (message?.type !== GATEWAY_STATE_MESSAGE) return;
@@ -37,8 +38,11 @@ export function createRuntimeCoordination({
     getGatewayState() {
       return { ...gateway };
     },
+    getConfigurationState() {
+      return configuration;
+    },
     publishConfigurationState() {
-      const configuration = readConfigurationState();
+      configuration = readConfigurationState();
       send({ type: CONFIGURATION_MESSAGE, configuration });
       return configuration;
     },
