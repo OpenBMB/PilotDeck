@@ -51,6 +51,7 @@ const APP_ID = "cn.pilotdeck.desktop";
 const EXTERNAL_NAVIGATION_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
 const PLAYWRIGHT_BROWSER_DIR = "playwright-browsers";
 const DEFAULT_UPDATE_REPOSITORY = "OpenBMB/PilotDeck";
+const PROCESS_LAUNCH_CWD = process.cwd();
 
 type BuildMetadata = {
   version?: string;
@@ -119,8 +120,15 @@ class RuntimeManager {
     const playwrightBrowsersPath = resolvePlaywrightBrowsersPath(this.runtimeRoot);
     const buildMetadata = readBuildMetadata();
     this.log(`Playwright browsers path: ${playwrightBrowsersPath}`);
+    const inheritedEnv = { ...process.env };
+    const configuredConfigPath = inheritedEnv.PILOTDECK_CONFIG_PATH?.trim();
+    if (configuredConfigPath) {
+      inheritedEnv.PILOTDECK_CONFIG_PATH = path.resolve(PROCESS_LAUNCH_CWD, configuredConfigPath);
+    } else {
+      delete inheritedEnv.PILOTDECK_CONFIG_PATH;
+    }
     const commonEnv = withRuntimeCommandPath({
-      ...process.env,
+      ...inheritedEnv,
       HOME: process.env.HOME || os.homedir(),
       HOST: "127.0.0.1",
       PILOTDECK_RUNTIME_ROOT: this.runtimeRoot,
@@ -147,14 +155,6 @@ class RuntimeManager {
     this.commonEnv = commonEnv;
     this.pilotHome = config.pilotHome;
     this.gatewayPort = gatewayPort;
-    this.info = {
-      serverPort,
-      gatewayPort,
-      gateway: this.gatewayState,
-      runtimeRoot: this.runtimeRoot,
-      logPath: this.logPath,
-    };
-
     publishRuntimeStatus({
       phase: "server",
       message: "Starting Web UI server...",
@@ -171,6 +171,13 @@ class RuntimeManager {
     server.on("message", (message) => this.handleServerMessage(message));
     await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
 
+    this.info = {
+      serverPort,
+      gatewayPort,
+      gateway: this.gatewayState,
+      runtimeRoot: this.runtimeRoot,
+      logPath: this.logPath,
+    };
     this.log(`PilotDeck Web UI ready: http://127.0.0.1:${serverPort}`);
     if (!this.configurationState || this.configurationState.state !== "ready") {
       publishRuntimeStatus({
@@ -436,11 +443,18 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
   }
   const runtimeRoot = resolveRuntimeRoot();
   const nodeBinary = resolveNodeBinary();
-  runtime = new RuntimeManager(runtimeRoot, nodeBinary);
-  runtimeStartPromise = runtime.start().finally(() => {
-    runtimeStartPromise = null;
+  const candidate = new RuntimeManager(runtimeRoot, nodeBinary);
+  runtime = candidate;
+  const pending = candidate.start().catch(async (error) => {
+    await candidate.stop().catch(() => undefined);
+    throw error;
   });
-  return runtimeStartPromise;
+  runtimeStartPromise = pending;
+  const clearPending = () => {
+    if (runtimeStartPromise === pending) runtimeStartPromise = null;
+  };
+  void pending.then(clearPending, clearPending);
+  return pending;
 }
 
 async function createOrShowWindow(): Promise<void> {

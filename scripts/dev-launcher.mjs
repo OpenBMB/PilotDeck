@@ -27,12 +27,19 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
+const launchConfigPath = resolveLaunchConfigPath(process.env.PILOTDECK_CONFIG_PATH);
+
+export function resolveLaunchConfigPath(value, launchCwd = process.cwd()) {
+  const configuredPath = typeof value === 'string' ? value.trim() : '';
+  return configuredPath ? resolve(launchCwd, configuredPath) : undefined;
+}
 
 function readYamlPortConfig() {
   const home = process.env.PILOT_HOME || join(homedir(), '.pilotdeck');
-  const configPath = process.env.PILOTDECK_CONFIG_PATH || join(home, 'pilotdeck.yaml');
+  const configPath = launchConfigPath || join(home, 'pilotdeck.yaml');
   try {
     const raw = readFileSync(configPath, 'utf8');
     const config = parseYaml(raw);
@@ -122,6 +129,8 @@ async function main() {
     PILOTDECK_RESTART_MODE: 'dev',
     VITE_PORT: String(vite.port),
   };
+  if (launchConfigPath) env.PILOTDECK_CONFIG_PATH = launchConfigPath;
+  else delete env.PILOTDECK_CONFIG_PATH;
 
   const child = spawn(
     process.execPath,
@@ -144,7 +153,9 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

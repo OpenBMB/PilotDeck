@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { resolveLaunchConfigPath } from '../../scripts/dev-launcher.mjs';
 import {
   createRuntimeSupervisor,
   getRuntimeCommands,
@@ -91,6 +92,13 @@ describe('web runtime supervisor', () => {
     const expectedPath = path.resolve(relativeConfigPath);
     expect(spawnImpl.mock.calls[0][2].env.PILOTDECK_CONFIG_PATH).toBe(expectedPath);
     expect(spawnImpl.mock.calls[1][2].env.PILOTDECK_CONFIG_PATH).toBe(expectedPath);
+  });
+
+  it('resolves a dev config path before changing to the repository root', () => {
+    const launchCwd = path.join(process.cwd(), 'nested', 'ui');
+    expect(resolveLaunchConfigPath('../custom.yaml', launchCwd)).toBe(
+      path.resolve(launchCwd, '../custom.yaml'),
+    );
   });
 
   it('keeps Gateway stopped while configuration is missing', () => {

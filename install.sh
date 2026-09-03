@@ -9,6 +9,11 @@ REPO_URL="${PILOTDECK_REPO_URL:-https://github.com/OpenBMB/PilotDeck.git}"
 BRANCH="${PILOTDECK_BRANCH:-main}"
 INSTALL_DIR="${PILOTDECK_INSTALL_DIR:-$HOME/.pilotdeck/app}"
 CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
+LAUNCH_DIR="$(pwd -P)"
+case "$CONFIG_FILE" in
+  /*) ;;
+  *) CONFIG_FILE="$LAUNCH_DIR/$CONFIG_FILE" ;;
+esac
 BIN_LINK="${PILOTDECK_BIN_LINK:-/usr/local/bin/pilotdeck}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
 MIN_NODE_VERSION="22.13.0"
@@ -1206,6 +1211,7 @@ while [[ -L "$SOURCE" ]]; do
   fi
 done
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+LAUNCH_DIR="$(pwd -P)"
 CONFIG_FILE="${PILOTDECK_CONFIG_PATH:-$HOME/.pilotdeck/pilotdeck.yaml}"
 MAX_PORT_TRIES="${PILOTDECK_MAX_PORT_TRIES:-20}"
 MIN_NODE_VERSION="22.13.0"
@@ -1402,6 +1408,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$CONFIG_FILE" in
+  /*) ;;
+  *) CONFIG_FILE="$LAUNCH_DIR/$CONFIG_FILE" ;;
+esac
 
 if [[ "$COMMAND" == "help" ]]; then
   cat <<HELP
