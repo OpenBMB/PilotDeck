@@ -27,6 +27,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [modelListMessage, setModelListMessage] = useState('');
   const [customProviderId, setCustomProviderId] = useState('');
   const [customProtocol, setCustomProtocol] = useState<CatalogProviderProtocol>('openai');
+  const [connectionTestId, setConnectionTestId] = useState('');
   const testGenerationRef = useRef(0);
   const testAbortRef = useRef<AbortController | null>(null);
 
@@ -73,6 +74,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     testAbortRef.current = null;
     setTestStatus('idle');
     setTestMessage('');
+    setConnectionTestId('');
     setModelImageSupport({});
     setManualModelIds([]);
   }, []);
@@ -195,6 +197,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     setCustomProtocol('openai');
     setTestStatus('idle');
     setTestMessage('');
+    setConnectionTestId('');
     setModelImageSupport({});
     setManualModelIds([]);
   }, []);
@@ -239,49 +242,57 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     testAbortRef.current = controller;
     setTestStatus('testing');
     setTestMessage('');
+    setConnectionTestId('');
     setManualModelIds([]);
     try {
-      const nextSupport: Record<string, ModelImageSupport> = { ...modelImageSupport };
-      for (const modelId of effectiveModelIds) {
-        const previous = nextSupport[modelId];
-        const skipImage = previous?.source === 'manual' && typeof previous.supportsImage === 'boolean';
-        const res = await authenticatedFetch('/api/config/test-connection', {
-          method: 'POST',
-          body: JSON.stringify({
-            providerType: effectiveProtocol,
-            providerId: effectiveProviderId,
-            baseUrl: effectiveUrl,
-            apiKey: apiKey.trim(),
-            model: modelId,
-            skipImage,
-          }),
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted || generation !== testGenerationRef.current) return;
-        const data = await res.json();
-        if (controller.signal.aborted || generation !== testGenerationRef.current) return;
-        if (!data.ok) {
-          setModelImageSupport(nextSupport);
-          setTestStatus('error');
-          setTestMessage(data.error || `Connection failed for ${modelId}.`);
-          return;
-        }
-        if (skipImage) continue;
-        const source = data.imageCheckSource === 'catalog' || data.imageCheckSource === 'probe'
-          ? data.imageCheckSource
-          : 'probe';
-        nextSupport[modelId] = {
-          supportsImage: data.supportsImage === true ? true : data.supportsImage === false ? false : null,
-          source,
+      const res = await authenticatedFetch('/api/config/test-connections', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: effectiveProviderId,
+          protocol: effectiveProtocol,
+          endpoint: effectiveUrl,
+          apiKey: apiKey.trim(),
+          models: effectiveModelIds,
+          retryPolicy: {},
+        }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || generation !== testGenerationRef.current) return;
+      const data = await res.json();
+      if (controller.signal.aborted || generation !== testGenerationRef.current) return;
+      if (!res.ok || data.status === 'failed' || typeof data.testId !== 'string') {
+        const message = typeof data.error === 'string'
+          ? data.error
+          : data.error?.message || data.message || 'Connection failed.';
+        setTestStatus('error');
+        setTestMessage(message);
+        return;
+      }
+      const nextSupport: Record<string, ModelImageSupport> = {};
+      for (const model of Array.isArray(data.models) ? data.models : []) {
+        if (!effectiveModelIds.includes(model.modelId)) continue;
+        nextSupport[model.modelId] = {
+          supportsImage: model.imageInput === 'supported'
+            ? true
+            : model.imageInput === 'unsupported'
+              ? false
+              : null,
+          source: model.imageInput === 'unknown' ? null : 'probe',
         };
       }
-      if (controller.signal.aborted || generation !== testGenerationRef.current) return;
+      setConnectionTestId(data.testId);
       setModelImageSupport(nextSupport);
       const unresolved = effectiveModelIds.filter((id) => nextSupport[id]?.supportsImage == null);
-      if (unresolved.length > 0) {
+      if (data.status === 'manual_input_required' && unresolved.length > 0) {
         setManualModelIds(unresolved);
         setTestStatus('manual');
         setTestMessage('');
+        return;
+      }
+      if (data.status !== 'passed' || unresolved.length > 0) {
+        setConnectionTestId('');
+        setTestStatus('error');
+        setTestMessage(data.error?.message || 'Connection test returned an incomplete result.');
         return;
       }
       setTestStatus('success');
@@ -293,20 +304,39 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     } finally {
       if (testAbortRef.current === controller) testAbortRef.current = null;
     }
-  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, isCustomMode, modelImageSupport, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
+  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, isCustomMode, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
 
-  const submitManualImageSupport = useCallback((values: Record<string, boolean>) => {
-    setModelImageSupport((current) => {
-      const next = { ...current };
-      for (const [modelId, supportsImage] of Object.entries(values)) {
-        next[modelId] = { supportsImage, source: 'manual' };
+  const submitManualImageSupport = useCallback(async (values: Record<string, boolean>) => {
+    if (!connectionTestId) return;
+    try {
+      const res = await authenticatedFetch(`/api/config/test-connections/${connectionTestId}/image-capabilities`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          models: Object.entries(values).map(([modelId, supportsImage]) => ({
+            modelId,
+            imageInput: supportsImage ? 'supported' : 'unsupported',
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== 'passed') {
+        throw new Error(data.error?.message || data.message || 'Image capability confirmation failed.');
       }
-      return next;
-    });
-    setManualModelIds([]);
-    setTestStatus('success');
-    setTestMessage('Connected successfully.');
-  }, []);
+      setModelImageSupport((current) => {
+        const next = { ...current };
+        for (const [modelId, supportsImage] of Object.entries(values)) {
+          next[modelId] = { supportsImage, source: 'manual' };
+        }
+        return next;
+      });
+      setManualModelIds([]);
+      setTestStatus('success');
+      setTestMessage('Connected successfully.');
+    } catch (err) {
+      setTestStatus('error');
+      setTestMessage(err instanceof Error ? err.message : 'Image capability confirmation failed.');
+    }
+  }, [connectionTestId]);
 
   const cancelManualImageSupport = useCallback(() => {
     setManualModelIds([]);
@@ -333,6 +363,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       const modelId = effectiveModelId;
       if (!providerId) throw new Error('Provider ID is required.');
       if (!modelId) throw new Error('At least one model ID is required.');
+      if (!connectionTestId) throw new Error('A passing connection test is required.');
       if (effectiveModelIds.some((id) => typeof modelImageSupport[id]?.supportsImage !== 'boolean')) {
         throw new Error('Image capability must be confirmed for every model.');
       }
@@ -393,7 +424,10 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
 
       const saveRes = await authenticatedFetch('/api/config', {
         method: 'PUT',
-        body: JSON.stringify({ raw: stringifyYaml(existingConfig, { indent: 2, lineWidth: 0 }) }),
+        body: JSON.stringify({
+          raw: stringifyYaml(existingConfig, { indent: 2, lineWidth: 0 }),
+          modelTestBindings: [{ testId: connectionTestId }],
+        }),
       });
 
       if (!saveRes.ok) {
@@ -409,7 +443,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     } finally {
       setSaving(false);
     }
-  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, onSaved, selectedProvider]);
+  }, [apiKey, connectionTestId, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, onSaved, selectedProvider]);
 
   return {
     selectedProvider,

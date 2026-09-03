@@ -9,6 +9,15 @@ const mocks = vi.hoisted(() => ({
   fetchRemoteDefaultModels: vi.fn(),
 }));
 
+const connectionTestResult = (modelId: string, imageInput: 'supported' | 'unsupported' | 'unknown' = 'unsupported') => ({
+  testId: 'test-123',
+  status: imageInput === 'unknown' ? 'manual_input_required' : 'passed',
+  models: [{ modelId, textInput: 'supported', imageInput, error: null }],
+  error: imageInput === 'unknown'
+    ? { code: 'IMAGE_CAPABILITY_UNKNOWN', message: 'Manual input required.' }
+    : null,
+});
+
 vi.mock('react-i18next', async () => {
   const enOnboarding = (await import('../../../../i18n/locales/en/onboarding.json')).default as Record<string, unknown>;
   const lookupTranslation = (key: string) => {
@@ -153,7 +162,7 @@ describe('LlmConfigurationStep', () => {
 
     expect(await screen.findByText('Select at least one model ID before testing the connection.')).toBeTruthy();
     expect(mocks.authenticatedFetch).not.toHaveBeenCalledWith(
-      '/api/config/test-connection',
+      '/api/config/test-connections',
       expect.anything(),
     );
 
@@ -204,10 +213,10 @@ describe('LlmConfigurationStep', () => {
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
 
     mocks.authenticatedFetch.mockImplementation(async (url: string) => {
-      if (url === '/api/config/test-connection') {
+      if (url === '/api/config/test-connections') {
         return {
           ok: true,
-          json: async () => ({ ok: true, supportsImage: false, imageCheckSource: 'catalog' }),
+          json: async () => connectionTestResult('deepseek-v4-pro'),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -216,10 +225,10 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
 
     await waitFor(() => {
-      const testCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/test-connection');
+      const testCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/test-connections');
       expect(testCalls).toHaveLength(1);
       expect(JSON.parse(String(testCalls[0]?.[1]?.body))).toEqual(expect.objectContaining({
-        model: 'deepseek-v4-pro',
+        models: ['deepseek-v4-pro'],
       }));
     });
 
@@ -280,10 +289,10 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
       }
-      if (url === '/api/config/test-connection') {
+      if (url === '/api/config/test-connections') {
         return {
           ok: true,
-          json: async () => ({ ok: true, supportsImage: true, imageCheckSource: 'probe' }),
+          json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
         };
       }
       if (url === '/api/config') {
@@ -309,17 +318,19 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
 
     await waitFor(() => {
-      const testCall = calls.find((call) => call.url === '/api/config/test-connection');
+      const testCall = calls.find((call) => call.url === '/api/config/test-connections');
       expect(testCall).toBeTruthy();
       expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({
         providerId: 'modelbest',
-        providerType: 'openai',
-        baseUrl: 'https://llm-center.modelbest.co/v1',
-        model: 'gpt-5.6-luna',
+        protocol: 'openai',
+        endpoint: 'https://llm-center.modelbest.co/v1',
+        models: ['gpt-5.6-luna'],
       });
       const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
-      expect(JSON.parse(String(saveCall?.init?.body)).raw).toContain('modelbest:');
-      expect(JSON.parse(String(saveCall?.init?.body)).raw).toContain('gpt-5.6-luna');
+      const saveBody = JSON.parse(String(saveCall?.init?.body));
+      expect(saveBody.raw).toContain('modelbest:');
+      expect(saveBody.raw).toContain('gpt-5.6-luna');
+      expect(saveBody.modelTestBindings).toEqual([{ testId: 'test-123' }]);
     });
   });
 
@@ -330,7 +341,7 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
       }
-      if (url === '/api/config/test-connection') return pendingTest;
+      if (url === '/api/config/test-connections') return pendingTest;
       if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
       return { ok: true, json: async () => ({}) };
     });
@@ -349,7 +360,7 @@ describe('LlmConfigurationStep', () => {
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-new' } });
     resolveTest({
       ok: true,
-      json: async () => ({ ok: true, supportsImage: true, imageCheckSource: 'probe' }),
+      json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
     } as Response);
 
     await waitFor(() => expect(screen.queryByRole('button', { name: /Test passed/i })).toBeNull());
@@ -365,10 +376,10 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
       }
-      if (url === '/api/config/test-connection') {
+      if (url === '/api/config/test-connections') {
         return {
           ok: true,
-          json: async () => ({ ok: true, supportsImage: false, imageCheckSource: 'catalog' }),
+          json: async () => connectionTestResult('gpt-5.6-luna'),
         };
       }
       if (url === '/api/config') {
@@ -389,7 +400,7 @@ describe('LlmConfigurationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
 
     expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
-    const testCall = calls.find((call) => call.url === '/api/config/test-connection');
+    const testCall = calls.find((call) => call.url === '/api/config/test-connections');
     expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({ providerId: 'modelbest' });
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
@@ -408,11 +419,14 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null }) };
       }
-      if (url === '/api/config/test-connection') {
+      if (url === '/api/config/test-connections') {
         return {
           ok: true,
-          json: async () => ({ ok: true, supportsImage: null, imageCheckSource: 'probe' }),
+          json: async () => connectionTestResult('gpt-5.6-luna', 'unknown'),
         };
+      }
+      if (url === '/api/config/test-connections/test-123/image-capabilities') {
+        return { ok: true, json: async () => connectionTestResult('gpt-5.6-luna') };
       }
       return { ok: true, json: async () => ({ raw: '' }) };
     });
@@ -445,8 +459,8 @@ describe('LlmConfigurationStep', () => {
     mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
       if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
-      if (url === '/api/config/test-connection') {
-        return { ok: true, json: async () => ({ ok: true, supportsImage: false, imageCheckSource: 'catalog' }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: true, json: async () => connectionTestResult('gpt-5.6-luna') };
       }
       if (url === '/api/config' && init?.method === 'PUT') return pendingSave;
       return { ok: true, json: async () => ({ raw: '' }) };
@@ -483,7 +497,7 @@ describe('LlmConfigurationStep', () => {
     const signals: AbortSignal[] = [];
     mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
-      if (url === '/api/config/test-connection') {
+      if (url === '/api/config/test-connections') {
         if (init?.signal) signals.push(init.signal);
         return pendingTest;
       }
@@ -524,7 +538,7 @@ describe('LlmConfigurationStep', () => {
 
     expect(screen.getByText(/reserved/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
-    expect(calls).not.toContain('/api/config/test-connection');
+    expect(calls).not.toContain('/api/config/test-connections');
   });
 });
 
