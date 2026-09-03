@@ -158,6 +158,29 @@ model:
     });
   });
 
+  it('uses the Gateway model environment override when deciding readiness', () => {
+    useTempConfig(`
+schemaVersion: 1
+agent:
+  model: ''
+model:
+  providers:
+    custom:
+      protocol: openai
+      url: https://example.com/v1
+      apiKey: secret
+      models:
+        model-a: {}
+`);
+
+    expect(getModelConfigurationState({
+      env: { PILOT_AGENT_MODEL: 'custom/model-a' },
+    })).toMatchObject({
+      state: 'ready',
+      modelRef: 'custom/model-a',
+    });
+  });
+
   it('returns ready only for a Gateway-parseable configuration', () => {
     useTempConfig(`
 schemaVersion: 1

@@ -47,7 +47,11 @@ export function createRuntimeCoordination({
       return configuration;
     },
     requestGatewayRetry() {
-      return send({ type: GATEWAY_RETRY_MESSAGE });
+      const requested = send({ type: GATEWAY_RETRY_MESSAGE });
+      // The supervisor completes retries asynchronously. Publish the accepted
+      // attempt now so an immediate status read cannot revive the old error.
+      if (requested) gateway = { state: 'starting' };
+      return requested;
     },
     dispose() {
       if (supervised) processLike.off?.('message', onMessage);

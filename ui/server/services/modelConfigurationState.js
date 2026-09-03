@@ -74,7 +74,18 @@ export function evaluateModelConfigurationState(record, options = {}) {
   }
 
   const config = record.config;
-  const modelRef = normalizeString(config?.agent?.model);
+  const env = options.env ?? process.env;
+  const configuredModelRef = normalizeString(config?.agent?.model);
+  const modelRef = normalizeString(env.PILOT_AGENT_MODEL) || configuredModelRef;
+  const effectiveConfig = modelRef === configuredModelRef
+    ? config
+    : {
+        ...config,
+        agent: {
+          ...config?.agent,
+          model: modelRef,
+        },
+      };
   if (modelRef.startsWith(`${BOOTSTRAP_PLACEHOLDER_PROVIDER}/`)) {
     return needsConfiguration(record, 'legacy_placeholder');
   }
@@ -83,7 +94,7 @@ export function evaluateModelConfigurationState(record, options = {}) {
     return needsConfiguration(record, 'missing_model');
   }
 
-  const selected = resolveModel(config, modelRef, { allowMissing: true });
+  const selected = resolveModel(effectiveConfig, modelRef, { allowMissing: true });
   if (!selected) {
     return invalidConfiguration(record, [
       `agent.model="${modelRef}" doesn't resolve to a configured provider/model`,
@@ -110,12 +121,11 @@ export function evaluateModelConfigurationState(record, options = {}) {
     return needsConfiguration(record, 'missing_credential');
   }
 
-  const validation = validatePilotDeckConfig(config);
+  const validation = validatePilotDeckConfig(effectiveConfig);
   if (!validation.valid) {
     return invalidConfiguration(record, validation.errors);
   }
 
-  const env = options.env ?? process.env;
   const gatewayErrors = options.validateGateway === false
     ? []
     : gatewayValidationErrors(record, env);

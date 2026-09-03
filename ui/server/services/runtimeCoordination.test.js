@@ -48,6 +48,25 @@ describe('runtime coordination', () => {
     });
   });
 
+  it('moves an accepted Gateway retry out of the previous error state immediately', () => {
+    const processLike = createProcessLike();
+    const coordination = createRuntimeCoordination({
+      processLike,
+      env: { PILOTDECK_RUNTIME_SUPERVISED: '1' },
+    });
+    processLike.emit('message', {
+      type: 'pilotdeck:gateway-state',
+      state: 'error',
+      error: 'gateway timeout',
+    });
+
+    expect(coordination.requestGatewayRetry()).toBe(true);
+    expect(coordination.getGatewayState()).toEqual({ state: 'starting' });
+    expect(processLike.send).toHaveBeenLastCalledWith({
+      type: 'pilotdeck:retry-gateway',
+    });
+  });
+
   it('reports unmanaged when the UI server has no runtime supervisor', () => {
     const processLike = createProcessLike({ supervised: false });
     const coordination = createRuntimeCoordination({ processLike });

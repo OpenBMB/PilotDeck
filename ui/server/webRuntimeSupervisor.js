@@ -19,6 +19,11 @@ export function normalizeSupervisorMode(value) {
   return value === 'dev' ? 'dev' : 'start-built';
 }
 
+export function resolveSupervisorConfigPath(value, baseCwd = process.cwd()) {
+  const configuredPath = typeof value === 'string' ? value.trim() : '';
+  return configuredPath ? path.resolve(baseCwd, configuredPath) : undefined;
+}
+
 export function getRuntimeCommands(mode, uiRoot = UI_ROOT) {
   const normalizedMode = normalizeSupervisorMode(mode);
   const repoRoot = path.resolve(uiRoot, '..');
@@ -102,6 +107,9 @@ export function createRuntimeSupervisor({
     PILOTDECK_RESTART_REQUEST_FILE: requestFile,
     PILOTDECK_RUNTIME_SUPERVISED: '1',
   };
+  const configPath = resolveSupervisorConfigPath(env.PILOTDECK_CONFIG_PATH);
+  if (configPath) runtimeEnv.PILOTDECK_CONFIG_PATH = configPath;
+  else delete runtimeEnv.PILOTDECK_CONFIG_PATH;
   let configuration = null;
   let stopping = false;
   let handlingCriticalExit = false;

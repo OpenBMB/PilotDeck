@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRuntimeSupervisor,
@@ -34,6 +35,7 @@ function createHarness({
   mode = 'start-built',
   requestExists = false,
   waitForPortImpl = vi.fn(async () => undefined),
+  env = {},
 } = {}) {
   const spawned = [];
   const spawnImpl = vi.fn(() => {
@@ -44,7 +46,7 @@ function createHarness({
   const exit = vi.fn();
   const supervisor = createRuntimeSupervisor({
     mode,
-    env: { PILOTDECK_GATEWAY_PORT: '18789' },
+    env: { PILOTDECK_GATEWAY_PORT: '18789', ...env },
     spawnImpl,
     waitForPortImpl,
     exists: () => requestExists,
@@ -73,6 +75,22 @@ describe('web runtime supervisor', () => {
     expect(dev.spawnImpl).toHaveBeenCalledTimes(2);
     expect(dev.supervisor.children.has('server')).toBe(true);
     expect(dev.supervisor.children.has('client')).toBe(true);
+  });
+
+  it('passes one absolute config path to the UI server and Gateway', () => {
+    const relativeConfigPath = 'fixtures/pilotdeck.yaml';
+    const { supervisor, spawnImpl } = createHarness({
+      env: { PILOTDECK_CONFIG_PATH: relativeConfigPath },
+    });
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+
+    const expectedPath = path.resolve(relativeConfigPath);
+    expect(spawnImpl.mock.calls[0][2].env.PILOTDECK_CONFIG_PATH).toBe(expectedPath);
+    expect(spawnImpl.mock.calls[1][2].env.PILOTDECK_CONFIG_PATH).toBe(expectedPath);
   });
 
   it('keeps Gateway stopped while configuration is missing', () => {
