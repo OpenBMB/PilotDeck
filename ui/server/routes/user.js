@@ -3,6 +3,7 @@ import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
 import { getModelConfigurationState } from '../services/modelConfigurationState.js';
+import { runtimeCoordination } from '../services/runtimeCoordination.js';
 import { spawn } from 'child_process';
 
 const router = express.Router();
@@ -97,9 +98,18 @@ router.post('/git-config', authenticateToken, async (req, res) => {
 
 router.post('/complete-onboarding', authenticateToken, async (req, res) => {
   try {
+    const configuration = runtimeCoordination.publishConfigurationState();
+    if (configuration.state !== 'ready') {
+      return res.status(409).json({
+        error: 'Model configuration is not ready',
+        configuration,
+      });
+    }
     res.json({
       success: true,
-      message: 'Onboarding completed successfully'
+      message: 'Onboarding completed successfully',
+      configuration,
+      gateway: runtimeCoordination.getGatewayState(),
     });
   } catch (error) {
     console.error('Error completing onboarding:', error);
@@ -114,12 +124,30 @@ router.get('/onboarding-status', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       configuration,
+      gateway: runtimeCoordination.getGatewayState(),
       hasCompletedOnboarding: configuration.state === 'ready'
     });
   } catch (error) {
     console.error('Error checking onboarding status:', error);
     res.status(500).json({ error: 'Failed to check onboarding status' });
   }
+});
+
+router.post('/runtime/gateway/retry', authenticateToken, async (req, res) => {
+  const configuration = runtimeCoordination.publishConfigurationState();
+  if (configuration.state !== 'ready') {
+    return res.status(409).json({
+      error: 'Model configuration is not ready',
+      configuration,
+    });
+  }
+  if (!runtimeCoordination.requestGatewayRetry()) {
+    return res.status(409).json({
+      error: 'Gateway is not managed by this UI server',
+      gateway: runtimeCoordination.getGatewayState(),
+    });
+  }
+  return res.status(202).json({ success: true });
 });
 
 export default router;

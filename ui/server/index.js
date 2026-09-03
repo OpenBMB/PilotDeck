@@ -131,6 +131,7 @@ import { createNormalizedMessage, createOptimisticUserFrames } from './pilotdeck
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
 import { initializeDatabase, sessionNamesDb, applyCustomSessionNames, userDb } from './database/db.js';
 import { configureWebPush } from './services/vapid-keys.js';
+import { runtimeCoordination } from './services/runtimeCoordination.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
@@ -257,6 +258,7 @@ function broadcastConfigReloaded(payload) {
             client.send(message);
         }
     });
+    runtimeCoordination.publishConfigurationState();
 }
 process.on('pilotdeck:config-broadcast', broadcastConfigReloaded);
 
@@ -3736,6 +3738,7 @@ async function startServer() {
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
                 // the right port after a fallback.
                 process.env.SERVER_PORT = String(boundPort);
+                runtimeCoordination.publishConfigurationState();
                 {
                     const appInstallPath = path.join(__dirname, '..');
 

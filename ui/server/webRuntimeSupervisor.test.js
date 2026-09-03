@@ -2,13 +2,16 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRuntimeSupervisor,
-  getRuntimeArgs,
+  getRuntimeCommands,
   normalizeSupervisorMode,
 } from './webRuntimeSupervisor.js';
 
 function createFakeChild() {
   const child = new EventEmitter();
   child.killed = false;
+  child.exitCode = null;
+  child.connected = true;
+  child.send = vi.fn();
   child.kill = vi.fn((signal) => {
     child.killed = true;
     child.killedSignal = signal;
@@ -19,194 +22,186 @@ function createFakeChild() {
 function createFakeProcess() {
   const handlers = new Map();
   return {
-    on: vi.fn((event, handler) => {
-      handlers.set(event, handler);
-    }),
+    on: vi.fn((event, handler) => handlers.set(event, handler)),
     emitSignal(signal) {
       handlers.get(signal)?.();
     },
   };
 }
 
-describe('web runtime supervisor', () => {
-  it('normalizes unknown modes to start-built', () => {
-    expect(normalizeSupervisorMode('dev')).toBe('dev');
-    expect(normalizeSupervisorMode('anything')).toBe('start-built');
-    expect(getRuntimeArgs('dev')).toContain('npm:dev:client');
-    expect(getRuntimeArgs('start-built')).toContain('npm:server');
-  });
-
-  it('exits without restart when the child exits normally and no request exists', () => {
+function createHarness({
+  mode = 'start-built',
+  requestExists = false,
+  waitForPortImpl = vi.fn(async () => undefined),
+} = {}) {
+  const spawned = [];
+  const spawnImpl = vi.fn(() => {
     const child = createFakeChild();
-    const spawnImpl = vi.fn(() => child);
-    const exit = vi.fn();
+    spawned.push(child);
+    return child;
+  });
+  const exit = vi.fn();
+  const supervisor = createRuntimeSupervisor({
+    mode,
+    env: { PILOTDECK_GATEWAY_PORT: '18789' },
+    spawnImpl,
+    waitForPortImpl,
+    exists: () => requestExists,
+    unlink: vi.fn(),
+    processLike: createFakeProcess(),
+    exit,
+    log: vi.fn(),
+    error: vi.fn(),
+  });
+  supervisor.run();
+  return { supervisor, spawnImpl, spawned, exit };
+}
 
-    createRuntimeSupervisor({
-      mode: 'start-built',
-      spawnImpl,
-      exists: () => false,
-      unlink: vi.fn(),
-      processLike: createFakeProcess(),
-      exit,
-      log: vi.fn(),
-      error: vi.fn(),
-    }).run();
+describe('web runtime supervisor', () => {
+  it('starts the UI server first and Vite only in development', () => {
+    expect(normalizeSupervisorMode('anything')).toBe('start-built');
+    expect(getRuntimeCommands('start-built').map(({ name }) => name)).toEqual(['server', 'gateway']);
+    expect(getRuntimeCommands('dev').map(({ name }) => name)).toEqual(['server', 'client', 'gateway']);
 
-    child.emit('close', 0, null);
+    const built = createHarness();
+    expect(built.spawnImpl).toHaveBeenCalledTimes(1);
+    expect(built.supervisor.children.has('server')).toBe(true);
+    expect(built.supervisor.children.has('gateway')).toBe(false);
 
-    expect(spawnImpl).toHaveBeenCalledTimes(1);
-    expect(exit).toHaveBeenCalledWith(0);
+    const dev = createHarness({ mode: 'dev' });
+    expect(dev.spawnImpl).toHaveBeenCalledTimes(2);
+    expect(dev.supervisor.children.has('server')).toBe(true);
+    expect(dev.supervisor.children.has('client')).toBe(true);
   });
 
-  it('restarts the runtime in the same supervisor when the request file exists', () => {
-    const firstChild = createFakeChild();
-    const secondChild = createFakeChild();
-    const spawnImpl = vi.fn()
-      .mockReturnValueOnce(firstChild)
-      .mockReturnValueOnce(secondChild);
-    const unlink = vi.fn();
-    const exists = vi.fn().mockReturnValueOnce(true);
-    const exit = vi.fn();
+  it('starts Gateway once after ready configuration and reports readiness', async () => {
+    const { supervisor, spawnImpl } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
 
-    createRuntimeSupervisor({
-      mode: 'start-built',
-      spawnImpl,
-      exists,
-      unlink,
-      processLike: createFakeProcess(),
-      exit,
-      log: vi.fn(),
-      error: vi.fn(),
-    }).run();
-
-    firstChild.emit('close', 1, null);
-
-    expect(unlink).toHaveBeenCalledTimes(1);
     expect(spawnImpl).toHaveBeenCalledTimes(2);
-    expect(spawnImpl).toHaveBeenNthCalledWith(
-      2,
-      process.execPath,
-      getRuntimeArgs('start-built'),
-      expect.objectContaining({
-        stdio: 'inherit',
-        env: expect.objectContaining({
-          PILOTDECK_RESTART_MODE: 'start-built',
-          PILOTDECK_RESTART_SUPERVISOR: '1',
-        }),
-      }),
-    );
-    expect(exit).not.toHaveBeenCalled();
-
-    secondChild.emit('close', 0, null);
-
-    expect(exit).toHaveBeenCalledWith(0);
+    await vi.waitFor(() => {
+      expect(server.send).toHaveBeenLastCalledWith({
+        type: 'pilotdeck:gateway-state',
+        state: 'ready',
+      });
+    });
   });
 
-  it('can restart the runtime repeatedly without spawning nested supervisors', () => {
-    const firstChild = createFakeChild();
-    const secondChild = createFakeChild();
-    const thirdChild = createFakeChild();
-    const spawnImpl = vi.fn()
-      .mockReturnValueOnce(firstChild)
-      .mockReturnValueOnce(secondChild)
-      .mockReturnValueOnce(thirdChild);
-    const exists = vi.fn()
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(false);
-    const exit = vi.fn();
+  it('keeps the UI server alive when Gateway exits', () => {
+    const { supervisor, exit } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+    const gateway = supervisor.children.get('gateway');
+    gateway.emit('close', 1, null);
 
-    createRuntimeSupervisor({
-      mode: 'start-built',
-      spawnImpl,
-      exists,
-      unlink: vi.fn(),
-      processLike: createFakeProcess(),
-      exit,
-      log: vi.fn(),
-      error: vi.fn(),
-    }).run();
+    expect(supervisor.children.has('server')).toBe(true);
+    expect(exit).not.toHaveBeenCalled();
+    expect(server.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'pilotdeck:gateway-state',
+      state: 'error',
+    }));
+  });
 
-    firstChild.emit('close', 1, null);
-    secondChild.emit('close', 1, null);
-    thirdChild.emit('close', 0, null);
+  it('reports a Gateway readiness failure without exiting the UI', async () => {
+    const { supervisor, exit } = createHarness({
+      waitForPortImpl: vi.fn(async () => {
+        throw new Error('gateway timeout');
+      }),
+    });
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+
+    await vi.waitFor(() => {
+      expect(server.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        type: 'pilotdeck:gateway-state',
+        state: 'error',
+        error: 'gateway timeout',
+      }));
+    });
+    expect(supervisor.children.has('server')).toBe(true);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('exits the runtime when the UI server exits without a restart request', () => {
+    const { supervisor, exit } = createHarness();
+    supervisor.children.get('server').emit('close', 1, null);
+
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it('retries Gateway without duplicating it', () => {
+    const { supervisor, spawnImpl } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
+    });
+    const firstGateway = supervisor.children.get('gateway');
+    firstGateway.emit('close', 1, null);
+    server.emit('message', { type: 'pilotdeck:retry-gateway' });
 
     expect(spawnImpl).toHaveBeenCalledTimes(3);
-    for (const call of spawnImpl.mock.calls) {
-      expect(call[1]).toEqual(getRuntimeArgs('start-built'));
-    }
-    expect(exit).toHaveBeenCalledWith(0);
+    expect(supervisor.children.get('gateway')).not.toBe(firstGateway);
   });
 
-  it('exits without restarting when the restart request cannot be consumed', () => {
-    const child = createFakeChild();
-    const spawnImpl = vi.fn().mockReturnValueOnce(child);
-    const unlink = vi.fn(() => {
-      throw new Error('permission denied');
+  it('stops Gateway when configuration is no longer ready', () => {
+    const { supervisor } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'ready', revision: 'one' },
     });
-    const exit = vi.fn();
-    const error = vi.fn();
+    const gateway = supervisor.children.get('gateway');
+    server.emit('message', {
+      type: 'pilotdeck:configuration-state',
+      configuration: { state: 'invalid', revision: 'two' },
+    });
 
-    createRuntimeSupervisor({
-      mode: 'start-built',
-      spawnImpl,
-      exists: () => true,
-      unlink,
-      processLike: createFakeProcess(),
-      exit,
-      log: vi.fn(),
-      error,
-    }).run();
-
-    child.emit('close', 1, null);
-    child.emit('close', 1, null);
-
-    expect(unlink).toHaveBeenCalledTimes(1);
-    expect(spawnImpl).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to consume restart request'));
-    expect(exit).toHaveBeenCalledTimes(1);
-    expect(exit).toHaveBeenCalledWith(1);
+    expect(gateway.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(supervisor.children.has('gateway')).toBe(false);
+    expect(server.send).toHaveBeenLastCalledWith({
+      type: 'pilotdeck:gateway-state',
+      state: 'stopped',
+    });
   });
 
-  it('exits with failure when the restarted runtime cannot be started', () => {
-    const child = createFakeChild();
-    const spawnImpl = vi.fn()
-      .mockReturnValueOnce(child)
-      .mockReturnValueOnce(createFakeChild());
-    const exit = vi.fn();
-    const error = vi.fn();
+  it('restarts the server and client after a supervised update request', () => {
+    const { supervisor, spawnImpl, exit } = createHarness({
+      mode: 'dev',
+      requestExists: true,
+    });
+    const server = supervisor.children.get('server');
+    server.emit('close', 42, null);
 
-    createRuntimeSupervisor({
-      mode: 'start-built',
-      spawnImpl,
-      exists: () => true,
-      unlink: vi.fn(),
-      processLike: createFakeProcess(),
-      exit,
-      log: vi.fn(),
-      error,
-    }).run();
-
-    child.emit('close', 1, null);
-    spawnImpl.mock.results[1].value.emit('error', new Error('spawn failed'));
-
-    expect(spawnImpl).toHaveBeenCalledTimes(2);
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to start runtime'));
-    expect(exit).toHaveBeenCalledTimes(1);
-    expect(exit).toHaveBeenCalledWith(1);
+    expect(spawnImpl).toHaveBeenCalledTimes(4);
+    expect(exit).not.toHaveBeenCalled();
+    expect(supervisor.children.has('server')).toBe(true);
+    expect(supervisor.children.has('client')).toBe(true);
   });
 
-  it('forwards SIGINT and does not restart on signal shutdown', () => {
-    const child = createFakeChild();
-    const spawnImpl = vi.fn(() => child);
+  it('stops all managed processes on SIGINT', () => {
     const processLike = createFakeProcess();
+    const children = [createFakeChild(), createFakeChild()];
     const exit = vi.fn();
-
     createRuntimeSupervisor({
       mode: 'dev',
-      spawnImpl,
-      exists: () => true,
-      unlink: vi.fn(),
+      spawnImpl: vi.fn(() => children.shift()),
+      waitForPortImpl: vi.fn(async () => undefined),
+      exists: () => false,
       processLike,
       exit,
       log: vi.fn(),
@@ -214,10 +209,7 @@ describe('web runtime supervisor', () => {
     }).run();
 
     processLike.emitSignal('SIGINT');
-    child.emit('close', null, 'SIGINT');
 
-    expect(child.kill).toHaveBeenCalledWith('SIGINT');
-    expect(spawnImpl).toHaveBeenCalledTimes(1);
     expect(exit).toHaveBeenCalledWith(0);
   });
 });

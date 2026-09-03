@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Dev launcher: probe the three dev ports (server / gateway / vite), find the
- * first free one for each starting from the project defaults, then exec the
- * existing `concurrently` script with the resolved values injected as env so
- * gateway / server / vite all bind/connect to matching numbers.
+ * first free one for each starting from the project defaults, then launch the
+ * runtime supervisor with the resolved values injected as env so server / vite
+ * bind to matching ports and Gateway can start after configuration is ready.
  *
  * This means a stale leftover process on 3001 (or another team member's tool
  * occupying 18789) no longer breaks `npm run dev` — the launcher just slides

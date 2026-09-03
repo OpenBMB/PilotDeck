@@ -15,7 +15,7 @@ vi.mock('../../../constants/config', () => ({
 vi.mock('../../../utils/api', () => ({
   api: {
     auth: {},
-    user: { onboardingStatus: mocks.onboardingStatus },
+    user: { onboardingStatus: mocks.onboardingStatus, retryGateway: vi.fn() },
   },
 }));
 

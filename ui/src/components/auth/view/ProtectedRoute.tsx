@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Onboarding from '../../onboarding/view/Onboarding';
 import AuthLoadingScreen from './AuthLoadingScreen';
+import GatewayRuntimeErrorScreen from './GatewayRuntimeErrorScreen';
 import LoginForm from './LoginForm';
 import ModelConfigurationErrorScreen from './ModelConfigurationErrorScreen';
 import SetupForm from './SetupForm';
@@ -11,7 +12,15 @@ type ProtectedRouteProps = {
 };
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, isLoading, needsSetup, modelConfiguration, refreshOnboardingStatus } = useAuth();
+  const {
+    user,
+    isLoading,
+    needsSetup,
+    modelConfiguration,
+    gatewayRuntime,
+    refreshOnboardingStatus,
+    retryGateway,
+  } = useAuth();
 
   if (isLoading) {
     return <AuthLoadingScreen />;
@@ -40,6 +49,14 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
         onRetry={refreshOnboardingStatus}
       />
     );
+  }
+
+  if (gatewayRuntime.state === 'stopped' || gatewayRuntime.state === 'starting') {
+    return <AuthLoadingScreen />;
+  }
+
+  if (gatewayRuntime.state === 'error') {
+    return <GatewayRuntimeErrorScreen error={gatewayRuntime.error} onRetry={retryGateway} />;
   }
 
   return <>{children}</>;

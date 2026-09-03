@@ -13,8 +13,18 @@ type ManagedProcess = {
 type RuntimeInfo = {
   serverPort: number;
   gatewayPort: number;
+  gateway: GatewayRuntimeState;
   runtimeRoot: string;
   logPath: string;
+};
+
+type GatewayRuntimeState =
+  | { state: "stopped" | "starting" | "ready" }
+  | { state: "error"; error: string };
+
+type ModelConfigurationState = {
+  state: "needs_configuration" | "ready" | "invalid";
+  revision?: string;
 };
 
 type BundledGitPaths = {
@@ -25,7 +35,7 @@ type BundledGitPaths = {
 };
 
 type RuntimeStatus = {
-  phase: "starting" | "config" | "gateway" | "server" | "ready" | "error" | "stopped";
+  phase: "starting" | "config" | "server" | "awaiting_configuration" | "gateway" | "ready" | "error" | "stopped";
   message: string;
   logPath?: string;
   error?: string;
@@ -143,9 +153,18 @@ const OPTIONAL_CONFIG_PATCHES = [
 
 class RuntimeManager {
   private readonly processes: ManagedProcess[] = [];
+  private readonly expectedExits = new WeakSet<ChildProcess>();
   private readonly logPath: string;
   private logStream: fs.WriteStream | null = null;
   private info: RuntimeInfo | null = null;
+  private serverProcess: ChildProcess | null = null;
+  private gatewayProcess: ChildProcess | null = null;
+  private gatewayStartPromise: Promise<void> | null = null;
+  private commonEnv: NodeJS.ProcessEnv | null = null;
+  private pilotHome: string | null = null;
+  private gatewayPort: number | null = null;
+  private configurationState: ModelConfigurationState | null = null;
+  private gatewayState: GatewayRuntimeState = { state: "stopped" };
 
   constructor(
     private readonly runtimeRoot: string,
@@ -210,16 +229,19 @@ class RuntimeManager {
       PILOTDECK_DISABLE_LOCAL_AUTH: process.env.PILOTDECK_DISABLE_LOCAL_AUTH || "1",
       PILOTDECK_SKIP_BROWSER_OPEN: "1",
       PILOTDECK_SKIP_DEFAULT_PROJECT: "1",
+      PILOTDECK_RUNTIME_SUPERVISED: "1",
       PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
     }, this.runtimeRoot, this.nodeBinary, bundledGit);
-
-    publishRuntimeStatus({
-      phase: "gateway",
-      message: "Starting local gateway...",
+    this.commonEnv = commonEnv;
+    this.pilotHome = config.pilotHome;
+    this.gatewayPort = gatewayPort;
+    this.info = {
+      serverPort,
+      gatewayPort,
+      gateway: this.gatewayState,
+      runtimeRoot: this.runtimeRoot,
       logPath: this.logPath,
-    });
-    const gateway = this.spawnRuntime("gateway", this.gatewayCommand(), config.pilotHome, commonEnv);
-    await waitForPortOrProcessExit(gateway, "gateway", gatewayPort, "127.0.0.1", 90_000, this.logPath);
+    };
 
     publishRuntimeStatus({
       phase: "server",
@@ -231,26 +253,29 @@ class RuntimeManager {
       this.serverCommand(),
       path.join(this.runtimeRoot, "ui"),
       commonEnv,
+      { ipc: true, critical: true },
     );
+    this.serverProcess = server;
+    server.on("message", (message) => this.handleServerMessage(message));
     await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
 
-    this.info = {
-      serverPort,
-      gatewayPort,
-      runtimeRoot: this.runtimeRoot,
-      logPath: this.logPath,
-    };
-    this.log(`PilotDeck Desktop runtime ready: http://127.0.0.1:${serverPort}`);
-    publishRuntimeStatus({
-      phase: "ready",
-      message: "PilotDeck is ready.",
-      logPath: this.logPath,
-    });
+    this.log(`PilotDeck Web UI ready: http://127.0.0.1:${serverPort}`);
+    if (!this.configurationState || this.configurationState.state !== "ready") {
+      publishRuntimeStatus({
+        phase: "awaiting_configuration",
+        message: "PilotDeck is ready for model setup.",
+        logPath: this.logPath,
+      });
+    }
     return this.info;
   }
 
   async stop(): Promise<void> {
+    this.serverProcess = null;
+    this.gatewayProcess = null;
+    this.gatewayStartPromise = null;
     for (const proc of [...this.processes].reverse()) {
+      this.expectedExits.add(proc.child);
       await killProcessTree(proc.child).catch((error) => {
         this.log(`Failed to stop ${proc.name}: ${String(error)}`);
       });
@@ -260,6 +285,11 @@ class RuntimeManager {
     this.logStream?.end();
     this.logStream = null;
     this.info = null;
+    this.commonEnv = null;
+    this.pilotHome = null;
+    this.gatewayPort = null;
+    this.configurationState = null;
+    this.gatewayState = { state: "stopped" };
     publishRuntimeStatus({
       phase: "stopped",
       message: "PilotDeck runtime stopped.",
@@ -290,24 +320,44 @@ class RuntimeManager {
     command: string[],
     cwd: string,
     env: NodeJS.ProcessEnv,
+    options: { ipc?: boolean; critical?: boolean } = {},
   ): ChildProcess {
     const [bin, ...args] = command;
     if (!bin) throw new Error(`Missing command for ${name}`);
     const child = spawn(bin, args, {
       cwd,
       env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: options.ipc
+        ? ["ignore", "pipe", "pipe", "ipc"]
+        : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: process.platform === "win32",
     });
     this.processes.push({ name, child });
     this.log(`[${name}] spawn ${bin} ${args.join(" ")}`);
 
-    child.stdout.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
-    child.stderr.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
+    child.stdout?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
+    child.stderr?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
     child.on("exit", (code, signal) => {
+      const index = this.processes.findIndex((process) => process.child === child);
+      if (index >= 0) this.processes.splice(index, 1);
       this.log(`[${name}] exited code=${code ?? "null"} signal=${signal ?? "null"}`);
-      if (!isQuitting && this.info) {
+      if (this.expectedExits.delete(child)) return;
+      if (name === "gateway" && this.gatewayProcess === child) {
+        this.gatewayProcess = null;
+        if (!isQuitting) {
+          const detail = `Gateway exited code=${code ?? "null"} signal=${signal ?? "null"}`;
+          this.setGatewayState({ state: "error", error: detail });
+          publishRuntimeStatus({
+            phase: "error",
+            message: "Gateway exited unexpectedly. The Web UI is still available.",
+            logPath: this.logPath,
+            error: detail,
+          });
+        }
+        return;
+      }
+      if (!isQuitting && this.info && options.critical) {
         publishRuntimeStatus({
           phase: "error",
           message: `${name} exited unexpectedly. See runtime log for details.`,
@@ -317,6 +367,125 @@ class RuntimeManager {
       }
     });
     return child;
+  }
+
+  private handleServerMessage(message: unknown): void {
+    if (!message || typeof message !== "object" || !("type" in message)) return;
+    const runtimeMessage = message as {
+      type?: string;
+      configuration?: ModelConfigurationState;
+    };
+    if (runtimeMessage.type === "pilotdeck:configuration-state" && runtimeMessage.configuration) {
+      this.configurationState = runtimeMessage.configuration;
+      if (runtimeMessage.configuration.state === "ready") {
+        void this.startGateway();
+      } else {
+        void this.stopGateway();
+        publishRuntimeStatus({
+          phase: "awaiting_configuration",
+          message: runtimeMessage.configuration.state === "invalid"
+            ? "Model configuration needs attention."
+            : "PilotDeck is ready for model setup.",
+          logPath: this.logPath,
+        });
+      }
+      return;
+    }
+    if (runtimeMessage.type === "pilotdeck:retry-gateway" && this.configurationState?.state === "ready") {
+      void this.stopGateway().then(() => this.startGateway());
+    }
+  }
+
+  private startGateway(): Promise<void> {
+    if (this.gatewayProcess && this.gatewayProcess.exitCode === null) return Promise.resolve();
+    if (this.gatewayStartPromise) return this.gatewayStartPromise;
+
+    this.gatewayStartPromise = this.launchGateway().finally(() => {
+      this.gatewayStartPromise = null;
+      if (
+        this.configurationState?.state === "ready"
+        && this.gatewayState.state === "stopped"
+        && !this.gatewayProcess
+      ) {
+        void this.startGateway();
+      }
+    });
+    return this.gatewayStartPromise;
+  }
+
+  private async launchGateway(): Promise<void> {
+    if (!this.commonEnv || !this.pilotHome || !this.gatewayPort) return;
+    this.setGatewayState({ state: "starting" });
+    publishRuntimeStatus({
+      phase: "gateway",
+      message: "Starting local gateway...",
+      logPath: this.logPath,
+    });
+
+    let gateway: ChildProcess | null = null;
+    try {
+      gateway = this.spawnRuntime(
+        "gateway",
+        this.gatewayCommand(),
+        this.pilotHome,
+        this.commonEnv,
+      );
+      this.gatewayProcess = gateway;
+      await waitForPortOrProcessExit(
+        gateway,
+        "gateway",
+        this.gatewayPort,
+        "127.0.0.1",
+        90_000,
+        this.logPath,
+      );
+      if (this.gatewayProcess !== gateway) return;
+      this.setGatewayState({ state: "ready" });
+      publishRuntimeStatus({
+        phase: "ready",
+        message: "PilotDeck is ready.",
+        logPath: this.logPath,
+      });
+    } catch (error) {
+      if (gateway && this.gatewayProcess !== gateway) return;
+      if (gateway && this.gatewayProcess === gateway) {
+        this.gatewayProcess = null;
+        this.expectedExits.add(gateway);
+        await killProcessTree(gateway).catch(() => undefined);
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      this.log(`Gateway failed to start: ${detail}`);
+      this.setGatewayState({ state: "error", error: detail });
+      publishRuntimeStatus({
+        phase: "error",
+        message: "Gateway failed to start. The Web UI is still available.",
+        logPath: this.logPath,
+        error: detail,
+      });
+    }
+  }
+
+  private async stopGateway(): Promise<void> {
+    const gateway = this.gatewayProcess;
+    this.gatewayProcess = null;
+    if (gateway) {
+      this.expectedExits.add(gateway);
+      await killProcessTree(gateway).catch(() => undefined);
+    }
+    this.setGatewayState({ state: "stopped" });
+  }
+
+  private setGatewayState(state: GatewayRuntimeState): void {
+    this.gatewayState = state;
+    if (this.info) this.info.gateway = state;
+    const server = this.serverProcess;
+    if (!server || !server.connected) return;
+    server.send({
+      type: "pilotdeck:gateway-state",
+      ...state,
+    }, (error) => {
+      if (error) this.log(`Failed to publish Gateway state: ${error.message}`);
+    });
   }
 
   private logChunk(name: string, chunk: Buffer): void {

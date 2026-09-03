@@ -489,6 +489,9 @@ export const api = {
         body: JSON.stringify({ gitName, gitEmail }),
       }),
     onboardingStatus: () => authenticatedFetch('/api/user/onboarding-status'),
+    retryGateway: () => authenticatedFetch('/api/user/runtime/gateway/retry', {
+      method: 'POST',
+    }),
     completeOnboarding: () =>
       authenticatedFetch('/api/user/complete-onboarding', {
         method: 'POST',

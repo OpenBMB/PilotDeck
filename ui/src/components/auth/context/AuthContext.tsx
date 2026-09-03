@@ -9,6 +9,7 @@ import type {
   AuthStatusPayload,
   AuthUser,
   AuthUserPayload,
+  GatewayRuntimeState,
   ModelConfigurationState,
   OnboardingStatusPayload,
 } from '../types';
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [modelConfiguration, setModelConfiguration] = useState<ModelConfigurationState>({ state: 'loading' });
+  const [gatewayRuntime, setGatewayRuntime] = useState<GatewayRuntimeState>({ state: 'unmanaged' });
   const [error, setError] = useState<string | null>(null);
 
   const setSession = useCallback((nextUser: AuthUser, nextToken: string) => {
@@ -55,8 +57,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearStoredToken();
   }, []);
 
-  const checkOnboardingStatus = useCallback(async () => {
-    setModelConfiguration({ state: 'loading' });
+  const checkOnboardingStatus = useCallback(async (showLoading = true) => {
+    if (showLoading) setModelConfiguration({ state: 'loading' });
     try {
       const response = await api.user.onboardingStatus();
       const payload = await parseJsonSafely<OnboardingStatusPayload>(response);
@@ -70,6 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (payload?.configuration) {
         setModelConfiguration(payload.configuration);
+        setGatewayRuntime(payload.gateway ?? { state: 'unmanaged' });
         return;
       }
 
@@ -95,6 +98,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshOnboardingStatus = useCallback(async () => {
     await checkOnboardingStatus();
+  }, [checkOnboardingStatus]);
+
+  useEffect(() => {
+    if (
+      modelConfiguration.state !== 'ready'
+      || (gatewayRuntime.state !== 'stopped' && gatewayRuntime.state !== 'starting')
+    ) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      void checkOnboardingStatus(false);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [checkOnboardingStatus, gatewayRuntime.state, modelConfiguration.state]);
+
+  const retryGateway = useCallback(async () => {
+    setGatewayRuntime({ state: 'starting' });
+    try {
+      const response = await api.user.retryGateway();
+      const payload = await parseJsonSafely<{ error?: string }>(response);
+      if (!response.ok) {
+        setGatewayRuntime({
+          state: 'error',
+          error: payload?.error || 'Failed to restart Gateway',
+        });
+        return;
+      }
+      await checkOnboardingStatus(false);
+    } catch (caughtError) {
+      setGatewayRuntime({
+        state: 'error',
+        error: caughtError instanceof Error ? caughtError.message : 'Failed to restart Gateway',
+      });
+    }
   }, [checkOnboardingStatus]);
 
   const checkAuthStatus = useCallback(async () => {
@@ -228,11 +265,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       needsSetup,
       hasCompletedOnboarding: modelConfiguration.state === 'ready',
       modelConfiguration,
+      gatewayRuntime,
       error,
       login,
       register,
       logout,
       refreshOnboardingStatus,
+      retryGateway,
     }),
     [
       error,
@@ -240,9 +279,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       login,
       logout,
       needsSetup,
+      gatewayRuntime,
       modelConfiguration,
       refreshOnboardingStatus,
       register,
+      retryGateway,
       token,
       user,
     ],

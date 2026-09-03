@@ -27,6 +27,7 @@ export type AuthUserPayload = {
 export type OnboardingStatusPayload = {
   hasCompletedOnboarding?: boolean;
   configuration?: ServerModelConfigurationState;
+  gateway?: GatewayRuntimeState;
   error?: string;
 };
 
@@ -52,6 +53,10 @@ export type ModelConfigurationState =
   | ServerModelConfigurationState
   | { state: 'status_error'; error: string };
 
+export type GatewayRuntimeState =
+  | { state: 'unmanaged' | 'stopped' | 'starting' | 'ready' }
+  | { state: 'error'; error: string };
+
 export type ApiErrorPayload = {
   error?: string;
   message?: string;
@@ -64,11 +69,13 @@ export type AuthContextValue = {
   needsSetup: boolean;
   hasCompletedOnboarding: boolean;
   modelConfiguration: ModelConfigurationState;
+  gatewayRuntime: GatewayRuntimeState;
   error: string | null;
   login: (username: string, password: string) => Promise<AuthActionResult>;
   register: (username: string, password: string) => Promise<AuthActionResult>;
   logout: () => void;
   refreshOnboardingStatus: () => Promise<void>;
+  retryGateway: () => Promise<void>;
 };
 
 export type AuthProviderProps = {
