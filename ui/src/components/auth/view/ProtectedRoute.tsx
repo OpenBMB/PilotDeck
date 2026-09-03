@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import Onboarding from '../../onboarding/view/Onboarding';
 import AuthLoadingScreen from './AuthLoadingScreen';
 import LoginForm from './LoginForm';
+import ModelConfigurationErrorScreen from './ModelConfigurationErrorScreen';
 import SetupForm from './SetupForm';
 
 type ProtectedRouteProps = {
@@ -10,7 +11,7 @@ type ProtectedRouteProps = {
 };
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, isLoading, needsSetup, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
+  const { user, isLoading, needsSetup, modelConfiguration, refreshOnboardingStatus } = useAuth();
 
   if (isLoading) {
     return <AuthLoadingScreen />;
@@ -24,8 +25,21 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <LoginForm />;
   }
 
-  if (!hasCompletedOnboarding) {
+  if (modelConfiguration.state === 'loading') {
+    return <AuthLoadingScreen />;
+  }
+
+  if (modelConfiguration.state === 'needs_configuration') {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
+  }
+
+  if (modelConfiguration.state === 'invalid' || modelConfiguration.state === 'status_error') {
+    return (
+      <ModelConfigurationErrorScreen
+        configuration={modelConfiguration}
+        onRetry={refreshOnboardingStatus}
+      />
+    );
   }
 
   return <>{children}</>;

@@ -32,6 +32,7 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: true,
+      configuration: { state: 'ready', modelRef: 'ollama/qwen3:0.6b' },
     });
   });
 
@@ -58,6 +59,7 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: false,
+      configuration: { state: 'needs_configuration', reason: 'missing_credential' },
     });
   });
 
@@ -84,6 +86,7 @@ describe('user onboarding status route', () => {
     expect(data).toMatchObject({
       success: true,
       hasCompletedOnboarding: true,
+      configuration: { state: 'ready', modelRef: 'openai/gpt-4.1-mini' },
     });
   });
 });

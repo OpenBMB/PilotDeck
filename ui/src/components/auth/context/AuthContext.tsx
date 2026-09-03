@@ -9,6 +9,7 @@ import type {
   AuthStatusPayload,
   AuthUser,
   AuthUserPayload,
+  ModelConfigurationState,
   OnboardingStatusPayload,
 } from '../types';
 import { parseJsonSafely, resolveApiErrorMessage } from '../utils';
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [isLoading, setIsLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true);
+  const [modelConfiguration, setModelConfiguration] = useState<ModelConfigurationState>({ state: 'loading' });
   const [error, setError] = useState<string | null>(null);
 
   const setSession = useCallback((nextUser: AuthUser, nextToken: string) => {
@@ -55,18 +56,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const checkOnboardingStatus = useCallback(async () => {
+    setModelConfiguration({ state: 'loading' });
     try {
       const response = await api.user.onboardingStatus();
+      const payload = await parseJsonSafely<OnboardingStatusPayload>(response);
       if (!response.ok) {
+        setModelConfiguration({
+          state: 'status_error',
+          error: payload?.error || 'Failed to check model configuration',
+        });
         return;
       }
 
-      const payload = await parseJsonSafely<OnboardingStatusPayload>(response);
-      setHasCompletedOnboarding(Boolean(payload?.hasCompletedOnboarding));
+      if (payload?.configuration) {
+        setModelConfiguration(payload.configuration);
+        return;
+      }
+
+      // Compatibility with older UI servers during rolling upgrades.
+      setModelConfiguration(payload?.hasCompletedOnboarding
+        ? { state: 'ready', modelRef: '', configPath: null, revision: '' }
+        : {
+            state: 'needs_configuration',
+            reason: 'missing_model',
+            configPath: null,
+            revision: '',
+          });
     } catch (caughtError) {
       console.error('Error checking onboarding status:', caughtError);
-      // Fail open to avoid blocking access on transient onboarding status errors.
-      setHasCompletedOnboarding(true);
+      setModelConfiguration({
+        state: 'status_error',
+        error: caughtError instanceof Error
+          ? caughtError.message
+          : 'Failed to check model configuration',
+      });
     }
   }, []);
 
@@ -203,7 +226,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       token,
       isLoading,
       needsSetup,
-      hasCompletedOnboarding,
+      hasCompletedOnboarding: modelConfiguration.state === 'ready',
+      modelConfiguration,
       error,
       login,
       register,
@@ -212,11 +236,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }),
     [
       error,
-      hasCompletedOnboarding,
       isLoading,
       login,
       logout,
       needsSetup,
+      modelConfiguration,
       refreshOnboardingStatus,
       register,
       token,

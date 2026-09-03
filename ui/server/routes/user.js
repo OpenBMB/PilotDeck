@@ -2,49 +2,10 @@ import express from 'express';
 import { userDb } from '../database/db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
-import {
-  readPilotDeckConfigFile,
-  resolveConfiguredProviderApiKey,
-  resolveConfiguredProviderUrl,
-} from '../services/pilotdeckConfig.js';
+import { getModelConfigurationState } from '../services/modelConfigurationState.js';
 import { spawn } from 'child_process';
 
 const router = express.Router();
-
-// Sentinel api-key written by scripts/bootstrap-pilotdeck-config.mjs so the
-// engine can boot. Treated as "not configured" so the UI routes to onboarding.
-const PLACEHOLDER_API_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
-
-function providerAllowsMissingApiKey(providerId) {
-  return providerId === 'ollama';
-}
-
-function hasUsablePilotDeckConfig() {
-  const record = readPilotDeckConfigFile();
-  if (!record.exists) return false;
-
-  const mainRef = typeof record.config?.agent?.model === 'string'
-    ? record.config.agent.model.trim()
-    : '';
-  if (!mainRef) return false;
-
-  const slash = mainRef.indexOf('/');
-  if (slash <= 0 || slash === mainRef.length - 1) return false;
-  const providerId = mainRef.slice(0, slash);
-  const modelId = mainRef.slice(slash + 1);
-
-  const provider = record.config?.model?.providers?.[providerId];
-  if (!provider || typeof provider !== 'object') return false;
-
-  const hasUrl = Boolean(resolveConfiguredProviderUrl(providerId, provider));
-  const apiKey = resolveConfiguredProviderApiKey(providerId, provider);
-  const hasRequiredCredential = providerAllowsMissingApiKey(providerId)
-    ? apiKey !== PLACEHOLDER_API_KEY
-    : Boolean(apiKey) && apiKey !== PLACEHOLDER_API_KEY;
-  const hasModel = provider.models && typeof provider.models === 'object' && modelId in provider.models;
-
-  return Boolean(hasUrl && hasRequiredCredential && hasModel);
-}
 
 function spawnAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -148,11 +109,12 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
 router.get('/onboarding-status', authenticateToken, async (req, res) => {
   try {
-    const hasCompleted = hasUsablePilotDeckConfig();
+    const configuration = getModelConfigurationState();
 
     res.json({
       success: true,
-      hasCompletedOnboarding: hasCompleted
+      configuration,
+      hasCompletedOnboarding: configuration.state === 'ready'
     });
   } catch (error) {
     console.error('Error checking onboarding status:', error);

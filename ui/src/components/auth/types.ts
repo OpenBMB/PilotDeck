@@ -26,7 +26,31 @@ export type AuthUserPayload = {
 
 export type OnboardingStatusPayload = {
   hasCompletedOnboarding?: boolean;
+  configuration?: ServerModelConfigurationState;
+  error?: string;
 };
+
+export type ModelConfigurationReason =
+  | 'missing_config'
+  | 'missing_model'
+  | 'missing_credential'
+  | 'legacy_placeholder';
+
+type ModelConfigurationBase = {
+  configPath: string | null;
+  revision: string;
+};
+
+export type ServerModelConfigurationState = ModelConfigurationBase & (
+  | { state: 'needs_configuration'; reason: ModelConfigurationReason }
+  | { state: 'ready'; modelRef: string }
+  | { state: 'invalid'; errors: string[] }
+);
+
+export type ModelConfigurationState =
+  | { state: 'loading' }
+  | ServerModelConfigurationState
+  | { state: 'status_error'; error: string };
 
 export type ApiErrorPayload = {
   error?: string;
@@ -39,6 +63,7 @@ export type AuthContextValue = {
   isLoading: boolean;
   needsSetup: boolean;
   hasCompletedOnboarding: boolean;
+  modelConfiguration: ModelConfigurationState;
   error: string | null;
   login: (username: string, password: string) => Promise<AuthActionResult>;
   register: (username: string, password: string) => Promise<AuthActionResult>;
