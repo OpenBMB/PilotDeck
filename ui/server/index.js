@@ -45,6 +45,7 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
 import os from 'os';
@@ -1263,11 +1264,22 @@ const officePreviewPdfRateLimiter = createRouteRateLimiter({
     message: 'Too many Office preview conversion requests',
 });
 
-const nativeFolderPickerRateLimiter = createRouteRateLimiter({
+// Use express-rate-limit so CodeQL's js/missing-rate-limiting query recognizes
+// throttling on this expensive authenticated filesystem route.
+const nativeFolderPickerRateLimiter = rateLimit({
     windowMs: 60 * 1000,
-    maxRequests: 10,
-    keyPrefix: 'browse-filesystem-native-folder',
-    message: 'Too many native folder picker requests',
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => (
+        req.user?.id
+            ? `user:${req.user.id}`
+            : ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'anonymous')
+    ),
+    message: {
+        error: 'Too many native folder picker requests',
+        code: 'RATE_LIMITED',
+    },
 });
 
 async function addDirectoryToZip(zip, directoryPath, rootPath) {
