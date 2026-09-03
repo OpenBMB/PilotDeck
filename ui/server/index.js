@@ -1263,6 +1263,13 @@ const officePreviewPdfRateLimiter = createRouteRateLimiter({
     message: 'Too many Office preview conversion requests',
 });
 
+const nativeFolderPickerRateLimiter = createRouteRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 10,
+    keyPrefix: 'browse-filesystem-native-folder',
+    message: 'Too many native folder picker requests',
+});
+
 async function addDirectoryToZip(zip, directoryPath, rootPath) {
     const entries = await fsPromises.readdir(directoryPath, { withFileTypes: true });
 
@@ -1390,7 +1397,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/browse-filesystem/native-folder', authenticateToken, async (req, res) => {
+app.post('/api/browse-filesystem/native-folder', authenticateToken, nativeFolderPickerRateLimiter, async (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);
 
