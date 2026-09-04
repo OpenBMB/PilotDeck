@@ -3565,18 +3565,6 @@ app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authentica
     }
 });
 
-// API requests must never fall through to the SPA shell. Returning index.html
-// with HTTP 200 hides missing/stale backend routes and makes JSON clients show
-// an empty result instead of a useful error.
-app.use('/api', (req, res) => {
-    res.status(404).json({
-        error: {
-            code: 'API_ROUTE_NOT_FOUND',
-            message: `API route not found: ${req.method} ${req.originalUrl}`,
-        },
-    });
-});
-
 // Serve React app for all other routes (excluding static files)
 app.get('*', (req, res) => {
     // Skip requests for actual static asset extensions only

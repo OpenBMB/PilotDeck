@@ -115,32 +115,46 @@ describe('LlmConfigurationStep', () => {
     expect(screen.getByText('None')).toBeTruthy();
   });
 
-  it('uses DeepSeek bundled models until an API key is entered', async () => {
+  it('fetches DeepSeek models through its environment API key before falling back to bundled models', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     mocks.fetchRemoteDefaultModels.mockClear();
+    mocks.fetchProviderModels.mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
 
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+        providerId: 'deepseek',
+        apiKey: '',
+      }));
+    });
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
     expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
     expect(screen.getByText('None')).toBeTruthy();
   });
 
-  it('uses Kimi bundled models until an API key is entered', async () => {
+  it('fetches Kimi models through its environment API key before falling back to bundled models', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
     });
     mocks.fetchRemoteDefaultModels.mockClear();
+    mocks.fetchProviderModels.mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: /^Moonshot AI \(Kimi\)$/ }));
 
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+        providerId: 'moonshot',
+        apiKey: '',
+      }));
+    });
     expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
     expect(screen.getByRole('button', { name: 'kimi-k2.6' })).toBeTruthy();

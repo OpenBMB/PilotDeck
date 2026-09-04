@@ -417,31 +417,6 @@ describe('config test-connection route', () => {
     expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
   });
 
-  it('skips the image probe when skipImage is set after a manual update', async () => {
-    const calls = [];
-    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
-      calls.push(String(url));
-      return jsonResponse(openaiReply(init));
-    }));
-
-    const { request } = await createConfigApp();
-    const data = await request('/api/config/test-connection', {
-      method: 'POST',
-      body: JSON.stringify({
-        providerType: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: 'sk-test',
-        model: 'custom-model',
-        skipImage: true,
-      }),
-    });
-
-    expect(data.ok).toBe(true);
-    expect(data.supportsImage).toBeNull();
-    expect(data.imageCheckSource).toBeNull();
-    expect(calls).toEqual(['https://api.openai.com/v1/chat/completions']);
-  });
-
   it('does not reuse a masked saved key after the endpoint changes', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const { requestStatus } = await createConfigApp({

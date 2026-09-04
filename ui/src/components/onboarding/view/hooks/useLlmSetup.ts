@@ -123,7 +123,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         setApiModels(models.length > 0 ? models : catalogModels);
         setModelListStatus('idle');
       })
-      .catch((error) => {
+      .catch(() => {
         if (controller.signal.aborted) return;
         setApiModels(catalogModels);
         setModelListStatus('idle');
@@ -134,7 +134,12 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   useEffect(() => {
     const key = apiKey.trim();
     if (!selectedProvider || !effectiveProviderId || !effectiveUrl) return;
-    if (!hasUsableApiKey(key) && !isCustomMode && selectedProviderRequiresApiKey) return;
+    if (
+      !hasUsableApiKey(key)
+      && !isCustomMode
+      && selectedProviderRequiresApiKey
+      && !hasEnvironmentApiKeyFallback
+    ) return;
     const controller = new AbortController();
     setModelListStatus('loading');
     setModelListMessage('');
@@ -146,7 +151,10 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        if (!selectedProviderRequiresApiKey && selectedProvider.models.length > 0) {
+        if (
+          selectedProvider.models.length > 0
+          && (!selectedProviderRequiresApiKey || (!hasUsableApiKey(key) && hasEnvironmentApiKeyFallback))
+        ) {
           setApiModels(selectedProvider.models);
           setModelListStatus('idle');
           return;
@@ -155,7 +163,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         setModelListMessage(error instanceof Error ? error.message : String(error));
       });
     return () => controller.abort();
-  }, [apiKey, effectiveProviderId, effectiveProtocol, effectiveUrl, isCustomMode, selectedProvider, selectedProviderRequiresApiKey]);
+  }, [apiKey, effectiveProviderId, effectiveProtocol, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider, selectedProviderRequiresApiKey]);
 
   const handleFetchModels = useCallback(async () => {
     if (!canFetchModels) return;
@@ -163,7 +171,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     setModelListMessage('');
     try {
       const key = apiKey.trim();
-      const models = !isCustomMode && !hasUsableApiKey(key)
+      const models = !isCustomMode && !hasUsableApiKey(key) && !hasEnvironmentApiKeyFallback
         ? await fetchRemoteDefaultModels(effectiveProviderId)
         : await fetchProviderModels({
             protocol: effectiveProtocol,
@@ -180,7 +188,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       setModelListStatus('error');
       setModelListMessage(error instanceof Error ? error.message : String(error));
     }
-  }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, isCustomMode, selectedProvider]);
+  }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider]);
 
   const handleProviderSelect = useCallback((provider: CatalogProvider) => {
     resetTest();

@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -53,18 +53,23 @@ const runDialog = async (execFileAsync, command, args) => {
   }
 };
 
-const pickWindowsFolder = (execFileAsync) => {
-  const tempScript = path.join(os.tmpdir(), 'pilotdeck-native-folder-picker.ps1');
+const pickWindowsFolder = async (execFileAsync) => {
+  const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-native-folder-picker-'));
+  const tempScript = path.join(tempDirectory, 'pilotdeck-native-folder-picker.ps1');
   const script = readFileSync(WINDOWS_FOLDER_DIALOG_SCRIPT_PATH, 'utf8');
-  writeUtf16LePowerShellScript(tempScript, script);
-  return runDialog(execFileAsync, 'powershell.exe', [
-    '-NoProfile',
-    '-STA',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    tempScript,
-  ]);
+  try {
+    writeUtf16LePowerShellScript(tempScript, script);
+    return await runDialog(execFileAsync, 'powershell.exe', [
+      '-NoProfile',
+      '-STA',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      tempScript,
+    ]);
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
 };
 
 const pickMacFolder = (execFileAsync) =>

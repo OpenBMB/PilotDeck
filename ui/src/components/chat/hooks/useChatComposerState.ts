@@ -11,12 +11,14 @@ import type {
 } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { authenticatedFetch } from '../../../utils/api';
-import { isThinkingModeId, type ThinkingModeId } from '../constants/thinkingModes';
+import { isThinkingModeId, thinkingModeToConfig, type ThinkingModeId } from '../constants/thinkingModes';
 import { grantPilotDeckToolPermission } from '../utils/chatPermissions';
-import { getDraftInputStorageKey, safeLocalStorage } from '../utils/chatStorage';
+import { getDraftInputStorageKey, getPilotDeckSettings, safeLocalStorage } from '../utils/chatStorage';
 import {
   createTemporarySessionId,
   createUserTurnRunId,
+  getNotificationSessionSummary,
+  getSelectedProjectPath,
   isTemporarySessionId,
   startSessionCommand,
 } from '../utils/sessionLauncher';
@@ -39,6 +41,7 @@ import type {
   ProjectSession,
 } from '../../../types/app';
 import { isImeEnterEvent } from '../../../utils/ime';
+import type { PreparedQueuedInput } from '../types/queuedInput';
 import {
   cancelAttachmentUpload,
   uploadAttachmentBatch,
@@ -65,6 +68,8 @@ interface UseChatComposerStateArgs {
   cycleRunMode: () => void;
   isLoading: boolean;
   canAbortSession: boolean;
+  inputQueuePaused?: boolean;
+  enqueuePreparedInput?: (item: PreparedQueuedInput) => Promise<{ ok: boolean; error?: string }>;
   tokenBudget: Record<string, unknown> | null;
   sendMessage: (message: unknown) => void;
   subscribe?: (handler: (message: any) => void) => () => void;
@@ -165,16 +170,6 @@ type CompletedAttachmentUpload = {
   mimeType?: string;
 };
 
-type QueuedBusySendSnapshot = {
-  input: string;
-  attachedImages: File[];
-  documentReferences: ContentReference[];
-  selectedFileMentions: MentionableFile[];
-  selectedSkills: ComposerSelectedSkill[];
-  selectedCommands: SlashCommand[];
-  forceStart?: boolean;
-};
-
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
   {
@@ -269,6 +264,8 @@ export function useChatComposerState({
   cycleRunMode,
   isLoading,
   canAbortSession,
+  inputQueuePaused = false,
+  enqueuePreparedInput,
   tokenBudget,
   sendMessage,
   subscribe,
@@ -307,12 +304,14 @@ export function useChatComposerState({
   const attachedImagesRef = useRef<File[]>([]);
   attachedImagesRef.current = attachedImages;
   const [documentReferences, setDocumentReferences] = useState<ContentReference[]>([]);
+  const documentReferencesRef = useRef<ContentReference[]>([]);
+  documentReferencesRef.current = documentReferences;
   const [selectedSkills, setSelectedSkills] = useState<ComposerSelectedSkill[]>([]);
+  const selectedSkillsRef = useRef<ComposerSelectedSkill[]>([]);
+  selectedSkillsRef.current = selectedSkills;
   const [uploadingImages, setUploadingImages] = useState<Map<File, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<File | string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
-  const [isBusySendQueued, setIsBusySendQueued] = useState(false);
-  const [isBusySendConfirmed, setIsBusySendConfirmed] = useState(false);
   const [thinkingMode, setThinkingModeState] = useState<ThinkingModeId>('default');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -323,23 +322,12 @@ export function useChatComposerState({
   >(null);
   const inputValueRef = useRef(input);
   const activeDraftStorageKeyRef = useRef(draftStorageKey);
-  const queuedBusySendRef = useRef(false);
-  const queuedBusySendConfirmedRef = useRef(false);
-  const queuedBusySendSnapshotRef = useRef<QueuedBusySendSnapshot | null>(null);
   const pendingSessionGrantResolversRef = useRef(new Map<string, (result: PermissionGrantResult) => void>());
   const activeAttachmentUploadsRef = useRef<AttachmentUploadBatch[]>([]);
   const completedAttachmentUploadsRef = useRef<Map<File, CompletedAttachmentUpload>>(new Map());
   const startedUploadKeysRef = useRef(new Set<string>());
   const handleImageFilesRef = useRef<(files: File[]) => void>(() => undefined);
   const lastDropKeyRef = useRef({ key: '', at: 0 });
-
-  const cancelBusySendQueue = useCallback(() => {
-    queuedBusySendRef.current = false;
-    queuedBusySendConfirmedRef.current = false;
-    queuedBusySendSnapshotRef.current = null;
-    setIsBusySendQueued(false);
-    setIsBusySendConfirmed(false);
-  }, []);
 
   const updateAttachmentUploadProgress = useCallback((
     files: File[],
@@ -522,21 +510,6 @@ export function useChatComposerState({
     })();
   }, [selectedProject, updateAttachmentUploadProgress]);
 
-  const syncQueuedBusySendSnapshot = useCallback((updates: Partial<QueuedBusySendSnapshot> = {}) => {
-    if (!queuedBusySendRef.current) return;
-    const previous = queuedBusySendSnapshotRef.current;
-    queuedBusySendSnapshotRef.current = {
-      input: updates.input ?? previous?.input ?? inputValueRef.current,
-      attachedImages: updates.attachedImages ?? previous?.attachedImages ?? attachedImages,
-      documentReferences: updates.documentReferences ?? previous?.documentReferences ?? documentReferences,
-      selectedFileMentions: updates.selectedFileMentions ?? previous?.selectedFileMentions ?? [],
-      selectedSkills: updates.selectedSkills ?? previous?.selectedSkills ?? selectedSkills,
-      selectedCommands: updates.selectedCommands ?? previous?.selectedCommands ?? [],
-      ...(previous?.forceStart ? { forceStart: true } : {}),
-      ...(updates.forceStart ? { forceStart: true } : {}),
-    };
-  }, [attachedImages, documentReferences, selectedSkills]);
-
   useEffect(() => {
     const handleAddDocumentReference = (event: Event) => {
       const detail = (event as CustomEvent).detail;
@@ -544,9 +517,7 @@ export function useChatComposerState({
       if (!reference) return;
       setDocumentReferences((previous) => {
         if (previous.some((item) => item.id === reference.id)) return previous;
-        const next = [...previous, reference];
-        syncQueuedBusySendSnapshot({ documentReferences: next });
-        return next;
+        return [...previous, reference];
       });
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
@@ -557,7 +528,7 @@ export function useChatComposerState({
     return () => {
       window.removeEventListener('pilotdeck:add-chat-reference', handleAddDocumentReference);
     };
-  }, [syncQueuedBusySendSnapshot]);
+  }, []);
 
   useEffect(() => {
     if (!subscribe) {
@@ -959,6 +930,8 @@ export function useChatComposerState({
     textareaRef,
     inputValueRef,
   });
+  const selectedCommandsRef = useRef<SlashCommand[]>([]);
+  selectedCommandsRef.current = selectedCommands;
 
   useEffect(() => {
     clearSelectedCommands();
@@ -987,6 +960,8 @@ export function useChatComposerState({
     setInput,
     textareaRef,
   });
+  const selectedFileMentionsRef = useRef<MentionableFile[]>([]);
+  selectedFileMentionsRef.current = selectedFileMentions;
 
   const selectSkill = useCallback((skill: ComposerSelectedSkill) => {
     setSelectedSkills((previous) => (
@@ -1011,19 +986,6 @@ export function useChatComposerState({
   useEffect(() => {
     setSelectedSkills([]);
   }, [draftStorageKey]);
-
-  useEffect(() => {
-    syncQueuedBusySendSnapshot({
-      selectedFileMentions,
-      selectedSkills,
-      selectedCommands,
-    });
-  }, [
-    selectedCommands,
-    selectedFileMentions,
-    selectedSkills,
-    syncQueuedBusySendSnapshot,
-  ]);
 
   const syncInputOverlayScroll = useCallback((target: HTMLTextAreaElement) => {
     if (!inputHighlightRef.current || !target) {
@@ -1080,13 +1042,11 @@ export function useChatComposerState({
         return next;
       });
     }
-    syncQueuedBusySendSnapshot({ attachedImages: result.files });
-
     if (addedFiles.length === 0) return;
 
     setAttachedImages(result.files);
     startAttachmentUploads(addedFiles);
-  }, [startAttachmentUploads, syncQueuedBusySendSnapshot]);
+  }, [startAttachmentUploads]);
   handleImageFilesRef.current = handleImageFiles;
 
   const handlePaste = useCallback(
@@ -1138,13 +1098,12 @@ export function useChatComposerState({
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
       event.preventDefault();
-      const queuedSnapshot = queuedBusySendSnapshotRef.current;
-      const currentInput = queuedSnapshot?.input ?? inputValueRef.current;
-      const submitAttachedImages = queuedSnapshot?.attachedImages ?? attachedImages;
-      const submitDocumentReferences = queuedSnapshot?.documentReferences ?? documentReferences;
-      const submitFileMentions = queuedSnapshot?.selectedFileMentions ?? selectedFileMentions;
-      const submitSkills = queuedSnapshot?.selectedSkills ?? selectedSkills;
-      const submitCommands = queuedSnapshot?.selectedCommands ?? selectedCommands;
+      const currentInput = inputValueRef.current;
+      const submitAttachedImages = attachedImages;
+      const submitDocumentReferences = documentReferences;
+      const submitFileMentions = selectedFileMentions;
+      const submitSkills = selectedSkills;
+      const submitCommands = selectedCommands;
       const hasDocumentReferences = submitDocumentReferences.length > 0;
       const hasAttachments = submitAttachedImages.length > 0 || hasDocumentReferences;
       const hasProjectMentions = submitFileMentions.length > 0;
@@ -1153,66 +1112,6 @@ export function useChatComposerState({
       if ((!currentInput.trim() && !hasAttachments && !hasProjectMentions && !hasSelectedSkills && !hasSelectedCommands) || !selectedProject) {
         return;
       }
-
-      if (isLoading && !isBusySendQueued) {
-        queuedBusySendRef.current = true;
-        queuedBusySendConfirmedRef.current = false;
-        queuedBusySendSnapshotRef.current = {
-          input: currentInput,
-          attachedImages: [...attachedImages],
-          documentReferences: [...documentReferences],
-          selectedFileMentions: [...selectedFileMentions],
-          selectedSkills: [...selectedSkills],
-          selectedCommands: [...selectedCommands],
-        };
-        setIsBusySendQueued(true);
-        setIsBusySendConfirmed(false);
-        return;
-      }
-
-      if (isLoading && isBusySendQueued) {
-        queuedBusySendSnapshotRef.current = {
-          input: currentInput,
-          attachedImages: submitAttachedImages,
-          documentReferences: submitDocumentReferences,
-          selectedFileMentions: submitFileMentions,
-          selectedSkills: submitSkills,
-          selectedCommands: submitCommands,
-        };
-
-        const pendingSessionId = typeof window !== 'undefined' ? sessionStorage.getItem('pendingSessionId') : null;
-        const targetSessionId = [
-          currentSessionId,
-          pendingViewSessionRef.current?.sessionId || null,
-          pendingSessionId,
-          selectedSession?.id || null,
-        ].find((sessionId) => Boolean(sessionId) && !isTemporarySessionId(sessionId));
-
-        if (!canAbortSession || !targetSessionId) {
-          return;
-        }
-
-        queuedBusySendSnapshotRef.current = {
-          ...queuedBusySendSnapshotRef.current,
-          forceStart: true,
-        };
-        queuedBusySendConfirmedRef.current = true;
-        setIsBusySendConfirmed(true);
-        sendMessage({
-          type: 'abort-session',
-          sessionId: targetSessionId,
-          provider: 'pilotdeck',
-        });
-        setCanAbortSession(false);
-        setIsAborting(true);
-        return;
-      }
-
-      queuedBusySendRef.current = false;
-      queuedBusySendConfirmedRef.current = false;
-      queuedBusySendSnapshotRef.current = null;
-      setIsBusySendQueued(false);
-      setIsBusySendConfirmed(false);
 
       // Intercept slash commands: if input starts with /commandName, execute as command with args.
       // Skip when handleCustomCommand just pushed a passthrough back into the
@@ -1227,15 +1126,7 @@ export function useChatComposerState({
         const commandResult = await executeCommand(selectedCommand, commandInput);
         if (!commandResult) return;
         if (commandResult?.type === 'custom') {
-          queuedBusySendSnapshotRef.current = {
-            input: commandResult.content || commandInput,
-            attachedImages: submitAttachedImages,
-            documentReferences: submitDocumentReferences,
-            selectedFileMentions: submitFileMentions,
-            selectedSkills: submitSkills,
-            selectedCommands: [],
-            ...(queuedSnapshot?.forceStart ? { forceStart: true } : {}),
-          };
+          clearSelectedCommands();
           return;
         }
         setInput('');
@@ -1263,15 +1154,7 @@ export function useChatComposerState({
           const commandResult = await executeCommand(matchedCommand, trimmedInput);
           if (!commandResult) return;
           if (commandResult?.type === 'custom') {
-            queuedBusySendSnapshotRef.current = {
-              input: commandResult.content || trimmedInput,
-              attachedImages: submitAttachedImages,
-              documentReferences: submitDocumentReferences,
-              selectedFileMentions: submitFileMentions,
-              selectedSkills: submitSkills,
-              selectedCommands: [],
-              ...(queuedSnapshot?.forceStart ? { forceStart: true } : {}),
-            };
+            clearSelectedCommands();
             return;
           }
           setInput('');
@@ -1330,6 +1213,23 @@ export function useChatComposerState({
         selectedSession?.id ||
         (canResumeCurrentSession ? currentSessionId : null);
       const submitSelectedSession = selectedSession;
+      const pendingSessionId = typeof window !== 'undefined' ? sessionStorage.getItem('pendingSessionId') : null;
+      const requiresExistingQueueTarget = isLoading || inputQueuePaused;
+      const queueTargetSessionId = resolvePreparedInputQueueTarget({
+        submitTargetSessionId,
+        currentSessionId,
+        pendingViewSessionId: pendingViewSessionRef.current?.sessionId || null,
+        pendingSessionId,
+        requiresExistingQueueTarget,
+      });
+      if (requiresExistingQueueTarget && !queueTargetSessionId) {
+        addMessage({
+          type: 'error',
+          content: 'Please wait for the current session to finish starting, then queue this message again.',
+          timestamp: new Date(),
+        }, submitTargetSessionId);
+        return;
+      }
       if (!submitTargetSessionId || isTemporarySessionId(submitTargetSessionId)) {
         pendingNewSessionThinkingModeRef.current = thinkingMode;
       }
@@ -1418,6 +1318,82 @@ export function useChatComposerState({
       const effectiveSessionId = submitTargetSessionId;
       const sessionToActivate = effectiveSessionId || optimisticSessionId;
       const runId = createUserTurnRunId();
+      const toolsSettings = getPilotDeckSettings();
+      const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
+      const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+      const modelOverride = modelSelection?.mode === 'model' ? modelSelection : undefined;
+
+      const clearSubmittedComposerState = () => {
+        if (inputValueRef.current === currentInput) {
+          setInput('');
+          inputValueRef.current = '';
+          resetCommandMenuState();
+          setIsTextareaExpanded(false);
+          if (textareaRef.current) textareaRef.current.style.height = 'auto';
+          if (activeDraftStorageKeyRef.current) {
+            safeLocalStorage.removeItem(activeDraftStorageKeyRef.current);
+          }
+        }
+        setAttachedImages((previous) => previous.filter((file) => !submitAttachedImages.includes(file)));
+        if (documentReferencesRef.current === submitDocumentReferences) setDocumentReferences([]);
+        if (selectedFileMentionsRef.current === submitFileMentions) clearFileMentions();
+        if (selectedSkillsRef.current === submitSkills) clearSelectedSkills();
+        if (selectedCommandsRef.current === submitCommands) clearSelectedCommands();
+        submitAttachedImages.forEach((file) => {
+          completedAttachmentUploadsRef.current.delete(file);
+          startedUploadKeysRef.current.delete(fileFingerprint(file));
+        });
+        setUploadingImages((previous) => {
+          const next = new Map(previous);
+          submitAttachedImages.forEach((file) => next.delete(file));
+          return next;
+        });
+        setImageErrors((previous) => {
+          const next = new Map(previous);
+          submitAttachedImages.forEach((file) => next.delete(file));
+          return next;
+        });
+      };
+
+      // Existing sessions always enter through the server-owned queue. The
+      // server atomically decides whether to dispatch now or retain the item,
+      // avoiding upload/session-busy races while preserving the richer PR payload.
+      if (shouldRoutePreparedInputThroughQueue(queueTargetSessionId)) {
+        const result = await enqueuePreparedInput?.({
+          id: runId,
+          runId,
+          command: messageContent,
+          displayText: userVisibleInput,
+          createdAt: new Date().toISOString(),
+          options: {
+            sessionId: queueTargetSessionId,
+            projectPath: resolvedProjectPath,
+            cwd: resolvedProjectPath,
+            runMode,
+            permissionMode,
+            basePermissionMode,
+            model,
+            thinking: thinkingModeToConfig(thinkingMode),
+            sessionSummary,
+            toolsSettings,
+            userVisibleInput,
+            images: uploadedImages,
+            attachments: turnAttachments,
+            uploadedAttachments: uploadedAttachmentRefs,
+            modelOverride,
+          },
+        }) ?? { ok: false, error: 'Message queue is unavailable.' };
+        if (!result.ok) {
+          addMessage({
+            type: 'error',
+            content: result.error || 'Failed to queue this message.',
+            timestamp: new Date(),
+          }, queueTargetSessionId);
+          return;
+        }
+        clearSubmittedComposerState();
+        return;
+      }
 
       const userMessage: ChatMessage = {
         type: 'user',
@@ -1463,34 +1439,17 @@ export function useChatComposerState({
         runMode,
         permissionMode,
         basePermissionMode,
-        modelOverride: modelSelection?.mode === 'model' ? modelSelection : undefined,
+        model,
+        thinking: thinkingModeToConfig(thinkingMode),
+        sessionSummary,
+        toolsSettings,
+        modelOverride,
         images: uploadedImages,
         attachments: turnAttachments,
         uploadedAttachments: uploadedAttachmentRefs,
-        forceStart: queuedSnapshot?.forceStart === true,
       });
 
-      setInput('');
-      inputValueRef.current = '';
-      resetCommandMenuState();
-      setAttachedImages([]);
-      setDocumentReferences([]);
-      clearFileMentions();
-      clearSelectedSkills();
-      clearSelectedCommands();
-      completedAttachmentUploadsRef.current.clear();
-    startedUploadKeysRef.current.clear();
-      setUploadingImages(new Map());
-      setImageErrors(new Map());
-      setIsTextareaExpanded(false);
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-
-      if (activeDraftStorageKeyRef.current) {
-        safeLocalStorage.removeItem(activeDraftStorageKeyRef.current);
-      }
+      clearSubmittedComposerState();
     },
     [
       selectedSession,
@@ -1502,12 +1461,13 @@ export function useChatComposerState({
       clearSelectedSkills,
       selectedCommands,
       clearSelectedCommands,
+      model,
       modelSelection,
       currentSessionId,
       executeCommand,
       isLoading,
-      isBusySendQueued,
-      canAbortSession,
+      inputQueuePaused,
+      enqueuePreparedInput,
       onSessionActive,
       onSessionActivityBump,
       onSessionProcessing,
@@ -1520,10 +1480,8 @@ export function useChatComposerState({
       selectedProject,
       sendMessage,
       setCanAbortSession,
-      setIsAborting,
       addMessage,
       setClaudeStatus,
-      setPilotDeckStatus,
       setIsLoading,
       setIsUserScrolledUp,
       slashCommands,
@@ -1541,20 +1499,6 @@ export function useChatComposerState({
   useEffect(() => {
     inputValueRef.current = input;
   }, [input]);
-
-  useEffect(() => {
-    if (!isLoading) {
-      if (queuedBusySendRef.current && handleSubmitRef.current) {
-        handleSubmitRef.current(createFakeSubmitEvent());
-      } else {
-        queuedBusySendRef.current = false;
-        queuedBusySendConfirmedRef.current = false;
-        queuedBusySendSnapshotRef.current = null;
-        setIsBusySendQueued(false);
-        setIsBusySendConfirmed(false);
-      }
-    }
-  }, [isLoading]);
 
   useEffect(() => {
     const key = activeDraftStorageKeyRef.current;
@@ -1637,7 +1581,6 @@ export function useChatComposerState({
 
       setInput(newValue);
       inputValueRef.current = newValue;
-      syncQueuedBusySendSnapshot({ input: newValue });
       setCursorPosition(cursorPos);
 
       if (!newValue.trim()) {
@@ -1649,7 +1592,7 @@ export function useChatComposerState({
 
       handleCommandInputChange(newValue, cursorPos);
     },
-    [handleCommandInputChange, resetCommandMenuState, setCursorPosition, syncQueuedBusySendSnapshot],
+    [handleCommandInputChange, resetCommandMenuState, setCursorPosition],
   );
 
   const insertAtCursor = useCallback(
@@ -1663,7 +1606,6 @@ export function useChatComposerState({
 
       setInput(nextValue);
       inputValueRef.current = nextValue;
-      syncQueuedBusySendSnapshot({ input: nextValue });
       setCursorPosition(nextCursor);
 
       if (char === '/') {
@@ -1683,7 +1625,7 @@ export function useChatComposerState({
         }
       });
     },
-    [handleCommandInputChange, input, setCursorPosition, setInput, syncQueuedBusySendSnapshot, textareaRef],
+    [handleCommandInputChange, input, setCursorPosition, setInput, textareaRef],
   );
 
   const handleKeyDown = useCallback(
@@ -1768,7 +1710,6 @@ export function useChatComposerState({
     completedAttachmentUploadsRef.current.delete(file);
     startedUploadKeysRef.current.delete(fileFingerprint(file));
     setAttachedImages(next);
-    syncQueuedBusySendSnapshot({ attachedImages: next });
     setUploadingImages((previous) => {
       const updated = new Map(previous);
       updated.delete(file);
@@ -1779,7 +1720,7 @@ export function useChatComposerState({
       updated.delete(file);
       return updated;
     });
-  }, [attachedImages, syncQueuedBusySendSnapshot]);
+  }, [attachedImages]);
 
   const retryAttachmentUpload = useCallback((file: File) => {
     setImageErrors((previous) => {
@@ -1801,7 +1742,6 @@ export function useChatComposerState({
     clearFileMentions();
     clearSelectedSkills();
     clearSelectedCommands();
-    cancelBusySendQueue();
     void cancelActiveAttachmentUpload();
     resetCommandMenuState();
     if (textareaRef.current) {
@@ -1809,7 +1749,7 @@ export function useChatComposerState({
       textareaRef.current.focus();
     }
     setIsTextareaExpanded(false);
-  }, [cancelActiveAttachmentUpload, cancelBusySendQueue, clearFileMentions, clearSelectedCommands, clearSelectedSkills, resetCommandMenuState]);
+  }, [cancelActiveAttachmentUpload, clearFileMentions, clearSelectedCommands, clearSelectedSkills, resetCommandMenuState]);
 
   const handleAbortSession = useCallback(() => {
     if (!canAbortSession) {
@@ -1834,8 +1774,6 @@ export function useChatComposerState({
       return;
     }
 
-    cancelBusySendQueue();
-
     sendMessage({
       type: 'abort-session',
       sessionId: targetSessionId,
@@ -1849,7 +1787,7 @@ export function useChatComposerState({
       tokens: 0,
       can_interrupt: false,
     });
-  }, [canAbortSession, cancelBusySendQueue, currentSessionId, pendingViewSessionRef, selectedSession?.id, sendMessage, setCanAbortSession, setClaudeStatus, setIsAborting, setPilotDeckStatus]);
+  }, [canAbortSession, currentSessionId, pendingViewSessionRef, selectedSession?.id, sendMessage, setCanAbortSession, setIsAborting, setPilotDeckStatus]);
 
   const handleGrantToolPermission = useCallback(
     (suggestion: { entry: string; toolName: string }) => {
@@ -2024,22 +1962,14 @@ export function useChatComposerState({
     selectFile,
     attachedImages,
     setAttachedImages: (value: SetStateAction<File[]>) => {
-      setAttachedImages((previous) => {
-        const next = typeof value === 'function'
-          ? (value as (previous: File[]) => File[])(previous)
-          : value;
-        syncQueuedBusySendSnapshot({ attachedImages: next });
-        return next;
-      });
+      setAttachedImages(value);
     },
     removeAttachedImage,
     retryAttachmentUpload,
     documentReferences,
     removeDocumentReference: (id: string) => {
       setDocumentReferences((previous) => {
-        const next = previous.filter((reference) => reference.id !== id);
-        syncQueuedBusySendSnapshot({ documentReferences: next });
-        return next;
+        return previous.filter((reference) => reference.id !== id);
       });
     },
     uploadingImages,
@@ -2064,9 +1994,6 @@ export function useChatComposerState({
     handleGrantSessionToolPermission,
     handleInputFocusChange,
     isInputFocused,
-    isBusySendQueued,
-    isBusySendConfirmed,
-    cancelBusySendQueue,
   };
 }
 

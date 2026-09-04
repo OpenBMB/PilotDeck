@@ -1138,14 +1138,6 @@ router.post('/test-connection', async (req, res) => {
     maxTokens: isOpenAIResponses ? 16 : 8,
   });
   if (probe.ok) {
-    if (req.body?.skipImage === true) {
-      return res.json({
-        ok: true,
-        message: `Connected successfully — Model ${model} is available.`,
-        supportsImage: null,
-        imageCheckSource: null,
-      });
-    }
     const catalogSupport = catalogImageSupport(normalizedProviderId, model);
     if (catalogSupport !== null) {
       const imageSupport = imageSupportResultFromCatalog(catalogSupport);

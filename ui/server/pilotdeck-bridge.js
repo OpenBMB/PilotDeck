@@ -481,6 +481,11 @@ function persistQueueState(state) {
 }
 
 function publicQueueItem(item) {
+    const uploadedAttachmentCount = Array.isArray(item.options?.uploadedAttachments)
+        ? item.options.uploadedAttachments.reduce((count, upload) => (
+            count + (Array.isArray(upload?.attachmentIds) ? upload.attachmentIds.length : 0)
+        ), 0)
+        : 0;
     return {
         id: item.id,
         displayText: item.displayText,
@@ -489,7 +494,7 @@ function publicQueueItem(item) {
         attachmentCount: [
             ...(Array.isArray(item.options?.images) ? item.options.images : []),
             ...(Array.isArray(item.options?.attachments) ? item.options.attachments : []),
-        ].length,
+        ].length + uploadedAttachmentCount,
     };
 }
 
@@ -772,7 +777,7 @@ export function uiFilesToAttachments(files) {
 function normalizePermissionMode(value) {
     if (value === undefined || value === null || value === '') return undefined;
     if (value === 'default' || value === 'plan' || value === 'bypassPermissions') return value;
-    return 'default';
+    return undefined;
 }
 
 function normalizeRunMode(value) {
@@ -781,13 +786,13 @@ function normalizeRunMode(value) {
     return 'agent';
 }
 
-function resolvePermissionMode(options) {
+export function resolvePermissionMode(options, readPersisted = readPermissionSettings) {
     const explicit = normalizePermissionMode(options?.permissionMode || options?.mode);
     // The composer permission picker is a per-turn choice. In particular,
     // selecting "default" must be able to turn off a persisted full-access
     // preference for this turn.
     if (explicit) return explicit;
-    const persisted = readPermissionSettings();
+    const persisted = readPersisted();
     if (persisted.skipPermissions === true) {
         return 'bypassPermissions';
     }

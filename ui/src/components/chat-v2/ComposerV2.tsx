@@ -14,12 +14,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CircleGauge,
   HelpCircle,
   ListChecks,
   Loader2,
   File,
   Folder,
   Plus,
+  Play,
   Search,
   ShieldAlert,
   Square,
@@ -56,6 +58,7 @@ import {
 import DocumentReferenceChip from "./DocumentReferenceChip";
 import ReplyQuoteChip from "./ReplyQuoteChip";
 import WorkspacePickerBar from "./WorkspacePickerBar";
+import { getComposerPrimaryAction } from "./composerPrimaryAction";
 import type { Project } from "../../types/app";
 
 interface MentionableFile {
@@ -149,10 +152,10 @@ export type ComposerV2Props = {
   isLoading: boolean;
   canAbortSession: boolean;
   isAbortPending?: boolean;
-  isBusySendQueued?: boolean;
-  isBusySendConfirmed?: boolean;
-  onCancelBusySendQueue?: () => void;
+  isInputQueuePaused?: boolean;
+  onResumeInputQueue?: () => void;
   isSubmitPending?: boolean;
+  tokenBudget?: Record<string, unknown> | null;
   modelCatalog: ChatModelCatalogItem[];
   modelSelection: ChatModelSelection | null;
   isModelCatalogLoading?: boolean;
@@ -190,6 +193,7 @@ export type ComposerV2Props = {
   onSelectWorkspaceProject?: (project: Project) => void;
   onSelectWorkspaceNone?: () => void;
   onCreateWorkspaceProject?: () => void;
+  queueTray?: ReactNode;
 };
 
 type ContextStatus = {
@@ -501,10 +505,10 @@ export default function ComposerV2({
   isLoading,
   canAbortSession,
   isAbortPending = false,
-  isBusySendQueued = false,
-  isBusySendConfirmed = false,
-  onCancelBusySendQueue,
+  isInputQueuePaused = false,
+  onResumeInputQueue,
   isSubmitPending = false,
+  tokenBudget,
   modelCatalog,
   modelSelection,
   isModelCatalogLoading = false,
@@ -527,9 +531,11 @@ export default function ComposerV2({
   onSelectWorkspaceProject,
   onSelectWorkspaceNone,
   onCreateWorkspaceProject,
+  queueTray,
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
+  const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [advancedModelId, setAdvancedModelId] = useState<string | null>(null);
@@ -630,26 +636,39 @@ export default function ComposerV2({
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
   const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
-  const showAbortButton = isLoading && canAbortSession && !hasDraftContent;
+  const primaryAction = getComposerPrimaryAction({
+    isLoading,
+    isInputQueuePaused,
+    hasDraftContent,
+  });
   const sendTitle =
     hasUploadingImages
       ? (t("input.uploading", { defaultValue: "正在上传..." }) as string)
       : isSubmitPending
       ? (t("input.sending", { defaultValue: "Sending..." }) as string)
-      : isBusySendConfirmed
-        ? (t("input.queuedSendConfirmed", {
-            defaultValue: "Stopping current turn — sending next message",
+      : primaryAction === "resume"
+        ? (t("inputQueue.resume", { defaultValue: "Continue" }) as string)
+        : isLoading
+          ? (t("input.queueSend", { defaultValue: "Queue message" }) as string)
+          : (t("input.send", { defaultValue: "Send" }) as string);
+  const contextStatus = getContextStatus(tokenBudget);
+  const contextStatusTitle = contextStatus.known
+    ? (contextStatus.state === "blocking"
+        ? (t("input.contextStatusBlocking", {
+            percentLabel: contextStatus.percentLabel,
+            used: contextStatus.usedLabel,
+            total: contextStatus.totalLabel,
+            defaultValue: `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact ran, but the context is still over the limit.`,
           }) as string)
-        : isBusySendQueued
-          ? (t("input.queuedSendConfirm", {
-              defaultValue:
-                "Queued — click send again to stop this turn and send now",
-            }) as string)
-          : isLoading
-            ? (t("input.queueSend", {
-                defaultValue: "Queue message",
-              }) as string)
-            : (t("input.send", { defaultValue: "Send" }) as string);
+        : (t("input.contextStatus", {
+            percentLabel: contextStatus.percentLabel,
+            used: contextStatus.usedLabel,
+            total: contextStatus.totalLabel,
+            defaultValue: `${contextStatus.percentLabel} used. ${contextStatus.usedLabel} tokens used out of ${contextStatus.totalLabel}. Auto compact runs near the limit.`,
+          }) as string))
+    : (t("input.contextStatusUnknown", {
+        defaultValue: "Context usage unknown. It will appear after the next model response.",
+      }) as string);
   const selectedPermissionOption =
     PERMISSION_MODE_OPTIONS.find((option) => option.mode === permissionMode) ||
     PERMISSION_MODE_OPTIONS[0];
@@ -711,6 +730,7 @@ export default function ComposerV2({
       )}
     >
       <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[860px]")}>
+        {queueTray}
         {pendingPermissionRequests.length > 0 ? (
           <div className="mb-3">
             <PermissionRequestsBanner
@@ -1420,35 +1440,6 @@ export default function ComposerV2({
                   })}
                 </div>
 
-                {isBusySendQueued ? (
-                  <div className="hidden min-w-0 flex-1 items-center justify-end gap-1 px-2 text-[12px] text-amber-700 dark:text-amber-300 sm:flex">
-                    <span className="truncate rounded-full bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
-                      {isBusySendConfirmed
-                        ? t("input.queuedSendConfirmedInline", {
-                            defaultValue: "Stopping current turn; sending next",
-                          })
-                        : t("input.queuedSendConfirmInline", {
-                            defaultValue:
-                              "Queued; click again to stop this turn and send now",
-                          })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={onCancelBusySendQueue}
-                      className="rounded-full px-2 py-1 text-amber-700 transition hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                      title={
-                        t("input.cancelQueuedSend", {
-                          defaultValue: "Cancel queued message",
-                        }) as string
-                      }
-                    >
-                      {t("input.cancelQueuedSendShort", {
-                        defaultValue: "Cancel",
-                      })}
-                    </button>
-                  </div>
-                ) : null}
-
                 <div
                   className={cn(
                     "pd-composer-toolbar-right ml-auto flex shrink-0 items-center gap-3",
@@ -1791,11 +1782,86 @@ export default function ComposerV2({
                     ) : null}
                   </div>
 
-                  {showAbortButton ? (
+                  <div
+                    className="relative"
+                    onBlur={(event) => {
+                      const nextTarget = event.relatedTarget as Node | null;
+                      if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                        setIsContextPopoverOpen(false);
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setIsContextPopoverOpen((open) => !open)}
+                      className={cn(
+                        "pd-composer-icon-button inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] tabular-nums transition",
+                        contextStatus.tone === "red"
+                          ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                          : contextStatus.tone === "amber"
+                            ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                            : contextStatus.tone === "normal"
+                              ? "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                              : "text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800",
+                      )}
+                      title={contextStatusTitle}
+                      aria-label={contextStatusTitle}
+                      aria-expanded={isContextPopoverOpen}
+                    >
+                      <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
+                      <span>{contextStatus.known ? contextStatus.percentLabel : "--"}</span>
+                    </button>
+                    {isContextPopoverOpen ? (
+                      <div
+                        role="status"
+                        className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                            {t("input.contextStatusTitle", { defaultValue: "Context window" })}
+                          </span>
+                          <span className="font-medium tabular-nums">
+                            {contextStatus.known ? contextStatus.percentLabel : "--"}
+                          </span>
+                        </div>
+                        {contextStatus.known ? (
+                          <>
+                            <div className="text-neutral-500 dark:text-neutral-400">
+                              {t("input.contextStatusUsed", {
+                                used: contextStatus.used.toLocaleString(),
+                                total: contextStatus.displayTotal.toLocaleString(),
+                                defaultValue: `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
+                              })}
+                            </div>
+                            <div className="mt-2 text-neutral-500 dark:text-neutral-400">
+                              {t("input.contextStatusAutoCompact", {
+                                defaultValue: "Auto compact runs when the conversation approaches the configured limit.",
+                              })}
+                            </div>
+                            {contextStatus.state === "blocking" ? (
+                              <div className="mt-2 text-red-600 dark:text-red-300">
+                                {t("input.contextStatusBlockingBody", {
+                                  defaultValue: "Compaction ran, but the context is still over the limit.",
+                                })}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="text-neutral-500 dark:text-neutral-400">
+                            {t("input.contextStatusUnknownBody", {
+                              defaultValue: "No token budget has been reported yet. It will appear after the next model response.",
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {primaryAction === "stop" ? (
                     <button
                       type="button"
                       onClick={onAbortSession}
-                      disabled={isAbortPending}
+                      disabled={isAbortPending || !canAbortSession}
                       className={cn(
                         "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white transition hover:bg-red-600",
                         isAbortPending &&
@@ -1824,55 +1890,52 @@ export default function ComposerV2({
                         />
                       )}
                     </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    disabled={disabled}
-                    aria-label={sendTitle}
-                    aria-busy={
-                      isSubmitPending ||
-                      hasUploadingImages ||
-                      isBusySendConfirmed
-                    }
-                    className={cn(
-                      "home-send-button disabled:opacity-40",
-                      isBusySendQueued &&
-                        "bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-400 dark:text-neutral-950 dark:hover:bg-amber-300",
-                      isBusySendConfirmed && "cursor-wait",
-                      (isSubmitPending || hasUploadingImages) && "cursor-wait",
-                    )}
-                    title={sendTitle}
-                  >
-                    {isSubmitPending || hasUploadingImages ? (
-                      <Loader2
-                        className="h-4 w-4 animate-spin"
-                        strokeWidth={2.25}
-                      />
-                    ) : isBusySendConfirmed ? (
-                      <Loader2
-                        className="h-4 w-4 animate-spin"
-                        strokeWidth={2.25}
-                      />
-                    ) : isBusySendQueued ? (
-                      <Check className="h-4 w-4" strokeWidth={2.25} />
-                    ) : (
-                      <svg
-                        aria-hidden="true"
-                        className="icon"
-                        fill="none"
-                        height="18"
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="1.8"
-                        viewBox="0 0 24 24"
-                        width="18"
-                      >
-                        <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
-                        <path d="m21.854 2.147-10.94 10.939" />
-                      </svg>
-                    )}
-                  </button>
+                  ) : primaryAction === "resume" ? (
+                    <button
+                      type="button"
+                      onClick={onResumeInputQueue}
+                      className="home-send-button"
+                      title={sendTitle}
+                      aria-label={sendTitle}
+                    >
+                      <Play className="h-4 w-4" fill="currentColor" strokeWidth={2} />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={disabled}
+                      aria-label={sendTitle}
+                      aria-busy={isSubmitPending || hasUploadingImages}
+                      className={cn(
+                        "home-send-button disabled:opacity-40",
+                        (isSubmitPending || hasUploadingImages) && "cursor-wait",
+                      )}
+                      title={sendTitle}
+                    >
+                      {isSubmitPending || hasUploadingImages ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          strokeWidth={2.25}
+                        />
+                      ) : (
+                        <svg
+                          aria-hidden="true"
+                          className="icon"
+                          fill="none"
+                          height="18"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.8"
+                          viewBox="0 0 24 24"
+                          width="18"
+                        >
+                          <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+                          <path d="m21.854 2.147-10.94 10.939" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -34,11 +34,20 @@ export type PreparedQueuedInput = {
     permissionMode?: string;
     basePermissionMode?: string;
     model?: string;
+    modelOverride?: {
+      mode: 'model';
+      provider: string;
+      model: string;
+      reasoning?: number;
+      temperature?: number;
+      speed?: number;
+    };
     thinking?: unknown;
     sessionSummary?: string | null;
     toolsSettings?: unknown;
     userVisibleInput?: string;
     images?: unknown[];
     attachments?: ChatAttachment[];
+    uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   };
 };
