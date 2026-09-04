@@ -31,6 +31,7 @@
     "cron": "Cron"
   },
   "dashboardSwitcher": {
+    "explore": "Explore",
     "open": "Open dashboards menu",
     "menuLabel": "Dashboards",
     "closeActive": "Close {{tool}} dashboard",

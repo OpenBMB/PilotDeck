@@ -344,3 +344,47 @@ Passed.
 - The implementation screenshots include an unrelated macOS screen-recording permission prompt produced while saving QA evidence. It does not cover the reviewed logo or permission control and does not affect the app implementation.
 
 final result: passed
+
+## Explore label for the dashboard switcher — 2026-09-04
+
+### Source visual truth
+
+- Compact header controls: `/Users/meisen/Desktop/截屏2026-09-04 17.18.28.png`
+- Ellipsis-plus-label direction: `/Users/meisen/Desktop/截屏2026-09-04 17.18.33.png`
+- The reference attachments were opened and inspected at the start of the implementation pass. The source files were no longer present on disk when the final report was written, so the visual comparison uses the already-opened attachment evidence from this conversation rather than a newly persisted combined board.
+
+### Implementation evidence
+
+- Closed state, dark theme: `/Users/meisen/workspace/projects/lightoffice/PilotDeck/artifacts/explore-label-qa/implementation.png`
+- Open menu state, dark theme: `/Users/meisen/workspace/projects/lightoffice/PilotDeck/artifacts/explore-label-qa/menu-open.png`
+
+### State and normalization
+
+- Source pixels: 488×334 for the compact header crop and 690×128 for the focused label crop.
+- Implementation pixels and CSS viewport: 765×938 at the in-app browser's native capture density.
+- State: general conversation, dashboard switcher closed and open, dark theme.
+- The source provides focused component crops rather than a matching full page, so full-page proportions were not treated as pixel-identical evidence. The implementation full view was used to confirm that the additional label does not crowd Search, Files, or the title.
+
+### Fidelity review
+
+- Typography: the label reuses the existing 15 px header navigation treatment, matching Files in size, weight, and line height.
+- Spacing and layout: the existing ellipsis and the new label use the same 7 px icon/text gap and 34 px control height as Files; the 765 px-wide verification view shows no clipping or overlap.
+- Colors and tokens: the switcher reuses PilotDeck's existing light/dark header navigation tokens and hover treatment.
+- Image and icon quality: no new raster asset or replacement icon was introduced; the existing ellipsis icon remains unchanged.
+- Copy: Chinese renders as `探索`; English renders as `Explore`; the accessible action remains `Open dashboards menu` / `打开看板菜单`.
+- Interaction: the labeled trigger opens the existing Routing, Memory, and Always-On menu and retains expanded/collapsed semantics.
+
+### Findings and comparison history
+
+- First comparison found no actionable P0/P1/P2 mismatch. The source's product intent—turning an ambiguous ellipsis into a discoverable ellipsis-plus-label entry—is preserved.
+- No additional focused crop was required because the second source attachment is already a close crop of the exact icon-and-label relationship, while the open-state implementation capture shows that relationship at readable scale.
+- P3: the implementation uses PilotDeck's existing 15 px navigation density rather than attempting to reproduce the source application's exact typeface; this is intentional design-system consistency.
+
+### Verification
+
+- Focused `MainAreaV2` tests: 10/10 passed.
+- UI typecheck: passed.
+- Production UI build: passed.
+- Changed-file ESLint: 0 errors; one pre-existing Tailwind normalization warning remains.
+
+final result: passed

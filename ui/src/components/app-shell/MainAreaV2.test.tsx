@@ -240,6 +240,7 @@ describe('MainAreaV2 dashboard switcher', () => {
     render(<Harness />);
 
     const overflowButton = screen.getByRole('button', { name: 'Open dashboards menu' });
+    expect(overflowButton.textContent).toContain('Explore');
     fireEvent.click(overflowButton);
     const menu = screen.getByRole('menu', { name: 'Dashboards' });
     expect(menu.className).toContain('z-[90]');

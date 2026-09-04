@@ -31,6 +31,7 @@
     "cron": "Cron"
   },
   "dashboardSwitcher": {
+    "explore": "探索",
     "open": "打开看板菜单",
     "menuLabel": "看板",
     "closeActive": "关闭{{tool}}看板",

@@ -469,13 +469,14 @@ function MainAreaV2Content(props: MainAreaV2Props) {
               aria-expanded={dashboardMenuOpen}
               data-tooltip={t('dashboardSwitcher.open', { defaultValue: 'Open dashboards menu' }) as string}
               onClick={() => setDashboardMenuOpen((open) => !open)}
-              className="icon-button tooltip tooltip-bottom"
+              className="file-entry tooltip tooltip-bottom"
             >
               <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
                 <circle cx="12" cy="12" r="1" />
                 <circle cx="19" cy="12" r="1" />
                 <circle cx="5" cy="12" r="1" />
               </svg>
+              <span>{t('dashboardSwitcher.explore', { defaultValue: 'Explore' })}</span>
               {alwaysOnUnread ? (
                 <span
                   aria-hidden="true"
