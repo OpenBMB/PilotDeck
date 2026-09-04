@@ -318,3 +318,29 @@ final result: passed
 ### Result
 
 Passed.
+
+## Dark-mode surfaces and brand lockup — 2026-09-04
+
+### Scope and evidence
+
+- Route: `/p/Users-meisen-workspace-9gclaw_projects-test_game`
+- Theme: dark
+- States reviewed: project composer and create-workspace dialog
+- Source captures:
+  - `/Users/meisen/Desktop/截屏2026-09-04 19.42.27.png`
+  - `/Users/meisen/Desktop/截屏2026-09-04 19.42.36.png`
+  - `/Users/meisen/Desktop/截屏2026-09-04 19.43.39.png`
+- Implementation captures:
+  - `/Users/meisen/workspace/projects/lightoffice/PilotDeck/artifacts/design-qa/dark-create-project.png`
+  - `/Users/meisen/workspace/projects/lightoffice/PilotDeck/artifacts/design-qa/dark-composer-logo.png`
+
+### Findings and verification
+
+- The create-workspace dialog now uses dark surfaces, borders, text, placeholders, focus styling, and secondary-button states instead of retaining the light dialog palette.
+- The Full Access control now uses a dark amber warning treatment; its white light-theme surface no longer appears in dark mode.
+- The sidebar brand lockup now uses the high-resolution dark-theme wordmark and renders sharply at the existing 165×36 CSS size.
+- Light-theme rules remain scoped separately, so the dark-mode fixes do not change the light presentation.
+- Typecheck, ESLint, 13 focused sidebar tests, and the production UI build passed.
+- The implementation screenshots include an unrelated macOS screen-recording permission prompt produced while saving QA evidence. It does not cover the reviewed logo or permission control and does not affect the app implementation.
+
+final result: passed

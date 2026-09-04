@@ -29,6 +29,8 @@ import {
   setSessionCustomTitle,
   useCustomNamesVersion,
 } from '../../lib/customNames';
+import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
+import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
 import { compareProjectsBySidebarOrder } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
@@ -1079,11 +1081,22 @@ export default function SidebarV2({
         </button>
       ) : (
         <header className="sidebar-brand-row">
-          <img
-            alt="PILOTDECK"
-            className="brand-lockup"
-            src="/pilotdeck-logo-lockup-transparent.png"
-          />
+          <span className="brand-lockup" role="img" aria-label="PILOTDECK">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="brand-lockup-image brand-lockup-light"
+              draggable={false}
+              src={pilotdeckLogoLight}
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              className="brand-lockup-image brand-lockup-dark"
+              draggable={false}
+              src={pilotdeckLogoDark}
+            />
+          </span>
         </header>
       )}
 

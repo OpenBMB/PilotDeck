@@ -12,6 +12,20 @@
   }
 }
 
+/* Permission warning colors live outside Tailwind's layers so the dark theme
+   reliably overrides the light warning utilities on the same button. */
+.dark .pd-composer-permission-bypass {
+  border-color: rgb(146 64 14 / 0.72) !important;
+  background-color: rgb(69 26 3 / 0.4) !important;
+  color: #fcd34d !important;
+}
+
+.dark .pd-composer-permission-bypass:hover,
+.dark .pd-composer-permission-bypass[aria-expanded="true"] {
+  border-color: rgb(180 83 9 / 0.82) !important;
+  background-color: rgb(69 26 3 / 0.56) !important;
+}
+
 /* Composable global hover utilities. Kept outside cascade layers so they
    consistently override component-specific hover colors. */
 .hover-brand-text:hover:not(:disabled) {
@@ -1453,10 +1467,20 @@
   .brand-lockup {
     display: block;
     height: 36px;
-    width: auto;
+    width: 165px;
     max-width: 100%;
+  }
+
+  .brand-lockup-image {
+    display: block;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     object-position: left center;
+  }
+
+  .brand-lockup-dark {
+    display: none;
   }
 
   .brand-mark {
@@ -2200,6 +2224,14 @@
   .dark .sidebar-brand-row,
   .dark .compact-brand {
     border-bottom-color: #262626;
+  }
+
+  .dark .brand-lockup-light {
+    display: none;
+  }
+
+  .dark .brand-lockup-dark {
+    display: block;
   }
 
   .dark .primary-action {

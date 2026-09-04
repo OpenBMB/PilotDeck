@@ -1307,10 +1307,9 @@ export default function ComposerV2({
                           ? "cursor-not-allowed border-transparent text-neutral-400 opacity-45 dark:text-neutral-500"
                           : permissionMode === "bypassPermissions"
                             ? cn(
-                                "border-[#efd39f] bg-[#fff8e8] text-[#ad620b] hover:border-[#e5b968] hover:bg-[#fff2d3]",
+                                "pd-composer-permission-bypass border-[#efd39f] bg-[#fff8e8] text-[#ad620b] hover:border-[#e5b968] hover:bg-[#fff2d3]",
                                 isPermissionMenuOpen &&
                                   "border-[#e5b968] bg-[#fff2d3]",
-                                "dark:text-amber-300 dark:hover:border-amber-700 dark:hover:bg-amber-950/50",
                               )
                             : "border-[#ddd9f3] bg-[#f8f7ff] text-[#5d58b6] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                       )}

@@ -77,9 +77,13 @@ describe('SidebarV2 layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByAltText('PILOTDECK').getAttribute('src')).toBe(
-      '/pilotdeck-logo-lockup-transparent.png',
+    const brand = screen.getByRole('img', { name: 'PILOTDECK' });
+    const brandSources = Array.from(brand.querySelectorAll('img')).map((image) =>
+      image.getAttribute('src'),
     );
+    expect(brandSources).toHaveLength(2);
+    expect(brandSources[0]).toContain('pilotdeck-wordmark-light.png');
+    expect(brandSources[1]).toContain('pilotdeck-wordmark-dark.png');
     expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/ })).toBeTruthy();
@@ -104,7 +108,7 @@ describe('SidebarV2 layout', () => {
     localStorage.setItem('sidebar-v2-width', '76');
     renderSidebar(null);
 
-    expect(screen.queryByAltText('PILOTDECK')).toBeNull();
+    expect(screen.queryByRole('img', { name: 'PILOTDECK' })).toBeNull();
     const mark = document.querySelector('.brand-mark');
     expect(mark).toBeInstanceOf(HTMLImageElement);
     expect((mark as HTMLImageElement).getAttribute('src')).toBe(

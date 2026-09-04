@@ -1817,3 +1817,88 @@
   padding-right: 28px;
   font-size: 26px;
 }
+
+.dark .onboarding-shell.create-workspace-dialog {
+  --ink: #f5f5f5;
+  --muted: #a3a3a3;
+  --soft: #737373;
+  --line: #3f3f46;
+  --brand: #818cf8;
+  --brand-dark: #a5b4fc;
+  --brand-soft: rgba(99, 102, 241, 0.18);
+  --surface: #171717;
+  color-scheme: dark;
+  background: #171717;
+  color: var(--ink);
+  box-shadow: rgba(0, 0, 0, 0.62) 0 24px 80px;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .page-intro h1 {
+  color: #f5f5f5;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .intro-copy,
+.dark .onboarding-shell.create-workspace-dialog .workspace-field-stack small,
+.dark .onboarding-shell.create-workspace-dialog .workspace-name-help,
+.dark .onboarding-shell.create-workspace-dialog .field-help {
+  color: #a3a3a3;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-form-row {
+  color: #d4d4d4;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-simple-form input {
+  border-color: #3f3f46;
+  background: #0f0f0f;
+  color: #f5f5f5;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-simple-form input::placeholder {
+  color: #737373;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-simple-form input:hover {
+  border-color: #52525b;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-simple-form input:focus {
+  border-color: #818cf8;
+  box-shadow: rgba(129, 140, 248, 0.2) 0 0 0 3px;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-form-row.invalid input {
+  border-color: #b91c1c;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-form-row.invalid .workspace-name-help {
+  color: #fca5a5;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .folder-browse-button,
+.dark .onboarding-shell.create-workspace-dialog .create-workspace-dialog-close {
+  color: #a3a3a3;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .folder-browse-button:hover:not(:disabled),
+.dark .onboarding-shell.create-workspace-dialog .create-workspace-dialog-close:hover:not(:disabled) {
+  background: #262626;
+  color: #c7d2fe;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .button.secondary {
+  border-color: #3f3f46;
+  background: #262626;
+  color: #e5e5e5;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .button.secondary:hover:not(:disabled) {
+  border-color: #52525b;
+  background: #333333;
+}
+
+.dark .onboarding-shell.create-workspace-dialog .workspace-error {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fca5a5;
+}
