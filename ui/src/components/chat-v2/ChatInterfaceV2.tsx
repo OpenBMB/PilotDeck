@@ -10,6 +10,7 @@ import {
   isReadOnlySession,
 } from '../../types/app';
 import { isGeneralProject } from '../app-shell/appShellSelection';
+import { projectDisplayName, useCustomNamesVersion } from '../../lib/customNames';
 import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
@@ -94,6 +95,7 @@ function ChatInterfaceV2({
   workspaceBinding = null,
   onCreateProject,
 }: ChatInterfaceProps) {
+  useCustomNamesVersion();
   const selectedProject = selectedSession
     ? selectedProjectFromShell
     : (workspaceBinding ?? selectedProjectFromShell);
@@ -789,7 +791,9 @@ function ChatInterfaceV2({
   );
 
   if (isWelcomeMode) {
-    const projectName = selectedProject?.displayName || selectedProject?.name || '';
+    const projectName = selectedProject && !isGeneralProject(selectedProject)
+      ? projectDisplayName(selectedProject)
+      : '';
     if (compact) {
       return (
         <div className="flex h-full min-w-0 flex-col bg-white dark:bg-neutral-950">
@@ -815,10 +819,14 @@ function ChatInterfaceV2({
         <div className="flex flex-1 flex-col items-center justify-center px-6">
           <div className="w-full max-w-[860px]">
             <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
-              {t('welcome.greetingWithProject', {
-                project: projectName,
-                defaultValue: `What's on the plan today?`,
-              })}
+              {projectName
+                ? t('welcome.greetingWithProject', {
+                  project: projectName,
+                  defaultValue: `What do you want us to build in ${projectName}?`,
+                })
+                : t('welcome.noProject', {
+                  defaultValue: `What's on the plan today?`,
+                })}
             </h1>
             {composerSlot}
           </div>

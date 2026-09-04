@@ -492,7 +492,7 @@
     "selectRequired": "请先选择工作空间"
   },
   "welcome": {
-    "greetingWithProject": "今天想做点什么？",
+    "greetingWithProject": "你想让我们在 {{project}} 中构建什么？",
     "noProject": "今天想做点什么？"
   },
   "subagent": {

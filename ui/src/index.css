@@ -1556,7 +1556,7 @@
 
   .tree-row.project-row {
     min-height: 32px;
-    grid-template-columns: 14px 17px minmax(0, 1fr);
+    grid-template-columns: 14px 17px minmax(0, 1fr) 24px;
     gap: 5px;
     padding: 3px 2px;
     border-radius: 6px;
@@ -1580,9 +1580,26 @@
 
   .project-chat-icon {
     display: grid;
-    width: 16px;
+    width: 24px;
     place-items: center;
     color: #7774a4;
+  }
+
+  .project-chat-icon button {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+  }
+
+  .project-chat-icon button:hover,
+  .project-chat-icon button:focus-visible {
+    background: #ffffffb8;
+    color: #4543bc;
   }
 
   .tree-heading button,
@@ -2220,6 +2237,12 @@
   .dark .tree-row.chat-row:hover,
   .dark .compact-project-entry:hover {
     background: rgba(255, 255, 255, 0.06);
+  }
+
+  .dark .project-chat-icon button:hover,
+  .dark .project-chat-icon button:focus-visible {
+    background: rgba(255, 255, 255, 0.06);
+    color: #c4b5fd;
   }
 
   .dark .project-conversation {

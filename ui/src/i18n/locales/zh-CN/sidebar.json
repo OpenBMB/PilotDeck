@@ -85,6 +85,8 @@
     "deleteProject": "删除空项目 (Delete)",
     "showSidebar": "显示侧边栏",
     "newChat": "新建对话",
+    "newChatForProject": "在 {{project}} 中新建对话",
+    "newGeneralChat": "新建通用对话",
     "addToFavorites": "添加到收藏",
     "removeFromFavorites": "从收藏移除",
     "editSessionName": "手动编辑会话名称",

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   Folder,
+  MessageSquarePlus,
   Pencil,
   GitBranch,
   Trash2,
@@ -146,7 +147,7 @@ export type SidebarV2Props = {
   unreadSessionIds?: Set<string>;
   onSelectProject: (project: Project) => void;
   onSelectSession: (project: Project, sessionId: string) => void;
-  onStartNewSession: (project: Project | null) => void;
+  onStartNewSession: (project: Project) => void;
   onStartHomeNewConversation?: () => void;
   pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
@@ -193,12 +194,16 @@ function SectionHeading({
   expanded,
   expandLabel,
   collapseLabel,
+  actionLabel,
+  onAction,
   onToggle,
 }: {
   title: string;
   expanded: boolean;
   expandLabel: string;
   collapseLabel: string;
+  actionLabel?: string;
+  onAction?: () => void;
   onToggle: () => void;
 }) {
   const toggleLabel = expanded ? collapseLabel : expandLabel;
@@ -206,6 +211,16 @@ function SectionHeading({
     <div className="tree-heading shrink-0">
       <span>{title}</span>
       <div className="tree-heading-actions">
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            aria-label={actionLabel}
+            title={actionLabel}
+          >
+            <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onToggle}
@@ -938,7 +953,7 @@ export default function SidebarV2({
           )}
         >
           {isRenaming && !isGeneral ? (
-            <div className="col-span-3 flex h-full min-w-0 items-center gap-1.5">
+            <div className="col-span-4 flex h-full min-w-0 items-center gap-1.5">
               <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
               <input
                 ref={renameInputRef}
@@ -991,6 +1006,33 @@ export default function SidebarV2({
               <span className="flex-1 truncate font-normal">{label}</span>
             </button>
           )}
+
+          {!isRenaming ? (
+            <div
+              className={cn(
+                'project-chat-icon transition-opacity',
+                '[@media(hover:none)]:opacity-100',
+                isSelected
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover/project:opacity-100 focus-within:opacity-100',
+              )}
+            >
+              <button
+                type="button"
+                onClick={(event) => handleNewSession(event, project)}
+                aria-label={t('sidebar:tooltips.newChatForProject', {
+                  project: label,
+                  defaultValue: `Start a new conversation in ${label}`,
+                }) as string}
+                title={t('sidebar:tooltips.newChatForProject', {
+                  project: label,
+                  defaultValue: `Start a new conversation in ${label}`,
+                }) as string}
+              >
+                <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {isExpanded ? renderSessionRows(project) : null}
@@ -1243,6 +1285,12 @@ export default function SidebarV2({
             expanded={conversationsExpanded}
             expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}
             collapseLabel={t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string}
+            actionLabel={generalProject
+              ? t('sidebar:tooltips.newGeneralChat', { defaultValue: 'Start a general conversation' }) as string
+              : undefined}
+            onAction={generalProject
+              ? () => handleNewSession(undefined, generalProject)
+              : undefined}
             onToggle={() => setConversationsExpanded((previous) => !previous)}
           />
 

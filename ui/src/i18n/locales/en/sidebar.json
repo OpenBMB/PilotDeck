@@ -85,6 +85,8 @@
     "deleteProject": "Delete empty project (Delete)",
     "showSidebar": "Show sidebar",
     "newChat": "New Chat",
+    "newChatForProject": "Start a new conversation in {{project}}",
+    "newGeneralChat": "Start a general conversation",
     "addToFavorites": "Add to favorites",
     "removeFromFavorites": "Remove from favorites",
     "editSessionName": "Manually edit session name",

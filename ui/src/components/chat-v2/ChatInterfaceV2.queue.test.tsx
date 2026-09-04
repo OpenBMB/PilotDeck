@@ -5,11 +5,17 @@ import ChatInterfaceV2 from './ChatInterfaceV2';
 
 const queueMocks = vi.hoisted(() => ({
   useSessionInputQueue: vi.fn(),
+  useChatSessionState: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, options?: { defaultValue?: string }) => options?.defaultValue || _key,
+    t: (key: string, options?: { defaultValue?: string; project?: string }) => {
+      if (key === 'welcome.greetingWithProject') {
+        return `What do you want us to build in ${options?.project}?`;
+      }
+      return options?.defaultValue || key;
+    },
   }),
 }));
 
@@ -49,19 +55,7 @@ vi.mock('../chat/hooks/useChatProviderState', () => ({
 }));
 
 vi.mock('../chat/hooks/useChatSessionState', () => ({
-  useChatSessionState: () => ({
-    chatMessages: [], activityMessages: [], addMessage: vi.fn(), clearMessages: vi.fn(),
-    rewindMessages: vi.fn(), isLoading: true, setIsLoading: vi.fn(), sessionRuntimeState: null,
-    setSessionRuntimeState: vi.fn(), activeRunId: 'run-active', setActiveRunId: vi.fn(),
-    currentSessionId: 'web:s_queue', setCurrentSessionId: vi.fn(), isLoadingSessionMessages: false,
-    sessionLoadError: null, isLoadingMoreMessages: false, hasMoreMessages: false, totalMessages: 0,
-    canAbortSession: true, setCanAbortSession: vi.fn(), isAborting: false, setIsAborting: vi.fn(),
-    setIsUserScrolledUp: vi.fn(), tokenBudget: null, setTokenBudget: vi.fn(), visibleMessageCount: 0,
-    visibleMessages: [], loadEarlierMessages: vi.fn(), loadAllMessages: vi.fn(), allMessagesLoaded: true,
-    isLoadingAllMessages: false, claudeStatus: null, pilotDeckStatus: null, setClaudeStatus: vi.fn(),
-    setPilotDeckStatus: vi.fn(), createDiff: vi.fn(), scrollContainerRef: { current: null },
-    scrollToBottom: vi.fn(), handleScroll: vi.fn(),
-  }),
+  useChatSessionState: queueMocks.useChatSessionState,
 }));
 
 vi.mock('../chat/hooks/useSessionInputQueue', () => ({
@@ -96,8 +90,29 @@ vi.mock('./ComposerV2', () => ({
   ),
 }));
 
+const createChatSessionState = (overrides: Record<string, unknown> = {}) => ({
+  chatMessages: [], activityMessages: [], addMessage: vi.fn(), clearMessages: vi.fn(),
+  rewindMessages: vi.fn(), isLoading: true, setIsLoading: vi.fn(), sessionRuntimeState: null,
+  setSessionRuntimeState: vi.fn(), activeRunId: 'run-active', setActiveRunId: vi.fn(),
+  currentSessionId: 'web:s_queue', setCurrentSessionId: vi.fn(), isLoadingSessionMessages: false,
+  sessionLoadError: null, isLoadingMoreMessages: false, hasMoreMessages: false, totalMessages: 0,
+  canAbortSession: true, setCanAbortSession: vi.fn(), isAborting: false, setIsAborting: vi.fn(),
+  setIsUserScrolledUp: vi.fn(), tokenBudget: null, setTokenBudget: vi.fn(), visibleMessageCount: 0,
+  visibleMessages: [], loadEarlierMessages: vi.fn(), loadAllMessages: vi.fn(), allMessagesLoaded: true,
+  isLoadingAllMessages: false, claudeStatus: null, pilotDeckStatus: null, setClaudeStatus: vi.fn(),
+  setPilotDeckStatus: vi.fn(), createDiff: vi.fn(), scrollContainerRef: { current: null },
+  scrollToBottom: vi.fn(), handleScroll: vi.fn(),
+  ...overrides,
+});
+
+const emptyQueue = () => ({
+  queueState: { sessionId: null, revision: 0, paused: false, items: [] },
+  enqueue: vi.fn(), remove: vi.fn(), moveToFront: vi.fn(), steer: vi.fn(), resume: vi.fn(),
+});
+
 describe('ChatInterfaceV2 queue integration', () => {
   it('connects the selected session queue and mounts the full queue tray', () => {
+    queueMocks.useChatSessionState.mockReturnValue(createChatSessionState());
     queueMocks.useSessionInputQueue.mockReturnValue({
       queueState: {
         sessionId: 'web:s_queue',
@@ -127,5 +142,52 @@ describe('ChatInterfaceV2 queue integration', () => {
     }));
     expect(screen.getByRole('region', { name: 'Queued messages' })).toBeTruthy();
     expect(screen.getByText('Keep the main queue')).toBeTruthy();
+  });
+
+  it('uses the workspace binding in the welcome greeting', () => {
+    queueMocks.useChatSessionState.mockReturnValue(createChatSessionState({
+      isLoading: false,
+      currentSessionId: null,
+    }));
+    queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());
+
+    render(<ChatInterfaceV2 {...({
+      selectedProject: null,
+      selectedSession: null,
+      workspaceBinding: {
+        name: 'pilotdeck',
+        displayName: 'PilotDeck',
+        fullPath: '/workspace/PilotDeck',
+      },
+      projects: [],
+      ws: null,
+      sendMessage: vi.fn(),
+    } as any)} />);
+
+    expect(screen.getByRole('heading', {
+      name: 'What do you want us to build in PilotDeck?',
+    })).toBeTruthy();
+  });
+
+  it('keeps the generic greeting for a general conversation', () => {
+    queueMocks.useChatSessionState.mockReturnValue(createChatSessionState({
+      isLoading: false,
+      currentSessionId: null,
+    }));
+    queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());
+
+    render(<ChatInterfaceV2 {...({
+      selectedProject: {
+        name: 'general',
+        displayName: 'general',
+        fullPath: '/workspace/general',
+      },
+      selectedSession: null,
+      projects: [],
+      ws: null,
+      sendMessage: vi.fn(),
+    } as any)} />);
+
+    expect(screen.getByRole('heading', { name: "What's on the plan today?" })).toBeTruthy();
   });
 });

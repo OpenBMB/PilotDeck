@@ -573,7 +573,7 @@
     "selectRequired": "Select a workspace to send"
   },
   "welcome": {
-    "greetingWithProject": "What's on the plan today?",
+    "greetingWithProject": "What do you want us to build in {{project}}?",
     "noProject": "What's on the plan today?"
   }
 }

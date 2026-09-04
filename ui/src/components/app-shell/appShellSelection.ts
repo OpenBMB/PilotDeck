@@ -1,4 +1,4 @@
-import type { Project } from '../../types/app';
+import type { Project, ProjectSession } from '../../types/app';
 import { projectDisplayName } from '../../lib/customNames';
 
 export function isGeneralProject(project: Project): boolean {
@@ -30,4 +30,19 @@ export function chooseDefaultProject(projects: readonly Project[]): Project | nu
   return projects.find((project) => !isGeneralProject(project))
     ?? projects.find(isGeneralProject)
     ?? null;
+}
+
+/**
+ * Resolve the project inherited by the global "New conversation" action.
+ * A project draft keeps its workspace, while an existing transcript starts a
+ * fresh unbound conversation even though the shell still knows its project.
+ */
+export function resolveHomeNewConversationProject(
+  selectedProject: Project | null,
+  selectedSession: ProjectSession | null,
+): Project | null {
+  if (selectedSession || !selectedProject || isGeneralProject(selectedProject)) {
+    return null;
+  }
+  return selectedProject;
 }

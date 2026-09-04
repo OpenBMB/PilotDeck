@@ -13,6 +13,7 @@ vi.mock('lucide-react', () => ({
   ChevronRight: () => null,
   Folder: () => null,
   GitBranch: () => null,
+  MessageSquarePlus: () => null,
   Pencil: () => null,
   Trash2: () => null,
 }));
@@ -79,8 +80,8 @@ describe('SidebarV2 layout', () => {
     );
     expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
-    expect(screen.queryByText('New Chat')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
     expect(screen.queryByText('New Project')).toBeNull();
     expect(screen.getByText('Skills')).toBeTruthy();
     expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
@@ -162,7 +163,7 @@ describe('SidebarV2 layout', () => {
 
     expect(screen.getByText('PilotDeck')).toBeTruthy();
     expect(within(projectsHeading).queryByRole('button', { name: 'New Project' })).toBeNull();
-    expect(within(conversationsHeading).queryByRole('button', { name: 'New Chat' })).toBeNull();
+    expect(within(conversationsHeading).getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Projects'));
     expect(screen.getByText('PilotDeck')).toBeTruthy();
@@ -200,5 +201,20 @@ describe('SidebarV2 layout', () => {
 
     fireEvent.click(screen.getByText(/New conversation|新对话/));
     expect(onStartHomeNewConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a project or general conversation from the adjacent action', () => {
+    const onStartNewSession = vi.fn();
+    renderSidebar(null, { onStartNewSession });
+
+    fireEvent.click(screen.getByRole('button', {
+      name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/,
+    }));
+    expect(onStartNewSession).toHaveBeenLastCalledWith(project);
+
+    fireEvent.click(screen.getByRole('button', {
+      name: /Start a general conversation|新建通用对话/,
+    }));
+    expect(onStartNewSession).toHaveBeenLastCalledWith(general);
   });
 });

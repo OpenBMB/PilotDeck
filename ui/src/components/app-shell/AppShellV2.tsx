@@ -27,7 +27,10 @@ import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import type { SessionNavigationOptions } from '../main-content/types/types';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
-import { chooseDefaultProject } from './appShellSelection';
+import {
+  chooseDefaultProject,
+  resolveHomeNewConversationProject,
+} from './appShellSelection';
 import { getDedicatedTabPath, SCHEDULED_TASKS_PATH, SKILLS_PATH } from './appRoutes';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import { useRejectExternalFileDropOutsideTargets } from '../../utils/externalFileDrop';
@@ -197,6 +200,7 @@ export default function AppShellV2() {
     if (selectedProject?.name === projectNameParam) return;
     const target = sidebarSharedProps.projects.find((p) => p.name === projectNameParam);
     if (target) {
+      setWorkspaceBinding(null);
       handleProjectSelect(target);
       // handleProjectSelect unconditionally navigates to '/' — put the URL back.
       navigate(`/p/${encodeURIComponent(projectNameParam)}`, { replace: true });
@@ -517,8 +521,9 @@ export default function AppShellV2() {
 	    }
 	  }, [deleteSessionTarget, refreshProjectsSilently, sidebarSharedProps]);
 
-	  const handleSelectProject = useCallback(
+  const handleSelectProject = useCallback(
     (project: Project) => {
+      setWorkspaceBinding(null);
       handleProjectSelect(project);
       navigate(`/p/${encodeURIComponent(project.name)}`);
     },
@@ -601,29 +606,41 @@ export default function AppShellV2() {
   );
 
   const handleStartNewSession = useCallback(
-    (project: Project | null, options?: SessionNavigationOptions) => {
-      if (project) {
-        handleNewSession(project);
-        navigate(`/p/${encodeURIComponent(project.name)}`);
-        setActiveTab(options?.preserveActiveTab ? 'files' : 'chat');
-      } else if (selectedProject) {
-        handleNewSession(selectedProject);
-        setActiveTab(options?.preserveActiveTab ? 'files' : 'chat');
-      } else {
-        // No project context yet — land on /, MainContent's empty state
-        // will prompt the user to create or pick a project.
-        navigate('/');
-      }
+    (project: Project, options?: SessionNavigationOptions) => {
+      // An explicit project entry point always wins over a workspace chosen
+      // for an earlier unsaved draft.
+      didDefaultProjectRef.current = true;
+      setWorkspaceBinding(null);
+      handleNewSession(project);
+      navigate(`/p/${encodeURIComponent(project.name)}`);
+      setActiveTab(options?.preserveActiveTab ? 'files' : 'chat');
     },
-    [handleNewSession, navigate, selectedProject, setActiveTab],
+    [handleNewSession, navigate, setActiveTab],
   );
 
   const handleHomeNewConversation = useCallback(() => {
+    const draftProject = resolveHomeNewConversationProject(
+      workspaceBinding ?? (projectNameParam ? selectedProject : null),
+      selectedSession,
+    );
+    if (draftProject) {
+      handleStartNewSession(draftProject);
+      return;
+    }
+
     didDefaultProjectRef.current = true;
     setWorkspaceBinding(null);
     setActiveTab('chat');
     handleDeselectProject();
-  }, [handleDeselectProject, setActiveTab]);
+  }, [
+    handleDeselectProject,
+    handleStartNewSession,
+    projectNameParam,
+    selectedProject,
+    selectedSession,
+    setActiveTab,
+    workspaceBinding,
+  ]);
 
   useEffect(() => {
     if (selectedSession) setWorkspaceBinding(null);
