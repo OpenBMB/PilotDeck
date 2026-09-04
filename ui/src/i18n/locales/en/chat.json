@@ -310,6 +310,16 @@
       "agentDescription": "Directly process and execute the task",
       "planDescription": "Generate a plan first, then execute after confirmation",
       "askDescription": "Only answers questions without modifying files"
+    },
+    "models": {
+      "select": "Select model",
+      "change": "Select model",
+      "search": "Search models",
+      "empty": "No matching models",
+      "advanced": "Advanced settings",
+      "reasoning": "Reasoning",
+      "speed": "Speed",
+      "temperature": "Temperature"
     }
   },
   "documentReferences": {
@@ -317,6 +327,15 @@
     "pages": "p. {{pages}}",
     "pageUnknown": "page unknown",
     "remove": "Remove reference"
+  },
+  "replyQuotes": {
+    "addToChat": "Add to PilotDeck chat",
+    "chip": "{{count}} quotes",
+    "chip_one": "{{count}} quote",
+    "chip_other": "{{count}} quotes",
+    "remove": "Remove this quote",
+    "removeAll": "Remove all quotes",
+    "panelLabel": "Quoted assistant replies"
   },
   "commandMenu": {
     "empty": "No commands available",
@@ -544,5 +563,17 @@
       "message": "{{message}}",
       "hint": "Retry with a shorter prompt, ask the agent to split large tool inputs into smaller steps, or switch to a model with stronger tool-calling support in Settings → Model Provider."
     }
+  },
+  "workspacePicker": {
+    "select": "Select workspace",
+    "search": "Search projects",
+    "newProject": "New project",
+    "workWithoutProject": "Work without a project",
+    "empty": "No matching projects",
+    "selectRequired": "Select a workspace to send"
+  },
+  "welcome": {
+    "greetingWithProject": "What's on the plan today?",
+    "noProject": "What's on the plan today?"
   }
 }

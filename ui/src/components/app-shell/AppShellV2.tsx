@@ -8,7 +8,7 @@ import { useDeviceSettings } from '../../hooks/useDeviceSettings';
 import { useSessionProtection } from '../../hooks/useSessionProtection';
 import { useProjectsState } from '../../hooks/useProjectsState';
 import Settings from '../settings/Settings';
-import ProjectCreationWizard from '../project-creation-wizard';
+import CreateWorkspaceModal from '../onboarding/view/subcomponents/CreateWorkspaceModal';
 import { normalizeProjectForSettings, type SettingsProject } from '../../lib/projectSettings';
 import {
   sessionDisplayTitle,
@@ -28,7 +28,9 @@ import type { SessionNavigationOptions } from '../main-content/types/types';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
 import { chooseDefaultProject } from './appShellSelection';
+import { getDedicatedTabPath, SCHEDULED_TASKS_PATH, SKILLS_PATH } from './appRoutes';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
+import { useRejectExternalFileDropOutsideTargets } from '../../utils/externalFileDrop';
 
 type TypedSettingsProps = {
   isOpen: boolean;
@@ -91,12 +93,21 @@ const isUnreadWorthyMessage = (message: unknown): boolean => {
 // auth, and project plumbing keep working unchanged — V2 just reorganizes the
 // outer chrome (sidebar + breadcrumb header per prototype/shadcn.html).
 export default function AppShellV2() {
+  useRejectExternalFileDropOutsideTargets();
   const navigate = useNavigate();
-  // Match the four V2 URL shapes and hoist params up. A single wildcard route
+  // Match the V2 URL shapes and hoist params up. A single wildcard route
   // owns this shell so state survives every URL transition.
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
   const matchProject = useMatch('/p/:projectName');
   const matchLegacySession = useMatch('/session/:sessionId');
+  const matchScheduledTasks = useMatch(SCHEDULED_TASKS_PATH);
+  const matchSkills = useMatch(SKILLS_PATH);
+  const dedicatedTab = matchSkills
+    ? 'skills' as const
+    : matchScheduledTasks
+      ? 'cron' as const
+      : null;
+  const isDedicatedRoute = dedicatedTab !== null;
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
@@ -140,6 +151,7 @@ export default function AppShellV2() {
     handleDeselectProject,
     handleResetProjectSessionPreview,
     setSelectedProject,
+    draftSessionProjectName,
     loadMoreSessions,
     loadingMoreProjectIds,
     bumpSessionActivity,
@@ -152,6 +164,9 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
+  const [workspaceBinding, setWorkspaceBinding] = useState<Project | null>(null);
+  const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
+  const shellActiveTab = dedicatedTab ?? workspaceTab;
 
   const misroutedFileFromUrl = useMemo(() => {
     if (!sessionId) return null;
@@ -212,6 +227,11 @@ export default function AppShellV2() {
     }
     const target = chooseDefaultProject(sidebarSharedProps.projects);
     if (!target) return;
+    if (isDedicatedRoute) {
+      setSelectedProject(target);
+      didDefaultProjectRef.current = true;
+      return;
+    }
     handleProjectSelect(target);
     navigate(`/p/${encodeURIComponent(target.name)}`, { replace: true });
     didDefaultProjectRef.current = true;
@@ -220,9 +240,11 @@ export default function AppShellV2() {
     selectedProject,
     projectNameParam,
     sessionId,
+    isDedicatedRoute,
     sidebarSharedProps.projects,
     handleProjectSelect,
     navigate,
+    setSelectedProject,
   ]);
 
   useEffect(() => {
@@ -381,7 +403,7 @@ export default function AppShellV2() {
     }
   }, [activeTab, isMobile]);
 
-  // Project creation wizard (local existing / new local / github clone). The
+  // Create-workspace dialog (same form as onboarding's last step). The
   // sidebar's Projects-section "+" opens this; row-level "+" is for new sessions.
   const [showNewProject, setShowNewProject] = useState(false);
   const handleOpenNewProject = useCallback(() => setShowNewProject(true), []);
@@ -399,10 +421,15 @@ export default function AppShellV2() {
     const projectName = typeof project?.name === 'string' ? project.name : '';
     if (!projectName) return;
     const newProject = project as Project;
+    if (!selectedSession) {
+      setWorkspaceBinding(newProject);
+      setActiveTab('chat');
+      return;
+    }
     handleNewSession(newProject);
     navigate(`/p/${encodeURIComponent(projectName)}`);
     setActiveTab('chat');
-  }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
+  }, [handleNewSession, navigate, refreshProjectsSilently, selectedSession, setActiveTab]);
 
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
@@ -529,8 +556,21 @@ export default function AppShellV2() {
     [handleProjectSelect, handleSessionSelect, navigate, selectedProject?.name, setActiveTab],
   );
 
+  const workspacePath = selectedSession
+    ? `/session/${selectedSession.id}`
+    : selectedProject
+      ? `/p/${encodeURIComponent(selectedProject.name)}`
+      : '/';
+
   const handleSelectTab = useCallback(
     (tab: AppTab) => {
+      const dedicatedPath = getDedicatedTabPath(tab);
+      if (dedicatedPath) {
+        if (dedicatedTab !== tab) {
+          navigate(dedicatedPath);
+        }
+        return;
+      }
       // `home` is retained only for old persisted state / links. The Agent
       // surface now owns both the welcome/new-session state and transcripts.
       if (tab === 'home') {
@@ -544,9 +584,20 @@ export default function AppShellV2() {
         setActiveTab('chat');
         return;
       }
+      if (isDedicatedRoute) {
+        navigate(workspacePath);
+      }
       setActiveTab(tab);
     },
-    [navigate, selectedProject, setActiveTab, setSelectedSession],
+    [
+      dedicatedTab,
+      isDedicatedRoute,
+      navigate,
+      selectedProject,
+      setActiveTab,
+      setSelectedSession,
+      workspacePath,
+    ],
   );
 
   const handleStartNewSession = useCallback(
@@ -565,6 +616,31 @@ export default function AppShellV2() {
       }
     },
     [handleNewSession, navigate, selectedProject, setActiveTab],
+  );
+
+  const handleHomeNewConversation = useCallback(() => {
+    didDefaultProjectRef.current = true;
+    setWorkspaceBinding(null);
+    setActiveTab('chat');
+    handleDeselectProject();
+  }, [handleDeselectProject, setActiveTab]);
+
+  useEffect(() => {
+    if (selectedSession) setWorkspaceBinding(null);
+  }, [selectedSession]);
+
+  const handleSessionActivityBump = useCallback(
+    (projectName: string, sessionId: string, optimisticTitle?: string) => {
+      bumpSessionActivity(projectName, sessionId, optimisticTitle);
+      if (selectedSession) return;
+      const project =
+        sidebarSharedProps.projects.find((item) => item.name === projectName)
+        ?? (workspaceBinding?.name === projectName ? workspaceBinding : null);
+      if (!project) return;
+      setSelectedProject(project);
+      setWorkspaceBinding(null);
+    },
+    [bumpSessionActivity, selectedSession, sidebarSharedProps.projects, workspaceBinding, setSelectedProject],
   );
 
   // Wrap the two session-lifecycle callbacks coming out of useSessionProtection
@@ -594,16 +670,19 @@ export default function AppShellV2() {
       projects={sidebarSharedProps.projects}
       selectedProject={selectedProject}
       selectedSession={selectedSession}
-      activeTab={activeTab}
+      activeTab={shellActiveTab}
       isLoading={isLoadingProjects}
+      isMobile={isMobile}
       processingSessions={processingSessions}
       unreadSessionIds={unreadSessionIds}
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
 	      onStartNewSession={handleStartNewSession}
-	      onCreateProject={handleOpenNewProject}
+	      onStartHomeNewConversation={handleHomeNewConversation}
+	      pendingDraftProjectName={draftSessionProjectName}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
+	      onSelectTab={handleSelectTab}
 	      onShowSettings={onShowSettings}
 	      onDeselectProject={handleDeselectProject}
 	      onResetProjectSessionPreview={handleResetProjectSessionPreview}
@@ -614,9 +693,13 @@ export default function AppShellV2() {
   );
 
   return (
-    <div className="ui-v2 fixed inset-0 flex flex-col bg-white font-sans text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="app-root ui-v2 fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
-      <div className="flex min-h-0 flex-1">
+      <div
+        className={`app-shell min-h-0 flex-1 ${
+          !isMobile && desktopSidebarOpen ? '' : 'sidebar-hidden'
+        }`}
+      >
       {!isMobile ? (
         desktopSidebarOpen ? sidebar : null
       ) : (
@@ -642,12 +725,12 @@ export default function AppShellV2() {
         </div>
       )}
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <main className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950">
         <MainAreaV2
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
-          activeTab={activeTab}
+          activeTab={shellActiveTab}
           setActiveTab={handleSelectTab}
           ws={ws}
           sendMessage={sendMessage}
@@ -660,7 +743,7 @@ export default function AppShellV2() {
           onSessionInactive={handleSessionInactive}
           onSessionProcessing={markSessionAsProcessing}
           onSessionNotProcessing={markSessionAsNotProcessing}
-          onSessionActivityBump={bumpSessionActivity}
+          onSessionActivityBump={handleSessionActivityBump}
           processingSessions={processingSessions}
           unreadSessionIds={unreadSessionIds}
           onReplaceTemporarySession={handleReplaceTemporarySession}
@@ -669,6 +752,9 @@ export default function AppShellV2() {
             navigate(`/session/${sid}`);
           }}
           onStartNewSession={handleStartNewSession}
+          onCreateProject={handleOpenNewProject}
+          onSelectWorkspace={(project) => setWorkspaceBinding(project)}
+          workspaceBinding={workspaceBinding}
           onSelectSession={handleSelectSession}
           onShowSettings={onShowSettings}
           onSelectProjectByName={(name: string) => {
@@ -702,7 +788,7 @@ export default function AppShellV2() {
 
       {showNewProject
         ? ReactDOM.createPortal(
-            <ProjectCreationWizard
+            <CreateWorkspaceModal
               onClose={handleCloseNewProject}
               onProjectCreated={handleProjectCreated}
             />,

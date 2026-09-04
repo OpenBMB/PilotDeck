@@ -5,6 +5,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
 import MessagesPaneV2 from './MessagesPaneV2';
+import {
+  getChatResponseReserveTarget,
+  shouldKeepChatResponseReservedSpace,
+} from './chatResponseReservedSpace';
 import { getContextStatus } from './ComposerV2';
 
 vi.mock('./SubagentDetailModal', () => ({
@@ -1547,5 +1551,33 @@ describe('MessagesPaneV2 render behavior', () => {
 
     expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).toContain('pb-4');
     expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).not.toContain('pb-8');
+  });
+});
+
+describe('chat response reserved space', () => {
+  it('reserves about half the viewport, clamped between 220 and 520', () => {
+    expect(getChatResponseReserveTarget(0)).toBe(220);
+    expect(getChatResponseReserveTarget(400)).toBe(220);
+    expect(getChatResponseReserveTarget(800)).toBe(416);
+    expect(getChatResponseReserveTarget(2000)).toBe(520);
+  });
+
+  it('keeps space for follow-up turns even after the assistant stops', () => {
+    expect(shouldKeepChatResponseReservedSpace(-1, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(0, true)).toBe(true);
+    expect(shouldKeepChatResponseReservedSpace(0, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(true);
+  });
+
+  it('renders the latest follow-up turn inside the reserved response area', () => {
+    const { container } = renderPane({
+      messages: [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)],
+    });
+
+    const reservedArea = container.querySelector('[data-chat-response-reserved-space="true"]');
+    expect(reservedArea).not.toBeNull();
+    expect((reservedArea as HTMLElement).style.minHeight).toBe('220px');
+    expect(within(reservedArea as HTMLElement).getByText('Message 3')).toBeTruthy();
+    expect(within(reservedArea as HTMLElement).queryByText('Message 2')).toBeNull();
   });
 });

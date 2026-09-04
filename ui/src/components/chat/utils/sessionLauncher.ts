@@ -17,11 +17,21 @@ type StartSessionOptions = {
   thinking?: unknown;
   sessionSummary?: string | null;
   toolsSettings?: PilotDeckSettings;
+  modelOverride?: {
+    mode: 'model';
+    provider: string;
+    model: string;
+    reasoning?: number;
+    temperature?: number;
+    speed?: number;
+  };
   images?: unknown[];
   attachments?: ChatAttachment[];
+  uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   alwaysOnPlanId?: string;
   alwaysOnExecutionToken?: string;
   workspaceCwd?: string;
+  forceStart?: boolean;
 };
 
 type RegenerateLastSessionOptions = Omit<
@@ -85,7 +95,6 @@ export function getNotificationSessionSummary(
     ? `${normalizedFallback.slice(0, 77)}...`
     : normalizedFallback;
 }
-
 export function getStoredPermissionMode(
   selectedSession: ProjectSession | null,
 ): PermissionMode {
@@ -120,11 +129,14 @@ export function startSessionCommand({
   thinking,
   sessionSummary,
   toolsSettings = getPilotDeckSettings(),
+  modelOverride,
   images,
   attachments,
+  uploadedAttachments,
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
+  forceStart,
 }: StartSessionOptions): string {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
@@ -145,6 +157,7 @@ export function startSessionCommand({
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
       sessionSummary,
+      ...(modelOverride ? { modelOverride } : {}),
       ...(typeof userVisibleInput === 'string' && userVisibleInput.trim()
         ? { userVisibleInput: userVisibleInput.trim() }
         : {}),
@@ -152,7 +165,11 @@ export function startSessionCommand({
       ...(alwaysOnExecutionToken ? { alwaysOnExecutionToken } : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+      ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
+        ? { uploadedAttachments }
+        : {}),
       ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(forceStart ? { forceStart: true } : {}),
     },
   });
 

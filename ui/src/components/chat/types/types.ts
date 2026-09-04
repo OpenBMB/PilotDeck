@@ -280,4 +280,9 @@ export interface ChatInterfaceProps {
   // Files workbench: render a quieter, narrow-panel empty state and keep the
   // composer docked to the bottom instead of using the large welcome hero.
   compact?: boolean;
+  projects?: Project[];
+  onStartNewSession?: (project: Project) => void;
+  onSelectWorkspace?: (project: Project) => void;
+  workspaceBinding?: Project | null;
+  onCreateProject?: () => void;
 }

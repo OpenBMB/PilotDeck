@@ -150,6 +150,17 @@ export class UploadStore {
     const destination = join(this.filesDir(record), clientFileId);
     const hash = createHash("sha256");
     let bytes = 0;
+    let pendingProgressBytes = 0;
+    let lastProgressFlushAt = 0;
+    const flushProgress = () => {
+      const delta = pendingProgressBytes;
+      if (delta <= 0) return;
+      pendingProgressBytes = 0;
+      lastProgressFlushAt = Date.now();
+      void this.mutate(record, (next) => {
+        next.uploadedBytes = Math.min(next.totalBytes, next.uploadedBytes + delta);
+      }).then((updated) => { record = updated; }).catch(() => undefined);
+    };
     const meter = new Transform({
       transform: (chunk: Buffer, _encoding, callback) => {
         bytes += chunk.length;
@@ -158,14 +169,14 @@ export class UploadStore {
           return;
         }
         hash.update(chunk);
-        void this.mutate(record, (next) => {
-          next.uploadedBytes = Math.min(next.totalBytes, next.uploadedBytes + chunk.length);
-        }).then((updated) => { record = updated; }).catch(() => undefined);
+        pendingProgressBytes += chunk.length;
+        if (Date.now() - lastProgressFlushAt >= 100) flushProgress();
         callback(null, chunk);
       },
     });
     try {
       await pipeline(stream, meter, createWriteStream(destination, { flags: "wx", mode: 0o600 }));
+      flushProgress();
       await this.drainUpdates(uploadId);
       const digest = hash.digest("hex");
       if (bytes !== expected.size || (expected.sha256 && expected.sha256.toLowerCase() !== digest)) {
@@ -294,7 +305,22 @@ export class UploadStore {
     const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
     const handle = await open(temp, "wx", 0o600);
     try { await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8"); await handle.sync(); } finally { await handle.close(); }
-    await rename(temp, path);
+    try {
+      await rename(temp, path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EEXIST" && code !== "EACCES") {
+        await rm(temp, { force: true }).catch(() => undefined);
+        throw error;
+      }
+      await rm(path, { force: true }).catch(() => undefined);
+      try {
+        await rename(temp, path);
+      } catch (retryError) {
+        await rm(temp, { force: true }).catch(() => undefined);
+        throw retryError;
+      }
+    }
   }
   private async readAt(projectKey: string, uploadId: string): Promise<UploadRecord | undefined> {
     try { return JSON.parse(await readFile(join(projectKey, ".tmp", "chat-uploads", uploadId, "metadata.json"), "utf8")) as UploadRecord; }

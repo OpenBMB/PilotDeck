@@ -12,18 +12,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
-  ChevronsDownUp,
-  ChevronsUpDown,
   Folder,
-  MessageSquarePlus,
-  PanelLeftClose,
   Pencil,
-  Plus,
   GitBranch,
-  Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react';
-import type { TFunction } from 'i18next';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
@@ -34,8 +27,7 @@ import {
   setSessionCustomTitle,
   useCustomNamesVersion,
 } from '../../lib/customNames';
-import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
-import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
+import { compareProjectsBySidebarOrder } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -44,42 +36,6 @@ const asTimestamp = (value: unknown): number => {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
-};
-
-type ProjectSortOrder = 'name' | 'date';
-
-// The Settings dialog persists `projectSortOrder` into the same
-// `pilotdeck-settings` localStorage blob the chat surface uses. Up to
-// this point nothing on the sidebar consumed it, so the dropdown
-// changed nothing. We read it here and re-render whenever the Settings
-// tab broadcasts a `pilotdeck-settings-changed` event.
-const readProjectSortOrder = (): ProjectSortOrder => {
-  if (typeof window === 'undefined') return 'name';
-  const raw = window.localStorage.getItem('pilotdeck-settings');
-  if (!raw) return 'name';
-  try {
-    const parsed = JSON.parse(raw) as { projectSortOrder?: unknown };
-    return parsed.projectSortOrder === 'date' ? 'date' : 'name';
-  } catch {
-    return 'name';
-  }
-};
-
-const useProjectSortOrder = (): ProjectSortOrder => {
-  const [order, setOrder] = useState<ProjectSortOrder>(() => readProjectSortOrder());
-  useEffect(() => {
-    const refresh = () => setOrder(readProjectSortOrder());
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === 'pilotdeck-settings') refresh();
-    };
-    window.addEventListener('pilotdeck-settings-changed', refresh);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('pilotdeck-settings-changed', refresh);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
-  return order;
 };
 
 // "Most recent activity" for a project = the project summary timestamp when
@@ -114,6 +70,10 @@ type FlatSession = {
   sessionId: string;
   lastActivity: number;
 };
+
+type CompactRecentItem =
+  | { kind: 'project'; project: Project; lastActivity: number }
+  | { kind: 'session'; project: Project; flat: FlatSession; lastActivity: number };
 
 type SessionTreeNode = {
   flat: FlatSession;
@@ -171,70 +131,7 @@ const collectSessionsForProject = (project: Project): FlatSession[] => {
     .sort((a, b) => b.lastActivity - a.lastActivity);
 };
 
-const formatRelative = (ts: number, t: TFunction): string => {
-  if (!ts) return '';
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return t('sidebar:time.justNow', { defaultValue: 'just now' });
-  if (diff < 3_600_000) {
-    const minutes = Math.floor(diff / 60_000);
-    if (minutes === 1) return t('sidebar:time.oneMinuteAgo', { defaultValue: '1 min ago' });
-    return t('sidebar:time.minutesAgo', { count: minutes, defaultValue: `${minutes} mins ago` });
-  }
-  if (diff < 86_400_000) {
-    const hours = Math.floor(diff / 3_600_000);
-    if (hours === 1) return t('sidebar:time.oneHourAgo', { defaultValue: '1 hour ago' });
-    return t('sidebar:time.hoursAgo', { count: hours, defaultValue: `${hours} hours ago` });
-  }
-  const days = Math.floor(diff / 86_400_000);
-  if (days === 1) return t('sidebar:time.oneDayAgo', { defaultValue: '1 day ago' });
-  return t('sidebar:time.daysAgo', { count: days, defaultValue: `${days} days ago` });
-};
-
 type SessionIndicatorStatus = 'processing' | 'unread' | 'idle';
-
-const SPINNER_DOTS = Array.from({ length: 8 }, (_, index) => index);
-
-function SessionStatusIndicator({
-  status,
-  label,
-}: {
-  status: SessionIndicatorStatus;
-  label: string;
-}) {
-  if (status === 'processing') {
-    return (
-      <span
-        aria-label={label}
-        title={label}
-        className="relative block h-3 w-3 animate-spin"
-      >
-        {SPINNER_DOTS.map((dot) => (
-          <span
-            key={dot}
-            className="absolute left-1/2 top-1/2 h-1 w-1 rounded-full bg-neutral-500 dark:bg-neutral-300"
-            style={{
-              transform: `translate(-50%, -50%) rotate(${dot * 45}deg) translateY(-4px)`,
-              opacity: 0.35 + dot * 0.08,
-            }}
-          />
-        ))}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      aria-label={label}
-      title={label}
-      className={cn(
-        'block h-1.5 w-1.5 rounded-full',
-        status === 'unread'
-          ? 'bg-blue-500 dark:bg-blue-400'
-          : 'bg-neutral-300 dark:bg-neutral-600',
-      )}
-    />
-  );
-}
 
 export type SidebarV2Props = {
   projects: Project[];
@@ -242,14 +139,17 @@ export type SidebarV2Props = {
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
   isLoading: boolean;
+  isMobile?: boolean;
   processingSessions?: Set<string>;
   unreadSessionIds?: Set<string>;
   onSelectProject: (project: Project) => void;
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project | null) => void;
-  onCreateProject: () => void;
+  onStartHomeNewConversation?: () => void;
+  pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
+  onSelectTab?: (tab: AppTab) => void;
   onShowSettings: () => void;
   onDeselectProject?: () => void;
   onResetProjectSessionPreview?: (projectName: string) => void;
@@ -286,31 +186,76 @@ const contextMenuPosition = (event: MouseEvent) => {
   };
 };
 
+function SectionHeading({
+  title,
+  expanded,
+  expandLabel,
+  collapseLabel,
+  onToggle,
+}: {
+  title: string;
+  expanded: boolean;
+  expandLabel: string;
+  collapseLabel: string;
+  onToggle: () => void;
+}) {
+  const toggleLabel = expanded ? collapseLabel : expandLabel;
+  return (
+    <div className="tree-heading shrink-0">
+      <span>{title}</span>
+      <div className="tree-heading-actions">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+        >
+          <svg
+            aria-hidden="true"
+            className={cn('icon transition-transform', !expanded && '-rotate-90')}
+            fill="none"
+            height="15"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+            width="15"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SidebarV2({
   projects,
   selectedProject,
   selectedSession,
   activeTab,
   isLoading,
+  isMobile = false,
   processingSessions,
   unreadSessionIds,
   onSelectProject,
   onSelectSession,
   onStartNewSession,
-  onCreateProject,
+  onStartHomeNewConversation,
+  pendingDraftProjectName = null,
   onRequestDeleteProject,
   onRequestDeleteSession,
+  onSelectTab,
   onShowSettings,
-  onDeselectProject,
-  onResetProjectSessionPreview,
-  onCollapse,
   onLoadMoreSessions,
   loadingMoreProjectIds,
 }: SidebarV2Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   useCustomNamesVersion();
-  const safeProjects = Array.isArray(projects) ? projects : [];
+  const safeProjects = useMemo(() => (Array.isArray(projects) ? projects : []), [projects]);
 
   const [renamingProject, setRenamingProject] = useState<string | null>(null);
   const [renamingSession, setRenamingSession] = useState<string | null>(null);
@@ -320,27 +265,99 @@ export default function SidebarV2({
   const [collapsedSessionProjects, setCollapsedSessionProjects] = useState<Set<string>>(new Set());
   const [draftSessionProjectName, setDraftSessionProjectName] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const sidebarRootRef = useRef<HTMLElement | null>(null);
 
-  // Segmented toggle between the Projects list and the General workspace.
-  // A fresh shell always starts on Projects; explicit project/session routing
-  // is synchronized below and still moves the toggle to General when needed.
-  type SidebarSection = 'projects' | 'general';
-  const [activeSection, setActiveSection] = useState<SidebarSection>('projects');
+  const [conversationsExpanded, setConversationsExpanded] = useState(false);
+  const [projectsExpanded, setProjectsExpanded] = useState(true);
+  const projectsConversationsSplitRef = useRef<HTMLDivElement | null>(null);
+  const SIDEBAR_SPLITTER_HEIGHT = 1;
+  const SIDEBAR_SECTION_MIN_HEIGHT = 120;
+  const SIDEBAR_SPLIT_STORAGE_KEY = 'sidebar-v2-projects-conversations-split';
+  const [projectsSplitRatio, setProjectsSplitRatio] = useState(() => {
+    if (typeof window === 'undefined') return 0.5;
+    try {
+      const stored = Number(window.localStorage.getItem(SIDEBAR_SPLIT_STORAGE_KEY));
+      return Number.isFinite(stored) && stored > 0.15 && stored < 0.85 ? stored : 0.5;
+    } catch {
+      return 0.5;
+    }
+  });
+  const [projectsSplitResizing, setProjectsSplitResizing] = useState(false);
 
   // Resizable sidebar width — clamped to a sensible range and persisted across
   // reloads. Drag-handle on the right edge mutates this on the fly.
-  const SIDEBAR_MIN_WIDTH = 200;
-  const SIDEBAR_MAX_WIDTH = 480;
-  const SIDEBAR_DEFAULT_WIDTH = 248;
+  const SIDEBAR_MIN_WIDTH = 76;
+  const SIDEBAR_COMPACT_THRESHOLD = 173;
+  const SIDEBAR_MAX_WIDTH = 360;
+  const SIDEBAR_DEFAULT_WIDTH = 220;
   const SIDEBAR_WIDTH_STORAGE_KEY = 'sidebar-v2-width';
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
     const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
     const parsed = stored ? Number(stored) : NaN;
-    if (!Number.isFinite(parsed)) return SIDEBAR_DEFAULT_WIDTH;
+    // 248 was the previous default; treat it as unset so the narrower start width applies.
+    if (!Number.isFinite(parsed) || parsed === 248) return SIDEBAR_DEFAULT_WIDTH;
     return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizing, setIsResizing] = useState(false);
+  const isCompact = !isMobile && sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
+
+  useEffect(() => {
+    if (isMobile) return;
+    const appShell = sidebarRootRef.current?.closest<HTMLElement>('.app-shell');
+    appShell?.style.setProperty('--sidebar-width', `${sidebarWidth}px`);
+  }, [isMobile, sidebarWidth]);
+
+  const expandCompactSidebar = useCallback(() => {
+    setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(SIDEBAR_DEFAULT_WIDTH));
+    } catch {
+      // localStorage may be unavailable.
+    }
+  }, []);
+
+  const clampProjectsSplitRatio = useCallback((ratio: number) => {
+    const height = projectsConversationsSplitRef.current?.getBoundingClientRect().height ?? 0;
+    const availableHeight = Math.max(1, height - SIDEBAR_SPLITTER_HEIGHT);
+    const minRatio = Math.min(0.5, SIDEBAR_SECTION_MIN_HEIGHT / availableHeight);
+    const maxRatio = Math.max(0.5, 1 - minRatio);
+    return Math.min(Math.max(ratio, minRatio), maxRatio);
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_SPLIT_STORAGE_KEY, String(projectsSplitRatio));
+    } catch {
+      // Split remains usable when persistent storage is unavailable.
+    }
+  }, [projectsSplitRatio]);
+
+  useEffect(() => {
+    if (!projectsSplitResizing) return undefined;
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      const panel = projectsConversationsSplitRef.current;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const pointerRatio = (event.clientY - rect.top)
+        / Math.max(1, rect.height - SIDEBAR_SPLITTER_HEIGHT);
+      setProjectsSplitRatio(clampProjectsSplitRatio(pointerRatio));
+    };
+    const handleMouseUp = () => setProjectsSplitResizing(false);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [clampProjectsSplitRatio, projectsSplitResizing]);
 
   const handleResizeStart = useCallback((event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -429,68 +446,45 @@ export default function SidebarV2({
   const generalProject =
     safeProjects.find((project) => project.name === 'general' || project.displayName === 'general') ?? null;
 
-  // Auto-flip the section toggle to match the active project when it changes
-  // externally (e.g. /switch-project, deep-linking, default selection on
-  // first load). Without this, navigating to a project on one section while
-  // the sidebar is parked on the other leaves the new project invisible.
-  // We only react to changes — if the user manually clicks the toggle we
-  // never fight them mid-session.
-  const previousSelectedProjectNameRef = useRef<string | null>(null);
-  useEffect(() => {
-    const currentName = selectedProject?.name ?? null;
-    const previousName = previousSelectedProjectNameRef.current;
-    previousSelectedProjectNameRef.current = currentName;
-    if (!currentName) return;
-    if (currentName === previousName) return;
-
-    const nextSection: SidebarSection =
-      generalProject && currentName === generalProject.name ? 'general' : 'projects';
-    setActiveSection((current) => (current === nextSection ? current : nextSection));
-  }, [selectedProject?.name, generalProject]);
-
-  const projectSortOrder = useProjectSortOrder();
   const otherProjects = useMemo(() => {
+    // `general` lives in Conversations, so it is excluded from this list
+    // and from the lastActivity comparison. Remaining projects follow the
+    // projects API `lastActivity` descending (most recently updated first).
     const remaining = safeProjects.filter((project) => project !== generalProject);
-    if (projectSortOrder === 'date') {
-      // Most recent first. Tie-break on display name so the order is stable
-      // when two projects have no recorded activity (both 0).
-      return [...remaining].sort((a, b) => {
-        const diff = projectLastActivity(b) - projectLastActivity(a);
-        if (diff !== 0) return diff;
-        return projectDisplayName(a).localeCompare(projectDisplayName(b));
-      });
-    }
-    return [...remaining].sort((a, b) =>
-      projectDisplayName(a).localeCompare(projectDisplayName(b), undefined, { sensitivity: 'base' }),
-    );
-  }, [safeProjects, generalProject, projectSortOrder]);
+    return [...remaining].sort(compareProjectsBySidebarOrder);
+  }, [safeProjects, generalProject]);
 
-  const allProjectGroupsExpanded = otherProjects.length > 0 && otherProjects.every((project) =>
-    expandedGroups.has(project.name),
-  );
+  const compactRecentItems = useMemo<CompactRecentItem[]>(() => {
+    const items: CompactRecentItem[] = otherProjects.map((project) => ({
+      kind: 'project',
+      project,
+      lastActivity: projectLastActivity(project),
+    }));
+
+    let latestSession: CompactRecentItem | null = null;
+    for (const project of safeProjects) {
+      for (const flat of collectSessionsForProject(project)) {
+        if (!latestSession || flat.lastActivity > latestSession.lastActivity) {
+          latestSession = {
+            kind: 'session',
+            project,
+            flat,
+            lastActivity: flat.lastActivity,
+          };
+        }
+      }
+    }
+    if (latestSession) items.push(latestSession);
+
+    return items
+      .sort((a, b) => b.lastActivity - a.lastActivity)
+      .slice(0, 12);
+  }, [otherProjects, safeProjects]);
 
   const navToProject = useCallback(
     (name: string) => navigate(`/p/${encodeURIComponent(name)}`),
     [navigate],
   );
-
-  const handleGeneralSectionClick = useCallback(() => {
-    setActiveSection('general');
-    if (!generalProject) return;
-
-    onResetProjectSessionPreview?.(generalProject.name);
-    if (selectedProject?.name !== generalProject.name) {
-      onSelectProject(generalProject);
-    }
-    navToProject(generalProject.name);
-  }, [generalProject, navToProject, onResetProjectSessionPreview, onSelectProject, selectedProject?.name]);
-
-  const handleProjectsSectionClick = useCallback(() => {
-    if (generalProject) {
-      onResetProjectSessionPreview?.(generalProject.name);
-    }
-    setActiveSection('projects');
-  }, [generalProject, onResetProjectSessionPreview]);
 
   const toggleProjectExpanded = useCallback((project: Project) => {
     setExpandedGroups((previous) => {
@@ -503,18 +497,6 @@ export default function SidebarV2({
       return next;
     });
   }, []);
-
-  const toggleAllProjectGroups = useCallback(() => {
-    setExpandedGroups((previous) => {
-      const next = new Set(previous);
-      if (allProjectGroupsExpanded) {
-        otherProjects.forEach((project) => next.delete(project.name));
-      } else {
-        otherProjects.forEach((project) => next.add(project.name));
-      }
-      return next;
-    });
-  }, [allProjectGroupsExpanded, otherProjects]);
 
   const ensureExpanded = useCallback((project: Project) => {
     setExpandedGroups((previous) => {
@@ -544,8 +526,8 @@ export default function SidebarV2({
   );
 
   const handleNewSession = useCallback(
-    (event: MouseEvent, project: Project) => {
-      event.stopPropagation();
+    (event: MouseEvent | undefined, project: Project) => {
+      event?.stopPropagation();
       setDraftSessionProjectName(project.name);
       ensureExpanded(project);
       onStartNewSession(project);
@@ -689,7 +671,7 @@ export default function SidebarV2({
       typeof session.id === 'string' && session.id.startsWith('new-session-'),
     );
     const showDraftSession =
-      draftSessionProjectName === project.name &&
+      (draftSessionProjectName === project.name || pendingDraftProjectName === project.name) &&
       selectedProject?.name === project.name &&
       activeTab === 'chat' &&
       !selectedSession &&
@@ -704,7 +686,7 @@ export default function SidebarV2({
     // `flat` mode is used by the General tab where sessions are rendered as a
     // top-level list (no folder ancestor), so the usual ml-6 indent would
     // leave a weird empty gutter on the left.
-    const containerClass = options.flat ? 'space-y-0.5' : 'ml-6 space-y-0.5';
+    const containerClass = options.flat ? 'tree-list chat-tree-list' : 'project-children';
     const sessionTree = buildSessionTree(sessions);
     const sessionTitleById = new Map(
       allSessions.map(({ sessionId, session }) => [sessionId, sessionDisplayTitle(session)]),
@@ -715,7 +697,7 @@ export default function SidebarV2({
       depth: number,
       isForkChild: boolean,
     ): ReactNode => {
-      const { session, sessionId, lastActivity } = node.flat;
+      const { session, sessionId } = node.flat;
       const isSessionActive =
         selectedProject?.name === project.name &&
         selectedSession?.id === sessionId &&
@@ -741,17 +723,15 @@ export default function SidebarV2({
         : undefined;
 
       return (
-        <div key={sessionId} className={depth > 0 ? 'ml-4 border-l border-neutral-200 pl-2 dark:border-neutral-800' : undefined}>
+        <div
+          key={sessionId}
+          className={depth > 0 ? 'ml-4 border-l border-neutral-200 pl-2 dark:border-neutral-800' : undefined}
+        >
           <div
             onContextMenu={(event) =>
               isOptimisticRow ? undefined : openSessionContextMenu(event, project, session)
             }
-            className={cn(
-              'group/session relative w-full rounded-md transition-colors',
-              isSessionActive
-                ? 'bg-neutral-200/70 dark:bg-neutral-800'
-                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-            )}
+            className="group/session relative w-full"
           >
             {isSessionRenaming ? (
               <div className="flex items-center px-2 py-1">
@@ -776,20 +756,28 @@ export default function SidebarV2({
                 }
                 disabled={isOptimisticRow}
                 className={cn(
-                  'flex w-full items-start gap-2 px-2 py-1 text-left',
+                  options.flat
+                    ? 'tree-row chat-row'
+                    : 'project-conversation',
+                  isSessionActive && 'active',
                   isOptimisticRow && 'cursor-default',
                 )}
               >
-                <span className="flex h-[18px] w-3 shrink-0 items-center justify-center pt-[3px]">
-                  <SessionStatusIndicator
-                    status={indicatorStatus}
-                    label={indicatorLabel}
+                {options.flat ? (
+                  <svg aria-hidden="true" className="icon" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
+                    <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+                  </svg>
+                ) : (
+                  <span
+                    aria-label={indicatorLabel}
+                    title={indicatorLabel}
+                    className="conversation-dot"
                   />
-                </span>
-                <div className="min-w-0 flex-1">
+                )}
+                <div className="min-w-0">
                   <div
                     className={cn(
-                      'flex min-w-0 items-center gap-1 truncate text-[12.5px] text-neutral-900 dark:text-neutral-100',
+                      'flex min-w-0 items-center gap-1 truncate font-normal',
                       isOptimisticRow && 'italic text-neutral-600 dark:text-neutral-300',
                     )}
                   >
@@ -798,16 +786,16 @@ export default function SidebarV2({
                     ) : null}
                     <span className="truncate">{sessionDisplayTitle(session)}</span>
                   </div>
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    {isOptimisticRow
-                      ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
-                      : isForkChild
-                        ? t('sidebar:sessions.forkedFrom', {
+                  {isOptimisticRow || isForkChild ? (
+                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {isOptimisticRow
+                        ? t('sidebar:sessions.sending', { defaultValue: 'Sending…' })
+                        : t('sidebar:sessions.forkedFrom', {
                             parent: parentTitle || session.parentSessionId || '',
                             defaultValue: `forked from ${parentTitle || session.parentSessionId || 'parent'}`,
-                          })
-                        : formatRelative(lastActivity, t)}
-                  </div>
+                          })}
+                    </div>
+                  ) : null}
                 </div>
               </button>
             )}
@@ -829,7 +817,7 @@ export default function SidebarV2({
             onClick={(event) => handleNewSession(event, project)}
             className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
           >
-            <div className="truncate text-[12.5px]">
+            <div className="truncate">
               {t('sidebar:sessions.newSession', { defaultValue: 'New Session' })}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -913,19 +901,40 @@ export default function SidebarV2({
       ? t('sidebar:general.name', { defaultValue: 'General' })
       : projectDisplayName(project);
 
+    if (isCompact) {
+      return (
+        <button
+          key={project.name}
+          type="button"
+          title={label as string}
+          onClick={() => {
+            onSelectProject(project);
+            navToProject(project.name);
+          }}
+          onContextMenu={(event) => openProjectContextMenu(event, project, isGeneral)}
+          className={cn('compact-project-entry', isSelected && 'active')}
+        >
+          <svg aria-hidden="true" className="icon" fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="20">
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+            <path d="m3.3 7 8.7 5 8.7-5" />
+            <path d="M12 22V12" />
+          </svg>
+          <span>{label}</span>
+        </button>
+      );
+    }
+
     return (
-      <div key={project.name} className="space-y-0.5">
+      <div key={project.name} className="project-tree-node">
         <div
           onContextMenu={(event) => openProjectContextMenu(event, project, isGeneral)}
           className={cn(
-            'group/project flex h-8 w-full items-center rounded-lg pr-1 text-[13px] transition-colors',
-            isSelected
-              ? 'bg-neutral-200/70 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
-              : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+            'tree-row project-row group/project',
+            isSelected && 'active',
           )}
         >
           {isRenaming && !isGeneral ? (
-            <div className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1">
+            <div className="col-span-3 flex h-full min-w-0 items-center gap-1.5">
               <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
               <input
                 ref={renameInputRef}
@@ -942,7 +951,8 @@ export default function SidebarV2({
             <button
               type="button"
               onClick={() => handleProjectClick(project)}
-              className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-l-lg pl-1.5 pr-1 text-left"
+              aria-expanded={isExpanded}
+              className="project-expand-button"
             >
               <ChevronRight
                 className={cn(
@@ -951,44 +961,32 @@ export default function SidebarV2({
                 )}
                 strokeWidth={1.75}
               />
-              <Folder
+              <svg
+                aria-hidden="true"
                 className={cn(
-                  'h-3.5 w-3.5 shrink-0',
+                  'icon block shrink-0',
                   isSelected
                     ? 'text-neutral-900 dark:text-neutral-100'
                     : 'text-neutral-500 dark:text-neutral-400',
                 )}
-                strokeWidth={1.75}
-              />
-              <span className="flex-1 truncate">{label}</span>
+                fill="none"
+                height="16"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+                viewBox="0 0 24 24"
+                width="16"
+              >
+                {isExpanded ? (
+                  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+                ) : (
+                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                )}
+              </svg>
+              <span className="flex-1 truncate font-normal">{label}</span>
             </button>
           )}
-
-          {!isRenaming ? (
-            <div
-              className={cn(
-                'ml-1 flex shrink-0 items-center gap-0.5 transition-opacity',
-                '[@media(hover:none)]:opacity-100',
-                isSelected
-                  ? 'opacity-100'
-                  : 'opacity-0 group-hover/project:opacity-100 focus-within:opacity-100',
-              )}
-            >
-              <button
-                type="button"
-                onClick={(event) => handleNewSession(event, project)}
-                aria-label={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                title={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                className={cn(
-                  'inline-flex h-6 w-6 items-center justify-center rounded-md',
-                  'text-neutral-500 hover:bg-neutral-200/70 hover:text-neutral-900',
-                  'dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100',
-                )}
-              >
-                <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {isExpanded ? renderSessionRows(project) : null}
@@ -997,201 +995,268 @@ export default function SidebarV2({
   };
 
   return (
-    <aside
+    <>
+      <aside
+      ref={sidebarRootRef}
       data-sidebar-v2-root
       style={{ width: `${sidebarWidth}px` }}
       className={cn(
         // On mobile the parent wraps this aside in an overlay constrained
         // to 85vw, so force the inline width style off with !w-full there.
-        'relative flex h-full shrink-0 flex-col max-md:!w-full',
-        'bg-neutral-50 text-neutral-900',
-        'dark:bg-neutral-900 dark:text-neutral-100',
-        'border-r border-neutral-200 dark:border-neutral-800',
+        'project-sidebar sidebar-shell relative h-full shrink-0 text-neutral-900 dark:text-neutral-100 max-md:!w-full',
+        isCompact && 'compact',
       )}
     >
-      <div className="flex h-16 items-center justify-between pl-2 pr-4">
-        <div className="flex min-w-0 shrink items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (onDeselectProject) {
-                onDeselectProject();
-              } else {
-                navigate('/');
-              }
-            }}
-            aria-label="PilotDeck"
-            title="PilotDeck"
-            className="flex min-w-0 shrink items-center gap-2 rounded-md p-1 transition hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700"
-          >
-            <img
-              src={pilotdeckLogoLight}
-              alt="PilotDeck"
-              className="h-7 w-auto max-w-[150px] select-none object-contain dark:hidden"
-              draggable={false}
-            />
-            <img
-              src={pilotdeckLogoDark}
-              alt="PilotDeck"
-              className="hidden h-7 w-auto max-w-[150px] select-none object-contain dark:block"
-              draggable={false}
-            />
-          </button>
-        </div>
-        {onCollapse ? (
-          <button
-            type="button"
-            onClick={onCollapse}
-            aria-label={t('sidebar:tooltips.hideSidebar', { defaultValue: 'Hide sidebar' }) as string}
-            title={t('sidebar:tooltips.hideSidebar', { defaultValue: 'Hide sidebar' }) as string}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-          >
-            <PanelLeftClose className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-        ) : null}
-      </div>
-
-      {/* Section toggle: a thin pill control sitting just above the scroll
-          area, so it doesn't move while the list scrolls. Mirrors the look of
-          familiar two-tab segmented controls (e.g. iOS, ProseMirror). */}
-      <div className="px-3 pt-3 pb-1">
-        <div
-          role="tablist"
-          aria-label={t('sidebar:sectionToggle.label', { defaultValue: 'Sidebar section' }) as string}
-          className="flex w-full rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-900"
+      {isCompact ? (
+        <button
+          type="button"
+          aria-label={t('sidebar:tooltips.expandSidebar', { defaultValue: 'Expand project sidebar' }) as string}
+          title={t('sidebar:tooltips.expandSidebar', { defaultValue: 'Expand project sidebar' }) as string}
+          data-tooltip={t('sidebar:tooltips.expandSidebar', { defaultValue: 'Expand project sidebar' }) as string}
+          className="compact-brand tooltip tooltip-right"
+          onClick={expandCompactSidebar}
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeSection === 'projects'}
-            onClick={handleProjectsSectionClick}
-            className={cn(
-              'flex-1 rounded text-[12px] font-medium transition-colors',
-              'h-7 leading-none',
-              activeSection === 'projects'
-                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
-                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
-            )}
-          >
-            {t('sidebar:projects.title', { defaultValue: 'Projects' })}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeSection === 'general'}
-            onClick={handleGeneralSectionClick}
-            className={cn(
-              'flex-1 rounded text-[12px] font-medium transition-colors',
-              'h-7 leading-none',
-              activeSection === 'general'
-                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100'
-                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
-            )}
-          >
-            {t('sidebar:general.title', { defaultValue: 'General' })}
-          </button>
-        </div>
-      </div>
+          <img
+            alt=""
+            aria-hidden="true"
+            className="brand-mark"
+            src="/pilotdeck-p-mark-compact.png"
+          />
+        </button>
+      ) : (
+        <header className="sidebar-brand-row">
+          <img
+            alt="PILOTDECK"
+            className="brand-lockup"
+            src="/pilotdeck-logo-lockup-transparent.png"
+          />
+        </header>
+      )}
 
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {isLoading && safeProjects.length === 0 ? (
-          <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
-            {t('sidebar:sessions.loading', { defaultValue: 'Loading...' })}
-          </div>
-        ) : activeSection === 'projects' ? (
-          <section className="pt-2">
-            <div className="flex items-center px-3 pb-1">
-              <span className="flex-1 text-[11px] font-medium uppercase tracking-[0.04em] text-neutral-500/90 dark:text-neutral-400/80">
-                {t('sidebar:projects.title', { defaultValue: 'Projects' })}
-              </span>
-              <button
-                type="button"
-                onClick={toggleAllProjectGroups}
-                disabled={otherProjects.length === 0}
-                aria-label={
-                  allProjectGroupsExpanded
-                    ? t('sidebar:projects.collapseAll', { defaultValue: 'Collapse all projects' }) as string
-                    : t('sidebar:projects.expandAll', { defaultValue: 'Expand all projects' }) as string
-                }
-                title={
-                  allProjectGroupsExpanded
-                    ? t('sidebar:projects.collapseAll', { defaultValue: 'Collapse all projects' }) as string
-                    : t('sidebar:projects.expandAll', { defaultValue: 'Expand all projects' }) as string
-                }
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-              >
-                {allProjectGroupsExpanded ? (
-                  <ChevronsDownUp className="h-3.5 w-3.5" strokeWidth={1.75} />
-                ) : (
-                  <ChevronsUpDown className="h-3.5 w-3.5" strokeWidth={1.75} />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onCreateProject}
-                aria-label={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-                title={t('sidebar:projects.newProject', { defaultValue: 'New Project' }) as string}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-              >
-                <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </button>
-            </div>
+      <nav
+        className={isCompact ? 'compact-actions' : 'primary-actions'}
+        aria-label={t('sidebar:quickActions.label', { defaultValue: 'Primary actions' }) as string}
+      >
+        <button
+          className={cn('primary-action', isCompact && 'compact')}
+          type="button"
+          aria-label={t('sidebar:quickActions.newConversation', { defaultValue: '新对话' }) as string}
+          title={t('sidebar:quickActions.newConversation', { defaultValue: '新对话' }) as string}
+          onClick={() => onStartHomeNewConversation?.()}
+        >
+          <span className="primary-action-icon">
+            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+              <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+            </svg>
+          </span>
+          <span className="truncate">
+            {t('sidebar:quickActions.newConversation', { defaultValue: '新对话' })}
+          </span>
+        </button>
+        <button
+          className={cn('primary-action', isCompact && 'compact', activeTab === 'skills' && 'active')}
+          type="button"
+          aria-pressed={activeTab === 'skills'}
+          onClick={() => onSelectTab?.('skills')}
+        >
+          <span className="primary-action-icon">
+            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
+            </svg>
+          </span>
+          <span className="truncate">
+            {isCompact
+              ? t('sidebar:quickActions.skillsCompact', { defaultValue: 'Skill Tools' })
+              : t('sidebar:quickActions.skills', { defaultValue: 'Skills' })}
+          </span>
+        </button>
+        <button
+          className={cn('primary-action', isCompact && 'compact', activeTab === 'cron' && 'active')}
+          type="button"
+          aria-pressed={activeTab === 'cron'}
+          onClick={() => onSelectTab?.('cron')}
+        >
+          <span className="primary-action-icon">
+            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+              <path d="M16 14v2.2l1.6 1" />
+              <path d="M16 2v4" />
+              <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" />
+              <path d="M3 10h5" />
+              <path d="M8 2v4" />
+              <circle cx="16" cy="16" r="6" />
+            </svg>
+          </span>
+          <span className="truncate">{t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}</span>
+        </button>
+      </nav>
+      {isCompact ? <span className="compact-divider" /> : null}
 
-            {otherProjects.length === 0 ? (
+      {isCompact ? (
+        <nav
+          className="recent-list"
+          aria-label={t('sidebar:projects.recent', { defaultValue: 'Recently opened' }) as string}
+        >
+          {compactRecentItems.map((item) => {
+            if (item.kind === 'project') return renderProjectGroup(item.project);
+
+            const { project, flat } = item;
+            const isActive =
+              selectedProject?.name === project.name &&
+              selectedSession?.id === flat.sessionId &&
+              activeTab === 'chat';
+            const title = sessionDisplayTitle(flat.session);
+            return (
+              <button
+                key={`session-${flat.sessionId}`}
+                type="button"
+                title={title}
+                onClick={() => handleSessionClick(project, flat.sessionId)}
+                onContextMenu={(event) => openSessionContextMenu(event, project, flat.session)}
+                className={cn('compact-project-entry compact-recent-conversation', isActive && 'active')}
+              >
+                <svg aria-hidden="true" className="icon" fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="20">
+                  <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>{title}</span>
+              </button>
+            );
+          })}
+        </nav>
+      ) : (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          ref={projectsConversationsSplitRef}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+        <section
+          className="tree-section flex min-h-0 flex-col border-t border-neutral-200/80 dark:border-neutral-800"
+          style={
+            !projectsExpanded
+              ? { minHeight: 0, flex: '0 0 auto' }
+              : conversationsExpanded
+                ? {
+                  height: `calc(${projectsSplitRatio * 100}% - ${
+                    SIDEBAR_SPLITTER_HEIGHT * projectsSplitRatio
+                  }px)`,
+                  minHeight: SIDEBAR_SECTION_MIN_HEIGHT,
+                  flex: '0 0 auto',
+                }
+                : { minHeight: 0, flex: '1 1 0%' }
+          }
+        >
+          <SectionHeading
+            title={t('sidebar:projects.title', { defaultValue: 'Projects' })}
+            expanded={projectsExpanded}
+            expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
+            collapseLabel={t('sidebar:projects.collapse', { defaultValue: 'Collapse projects' }) as string}
+            onToggle={() => setProjectsExpanded((previous) => !previous)}
+          />
+
+          {projectsExpanded ? (
+          <div className="tree-list project-tree-list dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">
+            {isLoading && safeProjects.length === 0 ? (
+              <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
+                {t('sidebar:sessions.loading', { defaultValue: 'Loading...' })}
+              </div>
+            ) : otherProjects.length === 0 ? (
               <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
                 {t('sidebar:projects.noProjects', { defaultValue: 'No projects found' })}
               </div>
             ) : (
-              <div className="space-y-0.5">
+              <div className="contents">
                 {otherProjects.map((project) => renderProjectGroup(project))}
               </div>
             )}
-          </section>
-        ) : (
-          <section className="pt-2">
-            {generalProject ? (
-              <>
-                <div className="flex items-center px-3 pb-1">
-                  <span className="flex-1 text-[11px] font-medium uppercase tracking-[0.04em] text-neutral-500/90 dark:text-neutral-400/80">
-                    {t('sidebar:general.title', { defaultValue: 'General' })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(event) => handleNewSession(event, generalProject)}
-                    aria-label={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                    title={t('sidebar:tooltips.newChat', { defaultValue: 'New Chat' }) as string}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                  >
-                    <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  </button>
-                </div>
-                <div className="px-1">
-                  {renderSessionRows(generalProject, { flat: true })}
-                </div>
-              </>
-            ) : (
-              <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                {t('sidebar:general.missing', {
-                  defaultValue: 'No general workspace found',
-                })}
-              </div>
-            )}
-          </section>
-        )}
-      </div>
+          </div>
+          ) : null}
+        </section>
 
-      <div className="border-t border-neutral-200 px-2 py-2 dark:border-neutral-800">
-        <button
-          type="button"
-          onClick={onShowSettings}
-          aria-label={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
-          title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
-          className="flex h-9 w-full items-center justify-start gap-2 rounded-lg px-6 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-        >
-          <SettingsIcon className="h-4 w-4" strokeWidth={1.75} />
-          <span>{t('sidebar:actions.settings', { defaultValue: 'Settings' })}</span>
-        </button>
+        {projectsExpanded && conversationsExpanded ? (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('sidebar:tooltips.resizeProjectsConversations', {
+              defaultValue: 'Resize projects and conversations',
+            }) as string}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(projectsSplitRatio * 100)}
+            tabIndex={0}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setProjectsSplitResizing(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setProjectsSplitRatio((ratio) => clampProjectsSplitRatio(ratio - 0.05));
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setProjectsSplitRatio((ratio) => clampProjectsSplitRatio(ratio + 0.05));
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                setProjectsSplitRatio(clampProjectsSplitRatio(0));
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                setProjectsSplitRatio(clampProjectsSplitRatio(1));
+              }
+            }}
+            className={cn('panel-splitter horizontal', projectsSplitResizing && 'active')}
+          />
+        ) : null}
+
+          <section
+            className={cn(
+              'tree-section conversations flex min-h-0 flex-col',
+              !conversationsExpanded && 'border-t border-neutral-200/80 dark:border-neutral-800',
+            )}
+            style={conversationsExpanded
+              ? { minHeight: SIDEBAR_SECTION_MIN_HEIGHT, flex: '1 1 0%' }
+              : { flex: '0 0 auto' }}
+          >
+          <SectionHeading
+            title={t('sidebar:conversations.title', { defaultValue: 'Conversations' })}
+            expanded={conversationsExpanded}
+            expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}
+            collapseLabel={t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string}
+            onToggle={() => setConversationsExpanded((previous) => !previous)}
+          />
+
+          {conversationsExpanded ? (
+            <div className="dock-panel-scrollbar min-h-0 flex-1 overflow-y-auto">
+              {generalProject ? (
+                renderSessionRows(generalProject, { flat: true })
+              ) : (
+                <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                  {t('sidebar:general.missing', {
+                    defaultValue: 'No general workspace found',
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+          </section>
+        </div>
       </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onShowSettings}
+        aria-label={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
+        title={t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string}
+        data-tooltip={isCompact ? t('sidebar:actions.settings', { defaultValue: 'Settings' }) as string : undefined}
+        className={cn(
+          'settings-entry',
+          isCompact && 'icon-button tooltip tooltip-right compact-settings',
+        )}
+      >
+        <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+          <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        <span>{t('sidebar:actions.settings', { defaultValue: 'Settings' })}</span>
+      </button>
 
       {contextMenu ? (
         <div
@@ -1231,10 +1296,8 @@ export default function SidebarV2({
           </button>
         </div>
       ) : null}
+      </aside>
 
-      {/* Drag handle for resizing the sidebar. Sits flush against the right
-          border, 4px wide; expands hit area on hover and shows a faint accent
-          while dragging. Hidden on mobile (the overlay sidebar isn't resizable). */}
       <div
         role="separator"
         aria-orientation="vertical"
@@ -1248,14 +1311,10 @@ export default function SidebarV2({
             // ignore
           }
         }}
-        className={cn(
-          'absolute inset-y-0 right-0 z-10 hidden w-1 cursor-col-resize select-none md:block',
-          'transition-colors duration-150',
-          isResizing
-            ? 'bg-blue-500/60'
-            : 'hover:bg-neutral-300/70 dark:hover:bg-neutral-700/70',
-        )}
-      />
+        className={cn('sidebar-resizer', isResizing && 'active')}
+      >
+        <span />
+      </div>
 
       {/* While dragging, paint a fullscreen overlay so the cursor stays
           consistent and we don't accidentally select text in the main pane. */}
@@ -1265,6 +1324,6 @@ export default function SidebarV2({
           style={{ userSelect: 'none' }}
         />
       ) : null}
-    </aside>
+    </>
   );
 }

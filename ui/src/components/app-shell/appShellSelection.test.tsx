@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Project } from '../../types/app';
-import { chooseDefaultProject } from './appShellSelection';
+import { chooseDefaultProject, compareProjectsBySidebarOrder } from './appShellSelection';
 
 const general: Project = {
   name: 'general',
@@ -25,5 +25,15 @@ describe('chooseDefaultProject', () => {
 
   it('returns null when there are no projects', () => {
     expect(chooseDefaultProject([])).toBeNull();
+  });
+});
+
+describe('compareProjectsBySidebarOrder', () => {
+  it('sorts by lastActivity descending then display name', () => {
+    const older: Project = { ...project, name: 'a', displayName: 'alpha', lastActivity: 1 };
+    const newer: Project = { ...project, name: 'b', displayName: 'beta', lastActivity: 2 };
+    const sameTimeZ: Project = { ...project, name: 'z', displayName: 'zeta', lastActivity: 2 };
+    const ordered = [older, sameTimeZ, newer].sort(compareProjectsBySidebarOrder);
+    expect(ordered.map((item) => item.displayName)).toEqual(['beta', 'zeta', 'alpha']);
   });
 });

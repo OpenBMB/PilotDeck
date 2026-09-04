@@ -293,6 +293,16 @@
       "agentDescription": "直接处理并执行任务",
       "planDescription": "先产出计划，确认后再执行",
       "askDescription": "仅回答问题，不修改文件"
+    },
+    "models": {
+      "select": "选择模型",
+      "change": "选择模型",
+      "search": "搜索模型",
+      "empty": "没有匹配的模型",
+      "advanced": "高级设置",
+      "reasoning": "推理强度",
+      "speed": "速度",
+      "temperature": "温度"
     }
   },
   "documentReferences": {
@@ -300,6 +310,13 @@
     "pages": "第 {{pages}} 页",
     "pageUnknown": "页码未知",
     "remove": "删除引用"
+  },
+  "replyQuotes": {
+    "addToChat": "添加到PilotDeck对话",
+    "chip": "{{count}}条标签",
+    "remove": "删除这条标签",
+    "removeAll": "删除全部标签",
+    "panelLabel": "已引用的回复内容"
   },
   "commandMenu": {
     "empty": "暂无可用命令",
@@ -466,9 +483,17 @@
     "placeholder": "告诉 PilotDeck 你想完成什么…",
     "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…"
   },
+  "workspacePicker": {
+    "select": "选择工作空间",
+    "search": "搜索项目",
+    "newProject": "新建项目",
+    "workWithoutProject": "不在项目中工作",
+    "empty": "未找到匹配的项目",
+    "selectRequired": "请先选择工作空间"
+  },
   "welcome": {
     "greetingWithProject": "今天想做点什么？",
-    "noProject": "从左侧选择一个项目开始"
+    "noProject": "今天想做点什么？"
   },
   "subagent": {
     "detailTitle": "子任务详情",
