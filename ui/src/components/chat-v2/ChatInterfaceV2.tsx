@@ -9,7 +9,7 @@ import {
   getSessionRequestParams,
   isReadOnlySession,
 } from '../../types/app';
-import { isGeneralProject } from '../app-shell/appShellSelection';
+import { chooseDefaultProject, isGeneralProject } from '../app-shell/appShellSelection';
 import { projectDisplayName, useCustomNamesVersion } from '../../lib/customNames';
 import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
@@ -96,9 +96,10 @@ function ChatInterfaceV2({
   onCreateProject,
 }: ChatInterfaceProps) {
   useCustomNamesVersion();
+  const defaultProject = React.useMemo(() => chooseDefaultProject(projects), [projects]);
   const selectedProject = selectedSession
     ? selectedProjectFromShell
-    : (workspaceBinding ?? selectedProjectFromShell);
+    : (workspaceBinding ?? selectedProjectFromShell ?? defaultProject);
   const { t } = useTranslation('chat');
   const { subscribe: contextSubscribe } = useWebSocket();
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
@@ -773,7 +774,7 @@ function ChatInterfaceV2({
       compact={compact}
       showWorkspacePicker={isWelcomeMode && !compact}
       workspaceProjects={projects}
-      workspaceSelectedProject={workspaceBinding ?? (!selectedSession ? selectedProjectFromShell : null)}
+      workspaceSelectedProject={!selectedSession ? selectedProject : null}
       onSelectWorkspaceProject={(project) => {
         onSelectWorkspace?.(project);
       }}

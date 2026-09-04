@@ -75,7 +75,7 @@
   },
   "skillsTab": {
     "pickProject": "选一个项目来管理它的技能。",
-    "generalChat": "通用聊天 — 内置技能和用户技能",
+    "generalChat": "通用对话 — 内置技能和用户技能",
     "refresh": "刷新",
     "newSkill": "新建",
     "backToSkills": "返回技能列表",

@@ -568,7 +568,7 @@
     "select": "Select workspace",
     "search": "Search projects",
     "newProject": "New project",
-    "workWithoutProject": "Work without a project",
+    "generalConversation": "General conversation",
     "empty": "No matching projects",
     "selectRequired": "Select a workspace to send"
   },

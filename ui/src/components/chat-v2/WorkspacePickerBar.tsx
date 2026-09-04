@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Folder, Plus, Search, X } from 'lucide-react';
+import { Check, Folder, MessageSquare, Plus, Search } from 'lucide-react';
 import type { Project } from '../../types/app';
 import { isGeneralProject, compareProjectsBySidebarOrder } from '../app-shell/appShellSelection';
 import { projectDisplayName } from '../../lib/customNames';
@@ -37,10 +37,12 @@ export default function WorkspacePickerBar({
   const [menuMaxHeight, setMenuMaxHeight] = useState<number | null>(null);
   const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
 
-  const isNoneSelected = Boolean(selectedProject && isGeneralProject(selectedProject));
-  const isProjectSelected = Boolean(selectedProject && !isNoneSelected);
-  const selectedLabel = isNoneSelected
-    ? t('workspacePicker.workWithoutProject', { defaultValue: '不在项目中工作' })
+  // A missing selection is only possible briefly while projects are loading.
+  // Present it as General instead of exposing a third, unusable null state.
+  const isGeneralSelected = !selectedProject || isGeneralProject(selectedProject);
+  const isProjectSelected = Boolean(selectedProject && !isGeneralSelected);
+  const selectedLabel = isGeneralSelected
+    ? t('workspacePicker.generalConversation', { defaultValue: '通用对话' })
     : isProjectSelected
       ? projectDisplayName(selectedProject as Project)
       : t('workspacePicker.select', { defaultValue: '选择工作空间' });
@@ -149,11 +151,10 @@ export default function WorkspacePickerBar({
             'inline-flex max-w-[70%] items-center gap-1.5 rounded-md px-1.5 py-1.5 text-[13px] leading-none',
             'bg-[#eceef2] text-neutral-700 transition-colors hover:bg-[#e2e4ea]',
             'dark:bg-neutral-700/80 dark:text-neutral-200 dark:hover:bg-neutral-600',
-            !selectedProject && 'text-neutral-500 dark:text-neutral-400',
           )}
         >
-          {isNoneSelected ? (
-            <X className="h-3.5 w-3.5 shrink-0 text-neutral-500" strokeWidth={1.8} />
+          {isGeneralSelected ? (
+            <MessageSquare className="h-3.5 w-3.5 shrink-0 text-neutral-500" strokeWidth={1.8} />
           ) : (
             <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-500" strokeWidth={1.8} />
           )}
@@ -201,7 +202,7 @@ export default function WorkspacePickerBar({
               </div>
             ) : (
               filteredProjects.map((project) => {
-                const selected = selectedProject?.name === project.name && !isNoneSelected;
+                const selected = selectedProject?.name === project.name && !isGeneralSelected;
                 return (
                   <button
                     key={project.name}
@@ -250,14 +251,14 @@ export default function WorkspacePickerBar({
               }}
               className={cn(
                 'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800',
-                isNoneSelected && 'bg-neutral-100 dark:bg-neutral-800',
+                isGeneralSelected && 'bg-neutral-100 dark:bg-neutral-800',
               )}
             >
-              <X className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.8} />
+              <MessageSquare className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.8} />
               <span className="min-w-0 flex-1 truncate">
-                {t('workspacePicker.workWithoutProject', { defaultValue: '不在项目中工作' })}
+                {t('workspacePicker.generalConversation', { defaultValue: '通用对话' })}
               </span>
-              {isNoneSelected ? <Check className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={2} /> : null}
+              {isGeneralSelected ? <Check className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={2} /> : null}
             </button>
           </div>
         </div>

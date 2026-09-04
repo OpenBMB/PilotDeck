@@ -487,7 +487,7 @@
     "select": "选择工作空间",
     "search": "搜索项目",
     "newProject": "新建项目",
-    "workWithoutProject": "不在项目中工作",
+    "generalConversation": "通用对话",
     "empty": "未找到匹配的项目",
     "selectRequired": "请先选择工作空间"
   },

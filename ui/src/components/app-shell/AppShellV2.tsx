@@ -167,7 +167,6 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
-  const [workspaceBinding, setWorkspaceBinding] = useState<Project | null>(null);
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
   const shellActiveTab = dedicatedTab ?? workspaceTab;
 
@@ -200,7 +199,6 @@ export default function AppShellV2() {
     if (selectedProject?.name === projectNameParam) return;
     const target = sidebarSharedProps.projects.find((p) => p.name === projectNameParam);
     if (target) {
-      setWorkspaceBinding(null);
       handleProjectSelect(target);
       // handleProjectSelect unconditionally navigates to '/' — put the URL back.
       navigate(`/p/${encodeURIComponent(projectNameParam)}`, { replace: true });
@@ -214,9 +212,8 @@ export default function AppShellV2() {
     navigate,
   ]);
 
-  // Default selection: prefer a regular project. General is only the fallback
-  // when no regular project exists. Explicit project/session URLs still own
-  // selection and are never overridden here.
+  // Default selection: use General as the canonical conversation context.
+  // Explicit project/session URLs still own selection and are never overridden.
   const didDefaultProjectRef = useRef(false);
   useEffect(() => {
     if (didDefaultProjectRef.current) return;
@@ -425,15 +422,10 @@ export default function AppShellV2() {
     const projectName = typeof project?.name === 'string' ? project.name : '';
     if (!projectName) return;
     const newProject = project as Project;
-    if (!selectedSession) {
-      setWorkspaceBinding(newProject);
-      setActiveTab('chat');
-      return;
-    }
     handleNewSession(newProject);
     navigate(`/p/${encodeURIComponent(projectName)}`);
     setActiveTab('chat');
-  }, [handleNewSession, navigate, refreshProjectsSilently, selectedSession, setActiveTab]);
+  }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
 
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
@@ -523,7 +515,6 @@ export default function AppShellV2() {
 
   const handleSelectProject = useCallback(
     (project: Project) => {
-      setWorkspaceBinding(null);
       handleProjectSelect(project);
       navigate(`/p/${encodeURIComponent(project.name)}`);
     },
@@ -607,10 +598,7 @@ export default function AppShellV2() {
 
   const handleStartNewSession = useCallback(
     (project: Project, options?: SessionNavigationOptions) => {
-      // An explicit project entry point always wins over a workspace chosen
-      // for an earlier unsaved draft.
       didDefaultProjectRef.current = true;
-      setWorkspaceBinding(null);
       handleNewSession(project);
       navigate(`/p/${encodeURIComponent(project.name)}`);
       setActiveTab(options?.preserveActiveTab ? 'files' : 'chat');
@@ -622,44 +610,28 @@ export default function AppShellV2() {
     const draftProject = resolveHomeNewConversationProject({
       selectedProject,
       selectedSession,
-      workspaceBinding,
       projectNameParam,
+      projects: sidebarSharedProps.projects,
     });
-    if (draftProject) {
-      handleStartNewSession(draftProject);
-      return;
-    }
-
-    didDefaultProjectRef.current = true;
-    setWorkspaceBinding(null);
-    setActiveTab('chat');
-    handleDeselectProject();
+    if (!draftProject) return;
+    handleStartNewSession(draftProject);
   }, [
-    handleDeselectProject,
     handleStartNewSession,
     projectNameParam,
     selectedProject,
     selectedSession,
-    setActiveTab,
-    workspaceBinding,
+    sidebarSharedProps.projects,
   ]);
-
-  useEffect(() => {
-    if (selectedSession) setWorkspaceBinding(null);
-  }, [selectedSession]);
 
   const handleSessionActivityBump = useCallback(
     (projectName: string, sessionId: string, optimisticTitle?: string) => {
       bumpSessionActivity(projectName, sessionId, optimisticTitle);
       if (selectedSession) return;
-      const project =
-        sidebarSharedProps.projects.find((item) => item.name === projectName)
-        ?? (workspaceBinding?.name === projectName ? workspaceBinding : null);
+      const project = sidebarSharedProps.projects.find((item) => item.name === projectName);
       if (!project) return;
       setSelectedProject(project);
-      setWorkspaceBinding(null);
     },
-    [bumpSessionActivity, selectedSession, sidebarSharedProps.projects, workspaceBinding, setSelectedProject],
+    [bumpSessionActivity, selectedSession, sidebarSharedProps.projects, setSelectedProject],
   );
 
   // Wrap the two session-lifecycle callbacks coming out of useSessionProtection
@@ -774,8 +746,7 @@ export default function AppShellV2() {
           }}
           onStartNewSession={handleStartNewSession}
           onCreateProject={handleOpenNewProject}
-          onSelectWorkspace={(project) => setWorkspaceBinding(project)}
-          workspaceBinding={workspaceBinding}
+          onSelectWorkspace={handleStartNewSession}
           onSelectSession={handleSelectSession}
           onShowSettings={onShowSettings}
           onSelectProjectByName={(name: string) => {

@@ -19,12 +19,12 @@ const project: Project = {
 };
 
 describe('chooseDefaultProject', () => {
-  it('prefers a regular project over General', () => {
-    expect(chooseDefaultProject([general, project])).toBe(project);
+  it('prefers General as the default conversation context', () => {
+    expect(chooseDefaultProject([general, project])).toBe(general);
   });
 
-  it('falls back to General when no regular project exists', () => {
-    expect(chooseDefaultProject([general])).toBe(general);
+  it('falls back to a regular project when General is unavailable', () => {
+    expect(chooseDefaultProject([project])).toBe(project);
   });
 
   it('returns null when there are no projects', () => {
@@ -47,8 +47,8 @@ describe('resolveHomeNewConversationProject', () => {
     expect(resolveHomeNewConversationProject({
       selectedProject: project,
       selectedSession: null,
-      workspaceBinding: null,
       projectNameParam: project.name,
+      projects: [general, project],
     })).toBe(project);
   });
 
@@ -56,31 +56,31 @@ describe('resolveHomeNewConversationProject', () => {
     expect(resolveHomeNewConversationProject({
       selectedProject: project,
       selectedSession: { id: 'session-1' },
-      workspaceBinding: null,
+      projects: [general, project],
     })).toBe(project);
   });
 
-  it('keeps a workspace chosen from the unbound conversation screen', () => {
-    expect(resolveHomeNewConversationProject({
-      selectedProject: null,
-      selectedSession: null,
-      workspaceBinding: project,
-    })).toBe(project);
-  });
-
-  it('treats General as an unbound conversation', () => {
-    expect(resolveHomeNewConversationProject({
-      selectedProject: general,
-      selectedSession: { id: 'session-1' },
-      workspaceBinding: null,
-    })).toBeNull();
-  });
-
-  it('does not reuse a project outside a project conversation context', () => {
+  it('uses General outside a project conversation context', () => {
     expect(resolveHomeNewConversationProject({
       selectedProject: project,
       selectedSession: null,
-      workspaceBinding: null,
-    })).toBeNull();
+      projects: [general, project],
+    })).toBe(general);
+  });
+
+  it('keeps General for an existing General conversation', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: general,
+      selectedSession: { id: 'session-1' },
+      projects: [general, project],
+    })).toBe(general);
+  });
+
+  it('uses General when no project is selected', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: null,
+      selectedSession: null,
+      projects: [general, project],
+    })).toBe(general);
   });
 });

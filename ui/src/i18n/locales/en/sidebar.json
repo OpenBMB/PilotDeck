@@ -27,8 +27,8 @@
     "recent": "Recently opened"
   },
   "general": {
-    "title": "General",
-    "name": "General",
+    "title": "General conversation",
+    "name": "General conversation",
     "missing": "No general workspace found"
   },
   "conversations": {

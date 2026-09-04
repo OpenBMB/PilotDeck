@@ -33,6 +33,7 @@ import {
 import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
+import { isGeneralProject } from './appShellSelection';
 
 const CronV2 = lazy(() => import('../main-content-v2/CronV2'));
 const SkillsV2 = lazy(() => import('../main-content-v2/SkillsV2'));
@@ -290,8 +291,10 @@ function MainAreaV2Content(props: MainAreaV2Props) {
       : displayActiveTab;
   const sessionSummary = selectedSession ? sessionDisplayTitle(selectedSession) : '';
   const projectName = selectedProject
-    ? projectDisplayName(selectedProject)
-    : t('navigation.home', { defaultValue: 'Home' });
+    ? isGeneralProject(selectedProject)
+      ? t('sidebar:general.name', { defaultValue: 'General conversation' })
+      : projectDisplayName(selectedProject)
+    : t('sidebar:general.name', { defaultValue: 'General conversation' });
   const headerTitle =
     sessionSummary || (displayActiveTab === FILES_TAB.id ? tabLabel || projectName : projectName);
   const isRenamingSessionTitle = Boolean(
