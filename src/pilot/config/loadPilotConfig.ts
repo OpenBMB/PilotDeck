@@ -11,6 +11,7 @@ import { mergeConfigSources } from "./merge.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
 import { parseAdaptersConfig, parseGatewayConfig } from "./parseGatewayConfig.js";
 import { parseToolsConfig } from "./parseToolsConfig.js";
+import { parseWebUiConfig } from "./parseWebUiConfig.js";
 import { parseRouterConfig } from "../../router/config/parseRouterConfig.js";
 import { redactConfig } from "./redact.js";
 import {
@@ -124,6 +125,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   const alwaysOn = parseAlwaysOnConfig(rawConfig.alwaysOn, diagnostics);
   const cron = parseCronConfig(rawConfig.cron, diagnostics);
   const tools = parseToolsConfig(rawConfig.tools, diagnostics);
+  const webui = parseWebUiConfig(rawConfig.webui, diagnostics);
   const telemetry = parseTelemetryConfig(rawConfig.telemetry);
   const proxy = parseProxyConfig(rawConfig, diagnostics);
   throwConfigErrorIfFatal(diagnostics);
@@ -139,6 +141,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     alwaysOn,
     cron,
     tools,
+    webui,
     telemetry,
     proxy,
   });
@@ -160,6 +163,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
       ...(alwaysOn ? { alwaysOn } : {}),
       ...(cron ? { cron } : {}),
       ...(tools ? { tools } : {}),
+      webui,
       telemetry,
       ...(proxy ? { proxy } : {}),
     },

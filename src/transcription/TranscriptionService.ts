@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { realpath, readFile, stat } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { PilotDeckToolRuntimeError } from "../tool/protocol/errors.js";
 import type { PilotTransSpeechEnabledConfig } from "../pilot/config/types.js";
+import { chatAttachmentMaxFileSizeBytes } from "../pilot/config/parseWebUiConfig.js";
 import { TransSpeechClient, TransSpeechClientError } from "./TransSpeechClient.js";
 import { TranscriptionTaskStore } from "./TranscriptionTaskStore.js";
 import {
-  MAX_TRANSCRIPTION_FILE_BYTES,
   SUPPORTED_AUDIO_EXTENSIONS,
   TRANSCRIPTION_MINUTES_FILE,
   TRANSCRIPTION_POLISHED_TRANSCRIPT_FILE,
@@ -21,6 +21,8 @@ import {
 
 export type TranscriptionServiceOptions = {
   config: PilotTransSpeechEnabledConfig;
+  /** Parsed from webui.attachments.maxFileSizeMB by the local gateway runtime. */
+  maxFileSizeBytes?: number;
   fetchImpl?: typeof fetch;
   now?: () => Date;
 };
@@ -64,6 +66,7 @@ const cancellationRequests = new Set<string>();
 export class TranscriptionService {
   private readonly client: TransSpeechClient;
   private readonly now: () => Date;
+  private readonly maxFileSizeBytes: number;
 
   constructor(private readonly options: TranscriptionServiceOptions) {
     this.client = new TransSpeechClient({
@@ -72,10 +75,11 @@ export class TranscriptionService {
       fetchImpl: options.fetchImpl,
     });
     this.now = options.now ?? (() => new Date());
+    this.maxFileSizeBytes = options.maxFileSizeBytes ?? chatAttachmentMaxFileSizeBytes(undefined);
   }
 
   async start(workspaceRoot: string, input: StartTranscriptionInput): Promise<TranscriptionServiceResult> {
-    const source = await validateUploadedAudio(workspaceRoot, input.audioPath);
+    const source = await validateUploadedAudio(workspaceRoot, input.audioPath, this.maxFileSizeBytes);
     const sourceHash = await hashFile(source.path);
     const store = new TranscriptionTaskStore(workspaceRoot);
     const actions = input.includeActions ?? this.options.config.generate.actions;
@@ -359,15 +363,23 @@ export class TranscriptionService {
   }
 }
 
-async function validateUploadedAudio(workspaceRoot: string, value: string): Promise<{ path: string; bytes: number; createdAt: string }> {
+async function validateUploadedAudio(
+  workspaceRoot: string,
+  value: string,
+  maxFileSizeBytes: number,
+): Promise<{ path: string; bytes: number; createdAt: string }> {
   if (!value || value.includes("\0")) throw new PilotDeckToolRuntimeError("invalid_tool_input", "audio_path must be a non-empty file path.");
-  const uploadRoot = resolve(workspaceRoot, ".tmp", "chat-attachments");
+  const currentUploadRoot = resolve(workspaceRoot, ".tmp", "chat-uploads");
+  const legacyUploadRoot = resolve(workspaceRoot, ".tmp", "chat-attachments");
   const sourcePath = resolve(isAbsolute(value) ? value : join(workspaceRoot, value));
-  const realUploadRoot = await realpath(uploadRoot).catch(() => uploadRoot);
+  const [realCurrentUploadRoot, realLegacyUploadRoot] = await Promise.all([
+    realpath(currentUploadRoot).catch(() => currentUploadRoot),
+    realpath(legacyUploadRoot).catch(() => legacyUploadRoot),
+  ]);
   const realSource = await realpath(sourcePath).catch(() => undefined);
   if (!realSource) throw new PilotDeckToolRuntimeError("file_not_found", "Uploaded audio file was not found.");
-  if (!isWithin(realSource, realUploadRoot)) {
-    throw new PilotDeckToolRuntimeError("path_not_allowed", "audio_path must reference an audio file uploaded in this workspace.");
+  if (!isCurrentWebUploadFile(realSource, realCurrentUploadRoot) && !isWithin(realSource, realLegacyUploadRoot)) {
+    throw new PilotDeckToolRuntimeError("path_not_allowed", "audio_path must reference a Web audio file uploaded in this workspace.");
   }
   const extension = extname(realSource).toLowerCase();
   if (!SUPPORTED_AUDIO_EXTENSIONS.has(extension)) {
@@ -378,11 +390,24 @@ async function validateUploadedAudio(workspaceRoot: string, value: string): Prom
   if (info.size === 0) {
     throw new PilotDeckToolRuntimeError("invalid_tool_input", "Audio files must not be empty.");
   }
-  if (info.size > MAX_TRANSCRIPTION_FILE_BYTES) {
-    throw new PilotDeckToolRuntimeError("invalid_tool_input", "Audio files must not exceed 20MB.");
+  if (info.size > maxFileSizeBytes) {
+    throw new PilotDeckToolRuntimeError(
+      "invalid_tool_input",
+      `Audio files must not exceed ${formatMiB(maxFileSizeBytes)}MB.`,
+    );
   }
   const sourceCreatedAt = info.birthtimeMs > 0 ? info.birthtime : info.mtime;
   return { path: realSource, bytes: info.size, createdAt: sourceCreatedAt.toISOString() };
+}
+
+function formatMiB(bytes: number): string {
+  return String(bytes / (1024 * 1024));
+}
+
+function isCurrentWebUploadFile(candidate: string, root: string): boolean {
+  if (!isWithin(candidate, root)) return false;
+  const segments = relative(root, candidate).split(sep);
+  return segments.length === 3 && segments[1] === "files" && segments.every(Boolean);
 }
 
 async function hashFile(path: string): Promise<string> {

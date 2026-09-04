@@ -83,7 +83,7 @@ import type {
 import { permissionEntryToRule, permissionSettingsToRuleSet, readPermissionSettings } from "../../permission/index.js";
 import type { PermissionRule } from "../../permission/index.js";
 import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
-import { getPilotDeckInstallCommand } from "../../mcp/runtime/projectMcpSpec.js";
+import { SUPPORTED_AUDIO_EXTENSIONS } from "../../transcription/types.js";
 import { AttachmentResolver, type AttachmentRequest } from "../../context/attachments/AttachmentResolver.js";
 import type {
   SkillAddressInput,
@@ -115,8 +115,6 @@ const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 const DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS = 60_000;
 
 export type InProcessGatewayOptions = {
-  /** Absolute command used by the model to install bundled FunASR assets. */
-  funasrInstallCommand?: string;
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
@@ -540,7 +538,6 @@ export class InProcessGateway implements Gateway {
           attachments,
           allowedReadFiles,
           input.projectKey,
-          this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
         );
         const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
           role: "user" as const,
@@ -742,7 +739,6 @@ export class InProcessGateway implements Gateway {
       attachments,
       allowedReadFiles,
       input.projectKey,
-      this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
     );
     const message: CanonicalMessage = {
       role: "user",
@@ -2411,7 +2407,6 @@ async function buildAgentInputWithAttachments(
   attachments: ChannelAttachment[] | undefined,
   allowedReadFiles: string[],
   projectRoot?: string,
-  funasrInstallCommand?: string,
 ): Promise<AgentInput> {
   const resolvedAttachments = await attachmentsToContentBlocks(attachments);
   const attachmentBlocks = resolvedAttachments.blocks;
@@ -2421,7 +2416,6 @@ async function buildAgentInputWithAttachments(
     resolvedAttachments.directContentPaths,
     resolvedAttachments.hasDiagnostics,
     projectRoot,
-    funasrInstallCommand,
   );
   if (attachmentBlocks.length === 0 && !pathNote) {
     return { type: "text", text: message };
@@ -2445,7 +2439,6 @@ function buildAttachmentPathNote(
   directContentPaths: Set<string>,
   hasDiagnostics: boolean,
   projectRoot?: string,
-  installCommand = "npm run install:asr",
 ): CanonicalContentBlock | undefined {
   if (!attachments || attachments.length === 0) return undefined;
   const seen = new Set<string>();
@@ -2467,7 +2460,7 @@ function buildAttachmentPathNote(
   const guidance = hasDiagnostics
     || attachments.some(isAudioAttachment)
     || attachments.some((attachment) => !isReadFileInspectableAttachment(attachment))
-    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot, installCommand)
+    ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot)
     : "These are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.";
   return {
     type: "text",
@@ -2479,17 +2472,29 @@ function attachmentDiagnosticsGuidance(
   attachments: ChannelAttachment[],
   allowedReadFiles: Set<string>,
   projectRoot?: string,
-  installCommand = "npm run install:asr",
 ): string {
   const audioAttachments = attachments.filter((attachment) => isAudioAttachment(attachment));
   if (audioAttachments.length > 0) {
-    const audioPaths = audioAttachments
-      .map((attachment) => attachment.path && mapAudioPathForFunAsr(attachment.path, projectRoot))
+    const webAudioAttachments = audioAttachments.filter(isWebAudioAttachment);
+    const compatibleAttachments = webAudioAttachments.filter(isTransSpeechAudioAttachment);
+    const unsupportedAttachments = webAudioAttachments.filter((attachment) => !isTransSpeechAudioAttachment(attachment));
+    const nonWebAttachments = audioAttachments.filter((attachment) => !isWebAudioAttachment(attachment));
+    const unsupportedHint = unsupportedAttachments.length > 0
+      ? ` Trans-Speech supports only WAV, MP3, M4A, and FLAC; do not transcribe ${unsupportedAttachments.map(attachmentDisplayName).join(", ")}.`
+      : "";
+    const nonWebHint = nonWebAttachments.length > 0
+      ? ` Trans-Speech accepts only Web-uploaded audio; do not transcribe ${nonWebAttachments.map(attachmentDisplayName).join(", ")}.`
+      : "";
+    if (compatibleAttachments.length === 0) {
+      return `Audio attachments are not readable with read_file.${unsupportedHint}${nonWebHint}`;
+    }
+    const audioPaths = compatibleAttachments
+      .map((attachment) => attachment.path && mapAudioPathForTransSpeech(attachment.path, projectRoot))
       .filter((path): path is string => Boolean(path));
     const mappedHint = audioPaths.length > 0
-      ? ` Pass the registered project-local path${audioPaths.length === 1 ? ` ${audioPaths[0]}` : "s " + audioPaths.join(", ")} to transcribe_audio.`
-      : " Pass a project-local host path to transcribe_audio; paths outside this project are rejected.";
-    return `Audio attachments are not readable with read_file. When the user asks for transcription, subtitles, or audio analysis, use the funasr MCP server's mcp__funasr__transcribe_audio tool.${mappedHint} If that tool reports that its runtime is missing, run ${installCommand} and retry the tool in this session.`;
+      ? ` Call trans_speech with {"action":"start","audio_path":"<the exact registered path>"}; use ${audioPaths.join(", ")}.`
+      : " Call trans_speech with {\"action\":\"start\",\"audio_path\":\"<the exact registered project-local path>\"}; paths outside this project are rejected.";
+    return `Audio attachments are not readable with read_file. When the user asks for transcription, subtitles, or audio analysis, use trans_speech.${mappedHint}${unsupportedHint}${nonWebHint}`;
   }
 
   const hasInspectableAttachment = attachments.some((attachment) => {
@@ -2578,8 +2583,8 @@ async function attachmentsToContentBlocks(
 
     if (!att.path) continue;
     if (isAudioAttachment(att)) {
-      // Keep audio as a registered path reference. The ASR Skill invokes the
-      // FunASR MCP tool on demand, so audio should not be sent through the
+      // Keep audio as a registered path reference. The transcription Skill
+      // invokes trans_speech on demand, so audio is never sent through the
       // text/image/PDF attachment resolver.
       continue;
     }
@@ -2626,7 +2631,19 @@ function isAudioAttachment(attachment: ChannelAttachment): boolean {
   return /\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/iu.test(pathOrName);
 }
 
-function mapAudioPathForFunAsr(audioPath: string, projectRoot?: string): string | undefined {
+function isTransSpeechAudioAttachment(attachment: ChannelAttachment): boolean {
+  return SUPPORTED_AUDIO_EXTENSIONS.has(extname(attachment.path || attachment.name || "").toLowerCase());
+}
+
+function isWebAudioAttachment(attachment: ChannelAttachment): boolean {
+  return attachment.metadata?.channelKey === "web";
+}
+
+function attachmentDisplayName(attachment: ChannelAttachment): string {
+  return attachment.name || attachment.path?.split(/[\\/]/).pop() || "audio attachment";
+}
+
+function mapAudioPathForTransSpeech(audioPath: string, projectRoot?: string): string | undefined {
   if (!projectRoot) return undefined;
   const absoluteRoot = resolve(projectRoot);
   const absolutePath = resolve(audioPath);

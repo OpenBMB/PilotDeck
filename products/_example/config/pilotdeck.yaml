@@ -22,6 +22,28 @@ memory:
 #     provider: glm                                 # glm | tavily | custom
 #     apiKey: "..."
 #     # endpoint: https://api.z.ai/api/paas/v4/web_search
+#   transSpeech:
+#     enabled: true
+#     baseUrl: "http://trans-speech:8090"
+#     language: "zh"
+#     asrProfile: "sensevoice"
+#     diarize: true
+#     timeoutMs: 330000
+#     maxConcurrentTasks: 1
+#     generate:
+#       polish: true
+#       minutes: true
+#       actions: false
+
+# Web 附件上传与 Trans-Speech 共用同一文件大小限制。
+# webui:
+#   attachments:
+#     maxFileSizeMB: 101
+
+# Trans-Speech 部署环境不使用内置 FunASR。
+# extension:
+#   builtinPluginsEnabled:
+#     funasr: false
 
 # 品牌配置（待贡献点就绪后生效）
 # brand:

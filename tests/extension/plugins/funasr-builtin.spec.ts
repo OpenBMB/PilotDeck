@@ -82,13 +82,13 @@ test("FunASR can be disabled through builtinPluginsEnabled", async () => {
   }
 });
 
-test("audio-transcription Skill documents local runtime installation and same-session retry", async () => {
+test("audio-transcription Skill documents the Trans-Speech workflow", async () => {
   const skill = await readFile(join(process.cwd(), "skills", "audio-transcription", "SKILL.md"), "utf8");
-  assert.match(skill, /install:asr/);
-  assert.match(skill, /same session/i);
-  assert.match(skill, /mcp__funasr__transcribe_audio/);
-  assert.match(skill, /project-local host path/);
-  assert.doesNotMatch(skill, /\/audio\//);
-  assert.match(skill, /funasr-installation\.md/);
+  assert.match(skill, /trans_speech/);
+  assert.match(skill, /WAV, MP3, M4A, or FLAC/);
+  assert.match(skill, /Web-uploaded/i);
+  assert.doesNotMatch(skill, /install:asr/);
+  assert.doesNotMatch(skill, /mcp__funasr__transcribe_audio/);
+  assert.doesNotMatch(skill, /funasr-installation\.md/);
   assert.match(skill, /Do not invoke ASR merely because an audio attachment is present/);
 });

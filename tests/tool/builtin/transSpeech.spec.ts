@@ -26,6 +26,30 @@ test("trans_speech is registered only when its local service is configured", () 
   assert.equal(createBuiltinRegistry({ transSpeech: { config } }).has("trans_speech"), true);
 });
 
+test("the configured attachment size reaches the registered trans_speech tool", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-trans-speech-tool-"));
+  try {
+    const attachmentDirectory = join(workspace, ".tmp", "chat-attachments", "upload-1");
+    const audioPath = join(attachmentDirectory, "meeting.wav");
+    await mkdir(attachmentDirectory, { recursive: true });
+    await writeFile(audioPath, "recording");
+    const tool = createBuiltinRegistry({ transSpeech: { config, maxFileSizeBytes: 4 } }).get("trans_speech");
+    assert.ok(tool);
+
+    await assert.rejects(
+      tool.execute({ action: "start", audio_path: audioPath }, {
+        cwd: workspace,
+        env: {},
+        sessionId: "session",
+        turnId: "turn",
+      } as any),
+      { code: "invalid_tool_input" },
+    );
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("trans_speech creates result-file entries and reports progress for an uploaded recording", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-trans-speech-tool-"));
   try {

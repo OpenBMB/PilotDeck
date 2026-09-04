@@ -1,5 +1,11 @@
 export { loadPilotConfig } from "./loadPilotConfig.js";
 export {
+  BYTES_PER_MEBIBYTE,
+  chatAttachmentMaxFileSizeBytes,
+  DEFAULT_CHAT_ATTACHMENT_MAX_FILE_SIZE_MB,
+  parseWebUiConfig,
+} from "./parseWebUiConfig.js";
+export {
   createPilotConfigStore,
   type PilotConfigListener,
   type PilotConfigStore,
@@ -30,5 +36,6 @@ export {
   type PilotProxyConfig,
   type PilotToolsConfig,
   type PilotTransSpeechConfig,
+  type PilotWebUiConfig,
   type PilotWebSearchConfig,
 } from "./types.js";

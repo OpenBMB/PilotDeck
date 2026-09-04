@@ -33,7 +33,7 @@ export type TransSpeechToolOutput = {
   duplicateTaskId?: string;
 };
 
-export type CreateTransSpeechToolOptions = Pick<TranscriptionServiceOptions, "config" | "fetchImpl" | "now">;
+export type CreateTransSpeechToolOptions = Pick<TranscriptionServiceOptions, "config" | "maxFileSizeBytes" | "fetchImpl" | "now">;
 
 export function createTransSpeechTool(
   options: CreateTransSpeechToolOptions,
@@ -56,7 +56,7 @@ export function createTransSpeechTool(
       additionalProperties: false,
       properties: {
         action: { type: "string", enum: ["start", "retry", "cancel"] },
-        audio_path: { type: "string", description: "Exact path of an audio attachment uploaded in this chat. Required for start." },
+        audio_path: { type: "string", description: "Exact path of a Web audio attachment uploaded in this chat. Required for start." },
         task_id: { type: "string", description: "Recording task id. Required for retry and cancel." },
         force_duplicate: { type: "boolean", description: "Set true only after the user explicitly chooses to create another task for a duplicate audio file." },
         include_actions: { type: "boolean", description: "Generate action items only when the user explicitly requests them." },

@@ -7,7 +7,6 @@ export const TRANSCRIPTION_POLISHED_TRANSCRIPT_FILE = "逐字整理稿.md";
 export const TRANSCRIPTION_MINUTES_FILE = "会议纪要.md";
 
 export const SUPPORTED_AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".m4a", ".flac"]);
-export const MAX_TRANSCRIPTION_FILE_BYTES = 20 * 1024 * 1024;
 
 export type TranscriptionTaskStatus =
   | "created"
