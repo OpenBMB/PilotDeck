@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   cloneWorkspaceWithProgress,
   createWorkspaceRequest,
@@ -18,6 +18,11 @@ export default function useOnboardingWorkspace() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
+  const createdDraftsRef = useRef(new Set<string>());
+  const inFlightRef = useRef<{
+    fingerprint: string;
+    promise: Promise<Record<string, unknown> | undefined>;
+  } | null>(null);
 
   const setWorkspaceType = useCallback((workspaceType: WorkspaceType) => {
     setDraft((current) => ({ ...current, workspaceType }));
@@ -37,36 +42,48 @@ export default function useOnboardingWorkspace() {
   const canFinish = draft.workspacePath.trim().length > 0;
 
   const createWorkspace = useCallback(async () => {
-    if (!draft.workspacePath.trim()) {
+    const workspacePath = draft.workspacePath.trim();
+    const githubUrl = draft.githubUrl.trim();
+    if (!workspacePath) {
       throw new Error('Workspace path is required.');
     }
+    const fingerprint = JSON.stringify({ workspacePath, githubUrl });
+    if (createdDraftsRef.current.has(fingerprint)) return;
+    if (inFlightRef.current?.fingerprint === fingerprint) {
+      return inFlightRef.current.promise;
+    }
+
     setIsCreating(true);
     setError('');
     setProgress('');
 
-    try {
-      if (isCloneWorkflow('new', draft.githubUrl)) {
-        return await cloneWorkspaceWithProgress(
+    const operation = isCloneWorkflow('new', githubUrl)
+      ? cloneWorkspaceWithProgress(
           {
-            workspacePath: draft.workspacePath.trim(),
-            githubUrl: draft.githubUrl.trim(),
+            workspacePath,
+            githubUrl,
             tokenMode: 'none',
             selectedGithubToken: '',
             newGithubToken: '',
           },
           { onProgress: setProgress },
-        );
-      }
+        )
+      : createWorkspaceRequest({
+          workspaceType: 'new',
+          path: workspacePath,
+        });
+    inFlightRef.current = { fingerprint, promise: operation };
 
-      return await createWorkspaceRequest({
-        workspaceType: 'new',
-        path: draft.workspacePath.trim(),
-      });
+    try {
+      const result = await operation;
+      createdDraftsRef.current.add(fingerprint);
+      return result;
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'Failed to create workspace';
       setError(message);
       throw caughtError;
     } finally {
+      if (inFlightRef.current?.promise === operation) inFlightRef.current = null;
       setIsCreating(false);
     }
   }, [draft.githubUrl, draft.workspacePath]);

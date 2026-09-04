@@ -71,7 +71,7 @@ interface UseChatComposerStateArgs {
   inputQueuePaused?: boolean;
   enqueuePreparedInput?: (item: PreparedQueuedInput) => Promise<{ ok: boolean; error?: string }>;
   tokenBudget: Record<string, unknown> | null;
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean;
   subscribe?: (handler: (message: any) => void) => () => void;
   sendByCtrlEnter?: boolean;
   onSessionActive?: (sessionId?: string | null) => void;
@@ -1287,10 +1287,13 @@ export function useChatComposerState({
           attachmentIds.push(completed.attachmentId);
           refsByUploadId.set(completed.uploadId, attachmentIds);
           return [{
+            kind: 'file' as const,
             name: completed.name,
             path: completed.relativePath,
             size: completed.bytes,
             mimeType: completed.mimeType,
+            uploadId: completed.uploadId,
+            attachmentId: completed.attachmentId,
           }];
         });
         uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
@@ -1314,7 +1317,6 @@ export function useChatComposerState({
       messageContent = `${messageContent}${formatContentReferencePromptBlock(submitDocumentReferences)}`;
 
       const effectiveSessionId = submitTargetSessionId;
-      const sessionToActivate = effectiveSessionId || optimisticSessionId;
       const runId = createUserTurnRunId();
       const toolsSettings = getPilotDeckSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
@@ -1403,6 +1405,40 @@ export function useChatComposerState({
         timestamp: new Date(),
       };
 
+      // A new-session command is not safe to replay automatically: without a
+      // server acknowledgement, reconnecting could execute it twice. Dispatch
+      // first and only expose optimistic session state after the WebSocket has
+      // accepted the frame locally.
+      const startedSessionId = startSessionCommand({
+        sendMessage,
+        selectedProject,
+        command: messageContent,
+        runId,
+        userVisibleInput,
+        sessionId: effectiveSessionId,
+        temporarySessionId: optimisticSessionId,
+        runMode,
+        permissionMode,
+        basePermissionMode,
+        model,
+        thinking: thinkingModeToConfig(thinkingMode),
+        sessionSummary,
+        toolsSettings,
+        modelOverride,
+        images: uploadedImages,
+        attachments: turnAttachments,
+        uploadedAttachments: uploadedAttachmentRefs,
+      });
+
+      if (!startedSessionId) {
+        addMessage({
+          type: 'error',
+          content: 'Connection lost before the message could be sent. Reconnect and try again.',
+          timestamp: new Date(),
+        }, submitTargetSessionId);
+        return;
+      }
+
       bumpSessionActivity();
       addMessage(userMessage, submitTargetSessionId);
       setIsLoading(true); // Processing banner starts
@@ -1423,31 +1459,10 @@ export function useChatComposerState({
         }
         pendingViewSessionRef.current = { sessionId: null, startedAt: Date.now() };
       }
-      onSessionActive?.(sessionToActivate);
+      onSessionActive?.(startedSessionId);
       if (effectiveSessionId && !isTemporarySessionId(effectiveSessionId)) {
         onSessionProcessing?.(effectiveSessionId);
       }
-
-      startSessionCommand({
-        sendMessage,
-        selectedProject,
-        command: messageContent,
-        runId,
-        userVisibleInput,
-        sessionId: effectiveSessionId,
-        temporarySessionId: sessionToActivate,
-        runMode,
-        permissionMode,
-        basePermissionMode,
-        model,
-        thinking: thinkingModeToConfig(thinkingMode),
-        sessionSummary,
-        toolsSettings,
-        modelOverride,
-        images: uploadedImages,
-        attachments: turnAttachments,
-        uploadedAttachments: uploadedAttachmentRefs,
-      });
 
       clearSubmittedComposerState();
     },

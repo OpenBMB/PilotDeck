@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
 import { ONBOARDING_STEP_IDS, type OnboardingStepId } from './constants';
 import useLlmSetup from './hooks/useLlmSetup';
@@ -17,6 +17,8 @@ type OnboardingProps = {
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [currentStep, setCurrentStep] = useState<OnboardingStepId>('language');
   const [completeError, setCompleteError] = useState('');
+  const [isFinishing, setIsFinishing] = useState(false);
+  const finishingRef = useRef(false);
   const llm = useLlmSetup();
   const workspace = useOnboardingWorkspace();
 
@@ -49,6 +51,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }, [goNext, llm]);
 
   const handleFinish = useCallback(async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setIsFinishing(true);
     setCompleteError('');
     try {
       await workspace.createWorkspace();
@@ -60,6 +65,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       await onComplete?.();
     } catch (caughtError) {
       setCompleteError(caughtError instanceof Error ? caughtError.message : 'Failed to complete onboarding');
+    } finally {
+      finishingRef.current = false;
+      setIsFinishing(false);
     }
   }, [onComplete, workspace]);
 
@@ -96,7 +104,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               draft={workspace.draft}
               error={completeError || workspace.error}
               progress={workspace.progress}
-              isCreating={workspace.isCreating}
+              isCreating={isFinishing || workspace.isCreating}
               onWorkspacePathChange={workspace.setWorkspacePath}
               onGithubUrlChange={workspace.setGithubUrl}
               onBack={goBack}

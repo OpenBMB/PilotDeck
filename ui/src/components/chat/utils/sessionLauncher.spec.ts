@@ -47,6 +47,20 @@ describe('sessionLauncher turn identity', () => {
     }));
   });
 
+  it('does not activate a new session when the command cannot be delivered', () => {
+    const sendMessage = vi.fn(() => false);
+
+    const sessionId = startSessionCommand({
+      sendMessage,
+      selectedProject: { name: 'PilotDeck', path: '/workspace/PilotDeck' } as Project,
+      command: 'Continue.',
+      temporarySessionId: 'new-session-offline',
+    });
+
+    expect(sessionId).toBeNull();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
   it('sends an atomic same-session replacement request with preserved payload', () => {
     const sendMessage = vi.fn();
 

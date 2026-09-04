@@ -233,6 +233,7 @@ async function connectWithRetry() {
 
 const gatewayConnections = createGatewayConnectionCache({
     connect: connectWithRetry,
+    shouldReconnect: () => gatewayNotificationHandlers.size > 0,
     onConnected(gateway) {
         for (const handler of gatewayNotificationHandlers) {
             gateway.onNotification(handler);
@@ -240,7 +241,7 @@ const gatewayConnections = createGatewayConnectionCache({
     },
     onDisconnected(error) {
         console.warn(
-            '[pilotdeck-bridge] gateway disconnected; the next request will reconnect:',
+            '[pilotdeck-bridge] gateway disconnected; notification forwarding will reconnect:',
             error?.message || error,
         );
     },

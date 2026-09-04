@@ -94,4 +94,60 @@ describe('useChatComposerState attachment submission', () => {
       null,
     );
   });
+
+  it('keeps the draft and avoids loading state when a new-session command is disconnected', async () => {
+    const onSessionActivityBump = vi.fn();
+    const onSessionActive = vi.fn();
+    const addMessage = vi.fn();
+    const setIsLoading = vi.fn();
+    const setCanAbortSession = vi.fn();
+    const { result } = renderHook(() => useChatComposerState({
+      selectedProject: {
+        name: 'demo',
+        displayName: 'Demo',
+        fullPath: '/tmp/demo',
+      },
+      selectedSession: null,
+      currentSessionId: null,
+      model: 'provider/model',
+      permissionMode: 'fullAccess',
+      runMode: 'default',
+      cycleRunMode: vi.fn(),
+      isLoading: false,
+      canAbortSession: false,
+      tokenBudget: null,
+      sendMessage: vi.fn(() => false),
+      onSessionActivityBump,
+      onSessionActive,
+      pendingViewSessionRef: { current: null },
+      scrollToBottom: vi.fn(),
+      addMessage,
+      clearMessages: vi.fn(),
+      rewindMessages: vi.fn(),
+      setIsLoading,
+      setCanAbortSession,
+      setIsAborting: vi.fn(),
+      setClaudeStatus: vi.fn(),
+      setPilotDeckStatus: vi.fn(),
+      setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [],
+      setPendingPermissionRequests: vi.fn(),
+    }));
+
+    act(() => result.current.setInput('keep this draft'));
+    await result.current.handleSubmit({ preventDefault: vi.fn() } as never);
+
+    expect(result.current.input).toBe('keep this draft');
+    expect(onSessionActivityBump).not.toHaveBeenCalled();
+    expect(onSessionActive).not.toHaveBeenCalled();
+    expect(setIsLoading).not.toHaveBeenCalledWith(true);
+    expect(setCanAbortSession).not.toHaveBeenCalledWith(true);
+    expect(addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        content: expect.stringContaining('Connection lost'),
+      }),
+      null,
+    );
+  });
 });

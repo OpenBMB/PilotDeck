@@ -15,6 +15,7 @@ import type { ChatAttachment, ChatFileArtifact } from '../chat/types/types';
 import { cn } from '../../lib/utils.js';
 import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
 import { getFileIconData } from '../file-tree/constants/fileIcons';
+import { isTransientUploadAttachment } from './messageFileCardUtils';
 
 type CardFile = {
   id: string;
@@ -25,6 +26,7 @@ type CardFile = {
   operation?: 'created' | 'updated';
   status?: 'complete' | 'incomplete';
   sha256?: string;
+  workspaceBacked?: boolean;
 };
 
 type MessageFileCardProps = {
@@ -68,8 +70,10 @@ export function MessageFileCard({
   compact = false,
 }: MessageFileCardProps) {
   const { t } = useTranslation('chat');
-  const relativePath = resolveRelativePath(file.path, project);
-  const canUseWorkspaceActions = Boolean(project?.name && relativePath);
+  const workspaceBacked = file.workspaceBacked !== false;
+  const relativePath = workspaceBacked ? resolveRelativePath(file.path, project) : null;
+  const canBrowse = Boolean(onBrowse && workspaceBacked);
+  const canUseWorkspaceActions = Boolean(workspaceBacked && project?.name && relativePath);
   const { containerClass: visualClassName } = fileVisual(file);
   const sizeLabel = formatBytes(file.size);
   const typeLabel = extensionOf(file.name).toUpperCase() || 'FILE';
@@ -80,7 +84,7 @@ export function MessageFileCard({
     }));
   };
   const handleBrowse = async () => {
-    if (!onBrowse) return;
+    if (!onBrowse || !workspaceBacked) return;
     if (source === 'agent' && project?.name && relativePath && file.sha256) {
       try {
         const response = await api.fileContentSha256(project.name, relativePath);
@@ -115,7 +119,7 @@ export function MessageFileCard({
 
   const actionButtons = (
     <div className="ml-auto flex shrink-0 items-center gap-0.5">
-      {onBrowse ? (
+      {canBrowse ? (
         <button
           type="button"
           onClick={() => { void handleBrowse(); }}
@@ -157,19 +161,19 @@ export function MessageFileCard({
         'group/file-card flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-neutral-200 bg-white shadow-sm transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700',
         compact ? 'px-2.5 py-2' : 'px-3 py-2.5',
       )}
-      title={fullDisplayPath(file.path, project)}
+      title={workspaceBacked ? fullDisplayPath(file.path, project) : file.name}
       data-file-artifact={source === 'agent' ? file.path : undefined}
     >
       <div className={cn('flex min-w-0 flex-1 items-center', compact ? 'gap-2 basis-[7.5rem]' : 'gap-3 basis-[10rem]')}>
         <button
           type="button"
           onClick={() => { void handleBrowse(); }}
-          disabled={!onBrowse}
+          disabled={!canBrowse}
           className={cn(
             'flex shrink-0 items-center justify-center rounded-lg',
             compact ? 'h-8 w-8' : 'h-10 w-10',
             visualClassName,
-            onBrowse && 'cursor-pointer transition-transform hover:scale-[1.03]',
+            canBrowse && 'cursor-pointer transition-transform hover:scale-[1.03]',
           )}
           aria-label={t('fileArtifacts.browse', { defaultValue: 'Browse {{name}}', name: file.name }) as string}
         >
@@ -185,7 +189,7 @@ export function MessageFileCard({
           <button
             type="button"
             onClick={() => { void handleBrowse(); }}
-            disabled={!onBrowse}
+            disabled={!canBrowse}
             className="block w-full truncate text-left text-[13px] font-medium text-neutral-900 hover:underline disabled:no-underline dark:text-neutral-100"
           >
             {file.name}
@@ -288,6 +292,7 @@ export function UserAttachmentCards({
             path: attachment.path || attachment.filePath || attachment.name,
             mimeType: attachment.mimeType,
             size: attachment.size,
+            workspaceBacked: !isTransientUploadAttachment(attachment),
           }}
           project={project}
           source="user"

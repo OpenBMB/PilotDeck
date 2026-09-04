@@ -3,7 +3,7 @@ import type { ChatAttachment, ChatRunMode, PilotDeckSettings, PermissionMode } f
 import { getPilotDeckSettings, safeLocalStorage } from './chatStorage';
 
 type StartSessionOptions = {
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean | void;
   selectedProject: Project;
   command: string;
   runId?: string;
@@ -135,12 +135,12 @@ export function startSessionCommand({
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
-}: StartSessionOptions): string {
+}: StartSessionOptions): string | null {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
 
-  sendMessage({
+  const delivered = sendMessage({
     type: 'pilotdeck-command',
     command,
     options: {
@@ -170,7 +170,7 @@ export function startSessionCommand({
     },
   });
 
-  return sessionToActivate;
+  return delivered === false ? null : sessionToActivate;
 }
 
 export function regenerateLastSessionCommand({
