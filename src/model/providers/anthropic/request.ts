@@ -211,6 +211,13 @@ function toAnthropicContentBlock(block: CanonicalContentBlock): unknown {
             type: "audio",
             source: { type: "base64", media_type: block.mimeType, data: block.data },
           };
+    case "video":
+      return block.source === "url"
+        ? { type: "video", source: { type: "url", url: block.data } }
+        : {
+            type: "video",
+            source: { type: "base64", media_type: block.mimeType, data: block.data },
+          };
     case "tool_call":
       return { type: "tool_use", id: block.id, name: block.name, input: block.input };
     case "tool_result":
