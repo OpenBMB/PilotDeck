@@ -670,9 +670,10 @@ export default function AppShellV2() {
       unreadSessionIds={unreadSessionIds}
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
-	      onStartNewSession={handleStartNewSession}
-	      onStartHomeNewConversation={handleHomeNewConversation}
-	      pendingDraftProjectName={draftSessionProjectName}
+      onStartNewSession={handleStartNewSession}
+      onStartHomeNewConversation={handleHomeNewConversation}
+      onCreateProject={handleOpenNewProject}
+      pendingDraftProjectName={draftSessionProjectName}
 	      onRequestDeleteProject={handleRequestDeleteProject}
 	      onRequestDeleteSession={handleRequestDeleteSession}
 	      onSelectTab={handleSelectTab}

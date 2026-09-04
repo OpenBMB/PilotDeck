@@ -14,6 +14,7 @@ vi.mock('lucide-react', () => ({
   Folder: () => null,
   GitBranch: () => null,
   MessageSquarePlus: () => null,
+  Plus: () => null,
   Pencil: () => null,
   Trash2: () => null,
 }));
@@ -43,6 +44,7 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     onSelectSession: vi.fn(),
     onStartNewSession: vi.fn(),
     onStartHomeNewConversation: vi.fn(),
+    onCreateProject: vi.fn(),
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
@@ -82,7 +84,7 @@ describe('SidebarV2 layout', () => {
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
-    expect(screen.queryByText('New Project')).toBeNull();
+    expect(screen.getByRole('button', { name: /Create new project|创建新项目/ })).toBeTruthy();
     expect(screen.getByText('Skills')).toBeTruthy();
     expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
     expect(screen.getByText('Projects')).toBeTruthy();
@@ -171,7 +173,7 @@ describe('SidebarV2 layout', () => {
     const conversationsHeading = screen.getByRole('button', { name: 'Expand conversations' }).closest('.tree-heading') as HTMLElement;
 
     expect(screen.getByText('PilotDeck')).toBeTruthy();
-    expect(within(projectsHeading).queryByRole('button', { name: 'New Project' })).toBeNull();
+    expect(within(projectsHeading).getByRole('button', { name: /Create new project|创建新项目/ })).toBeTruthy();
     expect(within(conversationsHeading).getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Projects'));
@@ -210,6 +212,14 @@ describe('SidebarV2 layout', () => {
 
     fireEvent.click(screen.getByText(/New conversation|新对话/));
     expect(onStartHomeNewConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens project creation from the Projects heading', () => {
+    const onCreateProject = vi.fn();
+    renderSidebar(general, { onCreateProject });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create new project|创建新项目/ }));
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
   it('starts a project or general conversation from the adjacent action', () => {

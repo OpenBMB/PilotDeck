@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Folder,
   MessageSquarePlus,
+  Plus,
   Pencil,
   GitBranch,
   Trash2,
@@ -149,6 +150,7 @@ export type SidebarV2Props = {
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project) => void;
   onStartHomeNewConversation?: () => void;
+  onCreateProject: () => void;
   pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
@@ -195,6 +197,7 @@ function SectionHeading({
   expandLabel,
   collapseLabel,
   actionLabel,
+  actionIcon,
   onAction,
   onToggle,
 }: {
@@ -203,6 +206,7 @@ function SectionHeading({
   expandLabel: string;
   collapseLabel: string;
   actionLabel?: string;
+  actionIcon?: ReactNode;
   onAction?: () => void;
   onToggle: () => void;
 }) {
@@ -218,7 +222,9 @@ function SectionHeading({
             aria-label={actionLabel}
             title={actionLabel}
           >
-            <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+            {actionIcon ?? (
+              <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+            )}
           </button>
         ) : null}
         <button
@@ -263,6 +269,7 @@ export default function SidebarV2({
   onSelectSession,
   onStartNewSession,
   onStartHomeNewConversation,
+  onCreateProject,
   pendingDraftProjectName = null,
   onRequestDeleteProject,
   onRequestDeleteSession,
@@ -1196,6 +1203,9 @@ export default function SidebarV2({
             expanded={projectsExpanded}
             expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
             collapseLabel={t('sidebar:projects.collapse', { defaultValue: 'Collapse projects' }) as string}
+            actionLabel={t('sidebar:tooltips.createProject', { defaultValue: 'Create new project' }) as string}
+            actionIcon={<Plus aria-hidden="true" className="icon" size={16} strokeWidth={1.8} />}
+            onAction={onCreateProject}
             onToggle={() => setProjectsExpanded((previous) => !previous)}
           />
 
