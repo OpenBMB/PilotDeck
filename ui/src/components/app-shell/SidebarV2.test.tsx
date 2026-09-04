@@ -57,6 +57,20 @@ afterEach(() => {
 });
 
 describe('SidebarV2 layout', () => {
+  it('distinguishes a project load failure from an empty project list', () => {
+    const onRetryLoad = vi.fn();
+    renderSidebar(null, {
+      projects: [],
+      loadError: 'Gateway unavailable',
+      onRetryLoad,
+    });
+
+    expect(screen.getByRole('status').textContent).toMatch(/temporarily unavailable|暂时无法加载/);
+    expect(screen.queryByText(/No projects found|未找到项目/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Retry|重试/ }));
+    expect(onRetryLoad).toHaveBeenCalledTimes(1);
+  });
+
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 

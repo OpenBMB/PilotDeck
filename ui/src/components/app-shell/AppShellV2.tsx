@@ -672,6 +672,8 @@ export default function AppShellV2() {
       selectedSession={selectedSession}
       activeTab={shellActiveTab}
       isLoading={isLoadingProjects}
+      loadError={sidebarSharedProps.loadError}
+      onRetryLoad={sidebarSharedProps.onRetryLoad}
       isMobile={isMobile}
       processingSessions={processingSessions}
       unreadSessionIds={unreadSessionIds}

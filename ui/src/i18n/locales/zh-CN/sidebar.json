@@ -5,6 +5,8 @@
     "deleteProject": "删除项目",
     "renameProject": "重命名项目",
     "noProjects": "未找到项目",
+    "loadError": "项目暂时无法加载，你的数据并未被删除。",
+    "retry": "重试",
     "loadingProjects": "加载项目中...",
     "searchPlaceholder": "搜索项目...",
     "projectNamePlaceholder": "项目名称",

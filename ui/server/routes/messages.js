@@ -15,7 +15,11 @@
  */
 
 import express from 'express';
-import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
+import {
+  getPilotDeckGateway,
+  isGatewayUnavailableError,
+  withPilotDeckGatewayReadRetry,
+} from '../pilotdeck-bridge.js';
 import { createNormalizedMessage } from '../pilotdeck-message.js';
 
 const router = express.Router();
@@ -36,8 +40,7 @@ router.get('/:sessionId/messages', async (req, res) => {
       : null;
     const offset = parseInt(req.query.offset || '0', 10);
 
-    const gateway = await getPilotDeckGateway();
-    const result = await gateway.readSessionMessages({
+    const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSessionMessages({
       sessionKey: sessionId,
       projectKey: projectPath,
       limit: limit ?? undefined,
@@ -51,7 +54,7 @@ router.get('/:sessionId/messages', async (req, res) => {
       ...(typeof req.query.relativeTranscriptPath === 'string' && req.query.relativeTranscriptPath
         ? { relativeTranscriptPath: req.query.relativeTranscriptPath }
         : {}),
-    });
+    }));
 
     const messages = result.messages.map((message) => mapWebMessageToNormalized(message, sessionId));
     const totalKnown = typeof result.total === 'number' ? result.total : messages.length + offset;
@@ -67,6 +70,14 @@ router.get('/:sessionId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_session_messages failed:', error);
+    if (isGatewayUnavailableError(error)) {
+      return res.status(503).json({
+        error: {
+          code: 'gateway_unavailable',
+          message: 'PilotDeck Gateway is restarting. Retry shortly.',
+        },
+      });
+    }
     return res.json({ messages: [], total: 0, hasMore: false, offset: 0, limit: null });
   }
 });
@@ -113,8 +124,7 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     const { sessionId, subagentId } = req.params;
     const projectPath = String(req.query.projectPath || req.query.projectName || REPO_ROOT);
 
-    const gateway = await getPilotDeckGateway();
-    const result = await gateway.readSubagentMessages({
+    const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSubagentMessages({
       sessionKey: sessionId,
       subagentId,
       projectKey: projectPath,
@@ -127,7 +137,7 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
       ...(typeof req.query.relativeTranscriptPath === 'string' && req.query.relativeTranscriptPath
         ? { relativeTranscriptPath: req.query.relativeTranscriptPath }
         : {}),
-    });
+    }));
 
     const messages = result.messages.map((message) =>
       mapWebMessageToNormalized(message, `${sessionId}::sub::${subagentId}`)
@@ -140,6 +150,14 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_subagent_messages failed:', error);
+    if (isGatewayUnavailableError(error)) {
+      return res.status(503).json({
+        error: {
+          code: 'gateway_unavailable',
+          message: 'PilotDeck Gateway is restarting. Retry shortly.',
+        },
+      });
+    }
     return res.json({ messages: [], total: 0, hasMore: false });
   }
 });

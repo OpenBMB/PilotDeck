@@ -64,6 +64,7 @@ import {
 } from '../../src/status/agentStatus.js';
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
+import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -187,10 +188,8 @@ const WEB_DEFAULT_PERMISSION_MODE =
 // builds mis-parse such tokens inside JSDoc when running through
 // `node --import tsx`, producing a spurious "Parse error" at EOF during
 // ESM rewriting on fresh installs.
-/** @type {ReturnType<typeof createRemoteGateway> | null} */
-let gatewayPromise = null;
-/** @type {Awaited<ReturnType<typeof createRemoteGateway>> | null} */
-let gatewayInstance = null;
+/** @type {Set<(name: string, payload: unknown) => void>} */
+const gatewayNotificationHandlers = new Set();
 
 async function readGatewayToken() {
     try {
@@ -232,33 +231,27 @@ async function connectWithRetry() {
     );
 }
 
+const gatewayConnections = createGatewayConnectionCache({
+    connect: connectWithRetry,
+    onConnected(gateway) {
+        for (const handler of gatewayNotificationHandlers) {
+            gateway.onNotification(handler);
+        }
+    },
+    onDisconnected(error) {
+        console.warn(
+            '[pilotdeck-bridge] gateway disconnected; the next request will reconnect:',
+            error?.message || error,
+        );
+    },
+});
+
 function ensureGateway() {
-    if (!gatewayPromise) {
-        const pending = connectWithRetry()
-            .then((gateway) => {
-                if (gatewayPromise === pending) {
-                    gatewayInstance = gateway;
-                }
-                return gateway;
-            })
-            .catch((error) => {
-                // Reset only if this failed attempt is still current. A newer
-                // caller may already have started a replacement connection.
-                if (gatewayPromise === pending) {
-                    gatewayPromise = null;
-                    gatewayInstance = null;
-                }
-                throw error;
-            });
-        gatewayPromise = pending;
-    }
-    return gatewayPromise;
+    return gatewayConnections.get();
 }
 
 function resetGatewayConnection(expectedGateway) {
-    if (expectedGateway && gatewayInstance !== expectedGateway) return;
-    gatewayPromise = null;
-    gatewayInstance = null;
+    gatewayConnections.invalidate(expectedGateway);
 }
 
 export function isGatewayUnavailableError(error) {
@@ -273,6 +266,27 @@ export function isGatewayUnavailableError(error) {
  */
 export async function getPilotDeckGateway() {
     return ensureGateway();
+}
+
+/**
+ * Retry a read-only Gateway operation once when the shared WebSocket drops.
+ * Mutating operations deliberately do not use this helper: replaying an
+ * uncertain submit/steer/write could duplicate user-visible effects.
+ *
+ * @template T
+ * @param {(gateway: Awaited<ReturnType<typeof createRemoteGateway>>) => Promise<T>} operation
+ * @returns {Promise<T>}
+ */
+export async function withPilotDeckGatewayReadRetry(operation) {
+    let gateway = await ensureGateway();
+    try {
+        return await operation(gateway);
+    } catch (error) {
+        if (!isGatewayUnavailableError(error)) throw error;
+        resetGatewayConnection(gateway);
+        gateway = await ensureGateway();
+        return operation(gateway);
+    }
 }
 
 export function getPilotDeckRepoRoot() {
@@ -3333,10 +3347,13 @@ export function registerAlwaysOnNotificationForwarding(clients, forwardToSession
         }
     };
     const onNotification = createAlwaysOnTurnEventForwarder(forwardFrame);
+    gatewayNotificationHandlers.add(onNotification);
 
-    ensureGateway().then((gw) => {
-        gw.onNotification(onNotification);
-    }).catch((err) => {
+    const gateway = gatewayConnections.current();
+    if (gateway) {
+        gateway.onNotification(onNotification);
+    }
+    ensureGateway().catch((err) => {
         console.warn('[pilotdeck-bridge] failed to register always-on notification forwarding:', err?.message || err);
     });
 }

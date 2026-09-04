@@ -5,6 +5,8 @@
     "deleteProject": "Delete Project",
     "renameProject": "Rename Project",
     "noProjects": "No projects found",
+    "loadError": "Projects are temporarily unavailable. Your data has not been removed.",
+    "retry": "Retry",
     "loadingProjects": "Loading projects...",
     "searchPlaceholder": "Search projects...",
     "projectNamePlaceholder": "Project name",

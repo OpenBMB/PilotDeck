@@ -78,6 +78,7 @@ import {
     getRouterSessionStats,
     getRouterStatsSummary,
     getPilotDeckGateway,
+    isGatewayUnavailableError,
     registerAlwaysOnNotificationForwarding,
     registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
@@ -883,6 +884,14 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
         const projects = await getProjects(broadcastProgress);
         res.json(projects);
     } catch (error) {
+        if (isGatewayUnavailableError(error)) {
+            return res.status(503).json({
+                error: {
+                    code: 'gateway_unavailable',
+                    message: 'PilotDeck Gateway is restarting. Retry shortly.',
+                },
+            });
+        }
         res.status(500).json({ error: error.message });
     }
 });
@@ -894,6 +903,14 @@ app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, re
         applyCustomSessionNames(result.sessions, 'pilotdeck');
         res.json(result);
     } catch (error) {
+        if (isGatewayUnavailableError(error)) {
+            return res.status(503).json({
+                error: {
+                    code: 'gateway_unavailable',
+                    message: 'PilotDeck Gateway is restarting. Retry shortly.',
+                },
+            });
+        }
         res.status(500).json({ error: error.message });
     }
 });

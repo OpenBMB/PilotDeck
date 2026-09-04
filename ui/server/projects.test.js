@@ -8,6 +8,8 @@ const gateway = vi.hoisted(() => ({
 
 vi.mock('./pilotdeck-bridge.js', () => ({
     getPilotDeckGateway: vi.fn(async () => gateway),
+    isGatewayUnavailableError: (error) => /Gateway WebSocket/i.test(error?.message || ''),
+    withPilotDeckGatewayReadRetry: vi.fn(async (operation) => operation(gateway)),
 }));
 
 vi.mock('./database/db.js', () => ({
@@ -114,6 +116,12 @@ describe('getProjects', () => {
         const projects = await getProjects();
 
         expect(projects.find((project) => project.name === 'workspace-active')?.lastActivity).toBe(400);
+    });
+
+    it('does not turn a Gateway transport failure into an empty project list', async () => {
+        gateway.listProjects.mockRejectedValue(new Error('Gateway WebSocket closed.'));
+
+        await expect(getProjects()).rejects.toThrow('Gateway WebSocket closed.');
     });
 
     it('starts General session preview and summary requests concurrently', async () => {

@@ -139,6 +139,8 @@ export type SidebarV2Props = {
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
   isLoading: boolean;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   isMobile?: boolean;
   processingSessions?: Set<string>;
   unreadSessionIds?: Set<string>;
@@ -237,6 +239,8 @@ export default function SidebarV2({
   selectedSession,
   activeTab,
   isLoading,
+  loadError = null,
+  onRetryLoad,
   isMobile = false,
   processingSessions,
   unreadSessionIds,
@@ -1157,6 +1161,26 @@ export default function SidebarV2({
             {isLoading && safeProjects.length === 0 ? (
               <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
                 {t('sidebar:sessions.loading', { defaultValue: 'Loading...' })}
+              </div>
+            ) : loadError && safeProjects.length === 0 ? (
+              <div
+                role="status"
+                className="space-y-2 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300"
+              >
+                <p>
+                  {t('sidebar:projects.loadError', {
+                    defaultValue: 'Projects are temporarily unavailable. Your data has not been removed.',
+                  })}
+                </p>
+                {onRetryLoad ? (
+                  <button
+                    type="button"
+                    className="rounded border border-amber-300/80 px-2 py-1 font-medium hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950/40"
+                    onClick={onRetryLoad}
+                  >
+                    {t('sidebar:projects.retry', { defaultValue: 'Retry' })}
+                  </button>
+                ) : null}
               </div>
             ) : otherProjects.length === 0 ? (
               <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
