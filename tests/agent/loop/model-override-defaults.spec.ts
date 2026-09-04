@@ -56,6 +56,46 @@ test("provider and model overrides retain configured temperature, speed, and thi
   assert.deepEqual(request.thinking, thinking);
 });
 
+test("one-turn thinking overrides the runtime default", async () => {
+  const config: AgentRuntimeConfig = {
+    provider: "openai",
+    model: "default-model",
+    cwd: "/workspace/project",
+    thinking: { enabled: false, mode: "off" },
+    permissionMode: "default",
+    permissionContext: createDefaultPermissionContext({
+      cwd: "/workspace/project",
+      mode: "default",
+      canPrompt: false,
+      bypassAvailable: true,
+    }),
+  };
+  const loop = new AgentLoop(config, {
+    router: {} as AgentRuntimeDependencies["router"],
+    tools: {
+      registry: new ToolRegistry(),
+      scheduler: { executeAll: async () => [] },
+    },
+  });
+  const messages: CanonicalMessage[] = [{ role: "user", content: [{ type: "text", text: "hello" }] }];
+  const input: AgentLoopInput = {
+    sessionId: "session-thinking",
+    turnId: "turn-thinking",
+    messages,
+    thinking: { enabled: true, mode: "medium" },
+  };
+
+  const request = await (loop as unknown as {
+    createModelRequest(
+      messages: CanonicalMessage[],
+      input: AgentLoopInput,
+      options: { emitInstructionEvents?: boolean },
+    ): Promise<CanonicalModelRequest>;
+  }).createModelRequest(messages, input, { emitInstructionEvents: false });
+
+  assert.deepEqual(request.thinking, { enabled: true, mode: "medium" });
+});
+
 test("plan-mode reminder is appended after projection and recent3 cache indices are computed", async () => {
   const config: AgentRuntimeConfig = {
     provider: "modelbest",

@@ -23,6 +23,7 @@ export type TurnRunnerOptions = {
   messages: CanonicalMessage[];
   input: AgentInput;
   maxTurns?: number;
+  thinking?: import("../../model/index.js").CanonicalThinkingConfig;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -226,6 +227,7 @@ export class TurnRunner {
           turnId: options.turnId,
           messages,
           maxTurns: options.maxTurns,
+          thinking: options.thinking,
           runMode: options.runMode,
           permissionMode: options.permissionMode,
           allowedReadFiles: options.allowedReadFiles,

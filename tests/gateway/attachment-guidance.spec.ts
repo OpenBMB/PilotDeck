@@ -42,6 +42,24 @@ test("registered plain-text attachments with non-whitelisted names are described
   }
 });
 
+test("forwards one-turn thinking configuration to the agent session", async () => {
+  let capturedOptions: AgentSubmitOptions | undefined;
+  const gateway = createGateway(() => {}, (options) => {
+    capturedOptions = options;
+  });
+
+  for await (const _event of gateway.submitTurn({
+    sessionKey: "session-thinking",
+    channelKey: "web",
+    message: "use medium reasoning",
+    thinking: { enabled: true, mode: "medium" },
+  })) {
+    // Drain the stream so the fake session runs to completion.
+  }
+
+  assert.deepEqual(capturedOptions?.thinking, { enabled: true, mode: "medium" });
+});
+
 test("registered Office attachments receive conversion guidance without raw diagnostics", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-attachment-guidance-"));
   try {
@@ -183,10 +201,13 @@ test("registered audio attachments advertise FunASR paths instead of read_file c
   }
 });
 
-function createGateway(onInput: (input: AgentInput) => void): InProcessGateway {
+function createGateway(
+  onInput: (input: AgentInput) => void,
+  onOptions: (options: AgentSubmitOptions) => void = () => {},
+): InProcessGateway {
   const router = new SessionRouter({
     idleSweepIntervalMs: 0,
-    createSession: () => createFakeSession(onInput),
+    createSession: () => createFakeSession(onInput, onOptions),
   });
   return new InProcessGateway(router, {
     uuid: () => "run-1",
@@ -194,11 +215,15 @@ function createGateway(onInput: (input: AgentInput) => void): InProcessGateway {
   });
 }
 
-function createFakeSession(onInput: (input: AgentInput) => void): AgentSession {
+function createFakeSession(
+  onInput: (input: AgentInput) => void,
+  onOptions: (options: AgentSubmitOptions) => void,
+): AgentSession {
   return {
     async *submit(input: AgentInput, options: AgentSubmitOptions = {}) {
       const turnId = options.turnId ?? "turn-1";
       onInput(input);
+      onOptions(options);
       yield { type: "turn_started", sessionId: "session-1", turnId };
       yield {
         type: "turn_completed",

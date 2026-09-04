@@ -15,7 +15,7 @@ import type {
   CronUpdateInput,
   CronUpdateResult,
 } from "../../cron/protocol/types.js";
-import type { CanonicalMessage, CanonicalUsage } from "../../model/index.js";
+import type { CanonicalMessage, CanonicalThinkingConfig, CanonicalUsage } from "../../model/index.js";
 import type { TelemetryExecutionKind, TelemetryModule } from "../../telemetry/index.js";
 import type { SessionInfo as ProjectSessionInfo } from "../../session/index.js";
 import type {
@@ -94,6 +94,8 @@ export type GatewaySubmitTurnInput = {
   channelKey: GatewayChannelKey;
   message: string;
   projectKey?: string;
+  /** One-turn thinking configuration supplied by the submitting client. */
+  thinking?: CanonicalThinkingConfig;
   /** Override the agent session's working directory for this session. */
   workspaceCwd?: string;
   attachments?: ChannelAttachment[];

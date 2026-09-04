@@ -173,6 +173,7 @@ export type WebSubmitTurnInput = {
   channelKey: WebGatewayChannelKey;
   message: string;
   projectKey?: string;
+  thinking?: import("../../model/index.js").CanonicalThinkingConfig;
   uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   modelOverride?: WebExplicitModelSelection;
   attachments?: WebChannelAttachment[];

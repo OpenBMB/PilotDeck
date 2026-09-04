@@ -18,6 +18,8 @@ export type AgentInput =
 export type AgentSubmitOptions = {
   turnId?: string;
   maxTurns?: number;
+  /** One-turn thinking configuration supplied by the channel. */
+  thinking?: import("../../model/index.js").CanonicalThinkingConfig;
   metadata?: Record<string, unknown>;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;

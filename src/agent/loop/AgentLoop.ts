@@ -126,6 +126,7 @@ export type AgentLoopInput = {
   turnId: string;
   messages: CanonicalMessage[];
   maxTurns?: number;
+  thinking?: import("../../model/index.js").CanonicalThinkingConfig;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -2138,7 +2139,7 @@ export class AgentLoop {
       maxOutputTokens: this.config.maxOutputTokens,
       temperature: input.modelOverride?.temperature ?? this.config.temperature,
       speed: input.modelOverride?.speed,
-      thinking: input.modelOverride?.thinking ?? this.config.thinking,
+      thinking: input.thinking ?? input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
       metadata: this.config.metadata,
       cacheBreakpoints: finalCacheBreakpoints,
