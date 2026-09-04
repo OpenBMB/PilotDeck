@@ -529,9 +529,10 @@ export default function SidebarV2({
   const handleProjectClick = useCallback(
     (project: Project) => {
       if (renamingProject === project.name) return;
+      onSelectProject(project);
       toggleProjectExpanded(project);
     },
-    [renamingProject, toggleProjectExpanded],
+    [onSelectProject, renamingProject, toggleProjectExpanded],
   );
 
   const handleSessionClick = useCallback(
@@ -834,9 +835,9 @@ export default function SidebarV2({
           <button
             type="button"
             onClick={(event) => handleNewSession(event, project)}
-            className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+            className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-[14px] leading-5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
           >
-            <div className="truncate">
+            <div className="truncate font-normal">
               {t('sidebar:sessions.newSession', { defaultValue: 'New Session' })}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400">

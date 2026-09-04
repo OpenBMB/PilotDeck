@@ -154,6 +154,15 @@ describe('SidebarV2 layout', () => {
     expect(within(list).queryByText('General')).toBeNull();
   });
 
+  it('selects a project when its row is clicked', () => {
+    const onSelectProject = vi.fn();
+    renderSidebar(null, { onSelectProject });
+
+    fireEvent.click(screen.getByRole('button', { name: /^PilotDeck$/ }));
+
+    expect(onSelectProject).toHaveBeenCalledWith(project);
+  });
+
   it('toggles project and conversation lists only from the chevron buttons', () => {
     const onStartNewSession = vi.fn();
     renderSidebar(general, { onStartNewSession });
