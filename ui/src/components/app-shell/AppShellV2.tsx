@@ -619,10 +619,12 @@ export default function AppShellV2() {
   );
 
   const handleHomeNewConversation = useCallback(() => {
-    const draftProject = resolveHomeNewConversationProject(
-      workspaceBinding ?? (projectNameParam ? selectedProject : null),
+    const draftProject = resolveHomeNewConversationProject({
+      selectedProject,
       selectedSession,
-    );
+      workspaceBinding,
+      projectNameParam,
+    });
     if (draftProject) {
       handleStartNewSession(draftProject);
       return;

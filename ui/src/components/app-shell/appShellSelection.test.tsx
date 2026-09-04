@@ -43,19 +43,44 @@ describe('compareProjectsBySidebarOrder', () => {
 });
 
 describe('resolveHomeNewConversationProject', () => {
-  it('keeps the project for an unsaved project conversation', () => {
-    expect(resolveHomeNewConversationProject(project, null)).toBe(project);
+  it('keeps the project selected for an unsaved project conversation', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: project,
+      selectedSession: null,
+      workspaceBinding: null,
+      projectNameParam: project.name,
+    })).toBe(project);
   });
 
-  it('starts unbound from an existing conversation', () => {
-    expect(resolveHomeNewConversationProject(project, { id: 'session-1' })).toBeNull();
+  it('keeps the project for an existing project conversation', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: project,
+      selectedSession: { id: 'session-1' },
+      workspaceBinding: null,
+    })).toBe(project);
+  });
+
+  it('keeps a workspace chosen from the unbound conversation screen', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: null,
+      selectedSession: null,
+      workspaceBinding: project,
+    })).toBe(project);
   });
 
   it('treats General as an unbound conversation', () => {
-    expect(resolveHomeNewConversationProject(general, null)).toBeNull();
+    expect(resolveHomeNewConversationProject({
+      selectedProject: general,
+      selectedSession: { id: 'session-1' },
+      workspaceBinding: null,
+    })).toBeNull();
   });
 
-  it('stays unbound when no project is selected', () => {
-    expect(resolveHomeNewConversationProject(null, null)).toBeNull();
+  it('does not reuse a project outside a project conversation context', () => {
+    expect(resolveHomeNewConversationProject({
+      selectedProject: project,
+      selectedSession: null,
+      workspaceBinding: null,
+    })).toBeNull();
   });
 });

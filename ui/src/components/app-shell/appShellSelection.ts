@@ -34,15 +34,26 @@ export function chooseDefaultProject(projects: readonly Project[]): Project | nu
 
 /**
  * Resolve the project inherited by the global "New conversation" action.
- * A project draft keeps its workspace, while an existing transcript starts a
- * fresh unbound conversation even though the shell still knows its project.
+ * Regular project conversations keep their workspace; General represents the
+ * unbound conversation list and therefore intentionally resolves to null.
  */
 export function resolveHomeNewConversationProject(
-  selectedProject: Project | null,
-  selectedSession: ProjectSession | null,
+  {
+    selectedProject,
+    selectedSession,
+    workspaceBinding,
+    projectNameParam,
+  }: {
+    selectedProject: Project | null;
+    selectedSession: ProjectSession | null;
+    workspaceBinding: Project | null;
+    projectNameParam?: string;
+  },
 ): Project | null {
-  if (selectedSession || !selectedProject || isGeneralProject(selectedProject)) {
+  const project = workspaceBinding
+    ?? (projectNameParam || selectedSession ? selectedProject : null);
+  if (!project || isGeneralProject(project)) {
     return null;
   }
-  return selectedProject;
+  return project;
 }
