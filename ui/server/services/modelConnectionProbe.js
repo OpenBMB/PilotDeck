@@ -119,7 +119,8 @@ function hasUsableOutput(body, protocol) {
 }
 
 function describedTestImage(body, protocol, color) {
-  return extractProbeText(body, protocol).toLowerCase().includes(color);
+  const words = extractProbeText(body, protocol).toLowerCase().match(/[a-z]+/g) || [];
+  return words.includes(String(color).toLowerCase());
 }
 
 function isFallbackStatus(status) {

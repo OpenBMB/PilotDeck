@@ -405,24 +405,31 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         url,
         apiKey: key,
         timeoutMs: typeof existingProvider.timeoutMs === 'number' ? existingProvider.timeoutMs : 120000,
-        models: Object.fromEntries(
-          modelIds.map((id) => {
-            const existingModel = existingModels[id] && typeof existingModels[id] === 'object'
-              ? existingModels[id] as Record<string, unknown>
-              : {};
-            const existingMultimodal = existingModel.multimodal && typeof existingModel.multimodal === 'object'
-              ? existingModel.multimodal as Record<string, unknown>
-              : {};
-            const supportsImage = imageSupport[id]?.supportsImage === true;
-            return [id, {
-              ...existingModel,
-              multimodal: {
-                ...existingMultimodal,
-                input: supportsImage ? ['text', 'image'] : ['text'],
-              },
-            }];
-          }),
-        ),
+        models: {
+          // Onboarding configures the selected models; it is not a model
+          // deletion surface. Preserve models that are already configured but
+          // are not returned by /api/config/provider (which exposes only the
+          // active agent model).
+          ...existingModels,
+          ...Object.fromEntries(
+            modelIds.map((id) => {
+              const existingModel = existingModels[id] && typeof existingModels[id] === 'object'
+                ? existingModels[id] as Record<string, unknown>
+                : {};
+              const existingMultimodal = existingModel.multimodal && typeof existingModel.multimodal === 'object'
+                ? existingModel.multimodal as Record<string, unknown>
+                : {};
+              const supportsImage = imageSupport[id]?.supportsImage === true;
+              return [id, {
+                ...existingModel,
+                multimodal: {
+                  ...existingMultimodal,
+                  input: supportsImage ? ['text', 'image'] : ['text'],
+                },
+              }];
+            }),
+          ),
+        },
       };
 
       if (!existingConfig.agent || typeof existingConfig.agent !== 'object') {

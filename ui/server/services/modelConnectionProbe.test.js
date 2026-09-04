@@ -64,6 +64,33 @@ describe('model connection probe request formats', () => {
     expect(calls).toEqual(['https://example.test/chat/completions']);
   });
 
+  it.each(['colored', 'infrared'])(
+    'does not accept %s as the red image-probe answer',
+    async (content) => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ choices: [{ message: { content } }] }),
+      })));
+
+      const result = await probeModelConnection({
+        protocol: 'openai',
+        baseUrl: 'https://example.test',
+        endpointUrl: 'https://example.test/chat/completions',
+        apiKey: 'key',
+        model: 'test-model',
+        image: true,
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        imageUnsupported: false,
+        code: 'IMAGE_CAPABILITY_UNKNOWN',
+      });
+    },
+  );
+
   it('preserves an explicit image-unsupported response before endpoint fallback', async () => {
     const fetch = vi.fn(async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => JSON.stringify({ error: { message: 'This model does not support image input' } }) }));
     vi.stubGlobal('fetch', fetch);

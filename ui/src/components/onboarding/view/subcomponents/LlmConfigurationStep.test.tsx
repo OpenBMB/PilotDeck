@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import LlmConfigurationStep from './LlmConfigurationStep';
 
 const mocks = vi.hoisted(() => ({
@@ -388,6 +389,77 @@ describe('LlmConfigurationStep', () => {
       expect(saveBody.raw).toContain('modelbest:');
       expect(saveBody.raw).toContain('gpt-5.6-luna');
       expect(saveBody.modelTestBindings).toEqual([{ testId: 'test-123' }]);
+    });
+  });
+
+  it('preserves provider models that are not selected during onboarding', async () => {
+    const existingRaw = `
+schemaVersion: 1
+model:
+  providers:
+    modelbest:
+      protocol: openai
+      url: https://old.example/v1
+      apiKey: old-key
+      models:
+        legacy-model:
+          temperature: 0.25
+          multimodal:
+            input: [text]
+        gpt-5.6-luna:
+          maxTokens: 2048
+agent:
+  model: modelbest/gpt-5.6-luna
+`;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
+        };
+      }
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') return { ok: true, json: async () => ({ raw: '' }) };
+        return { ok: true, json: async () => ({ raw: existingRaw }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://new.example/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'new-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+
+    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
+    fireEvent.click(continueButtons[continueButtons.length - 1]!);
+
+    await waitFor(() => {
+      const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+      expect(saveCall).toBeTruthy();
+      const savedBody = JSON.parse(String(saveCall?.init?.body));
+      const savedConfig = parseYaml(savedBody.raw) as {
+        model: { providers: Record<string, { models: Record<string, unknown> }> };
+      };
+      const models = savedConfig.model.providers.modelbest.models;
+      expect(models['legacy-model']).toEqual({
+        temperature: 0.25,
+        multimodal: { input: ['text'] },
+      });
+      expect(models['gpt-5.6-luna']).toMatchObject({
+        maxTokens: 2048,
+        multimodal: { input: ['text', 'image'] },
+      });
     });
   });
 

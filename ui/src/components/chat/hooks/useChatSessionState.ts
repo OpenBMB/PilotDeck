@@ -28,6 +28,13 @@ const INITIAL_VISIBLE_MESSAGES = 100;
 const EMPTY_NORMALIZED_MESSAGES: NormalizedMessage[] = [];
 export const BOTTOM_FOLLOW_THRESHOLD_PX = 96;
 
+export function shouldFollowConversationScroll(
+  autoScrollToBottom: boolean | undefined,
+  isUserScrolledUp: boolean,
+): boolean {
+  return Boolean(autoScrollToBottom) && !isUserScrolledUp;
+}
+
 type PendingViewSession = {
   sessionId: string | null;
   startedAt: number;
@@ -544,7 +551,10 @@ export function useChatSessionState({
   }, [scrollToBottom]);
 
   useEffect(() => {
-    if (!autoScrollToBottom || typeof ResizeObserver === 'undefined') return undefined;
+    if (
+      !shouldFollowConversationScroll(autoScrollToBottom, isUserScrolledUp)
+      || typeof ResizeObserver === 'undefined'
+    ) return undefined;
     const container = scrollContainerRef.current;
     const content = container?.querySelector<HTMLElement>('[data-chat-scroll-content]');
     if (!container || !content) return undefined;
@@ -561,6 +571,7 @@ export function useChatSessionState({
     autoScrollToBottom,
     chatMessages.length,
     isLoadingSessionMessages,
+    isUserScrolledUp,
     scheduleScrollToBottom,
   ]);
 
@@ -898,7 +909,7 @@ export function useChatSessionState({
             ...sessionRequestParams,
           });
 
-          if (autoScrollToBottom) {
+          if (autoScrollToBottom && isNearBottom()) {
             setTimeout(() => scrollToBottom(), 200);
           }
         }
@@ -911,6 +922,7 @@ export function useChatSessionState({
   }, [
     autoScrollToBottom,
     externalMessageUpdate,
+    isNearBottom,
     scrollToBottom,
     selectedProject,
     selectedSession,
@@ -1067,7 +1079,7 @@ export function useChatSessionState({
     if (isLoadingMoreRef.current || isLoadingMoreMessages || pendingScrollRestoreRef.current) return;
     if (searchScrollActiveRef.current) return;
 
-    if (autoScrollToBottom) {
+    if (shouldFollowConversationScroll(autoScrollToBottom, isUserScrolledUp)) {
       scheduleScrollToBottom();
       return;
     }
@@ -1083,6 +1095,7 @@ export function useChatSessionState({
     activityContentKey,
     chatMessages.length,
     isLoadingMoreMessages,
+    isUserScrolledUp,
     scheduleScrollToBottom,
     streamContentKey,
   ]);

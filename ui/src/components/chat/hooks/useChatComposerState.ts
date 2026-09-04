@@ -1234,22 +1234,20 @@ export function useChatComposerState({
         pendingNewSessionThinkingModeRef.current = thinkingMode;
       }
 
-      // Optimistic sidebar refresh — fire BEFORE the attachment upload so
-      // the sidebar reorders/spawns the row the instant the user clicks
-      // send, not after the network round-trip. We resolve a stable
-      // session id here (real id when resuming; otherwise a temporary
-      // `new-session-*` placeholder that will be replaced by
-      // `preserveLoadedSessions` once the server's `projects_updated`
-      // arrives with the real id).
+      // Resolve the stable id up front, but do not expose the optimistic row
+      // until attachment preparation and the actual dispatch path succeed.
+      // Otherwise a failed upload leaves a permanent `new-session-*` row in
+      // the sidebar because no session lifecycle event exists to remove it.
       const optimisticSessionId =
         submitTargetSessionId || createTemporarySessionId();
-      if (selectedProject?.name) {
+      const bumpSessionActivity = () => {
+        if (!selectedProject?.name) return;
         onSessionActivityBump?.(
           selectedProject.name,
           optimisticSessionId,
           userVisibleInput,
         );
-      }
+      };
 
       let uploadedImages: unknown[] = [];
       let uploadedFiles: UploadedAttachmentFile[] = [];
@@ -1391,6 +1389,7 @@ export function useChatComposerState({
           }, queueTargetSessionId);
           return;
         }
+        bumpSessionActivity();
         clearSubmittedComposerState();
         return;
       }
@@ -1404,6 +1403,7 @@ export function useChatComposerState({
         timestamp: new Date(),
       };
 
+      bumpSessionActivity();
       addMessage(userMessage, submitTargetSessionId);
       setIsLoading(true); // Processing banner starts
       setCanAbortSession(true);
