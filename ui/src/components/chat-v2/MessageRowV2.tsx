@@ -553,6 +553,7 @@ function MessageRowV2({
 
   // Assistant: plain prose, no avatar and no bubble.
   const hasAssistantProse = contentDisplayText.trim().length > 0;
+  const isTextRenderingPending = contentDisplayText !== formattedContent;
   const showStreamingCursor = Boolean(message.isStreaming && !contentDisplayText);
   const resolvedShowAssistantActions = showAssistantActions ?? true;
   const assistantMessageTime = resolvedShowAssistantActions
@@ -566,8 +567,11 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor || assistantArtifacts.length > 0) ? (
-    <div className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100">
+  const assistantBody = (hasAssistantProse || showStreamingCursor || isTextRenderingPending || assistantArtifacts.length > 0) ? (
+    <div
+      data-chat-search-render-pending={isTextRenderingPending ? 'true' : undefined}
+      className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100"
+    >
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (

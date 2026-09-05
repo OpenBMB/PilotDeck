@@ -161,15 +161,18 @@ export function useChatHistorySearch({
     void revealMatch(activeMatch);
   }, [activeMatch, isOpen, query, revealMatch, scrollContainerRef, sessionId]);
 
-  // The search index sees complete text before the typewriter exposes it. Watch
-  // the rendered content until the actual mark exists; mounting its row alone
-  // does not complete navigation. Disconnect while marking our own DOM changes.
+  // The search index sees complete text before the typewriter exposes it. Wait
+  // for a mark or for the row to finish rendering: cross-node phrases and hidden
+  // link URLs may never produce a mark. Disconnect while marking our DOM changes.
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || !isOpen || !query.trim()) return;
     let frame: number | null = null;
     const observer = new MutationObserver(() => schedule());
-    const observe = () => observer.observe(container, { childList: true, characterData: true, subtree: true });
+    const observe = () => observer.observe(container, {
+      childList: true, characterData: true, subtree: true,
+      attributes: true, attributeFilter: ['data-chat-search-render-pending'],
+    });
     const refresh = () => {
       frame = null;
       observer.disconnect();
@@ -177,7 +180,9 @@ export function useChatHistorySearch({
       observe();
       const pending = pendingRevealRef.current;
       if (!pending?.ready || pending.navigation !== navigationRef.current) return;
-      if (target?.matches('mark[aria-current="true"]')) {
+      const canReveal = target && (target.matches('mark[aria-current="true"]')
+        || !target.querySelector('[data-chat-search-render-pending="true"]'));
+      if (canReveal) {
         scrollSearchTargetIntoView(container, target, pending.coarseJumped ? 'auto' : 'smooth');
         onNavigate?.();
         pendingRevealRef.current = null;
