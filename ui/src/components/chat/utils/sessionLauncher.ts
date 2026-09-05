@@ -139,6 +139,7 @@ export function startSessionCommand({
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+  const resolvedWorkspaceCwd = workspaceCwd || selectedProject.workspaceCwd;
 
   const delivered = sendMessage({
     type: 'pilotdeck-command',
@@ -166,7 +167,7 @@ export function startSessionCommand({
       ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
         ? { uploadedAttachments }
         : {}),
-      ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
     },
   });
 
@@ -195,6 +196,7 @@ export function regenerateLastSessionCommand({
   syntheticMessages,
 }: RegenerateLastSessionOptions): void {
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+  const resolvedWorkspaceCwd = workspaceCwd || selectedProject.workspaceCwd;
   sendMessage({
     type: 'regenerate-last-message',
     requestId,
@@ -219,7 +221,7 @@ export function regenerateLastSessionCommand({
         : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
-      ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
       ...(Array.isArray(syntheticMessages) && syntheticMessages.length > 0
         ? { syntheticMessages }
         : {}),

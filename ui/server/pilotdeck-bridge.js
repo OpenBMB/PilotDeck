@@ -65,6 +65,7 @@ import {
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
 import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1491,6 +1492,12 @@ export async function runChatViaGateway(
     hooks = {},
 ) {
     const projectKey = options.projectPath || options.cwd || GENERAL_HOME;
+    const isGeneralConversation = path.resolve(projectKey) === path.resolve(GENERAL_HOME);
+    // Never trust a browser-provided cwd for General. Its transcript identity
+    // stays under PILOT_HOME, but every turn executes in the managed workspace.
+    const workspaceCwd = isGeneralConversation
+        ? await ensureGeneralWorkspaceDirectory(process.env)
+        : options.workspaceCwd;
     const channelKey = 'web';
 
     const incoming = options.sessionId || options.sessionKey;
@@ -1563,7 +1570,7 @@ export async function runChatViaGateway(
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
-            ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),
+            ...(workspaceCwd ? { workspaceCwd } : {}),
             ...(Array.isArray(options?.syntheticMessages) ? { syntheticMessages: options.syntheticMessages } : {}),
         });
 

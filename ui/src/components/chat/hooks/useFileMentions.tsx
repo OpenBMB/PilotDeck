@@ -21,6 +21,7 @@ export interface MentionableFile {
 
 interface UseFileMentionsOptions {
   selectedProject: Project | null;
+  enabled?: boolean;
   mentionScopeKey: string | null;
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -29,6 +30,7 @@ interface UseFileMentionsOptions {
 
 export function useFileMentions({
   selectedProject,
+  enabled = true,
   mentionScopeKey,
   input,
   setInput,
@@ -65,7 +67,7 @@ export function useFileMentions({
     append?: boolean;
   }) => {
     const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
-    if (!projectKey) {
+    if (!enabled || !projectKey) {
       setFilteredFiles([]);
       setNextCursor(undefined);
       setFileListError('未找到当前项目路径');
@@ -132,7 +134,7 @@ export function useFileMentions({
       }
       if (!abortController.signal.aborted) setIsLoadingFiles(false);
     }
-  }, [selectedProject?.fullPath, selectedProject?.path]);
+  }, [enabled, selectedProject?.fullPath, selectedProject?.path]);
 
   // Cursor and mention UI state belong to a single draft. A conversation
   // switch can keep the same project mounted, so project identity alone is
@@ -149,13 +151,13 @@ export function useFileMentions({
     setAtSymbolPosition(-1);
     hasCursorPositionRef.current = false;
     inFlightFetchRef.current?.abort();
-  }, [mentionScopeKey]);
+  }, [enabled, mentionScopeKey]);
 
   // Query the gateway-backed project file index whenever the active @ query
   // changes. Keeping this server-side preserves cursor/query signatures and
   // allows the response's match ranges to stay authoritative.
   useEffect(() => {
-    if (!showFileDropdown) {
+    if (!enabled || !showFileDropdown) {
       inFlightFetchRef.current?.abort();
       return;
     }
@@ -163,9 +165,15 @@ export function useFileMentions({
       void fetchProjectFiles({ query: mentionQuery });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [fetchProjectFiles, mentionQuery, showFileDropdown]);
+  }, [enabled, fetchProjectFiles, mentionQuery, showFileDropdown]);
 
   useEffect(() => {
+    if (!enabled) {
+      setShowFileDropdown(false);
+      setAtSymbolPosition(-1);
+      setMentionQuery('');
+      return;
+    }
     const textBeforeCursor = input.slice(0, cursorPosition);
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
@@ -187,7 +195,7 @@ export function useFileMentions({
     setAtSymbolPosition(lastAtIndex);
     setShowFileDropdown(true);
     setMentionQuery(textAfterAt);
-  }, [input, cursorPosition]);
+  }, [enabled, input, cursorPosition]);
 
   const focusMention = useCallback(
     (position: number) => {
@@ -230,6 +238,7 @@ export function useFileMentions({
   useEffect(() => {
     const handleAddWorkspaceFileMention = (event: Event) => {
       const detail = (event as CustomEvent).detail;
+      if (!enabled) return;
       if (!isWorkspaceFileMentionRequest(detail)) return;
       if (detail.projectName !== selectedProject?.name) return;
       addExternalFileMention(detail.relativePath);
@@ -239,7 +248,7 @@ export function useFileMentions({
     return () => {
       window.removeEventListener(ADD_WORKSPACE_FILE_MENTION_EVENT, handleAddWorkspaceFileMention);
     };
-  }, [addExternalFileMention, selectedProject?.name]);
+  }, [addExternalFileMention, enabled, selectedProject?.name]);
 
   const renderInputWithMentions = useCallback((text: string) => text, []);
 

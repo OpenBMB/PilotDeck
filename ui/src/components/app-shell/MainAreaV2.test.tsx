@@ -85,14 +85,16 @@ const project: Project = {
 function Harness({
   initialTab = 'chat',
   withSession = false,
+  selectedProject = project,
 }: {
   initialTab?: AppTab;
   withSession?: boolean;
+  selectedProject?: Project;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const props = {
     projects: [project],
-    selectedProject: project,
+    selectedProject,
     selectedSession: withSession ? { id: 'session-1', title: 'Searchable chat' } : null,
     activeTab,
     setActiveTab,
@@ -108,6 +110,25 @@ afterEach(() => {
 });
 
 describe('MainAreaV2 dashboard switcher', () => {
+  it('keeps General on chat and hides project-scoped Files and Explore tools', async () => {
+    const generalProject: Project = {
+      name: 'general',
+      displayName: 'general',
+      kind: 'general',
+      fullPath: '/state/pilot-home',
+      workspaceCwd: '/workspaces/general',
+      capabilities: { files: false, explore: false, projectFileMentions: false },
+    };
+
+    render(<Harness initialTab="files" selectedProject={generalProject} />);
+
+    expect(screen.queryByRole('button', { name: 'tabs.files' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
+    });
+  });
+
   it('renames the selected session inline after double-clicking the header title', () => {
     render(<Harness withSession />);
 

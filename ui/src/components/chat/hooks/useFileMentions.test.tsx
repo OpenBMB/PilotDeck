@@ -28,6 +28,7 @@ const textareaRef = { current: null } as RefObject<HTMLTextAreaElement>;
 describe('useFileMentions conversation scope', () => {
   beforeEach(() => {
     getFilesMock.mockReset();
+    authenticatedFetchMock.mockReset();
     getFilesMock.mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -83,6 +84,23 @@ describe('useFileMentions conversation scope', () => {
     expect(requestedUrl).toContain('projectKey=%2Fworkspace%2Fproject-a');
     expect(requestedUrl).toContain('includeDirs=true');
     expect(requestedUrl).toContain('limit=100');
+  });
+
+  it('does not open or query project files when mentions are disabled', async () => {
+    const setInput = vi.fn();
+    const { result } = renderHook(() => useFileMentions({
+      selectedProject: project,
+      enabled: false,
+      mentionScopeKey: 'draft_input_general:session-a',
+      input: '@',
+      setInput,
+      textareaRef,
+    }));
+
+    act(() => result.current.setCursorPosition(1));
+
+    await waitFor(() => expect(result.current.showFileDropdown).toBe(false));
+    expect(authenticatedFetchMock).not.toHaveBeenCalled();
   });
 
   it('does not reuse the previous conversation cursor for an external mention', () => {

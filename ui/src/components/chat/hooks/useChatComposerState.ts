@@ -47,6 +47,7 @@ import {
   uploadAttachmentBatch,
   type AttachmentUploadRecord,
 } from '../utils/attachmentUpload';
+import { isGeneralProject } from '../../app-shell/appShellSelection';
 import { useFileMentions } from './useFileMentions';
 import { type SlashCommand, useSlashCommands } from './useSlashCommands';
 import type { ChatModelSelection } from './useChatProviderState';
@@ -955,6 +956,8 @@ export function useChatComposerState({
     handleFileMentionsKeyDown,
   } = useFileMentions({
     selectedProject,
+    enabled: Boolean(selectedProject && !isGeneralProject(selectedProject)
+      && selectedProject.capabilities?.projectFileMentions !== false),
     mentionScopeKey: draftStorageKey,
     input,
     setInput,
@@ -1369,6 +1372,9 @@ export function useChatComposerState({
             sessionId: queueTargetSessionId,
             projectPath: resolvedProjectPath,
             cwd: resolvedProjectPath,
+            ...(selectedProject.workspaceCwd
+              ? { workspaceCwd: selectedProject.workspaceCwd }
+              : {}),
             runMode,
             permissionMode,
             basePermissionMode,

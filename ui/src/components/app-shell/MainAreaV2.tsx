@@ -198,12 +198,33 @@ function MainAreaV2Content(props: MainAreaV2Props) {
   const dashboardMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const sessionTitleInputRef = useRef<HTMLInputElement | null>(null);
   const chatHistorySearch = useChatHistorySearchController();
+  const generalConversation = Boolean(selectedProject && isGeneralProject(selectedProject));
+  const projectFilesEnabled = Boolean(
+    selectedProject
+    && !generalConversation
+    && selectedProject.capabilities?.files !== false,
+  );
+  const projectExploreEnabled = Boolean(
+    selectedProject
+    && !generalConversation
+    && selectedProject.capabilities?.explore !== false,
+  );
+  const activeTabIsUnavailable =
+    (activeTab === 'files' && !projectFilesEnabled)
+    || (DASHBOARD_TABS.some((tab) => tab.id === activeTab) && !projectExploreEnabled);
+  const displayActiveTab = activeTab === 'home' || activeTabIsUnavailable ? 'chat' : activeTab;
 
   useEffect(() => {
-    if (activeTab === 'home') {
+    if (activeTab === 'home' || activeTabIsUnavailable) {
       setActiveTab('chat');
     }
-  }, [activeTab, setActiveTab]);
+  }, [activeTab, activeTabIsUnavailable, setActiveTab]);
+
+  useEffect(() => {
+    if (!projectExploreEnabled) {
+      setDashboardMenuOpen(false);
+    }
+  }, [projectExploreEnabled]);
 
   useEffect(() => {
     if (!dashboardMenuOpen) return undefined;
@@ -279,7 +300,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
   // Header title: session title first, project context second. Project +
   // session strings flow through the customNames overlay so user renames in
   // the sidebar reflect here too.
-  const displayActiveTab = activeTab === 'home' ? 'chat' : activeTab;
   const activeDashboardTab = DASHBOARD_TABS.find((tab) => tab.id === displayActiveTab) ?? null;
   const tabLabelKey = displayActiveTab === FILES_TAB.id
     ? FILES_TAB.labelKey
@@ -441,81 +461,85 @@ function MainAreaV2Content(props: MainAreaV2Props) {
             </svg>
           </button>
 
-          <button
-            type="button"
-            aria-pressed={displayActiveTab === 'files'}
-            onClick={() => {
-              setDashboardMenuOpen(false);
-              chatHistorySearch.closeSearch();
-              setActiveTab(displayActiveTab === 'files' ? 'chat' : 'files');
-            }}
-            className={cn(
-              'file-entry',
-              displayActiveTab === 'files' && 'font-medium',
-            )}
-          >
-            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-              <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-            </svg>
-            <span>{t(FILES_TAB.labelKey)}</span>
-          </button>
-
-          <div ref={dashboardMenuRef} className="relative">
+          {projectFilesEnabled ? (
             <button
-              ref={dashboardMenuButtonRef}
               type="button"
-              aria-label={t('dashboardSwitcher.open', { defaultValue: 'Open dashboards menu' }) as string}
-              aria-haspopup="menu"
-              aria-expanded={dashboardMenuOpen}
-              data-tooltip={t('dashboardSwitcher.open', { defaultValue: 'Open dashboards menu' }) as string}
-              onClick={() => setDashboardMenuOpen((open) => !open)}
-              className="file-entry tooltip tooltip-bottom"
+              aria-pressed={displayActiveTab === 'files'}
+              onClick={() => {
+                setDashboardMenuOpen(false);
+                chatHistorySearch.closeSearch();
+                setActiveTab(displayActiveTab === 'files' ? 'chat' : 'files');
+              }}
+              className={cn(
+                'file-entry',
+                displayActiveTab === 'files' && 'font-medium',
+              )}
             >
               <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-                <circle cx="12" cy="12" r="1" />
-                <circle cx="19" cy="12" r="1" />
-                <circle cx="5" cy="12" r="1" />
+                <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
               </svg>
-              <span>{t('dashboardSwitcher.explore', { defaultValue: 'Explore' })}</span>
-              {alwaysOnUnread ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
-                />
-              ) : null}
+              <span>{t(FILES_TAB.labelKey)}</span>
             </button>
+          ) : null}
 
-            {dashboardMenuOpen ? (
-              <div
-                role="menu"
-                aria-label={t('dashboardSwitcher.menuLabel', { defaultValue: 'Dashboards' }) as string}
-                className="absolute right-0 top-10 z-[90] w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-black/10 dark:border-neutral-700 dark:bg-neutral-900"
+          {projectExploreEnabled ? (
+            <div ref={dashboardMenuRef} className="relative">
+              <button
+                ref={dashboardMenuButtonRef}
+                type="button"
+                aria-label={t('dashboardSwitcher.open', { defaultValue: 'Open dashboards menu' }) as string}
+                aria-haspopup="menu"
+                aria-expanded={dashboardMenuOpen}
+                data-tooltip={t('dashboardSwitcher.open', { defaultValue: 'Open dashboards menu' }) as string}
+                onClick={() => setDashboardMenuOpen((open) => !open)}
+                className="file-entry tooltip tooltip-bottom"
               >
-                {DASHBOARD_TABS.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setDashboardMenuOpen(false);
-                        chatHistorySearch.closeSearch();
-                        setActiveTab(tab.id);
-                      }}
-                      className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200 dark:focus:bg-blue-950/60 dark:focus:text-blue-200"
-                    >
-                      <Icon className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} />
-                      <span>{t(tab.labelKey)}</span>
-                      {tab.id === 'always-on' && alwaysOnUnread ? (
-                        <span className="absolute right-2 h-2 w-2 rounded-full bg-blue-500" aria-label="Unread" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+                <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="19" cy="12" r="1" />
+                  <circle cx="5" cy="12" r="1" />
+                </svg>
+                <span>{t('dashboardSwitcher.explore', { defaultValue: 'Explore' })}</span>
+                {alwaysOnUnread ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
+                  />
+                ) : null}
+              </button>
+
+              {dashboardMenuOpen ? (
+                <div
+                  role="menu"
+                  aria-label={t('dashboardSwitcher.menuLabel', { defaultValue: 'Dashboards' }) as string}
+                  className="absolute right-0 top-10 z-[90] w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-black/10 dark:border-neutral-700 dark:bg-neutral-900"
+                >
+                  {DASHBOARD_TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setDashboardMenuOpen(false);
+                          chatHistorySearch.closeSearch();
+                          setActiveTab(tab.id);
+                        }}
+                        className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200 dark:focus:bg-blue-950/60 dark:focus:text-blue-200"
+                      >
+                        <Icon className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} />
+                        <span>{t(tab.labelKey)}</span>
+                        {tab.id === 'always-on' && alwaysOnUnread ? (
+                          <span className="absolute right-2 h-2 w-2 rounded-full bg-blue-500" aria-label="Unread" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -523,6 +547,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
       <div className="relative z-0 min-h-0 flex-1 overflow-hidden">
         <MainContent
           {...props}
+          activeTab={displayActiveTab}
           alwaysOnSubTab={alwaysOnSubTab}
           onAlwaysOnSubTabChange={setAlwaysOnSubTab}
         />
@@ -552,8 +577,15 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     );
   }
 
+  const generalConversation = Boolean(
+    props.selectedProject && isGeneralProject(props.selectedProject),
+  );
+  const fileScope = props.activeTab === 'files'
+    && !generalConversation
+    && props.selectedProject?.capabilities?.files !== false;
+
   return (
-    <FindShortcutProvider activeScope={props.activeTab === 'files' ? 'file' : 'chat'}>
+    <FindShortcutProvider activeScope={fileScope ? 'file' : 'chat'}>
       <ChatHistorySearchControllerProvider>
         <MainAreaV2Content {...props} />
       </ChatHistorySearchControllerProvider>

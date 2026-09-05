@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const gateway = vi.hoisted(() => ({
     describeProject: vi.fn(),
@@ -19,6 +22,8 @@ vi.mock('./database/db.js', () => ({
 import { getProjects } from './projects.js';
 
 const originalPilotHome = process.env.PILOT_HOME;
+const originalWorkspacesRoot = process.env.WORKSPACES_ROOT;
+let testWorkspacesRoot;
 
 function deferred() {
     let resolve;
@@ -29,16 +34,24 @@ function deferred() {
 }
 
 describe('getProjects', () => {
-    beforeAll(() => {
+    beforeAll(async () => {
         process.env.PILOT_HOME = '/tmp/pilotdeck-project-sort-test';
+        testWorkspacesRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-projects-test-'));
+        process.env.WORKSPACES_ROOT = testWorkspacesRoot;
     });
 
-    afterAll(() => {
+    afterAll(async () => {
         if (originalPilotHome === undefined) {
             delete process.env.PILOT_HOME;
         } else {
             process.env.PILOT_HOME = originalPilotHome;
         }
+        if (originalWorkspacesRoot === undefined) {
+            delete process.env.WORKSPACES_ROOT;
+        } else {
+            process.env.WORKSPACES_ROOT = originalWorkspacesRoot;
+        }
+        await fs.rm(testWorkspacesRoot, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -96,6 +109,16 @@ describe('getProjects', () => {
             'workspace-zeta',
             'general',
         ]);
+        expect(projects.find((project) => project.name === 'general')).toMatchObject({
+            kind: 'general',
+            fullPath: process.env.PILOT_HOME,
+            workspaceCwd: path.join(testWorkspacesRoot, 'general'),
+            capabilities: {
+                files: false,
+                explore: false,
+                projectFileMentions: false,
+            },
+        });
         expect(projects.find((project) => project.name === 'workspace-alpha')?.lastActivity).toBe(400);
         expect(projects.find((project) => project.name === 'workspace-dormant')?.lastActivity).toBe(250);
     });

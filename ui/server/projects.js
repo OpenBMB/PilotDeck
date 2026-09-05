@@ -37,6 +37,7 @@ import {
 import { mapCronRunOutcome } from '../../src/cron/protocol/types.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 // Optional taskmaster detection. Read once per project; lightweight.
 async function detectTaskMaster(projectPath) {
@@ -262,14 +263,25 @@ async function getProjects(progressCallback = null) {
         progressCallback({ phase: 'done', processed: total, total });
     }
 
-    // Virtual "general" workspace — a non-project chat space rooted at
-    // ~/.pilotdeck. SidebarV2 looks for a project whose `name` or
+    // Virtual "general" conversation space. Its session identity remains
+    // rooted at PILOT_HOME for backwards-compatible transcript discovery,
+    // while agent execution uses a separate managed workspace directory.
+    // SidebarV2 looks for a project whose `name` or
     // `displayName` equals 'general' to populate the dedicated "General"
     // toggle section. PilotDeck's gateway.listProjects() only returns
     // real project directories, so we synthesize one here. New chats
     // started from the General section use this cwd; sessions are
     // sourced from the same backend as any other project.
     const generalHome = resolvePilotHome(process.env);
+    let generalWorkspaceCwd;
+    try {
+        generalWorkspaceCwd = await ensureGeneralWorkspaceDirectory(process.env);
+    } catch (error) {
+        // Keep existing conversations visible even when the configured
+        // workspace root is temporarily unavailable. Sending a turn will
+        // retry the same safety check and surface the failure to the user.
+        console.warn('[projects] failed to prepare General workspace:', error?.message || error);
+    }
     let generalSessions = [];
     let generalTotal = 0;
     let generalLastActivity;
@@ -326,8 +338,15 @@ async function getProjects(progressCallback = null) {
     result.unshift({
         name: 'general',
         displayName: 'general',
+        kind: 'general',
         fullPath: generalHome,
         path: generalHome,
+        ...(generalWorkspaceCwd ? { workspaceCwd: generalWorkspaceCwd } : {}),
+        capabilities: {
+            files: false,
+            explore: false,
+            projectFileMentions: false,
+        },
         lastActivity: generalLastActivity,
         sessions: generalSessions,
         sessionMeta: {

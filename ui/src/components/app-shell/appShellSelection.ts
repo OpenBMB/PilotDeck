@@ -2,7 +2,9 @@ import type { Project, ProjectSession } from '../../types/app';
 import { projectDisplayName } from '../../lib/customNames';
 
 export function isGeneralProject(project: Project): boolean {
-  return project.name === 'general' || project.displayName === 'general';
+  return project.kind === 'general'
+    || project.name === 'general'
+    || project.displayName === 'general';
 }
 
 const asTimestamp = (value: unknown): number => {

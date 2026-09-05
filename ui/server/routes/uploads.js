@@ -3,13 +3,17 @@ import multer from 'multer';
 import path from 'node:path';
 import { UploadStore } from '../../../src/gateway/dialog/UploadStore.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
+import { resolvePilotHome } from '../utils/pilotPaths.js';
 
 const router = express.Router();
 
 async function listProjectRoots() {
   const gateway = await getPilotDeckGateway();
   const result = await gateway.listProjects();
-  return result.projects.map((project) => project.projectKey);
+  // Browser attachments are stored in the controlled UploadStore and do not
+  // grant project-file browsing. Keep them available for General even though
+  // PILOT_HOME is intentionally absent from gateway.listProjects().
+  return [resolvePilotHome(process.env), ...result.projects.map((project) => project.projectKey)];
 }
 
 const store = new UploadStore({
