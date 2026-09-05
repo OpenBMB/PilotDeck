@@ -36,6 +36,7 @@ export type TurnRunnerOptions = {
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
   syntheticMessages?: CanonicalMessage[];
   modelOverride?: AgentModelOverride;
+  modelSelection?: NonNullable<SessionMetadataValue["modelSelection"]>;
   openSteerMailbox?: () => void;
   drainSteerMessages?: () => AgentSteerMessage[];
   drainOrCloseSteerMailbox?: () => { messages: AgentSteerMessage[]; closed: boolean };
@@ -488,12 +489,15 @@ export class TurnRunner {
 
     const snapshot = metadataStore.getSnapshot();
     const prompt = allHumanText(acceptedMessages);
-    if (!prompt) return;
+    if (!prompt && !options.modelSelection) return;
 
-    const boundedPrompt = prompt.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
+    const boundedPrompt = prompt?.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
     await metadataStore.record(options.turnId, {
-      ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
-      lastPrompt: boundedPrompt,
+      ...(boundedPrompt ? {
+        ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
+        lastPrompt: boundedPrompt,
+      } : {}),
+      ...(options.modelSelection ? { modelSelection: { ...options.modelSelection } } : {}),
       updatedAt: this.now().toISOString(),
     }).catch(() => {});
   }
@@ -505,6 +509,8 @@ function isVisibleFailureStatus(status: AgentStatusMessageInput): boolean {
 
 function acceptedInputMetadata(options: TurnRunnerOptions): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {};
+  // Save alongside input so a crash before the metadata snapshot cannot lose the choice.
+  if (options.modelSelection) metadata.modelSelection = { ...options.modelSelection };
   if (options.permissionMode) {
     metadata.permissionMode = options.permissionMode;
   }

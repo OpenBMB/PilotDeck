@@ -1,3 +1,4 @@
+import type { ChatModelSelection } from '../hooks/useChatProviderState';
 import type { Project, ProjectSession } from '../../../types/app';
 import type { ChatAttachment, ChatRunMode, PilotDeckSettings, PermissionMode } from '../types/types';
 import { getPilotDeckSettings, safeLocalStorage } from './chatStorage';
@@ -17,6 +18,7 @@ type StartSessionOptions = {
   thinking?: unknown;
   sessionSummary?: string | null;
   toolsSettings?: PilotDeckSettings;
+  modelSelection?: ChatModelSelection;
   modelOverride?: {
     mode: 'model';
     provider: string;
@@ -131,6 +133,7 @@ export function startSessionCommand({
   sessionSummary,
   toolsSettings = getPilotDeckSettings(),
   modelOverride,
+  modelSelection,
   images,
   attachments,
   uploadedAttachments,
@@ -159,6 +162,7 @@ export function startSessionCommand({
       ...(thinking ? { thinking } : {}),
       sessionSummary,
       ...(modelOverride ? { modelOverride } : {}),
+      ...(modelSelection ? { modelSelection: { ...modelSelection } } : {}),
       ...(typeof userVisibleInput === 'string' && userVisibleInput.trim()
         ? { userVisibleInput: userVisibleInput.trim() }
         : {}),
@@ -196,6 +200,7 @@ export function regenerateLastSessionCommand({
   attachments,
   uploadedAttachments,
   displayAttachments,
+  modelSelection,
   workspaceCwd,
   syntheticMessages,
 }: RegenerateLastSessionOptions): void {
@@ -228,6 +233,7 @@ export function regenerateLastSessionCommand({
       ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
         ? { uploadedAttachments }
         : {}),
+      ...(modelSelection ? { modelSelection: { ...modelSelection } } : {}),
       ...(Array.isArray(displayAttachments) ? { displayAttachments } : {}),
       ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
       ...(Array.isArray(syntheticMessages) && syntheticMessages.length > 0

@@ -140,6 +140,8 @@ function ChatInterfaceV2({
     modelSelection,
     setModelSelection,
     isModelCatalogLoading,
+    isModelSelectionReady,
+    runningModels,
     modelCatalogError,
     thinkingModelContext,
     permissionMode,
@@ -302,6 +304,7 @@ function ChatInterfaceV2({
     currentSessionId,
     model,
     modelSelection,
+    isModelSelectionReady,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
@@ -563,6 +566,7 @@ function ChatInterfaceV2({
       throw new Error(t('edit.missingTarget', { defaultValue: 'The last message can no longer be edited.' }));
     }
 
+    if (!isModelSelectionReady || !modelSelection) throw new Error(modelCatalogError || "Model selection is still loading.");
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     const references = attachments
       .map((attachment) => normalizeContentReference(attachment.contentReference ?? attachment))
@@ -610,6 +614,7 @@ function ChatInterfaceV2({
       command,
       runId,
       userVisibleInput: editedText,
+      modelSelection: { ...modelSelection },
       toolsSettings: getPilotDeckSettings(),
       runMode,
       permissionMode: effectivePermissionMode,
@@ -630,6 +635,9 @@ function ChatInterfaceV2({
     return result;
   }, [
     currentSessionId,
+    isModelSelectionReady,
+    modelSelection,
+    modelCatalogError,
     effectivePermissionMode,
     model,
     permissionMode,
@@ -772,6 +780,9 @@ function ChatInterfaceV2({
       modelCatalog={modelCatalog}
       modelSelection={modelSelection}
       isModelCatalogLoading={isModelCatalogLoading}
+      isModelSelectionReady={isModelSelectionReady}
+      runningModel={runningModels[selectedSession?.id || currentSessionId || ""]?.runId === activeRunId
+        ? runningModels[selectedSession?.id || currentSessionId || ""] : undefined}
       modelCatalogError={modelCatalogError}
       projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
       onModelSelectionChange={(selection) => {

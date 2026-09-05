@@ -554,9 +554,11 @@ export class InProcessGateway implements Gateway {
         }));
         const modelSelection = this.options.resolveTurnModelSelection
           ? await this.options.resolveTurnModelSelection(input)
-          : input.modelOverride
-            ? { selection: input.modelOverride, source: "turn" as const }
-            : { source: "default" as const };
+          : input.modelSelection?.mode === "auto"
+            ? { source: "router" as const }
+            : input.modelSelection?.mode === "model" || input.modelOverride
+              ? { selection: input.modelSelection?.mode === "model" ? input.modelSelection : input.modelOverride, source: "turn" as const }
+              : { source: "default" as const };
         let lastEmittedModel: string | undefined;
         if (modelSelection.selection) {
           const event: GatewayEvent = {
@@ -577,6 +579,7 @@ export class InProcessGateway implements Gateway {
           agentInput,
           {
             turnId: runId,
+            modelSelection: input.modelSelection,
             maxTurns: input.maxTurns,
             runMode,
             permissionMode,
@@ -634,6 +637,9 @@ export class InProcessGateway implements Gateway {
             lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
           }
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
+            if (gatewayEvent.type === "input_accepted" && input.modelSelection) {
+              gatewayEvent.modelSelection = { ...input.modelSelection };
+            }
             if (gatewayEvent.type === "context_budget") {
               this.recordGatewayStatusMessage({
                 sessionKey: input.sessionKey,

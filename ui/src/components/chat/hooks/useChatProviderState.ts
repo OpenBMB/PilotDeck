@@ -4,11 +4,7 @@ import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { CLAUDE_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode } from '../types/types';
 import type { Project, ProjectSession } from '../../../types/app';
-import {
-  mergeModelSelections,
-  normalizeModelSelection,
-  parseCatalogItem,
-} from '../../chat-v2/modelCapabilityOptions';
+import { useChatModelSelection } from './useChatModelSelection';
 
 interface UseChatProviderStateArgs {
   selectedProject: Project | null;
@@ -124,10 +120,11 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
   });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(DEFAULT_MODEL_OPTIONS);
   const [thinkingModelContext, setThinkingModelContext] = useState<ThinkingModelContext | null>(null);
-  const [modelCatalog, setModelCatalog] = useState<ChatModelCatalogItem[]>([]);
-  const [modelSelection, setModelSelectionState] = useState<ChatModelSelection | null>(null);
-  const [isModelCatalogLoading, setIsModelCatalogLoading] = useState(false);
-  const [modelCatalogError, setModelCatalogError] = useState<string | null>(null);
+  const modelState = useChatModelSelection({
+    projectKey: selectedProject?.fullPath || selectedProject?.path || '',
+    sessionId: selectedSession?.id,
+    subscribe,
+  });
 
   useEffect(() => {
     const defaultMode = readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY);
@@ -215,121 +212,6 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
   }, []);
 
   useEffect(() => {
-    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
-    if (!projectKey) {
-      setModelCatalog([]);
-      setModelSelectionState(null);
-      return;
-    }
-
-    const abortController = new AbortController();
-    const loadModels = async () => {
-      setIsModelCatalogLoading(true);
-      setModelCatalogError(null);
-      try {
-        const catalogResponse = await authenticatedFetch(
-          `/api/models?projectKey=${encodeURIComponent(projectKey)}&includeAuto=true`,
-          { signal: abortController.signal },
-        );
-        const catalogData = await catalogResponse.json().catch(() => ({}));
-        if (!catalogResponse.ok) {
-          throw new Error(catalogData?.error?.message || 'Failed to load models');
-        }
-
-        const items = Array.isArray(catalogData?.items)
-          ? catalogData.items
-            .map((item: unknown) => parseCatalogItem(item))
-            .filter((item: ChatModelCatalogItem | null): item is ChatModelCatalogItem => Boolean(item))
-          : [];
-        setModelCatalog(items);
-
-        let storedSelection: ChatModelSelection | null = null;
-        const stored = localStorage.getItem(`composer-model-${projectKey}`);
-        if (stored) {
-          try {
-            storedSelection = normalizeModelSelection(JSON.parse(stored));
-            let isValidStoredSelection = false;
-            if (storedSelection?.mode === 'auto') {
-              isValidStoredSelection = catalogData?.router?.autoAvailable === true;
-            } else if (storedSelection?.mode === 'model') {
-              const { provider, model: modelId } = storedSelection;
-              isValidStoredSelection = items.some((item: ChatModelCatalogItem) => (
-                item.provider === provider && item.model === modelId && item.available
-              ));
-            }
-            if (!isValidStoredSelection) {
-              storedSelection = null;
-              localStorage.removeItem(`composer-model-${projectKey}`);
-            }
-          } catch {
-            localStorage.removeItem(`composer-model-${projectKey}`);
-          }
-        }
-
-        let nextSelection: ChatModelSelection | null = null;
-        if (selectedSession?.id) {
-          const params = new URLSearchParams({
-            sessionKey: selectedSession.id,
-            projectKey,
-          });
-          const sessionResponse = await authenticatedFetch(`/api/sessions/model?${params}`, {
-            signal: abortController.signal,
-          });
-          if (sessionResponse.ok) {
-            const sessionData = await sessionResponse.json();
-            const savedSelection = normalizeModelSelection(sessionData?.saved);
-            const effectiveSelection = sessionData?.effective?.provider && sessionData?.effective?.model
-              ? normalizeModelSelection({
-                  mode: 'model',
-                  provider: sessionData.effective.provider,
-                  model: sessionData.effective.model,
-                  reasoning: sessionData.effective.reasoning,
-                  temperature: sessionData.effective.temperature,
-                  speed: sessionData.effective.speed,
-                })
-              : null;
-            nextSelection = mergeModelSelections(savedSelection, storedSelection) || effectiveSelection;
-            if (!savedSelection && storedSelection) {
-              void authenticatedFetch('/api/sessions/model', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  projectKey,
-                  sessionKey: selectedSession.id,
-                  selection: storedSelection,
-                }),
-              });
-            }
-          }
-        }
-
-        if (!nextSelection) {
-          nextSelection = storedSelection;
-        }
-        if (!nextSelection && catalogData?.router?.autoAvailable) {
-          nextSelection = { mode: 'auto' };
-        }
-        if (!nextSelection) {
-          const current = items.find((item: ChatModelCatalogItem) => item.available);
-          if (current) {
-            nextSelection = { mode: 'model', provider: current.provider, model: current.model };
-          }
-        }
-        setModelSelectionState(nextSelection);
-      } catch (error) {
-        if ((error as { name?: string })?.name !== 'AbortError') {
-          setModelCatalogError(error instanceof Error ? error.message : 'Failed to load models');
-        }
-      } finally {
-        if (!abortController.signal.aborted) setIsModelCatalogLoading(false);
-      }
-    };
-
-    void loadModels();
-    return () => abortController.abort();
-  }, [selectedProject?.fullPath, selectedProject?.path, selectedSession?.id]);
-
-  useEffect(() => {
     return subscribe((message: any) => {
       if (message?.type !== 'config:reloaded') return;
       setThinkingModelContext(readThinkingModelContext(message?.config));
@@ -356,41 +238,13 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
     setPermissionMode(nextMode);
   }, [permissionMode, setPermissionMode]);
 
-  const setModelSelection = useCallback(async (selection: ChatModelSelection) => {
-    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
-    setModelSelectionState(selection);
-    if (projectKey) {
-      localStorage.setItem(`composer-model-${projectKey}`, JSON.stringify(selection));
-    }
-    if (selection.mode === 'model') {
-      setModel(`${selection.provider}/${selection.model}`);
-    }
-    if (!projectKey || !selectedSession?.id) return;
-
-    const response = await authenticatedFetch('/api/sessions/model', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectKey,
-        sessionKey: selectedSession.id,
-        selection,
-      }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data?.error?.message || 'Failed to save model selection');
-    }
-  }, [selectedProject?.fullPath, selectedProject?.path, selectedSession?.id]);
 
   return {
-    model,
+    model: modelState.modelSelection?.mode === 'model'
+      ? `${modelState.modelSelection.provider}/${modelState.modelSelection.model}` : model,
     setModel,
     modelOptions,
-    modelCatalog,
-    modelSelection,
-    setModelSelection,
-    isModelCatalogLoading,
-    modelCatalogError,
+    ...modelState,
     thinkingModelContext,
     permissionMode,
     setPermissionMode,

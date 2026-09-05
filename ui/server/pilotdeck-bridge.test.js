@@ -902,3 +902,20 @@ describe('Always-On turn notification forwarding', () => {
         });
     });
 });
+
+describe('dialog model preference frames', () => {
+    it('keeps Auto and explicit parameter choices in persisted queued messages', () => {
+        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, temperature: 0.3, speed: 1 }]) {
+            const item = { id: 'queued-model', options: { modelSelection: selection } };
+            expect(hydrateQueuedInputOptions(restoreQueuedInputFromStorage(serializeQueuedInputForStorage(item)).options).modelSelection).toEqual(selection);
+        }
+    });
+
+    it('forwards accepted preference separately from the model actually executing', () => {
+        const sessionId = 'web:s';
+        const accepted = gatewayEventToFrames({ type: 'input_accepted', runId: 'run-1', modelSelection: { mode: 'auto' } }, sessionId, 'pilotdeck');
+        expect(accepted[0]).toMatchObject({ type: 'model-selection-saved', sessionId, selection: { mode: 'auto' } });
+        const running = gatewayEventToFrames({ type: 'model_selection_changed', runId: 'run-1', provider: 'chosen', model: 'routed', source: 'router' }, sessionId, 'pilotdeck');
+        expect(running[0]).toMatchObject({ type: 'model-selection-changed', modelProvider: 'chosen', model: 'routed', runId: 'run-1' });
+    });
+});

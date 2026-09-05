@@ -331,6 +331,7 @@
       "askDescription": "仅回答问题，不修改文件"
     },
     "models": {
+      "running": "本轮模型：{{model}}",
       "select": "选择模型",
       "auto": "自动",
       "change": "选择模型",

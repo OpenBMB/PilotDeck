@@ -175,6 +175,7 @@ export type WebSubmitTurnInput = {
   projectKey?: string;
   uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   modelOverride?: WebExplicitModelSelection;
+  modelSelection?: { mode: "auto" } | WebExplicitModelSelection;
   attachments?: WebChannelAttachment[];
   runMode?: WebAgentRunMode;
   mode?: WebGatewayMode;
@@ -224,7 +225,11 @@ export type WebCommandsListResult = { pinned: unknown[]; builtIn: unknown[]; cus
 export type WebExplicitModelSelection = { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number };
 export type WebSessionModelSelection = { mode: "auto" } | WebExplicitModelSelection;
 export type WebModelCatalogListInput = { projectKey: string; query?: string; provider?: string; includeAuto?: boolean };
-export type WebModelCatalogListResult = { items: unknown[]; router: { enabled: boolean; autoAvailable: boolean } };
+export type WebModelCatalogListResult = {
+  defaultSelection: WebExplicitModelSelection;
+  items: unknown[];
+  router: { enabled: boolean; autoAvailable: boolean };
+};
 export type WebSessionModelInput = { projectKey: string; sessionKey: string };
 export type WebSessionModelResult = WebSessionModelInput & { saved?: WebSessionModelSelection; effective: { provider: string; model: string; source: "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number } };
 

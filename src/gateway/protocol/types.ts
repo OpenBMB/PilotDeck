@@ -100,6 +100,8 @@ export type GatewaySubmitTurnInput = {
   uploadedAttachments?: UploadedAttachmentRef[];
   /** A one-turn model override. Persisted session preferences are managed separately. */
   modelOverride?: ExplicitModelSelection;
+  /** Dialog choice: used for this turn and saved with accepted input. */
+  modelSelection?: SessionModelSelection;
   runMode?: AgentRunMode;
   mode?: GatewayMode;
   /** The user's actual permission preference before plan-mode override. */
@@ -172,7 +174,7 @@ type GatewayTurnScopedEventMetadata = {
 
 export type GatewayEvent = GatewayTurnScopedEventMetadata & (
   | { type: "turn_started"; runId: string }
-  | { type: "input_accepted"; runId: string }
+  | { type: "input_accepted"; runId: string; modelSelection?: SessionModelSelection }
   | { type: "steer_applied"; itemId: string; message: CanonicalMessage }
   | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_request_started"; model?: string; provider?: string }
@@ -474,6 +476,7 @@ export type ModelCatalogListInput = {
 };
 
 export type ModelCatalogListResult = {
+  defaultSelection: ExplicitModelSelection;
   items: ModelCatalogItem[];
   router: { enabled: boolean; autoAvailable: boolean };
 };

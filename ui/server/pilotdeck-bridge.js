@@ -827,7 +827,10 @@ export function gatewayEventToFrames(event, sessionId, provider) {
     const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
     switch (event.type) {
         case 'input_accepted':
-            return [];
+            return event.modelSelection ? [{
+                type: 'model-selection-saved', sessionId: base.sessionId,
+                runId: event.runId, selection: event.modelSelection,
+            }] : [];
         case 'steer_unapplied':
             return [];
         case 'steer_applied': {
@@ -863,6 +866,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     text: 'started',
                 }),
             ];
+        case 'model_selection_changed':
+            return [{
+                type: 'model-selection-changed',
+                sessionId: base.sessionId,
+                runId: event.runId,
+                modelProvider: event.provider,
+                model: event.model,
+                source: event.source,
+            }];
         case 'model_request_started':
             return [
                 createNormalizedMessage({
@@ -1516,6 +1528,7 @@ export async function runChatViaGateway(
                 kind: 'session_created',
                 newSessionId: sessionKey,
                 sessionKey,
+                projectKey,
             }),
         );
     }
@@ -1568,6 +1581,7 @@ export async function runChatViaGateway(
             runId,
             ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
+            ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
             ...(workspaceCwd ? { workspaceCwd } : {}),

@@ -64,6 +64,7 @@ interface UseChatComposerStateArgs {
   currentSessionId: string | null;
   model: string;
   modelSelection?: ChatModelSelection | null;
+  isModelSelectionReady?: boolean;
   permissionMode: PermissionMode | string;
   basePermissionMode?: PermissionMode | string;
   runMode?: string;
@@ -260,6 +261,7 @@ export function useChatComposerState({
   currentSessionId,
   model,
   modelSelection,
+  isModelSelectionReady = true,
   permissionMode,
   basePermissionMode,
   runMode,
@@ -1124,6 +1126,8 @@ export function useChatComposerState({
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
       event.preventDefault();
+      if (!isModelSelectionReady) return;
+      const submittedModelSelection = modelSelection ? { ...modelSelection } : undefined;
       const currentInput = inputValueRef.current;
       const submitAttachedImages = attachedImages;
       let submittedAttachmentFiles = submitAttachedImages;
@@ -1386,7 +1390,6 @@ export function useChatComposerState({
       const toolsSettings = getPilotDeckSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
       const resolvedProjectPath = getSelectedProjectPath(selectedProject);
-      const modelOverride = modelSelection?.mode === 'model' ? modelSelection : undefined;
 
       const clearSubmittedComposerState = () => {
         if (inputValueRef.current === currentInput) {
@@ -1448,7 +1451,7 @@ export function useChatComposerState({
             images: uploadedImages,
             attachments: turnAttachments,
             uploadedAttachments: uploadedAttachmentRefs,
-            modelOverride,
+            modelSelection: submittedModelSelection,
           },
         }) ?? { ok: false, error: 'Message queue is unavailable.' };
         if (!result.ok) {
@@ -1492,7 +1495,7 @@ export function useChatComposerState({
         thinking: thinkingModeToConfig(thinkingMode),
         sessionSummary,
         toolsSettings,
-        modelOverride,
+        modelSelection: submittedModelSelection,
         images: uploadedImages,
         attachments: turnAttachments,
         uploadedAttachments: uploadedAttachmentRefs,
@@ -1546,6 +1549,7 @@ export function useChatComposerState({
       clearSelectedCommands,
       model,
       modelSelection,
+      isModelSelectionReady,
       currentSessionId,
       executeCommand,
       isLoading,
