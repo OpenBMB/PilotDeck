@@ -5,6 +5,8 @@
     "deleteProject": "Delete Project",
     "renameProject": "Rename Project",
     "noProjects": "No projects found",
+    "loadError": "Projects are temporarily unavailable. Your data has not been removed.",
+    "retry": "Retry",
     "loadingProjects": "Loading projects...",
     "searchPlaceholder": "Search projects...",
     "projectNamePlaceholder": "Project name",
@@ -19,12 +21,29 @@
     "tryDifferentSearch": "Try adjusting your search term",
     "runPilotDeckCli": "Run PilotDeck CLI in a project directory to get started",
     "collapseAll": "Collapse all projects",
-    "expandAll": "Expand all projects"
+    "expandAll": "Expand all projects",
+    "collapse": "Collapse projects",
+    "expand": "Expand projects",
+    "recent": "Recently opened"
   },
   "general": {
-    "title": "General",
-    "name": "General",
+    "title": "General conversation",
+    "name": "General conversation",
     "missing": "No general workspace found"
+  },
+  "conversations": {
+    "title": "Conversations",
+    "collapse": "Collapse conversations",
+    "expand": "Expand conversations"
+  },
+  "quickActions": {
+    "label": "Quick actions",
+    "newChat": "New Chat",
+    "newConversation": "New conversation",
+    "newProject": "New Project",
+    "skills": "Skills",
+    "skillsCompact": "Skill Tools",
+    "scheduledTasks": "Scheduled Tasks"
   },
   "sectionToggle": {
     "label": "Sidebar section"
@@ -59,12 +78,15 @@
   "tooltips": {
     "viewEnvironments": "View Environments",
     "hideSidebar": "Hide sidebar",
+    "expandSidebar": "Expand project sidebar",
     "createProject": "Create new project",
     "refresh": "Refresh projects and sessions (Ctrl+R)",
     "renameProject": "Rename project (F2)",
     "deleteProject": "Delete empty project (Delete)",
     "showSidebar": "Show sidebar",
     "newChat": "New Chat",
+    "newChatForProject": "Start a new conversation in {{project}}",
+    "newGeneralChat": "Start a general conversation",
     "addToFavorites": "Add to favorites",
     "removeFromFavorites": "Remove from favorites",
     "editSessionName": "Manually edit session name",
@@ -72,7 +94,8 @@
     "save": "Save",
     "cancel": "Cancel",
     "clearSearch": "Clear search",
-    "resize": "Resize sidebar"
+    "resize": "Resize sidebar",
+    "resizeProjectsConversations": "Resize projects and conversations"
   },
   "navigation": {
     "chat": "Agent",

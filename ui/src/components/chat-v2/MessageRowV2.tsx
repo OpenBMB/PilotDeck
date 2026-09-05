@@ -15,6 +15,7 @@ import {
   normalizeContentReference,
   type ContentReference,
 } from '../../types/contentReference';
+import { partitionContentReferences } from '../../types/assistantReplyReference';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -31,6 +32,7 @@ import { processSummaryToTrace, type ProcessAttachment } from './processGrouping
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import DocumentReferenceChip from './DocumentReferenceChip';
+import ReplyQuoteChip from './ReplyQuoteChip';
 import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
 
 type DiffLine = { type: string; content: string; lineNum: number };
@@ -184,6 +186,10 @@ function MessageRowV2({
       .filter((reference): reference is ContentReference => Boolean(reference)),
     [messageAttachments],
   );
+  const { fileReferences: fileDocumentReferences, replyQuotes: replyQuoteReferences } = useMemo(
+    () => partitionContentReferences(documentReferenceAttachments),
+    [documentReferenceAttachments],
+  );
   const referenceImageNames = useMemo(
     () => new Set(documentReferenceAttachments
       .filter((reference) => reference.selectionMode === 'region')
@@ -324,7 +330,7 @@ function MessageRowV2({
   const isUser = message.type === 'user';
   const isError = message.type === 'error';
 
-  // User: right-aligned grey bubble.
+  // User: right-aligned bubble.
   if (isUser) {
     const messageTime = formatMessageTime(message.timestamp);
     const lightboxImages: LightboxImage[] = messageImages.map((image) => ({
@@ -370,9 +376,12 @@ function MessageRowV2({
             <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
           ) : (
             <>
-              {documentReferenceAttachments.length > 0 ? (
+              {fileDocumentReferences.length > 0 || replyQuoteReferences.length > 0 ? (
                 <div className={formattedContent || fileAttachments.length > 0 ? 'mb-2 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
-                  {documentReferenceAttachments.map((reference) => (
+                  {replyQuoteReferences.length > 0 ? (
+                    <ReplyQuoteChip quotes={replyQuoteReferences} />
+                  ) : null}
+                  {fileDocumentReferences.map((reference) => (
                     <DocumentReferenceChip
                       key={reference.id}
                       reference={reference}
@@ -540,7 +549,7 @@ function MessageRowV2({
       return withProcessRows(
         <div className="min-w-0 text-[14px] leading-relaxed">
           <details className="group" open={(isThinkingStreaming ? thinkingDisplayText.length > 12 : false) || undefined}>
-            <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
+            <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
               {isThinkingStreaming
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
                 : <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />}
@@ -569,7 +578,7 @@ function MessageRowV2({
     return withProcessRows(
       <div className="min-w-0 text-[14px] leading-relaxed">
         <details className="group">
-          <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+          <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
             <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
             <span>{t('thinking.completed', { defaultValue: 'Thought process' })}</span>
           </summary>
@@ -602,8 +611,15 @@ function MessageRowV2({
       {showStreamingCursor ? (
         <span className="inline-block h-4 w-2 animate-pulse bg-neutral-400 dark:bg-neutral-500" />
       ) : (
-        <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
-        onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        <div
+          {...(!message.isStreaming ? {
+            'data-assistant-quote-source': '',
+            'data-assistant-quote-message-id': message.id || message.entryId || message.turnId || '',
+          } : {})}
+        >
+          <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
+          onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+        </div>
       )}
       {assistantArtifacts.length > 0 ? (
         <AgentFileArtifactGroup

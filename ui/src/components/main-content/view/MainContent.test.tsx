@@ -196,9 +196,10 @@ describe('MainContent file workspace routing', () => {
     render(<MainContent {...propsFor('files')} />);
 
     const conversationTrigger = await screen.findByTestId('files-conversation-switcher-trigger');
-    const labels = conversationTrigger.querySelectorAll('span.block');
-    expect(labels[0]?.textContent).toBe('filesWorkbench.assistant');
-    expect(labels[1]?.textContent).toBe('filesWorkbench.conversations.newConversation');
+    expect(conversationTrigger.textContent).toContain('filesWorkbench.conversations.newConversation');
+    expect(screen.getByRole('button', {
+      name: 'filesWorkbench.conversations.newConversation',
+    })).toBeTruthy();
 
     const resizeHandle = screen.getByRole('separator', {
       name: 'filesWorkbench.resizeAssistant',
@@ -211,12 +212,16 @@ describe('MainContent file workspace routing', () => {
       expect(localStorage.getItem('pilotdeck:files-assistant-width')).toBe('396');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'filesWorkbench.collapseAssistant' }));
+    const smartChatToggle = screen.getByRole('button', { name: /filesWorkbench\.smartChat|Smart Chat/ });
+    expect(smartChatToggle.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(smartChatToggle);
     expect(screen.queryByRole('separator', { name: 'filesWorkbench.resizeAssistant' })).toBeNull();
+    expect(smartChatToggle.getAttribute('aria-pressed')).toBe('false');
 
-    fireEvent.click(screen.getByRole('button', { name: 'filesWorkbench.openAssistant' }));
+    fireEvent.click(smartChatToggle);
     expect(screen.getByRole('separator', {
       name: 'filesWorkbench.resizeAssistant',
     }).getAttribute('aria-valuenow')).toBe('396');
+    expect(smartChatToggle.getAttribute('aria-pressed')).toBe('true');
   });
 });

@@ -40,7 +40,7 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
         capabilities: {
           ...(reasoning.length > 0 ? { reasoning: { type: "enum" as const, values: reasoning } } : {}),
           temperature: { type: "range", min: 0, max: 1, step: 0.1 },
-          ...(speed ? { speed: { type: "range" as const, min: 0, max: 1, step: 0.1 } } : {}),
+          ...(speed ? { speed: { type: "enum" as const, values: [0, 1] } } : {}),
         },
       });
     }

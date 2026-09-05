@@ -12,7 +12,8 @@ export type ReconnectInfo = {
 
 type WebSocketContextType = {
   ws: WebSocket | null;
-  sendMessage: (message: any) => void;
+  /** Returns true when the frame was sent or safely queued for replay. */
+  sendMessage: (message: any) => boolean;
   latestMessage: any | null;
   isConnected: boolean;
   reconnectInfo: ReconnectInfo;
@@ -134,7 +135,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
             const subs = subscribersRef.current;
             if (subs.size > 0) {
               subs.forEach((sub) => {
-                try { sub(reconnectMsg); } catch {}
+                try { sub(reconnectMsg); } catch { /* Isolate subscriber failures. */ }
               });
             }
             setLatestMessage(reconnectMsg);
@@ -208,15 +209,23 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     };
   }, [token]);
 
-  const sendMessage = useCallback((message: any) => {
+  const sendMessage = useCallback((message: any): boolean => {
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        console.warn('Failed to send WebSocket message', error);
+        return false;
+      }
     } else if (isQueueableDisconnectedMessage(message)) {
       enqueueDisconnectedMessage(queuedMessagesRef.current, message);
       console.warn('WebSocket not connected');
+      return true;
     } else {
       console.warn('WebSocket not connected');
+      return false;
     }
   }, []);
 

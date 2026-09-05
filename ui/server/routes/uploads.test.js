@@ -1,10 +1,30 @@
 import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const gateway = vi.hoisted(() => ({
+  listProjects: vi.fn(async () => ({ projects: [] })),
+}));
+
+vi.mock('../pilotdeck-bridge.js', () => ({
+  getPilotDeckGateway: vi.fn(async () => gateway),
+}));
 
 const nativeFetch = globalThis.fetch;
+const originalPilotHome = process.env.PILOT_HOME;
+const temporaryRoots = [];
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  gateway.listProjects.mockReset();
+  gateway.listProjects.mockResolvedValue({ projects: [] });
+  if (originalPilotHome === undefined) delete process.env.PILOT_HOME;
+  else process.env.PILOT_HOME = originalPilotHome;
+  await Promise.all(temporaryRoots.splice(0).map((root) => (
+    fs.rm(root, { recursive: true, force: true })
+  )));
 });
 
 describe('upload routes', () => {
@@ -39,6 +59,26 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(204);
     expect(response.text).toBe('');
+  });
+
+  it('accepts controlled attachment uploads for the General conversation key', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-general-upload-'));
+    temporaryRoots.push(root);
+    process.env.PILOT_HOME = path.join(root, 'pilot-home');
+    await fs.mkdir(process.env.PILOT_HOME);
+    const { app } = await createUploadsApp();
+
+    const response = await request(app, '/api/uploads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectKey: process.env.PILOT_HOME,
+        files: [{ clientFileId: 'file-1', name: 'note.txt', relativePath: 'note.txt', size: 0 }],
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(JSON.parse(response.text).status).toBe('created');
   });
 
   it.each([

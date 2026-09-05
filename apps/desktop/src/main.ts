@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -1006,6 +1006,13 @@ ipcMain.handle("pilotdeck:open-runtime-log", async () => {
   if (logPath) {
     await shell.openPath(logPath);
   }
+});
+ipcMain.handle("pilotdeck:pick-folder", async () => {
+  const owner = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
+  const result = owner
+    ? await dialog.showOpenDialog(owner, { properties: ["openDirectory", "createDirectory"] })
+    : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+  return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
 if (process.platform === "win32") {

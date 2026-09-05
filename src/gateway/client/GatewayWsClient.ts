@@ -4,6 +4,7 @@ import type { GatewayWsClientName, WsEventFrame, WsGatewayMethod, WsHelloOk, WsN
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
 
 export type GatewayWsNotificationHandler = (name: string, payload: unknown) => void;
+export type GatewayWsDisconnectHandler = (error: Error) => void;
 
 /**
  * Structured error preserving the server-side `code` (e.g.
@@ -48,8 +49,10 @@ export class GatewayWsClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly streams = new Map<string, AsyncEventQueue<GatewayEvent>>();
   private readonly notificationHandlers: GatewayWsNotificationHandler[] = [];
+  private readonly disconnectHandlers: GatewayWsDisconnectHandler[] = [];
   private ws?: WebSocket;
   private hello?: WsHelloOk;
+  private disconnectError?: Error;
 
   constructor(private readonly options: GatewayWsClientOptions) {}
 
@@ -57,12 +60,40 @@ export class GatewayWsClient {
     this.notificationHandlers.push(handler);
   }
 
+  onDisconnect(handler: GatewayWsDisconnectHandler): void {
+    if (this.disconnectError) {
+      try {
+        handler(this.disconnectError);
+      } catch {
+        // Disconnect observers must not crash the WebSocket client.
+      }
+      return;
+    }
+    this.disconnectHandlers.push(handler);
+  }
+
   async connect(): Promise<WsHelloOk> {
     const ws = new WebSocket(this.options.url);
     this.ws = ws;
+    this.disconnectError = undefined;
     await waitForOpen(ws);
     ws.addEventListener("message", (event) => this.handleMessage(String(event.data ?? "")));
-    ws.addEventListener("close", () => this.closePending(new Error("Gateway WebSocket closed.")));
+    ws.addEventListener("close", () => {
+      const error = new Error("Gateway WebSocket closed.");
+      if (this.ws === ws) {
+        this.ws = undefined;
+        this.hello = undefined;
+      }
+      this.disconnectError = error;
+      this.closePending(error);
+      for (const handler of this.disconnectHandlers.splice(0)) {
+        try {
+          handler(error);
+        } catch {
+          // Disconnect observers must not crash the WebSocket client.
+        }
+      }
+    });
     ws.send(
       JSON.stringify({
         type: "hello",

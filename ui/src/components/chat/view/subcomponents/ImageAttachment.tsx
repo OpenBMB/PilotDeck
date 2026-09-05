@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const MIME_FRIENDLY_LABELS: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
@@ -33,11 +34,19 @@ function getFileTypeLabel(file: File): string {
 interface ImageAttachmentProps {
   file: File;
   onRemove: () => void;
+  onRetry?: () => void;
   uploadProgress?: number;
   error?: string;
 }
 
-const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachmentProps) => {
+const ImageAttachment = ({
+  file,
+  onRemove,
+  onRetry,
+  uploadProgress,
+  error,
+}: ImageAttachmentProps) => {
+  const { t } = useTranslation('chat');
   const [preview, setPreview] = useState<string | undefined>(undefined);
   const isImage = file.type.startsWith('image/');
   
@@ -51,6 +60,9 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
     return () => URL.revokeObjectURL(url);
   }, [file, isImage]);
   
+  const isUploadComplete = uploadProgress !== undefined && uploadProgress >= 100 && !error;
+  const showProgressOverlay = uploadProgress !== undefined && uploadProgress < 100 && !error;
+
   return (
     <div className="group relative">
       {isImage ? (
@@ -71,23 +83,55 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
           </div>
         </div>
       )}
-      {uploadProgress !== undefined && uploadProgress < 100 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-          <div className="text-xs text-white">{uploadProgress}%</div>
+      {showProgressOverlay ? (
+        <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b bg-black/55 px-2 pb-1.5 pt-1 text-white">
+          <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
+            <span>{t('input.uploading', { defaultValue: 'Uploading…' })}</span>
+            <span className="tabular-nums">{Math.round(uploadProgress)}%</span>
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-white/30">
+            <div
+              className="h-full rounded-full bg-violet-300 transition-[width] duration-150"
+              style={{ width: `${Math.max(0, Math.min(100, uploadProgress))}%` }}
+            />
+          </div>
         </div>
-      )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-red-500/50">
-          <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      ) : null}
+      {isUploadComplete ? (
+        <div
+          className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
+          title={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
+          aria-label={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-      )}
+      ) : null}
+      {error ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded bg-red-600/85 px-2 text-center text-white">
+          <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span className="line-clamp-2 text-[10px]" title={error}>{error}</span>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded bg-white/95 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-white"
+            >
+              {t('input.retryUpload', { defaultValue: 'Retry' })}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onRemove}
         className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white opacity-100 transition-opacity focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-        aria-label="Remove attachment"
+        aria-label={uploadProgress !== undefined && uploadProgress < 100
+          ? t('input.cancelUpload', { file: file.name, defaultValue: `Cancel upload ${file.name}` })
+          : t('input.removeAttachment', { file: file.name, defaultValue: `Remove attachment ${file.name}` })}
       >
         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -98,5 +142,4 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }: ImageAttachm
 };
 
 export default ImageAttachment;
-
 

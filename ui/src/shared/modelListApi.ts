@@ -56,6 +56,7 @@ export async function fetchProviderModels({
 }): Promise<ApiModelListItem[]> {
   const res = await authenticatedFetch('/api/config/models', {
     method: 'POST',
+    suppressServerErrorToast: true,
     body: JSON.stringify({
       providerType: protocol,
       baseUrl,

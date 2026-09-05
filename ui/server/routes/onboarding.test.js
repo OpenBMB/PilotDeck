@@ -10,6 +10,33 @@ afterEach(() => {
 });
 
 describe('onboarding routes', () => {
+  it('returns preset providers in catalog order with logos', async () => {
+    const { request } = await createOnboardingApp();
+    const result = await request('/api/v1/providers');
+    expect(result.status).toBe(200);
+    expect(result.body.providers.map((item) => item.id)).toEqual([
+      'anthropic', 'openai', 'openai-responses', 'dashscope', 'deepseek', 'google',
+      'openrouter', 'ollama', 'minimax', 'moonshot', 'volc_ark', 'zhipu',
+    ]);
+    expect(result.body.providers[0]).toEqual({
+      id: 'anthropic',
+      displayName: 'Anthropic',
+      protocol: 'anthropic',
+      endpoint: 'https://api.anthropic.com',
+      logoUrl: '/onboarding/providers/anthropic.svg',
+      requiresApiKey: true,
+    });
+    expect(result.body.providers.find((item) => item.id === 'ollama')).toEqual({
+      id: 'ollama',
+      displayName: 'Ollama',
+      protocol: 'openai',
+      endpoint: 'http://localhost:11434/v1',
+      logoUrl: '/onboarding/providers/ollama.svg',
+      requiresApiKey: false,
+    });
+    expect(result.body.providers.find((item) => item.id === 'openai-responses').logoUrl).toBe('/onboarding/providers/openai.svg');
+  });
+
   it('maps prototype provider aliases and requires manual image completion', async () => {
     const probe = vi.fn()
       .mockResolvedValueOnce({ ok: true })

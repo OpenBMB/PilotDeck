@@ -1,0 +1,108 @@
+{
+  "brand": "PilotDeck",
+  "sidebar": {
+    "kicker": "First-time setup",
+    "title": "Prepare your AI workspace",
+    "privacyTitle": "Your setup stays local"
+  },
+  "steps": {
+    "language": "Language",
+    "provider": "Model provider",
+    "connection": "Model access",
+    "workspace": "Workspace"
+  },
+  "language": {
+    "eyebrow": "Welcome to PilotDeck",
+    "title": "Connect your model and start collaborating",
+    "intro": "Finish model setup in a few steps. You can change the provider, model, or key in Settings at any time.",
+    "legend": "Choose your interface language",
+    "zh": {
+      "name": "简体中文",
+      "hint": "Chinese · Simplified"
+    },
+    "en": {
+      "name": "English",
+      "hint": "English · US"
+    },
+    "start": "Start setup"
+  },
+  "provider": {
+    "title": "Choose your model provider",
+    "intro": "Pick a provider first. PilotDeck will fill in the recommended endpoint format.",
+    "customTitle": "Custom",
+    "customHint": "OpenAI / Anthropic / Google"
+  },
+  "connection": {
+    "title": "Add connection details",
+    "intro": "Paste your API key, confirm the model IDs, then test text and vision support.",
+    "provider": "Provider",
+    "providerId": "Provider ID",
+    "providerIdHint": "Used as the YAML key. Lowercase, no spaces.",
+    "providerIdReserved": "This Provider ID is reserved for a catalog provider. Choose a different ID.",
+    "protocol": "Protocol",
+    "protocolOpenai": "openai (Chat Completions)",
+    "protocolOpenaiResponses": "openai-responses (Responses API)",
+    "protocolAnthropic": "anthropic (Messages API)",
+    "protocolGoogle": "google (Gemini API)",
+    "endpoint": "Endpoint",
+    "baseUrl": "Base URL",
+    "apiKey": "API key",
+    "apiKeyOptional": "API key (optional)",
+    "apiKeyHelp": "Encrypted by your system credential store and saved on this device only.",
+    "showKey": "Show key",
+    "hideKey": "Hide key",
+    "modelId": "Model ID",
+    "modelIdPlaceholder": "model-id",
+    "selectedModels": "Selected models",
+    "availableModels": "Available models",
+    "noSelectedModels": "None",
+    "addModelId": "Add model ID",
+    "searchModelId": "Search model ID",
+    "removeModelId": "Remove model ID",
+    "hideAvailableModelId": "Remove from available",
+    "fetchingModels": "Fetching remote model list...",
+    "openaiUrlHint": "OpenAI-compatible base URLs should include the API version path, for example ending in /v1.",
+    "responsesUrlHint": "OpenAI Responses API base URLs should include the API version path, for example ending in /v1.",
+    "googleUrlHint": "Native Google Gemini uses https://generativelanguage.googleapis.com unless you need a custom endpoint.",
+    "test": "Test connection",
+    "testPassed": "Test passed · Retest",
+    "testFailedRetest": "Test failed · Retest",
+    "testing": "Testing...",
+    "testNeedApiKey": "Enter an API key before testing the connection.",
+    "testNeedModel": "Select at least one model ID before testing the connection.",
+    "testNeedConnection": "Enter an Endpoint before testing the connection.",
+    "testHint": "PilotDeck will test text for the selected models, and image input for {{count}} unknown models. This may incur a small API charge.",
+    "testHintKnown": "PilotDeck will test text for the selected models. Image support is taken from the built-in catalog.",
+    "testSuccess": "Connection succeeded.",
+    "testFailed": "Connection failed",
+    "manualTitle": "Automatic detection failed. Please mark whether each model supports image input.",
+    "manualSupported": "Supports",
+    "manualUnsupported": "Does not support",
+    "manualCancel": "Cancel",
+    "manualConfirm": "Confirm"
+  },
+  "workspace": {
+    "title": "Create your workspace",
+    "intro": "Create a workspace for long-running work and keep project files together. Or start chatting without creating one.",
+    "dialogIntro": "Create a workspace for long-running work and keep project files together.",
+    "typeHeading": "Workspace type",
+    "existingTitle": "Existing folder",
+    "existingHint": "Add a folder that already exists on this machine.",
+    "newTitle": "New folder",
+    "newHint": "Create a folder, optionally cloning a GitHub repository.",
+    "pathLabel": "Workspace",
+    "pathHint": "The workspace and project use the same name.",
+    "pathRequired": "Enter a workspace path.",
+    "browse": "Choose file",
+    "githubLabel": "GitHub URL",
+    "githubPlaceholder": "https://github.com/username/repository",
+    "githubHint": "Provide a GitHub URL to clone a repository.",
+    "startChatting": "Start chatting",
+    "createWorkspace": "Create workspace"
+  },
+  "actions": {
+    "back": "Back",
+    "next": "Continue",
+    "finish": "Finish setup"
+  }
+}

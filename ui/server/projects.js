@@ -24,6 +24,8 @@ import os from 'node:os';
 
 import {
     getPilotDeckGateway,
+    isGatewayUnavailableError,
+    withPilotDeckGatewayReadRetry,
 } from './pilotdeck-bridge.js';
 import { mapLegacySessionPresentation } from '../../src/web/server/legacySessionPresentation.js';
 import {
@@ -35,6 +37,7 @@ import {
 import { mapCronRunOutcome } from '../../src/cron/protocol/types.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 // Optional taskmaster detection. Read once per project; lightweight.
 async function detectTaskMaster(projectPath) {
@@ -145,8 +148,9 @@ async function readProjectCreatedAt(projectId) {
 }
 
 async function getProjects(progressCallback = null) {
-    const gateway = await getPilotDeckGateway();
-    const { projects: webProjects } = await gateway.listProjects();
+    const { projects: webProjects } = await withPilotDeckGatewayReadRetry(
+        (gateway) => gateway.listProjects(),
+    );
     const markedProjects = await readMarkedProjectPaths();
     const markedProjectIdsByPath = new Map(
         [...markedProjects.entries()].map(([id, cwd]) => [path.resolve(cwd), id]),
@@ -211,8 +215,11 @@ async function getProjects(progressCallback = null) {
         let sessionsResult;
         let sessionPreviewSucceeded = true;
         try {
-            sessionsResult = await gateway.listSessions({ projectKey: fullPath, limit: 5 });
-        } catch {
+            sessionsResult = await withPilotDeckGatewayReadRetry(
+                (gateway) => gateway.listSessions({ projectKey: fullPath, limit: 5 }),
+            );
+        } catch (error) {
+            if (isGatewayUnavailableError(error)) throw error;
             sessionsResult = { sessions: [] };
             sessionPreviewSucceeded = false;
         }
@@ -256,32 +263,50 @@ async function getProjects(progressCallback = null) {
         progressCallback({ phase: 'done', processed: total, total });
     }
 
-    // Virtual "general" workspace — a non-project chat space rooted at
-    // ~/.pilotdeck. SidebarV2 looks for a project whose `name` or
+    // Virtual "general" conversation space. Its session identity remains
+    // rooted at PILOT_HOME for backwards-compatible transcript discovery,
+    // while agent execution uses a separate managed workspace directory.
+    // SidebarV2 looks for a project whose `name` or
     // `displayName` equals 'general' to populate the dedicated "General"
     // toggle section. PilotDeck's gateway.listProjects() only returns
     // real project directories, so we synthesize one here. New chats
     // started from the General section use this cwd; sessions are
     // sourced from the same backend as any other project.
     const generalHome = resolvePilotHome(process.env);
+    let generalWorkspaceCwd;
+    try {
+        generalWorkspaceCwd = await ensureGeneralWorkspaceDirectory(process.env);
+    } catch (error) {
+        // Keep existing conversations visible even when the configured
+        // workspace root is temporarily unavailable. Sending a turn will
+        // retry the same safety check and surface the failure to the user.
+        console.warn('[projects] failed to prepare General workspace:', error?.message || error);
+    }
     let generalSessions = [];
     let generalTotal = 0;
     let generalLastActivity;
     try {
-        const generalGateway = await getPilotDeckGateway();
         // Pair the first page query with describeProject so the General
         // workspace gets the real session count instead of the page size.
         // Without this, sessionMeta.hasMore was hardcoded `false` and the
         // sidebar would silently truncate to the first 5 sessions even
         // when dozens existed under ~/.pilotdeck/projects/<encoded>/chats/.
-        const sessionsPromise = generalGateway
-            .listSessions({ projectKey: generalHome, limit: 5 })
+        const sessionsPromise = withPilotDeckGatewayReadRetry(
+            (gateway) => gateway.listSessions({ projectKey: generalHome, limit: 5 }),
+        )
             .then((sessionsResult) => ({ sessionsResult, succeeded: true }))
-            .catch(() => ({ sessionsResult: { sessions: [] }, succeeded: false }));
-        const summaryPromise = generalGateway
-            .describeProject({ projectKey: generalHome })
+            .catch((error) => {
+                if (isGatewayUnavailableError(error)) throw error;
+                return { sessionsResult: { sessions: [] }, succeeded: false };
+            });
+        const summaryPromise = withPilotDeckGatewayReadRetry(
+            (gateway) => gateway.describeProject({ projectKey: generalHome }),
+        )
             .then((summary) => ({ summary, succeeded: true }))
-            .catch(() => ({ summary: null, succeeded: false }));
+            .catch((error) => {
+                if (isGatewayUnavailableError(error)) throw error;
+                return { summary: null, succeeded: false };
+            });
         const [
             { sessionsResult: generalSessionsResult, succeeded: generalSessionPreviewSucceeded },
             { summary: generalSummary, succeeded: generalSummarySucceeded },
@@ -303,7 +328,8 @@ async function getProjects(progressCallback = null) {
                 && (generalSummary?.sessionCount ?? generalSessions.length) === 0
                 ? generalSummary?.createdAt
                 : generalSummary?.lastActivity;
-    } catch {
+    } catch (error) {
+        if (isGatewayUnavailableError(error)) throw error;
         generalSessions = [];
         generalTotal = 0;
         generalLastActivity = undefined;
@@ -312,8 +338,15 @@ async function getProjects(progressCallback = null) {
     result.unshift({
         name: 'general',
         displayName: 'general',
+        kind: 'general',
         fullPath: generalHome,
         path: generalHome,
+        ...(generalWorkspaceCwd ? { workspaceCwd: generalWorkspaceCwd } : {}),
+        capabilities: {
+            files: false,
+            explore: false,
+            projectFileMentions: false,
+        },
         lastActivity: generalLastActivity,
         sessions: generalSessions,
         sessionMeta: {
@@ -332,7 +365,6 @@ async function getProjects(progressCallback = null) {
 }
 
 async function getSessions(projectName, limit = 5, offset = 0) {
-    const gateway = await getPilotDeckGateway();
     const projectPath = await extractProjectDirectory(projectName);
     const cursor = offset > 0 ? String(offset) : undefined;
     // Fan-out the page query and the project summary (for the authoritative
@@ -344,12 +376,18 @@ async function getSessions(projectName, limit = 5, offset = 0) {
     // to the user as a button that "doesn't react" once they've already
     // pulled in everything that exists.
     const [listResult, summary] = await Promise.all([
-        gateway
-            .listSessions({ projectKey: projectPath, limit, cursor })
-            .catch(() => ({ sessions: [] })),
-        gateway
-            .describeProject({ projectKey: projectPath })
-            .catch(() => null),
+        withPilotDeckGatewayReadRetry(
+            (gateway) => gateway.listSessions({ projectKey: projectPath, limit, cursor }),
+        ).catch((error) => {
+            if (isGatewayUnavailableError(error)) throw error;
+            return { sessions: [] };
+        }),
+        withPilotDeckGatewayReadRetry(
+            (gateway) => gateway.describeProject({ projectKey: projectPath }),
+        ).catch((error) => {
+            if (isGatewayUnavailableError(error)) throw error;
+            return null;
+        }),
     ]);
     const sessions = (listResult.sessions || []).map((session) =>
         toLegacySession(session, projectName),

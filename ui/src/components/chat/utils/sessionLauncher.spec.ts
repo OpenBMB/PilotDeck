@@ -47,6 +47,20 @@ describe('sessionLauncher turn identity', () => {
     }));
   });
 
+  it('does not activate a new session when the command cannot be delivered', () => {
+    const sendMessage = vi.fn(() => false);
+
+    const sessionId = startSessionCommand({
+      sendMessage,
+      selectedProject: { name: 'PilotDeck', path: '/workspace/PilotDeck' } as Project,
+      command: 'Continue.',
+      temporarySessionId: 'new-session-offline',
+    });
+
+    expect(sessionId).toBeNull();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
   it('sends an atomic same-session replacement request with preserved payload', () => {
     const sendMessage = vi.fn();
 
@@ -61,6 +75,8 @@ describe('sessionLauncher turn identity', () => {
       runId: 'new-turn',
       images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
       attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+      uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+      displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
       syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
     });
 
@@ -76,6 +92,8 @@ describe('sessionLauncher turn identity', () => {
         userVisibleInput: 'Corrected request',
         images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
         attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+        uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+        displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
         syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
       }),
     });

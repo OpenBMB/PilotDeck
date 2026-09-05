@@ -48,7 +48,7 @@ model:
   assert.deepEqual(defaultModel?.capabilities.reasoning?.values, [0, 0.2, 0.4, 0.6, 0.8, 0.9, 1]);
   assert.equal(defaultModel?.capabilities.speed, undefined);
   assert.equal(noThinking?.capabilities.reasoning, undefined);
-  assert.deepEqual(speedModel?.capabilities.speed, { type: "range", min: 0, max: 1, step: 0.1 });
+  assert.deepEqual(speedModel?.capabilities.speed, { type: "enum", values: [0, 1] });
   assert.equal(googleSpeedModel?.capabilities.speed, undefined);
 
   validateExplicitModelSelection("/project", {
@@ -83,4 +83,23 @@ model:
     }, env)),
     (error: unknown) => (error as { code?: string }).code === "UNSUPPORTED_MODEL_PARAMETER",
   );
+});
+
+test("official openai catalog models expose two-tier speed options", async (t) => {
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-openai-speed-"));
+  t.after(() => rm(pilotHome, { recursive: true, force: true }));
+  await writeFile(join(pilotHome, "pilotdeck.yaml"), `
+schemaVersion: 1
+agent:
+  model: openai/gpt-4o-mini
+model:
+  providers:
+    openai:
+      models:
+        gpt-4o-mini: {}
+`);
+  const env = { ...process.env, PILOT_HOME: pilotHome, OPENAI_API_KEY: "test-key" };
+  const result = listModelCatalog({ projectKey: "/project" }, env);
+  const mini = result.items.find((item) => item.id === "openai/gpt-4o-mini");
+  assert.deepEqual(mini?.capabilities.speed, { type: "enum", values: [0, 1] });
 });

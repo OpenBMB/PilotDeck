@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
-import Fuse from 'fuse.js';
 import { authenticatedFetch } from '../../../utils/api';
 import { isImeEnterEvent } from '../../../utils/ime';
 import { safeLocalStorage } from '../utils/chatStorage';
@@ -15,6 +14,7 @@ export interface SlashCommand {
   path?: string;
   type?: string;
   metadata?: Record<string, unknown>;
+  matches?: Array<{ field: string; start: number; end: number }>;
   [key: string]: unknown;
 }
 
@@ -102,6 +102,7 @@ export function useSlashCommands({
   const [showCommandMenu, setShowCommandMenu] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
+  const [selectedCommands, setSelectedCommands] = useState<SlashCommand[]>([]);
   const [slashPosition, setSlashPosition] = useState(-1);
 
   const commandQueryTimerRef = useRef<number | null>(null);
@@ -136,112 +137,84 @@ export function useSlashCommands({
   }, [showCommandMenu, slashPosition, setInput, resetCommandMenuState]);
 
   useEffect(() => {
+    if (!selectedProject) {
+      setSlashCommands([]);
+      setFilteredCommands([]);
+      return undefined;
+    }
+
+    const abortController = new AbortController();
     const fetchCommands = async () => {
-      if (!selectedProject) {
-        setSlashCommands([]);
-        setFilteredCommands([]);
-        return;
-      }
-
       try {
-        const response = await authenticatedFetch('/api/commands/list', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectPath: selectedProject.path,
-          }),
-        });
+        const commands: SlashCommand[] = [];
+        const seen = new Set<string>();
+        let cursor: string | undefined;
+        do {
+          const response = await authenticatedFetch('/api/commands/list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectKey: selectedProject.fullPath || selectedProject.path,
+              ...(commandQuery ? { query: commandQuery } : {}),
+              ...(cursor ? { cursor } : {}),
+              limit: 100,
+            }),
+            signal: abortController.signal,
+          });
+          if (!response.ok) throw new Error('Failed to fetch commands');
+          const data = await response.json();
+          const page = [
+            ...((data.pinned || []) as SlashCommand[]),
+            ...((data.builtIn || []) as SlashCommand[]),
+            ...((data.custom || []) as SlashCommand[]),
+          ];
+          page.forEach((command) => {
+            const key = getCommandKey(command);
+            if (seen.has(key)) return;
+            seen.add(key);
+            commands.push(command);
+          });
+          cursor = typeof data.nextCursor === 'string' ? data.nextCursor : undefined;
+        } while (cursor && !abortController.signal.aborted);
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch commands');
+        if (commandQuery) {
+          setFilteredCommands(commands);
+        } else {
+          const parsedHistory = readCommandHistory(selectedProject.name);
+          const sortedCommands = commands.map((command, index) => ({ command, index }))
+            .sort((left, right) => {
+              const leftPinned = getCommandNamespace(left.command) === 'pinned';
+              const rightPinned = getCommandNamespace(right.command) === 'pinned';
+              if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
+              if (leftPinned && rightPinned) return left.index - right.index;
+              const usageDifference = (parsedHistory[right.command.name] || 0)
+                - (parsedHistory[left.command.name] || 0);
+              return usageDifference || left.command.name.localeCompare(right.command.name);
+            })
+            .map(({ command }) => command);
+          setSlashCommands(sortedCommands);
+          setFilteredCommands(sortedCommands);
         }
-
-        const data = await response.json();
-        const allCommands: SlashCommand[] = [
-          ...((data.builtIn || []) as SlashCommand[]).map((command) => ({
-            ...command,
-            type: 'built-in',
-          })),
-          ...((data.custom || []) as SlashCommand[]).map((command) => ({
-            ...command,
-            type: 'custom',
-          })),
-        ];
-
-        // Pinned commands always come first in fixed server-defined order;
-        // backend returns them as `data.pinned` for that exact ordering.
-        // Other commands fall back to usage-history sort.
-        const pinnedOrderIndex = new Map<string, number>();
-        ((data.pinned || []) as SlashCommand[]).forEach((command, index) => {
-          pinnedOrderIndex.set(command.name, index);
-        });
-
-        const parsedHistory = readCommandHistory(selectedProject.name);
-        const sortedCommands = [...allCommands].sort((commandA, commandB) => {
-          const aPinnedIdx = pinnedOrderIndex.has(commandA.name)
-            ? (pinnedOrderIndex.get(commandA.name) as number)
-            : -1;
-          const bPinnedIdx = pinnedOrderIndex.has(commandB.name)
-            ? (pinnedOrderIndex.get(commandB.name) as number)
-            : -1;
-          if (aPinnedIdx !== -1 || bPinnedIdx !== -1) {
-            if (aPinnedIdx === -1) return 1;
-            if (bPinnedIdx === -1) return -1;
-            return aPinnedIdx - bPinnedIdx;
-          }
-          const commandAUsage = parsedHistory[commandA.name] || 0;
-          const commandBUsage = parsedHistory[commandB.name] || 0;
-          return commandBUsage - commandAUsage;
-        });
-
-        setSlashCommands(sortedCommands);
       } catch (error) {
+        if ((error as { name?: string })?.name === 'AbortError') return;
         console.error('Error fetching slash commands:', error);
-        setSlashCommands([]);
+        if (commandQuery) setFilteredCommands([]);
+        else {
+          setSlashCommands([]);
+          setFilteredCommands([]);
+        }
       }
     };
 
-    fetchCommands();
-  }, [selectedProject]);
+    void fetchCommands();
+    return () => abortController.abort();
+  }, [commandQuery, selectedProject]);
 
   useEffect(() => {
     if (!showCommandMenu) {
       setSelectedCommandIndex(-1);
     }
   }, [showCommandMenu]);
-
-  const fuse = useMemo(() => {
-    if (!slashCommands.length) {
-      return null;
-    }
-
-    return new Fuse(slashCommands, {
-      keys: [
-        { name: 'name', weight: 2 },
-        { name: 'description', weight: 1 },
-      ],
-      threshold: 0.4,
-      includeScore: true,
-      minMatchCharLength: 1,
-    });
-  }, [slashCommands]);
-
-  useEffect(() => {
-    if (!commandQuery) {
-      setFilteredCommands(slashCommands);
-      return;
-    }
-
-    if (!fuse) {
-      setFilteredCommands([]);
-      return;
-    }
-
-    const results = fuse.search(commandQuery);
-    setFilteredCommands(results.map((result) => result.item));
-  }, [commandQuery, slashCommands, fuse]);
 
   const frequentCommands = useMemo(() => {
     if (!selectedProject || slashCommands.length === 0) {
@@ -296,36 +269,23 @@ export function useSlashCommands({
     [selectedProject],
   );
 
-  // Insert the picked command name into the textarea and leave the caret right
-  // after `<command> `. We DO NOT auto-submit — the user reviews/edits args
-  // and presses Enter themselves, mirroring how the TUI behaves and avoiding
-  // surprise sends from slash suggestions that still need arguments.
-  //
-  // The replacement spans from the active `/` to the next whitespace so a
-  // partial query like `hello /skill_inst` becomes `hello /skill_install ` and
-  // any trailing text after the query is preserved.
-  const insertCommandIntoInput = useCallback(
+  const selectCommandIntoContext = useCallback(
     (command: SlashCommand) => {
-      // Fall back to slash-prepend when no active slashPosition exists (e.g.
-      // mouse click without prior typing). Keep existing input intact.
       const slashStart = slashPosition >= 0 ? slashPosition : input.length;
       const textBeforeSlash = input.slice(0, slashStart);
       const textAfterSlash = input.slice(slashStart);
       const spaceIndex = textAfterSlash.indexOf(' ');
-      const textAfterQuery =
-        spaceIndex !== -1 ? textAfterSlash.slice(spaceIndex) : '';
-      const head = `${textBeforeSlash}${command.name} `;
-      const newInput = `${head}${textAfterQuery}`;
+      const textAfterQuery = spaceIndex !== -1 ? textAfterSlash.slice(spaceIndex) : '';
+      const newInput = `${textBeforeSlash}${textAfterQuery}`;
 
       setInput(newInput);
       if (externalInputValueRef) {
         externalInputValueRef.current = newInput;
       }
+      setSelectedCommands([command]);
       resetCommandMenuState();
 
-      // Defer focus + caret placement until after React commits the new input
-      // value; otherwise selectionStart points into stale text.
-      const caret = head.length;
+      const caret = textBeforeSlash.length;
       setTimeout(() => {
         const ta = textareaRef.current;
         if (!ta) return;
@@ -340,12 +300,25 @@ export function useSlashCommands({
     [externalInputValueRef, input, slashPosition, setInput, resetCommandMenuState, textareaRef],
   );
 
+  const removeSelectedCommand = useCallback((name: string) => {
+    setSelectedCommands((previous) => previous.filter((command) => command.name !== name));
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [textareaRef]);
+
+  const clearSelectedCommands = useCallback(() => {
+    setSelectedCommands([]);
+  }, []);
+
+  useEffect(() => {
+    setSelectedCommands([]);
+  }, [selectedProject?.path]);
+
   const selectCommandFromKeyboard = useCallback(
     (command: SlashCommand) => {
       trackCommandUsage(command);
-      insertCommandIntoInput(command);
+      selectCommandIntoContext(command);
     },
-    [trackCommandUsage, insertCommandIntoInput],
+    [trackCommandUsage, selectCommandIntoContext],
   );
 
   const handleCommandSelect = useCallback(
@@ -360,9 +333,9 @@ export function useSlashCommands({
       }
 
       trackCommandUsage(command);
-      insertCommandIntoInput(command);
+      selectCommandIntoContext(command);
     },
-    [selectedProject, trackCommandUsage, insertCommandIntoInput],
+    [selectedProject, trackCommandUsage, selectCommandIntoContext],
   );
 
   const handleToggleCommandMenu = useCallback(() => {
@@ -483,6 +456,9 @@ export function useSlashCommands({
     filteredCommands: displayedCommands,
     frequentCommands,
     commandQuery,
+    selectedCommands,
+    removeSelectedCommand,
+    clearSelectedCommands,
     showCommandMenu,
     selectedCommandIndex,
     resetCommandMenuState,

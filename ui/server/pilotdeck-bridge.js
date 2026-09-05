@@ -64,6 +64,8 @@ import {
 } from '../../src/status/agentStatus.js';
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
+import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -187,10 +189,8 @@ const WEB_DEFAULT_PERMISSION_MODE =
 // builds mis-parse such tokens inside JSDoc when running through
 // `node --import tsx`, producing a spurious "Parse error" at EOF during
 // ESM rewriting on fresh installs.
-/** @type {ReturnType<typeof createRemoteGateway> | null} */
-let gatewayPromise = null;
-/** @type {Awaited<ReturnType<typeof createRemoteGateway>> | null} */
-let gatewayInstance = null;
+/** @type {Set<(name: string, payload: unknown) => void>} */
+const gatewayNotificationHandlers = new Set();
 
 async function readGatewayToken() {
     try {
@@ -232,33 +232,28 @@ async function connectWithRetry() {
     );
 }
 
+const gatewayConnections = createGatewayConnectionCache({
+    connect: connectWithRetry,
+    shouldReconnect: () => gatewayNotificationHandlers.size > 0,
+    onConnected(gateway) {
+        for (const handler of gatewayNotificationHandlers) {
+            gateway.onNotification(handler);
+        }
+    },
+    onDisconnected(error) {
+        console.warn(
+            '[pilotdeck-bridge] gateway disconnected; notification forwarding will reconnect:',
+            error?.message || error,
+        );
+    },
+});
+
 function ensureGateway() {
-    if (!gatewayPromise) {
-        const pending = connectWithRetry()
-            .then((gateway) => {
-                if (gatewayPromise === pending) {
-                    gatewayInstance = gateway;
-                }
-                return gateway;
-            })
-            .catch((error) => {
-                // Reset only if this failed attempt is still current. A newer
-                // caller may already have started a replacement connection.
-                if (gatewayPromise === pending) {
-                    gatewayPromise = null;
-                    gatewayInstance = null;
-                }
-                throw error;
-            });
-        gatewayPromise = pending;
-    }
-    return gatewayPromise;
+    return gatewayConnections.get();
 }
 
 function resetGatewayConnection(expectedGateway) {
-    if (expectedGateway && gatewayInstance !== expectedGateway) return;
-    gatewayPromise = null;
-    gatewayInstance = null;
+    gatewayConnections.invalidate(expectedGateway);
 }
 
 export function isGatewayUnavailableError(error) {
@@ -273,6 +268,27 @@ export function isGatewayUnavailableError(error) {
  */
 export async function getPilotDeckGateway() {
     return ensureGateway();
+}
+
+/**
+ * Retry a read-only Gateway operation once when the shared WebSocket drops.
+ * Mutating operations deliberately do not use this helper: replaying an
+ * uncertain submit/steer/write could duplicate user-visible effects.
+ *
+ * @template T
+ * @param {(gateway: Awaited<ReturnType<typeof createRemoteGateway>>) => Promise<T>} operation
+ * @returns {Promise<T>}
+ */
+export async function withPilotDeckGatewayReadRetry(operation) {
+    let gateway = await ensureGateway();
+    try {
+        return await operation(gateway);
+    } catch (error) {
+        if (!isGatewayUnavailableError(error)) throw error;
+        resetGatewayConnection(gateway);
+        gateway = await ensureGateway();
+        return operation(gateway);
+    }
 }
 
 export function getPilotDeckRepoRoot() {
@@ -481,6 +497,11 @@ function persistQueueState(state) {
 }
 
 function publicQueueItem(item) {
+    const uploadedAttachmentCount = Array.isArray(item.options?.uploadedAttachments)
+        ? item.options.uploadedAttachments.reduce((count, upload) => (
+            count + (Array.isArray(upload?.attachmentIds) ? upload.attachmentIds.length : 0)
+        ), 0)
+        : 0;
     return {
         id: item.id,
         displayText: item.displayText,
@@ -489,7 +510,7 @@ function publicQueueItem(item) {
         attachmentCount: [
             ...(Array.isArray(item.options?.images) ? item.options.images : []),
             ...(Array.isArray(item.options?.attachments) ? item.options.attachments : []),
-        ].length,
+        ].length + uploadedAttachmentCount,
     };
 }
 
@@ -772,7 +793,7 @@ export function uiFilesToAttachments(files) {
 function normalizePermissionMode(value) {
     if (value === undefined || value === null || value === '') return undefined;
     if (value === 'default' || value === 'plan' || value === 'bypassPermissions') return value;
-    return 'default';
+    return undefined;
 }
 
 function normalizeRunMode(value) {
@@ -781,15 +802,13 @@ function normalizeRunMode(value) {
     return 'agent';
 }
 
-function resolvePermissionMode(options) {
+export function resolvePermissionMode(options, readPersisted = readPermissionSettings) {
     const explicit = normalizePermissionMode(options?.permissionMode || options?.mode);
-    // A literal "default" from the chat composer is the implicit
-    // no-special-mode position of the per-turn picker, not a real
-    // per-turn override. Let the user-level skipPermissions toggle
-    // win over it. Genuine non-default picks (plan / bypassPermissions)
-    // still take precedence — they're a deliberate per-turn decision.
-    if (explicit && explicit !== 'default') return explicit;
-    const persisted = readPermissionSettings();
+    // The composer permission picker is a per-turn choice. In particular,
+    // selecting "default" must be able to turn off a persisted full-access
+    // preference for this turn.
+    if (explicit) return explicit;
+    const persisted = readPersisted();
     if (persisted.skipPermissions === true) {
         return 'bypassPermissions';
     }
@@ -1473,6 +1492,12 @@ export async function runChatViaGateway(
     hooks = {},
 ) {
     const projectKey = options.projectPath || options.cwd || GENERAL_HOME;
+    const isGeneralConversation = path.resolve(projectKey) === path.resolve(GENERAL_HOME);
+    // Never trust a browser-provided cwd for General. Its transcript identity
+    // stays under PILOT_HOME, but every turn executes in the managed workspace.
+    const workspaceCwd = isGeneralConversation
+        ? await ensureGeneralWorkspaceDirectory(process.env)
+        : options.workspaceCwd;
     const channelKey = 'web';
 
     const incoming = options.sessionId || options.sessionKey;
@@ -1545,7 +1570,7 @@ export async function runChatViaGateway(
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
-            ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),
+            ...(workspaceCwd ? { workspaceCwd } : {}),
             ...(Array.isArray(options?.syntheticMessages) ? { syntheticMessages: options.syntheticMessages } : {}),
         });
 
@@ -2123,6 +2148,9 @@ export async function steerQueuedInputViaGateway(sessionId, itemId, writer, prov
             message: item.command,
             projectKey: state.projectKey,
             ...(attachments.length > 0 ? { attachments } : {}),
+            ...(Array.isArray(hydratedOptions.uploadedAttachments)
+                ? { uploadedAttachments: hydratedOptions.uploadedAttachments }
+                : {}),
         });
         if (!result?.accepted) {
             if (result?.reason === 'cancelled') {
@@ -3330,10 +3358,13 @@ export function registerAlwaysOnNotificationForwarding(clients, forwardToSession
         }
     };
     const onNotification = createAlwaysOnTurnEventForwarder(forwardFrame);
+    gatewayNotificationHandlers.add(onNotification);
 
-    ensureGateway().then((gw) => {
-        gw.onNotification(onNotification);
-    }).catch((err) => {
+    const gateway = gatewayConnections.current();
+    if (gateway) {
+        gateway.onNotification(onNotification);
+    }
+    ensureGateway().catch((err) => {
         console.warn('[pilotdeck-bridge] failed to register always-on notification forwarding:', err?.message || err);
     });
 }

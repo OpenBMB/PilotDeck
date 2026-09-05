@@ -55,11 +55,13 @@ export interface NormalizedMessage {
   // kind-specific fields (flat for simplicity)
   role?: 'user' | 'assistant';
   content?: string;
+  reasoningContent?: string;
   /** Stable identity of a queued input after it has been applied to a turn. */
   queueItemId?: string;
   /** True for a user direction injected at a model boundary during a running turn. */
   isSteer?: boolean;
   contentI18n?: { key: string; params?: Record<string, unknown> };
+  userHint?: string;
   userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: string[];
   attachments?: ChatAttachment[];

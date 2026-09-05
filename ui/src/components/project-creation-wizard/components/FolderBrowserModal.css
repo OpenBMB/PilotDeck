@@ -1,0 +1,76 @@
+.folder-picker-overlay {
+  --brand: #6167e8;
+  --brand-soft: #eff0ff;
+}
+
+.folder-picker-path {
+  display: flex;
+  align-items: center;
+  color: rgb(123, 132, 147);
+  font-size: 12px;
+  padding: 0px 24px;
+  gap: 8px;
+  border-top: 1px solid rgb(231, 233, 238);
+  border-bottom: 1px solid rgb(231, 233, 238);
+  background: rgb(251, 251, 252);
+  min-height: 40px;
+}
+
+.folder-picker-overlay .button {
+  min-height: 42px;
+  padding: 0 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+}
+
+.folder-picker-overlay .button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.folder-picker-overlay .button.primary {
+  border: 1px solid #6167e8;
+  background: #6167e8;
+  color: rgb(255, 255, 255);
+  box-shadow: rgba(97, 103, 232, 0.22) 0 7px 18px;
+}
+
+.folder-picker-overlay .button.primary:hover:not(:disabled) {
+  background: rgb(84, 90, 213);
+  box-shadow: rgba(97, 103, 232, 0.28) 0 9px 22px;
+}
+
+.folder-picker-overlay .button.secondary {
+  border: 1px solid #e3e4ef;
+  background: rgb(255, 255, 255);
+  color: rgb(89, 98, 116);
+}
+
+.folder-picker-overlay .button.secondary:hover {
+  border-color: rgb(207, 212, 223);
+  background: rgb(250, 251, 252);
+}
+
+.folder-picker-overlay .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  box-shadow: none;
+}
+
+.folder-picker-overlay .folder-entry:hover {
+  background: rgb(247, 248, 250);
+}
+
+.folder-picker-overlay .folder-entry {
+  padding-right: 10px;
+}
+
+.folder-picker-overlay .folder-select-button:hover {
+  color: var(--brand);
+  background: var(--brand-soft);
+}

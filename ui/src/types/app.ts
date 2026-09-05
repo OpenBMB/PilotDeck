@@ -263,6 +263,14 @@ export interface Project {
   displayName: string;
   fullPath: string;
   path?: string;
+  kind?: 'project' | 'general';
+  workspaceCwd?: string;
+  capabilities?: {
+    files?: boolean;
+    explore?: boolean;
+    projectFileMentions?: boolean;
+    [key: string]: unknown;
+  };
   sessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;

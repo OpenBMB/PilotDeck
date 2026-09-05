@@ -30,6 +30,7 @@ import {
 } from '../../../src/model/providerEndpoint.js';
 import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
+import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
   configuredModelIds,
@@ -161,6 +162,25 @@ function resolveProviderRequestApiKey({
     };
   }
   return { apiKey: environmentApiKey };
+}
+
+function catalogImageSupport(providerId, modelId) {
+  const provider = String(providerId || '').trim();
+  const model = String(modelId || '').trim();
+  if (!provider || !model) return null;
+  const result = lookupCatalogModel(provider, model);
+  if (!result.model) return null;
+  return Array.isArray(result.model.multimodal?.input) && result.model.multimodal.input.includes('image');
+}
+
+function imageSupportResultFromCatalog(supported) {
+  return {
+    status: supported ? 'supported' : 'unsupported',
+    supported,
+    source: 'catalog',
+    retryable: false,
+    manualConfirmationAllowed: false,
+  };
 }
 
 function imageSupportResultFromProbe(probe) {
@@ -1118,6 +1138,17 @@ router.post('/test-connection', async (req, res) => {
     maxTokens: isOpenAIResponses ? 16 : 8,
   });
   if (probe.ok) {
+    const catalogSupport = catalogImageSupport(normalizedProviderId, model);
+    if (catalogSupport !== null) {
+      const imageSupport = imageSupportResultFromCatalog(catalogSupport);
+      return res.json({
+        ok: true,
+        message: `Connected successfully — Model ${model} is available.`,
+        imageSupport,
+        supportsImage: imageSupport.supported,
+        imageCheckSource: imageSupport.source,
+      });
+    }
     const imageProbe = await probeModelConnection({
       protocol,
       baseUrl: normalizedBaseUrl,
@@ -1125,7 +1156,7 @@ router.post('/test-connection', async (req, res) => {
       apiKey: effectiveApiKey,
       model,
       image: true,
-      maxTokens: 8,
+      maxTokens: 16,
     });
     const imageSupport = imageSupportResultFromProbe(imageProbe);
     return res.json({

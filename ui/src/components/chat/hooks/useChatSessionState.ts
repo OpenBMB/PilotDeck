@@ -28,6 +28,13 @@ const INITIAL_VISIBLE_MESSAGES = 100;
 const EMPTY_NORMALIZED_MESSAGES: NormalizedMessage[] = [];
 export const BOTTOM_FOLLOW_THRESHOLD_PX = 96;
 
+export function shouldFollowConversationScroll(
+  autoScrollToBottom: boolean | undefined,
+  isUserScrolledUp: boolean,
+): boolean {
+  return Boolean(autoScrollToBottom) && !isUserScrolledUp;
+}
+
 type PendingViewSession = {
   sessionId: string | null;
   startedAt: number;
@@ -543,6 +550,31 @@ export function useChatSessionState({
     });
   }, [scrollToBottom]);
 
+  useEffect(() => {
+    if (
+      !shouldFollowConversationScroll(autoScrollToBottom, isUserScrolledUp)
+      || typeof ResizeObserver === 'undefined'
+    ) return undefined;
+    const container = scrollContainerRef.current;
+    const content = container?.querySelector<HTMLElement>('[data-chat-scroll-content]');
+    if (!container || !content) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      scheduleScrollToBottom();
+    });
+    observer.observe(content);
+    scheduleScrollToBottom();
+
+    return () => observer.disconnect();
+  }, [
+    activeScrollKey,
+    autoScrollToBottom,
+    chatMessages.length,
+    isLoadingSessionMessages,
+    isUserScrolledUp,
+    scheduleScrollToBottom,
+  ]);
+
   const scrollToBottomAndReset = useCallback(() => {
     scrollToBottom();
     if (allMessagesLoaded) {
@@ -877,7 +909,7 @@ export function useChatSessionState({
             ...sessionRequestParams,
           });
 
-          if (Boolean(autoScrollToBottom) && isNearBottom()) {
+          if (autoScrollToBottom && isNearBottom()) {
             setTimeout(() => scrollToBottom(), 200);
           }
         }
@@ -1033,6 +1065,7 @@ export function useChatSessionState({
     () => getStreamContentKey(visibleMessages),
     [visibleMessages],
   );
+  const activityContentKey = getStreamContentKey(activityMessages);
 
   useEffect(() => {
     if (!autoScrollToBottom && scrollContainerRef.current) {
@@ -1046,8 +1079,8 @@ export function useChatSessionState({
     if (isLoadingMoreRef.current || isLoadingMoreMessages || pendingScrollRestoreRef.current) return;
     if (searchScrollActiveRef.current) return;
 
-    if (autoScrollToBottom) {
-      if (!isUserScrolledUp) scheduleScrollToBottom();
+    if (shouldFollowConversationScroll(autoScrollToBottom, isUserScrolledUp)) {
+      scheduleScrollToBottom();
       return;
     }
 
@@ -1059,6 +1092,7 @@ export function useChatSessionState({
     if (heightDiff > 0 && prevTop > 0) container.scrollTop = prevTop + heightDiff;
   }, [
     autoScrollToBottom,
+    activityContentKey,
     chatMessages.length,
     isLoadingMoreMessages,
     isUserScrolledUp,

@@ -273,10 +273,46 @@
     "placeholder": "Type / for commands, @ for files, or ask {{provider}} anything...",
     "placeholderDefault": "Type your message...",
     "disabled": "Input disabled",
+    "uploading": "Uploading…",
+    "uploadComplete": "Upload complete",
+    "retryUpload": "Retry",
+    "cancelUpload": "Cancel upload {{file}}",
+    "removeAttachment": "Remove attachment {{file}}",
+    "attachmentOnlyPrompt": "Please review the attached file(s).",
+    "projectOnlyPrompt": "Please review the selected project content.",
+    "skillOnlyPrompt": "Please use the selected skills to complete the task.",
+    "contextFolder": "Folder",
+    "contextFile": "File",
+    "projectContextTitle": "Referenced project content:",
     "attachFiles": "Attach files",
     "attachImages": "Attach images",
     "mentionFile": "Mention a file",
     "slashCommand": "Run a slash command",
+    "projectFiles": "Reference project content",
+    "projectFilesCount_one": "{{count}} item",
+    "projectFilesCount_other": "{{count}} items",
+    "projectFilesAriaLabel": "Project content available to reference",
+    "projectFilesLoading": "Loading project files…",
+    "projectFilesEmpty": "No matching project content",
+    "projectFilesLoadingMore": "Load more…",
+    "projectPathMissing": "The current project path is unavailable.",
+    "projectFilesNonJson": "The project files service returned an invalid response ({{contentType}}). Restart the backend service.",
+    "projectFilesLoadFailedStatus": "Failed to load project files ({{status}}).",
+    "projectFilesLoadFailed": "Failed to load project files.",
+    "selectedFilesAndSkills": "Selected files, skills, and commands",
+    "removeSelectedFile": "Remove {{name}}",
+    "removeSelectedSkill": "Remove {{name}}",
+    "removeSelectedCommand": "Remove {{name}}",
+    "removeSelectedRunMode": "Remove {{name}}",
+    "remove": "Remove",
+    "addContext": "Add files or skills",
+    "files": "Files",
+    "filesAndFoldersDescription": "Add local content as task context",
+    "folders": "Folders",
+    "foldersDescription": "Keep folder structure and upload all content",
+    "skills": "Skills",
+    "noSkills": "No skills available",
+    "searchSkills": "Search skills",
     "send": "Send",
     "stop": "Stop",
     "hintText": {
@@ -310,6 +346,30 @@
       "agentDescription": "Directly process and execute the task",
       "planDescription": "Generate a plan first, then execute after confirmation",
       "askDescription": "Only answers questions without modifying files"
+    },
+    "models": {
+      "select": "Select model",
+      "auto": "Auto",
+      "change": "Select model",
+      "search": "Search models",
+      "empty": "No matching models",
+      "advanced": "Advanced settings",
+      "reasoning": "Reasoning",
+      "speed": "Speed",
+      "temperature": "Temperature",
+      "reasoningLevels": {
+        "off": "Off",
+        "light": "Light",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra high",
+        "max": "Maximum"
+      },
+      "speedLevels": {
+        "standard": "Standard",
+        "fast": "Fast"
+      }
     }
   },
   "documentReferences": {
@@ -317,6 +377,15 @@
     "pages": "p. {{pages}}",
     "pageUnknown": "page unknown",
     "remove": "Remove reference"
+  },
+  "replyQuotes": {
+    "addToChat": "Add to PilotDeck chat",
+    "chip": "{{count}} quotes",
+    "chip_one": "{{count}} quote",
+    "chip_other": "{{count}} quotes",
+    "remove": "Remove this quote",
+    "removeAll": "Remove all quotes",
+    "panelLabel": "Quoted assistant replies"
   },
   "commandMenu": {
     "empty": "No commands available",
@@ -544,5 +613,17 @@
       "message": "{{message}}",
       "hint": "Retry with a shorter prompt, ask the agent to split large tool inputs into smaller steps, or switch to a model with stronger tool-calling support in Settings → Model Provider."
     }
+  },
+  "workspacePicker": {
+    "select": "Select workspace",
+    "search": "Search projects",
+    "newProject": "New project",
+    "generalConversation": "General conversation",
+    "empty": "No matching projects",
+    "selectRequired": "Select a workspace to send"
+  },
+  "welcome": {
+    "greetingWithProject": "What do you want us to build in {{project}}?",
+    "noProject": "What's on the plan today?"
   }
 }

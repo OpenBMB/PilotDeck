@@ -75,7 +75,11 @@ import type {
   CronUpdateInput,
   CronUpdateResult,
 } from "../../cron/protocol/types.js";
-import { GatewayWsClient, type GatewayWsNotificationHandler } from "./GatewayWsClient.js";
+import {
+  GatewayWsClient,
+  type GatewayWsDisconnectHandler,
+  type GatewayWsNotificationHandler,
+} from "./GatewayWsClient.js";
 import { parseReloadConfigResult } from "../protocol/reloadConfigResult.js";
 
 export class RemoteGateway implements Gateway {
@@ -83,6 +87,10 @@ export class RemoteGateway implements Gateway {
 
   onNotification(handler: GatewayWsNotificationHandler): void {
     this.client.onNotification(handler);
+  }
+
+  onDisconnect(handler: GatewayWsDisconnectHandler): void {
+    this.client.onDisconnect(handler);
   }
 
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {

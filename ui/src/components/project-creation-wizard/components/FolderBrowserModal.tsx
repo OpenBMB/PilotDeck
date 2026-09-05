@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, FolderOpen, FolderPlus, HardDrive, Loader2, Plus, X } from 'lucide-react';
 import { Button, Input } from '../../../shared/view/ui';
 import { browseFilesystemFolders, createFolderInFilesystem } from '../data/workspaceApi';
 import { getParentPath, joinFolderPath } from '../utils/pathUtils';
 import { isImeEnterEvent } from '../../../utils/ime';
 import type { FolderSuggestion } from '../types';
+import './FolderBrowserModal.css';
 
 type FolderBrowserModalProps = {
   isOpen: boolean;
@@ -19,6 +22,7 @@ export default function FolderBrowserModal({
   onClose,
   onFolderSelected,
 }: FolderBrowserModalProps) {
+  const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState('~');
   const [rootsPath, setRootsPath] = useState<string | null>(null);
   const [folders, setFolders] = useState<FolderSuggestion[]>([]);
@@ -39,11 +43,11 @@ export default function FolderBrowserModal({
       setRootsPath(result.rootsPath || null);
       setFolders(result.suggestions);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load folders');
+      setError(loadError instanceof Error ? loadError.message : t('projectWizard.folderBrowser.loadFailed'));
     } finally {
       setLoadingFolders(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -102,25 +106,28 @@ export default function FolderBrowserModal({
       resetNewFolderState();
       await loadFolders(createdPath);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Failed to create folder');
+      setError(createError instanceof Error ? createError.message : t('projectWizard.folderBrowser.createFailed'));
     } finally {
       setCreatingFolder(false);
     }
-  }, [canCreateFolder, currentPath, loadFolders, newFolderName]);
+  }, [canCreateFolder, currentPath, loadFolders, newFolderName, t]);
 
   if (!isOpen) {
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-card text-card-foreground shadow-xl">
-        <div className="flex items-center justify-between border-b border-border p-4">
+  const modal = (
+    <div
+      data-modal-overlay
+      className="folder-picker-overlay fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+    >
+      <div className="flex max-h-[min(520px,70vh)] w-full max-w-2xl min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground">
               <FolderOpen className="h-4 w-4" strokeWidth={1.75} />
             </div>
-            <h3 className="text-lg font-semibold text-foreground">Select Folder</h3>
+            <h3 className="text-lg font-semibold text-foreground">{t('projectWizard.folderBrowser.title')}</h3>
           </div>
 
           <div className="flex items-center gap-2">
@@ -131,7 +138,7 @@ export default function FolderBrowserModal({
                   ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               }`}
-              title={showHiddenFolders ? 'Hide hidden folders' : 'Show hidden folders'}
+              title={showHiddenFolders ? t('projectWizard.folderBrowser.hideHidden') : t('projectWizard.folderBrowser.showHidden')}
             >
               {showHiddenFolders ? <Eye className="h-5 w-5" strokeWidth={1.75} /> : <EyeOff className="h-5 w-5" strokeWidth={1.75} />}
             </button>
@@ -145,14 +152,14 @@ export default function FolderBrowserModal({
                     ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
                     : 'cursor-not-allowed text-muted-foreground/40'
               }`}
-              title={canCreateFolder ? 'Create new folder' : 'Choose a drive first'}
+              title={t('projectWizard.folderBrowser.createFolder')}
             >
               <Plus className="h-5 w-5" strokeWidth={1.75} />
             </button>
             <button
               onClick={handleClose}
               className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="Close"
+              aria-label={t('projectWizard.folderBrowser.close')}
             >
               <X className="h-5 w-5" strokeWidth={1.75} />
             </button>
@@ -166,7 +173,7 @@ export default function FolderBrowserModal({
                 type="text"
                 value={newFolderName}
                 onChange={(event) => setNewFolderName(event.target.value)}
-                placeholder="New folder name"
+                placeholder={t('projectWizard.folderBrowser.newFolderName')}
                 className="flex-1"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
@@ -186,10 +193,10 @@ export default function FolderBrowserModal({
                 onClick={handleCreateFolder}
                 disabled={!newFolderName.trim() || creatingFolder}
               >
-                {creatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                {creatingFolder ? <Loader2 className="h-4 w-4 animate-spin" /> : t('projectWizard.folderBrowser.create')}
               </Button>
               <Button size="sm" variant="ghost" onClick={resetNewFolderState}>
-                Cancel
+                {t('projectWizard.folderBrowser.cancel')}
               </Button>
             </div>
           </div>
@@ -201,7 +208,7 @@ export default function FolderBrowserModal({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {loadingFolders ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -219,8 +226,9 @@ export default function FolderBrowserModal({
               )}
               {parentPath && (
                 <button
+                  type="button"
                   onClick={() => loadFolders(parentPath)}
-                  className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground"
+                  className="folder-entry flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left"
                 >
                   <FolderOpen className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} />
                   <span className="font-medium text-foreground">
@@ -231,14 +239,17 @@ export default function FolderBrowserModal({
 
               {visibleFolders.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  {isDriveRootsView ? 'No drives found' : 'No subfolders found'}
+                  {isDriveRootsView
+                    ? 'No drives found'
+                    : t('projectWizard.folderBrowser.noSubfolders')}
                 </div>
               ) : (
                 visibleFolders.map((folder) => (
-                  <div key={folder.path} className="flex items-center gap-2">
+                  <div key={folder.path} className="folder-entry flex items-center gap-2 rounded-lg">
                     <button
+                      type="button"
                       onClick={() => loadFolders(folder.path)}
-                      className="flex flex-1 items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground"
+                      className="flex flex-1 items-center gap-3 rounded-lg px-4 py-3 text-left"
                     >
                       {folder.type === 'drive'
                         ? <HardDrive className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} />
@@ -251,9 +262,9 @@ export default function FolderBrowserModal({
                       variant="ghost"
                       size="sm"
                       onClick={() => onFolderSelected(folder.path, autoAdvanceOnSelect)}
-                      className="px-3 text-xs"
+                      className="folder-select-button px-3 text-xs"
                     >
-                      Select
+                      {t('projectWizard.folderBrowser.select')}
                     </Button>
                   </div>
                 ))
@@ -262,27 +273,32 @@ export default function FolderBrowserModal({
           )}
         </div>
 
-        <div className="border-t border-border">
-          <div className="flex items-center gap-2 bg-muted/40 px-4 py-3">
-            <span className="text-sm text-muted-foreground">Path:</span>
-            <code className="flex-1 truncate font-mono text-sm text-foreground">
-              {currentPath}
-            </code>
+        <div className="shrink-0">
+          <div className="folder-picker-path">
+            <span>{t('projectWizard.folderBrowser.path')}</span>
+            <code className="min-w-0 flex-1 truncate">{currentPath}</code>
           </div>
           <div className="flex items-center justify-end gap-2 p-4">
-            <Button variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="outline"
+            <button className="button secondary" type="button" onClick={handleClose}>
+              {t('projectWizard.folderBrowser.cancel')}
+            </button>
+            <button
+              className="button primary"
+              type="button"
               onClick={() => onFolderSelected(currentPath, autoAdvanceOnSelect)}
               disabled={!canSelectCurrentFolder}
             >
-              Use this folder
-            </Button>
+              {t('projectWizard.folderBrowser.useThisFolder')}
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modal;
+  }
+
+  return createPortal(modal, document.body);
 }

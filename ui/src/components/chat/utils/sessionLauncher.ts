@@ -3,7 +3,7 @@ import type { ChatAttachment, ChatRunMode, PilotDeckSettings, PermissionMode } f
 import { getPilotDeckSettings, safeLocalStorage } from './chatStorage';
 
 type StartSessionOptions = {
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean | void;
   selectedProject: Project;
   command: string;
   runId?: string;
@@ -17,8 +17,17 @@ type StartSessionOptions = {
   thinking?: unknown;
   sessionSummary?: string | null;
   toolsSettings?: PilotDeckSettings;
+  modelOverride?: {
+    mode: 'model';
+    provider: string;
+    model: string;
+    reasoning?: number;
+    temperature?: number;
+    speed?: number;
+  };
   images?: unknown[];
   attachments?: ChatAttachment[];
+  uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   alwaysOnPlanId?: string;
   alwaysOnExecutionToken?: string;
   workspaceCwd?: string;
@@ -32,6 +41,8 @@ type RegenerateLastSessionOptions = Omit<
   sessionId: string;
   expectedTurnId: string;
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
+  /** Attachments rendered in the replacement bubble; model attachments are sent separately. */
+  displayAttachments?: ChatAttachment[];
 };
 
 const VALID_PERMISSION_MODES = new Set<PermissionMode>([
@@ -85,7 +96,6 @@ export function getNotificationSessionSummary(
     ? `${normalizedFallback.slice(0, 77)}...`
     : normalizedFallback;
 }
-
 export function getStoredPermissionMode(
   selectedSession: ProjectSession | null,
 ): PermissionMode {
@@ -120,17 +130,20 @@ export function startSessionCommand({
   thinking,
   sessionSummary,
   toolsSettings = getPilotDeckSettings(),
+  modelOverride,
   images,
   attachments,
+  uploadedAttachments,
   alwaysOnPlanId,
   alwaysOnExecutionToken,
   workspaceCwd,
-}: StartSessionOptions): string {
+}: StartSessionOptions): string | null {
   const sessionToActivate =
     sessionId || temporarySessionId || createTemporarySessionId();
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+  const resolvedWorkspaceCwd = workspaceCwd || selectedProject.workspaceCwd;
 
-  sendMessage({
+  const delivered = sendMessage({
     type: 'pilotdeck-command',
     command,
     options: {
@@ -145,6 +158,7 @@ export function startSessionCommand({
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
       sessionSummary,
+      ...(modelOverride ? { modelOverride } : {}),
       ...(typeof userVisibleInput === 'string' && userVisibleInput.trim()
         ? { userVisibleInput: userVisibleInput.trim() }
         : {}),
@@ -152,11 +166,14 @@ export function startSessionCommand({
       ...(alwaysOnExecutionToken ? { alwaysOnExecutionToken } : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
-      ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
+        ? { uploadedAttachments }
+        : {}),
+      ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
     },
   });
 
-  return sessionToActivate;
+  return delivered === false ? null : sessionToActivate;
 }
 
 export function regenerateLastSessionCommand({
@@ -177,10 +194,13 @@ export function regenerateLastSessionCommand({
   toolsSettings = getPilotDeckSettings(),
   images,
   attachments,
+  uploadedAttachments,
+  displayAttachments,
   workspaceCwd,
   syntheticMessages,
 }: RegenerateLastSessionOptions): void {
   const resolvedProjectPath = getSelectedProjectPath(selectedProject);
+  const resolvedWorkspaceCwd = workspaceCwd || selectedProject.workspaceCwd;
   sendMessage({
     type: 'regenerate-last-message',
     requestId,
@@ -205,7 +225,11 @@ export function regenerateLastSessionCommand({
         : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
-      ...(workspaceCwd ? { workspaceCwd } : {}),
+      ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
+        ? { uploadedAttachments }
+        : {}),
+      ...(Array.isArray(displayAttachments) ? { displayAttachments } : {}),
+      ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
       ...(Array.isArray(syntheticMessages) && syntheticMessages.length > 0
         ? { syntheticMessages }
         : {}),

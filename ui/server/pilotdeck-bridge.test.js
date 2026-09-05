@@ -15,6 +15,7 @@ import {
     queuedInputDispositionAfterTurn,
     reconcileRecoveredQueueItems,
     resetSteeringItemForRun,
+    resolvePermissionMode,
     resumeInputQueueState,
     scheduleQueuedDispatchAfterActivityCheck,
     setLocalActiveRun,
@@ -25,6 +26,29 @@ import {
     syncLocalActiveRunFromSnapshot,
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+describe('per-turn permission precedence', () => {
+    it('lets an explicit default selection turn off persisted full access for one turn', () => {
+        expect(resolvePermissionMode(
+            { permissionMode: 'default' },
+            () => ({ skipPermissions: true }),
+        )).toBe('default');
+    });
+
+    it('uses persisted full access when the turn has no explicit selection', () => {
+        expect(resolvePermissionMode(
+            {},
+            () => ({ skipPermissions: true }),
+        )).toBe('bypassPermissions');
+    });
+
+    it('does not let an invalid explicit value disable persisted full access', () => {
+        expect(resolvePermissionMode(
+            { permissionMode: 'unexpected-mode' },
+            () => ({ skipPermissions: true }),
+        )).toBe('bypassPermissions');
+    });
+});
 
 function deferred() {
     let resolve;
@@ -85,6 +109,44 @@ describe('queued input persistence', () => {
         });
 
         expect(stored.options.images[0].data).toBe('data:image/png;base64,abc');
+    });
+
+    it('preserves redesigned composer options needed for delayed queue dispatch', () => {
+        const stored = serializeQueuedInputForStorage({
+            id: 'queue-rich-input',
+            status: 'queued',
+            options: {
+                modelOverride: {
+                    mode: 'model',
+                    provider: 'openai',
+                    model: 'gpt-test',
+                    reasoning: 0.8,
+                    temperature: 0.2,
+                    speed: 1,
+                },
+                uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+                attachments: [{ type: 'file', path: '/workspace/context.md' }],
+                runMode: 'plan',
+                permissionMode: 'plan',
+                basePermissionMode: 'default',
+            },
+        });
+
+        expect(restoreQueuedInputFromStorage(stored).options).toMatchObject({
+            modelOverride: {
+                mode: 'model',
+                provider: 'openai',
+                model: 'gpt-test',
+                reasoning: 0.8,
+                temperature: 0.2,
+                speed: 1,
+            },
+            uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+            attachments: [{ type: 'file', path: '/workspace/context.md' }],
+            runMode: 'plan',
+            permissionMode: 'plan',
+            basePermissionMode: 'default',
+        });
     });
 
     it('preserves uncertain delivery state across repeated persistence', () => {

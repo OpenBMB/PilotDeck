@@ -273,6 +273,7 @@ export function useProjectsState({
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSession, setSelectedSession] = useState<ProjectSession | null>(null);
+  const [draftSessionProjectName, setDraftSessionProjectName] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(readPersistedTab);
 
   useEffect(() => {
@@ -285,6 +286,7 @@ export function useProjectsState({
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [projectsLoadError, setProjectsLoadError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -312,12 +314,24 @@ export function useProjectsState({
         setIsLoadingProjects(true);
       }
       const response = await api.projects();
-      const projectData = (await response.json()) as Project[];
+      const payload = await response.json().catch(() => null) as
+        | Project[]
+        | { error?: string | { message?: string } }
+        | null;
 
-      if (!Array.isArray(projectData)) {
-        console.error('Error fetching projects: expected array, got', projectData);
-        return;
+      if (!response.ok) {
+        const serverMessage = payload && !Array.isArray(payload)
+          ? typeof payload.error === 'string'
+            ? payload.error
+            : payload.error?.message
+          : null;
+        throw new Error(serverMessage || `Unable to load projects (HTTP ${response.status}).`);
       }
+
+      if (!Array.isArray(payload)) {
+        throw new Error('Unable to load projects: the server returned an invalid response.');
+      }
+      const projectData = payload;
 
       setProjects((prevProjects) => {
         if (prevProjects.length === 0) {
@@ -330,8 +344,12 @@ export function useProjectsState({
 
         return preserveLoadedSessions(prevProjects, projectData);
       });
+      setProjectsLoadError(null);
+      return projectData;
     } catch (error) {
       console.error('Error fetching projects:', error);
+      setProjectsLoadError(error instanceof Error ? error.message : 'Unable to load projects.');
+      return null;
     } finally {
       if (showLoadingState) {
         setIsLoadingProjects(false);
@@ -543,6 +561,7 @@ export function useProjectsState({
       const previewProject = resetProjectSessionPreview(project);
       setSelectedProject(previewProject);
       setSelectedSession(null);
+      setDraftSessionProjectName(null);
       setProjects((prevProjects) => prevProjects.map(resetProjectSessionPreview));
       navigate('/');
 
@@ -555,6 +574,7 @@ export function useProjectsState({
 
   const handleSessionSelect = useCallback(
     (session: ProjectSession) => {
+      setDraftSessionProjectName(null);
       setSelectedSession(session);
 
       if (activeTab === 'tasks' || activeTab === 'preview') {
@@ -580,6 +600,7 @@ export function useProjectsState({
       setSelectedProject(project);
       setSelectedSession(null);
       setActiveTab('chat');
+      setDraftSessionProjectName(project.name);
       navigate('/');
 
       if (isMobile) {
@@ -691,15 +712,10 @@ export function useProjectsState({
   );
 
   const handleSidebarRefresh = useCallback(async () => {
+    const freshProjects = await fetchProjects({ showLoadingState: false });
+    if (!freshProjects) return;
+
     try {
-      const response = await api.projects();
-      const freshProjects = (await response.json()) as Project[];
-
-      setProjects((prevProjects) => {
-        if (!projectsHaveChanges(prevProjects, freshProjects, true)) return prevProjects;
-        return preserveLoadedSessions(prevProjects, freshProjects);
-      });
-
       if (!selectedProject) {
         return;
       }
@@ -729,7 +745,7 @@ export function useProjectsState({
     } catch (error) {
       console.error('Error refreshing sidebar:', error);
     }
-  }, [selectedProject, selectedSession]);
+  }, [fetchProjects, selectedProject, selectedSession]);
 
   const handleProjectDelete = useCallback(
     (projectName: string) => {
@@ -747,6 +763,7 @@ export function useProjectsState({
   const handleDeselectProject = useCallback(() => {
     setSelectedProject(null);
     setSelectedSession(null);
+    setDraftSessionProjectName(null);
     setProjects((prevProjects) => prevProjects.map(resetProjectSessionPreview));
     navigate('/');
   }, [navigate]);
@@ -874,6 +891,10 @@ export function useProjectsState({
       onSessionDelete: handleSessionDelete,
       onProjectDelete: handleProjectDelete,
       isLoading: isLoadingProjects,
+      loadError: projectsLoadError,
+      onRetryLoad: () => {
+        void fetchProjects();
+      },
       loadingProgress,
       onRefresh: handleSidebarRefresh,
       onShowSettings: () => setShowSettings(true),
@@ -889,10 +910,12 @@ export function useProjectsState({
       handleSessionDelete,
       handleSessionSelect,
       handleSidebarRefresh,
+      fetchProjects,
       isLoadingProjects,
       isMobile,
       loadingProgress,
       projects,
+      projectsLoadError,
       settingsInitialTab,
       selectedProject,
       selectedSession,
@@ -907,6 +930,7 @@ export function useProjectsState({
     activeTab,
     sidebarOpen,
     isLoadingProjects,
+    projectsLoadError,
     loadingProgress,
     isInputFocused,
     showSettings,
@@ -929,6 +953,7 @@ export function useProjectsState({
     handleDeselectProject,
     handleResetProjectSessionPreview,
     setSelectedProject,
+    draftSessionProjectName,
     handleSidebarRefresh,
     loadMoreSessions,
     loadingMoreProjectIds,

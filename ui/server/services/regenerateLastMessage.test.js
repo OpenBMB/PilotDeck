@@ -13,6 +13,32 @@ function requestData() {
 }
 
 describe('regenerateLastMessageTransaction', () => {
+    it('uses display attachments for the replacement bubble', async () => {
+        const streamFrames = [];
+        const data = requestData();
+        data.options.attachments = [{ name: 'workspace.txt' }];
+        data.options.displayAttachments = [{ name: 'upload.pdf', uploadId: 'upload-1' }];
+        await regenerateLastMessageTransaction({
+            data,
+            sessionId: 'web:s_test',
+            requestId: 'request-display',
+            expectedTurnId: 'turn-old',
+            provider: 'pilotdeck',
+            writer: { send: () => undefined },
+            streamWriter: { send: (frame) => streamFrames.push(frame) },
+            replaceLastTurn: vi.fn(async () => ({ replacedTurnId: 'turn-old', transactionId: 'tx' })),
+            finalizeLastTurnReplacement: vi.fn(),
+            runChat: vi.fn(async (_command, _options, _writer, _provider, hooks) => {
+                hooks.onInputAccepted();
+                return { inputAccepted: true };
+            }),
+        });
+        expect(streamFrames[0]).toMatchObject({
+            type: 'session-turn-replaced',
+            attachments: [{ name: 'upload.pdf', uploadId: 'upload-1' }],
+        });
+    });
+
     it('reports success and releases buffered frames only after input_accepted', async () => {
         const resultFrames = [];
         const streamFrames = [];

@@ -68,6 +68,14 @@ vi.mock('../../utils/api', () => ({
   },
 }));
 
+vi.mock('../main-content-v2/CronV2', () => ({
+  default: () => <div data-testid="cron-page" />,
+}));
+
+vi.mock('../main-content-v2/SkillsV2', () => ({
+  default: () => <div data-testid="skills-page" />,
+}));
+
 const project: Project = {
   name: 'pilotdeck',
   displayName: 'PilotDeck',
@@ -77,14 +85,16 @@ const project: Project = {
 function Harness({
   initialTab = 'chat',
   withSession = false,
+  selectedProject = project,
 }: {
   initialTab?: AppTab;
   withSession?: boolean;
+  selectedProject?: Project;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const props = {
     projects: [project],
-    selectedProject: project,
+    selectedProject,
     selectedSession: withSession ? { id: 'session-1', title: 'Searchable chat' } : null,
     activeTab,
     setActiveTab,
@@ -100,6 +110,25 @@ afterEach(() => {
 });
 
 describe('MainAreaV2 dashboard switcher', () => {
+  it('keeps General on chat and hides project-scoped Files and Explore tools', async () => {
+    const generalProject: Project = {
+      name: 'general',
+      displayName: 'general',
+      kind: 'general',
+      fullPath: '/state/pilot-home',
+      workspaceCwd: '/workspaces/general',
+      capabilities: { files: false, explore: false, projectFileMentions: false },
+    };
+
+    render(<Harness initialTab="files" selectedProject={generalProject} />);
+
+    expect(screen.queryByRole('button', { name: 'tabs.files' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
+    });
+  });
+
   it('renames the selected session inline after double-clicking the header title', () => {
     render(<Harness withSession />);
 
@@ -215,43 +244,64 @@ describe('MainAreaV2 dashboard switcher', () => {
     expect(screen.queryByText('tabs.chat')).toBeNull();
     const filesButton = screen.getByRole('button', { name: 'tabs.files' });
     expect(filesButton.getAttribute('aria-pressed')).toBe('false');
+    expect(filesButton.className).toContain('file-entry');
 
     fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
     expect(filesButton.getAttribute('aria-pressed')).toBe('true');
-    expect(filesButton.className).toContain('bg-blue-100');
-    expect(filesButton.className).toContain('text-blue-700');
-    expect(filesButton.className).not.toContain('shadow');
+    expect(filesButton.className).toContain('file-entry');
+    expect(filesButton.className).toContain('font-medium');
 
     fireEvent.click(filesButton);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
     expect(filesButton.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('replaces the overflow button with the selected dashboard and restores it when closed', async () => {
+  it('keeps the overflow menu available while a dashboard panel is open', async () => {
     render(<Harness />);
 
     const overflowButton = screen.getByRole('button', { name: 'Open dashboards menu' });
+    expect(overflowButton.textContent).toContain('Explore');
     fireEvent.click(overflowButton);
     const menu = screen.getByRole('menu', { name: 'Dashboards' });
     expect(menu.className).toContain('z-[90]');
     expect(menu.className).toContain('w-32');
     expect(screen.getByRole('menuitem', { name: 'tabs.memory' }).className).toContain('justify-center');
 
+    expect(screen.queryByRole('menuitem', { name: 'tabs.cron' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'tabs.skills' })).toBeNull();
+
     fireEvent.click(screen.getByRole('menuitem', { name: 'tabs.memory' }));
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('memory');
-    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open dashboards menu' })).toBeTruthy();
 
-    const memoryButton = screen.getByRole('button', { name: 'tabs.memory' });
-    expect(memoryButton.getAttribute('aria-pressed')).toBe('true');
-    expect(memoryButton.className).toContain('bg-blue-100');
-    expect(memoryButton.className).toContain('text-blue-700');
-    expect(memoryButton.className).not.toContain('shadow');
-    fireEvent.click(memoryButton);
-
-    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
+    fireEvent.click(screen.getByRole('button', { name: 'Open dashboards menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'tabs.dashboard' }));
+    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('dashboard');
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Open dashboards menu' })).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Open dashboards menu' })).toBeTruthy();
     });
+  });
+
+  it('replaces the workspace header with only the scheduled tasks title', async () => {
+    render(<Harness initialTab="cron" withSession />);
+
+    expect(await screen.findByRole('heading', { name: 'Scheduled Tasks' })).toBeTruthy();
+    expect(screen.getByTestId('cron-page')).toBeTruthy();
+    expect(screen.queryByTitle('Searchable chat')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search current conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'tabs.files' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
+  });
+
+  it('replaces the workspace header with only the skills title', async () => {
+    render(<Harness initialTab="skills" withSession />);
+
+    expect(await screen.findByRole('heading', { name: 'Skills' })).toBeTruthy();
+    expect(screen.getByTestId('skills-page')).toBeTruthy();
+    expect(screen.queryByTitle('Searchable chat')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search current conversation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'tabs.files' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open dashboards menu' })).toBeNull();
   });
 });

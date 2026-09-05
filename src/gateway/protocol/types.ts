@@ -136,6 +136,7 @@ export type GatewaySteerTurnInput = {
   message: string;
   projectKey?: string;
   attachments?: ChannelAttachment[];
+  uploadedAttachments?: UploadedAttachmentRef[];
 };
 
 export type GatewaySteerTurnResult = {

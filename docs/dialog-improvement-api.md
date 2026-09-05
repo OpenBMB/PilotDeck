@@ -400,7 +400,7 @@ type ModelsResponse = {
 
 - `reasoning`：推理强度，归一化范围 `0..1`。
 - `temperature`：采样温度，范围 `0..1`。
-- `speed`：Provider 请求速度参数，范围 `0..1`；仅在模型显式声明支持且目标 Provider 有对应适配时返回。Google Provider 当前不支持该字段。
+- `speed`：Provider 请求速度参数，范围 `0..1`。官方 OpenAI / Anthropic 模型以及显式声明 `supportsSpeed: true` 且目标 Provider 有对应适配的模型会返回该能力；目录以枚举 `0`（标准）和 `1`（快速）暴露。Google Provider 当前不支持该字段。
 - 未显式声明 `supportsThinking` 的模型按协议默认支持 reasoning；显式 `supportsThinking: false` 时不返回 reasoning。
 - 自定义 OpenAI-compatible provider 只有在 provider 配置显式设置 `speedMapping: openai_service_tier` 后才会返回 speed；自定义 Anthropic-compatible provider 对应设置 `speedMapping: anthropic_speed`。
 - `speed < 0.5` 使用 OpenAI 和 Anthropic 默认速度（省略 `service_tier` / `speed`）；`speed >= 0.5` 映射为 OpenAI `service_tier: "priority"` / Anthropic `speed: "fast"`。Anthropic fast mode 同时自动添加 beta header `fast-mode-2026-02-01`。

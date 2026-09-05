@@ -14,7 +14,12 @@ export {
   type GatewayMemoryDiagnosticSession,
 } from "./memoryDiagnostics.js";
 export { InProcessGateway, mapAgentEvent, type InProcessGatewayOptions } from "./client/InProcessGateway.js";
-export { GatewayWsClient, GatewayRequestError, type GatewayWsClientOptions } from "./client/GatewayWsClient.js";
+export {
+  GatewayWsClient,
+  GatewayRequestError,
+  type GatewayWsClientOptions,
+  type GatewayWsDisconnectHandler,
+} from "./client/GatewayWsClient.js";
 export { RemoteGateway, createRemoteGateway } from "./client/RemoteGateway.js";
 export { connectRemoteGatewayIfAvailable, probeGatewayServer, type ProbeGatewayServerOptions } from "./client/probeServer.js";
 export { startGatewayServer, type GatewayServer, type GatewayServerOptions } from "./server/GatewayServer.js";

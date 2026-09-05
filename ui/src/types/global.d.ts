@@ -27,6 +27,7 @@ declare global {
       }) => void) => () => void;
       retryRuntime: () => Promise<void>;
       openRuntimeLog: () => Promise<void>;
+      pickFolder: () => Promise<string | null>;
     };
   }
 
