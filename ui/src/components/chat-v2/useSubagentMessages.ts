@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import type { ChatMessage } from '../chat/types/types';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import type { NormalizedMessage, SessionStore } from '../../stores/useSessionStore';
@@ -88,6 +88,35 @@ export function mergeSubagentDetailMessages(
   return merged;
 }
 
+// Snapshot IDs differ from stream IDs. Within one child transcript, preserve
+// identity by ID/tool ID first, then by unambiguous content and occurrence order.
+export function inheritSubagentRenderKeys(previous: NormalizedMessage[], next: NormalizedMessage[]): NormalizedMessage[] {
+  const kind = (message: NormalizedMessage) => message.kind === 'stream_delta' ? 'text' : message.kind;
+  const role = (message: NormalizedMessage) => kind(message) === 'text' ? message.role || 'assistant' : null;
+  const compatible = (a: NormalizedMessage, b: NormalizedMessage) => kind(a) === kind(b) && role(a) === role(b);
+  const signature = (message: NormalizedMessage) => JSON.stringify([kind(message), role(message), message.content]);
+  const key = (candidate: NormalizedMessage) => candidate.renderKey || candidate.id;
+  const exactMatches = next.map((message) => previous.find((candidate) => compatible(candidate, message)
+    && (candidate.id === message.id || (message.toolId && candidate.toolId === message.toolId))));
+  // Reserve strong identities before matching by content, regardless of order.
+  const used = new Set(exactMatches.flatMap((match) => match ? [key(match)] : []));
+  return next.map((message, index) => {
+    const candidates = previous.filter((candidate) => compatible(candidate, message) && !used.has(key(candidate)));
+    let match = exactMatches[index];
+    if (!match && message.content) {
+      const sameContent = (candidate: NormalizedMessage) => signature(candidate) === signature(message);
+      // Different occurrence counts are ambiguous; do not transfer one row's
+      // expansion/reading state to a different repeated thought or answer.
+      if (previous.filter(sameContent).length === next.filter(sameContent).length) {
+        match = candidates.find(sameContent);
+      }
+    }
+    const renderKey = match ? key(match) : message.renderKey || message.id;
+    used.add(renderKey);
+    return renderKey === message.renderKey ? message : { ...message, renderKey };
+  });
+}
+
 export function useSubagentMessages(
   sessionId: string | null,
   subagentId: string | null,
@@ -96,27 +125,34 @@ export function useSubagentMessages(
   refreshKey?: string,
   sessionRequestParams: SessionRequestParams = {},
 ): SubagentMessagesResult {
-  const [snapshotMessages, setSnapshotMessages] = useState<NormalizedMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const scope = JSON.stringify([sessionId, subagentId, projectPath, sessionRequestParams.sessionKind,
+    sessionRequestParams.parentSessionId, sessionRequestParams.relativeTranscriptPath]);
+  const [snapshot, setSnapshot] = useState<{ scope: string; refreshKey?: string; messages: NormalizedMessage[] } | null>(null);
+  const [request, setRequest] = useState<{ scope: string; isLoading: boolean; error: string | null } | null>(null);
+  const previousRef = useRef<{ scope: string; messages: NormalizedMessage[] } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { sessionKind, parentSessionId, relativeTranscriptPath } = sessionRequestParams;
   const realtimeMessages = sessionId && subagentId
     ? sessionStore?.getSubagentDetailMessages?.(sessionId, subagentId) ?? EMPTY_NORMALIZED_MESSAGES
     : EMPTY_NORMALIZED_MESSAGES;
-  const useSnapshotOnly = refreshKey === 'completed' || refreshKey === 'failed';
-  const messages = useMemo(() => {
-    const normalized = mergeSubagentDetailMessages(snapshotMessages, realtimeMessages, useSnapshotOnly);
-    return normalizeSubagentDetailContainers(
-      filterSubagentDetailMessages(normalizedToChatMessages(normalized)),
-    );
-  }, [snapshotMessages, realtimeMessages, useSnapshotOnly]);
+  const normalized = useMemo(() => {
+    const snapshotMessages = snapshot?.scope === scope ? snapshot.messages : EMPTY_NORMALIZED_MESSAGES;
+    // A status change starts a refresh. Until THAT snapshot arrives, retain the
+    // live tail instead of switching back to an older incomplete snapshot.
+    const useSnapshotOnly = snapshot?.scope === scope && snapshot.refreshKey === refreshKey
+      && (refreshKey === 'completed' || refreshKey === 'failed');
+    const merged = mergeSubagentDetailMessages(snapshotMessages, realtimeMessages, useSnapshotOnly);
+    return inheritSubagentRenderKeys(previousRef.current?.scope === scope ? previousRef.current.messages : [], merged);
+  }, [snapshot, realtimeMessages, scope, refreshKey]);
+  useLayoutEffect(() => { previousRef.current = { scope, messages: normalized }; }, [scope, normalized]);
+  const messages = useMemo(() => normalizeSubagentDetailContainers(
+    filterSubagentDetailMessages(normalizedToChatMessages(normalized)),
+  ), [normalized]);
 
   useEffect(() => {
     if (!sessionId || !subagentId) {
-      setSnapshotMessages([]);
-      setIsLoading(false);
-      setError(null);
+      setSnapshot(null);
+      setRequest(null);
       return;
     }
 
@@ -124,8 +160,7 @@ export function useSubagentMessages(
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setIsLoading(true);
-    setError(null);
+    setRequest({ scope, isLoading: true, error: null });
 
     const params = new URLSearchParams();
     if (projectPath) params.set('projectPath', projectPath);
@@ -145,17 +180,16 @@ export function useSubagentMessages(
       .then((data) => {
         if (controller.signal.aborted) return;
         const normalized = Array.isArray(data.messages) ? data.messages : [];
-        setSnapshotMessages(normalized);
-        setIsLoading(false);
+        setSnapshot({ scope, refreshKey, messages: normalized });
+        setRequest({ scope, isLoading: false, error: null });
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setIsLoading(false);
+        setRequest({ scope, isLoading: false, error: err instanceof Error ? err.message : String(err) });
       });
 
     return () => controller.abort();
-  }, [sessionId, subagentId, projectPath, refreshKey, sessionKind, parentSessionId, relativeTranscriptPath]);
+  }, [sessionId, subagentId, projectPath, refreshKey, sessionKind, parentSessionId, relativeTranscriptPath, scope]);
 
-  return { messages, isLoading, error };
+  return { messages, isLoading: request?.scope === scope && request.isLoading, error: request?.scope === scope ? request.error : null };
 }

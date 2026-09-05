@@ -279,6 +279,17 @@ describe('processGrouping', () => {
     expect(processAttachments(thirdAssistant)).toHaveLength(0);
   });
 
+  it('keeps alternating thinking and tool segments in chronological order after completion', () => {
+    const transcript = [user('u'), thinking('think-a'), tool('read', 'Read'), thinking('think-b'), tool('bash', 'Bash'), assistant('answer', 'Done')];
+    const items = buildRenderableMessageItems(transcript, { isAssistantWorking: false });
+    const timeline = items.flatMap((item) => [
+      ...item.beforeProcessAttachments.flatMap((attachment) => attachment.processDetailMessages.map((message) => message.id)),
+      item.message.id,
+      ...item.afterProcessAttachments.flatMap((attachment) => attachment.processDetailMessages.map((message) => message.id)),
+    ]);
+    expect(timeline).toEqual(transcript.map((message) => message.id));
+  });
+
   it('attaches completed run duration after the user turn finishes', () => {
     const messages: ChatMessage[] = [
       user('u1'),

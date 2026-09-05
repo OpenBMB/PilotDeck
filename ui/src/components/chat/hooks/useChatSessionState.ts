@@ -22,7 +22,7 @@ import {
   invalidateSessionStatusResponses,
 } from '../sessionStatusProtocol';
 import { normalizedToChatMessages } from './useChatMessages';
-import { useScrollFollow } from './useScrollFollow';
+import { useScrollFollow, type ReadingAnchor } from './useScrollFollow';
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
@@ -268,6 +268,7 @@ type ConversationScrollPosition = {
   top: number;
   distanceFromBottom: number;
   following?: boolean;
+  anchor?: ReadingAnchor | null;
 };
 
 const CONVERSATION_SCROLL_BOTTOM_THRESHOLD = 40;
@@ -522,12 +523,16 @@ export function useChatSessionState({
 
   const {
     isPaused: isUserScrolledUp,
+    canReturnToLatest,
     setPaused: setIsUserScrolledUp,
     getIsPaused,
     pause: pauseScrollFollowing,
     scrollToBottom,
     scheduleFollow: scheduleScrollToBottom,
+    scheduleInitialPosition,
     captureAnchor: captureReadingAnchor,
+    getReadingAnchor,
+    restoreReadingAnchor,
   } = useScrollFollow({
     containerRef: scrollContainerRef,
     enabled: Boolean(autoScrollToBottom),
@@ -601,7 +606,8 @@ export function useChatSessionState({
     if (activeScrollKey) {
       conversationScrollPositionsRef.current.set(activeScrollKey, {
         top: container.scrollTop,
-        following: !getIsPaused(),
+        following: Boolean(autoScrollToBottom) && !getIsPaused(),
+        anchor: getReadingAnchor(),
         distanceFromBottom: Math.max(
           0,
           container.scrollHeight - container.scrollTop - container.clientHeight,
@@ -619,7 +625,7 @@ export function useChatSessionState({
       const didLoad = await loadOlderMessages(container);
       if (didLoad) topLoadLockRef.current = true;
     }
-  }, [activeScrollKey, getIsPaused, loadOlderMessages]);
+  }, [activeScrollKey, autoScrollToBottom, getIsPaused, getReadingAnchor, loadOlderMessages]);
 
   // Reset scroll/pagination state on session change
   useLayoutEffect(() => {
@@ -658,10 +664,13 @@ export function useChatSessionState({
       container.scrollHeight,
       container.clientHeight,
     );
-    captureReadingAnchor();
+    const wasFollowing = pendingRestore.position.following
+      ?? pendingRestore.position.distanceFromBottom <= CONVERSATION_SCROLL_BOTTOM_THRESHOLD;
+    if (!wasFollowing && pendingRestore.position.anchor) restoreReadingAnchor(pendingRestore.position.anchor);
+    else captureReadingAnchor();
     pendingConversationScrollRestoreRef.current = null;
     pendingInitialScrollRef.current = false;
-  }, [activeScrollKey, chatMessages.length, isLoadingSessionMessages, captureReadingAnchor]);
+  }, [activeScrollKey, chatMessages.length, isLoadingSessionMessages, captureReadingAnchor, restoreReadingAnchor]);
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
@@ -669,17 +678,18 @@ export function useChatSessionState({
     conversationScrollPositionsRef.current.set(activeScrollKey, {
       top: container.scrollTop,
       distanceFromBottom: Math.max(0, container.scrollHeight - container.scrollTop - container.clientHeight),
-      following: !isUserScrolledUp,
+      following: Boolean(autoScrollToBottom) && !isUserScrolledUp,
+      anchor: getReadingAnchor(),
     });
-  }, [activeScrollKey, isUserScrolledUp]);
+  }, [activeScrollKey, autoScrollToBottom, isUserScrolledUp, getReadingAnchor]);
 
   // Initial scroll to bottom
   useEffect(() => {
     if (!pendingInitialScrollRef.current || !scrollContainerRef.current || isLoadingSessionMessages) return;
     if (chatMessages.length === 0) { pendingInitialScrollRef.current = false; return; }
     pendingInitialScrollRef.current = false;
-    if (!searchScrollActiveRef.current) scheduleScrollToBottom();
-  }, [chatMessages.length, isLoadingSessionMessages, scheduleScrollToBottom]);
+    if (!searchScrollActiveRef.current) scheduleInitialPosition();
+  }, [chatMessages.length, isLoadingSessionMessages, scheduleInitialPosition]);
 
   // Main session loading effect — store-based
   useEffect(() => {
@@ -1053,13 +1063,22 @@ export function useChatSessionState({
     fetchInitialTokenUsage();
   }, [sessionIsReadOnly, selectedProject, selectedSession?.id]);
 
-  // Appending a streamed tool/message must not evict the history being read.
-  const visibleWindowStartRef = useRef({ scope: activeScrollKey, start: 0 });
-  if (!isUserScrolledUp || visibleWindowStartRef.current.scope !== activeScrollKey) {
-    visibleWindowStartRef.current = { scope: activeScrollKey, start: Math.max(0, chatMessages.length - visibleMessageCount) };
-  }
-  const effectiveVisibleCount = isUserScrolledUp
-    ? Math.max(visibleMessageCount, chatMessages.length - visibleWindowStartRef.current.start)
+  // Keep each conversation's reading window, including pages exposed while
+  // follow is disabled, so revisiting it can restore the same message/offset.
+  const visibleWindowStartsRef = useRef(new Map<string | null, number>());
+  const visibleWindowScopeRef = useRef(activeScrollKey);
+  const changedWindowScope = visibleWindowScopeRef.current !== activeScrollKey;
+  visibleWindowScopeRef.current = activeScrollKey;
+  const preserveVisibleWindow = isUserScrolledUp || !autoScrollToBottom
+    || (changedWindowScope && activeScrollKey != null
+      && conversationScrollPositionsRef.current.get(activeScrollKey)?.following === false);
+  const defaultStart = Math.max(0, chatMessages.length - visibleMessageCount);
+  const previousStart = visibleWindowStartsRef.current.get(activeScrollKey);
+  const windowStart = preserveVisibleWindow && previousStart != null
+    ? Math.min(previousStart, defaultStart) : defaultStart;
+  if (chatMessages.length > 0) visibleWindowStartsRef.current.set(activeScrollKey, windowStart);
+  const effectiveVisibleCount = preserveVisibleWindow
+    ? Math.max(visibleMessageCount, chatMessages.length - windowStart)
     : visibleMessageCount;
   const visibleMessages = useMemo(() => selectVisibleMessages(chatMessages, effectiveVisibleCount), [chatMessages, effectiveVisibleCount]);
 
@@ -1226,6 +1245,7 @@ export function useChatSessionState({
     isAborting,
     setIsAborting,
     isUserScrolledUp,
+    canReturnToLatest,
     setIsUserScrolledUp,
     tokenBudget,
     setTokenBudget,

@@ -90,7 +90,7 @@ export default function SubagentDetailMessageFlow({
 }: SubagentDetailMessageFlowProps) {
   const { t } = useTranslation('chat');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: isRunning, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
+  const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: true, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
 
@@ -384,7 +384,7 @@ export default function SubagentDetailMessageFlow({
           {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={thinkingStatusStep} /> : null}
         </div>
       </div>
-      {follow.isPaused ? (
+      {follow.canReturnToLatest ? (
         <button type="button" onClick={follow.scrollToBottom} aria-label={t('session.scroll.returnToLatest', { defaultValue: 'Back to latest' })}
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-neutral-200 bg-white p-2 text-neutral-600 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
           <ArrowDown className="h-4 w-4" />

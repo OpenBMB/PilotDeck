@@ -42,7 +42,9 @@ export function useChatHistorySearch({
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigationRef = useRef(0);
-  const lastRevealedRef = useRef<string | null>(null);
+  const requestedMatchRef = useRef<string | null>(null);
+  const pendingRevealRef = useRef<{ match: ChatHistorySearchMatch; navigation: number; ready: boolean; coarseJumped: boolean } | null>(null);
+  const refreshHighlightsRef = useRef<() => void>(() => {});
 
   const searchableMessages = useMemo(
     () => buildSearchableMessages(keyedMessages),
@@ -58,7 +60,8 @@ export function useChatHistorySearch({
 
   const closeSearch = useCallback(() => {
     navigationRef.current += 1;
-    lastRevealedRef.current = null;
+    requestedMatchRef.current = null;
+    pendingRevealRef.current = null;
     setIsOpen(false);
     setQuery('');
     setActiveMatchIndex(0);
@@ -91,50 +94,20 @@ export function useChatHistorySearch({
     );
   }, [matches, query, scrollContainerRef, searchableMessages]);
 
-  const navigationDataRef = useRef({ applySearchHighlights, measuredItemHeights, matches });
-  navigationDataRef.current = { applySearchHighlights, measuredItemHeights, matches };
-
   const revealMatch = useCallback(async (match: ChatHistorySearchMatch) => {
     const navigation = ++navigationRef.current;
+    const pending = { match, navigation, ready: false, coarseJumped: false };
+    pendingRevealRef.current = pending;
     onNavigate?.();
-    await ensureAllMessagesLoaded();
+    try {
+      await ensureAllMessagesLoaded();
+    } catch {
+      // Results already loaded remain searchable if fetching older history fails.
+    }
     if (navigation !== navigationRef.current) return;
-
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const revealRenderedMatch = (behavior: ScrollBehavior): boolean => {
-      const target = navigationDataRef.current.applySearchHighlights(match);
-      if (!target) return false;
-      scrollSearchTargetIntoView(container, target, behavior);
-      onNavigate?.();
-      return true;
-    };
-
-    // Nearby results are normally still mounted by the virtualized list. In
-    // that case, move directly from the current viewport instead of first
-    // resetting scrollTop from the beginning of the conversation.
-    if (revealRenderedMatch('smooth')) return;
-
-    // A distant result may not exist in the DOM yet. Perform one instant
-    // coarse jump so virtualization can mount it, then center it without a
-    // second long animation.
-    const currentMatch = navigationDataRef.current.matches.find((candidate) =>
-      candidate.messageKey === match.messageKey && candidate.offset === match.offset) ?? match;
-    scrollToMessageIndex(container, navigationDataRef.current.measuredItemHeights, currentMatch.messageIndex);
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
-
-    if (navigation === navigationRef.current) revealRenderedMatch('auto');
-  }, [
-    ensureAllMessagesLoaded,
-    onNavigate,
-    scrollContainerRef,
-  ]);
+    pending.ready = true;
+    refreshHighlightsRef.current();
+  }, [ensureAllMessagesLoaded, onNavigate]);
 
   const goToMatch = useCallback((index: number) => {
     if (matches.length === 0) return;
@@ -178,22 +151,58 @@ export function useChatHistorySearch({
     const container = scrollContainerRef.current;
     if (!isOpen || !activeMatch || !query.trim()) {
       if (container) clearSearchHighlights(container);
-      lastRevealedRef.current = null;
+      requestedMatchRef.current = null;
+      pendingRevealRef.current = null;
       return;
     }
     const key = `${sessionId}:${query}:${activeMatch.messageKey}:${activeMatch.offset}`;
-    if (lastRevealedRef.current === key) return;
-    lastRevealedRef.current = key;
+    if (requestedMatchRef.current === key) return;
+    requestedMatchRef.current = key;
     void revealMatch(activeMatch);
   }, [activeMatch, isOpen, query, revealMatch, scrollContainerRef, sessionId]);
 
+  // The search index sees complete text before the typewriter exposes it. Watch
+  // the rendered content until the actual mark exists; mounting its row alone
+  // does not complete navigation. Disconnect while marking our own DOM changes.
   useEffect(() => {
-    if (!isOpen || !query.trim()) return undefined;
-    const frame = requestAnimationFrame(() => {
-      applySearchHighlights(activeMatch);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [activeMatch, applySearchHighlights, isOpen, query, renderWindowKey]);
+    const container = scrollContainerRef.current;
+    if (!container || !isOpen || !query.trim()) return;
+    let frame: number | null = null;
+    const observer = new MutationObserver(() => schedule());
+    const observe = () => observer.observe(container, { childList: true, characterData: true, subtree: true });
+    const refresh = () => {
+      frame = null;
+      observer.disconnect();
+      const target = applySearchHighlights(activeMatch);
+      observe();
+      const pending = pendingRevealRef.current;
+      if (!pending?.ready || pending.navigation !== navigationRef.current) return;
+      if (target?.matches('mark[aria-current="true"]')) {
+        scrollSearchTargetIntoView(container, target, pending.coarseJumped ? 'auto' : 'smooth');
+        onNavigate?.();
+        pendingRevealRef.current = null;
+      } else if (!target && !pending.coarseJumped) {
+        // Only a missing row needs a virtualization jump. A mounted row may
+        // still be draining text; keep waiting without moving the reader again.
+        pending.coarseJumped = true;
+        const match = matches.find((candidate) => candidate.messageKey === pending.match.messageKey
+          && candidate.offset === pending.match.offset) ?? pending.match;
+        scrollToMessageIndex(container, measuredItemHeights, match.messageIndex);
+        schedule();
+      }
+    };
+    const schedule = () => {
+      if (frame === null) frame = requestAnimationFrame(refresh);
+    };
+    refreshHighlightsRef.current = schedule;
+    observe();
+    schedule();
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      refreshHighlightsRef.current = () => {};
+    };
+  }, [activeMatch, applySearchHighlights, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
 
   useEffect(() => {
     if (matches.length === 0) {
@@ -209,13 +218,24 @@ export function useChatHistorySearch({
     if (!isOpen) return;
     const container = scrollContainerRef.current;
     if (!container) return;
-    const cancelNavigation = () => { navigationRef.current += 1; };
+    const cancelNavigation = () => {
+      navigationRef.current += 1;
+      pendingRevealRef.current = null;
+    };
+    const cancelKeyboardNavigation = (event: KeyboardEvent) => {
+      if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) cancelNavigation();
+    };
     container.addEventListener('wheel', cancelNavigation, { passive: true });
     container.addEventListener('touchmove', cancelNavigation, { passive: true });
+    container.addEventListener('keydown', cancelKeyboardNavigation);
+    container.addEventListener('pointerdown', cancelNavigation);
     return () => {
       navigationRef.current += 1;
       container.removeEventListener('wheel', cancelNavigation);
       container.removeEventListener('touchmove', cancelNavigation);
+      container.removeEventListener('keydown', cancelKeyboardNavigation);
+      container.removeEventListener('pointerdown', cancelNavigation);
       clearSearchHighlights(container);
     };
   }, [isOpen, scrollContainerRef]);

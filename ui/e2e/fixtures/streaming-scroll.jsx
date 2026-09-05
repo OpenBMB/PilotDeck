@@ -21,7 +21,7 @@ function Fixture() {
   const follow = useScrollFollow({ containerRef: ref, enabled: true, scopeKey: sid, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   useEffect(() => {
     store.setActiveSession(sid);
-    store.appendRealtimeBatch(sid, Array.from({ length: 24 }, (_, index) => [
+    store.appendRealtimeBatch(sid, Array.from({ length: Number(new URLSearchParams(location.search).get('history') ?? 24) }, (_, index) => [
       { ...base, id: `user-${index}`, kind: 'text', role: 'user', content: `Question ${index}` },
       { ...base, id: `answer-${index}`, kind: 'text', role: 'assistant', content: `Answer ${index}: This is a historical response with enough text to read while a new response streams.\n\nSecond paragraph with a searchable needle ${index}.` },
     ]).flat());
@@ -55,7 +55,7 @@ function Fixture() {
   return <FindShortcutProvider activeScope="chat"><div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
     <MessagesPane
       scrollContainerRef={ref}
-      isScrollPaused={follow.isPaused}
+      showReturnToLatest={follow.canReturnToLatest}
       onResumeScroll={follow.scrollToBottom}
       onPauseScroll={() => follow.setPaused(true)}
       chatMessages={messages} visibleMessages={messages} visibleMessageCount={100}

@@ -43,7 +43,7 @@ type DiffLine = { type: string; content: string; lineNum: number };
 
 type MessagesPaneV2Props = {
   scrollContainerRef: RefObject<HTMLDivElement>;
-  isScrollPaused?: boolean;
+  showReturnToLatest?: boolean;
   onResumeScroll?: () => void;
   onPauseScroll?: () => void;
   isLoadingSessionMessages: boolean;
@@ -326,7 +326,7 @@ function isForkedChatSession(session: ProjectSession | null): boolean {
 
 function MessagesPaneV2({
   scrollContainerRef,
-  isScrollPaused = false,
+  showReturnToLatest = false,
   onResumeScroll,
   onPauseScroll,
   isLoadingSessionMessages,
@@ -1392,7 +1392,7 @@ function MessagesPaneV2({
         />
       ) : null}
       </div>
-      {isScrollPaused && onResumeScroll ? (
+      {showReturnToLatest && onResumeScroll ? (
         <button
           type="button"
           onClick={onResumeScroll}

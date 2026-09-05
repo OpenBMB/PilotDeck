@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AlertTriangle, Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
@@ -276,14 +276,12 @@ function MessageRowV2({
   );
 
   const withProcessRows = (content: ReactNode) => {
-    if (beforeProcessAttachments.length === 0 && afterProcessAttachments.length === 0) {
-      return content;
-    }
-
+    // Keep the body in the same React slot when completed process attachments
+    // appear, so thinking expansion and its nested scroll controller survive.
     return (
       <div className="flex min-w-0 flex-col gap-2">
         {beforeProcessAttachments.map(renderProcessAttachment)}
-        {content}
+        <Fragment key="body">{content}</Fragment>
         {afterProcessAttachments.map(renderProcessAttachment)}
       </div>
     );

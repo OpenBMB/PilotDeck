@@ -66,6 +66,64 @@ describe('reader-owned scroll following', () => {
     expect(api.isPaused).toBe(true);
   });
 
+  it.each(['scroll-first', 'resize-first'])('preserves user displacement when layout grows in the same frame (%s)', (order) => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    fireEvent.wheel(node, { deltaY: -30 });
+    node.scrollTop = 770;
+    metrics.height += 50;
+    if (order === 'resize-first') resize();
+    fireEvent.scroll(node);
+    resize(); flush();
+    expect(node.scrollTop).toBe(770);
+    expect(api.isPaused).toBe(true);
+  });
+
+  it('combines an upward gesture with newly inserted history in the same frame', () => {
+    const { node, metrics } = setup();
+    let inserted = 0;
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 + inserted - metrics.top, bottom: 1000 + inserted - metrics.top }) as DOMRect;
+    fireEvent.wheel(node, { deltaY: -30 });
+    node.scrollTop = 770; inserted = 100; metrics.height += 150;
+    resize(); fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(870);
+    expect(row.getBoundingClientRect().top).toBe(-20);
+  });
+
+  it('ignores upward input when neither viewport has scrollable content', () => {
+    const { node, metrics } = setup();
+    metrics.height = metrics.viewport; node.scrollTop = 0;
+    fireEvent.scroll(node); resize(); flush();
+    fireEvent.wheel(node, { deltaY: -30 });
+    expect(api.isPaused).toBe(false);
+    expect(api.canReturnToLatest).toBe(false);
+    metrics.height += 500; resize(); flush();
+    expect(node.scrollTop).toBe(500);
+  });
+
+  it('positions history once with automatic following disabled, then retains the reader', () => {
+    const { view, node, metrics } = setup();
+    view.rerender(<Harness enabled={false} />);
+    node.scrollTop = 0;
+    act(() => api.scheduleInitialPosition());
+    view.rerender(<Harness enabled={false} version={1} />);
+    flush();
+    expect(node.scrollTop).toBe(800);
+    metrics.height += 100; resize(); flush();
+    expect(node.scrollTop).toBe(800);
+  });
+
+  it('lets user input cancel an initial position queued with automatic following disabled', () => {
+    const { view, node } = setup();
+    view.rerender(<Harness enabled={false} />);
+    act(() => api.scheduleInitialPosition());
+    fireEvent.wheel(node, { deltaY: -30 });
+    node.scrollTop = 770; fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(770);
+  });
+
   it('resumes only when the reader scrolls down to the actual bottom', () => {
     const { node, metrics } = setup();
     fireEvent.wheel(node, { deltaY: -30 });
@@ -89,9 +147,22 @@ describe('reader-owned scroll following', () => {
     expect(api.isPaused).toBe(true);
   });
 
+  it('does not replay an unreachable anchor correction after content shrinks and regrows', () => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    fireEvent.wheel(node, { deltaY: -30 }); node.scrollTop = 770; fireEvent.scroll(node);
+    metrics.height = 900; node.scrollTop = 700;
+    resize(); fireEvent.scroll(node);
+    metrics.height = 1100; resize(); flush();
+    expect(node.scrollTop).toBe(700);
+    expect(api.isPaused).toBe(true);
+  });
+
   it('pauses the conversation while an inner thinking viewport is being read', () => {
     const { node, metrics } = setup();
     const inner = document.createElement('div'); inner.dataset.streamScrollViewport = ''; node.append(inner);
+    Object.defineProperties(inner, { scrollHeight: { value: 500 }, clientHeight: { value: 200 }, scrollTop: { value: 300 } });
     fireEvent.wheel(inner, { deltaY: -10 });
     fireEvent.wheel(inner, { deltaY: 10 });
     metrics.height += 100; resize(); flush();

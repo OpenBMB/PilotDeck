@@ -379,7 +379,6 @@ function canHostProcessSummary(message: ChatMessage): boolean {
     !message.isInteractivePrompt &&
     !message.isSubagentContainer &&
     !message.isTaskNotification &&
-    !message.isThinking &&
     typeof message.content === 'string' &&
     message.content.trim().length > 0
   );

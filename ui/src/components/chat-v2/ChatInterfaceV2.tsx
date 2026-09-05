@@ -195,7 +195,7 @@ function ChatInterfaceV2({
     setCanAbortSession,
     isAborting: _isAborting,
     setIsAborting,
-    isUserScrolledUp,
+    canReturnToLatest,
     setIsUserScrolledUp,
     tokenBudget,
     setTokenBudget,
@@ -858,7 +858,7 @@ function ChatInterfaceV2({
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        isScrollPaused={isUserScrolledUp}
+        showReturnToLatest={canReturnToLatest}
         onResumeScroll={scrollToBottom}
         onPauseScroll={pauseScrollFollowing}
         isLoadingSessionMessages={isLoadingSessionMessages}
