@@ -7,6 +7,7 @@ import type { PilotConfigSnapshot } from '../../src/pilot/config/types.js';
 import { createLocalGateway } from '../../src/cli/createLocalGateway.js';
 import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from '../../src/model/index.js';
 import { createAgentProjectSessionStorage, readTranscript, replayTranscriptEntries } from '../../src/session/index.js';
+import { readWebSessionMessages } from '../../src/web/server/readSessionMessages.js';
 import type { GatewayEvent, GatewaySubmitTurnInput } from '../../src/gateway/protocol/types.js';
 
 const A = { mode: 'model' as const, provider: 'alpha', model: 'first' };
@@ -191,4 +192,15 @@ test('a new explicit snapshot overrides an old session preference after restart'
   assert.equal(f.requests.at(-1)!.provider, B.provider);
   assert.equal(f.requests.at(-1)!.model, B.model);
   assert.equal(f.requests.at(-1)!.temperature, B.temperature);
+});
+
+
+test('response model survives transcript replay and differs from the next submitted choice', async (t) => {
+  const f = await fixture(t);
+  const aEvents = await f.submit(A);
+  assert.ok(aEvents.some((event) => event.type === 'assistant_text_delta' && event.model === A.model));
+  await f.submit(B);
+  f.restart();
+  const history = await readWebSessionMessages({ projectKey: f.home, sessionKey: 'web:model-choice' }, { projectRoot: f.home, pilotHome: f.home });
+  assert.deepEqual(history.messages.filter((message) => message.role === 'assistant' && message.kind === 'text').map((message) => message.model), [A.model, B.model]);
 });

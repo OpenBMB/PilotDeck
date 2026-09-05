@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import MessageRow from '../../src/components/chat-v2/MessageRowV2';
 import Composer from '../../src/components/chat-v2/ComposerV2';
 import { useChatModelSelection } from '../../src/components/chat/hooks/useChatModelSelection';
 import { useChatComposerState } from '../../src/components/chat/hooks/useChatComposerState';
@@ -23,9 +24,7 @@ function App() {
   const [input, setInput] = useState('hello');
   const [loading, setLoading] = useState(false);
   const [frame, setFrame] = useState(null);
-  const listener = useRef(noop);
-  const subscribe = useCallback((fn) => { listener.current = fn; return noop; }, []);
-  const model = useChatModelSelection({ subscribe });
+  const model = useChatModelSelection();
   const textareaRef = useRef(null), highlightRef = useRef(null);
   const send = (event) => {
     event.preventDefault();
@@ -37,12 +36,7 @@ function App() {
       sendMessage: (message) => {
         setFrame(message); setLoading(true); setInput('');
         void fetch('/api/test-submit', { method: 'POST', body: JSON.stringify(message) }).then((r) => r.json()).then((accepted) => {
-          if (!sessionId) listener.current({ kind: 'session_created', projectKey, newSessionId: accepted.sessionId, runId });
           setSession(accepted.sessionId);
-          listener.current({ type: 'model-selection-saved', sessionId: accepted.sessionId, selection: message.options.modelSelection, runId });
-          const running = message.options.modelSelection.mode === 'auto'
-            ? { provider: 'zeta', model: 'configured' } : message.options.modelSelection;
-          listener.current({ type: 'model-selection-changed', sessionId: accepted.sessionId, modelProvider: running.provider, model: running.model, runId: 'run-1' });
         });
         return true;
       },
@@ -54,11 +48,12 @@ function App() {
     <button onClick={() => { setLoading(false); }}>Finish</button>
     <output data-testid="selection">{JSON.stringify(model.modelSelection)}</output>
     <output data-testid="submitted">{JSON.stringify(frame)}</output>
+    {frame ? <div data-testid="response-fixture"><MessageRow message={{ id: 'fixture-answer', type: 'assistant', content: 'Response fixture', timestamp: '2026-09-05T12:58:00Z', model: frame.options.modelSelection.mode === 'auto' ? 'configured' : frame.options.modelSelection.model }} prevMessage={null} provider="pilotdeck" selectedProject={null} createDiff={() => []} /></div> : null}
     <Composer {...props} {...model} input={input} isLoading={loading} canAbortSession
       projectKey={projectKey} textareaRef={textareaRef} inputHighlightRef={highlightRef}
       onInputChange={(e) => setInput(e.target.value)} onSubmit={send}
       onModelSelectionChange={(choice) => { void model.setModelSelection(choice); }}
-      runningModel={model.runningModels[sessionId]}/>
+      />
   </div>;
 }
 

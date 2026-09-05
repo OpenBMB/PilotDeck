@@ -84,6 +84,8 @@ export interface SubagentChildTool {
 }
 
 export interface ChatMessage {
+  /** Actual generating model stored with this response. */
+  model?: string;
   id?: string;
   renderKey?: string;
   entryId?: string;

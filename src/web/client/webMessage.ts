@@ -114,6 +114,8 @@ export type WebMessage = {
   requestId?: string;
   ok?: boolean;
   text?: string;
+  /** Actual generating model, without the provider prefix. */
+  model?: string;
   contentI18n?: { key: string; params?: Record<string, unknown> };
   userHintI18n?: { key: string; params?: Record<string, unknown> };
   images?: Array<{
@@ -207,7 +209,7 @@ export function applyWebGatewayEvent(
           ...state,
           messages: state.messages.map((m) =>
             m.id === state.currentAssistantId
-              ? { ...m, text: `${m.text ?? ""}${event.text}` }
+              ? { ...m, text: `${m.text ?? ""}${event.text}`, ...(event.model ? { model: event.model } : {}) }
               : m,
           ),
         };
@@ -222,6 +224,7 @@ export function applyWebGatewayEvent(
         role: "assistant",
         kind: "text",
         text: event.text,
+        ...(event.model ? { model: event.model } : {}),
         source: "live",
       };
       return {

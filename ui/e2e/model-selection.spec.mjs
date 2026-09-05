@@ -64,7 +64,7 @@ test('manual selection survives sending, completion and reload', async ({ page }
   await expect.poll(() => choice(page)).toEqual(A);
 });
 
-test('explicit Auto stays Auto when the server reports a concrete running model', async ({ page }) => {
+test('explicit Auto stays selected without a composer execution banner', async ({ page }) => {
   const { submitted } = await setup(page);
   await expect.poll(() => choice(page)).toEqual(B);
   await page.getByRole('button', { name: 'configured', exact: true }).click();
@@ -72,7 +72,7 @@ test('explicit Auto stays Auto when the server reports a concrete running model'
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0].options.modelSelection).toEqual({ mode: 'auto' });
-  await expect(page.getByRole('status').filter({ hasText: 'Running:' })).toContainText('zeta/configured');
+  await expect(page.getByText('Running:', { exact: false })).toHaveCount(0);
   await expect.poll(() => choice(page)).toEqual({ mode: 'auto' });
 });
 
@@ -155,4 +155,26 @@ test('manual model choices synchronize between browser tabs', async ({ page, con
   await expect.poll(() => choice(page)).toEqual({ mode: 'auto' });
   await page.reload();
   await expect.poll(() => choice(page)).toEqual({ mode: 'auto' });
+});
+
+test('response model appears before time only with the response hover actions', async ({ page }) => {
+  const { submitted } = await setup(page);
+  await expect.poll(() => choice(page)).toEqual(B);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  const response = page.getByTestId('response-fixture');
+  const actions = response.getByTestId('assistant-message-actions');
+  const label = actions.getByTestId('assistant-message-model');
+  await expect(label).toHaveText('configured');
+  await expect(actions).toHaveCSS('opacity', '0');
+  await response.hover();
+  await expect(actions).toHaveCSS('opacity', '1');
+  expect(await actions.evaluate((el) => el.firstElementChild.dataset.testid)).toBe('assistant-message-model');
+  await expect(label).not.toHaveAttribute('title');
+  await expect(actions).not.toContainText('zeta/');
+  await page.getByRole('button', { name: 'configured', exact: true }).click();
+  await page.getByRole('button', { name: 'first', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual(A);
+  await expect(label).toHaveText('configured');
+  await expect(actions).toHaveCSS('opacity', '0');
 });

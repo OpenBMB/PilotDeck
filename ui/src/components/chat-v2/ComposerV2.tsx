@@ -159,7 +159,6 @@ export type ComposerV2Props = {
   isModelCatalogLoading?: boolean;
   isModelSelectionReady?: boolean;
   canSubmitWithoutModel?: boolean;
-  runningModel?: { provider: string; model: string };
   modelCatalogError?: string | null;
   projectKey: string;
   onModelSelectionChange: (selection: ChatModelSelection) => void;
@@ -515,7 +514,6 @@ export default function ComposerV2({
   isModelCatalogLoading = false,
   isModelSelectionReady = true,
   canSubmitWithoutModel = false,
-  runningModel,
   modelCatalogError,
   projectKey,
   onModelSelectionChange,
@@ -749,11 +747,6 @@ export default function ComposerV2({
     >
       <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[860px]")}>
         {queueTray}
-        {isLoading && runningModel ? (
-          <div className="mb-2 text-xs text-neutral-500" role="status">
-            {t('input.models.running', { model: `${runningModel.provider}/${runningModel.model}`, defaultValue: 'Running: {{model}}' })}
-          </div>
-        ) : null}
         {pendingPermissionRequests.length > 0 ? (
           <div className="mb-3">
             <PermissionRequestsBanner

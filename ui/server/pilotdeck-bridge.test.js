@@ -919,3 +919,9 @@ describe('dialog model preference frames', () => {
         expect(running[0]).toMatchObject({ type: 'model-selection-changed', modelProvider: 'chosen', model: 'routed', runId: 'run-1' });
     });
 });
+
+
+it('carries the actual model on assistant text deltas', () => {
+  const frames = gatewayEventToFrames({ type: 'assistant_text_delta', text: 'Hello', model: 'qwen3.8-27b', runId: 'run-model' }, 'web:model', 'pilotdeck');
+  expect(frames[0]).toMatchObject({ kind: 'stream_delta', model: 'qwen3.8-27b', content: 'Hello', runId: 'run-model' });
+});

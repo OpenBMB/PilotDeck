@@ -141,7 +141,6 @@ function ChatInterfaceV2({
     setModelSelection,
     isModelCatalogLoading,
     isModelSelectionReady,
-    runningModels,
     modelCatalogError,
     thinkingModelContext,
     permissionMode,
@@ -783,8 +782,6 @@ function ChatInterfaceV2({
       isModelCatalogLoading={isModelCatalogLoading}
       isModelSelectionReady={isModelSelectionReady}
       canSubmitWithoutModel={canSubmitWithoutModel}
-      runningModel={runningModels[selectedSession?.id || currentSessionId || ""]?.runId === activeRunId
-        ? runningModels[selectedSession?.id || currentSessionId || ""] : undefined}
       modelCatalogError={modelCatalogError}
       projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
       onModelSelectionChange={(selection) => {

@@ -1,24 +1,10 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { globalModelSelectionStore, modelSelectionError } from '../utils/globalModelSelection';
 
-type Subscribe = (listener: (message: any) => void) => () => void;
-
-/** Only manual choices change the preference; run events describe execution history. */
-export function useChatModelSelection({ subscribe }: { subscribe: Subscribe }) {
+/** Only manual choices change the global preference. */
+export function useChatModelSelection() {
   const state = useSyncExternalStore(globalModelSelectionStore.subscribe, globalModelSelectionStore.getSnapshot);
-  const [runningModels, setRunningModels] = useState<Record<string, { provider: string; model: string; runId?: string }>>({});
-
   useEffect(() => { void globalModelSelectionStore.load(); }, []);
-  useEffect(() => subscribe((message) => {
-    for (const event of [message, ...(message?.activeTurnMessages || [])]) {
-      if (event?.type !== 'model-selection-changed' || !event.sessionId) continue;
-      setRunningModels((previous) => ({
-        ...previous,
-        [event.sessionId]: { provider: event.modelProvider, model: event.model, runId: event.runId },
-      }));
-    }
-  }), [subscribe]);
-
   const error = modelSelectionError(state);
   return {
     modelSelection: state.selection,
@@ -27,6 +13,5 @@ export function useChatModelSelection({ subscribe }: { subscribe: Subscribe }) {
     isModelSelectionReady: !state.loading && !error && Boolean(state.selection),
     modelCatalogError: state.loading ? null : error,
     setModelSelection: globalModelSelectionStore.select,
-    runningModels,
   };
 }

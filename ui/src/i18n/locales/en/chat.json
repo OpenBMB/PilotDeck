@@ -348,7 +348,6 @@
       "askDescription": "Only answers questions without modifying files"
     },
     "models": {
-      "running": "Running: {{model}}",
       "select": "Select model",
       "auto": "Auto",
       "change": "Select model",

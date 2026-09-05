@@ -46,6 +46,7 @@ export interface CompactProgress {
 }
 
 export interface NormalizedMessage {
+  model?: string;
   id: string;
   /** Stable UI identity across streaming finalization. */
   renderKey?: string;
@@ -1154,6 +1155,7 @@ export function patchMergedStreamingMessage(
   streamId: string,
   content: string,
   msgProvider?: SessionProvider,
+  model?: string,
 ): boolean {
   const mergedIdx = slot.merged.findIndex((message) => message.id === streamId);
   if (mergedIdx < 0) {
@@ -1161,7 +1163,7 @@ export function patchMergedStreamingMessage(
   }
 
   const existing = slot.merged[mergedIdx];
-  if (existing.content === content && (msgProvider == null || existing.provider === msgProvider)) {
+  if (existing.content === content && (msgProvider == null || existing.provider === msgProvider) && (model === undefined || existing.model === model)) {
     return true;
   }
 
@@ -1169,6 +1171,7 @@ export function patchMergedStreamingMessage(
     ...existing,
     content,
     ...(msgProvider != null ? { provider: msgProvider } : {}),
+    ...(model !== undefined ? { model } : {}),
   };
   slot.merged = slot.merged.slice();
   return true;
@@ -1876,7 +1879,7 @@ export function useSessionStore() {
    * Update or create a streaming message (accumulated text so far).
    * Uses a well-known ID so subsequent calls replace the same message.
    */
-  const updateStreaming = useCallback((sessionId: string, accumulatedText: string, msgProvider: SessionProvider, runId?: string) => {
+  const updateStreaming = useCallback((sessionId: string, accumulatedText: string, msgProvider: SessionProvider, runId?: string, model?: string) => {
     const slot = getSlot(sessionId);
     const streamId = `__streaming_${streamingKey(sessionId, runId)}`;
     const idx = slot.realtimeMessages.findIndex(m => m.id === streamId);
@@ -1884,16 +1887,18 @@ export function useSessionStore() {
       // Subsequent delta — preserve the original turn-start timestamp so
       // computeMerged can tell which server snapshots belong to this turn.
       const existing = slot.realtimeMessages[idx];
-      if (existing.content === accumulatedText && existing.provider === msgProvider) {
+      if (existing.content === accumulatedText && existing.provider === msgProvider && (model === undefined || existing.model === model)) {
         return;
       }
-      if (!patchMergedStreamingMessage(slot, streamId, accumulatedText, msgProvider)) {
+      if (!patchMergedStreamingMessage(slot, streamId, accumulatedText, msgProvider, model)) {
         existing.content = accumulatedText;
         existing.provider = msgProvider;
+        if (model !== undefined) existing.model = model;
         forceRecomputeMerged(slot);
       } else {
         existing.content = accumulatedText;
         existing.provider = msgProvider;
+        if (model !== undefined) existing.model = model;
       }
       notify(sessionId);
       return;
@@ -1915,6 +1920,7 @@ export function useSessionStore() {
         provider: msgProvider,
         kind: 'stream_delta',
         content: accumulatedText,
+        ...(model ? { model } : {}),
         runId,
         serverTailIdAtStart: serverTailId ?? undefined,
       };

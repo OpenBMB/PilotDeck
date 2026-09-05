@@ -14,18 +14,15 @@ const items = [A, B].map((s) => ({ id: `${s.provider}/${s.model}`, provider: s.p
 const catalog = { items: [{ id: 'router/auto', provider: 'router', model: 'auto', displayName: 'Auto', available: true, capabilities: {} }, ...items], defaultSelection: B };
 const json = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
-const listeners = new Set<(message: any) => void>();
-const subscribe = (fn: (message: any) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 const emit = (message: any) => act(() => {
   // The WebSocket provider invalidates the shared catalog before notifying consumers.
   if (message.type === 'config:reloaded' || message.type === 'websocket-reconnected') mocks.store.invalidate();
-  for (const listener of listeners) listener(message);
 });
-const setup = () => renderHook(() => useChatModelSelection({ subscribe }));
+const setup = () => renderHook(() => useChatModelSelection());
 const ready = async (hook: ReturnType<typeof setup>) => waitFor(() => expect(hook.result.current.isModelSelectionReady).toBe(true));
 const saved = () => JSON.parse(localStorage.getItem(GLOBAL_MODEL_SELECTION_KEY) || 'null');
 beforeEach(() => {
-  localStorage.clear(); mocks.fetch.mockReset(); listeners.clear();
+  localStorage.clear(); mocks.fetch.mockReset();
   mocks.fetch.mockResolvedValue(json(catalog));
   mocks.store = createGlobalModelSelectionStore();
 });
@@ -94,7 +91,6 @@ describe('global model selection', () => {
     await act(() => hook.result.current.setModelSelection({ mode: 'auto' }));
     emit({ type: 'model-selection-changed', sessionId: 'web:busy', modelProvider: A.provider, model: A.model });
     expect(hook.result.current.modelSelection).toEqual({ mode: 'auto' });
-    expect(hook.result.current.runningModels['web:busy'].model).toBe(A.model);
     expect(saved()).toEqual({ mode: 'auto' });
   });
 

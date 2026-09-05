@@ -120,9 +120,7 @@ export function useChatProviderState({ selectedProject, selectedSession }: UseCh
   });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(DEFAULT_MODEL_OPTIONS);
   const [thinkingModelContext, setThinkingModelContext] = useState<ThinkingModelContext | null>(null);
-  const modelState = useChatModelSelection({
-    subscribe,
-  });
+  const modelState = useChatModelSelection();
 
   useEffect(() => {
     const defaultMode = readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY);

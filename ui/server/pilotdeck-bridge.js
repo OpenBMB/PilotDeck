@@ -887,6 +887,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'stream_delta',
                     content: event.text,
+                    ...(event.model ? { model: event.model } : {}),
                 }),
             ];
         case 'assistant_thinking_delta':

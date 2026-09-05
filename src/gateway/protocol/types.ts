@@ -187,7 +187,7 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
       temperature?: number;
       speed?: number;
     }
-  | { type: "assistant_text_delta"; text: string }
+  | { type: "assistant_text_delta"; text: string; model?: string }
   | { type: "assistant_attachment"; attachment: GatewayOutboundAttachment }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | { type: "assistant_thinking_delta"; text: string }

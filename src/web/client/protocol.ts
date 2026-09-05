@@ -50,7 +50,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "steer_applied"; itemId: string; message: import("../../model/index.js").CanonicalMessage }
   | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number }
-  | { type: "assistant_text_delta"; text: string }
+  | { type: "assistant_text_delta"; text: string; model?: string }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | {
