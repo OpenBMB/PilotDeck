@@ -454,6 +454,9 @@
       "loadingAll": "正在加载全部消息...",
       "allLoaded": "全部消息已加载",
       "perfWarning": "已加载全部消息 - 滚动可能变慢。点击「滚动到底部」恢复性能。"
+    },
+    "scroll": {
+      "returnToLatest": "回到最新"
     }
   },
   "loading": "加载中...",

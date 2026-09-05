@@ -472,6 +472,9 @@
       "loadingAll": "Loading all messages...",
       "allLoaded": "All messages loaded",
       "perfWarning": "All messages loaded — scrolling may be slower. Click \"Scroll to bottom\" to restore performance."
+    },
+    "scroll": {
+      "returnToLatest": "Back to latest"
     }
   },
   "loading": "Loading...",

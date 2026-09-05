@@ -27,6 +27,13 @@ describe('chatMessageToNormalized', () => {
 });
 
 describe('resolveConversationScrollTop', () => {
+  it('preserves an explicitly paused position even a few pixels from the bottom', () => {
+    expect(resolveConversationScrollTop(
+      { top: 795, distanceFromBottom: 5, following: false },
+      1600,
+      400,
+    )).toBe(795);
+  });
   it('keeps a conversation pinned to the bottom when it was near the bottom', () => {
     expect(resolveConversationScrollTop(
       { top: 720, distanceFromBottom: 20 },

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, ChevronRight, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
+import { AlertTriangle, Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { isImeEnterEvent } from '../../utils/ime.js';
 import { cn } from '../../lib/utils.js';
@@ -31,6 +31,7 @@ import { ProcessTrace } from './ProcessTrace';
 import { processSummaryToTrace, type ProcessAttachment } from './processGrouping';
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
+import { ThinkingBlock } from './ThinkingBlock';
 import DocumentReferenceChip from './DocumentReferenceChip';
 import ReplyQuoteChip from './ReplyQuoteChip';
 import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
@@ -167,7 +168,6 @@ function MessageRowV2({
     () => formatUsageLimitText(String(message.content ?? '')),
     [message.content],
   );
-  const thinkingDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !!message.isThinking, 4);
   const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6);
   const assistantArtifacts = useMemo(
     () => (Array.isArray(message.artifacts) ? message.artifacts : []),
@@ -542,52 +542,14 @@ function MessageRowV2({
 
   if (message.isThinking) {
     if (!showThinking) return null;
-    const isThinkingStreaming = !!message.isStreaming;
-
-    if (inlineThinking) {
-      // Inline mode: unified <details> with typewriter animation + blue theme
-      return withProcessRows(
-        <div className="min-w-0 text-[14px] leading-relaxed">
-          <details className="group" open={(isThinkingStreaming ? thinkingDisplayText.length > 12 : false) || undefined}>
-            <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300">
-              {isThinkingStreaming
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-                : <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />}
-              <span>
-                {isThinkingStreaming
-                  ? t('thinking.title', { defaultValue: 'Thinking...' })
-                  : t('thinking.completed', { defaultValue: 'Thought process' })}
-              </span>
-            </summary>
-            <div className={`mt-1.5 max-h-64 overflow-y-auto border-l-2 pl-3 text-[13px] ${
-              isThinkingStreaming
-                ? 'border-blue-400/50 text-neutral-600 dark:border-blue-500/40 dark:text-neutral-300'
-                : 'border-blue-400/30 text-neutral-600 dark:border-blue-500/30 dark:text-neutral-400'
-            }`}>
-              <Markdown projectName={selectedProject?.name}
-          onFileOpen={onFileOpen} isStreaming={isThinkingStreaming}>
-                {isThinkingStreaming ? thinkingDisplayText : formattedContent}
-              </Markdown>
-            </div>
-          </details>
-        </div>,
-      );
-    }
-
-    // Default (status-bar preview mode): simple collapsible accordion
     return withProcessRows(
-      <div className="min-w-0 text-[14px] leading-relaxed">
-        <details className="group">
-          <summary className="hover-brand-text flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" strokeWidth={2} />
-            <span>{t('thinking.completed', { defaultValue: 'Thought process' })}</span>
-          </summary>
-          <div className="mt-1.5 max-h-64 overflow-y-auto border-l-2 border-neutral-300 pl-3 text-[13px] text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            <Markdown projectName={selectedProject?.name}
-          onFileOpen={onFileOpen}>{formattedContent}</Markdown>
-          </div>
-        </details>
-      </div>,
+      <ThinkingBlock
+        content={formattedContent}
+        isStreaming={Boolean(message.isStreaming)}
+        inline={inlineThinking}
+        projectName={selectedProject?.name}
+        onFileOpen={onFileOpen}
+      />,
     );
   }
 
@@ -618,7 +580,7 @@ function MessageRowV2({
           } : {})}
         >
           <Markdown className="prose prose-sm prose-neutral max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h2:text-lg prose-h3:text-base prose-p:my-2 prose-pre:my-3 prose-ol:my-2 prose-ul:my-2 prose-table:my-0 prose-hr:my-4" projectName={selectedProject?.name}
-          onFileOpen={onFileOpen} isStreaming={message.isStreaming} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
+          onFileOpen={onFileOpen} isStreaming={Boolean(message.isStreaming) || contentDisplayText !== formattedContent} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
         </div>
       )}
       {assistantArtifacts.length > 0 ? (

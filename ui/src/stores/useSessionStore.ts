@@ -47,6 +47,8 @@ export interface CompactProgress {
 
 export interface NormalizedMessage {
   id: string;
+  /** Stable UI identity across streaming finalization. */
+  renderKey?: string;
   sessionId: string;
   timestamp: string;
   provider: SessionProvider;
@@ -1041,6 +1043,7 @@ export function upsertRealtimeMessages(
       const previousKey = getUpsertKey(updated[duplicateAssistantTextIndex]);
       updated[duplicateAssistantTextIndex] = {
         ...message,
+        renderKey: updated[duplicateAssistantTextIndex].renderKey ?? message.renderKey,
         serverTailIdAtStart: message.serverTailIdAtStart ?? updated[duplicateAssistantTextIndex].serverTailIdAtStart,
       };
       indexByKey.delete(previousKey);
@@ -1055,10 +1058,12 @@ export function upsertRealtimeMessages(
     } else {
       const existingTailId = updated[existingIndex].serverTailIdAtStart;
       const existingHistoryPending = updated[existingIndex].serverHistoryPendingAtStart;
-      updated[existingIndex] = existingTailId === undefined && existingHistoryPending === undefined
+      const renderKey = updated[existingIndex].renderKey;
+      updated[existingIndex] = existingTailId === undefined && existingHistoryPending === undefined && !renderKey
         ? message
         : {
             ...message,
+            ...(renderKey ? { renderKey } : {}),
             ...(existingTailId !== undefined ? { serverTailIdAtStart: existingTailId } : {}),
             ...(existingHistoryPending !== undefined
               ? { serverHistoryPendingAtStart: existingHistoryPending }
@@ -1079,6 +1084,34 @@ function findLatestToolResultIndex(messages: NormalizedMessage[], toolId: string
   return -1;
 }
 
+/** Carry UI identity through the server's confirmation of a displayed stream. */
+export function inheritMessageRenderKeys(previous: NormalizedMessage[], next: NormalizedMessage[]): NormalizedMessage[] {
+  const candidates = previous.filter((message) => message.renderKey);
+  if (candidates.length === 0) return next;
+  const used = new Set(next.flatMap((message) => message.renderKey ? [message.renderKey] : []));
+  let changed = false;
+  const result = next.map((message) => {
+    if (message.renderKey) {
+      used.add(message.renderKey);
+      return message;
+    }
+    const match = candidates.find((candidate) => {
+      if (!candidate.renderKey || used.has(candidate.renderKey)) return false;
+      if (candidate.id === message.id) return true;
+      const turn = getMessageTurnId(candidate);
+      if (!turn || turn !== getMessageTurnId(message)) return false;
+      const sameKind = candidate.kind === message.kind
+        || (candidate.kind === 'stream_delta' && message.kind === 'text' && message.role === 'assistant');
+      return sameKind && Boolean(candidate.content) && candidate.content === message.content;
+    });
+    if (!match?.renderKey) return message;
+    used.add(match.renderKey);
+    changed = true;
+    return { ...message, renderKey: match.renderKey };
+  });
+  return changed ? result : next;
+}
+
 /**
  * Recompute slot.merged only when the input arrays have actually changed
  * (by reference). Returns true if merged was recomputed.
@@ -1089,14 +1122,14 @@ function recomputeMergedIfNeeded(slot: SessionSlot): boolean {
   }
   slot._lastServerRef = slot.serverMessages;
   slot._lastRealtimeRef = slot.realtimeMessages;
-  slot.merged = computeMerged(slot.serverMessages, slot.realtimeMessages);
+  slot.merged = inheritMessageRenderKeys(slot.merged, computeMerged(slot.serverMessages, slot.realtimeMessages));
   return true;
 }
 
 function forceRecomputeMerged(slot: SessionSlot): void {
   slot._lastServerRef = slot.serverMessages;
   slot._lastRealtimeRef = slot.realtimeMessages;
-  slot.merged = computeMerged(slot.serverMessages, slot.realtimeMessages);
+  slot.merged = inheritMessageRenderKeys(slot.merged, computeMerged(slot.serverMessages, slot.realtimeMessages));
 }
 
 function streamingKey(sessionId: string, runId?: string): string {
@@ -1570,6 +1603,7 @@ export function useSessionStore() {
         ...current,
         {
           id: streamId,
+          renderKey: `${streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           sessionId,
           timestamp: new Date().toISOString(),
           provider: msgProvider,
@@ -1633,6 +1667,7 @@ export function useSessionStore() {
         ...current,
         {
           id: streamId,
+          renderKey: `${streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           sessionId,
           timestamp: new Date().toISOString(),
           provider: msgProvider,
@@ -1874,6 +1909,7 @@ export function useSessionStore() {
         : null;
       const msg: NormalizedMessage = {
         id: streamId,
+        renderKey: `${streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
         sessionId,
         timestamp: new Date().toISOString(),
         provider: msgProvider,
@@ -1943,6 +1979,7 @@ export function useSessionStore() {
         : null;
       const msg: NormalizedMessage = {
         id: streamId,
+        renderKey: `${streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
         sessionId,
         timestamp: new Date().toISOString(),
         provider: msgProvider,

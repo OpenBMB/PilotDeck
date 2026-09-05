@@ -1,15 +1,16 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ArrowDown } from 'lucide-react';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
+import { useScrollFollow } from '../chat/hooks/useScrollFollow';
 import type { Project, SessionProvider } from '../../types/app';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
-import { ProcessLiveStatus, StreamingThinkingPreview, type ProcessTraceStep } from './ProcessTrace';
+import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
   getLiveProcessGroups,
   getLiveProcessGroupStep,
-  getProcessToolKind,
   shouldRenderLiveProcessGroup,
   splitLiveProcessGroupDetailMessages,
   type LiveProcessGroup,
@@ -39,7 +40,7 @@ type KeyedRenderableMessageItem = RenderableMessageItem & {
 
 function getMessageKey(message: ChatMessage, index: number): string {
   return String(
-    message.id ||
+    message.renderKey || message.id ||
       message.toolId ||
       message.activityId ||
       message.runId ||
@@ -89,6 +90,7 @@ export default function SubagentDetailMessageFlow({
 }: SubagentDetailMessageFlowProps) {
   const { t } = useTranslation('chat');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: isRunning, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
 
@@ -108,40 +110,19 @@ export default function SubagentDetailMessageFlow({
   }, [isRunning, messages, showThinking]);
 
   const thinkingStatusStep = useMemo<ProcessTraceStep>(() => {
-    const lastToolMsg = [...messages].reverse().find(
-      (m) => m.isToolUse && m.toolName && !m.isSubagentContainer,
-    );
-    if (lastToolMsg) {
-      const kind = getProcessToolKind(lastToolMsg);
-      const toolKindTitleMap: Record<string, string> = {
-        search: t('process.live.runningSearch', { defaultValue: 'Searching' }),
-        edit: t('process.live.runningEdit', { defaultValue: 'Editing file' }),
-        read: t('process.live.runningRead', { defaultValue: 'Reading file' }),
-        command: t('process.live.runningCommand', { defaultValue: 'Running command' }),
-      };
-      if (toolKindTitleMap[kind]) {
-        return {
-          id: 'subagent-detail-thinking',
-          title: toolKindTitleMap[kind],
-          phase: kind === 'search' ? 'rag' : 'tool',
-          state: 'running' as const,
-        };
-      }
-    }
     return {
       id: 'subagent-detail-thinking',
       title: t('subagent.status.thinking', { defaultValue: 'Thinking' }),
       phase: 'thinking',
       state: 'running' as const,
     };
-  }, [messages, t]);
+  }, [t]);
 
   const renderableMessages = useMemo(
     () => {
       const result = messages
         .filter((message) =>
           !message.isAgentActivity &&
-          !isStreamingSubagentThinkingMessage(message) &&
           !(message.isThinking && !showThinking)
         )
         .map((message) => message.isSubagentContainer
@@ -212,8 +193,7 @@ export default function SubagentDetailMessageFlow({
     [keyedItems, unanchoredLiveProcessGroups],
   );
   const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
-  const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup;
-  const shouldRenderBottomStreamingThinking = Boolean(streamingThinkingContent && !hasOpenEndedLiveProcessGroup);
+  const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup && !streamingThinkingContent;
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
     return keyedItems.map((item) => (
       {
@@ -263,6 +243,7 @@ export default function SubagentDetailMessageFlow({
     loadAllMessages: loadAllSearchMessages,
     sessionId: null,
     captureFindShortcutInModal: true,
+    onNavigate: follow.pause,
   });
 
   const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => {
@@ -296,21 +277,14 @@ export default function SubagentDetailMessageFlow({
   ]);
 
   const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
-    const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
-    const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? thinkingStatusStep : null);
+    const step = getLiveProcessGroupStep(group, t, null);
     const expanded = isProcessExpanded(group.id);
     const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
-    const showStreamingThinkingBeforeStatus = Boolean(streamingThinkingContent && group.isRunning && isLatestGroup);
     return (
       <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
         {expanded && beforeStatusMessages.length > 0 ? (
           <div className="pl-5">
             {renderLiveProcessDetailMessages(beforeStatusMessages, `${group.id}-before-status`)}
-          </div>
-        ) : null}
-        {showStreamingThinkingBeforeStatus ? (
-          <div className="pl-5">
-            <StreamingThinkingPreview content={streamingThinkingContent!} />
           </div>
         ) : null}
         <ProcessLiveStatus
@@ -328,19 +302,15 @@ export default function SubagentDetailMessageFlow({
   }, [
     handleProcessExpandedChange,
     isProcessExpanded,
-    liveProcessGroups,
     renderLiveProcessDetailMessages,
-    streamingThinkingContent,
     t,
-    thinkingStatusStep,
   ]);
 
   if (
     keyedItems.length === 0 &&
     bottomUnanchoredLiveProcessGroups.length === 0 &&
     unanchoredLiveProcessGroupsByBeforeIndex.size === 0 &&
-    !shouldRenderBottomLiveStatus &&
-    !shouldRenderBottomStreamingThinking
+    !shouldRenderBottomLiveStatus
   ) {
     return null;
   }
@@ -359,8 +329,8 @@ export default function SubagentDetailMessageFlow({
           inputRef={chatHistorySearch.inputRef}
         />
       ) : null}
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-w-0 flex-col gap-3 px-6 py-4">
+      <div ref={scrollContainerRef} data-stream-scroll-viewport className="min-h-0 flex-1 overflow-y-auto" style={{ overflowAnchor: 'none' }}>
+        <div data-chat-scroll-content className="flex min-w-0 flex-col gap-3 px-6 py-4">
           {keyedItems.map((item) => {
             const previousMessage = item.renderIndex > 0 ? keyedItems[item.renderIndex - 1].message : null;
             const nextMessage = item.renderIndex < keyedItems.length - 1
@@ -411,16 +381,15 @@ export default function SubagentDetailMessageFlow({
               {bottomUnanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
             </div>
           ) : null}
-          {shouldRenderBottomLiveStatus || shouldRenderBottomStreamingThinking ? (
-            <div className="flex min-w-0 flex-col">
-              <ProcessLiveStatus step={thinkingStatusStep} />
-              {shouldRenderBottomStreamingThinking ? (
-                <StreamingThinkingPreview content={streamingThinkingContent!} />
-              ) : null}
-            </div>
-          ) : null}
+          {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={thinkingStatusStep} /> : null}
         </div>
       </div>
+      {follow.isPaused ? (
+        <button type="button" onClick={follow.scrollToBottom} aria-label={t('session.scroll.returnToLatest', { defaultValue: 'Back to latest' })}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-neutral-200 bg-white p-2 text-neutral-600 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      ) : null}
     </div>
   );
 }

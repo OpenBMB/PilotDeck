@@ -18,10 +18,11 @@ type UseChatHistorySearchOptions = {
   measuredItemHeights: number[];
   allMessagesLoaded: boolean;
   hasMoreMessages: boolean;
-  loadAllMessages: () => void;
+  loadAllMessages: () => void | Promise<void>;
   sessionId: string | null;
   captureFindShortcutInModal?: boolean;
   renderWindowKey?: string | number;
+  onNavigate?: () => void;
 };
 
 export function useChatHistorySearch({
@@ -34,11 +35,14 @@ export function useChatHistorySearch({
   sessionId,
   captureFindShortcutInModal = false,
   renderWindowKey = 0,
+  onNavigate,
 }: UseChatHistorySearchOptions) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const navigationRef = useRef(0);
+  const lastRevealedRef = useRef<string | null>(null);
 
   const searchableMessages = useMemo(
     () => buildSearchableMessages(keyedMessages),
@@ -53,6 +57,8 @@ export function useChatHistorySearch({
   const activeMatch: ChatHistorySearchMatch | null = matches[activeMatchIndex] ?? null;
 
   const closeSearch = useCallback(() => {
+    navigationRef.current += 1;
+    lastRevealedRef.current = null;
     setIsOpen(false);
     setQuery('');
     setActiveMatchIndex(0);
@@ -70,8 +76,7 @@ export function useChatHistorySearch({
 
   const ensureAllMessagesLoaded = useCallback(async () => {
     if (!hasMoreMessages || allMessagesLoaded) return;
-    loadAllMessages();
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await loadAllMessages();
   }, [allMessagesLoaded, hasMoreMessages, loadAllMessages]);
 
   const applySearchHighlights = useCallback((match: ChatHistorySearchMatch | null) => {
@@ -86,16 +91,23 @@ export function useChatHistorySearch({
     );
   }, [matches, query, scrollContainerRef, searchableMessages]);
 
+  const navigationDataRef = useRef({ applySearchHighlights, measuredItemHeights, matches });
+  navigationDataRef.current = { applySearchHighlights, measuredItemHeights, matches };
+
   const revealMatch = useCallback(async (match: ChatHistorySearchMatch) => {
+    const navigation = ++navigationRef.current;
+    onNavigate?.();
     await ensureAllMessagesLoaded();
+    if (navigation !== navigationRef.current) return;
 
     const container = scrollContainerRef.current;
     if (!container) return;
 
     const revealRenderedMatch = (behavior: ScrollBehavior): boolean => {
-      const target = applySearchHighlights(match);
+      const target = navigationDataRef.current.applySearchHighlights(match);
       if (!target) return false;
       scrollSearchTargetIntoView(container, target, behavior);
+      onNavigate?.();
       return true;
     };
 
@@ -107,7 +119,9 @@ export function useChatHistorySearch({
     // A distant result may not exist in the DOM yet. Perform one instant
     // coarse jump so virtualization can mount it, then center it without a
     // second long animation.
-    scrollToMessageIndex(container, measuredItemHeights, match.messageIndex);
+    const currentMatch = navigationDataRef.current.matches.find((candidate) =>
+      candidate.messageKey === match.messageKey && candidate.offset === match.offset) ?? match;
+    scrollToMessageIndex(container, navigationDataRef.current.measuredItemHeights, currentMatch.messageIndex);
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
@@ -115,11 +129,10 @@ export function useChatHistorySearch({
       });
     });
 
-    revealRenderedMatch('auto');
+    if (navigation === navigationRef.current) revealRenderedMatch('auto');
   }, [
-    applySearchHighlights,
     ensureAllMessagesLoaded,
-    measuredItemHeights,
+    onNavigate,
     scrollContainerRef,
   ]);
 
@@ -165,10 +178,14 @@ export function useChatHistorySearch({
     const container = scrollContainerRef.current;
     if (!isOpen || !activeMatch || !query.trim()) {
       if (container) clearSearchHighlights(container);
+      lastRevealedRef.current = null;
       return;
     }
+    const key = `${sessionId}:${query}:${activeMatch.messageKey}:${activeMatch.offset}`;
+    if (lastRevealedRef.current === key) return;
+    lastRevealedRef.current = key;
     void revealMatch(activeMatch);
-  }, [activeMatch, isOpen, query, revealMatch, scrollContainerRef]);
+  }, [activeMatch, isOpen, query, revealMatch, scrollContainerRef, sessionId]);
 
   useEffect(() => {
     if (!isOpen || !query.trim()) return undefined;
@@ -192,7 +209,15 @@ export function useChatHistorySearch({
     if (!isOpen) return;
     const container = scrollContainerRef.current;
     if (!container) return;
-    return () => clearSearchHighlights(container);
+    const cancelNavigation = () => { navigationRef.current += 1; };
+    container.addEventListener('wheel', cancelNavigation, { passive: true });
+    container.addEventListener('touchmove', cancelNavigation, { passive: true });
+    return () => {
+      navigationRef.current += 1;
+      container.removeEventListener('wheel', cancelNavigation);
+      container.removeEventListener('touchmove', cancelNavigation);
+      clearSearchHighlights(container);
+    };
   }, [isOpen, scrollContainerRef]);
 
   return {
