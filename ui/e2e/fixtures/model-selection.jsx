@@ -2,7 +2,8 @@ import React, { useCallback, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Composer from '../../src/components/chat-v2/ComposerV2';
 import { useChatModelSelection } from '../../src/components/chat/hooks/useChatModelSelection';
-import { startSessionCommand } from '../../src/components/chat/utils/sessionLauncher';
+import { useChatComposerState } from '../../src/components/chat/hooks/useChatComposerState';
+import { startSessionCommand, createUserTurnRunId } from '../../src/components/chat/utils/sessionLauncher';
 import i18n from '../../src/i18n/config';
 import '../../src/index.css';
 i18n.changeLanguage('en');
@@ -29,15 +30,17 @@ function App() {
   const send = (event) => {
     event.preventDefault();
     if (!model.isModelSelectionReady) return;
+    const runId = createUserTurnRunId();
+    model.registerModelSelectionSubmission(runId);
     startSessionCommand({
       selectedProject: { name: 'fixture', path: projectKey }, sessionId,
-      command: input, modelSelection: model.modelSelection,
+      command: input, modelSelection: model.modelSelection, runId,
       sendMessage: (message) => {
         setFrame(message); setLoading(true); setInput('');
         void fetch('/api/test-submit', { method: 'POST', body: JSON.stringify(message) }).then((r) => r.json()).then((accepted) => {
-          if (!sessionId) listener.current({ kind: 'session_created', projectKey, newSessionId: accepted.sessionId });
+          if (!sessionId) listener.current({ kind: 'session_created', projectKey, newSessionId: accepted.sessionId, runId });
           setSession(accepted.sessionId);
-          listener.current({ type: 'model-selection-saved', sessionId: accepted.sessionId, selection: message.options.modelSelection });
+          listener.current({ type: 'model-selection-saved', sessionId: accepted.sessionId, selection: message.options.modelSelection, runId });
           const running = message.options.modelSelection.mode === 'auto'
             ? { provider: 'zeta', model: 'configured' } : message.options.modelSelection;
           listener.current({ type: 'model-selection-changed', sessionId: accepted.sessionId, modelProvider: running.provider, model: running.model, runId: 'run-1' });
@@ -47,7 +50,7 @@ function App() {
     });
   };
   return <div style={{ maxWidth: 960, margin: '100px auto' }}>
-    <button onClick={() => { setProject('/general'); setSession(undefined); }}>General</button>
+    <button onClick={() => { setProject('/general'); setSession(undefined); setLoading(false); setInput('hello'); }}>General</button>
     <button onClick={() => { setProject('/project'); setSession(undefined); }}>Project</button>
     <button onClick={() => { setLoading(false); }}>Finish</button>
     <output data-testid="selection">{JSON.stringify(model.modelSelection)}</output>
@@ -59,4 +62,35 @@ function App() {
       runningModel={model.runningModels[sessionId]}/>
   </div>;
 }
-createRoot(document.getElementById('root')).render(<App />);
+
+const commandProject = { name: 'fixture', fullPath: '/general' };
+function CommandApp() {
+  const [settingsOpened, setSettingsOpened] = useState(0);
+  const [messages, setMessages] = useState([]);
+  const [sent, setSent] = useState(0);
+  const pendingViewSessionRef = useRef(null);
+  const ready = new URLSearchParams(location.search).get('ready') === 'true';
+  const composer = useChatComposerState({
+    selectedProject: commandProject, selectedSession: null, currentSessionId: null,
+    model: 'missing/model', modelSelection: { mode: 'model', provider: 'missing', model: 'model' },
+    isModelSelectionReady: ready, permissionMode: 'default', cycleRunMode: noop, isLoading: false,
+    canAbortSession: false, tokenBudget: null, sendMessage: () => { setSent((n) => n + 1); return true; },
+    onShowSettings: () => setSettingsOpened((n) => n + 1), pendingViewSessionRef, scrollToBottom: noop,
+    addMessage: (message) => setMessages((previous) => [...previous, message]), clearMessages: noop, rewindMessages: noop,
+    setIsLoading: noop, setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop, setPilotDeckStatus: noop,
+    setIsUserScrolledUp: noop, pendingPermissionRequests: [], setPendingPermissionRequests: noop,
+  });
+  return <div style={{ maxWidth: 960, margin: '100px auto' }}>
+    <output data-testid="settings-opened">{settingsOpened}</output>
+    <output data-testid="commands-loaded">{composer.slashCommandsCount}</output>
+    <output data-testid="model-requests">{sent}</output>
+    <output data-testid="command-messages">{JSON.stringify(messages)}</output>
+    <Composer {...props} {...composer} projectKey="/general" modelCatalog={[]} modelSelection={null}
+      isLoading={false} canAbortSession={false} isModelSelectionReady={ready} onModelSelectionChange={noop}
+      onInputChange={composer.handleInputChange} onSubmit={composer.handleSubmit}
+      onTextareaKeyDown={composer.handleKeyDown} onCommandSelect={composer.handleCommandSelect}
+      onCloseCommandMenu={composer.dismissCommandMenu} isCommandMenuOpen={composer.showCommandMenu}
+      onRemoveCommand={composer.removeSelectedCommand}/>
+  </div>;
+}
+createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('commands') ? <CommandApp /> : <App />);

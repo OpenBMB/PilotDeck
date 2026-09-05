@@ -80,3 +80,54 @@ test('unavailable configured models block sending and the picker still allows re
   await page.getByRole('button', { name: 'first', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
+
+test('a new conversation inherits the latest choice made inside the preceding session', async ({ page }) => {
+  const { submitted } = await setup(page);
+  await expect.poll(() => choice(page)).toEqual(B);
+  await page.getByRole('button', { name: 'configured', exact: true }).click();
+  await page.getByRole('button', { name: 'first', exact: true }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+  await page.getByRole('button', { name: 'first', exact: true }).click();
+  await page.getByRole('button', { name: 'configured', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual(B);
+  await page.getByRole('button', { name: 'General', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual(B);
+});
+
+for (const ready of [false, true]) test(`settings/help commands work with model ready=${ready}, via click and keyboard`, async ({ page }) => {
+  const executed = [];
+  await page.route('**/api/**', async (route) => {
+    const isExecute = new URL(route.request().url()).pathname === '/api/commands/execute';
+    const name = isExecute ? route.request().postDataJSON().commandName : '';
+    if (isExecute) executed.push(name);
+    await route.fulfill({ json: isExecute
+      ? { type: 'builtin', action: name.slice(1), data: { content: 'Fixture help text' } }
+      : { pinned: [], custom: [], builtIn: ['/config', '/help'].map((name) => ({ name, namespace: 'builtin', type: 'builtin', metadata: { type: 'builtin' } })) } });
+  });
+  await page.goto(`/e2e/fixtures/model-selection.html?commands=1&ready=${ready}`);
+  await expect(page.getByTestId('commands-loaded')).toHaveText('2');
+  const input = page.getByRole('textbox', { name: 'Message', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  // A space completes the command token and closes the suggestion menu.
+  await input.fill('/config ');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => executed).toEqual(['/config']);
+  await expect(page.getByTestId('settings-opened')).toHaveText('1');
+  await input.fill('/help ');
+  await input.press('Enter');
+  await expect(page.getByTestId('command-messages')).toContainText('Fixture help text');
+  expect(executed).toEqual(['/config', '/help']);
+  await expect(page.getByTestId('model-requests')).toHaveText('0');
+  if (!ready) {
+    await input.fill('ordinary model request');
+    await expect(send).toBeDisabled();
+    await input.press('Enter');
+    await input.fill('/unknown ');
+    await expect(send).toBeDisabled();
+    await input.press('Enter');
+    await expect(page.getByTestId('model-requests')).toHaveText('0');
+  }
+});

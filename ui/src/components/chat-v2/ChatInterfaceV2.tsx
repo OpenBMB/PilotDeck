@@ -139,6 +139,7 @@ function ChatInterfaceV2({
     modelCatalog,
     modelSelection,
     setModelSelection,
+    registerModelSelectionSubmission,
     isModelCatalogLoading,
     isModelSelectionReady,
     runningModels,
@@ -286,6 +287,7 @@ function ChatInterfaceV2({
     openImagePicker,
     addAttachmentFiles,
     handleSubmit,
+    canSubmitWithoutModel,
     handleInputChange,
     insertAtCursor,
     handleKeyDown,
@@ -305,6 +307,7 @@ function ChatInterfaceV2({
     model,
     modelSelection,
     isModelSelectionReady,
+    registerModelSelectionSubmission,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
@@ -605,6 +608,7 @@ function ChatInterfaceV2({
     });
 
     const effectiveThinkingMode = getEffectiveThinkingMode(thinkingMode, thinkingModeAvailability);
+    const forgetSubmission = registerModelSelectionSubmission(runId);
     regenerateLastSessionCommand({
       sendMessage,
       selectedProject,
@@ -632,12 +636,13 @@ function ChatInterfaceV2({
       }],
     });
 
-    return result;
+    return result.catch((error) => { forgetSubmission(); throw error; });
   }, [
     currentSessionId,
     isModelSelectionReady,
     modelSelection,
     modelCatalogError,
+    registerModelSelectionSubmission,
     effectivePermissionMode,
     model,
     permissionMode,
@@ -781,6 +786,7 @@ function ChatInterfaceV2({
       modelSelection={modelSelection}
       isModelCatalogLoading={isModelCatalogLoading}
       isModelSelectionReady={isModelSelectionReady}
+      canSubmitWithoutModel={canSubmitWithoutModel}
       runningModel={runningModels[selectedSession?.id || currentSessionId || ""]?.runId === activeRunId
         ? runningModels[selectedSession?.id || currentSessionId || ""] : undefined}
       modelCatalogError={modelCatalogError}

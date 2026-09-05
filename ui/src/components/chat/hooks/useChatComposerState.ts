@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getSubmittedCommand, isModelIndependentCommand } from '../utils/composerCommand';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -65,6 +66,7 @@ interface UseChatComposerStateArgs {
   model: string;
   modelSelection?: ChatModelSelection | null;
   isModelSelectionReady?: boolean;
+  registerModelSelectionSubmission?: (runId: string) => () => void;
   permissionMode: PermissionMode | string;
   basePermissionMode?: PermissionMode | string;
   runMode?: string;
@@ -262,6 +264,7 @@ export function useChatComposerState({
   model,
   modelSelection,
   isModelSelectionReady = true,
+  registerModelSelectionSubmission,
   permissionMode,
   basePermissionMode,
   runMode,
@@ -1126,7 +1129,8 @@ export function useChatComposerState({
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
       event.preventDefault();
-      if (!isModelSelectionReady) return;
+      const submitCommand = getSubmittedCommand(inputValueRef.current, selectedCommands, slashCommands);
+      if (!isModelSelectionReady && (skipSlashDetectionOnceRef.current || !isModelIndependentCommand(submitCommand))) return;
       const submittedModelSelection = modelSelection ? { ...modelSelection } : undefined;
       const currentInput = inputValueRef.current;
       const submitAttachedImages = attachedImages;
@@ -1179,8 +1183,7 @@ export function useChatComposerState({
         }
         return;
       } else if (trimmedInput.startsWith('/')) {
-        const commandName = trimmedInput.match(/^(\S+)/)?.[1] ?? trimmedInput;
-        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
+        const matchedCommand = submitCommand;
         if (matchedCommand) {
           const commandResult = await executeCommand(matchedCommand, trimmedInput);
           if (!commandResult) return;
@@ -1209,6 +1212,9 @@ export function useChatComposerState({
         }
       }
 
+      // Custom commands can expand and re-enter this handler. They still need
+      // a usable model before entering the normal/queued submission path.
+      if (!isModelSelectionReady) return;
       const userVisibleInput = currentInput.trim()
         || (hasDocumentReferences
           ? referenceOnlyPrompt
@@ -1427,6 +1433,7 @@ export function useChatComposerState({
       // server atomically decides whether to dispatch now or retain the item,
       // avoiding upload/session-busy races while preserving the richer PR payload.
       if (shouldRoutePreparedInputThroughQueue(queueTargetSessionId)) {
+        const forgetSubmission = registerModelSelectionSubmission?.(runId);
         const result = await enqueuePreparedInput?.({
           id: runId,
           runId,
@@ -1455,6 +1462,7 @@ export function useChatComposerState({
           },
         }) ?? { ok: false, error: 'Message queue is unavailable.' };
         if (!result.ok) {
+          forgetSubmission?.();
           addMessage({
             type: 'error',
             content: result.error || 'Failed to queue this message.',
@@ -1480,6 +1488,7 @@ export function useChatComposerState({
       // server acknowledgement, reconnecting could execute it twice. Dispatch
       // first and only expose optimistic session state after the WebSocket has
       // accepted the frame locally.
+      const forgetSubmission = registerModelSelectionSubmission?.(runId);
       const startedSessionId = startSessionCommand({
         sendMessage,
         selectedProject,
@@ -1502,6 +1511,7 @@ export function useChatComposerState({
       });
 
       if (!startedSessionId) {
+        forgetSubmission?.();
         addMessage({
           type: 'error',
           content: 'Connection lost before the message could be sent. Reconnect and try again.',
@@ -1550,6 +1560,7 @@ export function useChatComposerState({
       model,
       modelSelection,
       isModelSelectionReady,
+      registerModelSelectionSubmission,
       currentSessionId,
       executeCommand,
       isLoading,
@@ -2030,6 +2041,7 @@ export function useChatComposerState({
 
   return {
     input,
+    canSubmitWithoutModel: !skipSlashDetectionOnceRef.current && isModelIndependentCommand(getSubmittedCommand(input, selectedCommands, slashCommands)),
     setInput,
     textareaRef,
     inputHighlightRef,

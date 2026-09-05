@@ -44,6 +44,7 @@ vi.mock('../chat/hooks/useChatProviderState', () => ({
     modelCatalog: [],
     modelSelection: { mode: 'auto' },
     setModelSelection: vi.fn(async () => undefined),
+    registerModelSelectionSubmission: vi.fn(() => vi.fn()),
     isModelCatalogLoading: false,
     isModelSelectionReady: true,
     runningModels: {},

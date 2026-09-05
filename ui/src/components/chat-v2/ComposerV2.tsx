@@ -158,6 +158,7 @@ export type ComposerV2Props = {
   modelSelection: ChatModelSelection | null;
   isModelCatalogLoading?: boolean;
   isModelSelectionReady?: boolean;
+  canSubmitWithoutModel?: boolean;
   runningModel?: { provider: string; model: string };
   modelCatalogError?: string | null;
   projectKey: string;
@@ -513,6 +514,7 @@ export default function ComposerV2({
   modelSelection,
   isModelCatalogLoading = false,
   isModelSelectionReady = true,
+  canSubmitWithoutModel = false,
   runningModel,
   modelCatalogError,
   projectKey,
@@ -650,7 +652,8 @@ export default function ComposerV2({
   );
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
-  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || !isModelSelectionReady;
+  const modelBlocksSubmission = !isModelSelectionReady && !canSubmitWithoutModel;
+  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || modelBlocksSubmission;
   const primaryAction = getComposerPrimaryAction({
     isLoading,
     isInputQueuePaused,
@@ -765,7 +768,7 @@ export default function ComposerV2({
         {!hasBlockingPermissionPanel ? (
           <form
             onSubmit={(event) => {
-              if (!isModelSelectionReady) { event.preventDefault(); return; }
+              if (modelBlocksSubmission) { event.preventDefault(); return; }
               if (showWorkspacePicker && !workspaceSelectedProject) {
                 event.preventDefault();
                 setWorkspaceMenuForceOpen(true);

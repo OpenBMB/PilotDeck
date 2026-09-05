@@ -1518,7 +1518,7 @@ export async function runChatViaGateway(
 
     const state = ensureSessionState(sessionKey, projectKey, channelKey);
     const staleRunId = state.active ? state.runId : undefined;
-
+    const runId = resolveTurnRunId(options?.runId);
 
     if (isNewSession) {
         writer.send(
@@ -1529,11 +1529,11 @@ export async function runChatViaGateway(
                 newSessionId: sessionKey,
                 sessionKey,
                 projectKey,
+                runId,
             }),
         );
     }
 
-    const runId = resolveTurnRunId(options?.runId);
     if (!staleRunId) {
         setLocalActiveRun(state, runId);
         setPendingGatewayRun(state, runId);

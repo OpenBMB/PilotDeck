@@ -61,7 +61,8 @@ describe('dialog model selection', () => {
     await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
     await act(() => result.current.setModelSelection(A));
     expect(fetchMock.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
-    act(() => listener({ kind: 'session_created', projectKey: '/general', newSessionId: 'web:created' }));
+    result.current.registerModelSelectionSubmission('run-created');
+    act(() => listener({ kind: 'session_created', projectKey: '/general', newSessionId: 'web:created', runId: 'run-created' }));
     fetchMock.mockImplementation(async (url: string) => json(url.startsWith('/api/models?') ? catalog : { saved: B }));
     rerender({ projectKey: '/general', sessionId: 'web:created' });
     await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
@@ -88,13 +89,14 @@ describe('dialog model selection', () => {
     const first = setup('web:queued');
     await waitFor(() => expect(first.result.current.isModelSelectionReady).toBe(true));
     await act(() => first.result.current.setModelSelection(B));
+    first.result.current.registerModelSelectionSubmission('run-b');
     act(() => listener({ type: 'model-selection-saved', sessionId: 'web:queued', selection: A }));
     first.unmount();
     fetchMock.mockImplementation(async (url: string) => json(url.startsWith('/api/models?') ? catalog : { saved: A }));
     const { result } = setup('web:queued');
     await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
     expect(result.current.modelSelection).toEqual(B);
-    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:queued', selection: B }));
+    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:queued', selection: B, runId: 'run-b' }));
     expect(localStorage.getItem('pending-composer-model-["/general","web:queued"]')).toBeNull();
   });
   it('ignores delayed old-project responses and blocks during scope changes', async () => {
@@ -165,5 +167,92 @@ describe('dialog model selection', () => {
     await act(async () => { await expect(result.current.setModelSelection(A)).rejects.toThrow('Save failed'); });
     expect(result.current.modelSelection).toEqual(A);
     expect(result.current.isModelSelectionReady).toBe(false);
+  });
+
+  it('uses the latest project preference after returning to the welcome page repeatedly', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    for (const [index, choice, next] of [[1, A, B], [2, B, A]] as const) {
+      await act(() => result.current.setModelSelection(choice));
+      result.current.registerModelSelectionSubmission(`run-${index}`);
+      act(() => listener({ kind: 'session_created', projectKey: '/general', newSessionId: `web:${index}`, runId: `run-${index}` }));
+      expect(Object.keys(localStorage).filter((key) => key.startsWith('pending-composer-model-') && key.includes('welcome:'))).toHaveLength(0);
+      rerender({ projectKey: '/general', sessionId: `web:${index}` });
+      await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+      await act(() => result.current.setModelSelection(next));
+      rerender({ projectKey: '/general', sessionId: undefined });
+      await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+      expect(result.current.modelSelection).toEqual(next);
+    }
+  });
+
+  it('does not let a late creation acknowledgement consume another welcome-page choice', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    await act(() => result.current.setModelSelection(A));
+    result.current.registerModelSelectionSubmission('run-old-welcome');
+    rerender({ projectKey: '/general', sessionId: 'web:history' });
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    rerender({ projectKey: '/general', sessionId: undefined });
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    await act(() => result.current.setModelSelection(B));
+    act(() => listener({ kind: 'session_created', newSessionId: 'web:old-created', runId: 'run-old-welcome' }));
+    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:old-created', selection: A, runId: 'run-old-welcome' }));
+    act(() => listener({ type: 'config:reloaded' }));
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    expect(result.current.modelSelection).toEqual(B);
+  });
+
+  it('matches A → B → A acknowledgements by submission and revision, including replay after refresh', async () => {
+    fetchMock.mockImplementation(async (url: string, options?: any) => options?.method === 'PUT'
+      ? json({ error: { code: 'SESSION_BUSY' } }, 409)
+      : json(url.startsWith('/api/models?') ? catalog : { saved: B }));
+    const first = setup('web:queue');
+    await waitFor(() => expect(first.result.current.isModelSelectionReady).toBe(true));
+    await act(() => first.result.current.setModelSelection(A));
+    first.result.current.registerModelSelectionSubmission('run-old-a');
+    await act(() => first.result.current.setModelSelection(B));
+    first.result.current.registerModelSelectionSubmission('run-b');
+    await act(() => first.result.current.setModelSelection(A));
+    const pendingKey = 'pending-composer-model-["/general","web:queue"]';
+    const currentDraft = localStorage.getItem(pendingKey);
+    first.unmount();
+    const reloaded = setup('web:queue');
+    await waitFor(() => expect(reloaded.result.current.isModelSelectionReady).toBe(true));
+    const events = [
+      { type: 'model-selection-saved', sessionId: 'web:queue', runId: 'run-old-a', selection: A },
+      { type: 'model-selection-saved', sessionId: 'web:queue', runId: 'run-b', selection: B },
+    ];
+    act(() => listener({ activeTurnMessages: [...events, ...events] }));
+    expect(localStorage.getItem(pendingKey)).toBe(currentDraft);
+    reloaded.unmount();
+    const last = setup('web:queue');
+    await waitFor(() => expect(last.result.current.isModelSelectionReady).toBe(true));
+    expect(last.result.current.modelSelection).toEqual(A);
+    last.result.current.registerModelSelectionSubmission('run-new-a');
+    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:queue', runId: 'run-new-a', selection: A }));
+    expect(localStorage.getItem(pendingKey)).toBeNull();
+  });
+
+  it('keeps an attachment-delayed submission associated with the choice captured before the await', async () => {
+    const { result } = setup('web:upload');
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    await act(() => result.current.setModelSelection(A));
+    const registerEarlierChoice = result.current.registerModelSelectionSubmission;
+    await act(() => result.current.setModelSelection(B));
+    await act(() => result.current.setModelSelection(A));
+    registerEarlierChoice('run-upload');
+    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:upload', runId: 'run-upload', selection: A }));
+    expect(localStorage.getItem('pending-composer-model-["/general","web:upload"]')).not.toBeNull();
+  });
+
+  it('migrates pending value-only preferences without allowing an uncorrelated acknowledgement to clear them', async () => {
+    const key = 'pending-composer-model-["/general","web:legacy"]';
+    localStorage.setItem(key, JSON.stringify(A));
+    const { result } = setup('web:legacy');
+    await waitFor(() => expect(result.current.isModelSelectionReady).toBe(true));
+    act(() => listener({ type: 'model-selection-saved', sessionId: 'web:legacy', selection: A, runId: 'unregistered' }));
+    expect(JSON.parse(localStorage.getItem(key)!).selection).toEqual(A);
+    expect(result.current.modelSelection).toEqual(A);
   });
 });

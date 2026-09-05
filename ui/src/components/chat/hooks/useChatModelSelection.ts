@@ -1,8 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
 import { modelSelectionId, normalizeModelSelection, parseCatalogItem } from '../../chat-v2/modelCapabilityOptions';
 import type { ChatModelCatalogItem, ChatModelSelection } from './useChatProviderState';
 import { safeLocalStorage } from '../utils/chatStorage';
+import { createUserTurnRunId } from '../utils/sessionLauncher';
+
+type ModelDraft = { id: string; selection: ChatModelSelection };
+type ModelSubmission = { scope: string; projectKey: string; sessionId?: string; draftId?: string };
+const draftKey = (scope: string) => `pending-composer-model-${scope}`;
+const submissionKey = (runId: string) => `submitted-composer-model-${runId}`;
+
+function readDraft(scope: string): ModelDraft | null {
+  try {
+    const value = JSON.parse(safeLocalStorage.getItem(draftKey(scope)) || 'null');
+    const selection = normalizeModelSelection(value?.selection);
+    if (selection && typeof value.id === 'string') return { id: value.id, selection };
+    // Preserve pending choices made by the previous version; old value-only
+    // acknowledgements cannot identify or consume their new revision.
+    const legacy = normalizeModelSelection(value);
+    if (!legacy) return null;
+    const draft = { id: createUserTurnRunId(), selection: legacy };
+    safeLocalStorage.setItem(draftKey(scope), JSON.stringify(draft));
+    return draft;
+  } catch { return null; }
+}
+
+function readSubmission(runId?: string): ModelSubmission | null {
+  try {
+    const value = JSON.parse(safeLocalStorage.getItem(submissionKey(runId || '')) || 'null');
+    return typeof value?.scope === 'string' && typeof value?.projectKey === 'string' ? value : null;
+  } catch { return null; }
+}
 
 type Subscribe = (listener: (message: any) => void) => () => void;
 type SelectionState = {
@@ -12,6 +40,7 @@ type SelectionState = {
   loading: boolean;
   saving: boolean;
   error: string | null;
+  draft?: ModelDraft | null;
 };
 
 function readSelection(key: string): ChatModelSelection | null {
@@ -34,10 +63,11 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
   subscribe: Subscribe;
 }) {
   const sessionId = selectedSessionId?.startsWith('new-session-') ? undefined : selectedSessionId;
-  const scope = JSON.stringify([projectKey, sessionId || '']);
+  // Each visit to the welcome page owns a different draft, even in one project.
+  const scope = useMemo(() => JSON.stringify([projectKey, sessionId || `welcome:${createUserTurnRunId()}`]), [projectKey, sessionId]);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const drafts = useRef(new Map<string, ChatModelSelection>());
+  const drafts = useRef(new Map<string, ModelDraft>());
   const saveVersions = useRef(new Map<string, number>());
   const pendingSaves = useRef(new Map<string, number>());
   const saveTail = useRef<Promise<void>>(Promise.resolve());
@@ -53,18 +83,30 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
     for (const event of events) {
       // Bind a welcome-page choice to its new session before the session GET can finish.
       // A user may already have selected the next model while the first submission starts.
-      if (event?.kind === 'session_created' && event.newSessionId && event.projectKey === projectKey && !sessionId) {
-        const draft = drafts.current.get(scope);
+      const submission = event?.kind === 'session_created' || event?.type === 'model-selection-saved'
+        ? readSubmission(event.runId) : null;
+      if (event?.kind === 'session_created' && event.newSessionId && submission && !submission.sessionId) {
+        const draft = drafts.current.get(submission.scope) || readDraft(submission.scope);
+        const createdScope = JSON.stringify([submission.projectKey, event.newSessionId]);
         if (draft) {
-          const createdScope = JSON.stringify([projectKey, event.newSessionId]);
           drafts.current.set(createdScope, draft);
-          safeLocalStorage.setItem(`pending-composer-model-${createdScope}`, JSON.stringify(draft));
+          safeLocalStorage.setItem(draftKey(createdScope), JSON.stringify(draft));
         }
+        drafts.current.delete(submission.scope);
+        safeLocalStorage.removeItem(draftKey(submission.scope));
+        safeLocalStorage.setItem(submissionKey(event.runId), JSON.stringify({ ...submission, scope: createdScope, sessionId: event.newSessionId }));
       }
-      if (event?.type === 'model-selection-saved' && event.sessionId) {
-        const acceptedScope = JSON.stringify([projectKey, event.sessionId]);
-        const pendingKey = `pending-composer-model-${acceptedScope}`;
-        if (JSON.stringify(readSelection(pendingKey)) === JSON.stringify(event.selection)) safeLocalStorage.removeItem(pendingKey);
+      if (event?.type === 'model-selection-saved' && event.sessionId && submission) {
+        const acceptedScope = JSON.stringify([submission.projectKey, event.sessionId]);
+        if (submission.draftId && readDraft(acceptedScope)?.id === submission.draftId) {
+          safeLocalStorage.removeItem(draftKey(acceptedScope));
+        }
+        safeLocalStorage.removeItem(submissionKey(event.runId));
+      }
+      // Failed/cancelled turns may never accept input. Drop their correlation,
+      // while retaining the user's pending model choice for a future message.
+      if ((event?.kind === 'complete' || event?.kind === 'interrupted') && event.runId) {
+        safeLocalStorage.removeItem(submissionKey(event.runId));
       }
       if (event?.type !== 'model-selection-changed' || !event.sessionId) continue;
       setRunningModels((previous) => ({
@@ -72,7 +114,7 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
         [event.sessionId]: { provider: event.modelProvider, model: event.model, runId: event.runId },
       }));
     }
-  }), [projectKey, sessionId, scope, subscribe]);
+  }), [subscribe]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,13 +142,13 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
         const catalog: ChatModelCatalogItem[] = (Array.isArray(catalogData.items) ? catalogData.items : [])
           .map(parseCatalogItem).filter((item: ChatModelCatalogItem | null): item is ChatModelCatalogItem => Boolean(item));
         // Only explicit user choices populate these keys. Loading a catalog must never write a preference.
-        const selection = drafts.current.get(scope)
-          || (sessionId ? readSelection(`pending-composer-model-${scope}`) : null)
+        const draft = drafts.current.get(scope) || readDraft(scope);
+        const selection = draft?.selection
           || normalizeModelSelection(sessionData?.saved)
           || readSelection(`composer-model-${projectKey}`)
           || normalizeModelSelection(catalogData.defaultSelection);
         setState({
-          scope, selection, catalog, loading: false,
+          scope, selection, draft, catalog, loading: false,
           saving: pendingSaves.current.has(scope),
           error: selectionError(selection, catalog),
         });
@@ -121,15 +163,15 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
 
   const setModelSelection = useCallback(async (value: ChatModelSelection) => {
     const selection = { ...value };
-    drafts.current.set(scope, selection);
+    const draft = { id: createUserTurnRunId(), selection };
+    drafts.current.set(scope, draft);
     safeLocalStorage.setItem(`composer-model-${projectKey}`, JSON.stringify(selection));
-    const pendingKey = `pending-composer-model-${scope}`;
-    if (sessionId) safeLocalStorage.setItem(pendingKey, JSON.stringify(selection));
+    safeLocalStorage.setItem(draftKey(scope), JSON.stringify(draft));
     const version = (saveVersions.current.get(scope) || 0) + 1;
     saveVersions.current.set(scope, version);
     if (sessionId) pendingSaves.current.set(scope, version);
     setState((previous) => ({
-      ...previous, selection, saving: Boolean(sessionId),
+      ...previous, selection, draft, saving: Boolean(sessionId),
       error: selectionError(selection, previous.catalog),
     }));
     if (!sessionId) return;
@@ -166,6 +208,14 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
   }, [projectKey, sessionId, scope]);
 
   const isCurrent = state.scope === scope;
+  // This closure captures the rendered choice, just like the submission's
+  // model snapshot. A later choice during attachment work must not replace it.
+  const registerModelSelectionSubmission = useCallback((runId: string) => {
+    const submission: ModelSubmission = { scope, projectKey, sessionId,
+      draftId: state.scope === scope ? state.draft?.id : undefined };
+    safeLocalStorage.setItem(submissionKey(runId), JSON.stringify(submission));
+    return () => safeLocalStorage.removeItem(submissionKey(runId));
+  }, [scope, projectKey, sessionId, state.scope, state.draft?.id]);
   return {
     modelSelection: isCurrent ? state.selection : null,
     modelCatalog: isCurrent ? state.catalog : [],
@@ -173,6 +223,7 @@ export function useChatModelSelection({ projectKey, sessionId: selectedSessionId
     isModelSelectionReady: isCurrent && !state.loading && !state.saving && !state.error && Boolean(state.selection),
     modelCatalogError: isCurrent ? state.error : null,
     setModelSelection,
+    registerModelSelectionSubmission,
     runningModels,
   };
 }
