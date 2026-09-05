@@ -75,6 +75,8 @@ describe('sessionLauncher turn identity', () => {
       runId: 'new-turn',
       images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
       attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+      uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+      displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
       syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
     });
 
@@ -90,6 +92,8 @@ describe('sessionLauncher turn identity', () => {
         userVisibleInput: 'Corrected request',
         images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
         attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+        uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+        displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
         syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
       }),
     });

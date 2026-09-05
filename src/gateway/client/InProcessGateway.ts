@@ -737,7 +737,10 @@ export class InProcessGateway implements Gateway {
     if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
     if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
 
-    const attachments = input.attachments ?? [];
+    const uploaded = input.uploadedAttachments?.length
+      ? await this.resolveUploadedAttachments(input)
+      : [];
+    const attachments = [...(input.attachments ?? []), ...uploaded];
     const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
     const agentInput = await buildAgentInputWithAttachments(
       input.message,
@@ -910,7 +913,7 @@ export class InProcessGateway implements Gateway {
     this.transcriptWriteReservations.add(sessionKey);
   }
 
-  private async resolveUploadedAttachments(input: GatewaySubmitTurnInput): Promise<ChannelAttachment[]> {
+  private async resolveUploadedAttachments(input: Pick<GatewaySubmitTurnInput, "projectKey" | "uploadedAttachments">): Promise<ChannelAttachment[]> {
     if (!input.projectKey) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploaded attachments.");
     if (!this.options.resolveUploadedAttachments) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Uploaded attachments are unavailable.");
     return this.options.resolveUploadedAttachments({ projectKey: input.projectKey, uploads: input.uploadedAttachments ?? [] });

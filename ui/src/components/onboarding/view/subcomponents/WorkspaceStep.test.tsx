@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pickNativeFolder } from '../../../project-creation-wizard/data/workspaceApi';
 import WorkspaceStep, { type WorkspaceStepProps } from './WorkspaceStep';
 
 vi.mock('react-i18next', async () => {
@@ -26,14 +25,23 @@ vi.mock('react-i18next', async () => {
   };
 });
 
-vi.mock('../../../project-creation-wizard/data/workspaceApi', () => ({
-  pickNativeFolder: vi.fn(),
+vi.mock('../../../project-creation-wizard/hooks/useGithubTokens', () => ({
+  useGithubTokens: () => ({ tokens: [], loading: false, loadError: null }),
+}));
+
+vi.mock('../../../project-creation-wizard/components/FolderBrowserModal', () => ({
+  default: ({ isOpen, onFolderSelected }: { isOpen: boolean; onFolderSelected: (path: string) => void }) => (
+    isOpen ? <button onClick={() => onFolderSelected('/tmp/from-browser')}>Use test folder</button> : null
+  ),
 }));
 
 const draft = {
   workspaceType: 'new' as const,
   workspacePath: '',
   githubUrl: '',
+  tokenMode: 'none' as const,
+  selectedGithubToken: '',
+  newGithubToken: '',
 };
 
 type OnboardingWorkspaceStepProps = Extract<WorkspaceStepProps, { variant?: 'onboarding' }>;
@@ -49,6 +57,9 @@ function renderStep(overrides: Partial<Omit<OnboardingWorkspaceStepProps, 'varia
       isCreating={false}
       onWorkspacePathChange={vi.fn()}
       onGithubUrlChange={vi.fn()}
+      onTokenModeChange={vi.fn()}
+      onSelectedGithubTokenChange={vi.fn()}
+      onNewGithubTokenChange={vi.fn()}
       onBack={vi.fn()}
       onSkipChat={onSkipChat}
       onFinish={onFinish}
@@ -61,7 +72,7 @@ function renderStep(overrides: Partial<Omit<OnboardingWorkspaceStepProps, 'varia
 describe('WorkspaceStep', () => {
   afterEach(() => {
     cleanup();
-    vi.mocked(pickNativeFolder).mockReset();
+    delete window.pilotdeckDesktop;
   });
 
   it('lets Start chatting skip workspace and GitHub validation', () => {
@@ -104,6 +115,9 @@ describe('WorkspaceStep', () => {
         isCreating={false}
         onWorkspacePathChange={vi.fn()}
         onGithubUrlChange={vi.fn()}
+        onTokenModeChange={vi.fn()}
+        onSelectedGithubTokenChange={vi.fn()}
+        onNewGithubTokenChange={vi.fn()}
         onCancel={onCancel}
         onFinish={vi.fn()}
       />,
@@ -116,16 +130,23 @@ describe('WorkspaceStep', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('fills the workspace path from the selected folder', async () => {
+  it('uses the in-app folder browser on the web', async () => {
     const onWorkspacePathChange = vi.fn();
-    vi.mocked(pickNativeFolder).mockResolvedValueOnce('C:\\Users\\wukai\\Desktop\\office');
 
     renderStep({ onWorkspacePathChange });
     fireEvent.click(screen.getByRole('button', { name: 'Choose file' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use test folder' }));
 
     await waitFor(() => {
-      expect(pickNativeFolder).toHaveBeenCalledTimes(1);
-      expect(onWorkspacePathChange).toHaveBeenCalledWith('C:\\Users\\wukai\\Desktop\\office');
+      expect(onWorkspacePathChange).toHaveBeenCalledWith('/tmp/from-browser');
     });
+  });
+
+  it('uses the Electron folder picker in the desktop app', async () => {
+    const onWorkspacePathChange = vi.fn();
+    window.pilotdeckDesktop = { pickFolder: vi.fn(async () => '/tmp/from-desktop') } as never;
+    renderStep({ onWorkspacePathChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose file' }));
+    await waitFor(() => expect(onWorkspacePathChange).toHaveBeenCalledWith('/tmp/from-desktop'));
   });
 });

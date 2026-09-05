@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
+import { useTranslation } from 'react-i18next';
 import { isImeEnterEvent } from '../../../utils/ime';
 import {
   ADD_WORKSPACE_FILE_MENTION_EVENT,
@@ -36,6 +37,7 @@ export function useFileMentions({
   setInput,
   textareaRef,
 }: UseFileMentionsOptions) {
+  const { t } = useTranslation('chat');
   const [selectedFileMentions, setSelectedFileMentions] = useState<MentionableFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<MentionableFile[]>([]);
   const [showFileDropdown, setShowFileDropdown] = useState(false);
@@ -70,7 +72,7 @@ export function useFileMentions({
     if (!enabled || !projectKey) {
       setFilteredFiles([]);
       setNextCursor(undefined);
-      setFileListError('未找到当前项目路径');
+      setFileListError(t('input.projectPathMissing', { defaultValue: 'The current project path is unavailable.' }));
       return;
     }
 
@@ -93,12 +95,18 @@ export function useFileMentions({
       });
       const contentType = response.headers?.get?.('content-type') || '';
       if (contentType && !contentType.toLowerCase().includes('application/json')) {
-        throw new Error(`项目文件接口返回了非 JSON 响应（${contentType}），请重启后端服务`);
+        throw new Error(t('input.projectFilesNonJson', {
+          contentType,
+          defaultValue: `The project files service returned an invalid response (${contentType}). Restart the backend service.`,
+        }));
       }
       const page = await response.json().catch(() => ({}));
       if (!response.ok) {
         const code = page?.error?.code;
-        const message = page?.error?.message || `项目文件加载失败（${response.status}）`;
+        const message = page?.error?.message || t('input.projectFilesLoadFailedStatus', {
+          status: response.status,
+          defaultValue: `Failed to load project files (${response.status}).`,
+        });
         throw new Error(code ? `${message} [${code}]` : message);
       }
       const items: MentionableFile[] = (Array.isArray(page?.items) ? page.items : [])
@@ -127,14 +135,16 @@ export function useFileMentions({
       }
       console.error('Error fetching files:', error);
       if (!append) setFilteredFiles([]);
-      setFileListError(error instanceof Error ? error.message : '项目文件加载失败');
+      setFileListError(error instanceof Error
+        ? error.message
+        : t('input.projectFilesLoadFailed', { defaultValue: 'Failed to load project files.' }));
     } finally {
       if (inFlightFetchRef.current === abortController) {
         inFlightFetchRef.current = null;
       }
       if (!abortController.signal.aborted) setIsLoadingFiles(false);
     }
-  }, [enabled, selectedProject?.fullPath, selectedProject?.path]);
+  }, [enabled, selectedProject?.fullPath, selectedProject?.path, t]);
 
   // Cursor and mention UI state belong to a single draft. A conversation
   // switch can keep the same project mounted, so project identity alone is

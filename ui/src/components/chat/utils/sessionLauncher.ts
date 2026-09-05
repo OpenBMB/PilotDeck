@@ -41,6 +41,8 @@ type RegenerateLastSessionOptions = Omit<
   sessionId: string;
   expectedTurnId: string;
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
+  /** Attachments rendered in the replacement bubble; model attachments are sent separately. */
+  displayAttachments?: ChatAttachment[];
 };
 
 const VALID_PERMISSION_MODES = new Set<PermissionMode>([
@@ -192,6 +194,8 @@ export function regenerateLastSessionCommand({
   toolsSettings = getPilotDeckSettings(),
   images,
   attachments,
+  uploadedAttachments,
+  displayAttachments,
   workspaceCwd,
   syntheticMessages,
 }: RegenerateLastSessionOptions): void {
@@ -221,6 +225,10 @@ export function regenerateLastSessionCommand({
         : {}),
       ...(Array.isArray(images) && images.length > 0 ? { images } : {}),
       ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
+      ...(Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0
+        ? { uploadedAttachments }
+        : {}),
+      ...(Array.isArray(displayAttachments) ? { displayAttachments } : {}),
       ...(resolvedWorkspaceCwd ? { workspaceCwd: resolvedWorkspaceCwd } : {}),
       ...(Array.isArray(syntheticMessages) && syntheticMessages.length > 0
         ? { syntheticMessages }

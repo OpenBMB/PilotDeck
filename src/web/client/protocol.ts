@@ -193,6 +193,7 @@ export type WebSteerTurnInput = {
   message: string;
   projectKey?: string;
   attachments?: WebChannelAttachment[];
+  uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
 };
 
 export type WebSteerTurnResult = {

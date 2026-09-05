@@ -3,7 +3,10 @@ import {
   cloneWorkspaceWithProgress,
   createWorkspaceRequest,
 } from '../../../project-creation-wizard/data/workspaceApi';
-import { isCloneWorkflow } from '../../../project-creation-wizard/utils/pathUtils';
+import {
+  isCloneWorkflow,
+  shouldShowGithubAuthentication,
+} from '../../../project-creation-wizard/utils/pathUtils';
 import type { WorkspaceType } from '../../../project-creation-wizard/types';
 import type { WorkspaceDraft } from '../types';
 
@@ -11,6 +14,9 @@ const initialDraft: WorkspaceDraft = {
   workspaceType: 'new',
   workspacePath: '',
   githubUrl: '',
+  tokenMode: 'none',
+  selectedGithubToken: '',
+  newGithubToken: '',
 };
 
 export default function useOnboardingWorkspace() {
@@ -39,6 +45,21 @@ export default function useOnboardingWorkspace() {
     setError('');
   }, []);
 
+  const setTokenMode = useCallback((tokenMode: WorkspaceDraft['tokenMode']) => {
+    setDraft((current) => ({ ...current, tokenMode }));
+    setError('');
+  }, []);
+
+  const setSelectedGithubToken = useCallback((selectedGithubToken: string) => {
+    setDraft((current) => ({ ...current, selectedGithubToken }));
+    setError('');
+  }, []);
+
+  const setNewGithubToken = useCallback((newGithubToken: string) => {
+    setDraft((current) => ({ ...current, newGithubToken }));
+    setError('');
+  }, []);
+
   const canFinish = draft.workspacePath.trim().length > 0;
 
   const createWorkspace = useCallback(async () => {
@@ -56,15 +77,16 @@ export default function useOnboardingWorkspace() {
     setIsCreating(true);
     setError('');
     setProgress('');
+    const useGithubAuthentication = shouldShowGithubAuthentication('new', githubUrl);
 
     const operation = isCloneWorkflow('new', githubUrl)
       ? cloneWorkspaceWithProgress(
           {
             workspacePath,
             githubUrl,
-            tokenMode: 'none',
-            selectedGithubToken: '',
-            newGithubToken: '',
+            tokenMode: useGithubAuthentication ? draft.tokenMode : 'none',
+            selectedGithubToken: useGithubAuthentication ? draft.selectedGithubToken : '',
+            newGithubToken: useGithubAuthentication ? draft.newGithubToken : '',
           },
           { onProgress: setProgress },
         )
@@ -86,7 +108,7 @@ export default function useOnboardingWorkspace() {
       if (inFlightRef.current?.promise === operation) inFlightRef.current = null;
       setIsCreating(false);
     }
-  }, [draft.githubUrl, draft.workspacePath]);
+  }, [draft.githubUrl, draft.newGithubToken, draft.selectedGithubToken, draft.tokenMode, draft.workspacePath]);
 
   return {
     draft,
@@ -97,6 +119,9 @@ export default function useOnboardingWorkspace() {
     setWorkspaceType,
     setWorkspacePath,
     setGithubUrl,
+    setTokenMode,
+    setSelectedGithubToken,
+    setNewGithubToken,
     createWorkspace,
   };
 }

@@ -45,8 +45,6 @@ import type {
   ChatModelSelection,
 } from "../chat/hooks/useChatProviderState";
 import {
-  REASONING_LABELS,
-  SPEED_LABELS,
   buildExplicitSelection,
   capabilityValues,
   modelSelectionId,
@@ -278,7 +276,7 @@ const COMPOSER_RUN_MODE_OPTIONS: Array<{
     labelKey: "input.runModes.plan",
     defaultLabel: "Plan",
     descriptionKey: "input.runModes.planDescription",
-    defaultDescription: "先产出计划，确认后再执行",
+    defaultDescription: "Generate a plan first, then execute after confirmation",
   },
   {
     mode: "ask",
@@ -286,7 +284,7 @@ const COMPOSER_RUN_MODE_OPTIONS: Array<{
     labelKey: "input.runModes.ask",
     defaultLabel: "Ask",
     descriptionKey: "input.runModes.askDescription",
-    defaultDescription: "仅回答问题，不修改文件",
+    defaultDescription: "Only answer questions without modifying files",
   },
 ];
 
@@ -534,6 +532,19 @@ export default function ComposerV2({
   queueTray,
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
+  const reasoningLabels = useMemo(() => new Map<number, string>([
+    [0, t("input.models.reasoningLevels.off", { defaultValue: "Off" }) as string],
+    [0.2, t("input.models.reasoningLevels.light", { defaultValue: "Light" }) as string],
+    [0.4, t("input.models.reasoningLevels.low", { defaultValue: "Low" }) as string],
+    [0.6, t("input.models.reasoningLevels.medium", { defaultValue: "Medium" }) as string],
+    [0.8, t("input.models.reasoningLevels.high", { defaultValue: "High" }) as string],
+    [0.9, t("input.models.reasoningLevels.xhigh", { defaultValue: "Extra high" }) as string],
+    [1, t("input.models.reasoningLevels.max", { defaultValue: "Maximum" }) as string],
+  ]), [t]);
+  const speedLabels = useMemo(() => new Map<number, string>([
+    [0, t("input.models.speedLevels.standard", { defaultValue: "Standard" }) as string],
+    [1, t("input.models.speedLevels.fast", { defaultValue: "Fast" }) as string],
+  ]), [t]);
   const [isPermissionMenuOpen, setIsPermissionMenuOpen] = useState(false);
   const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
@@ -643,7 +654,7 @@ export default function ComposerV2({
   });
   const sendTitle =
     hasUploadingImages
-      ? (t("input.uploading", { defaultValue: "正在上传..." }) as string)
+      ? (t("input.uploading", { defaultValue: "Uploading…" }) as string)
       : isSubmitPending
       ? (t("input.sending", { defaultValue: "Sending..." }) as string)
       : primaryAction === "resume"
@@ -682,11 +693,11 @@ export default function ComposerV2({
   );
   const selectedModelLabel =
     modelSelection?.mode === "auto"
-      ? "Auto"
+      ? (t("input.models.auto", { defaultValue: "Auto" }) as string)
       : selectedModel?.displayName ||
         selectedModel?.model ||
         (t("input.models.select", {
-          defaultValue: "选择模型",
+          defaultValue: "Select model",
         }) as string);
   const normalizedModelQuery = modelQuery.trim().toLocaleLowerCase();
   const filteredModels = useMemo(
@@ -809,17 +820,17 @@ export default function ComposerV2({
               <div className="absolute bottom-full left-0 right-0 z-50 mb-2 overflow-hidden rounded-xl border border-violet-200 bg-white p-2 shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900">
                 <div className="flex items-center justify-between px-2 pb-2 pt-1">
                   <span className="text-[12px] font-bold text-neutral-900 dark:text-neutral-100">
-                    {t("input.projectFiles", { defaultValue: "引用项目内容" })}
+                    {t("input.projectFiles", { defaultValue: "Reference project content" })}
                   </span>
                   <span className="text-[11px] text-[#777987] dark:text-[#a9aab4]">
-                    {`${filteredFiles.length} 项可引用内容`}
+                    {t("input.projectFilesCount", { count: filteredFiles.length, defaultValue: `${filteredFiles.length} items` })}
                   </span>
                 </div>
                 <div
                   role="listbox"
                   aria-label={
                     t("input.projectFilesAriaLabel", {
-                      defaultValue: "可引用的项目内容",
+                      defaultValue: "Project content available to reference",
                     }) as string
                   }
                   className="grid max-h-[238px] gap-px overflow-y-auto [scrollbar-color:#c8c5d5_transparent] [scrollbar-width:thin]"
@@ -845,13 +856,13 @@ export default function ComposerV2({
                     <div className="flex items-center justify-center gap-2 px-4 py-6 text-[12px] text-neutral-400">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {t("input.projectFilesLoading", {
-                        defaultValue: "正在加载项目文件…",
+                        defaultValue: "Loading project files…",
                       })}
                     </div>
                   ) : filteredFiles.length === 0 ? (
                     <div className="px-4 py-6 text-center text-[12px] text-neutral-400">
                       {t("input.projectFilesEmpty", {
-                        defaultValue: "没有匹配的项目内容",
+                        defaultValue: "No matching project content",
                       })}
                     </div>
                   ) : (
@@ -896,7 +907,7 @@ export default function ComposerV2({
                         <div className="flex items-center justify-center gap-2 px-3 py-2 text-[11px] text-neutral-400">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           {t("input.projectFilesLoadingMore", {
-                            defaultValue: "加载更多…",
+                            defaultValue: "Load more…",
                           })}
                         </div>
                       ) : null}
@@ -941,7 +952,7 @@ export default function ComposerV2({
                   className="pd-composer-selection-chips -mt-0.5 mb-1.5 flex min-h-[26px] flex-wrap items-center gap-1.5 px-1"
                   aria-label={
                     t("input.selectedFilesAndSkills", {
-                      defaultValue: "已选文件、技能与命令",
+                      defaultValue: "Selected files, skills, and commands",
                     }) as string
                   }
                 >
@@ -965,11 +976,12 @@ export default function ComposerV2({
                         className="pointer-events-none ml-0 grid h-[18px] w-0 flex-[0_0_0] place-items-center overflow-hidden border-0 bg-transparent p-0 text-[18px] font-normal leading-none text-current opacity-0 outline-none transition-[width,flex-basis,margin-left,opacity] duration-[140ms] group-focus-within/chip:pointer-events-auto group-focus-within/chip:ml-1 group-focus-within/chip:w-[18px] group-focus-within/chip:flex-[0_0_18px] group-focus-within/chip:opacity-100 group-hover/chip:pointer-events-auto group-hover/chip:ml-1 group-hover/chip:w-[18px] group-hover/chip:flex-[0_0_18px] group-hover/chip:opacity-100"
                         aria-label={
                           t("input.removeSelectedFile", {
-                            defaultValue: `删除 ${mention.name}`,
+                            name: mention.name,
+                            defaultValue: `Remove ${mention.name}`,
                           }) as string
                         }
                         title={
-                          t("common.remove", { defaultValue: "删除" }) as string
+                          t("input.remove", { defaultValue: "Remove" }) as string
                         }
                         onClick={() => onRemoveFileMention(mention.path)}
                       >
@@ -990,11 +1002,12 @@ export default function ComposerV2({
                         className="pointer-events-none ml-0 grid h-[18px] w-0 flex-[0_0_0] place-items-center overflow-hidden border-0 bg-transparent p-0 text-[18px] font-normal leading-none text-current opacity-0 outline-none transition-[width,flex-basis,margin-left,opacity] duration-[140ms] group-focus-within/chip:pointer-events-auto group-focus-within/chip:ml-1 group-focus-within/chip:w-[18px] group-focus-within/chip:flex-[0_0_18px] group-focus-within/chip:opacity-100 group-hover/chip:pointer-events-auto group-hover/chip:ml-1 group-hover/chip:w-[18px] group-hover/chip:flex-[0_0_18px] group-hover/chip:opacity-100"
                         aria-label={
                           t("input.removeSelectedSkill", {
-                            defaultValue: `删除 ${skill.name || skill.slug}`,
+                            name: skill.name || skill.slug,
+                            defaultValue: `Remove ${skill.name || skill.slug}`,
                           }) as string
                         }
                         title={
-                          t("common.remove", { defaultValue: "删除" }) as string
+                          t("input.remove", { defaultValue: "Remove" }) as string
                         }
                         onClick={() => onRemoveSkill(skill.slug, skill.command)}
                       >
@@ -1013,11 +1026,12 @@ export default function ComposerV2({
                         className="pointer-events-none ml-0 grid h-[18px] w-0 flex-[0_0_0] place-items-center overflow-hidden border-0 bg-transparent p-0 text-[18px] font-normal leading-none text-current opacity-0 outline-none transition-[width,flex-basis,margin-left,opacity] duration-[140ms] group-focus-within/chip:pointer-events-auto group-focus-within/chip:ml-1 group-focus-within/chip:w-[18px] group-focus-within/chip:flex-[0_0_18px] group-focus-within/chip:opacity-100 group-hover/chip:pointer-events-auto group-hover/chip:ml-1 group-hover/chip:w-[18px] group-hover/chip:flex-[0_0_18px] group-hover/chip:opacity-100"
                         aria-label={
                           t("input.removeSelectedCommand", {
-                            defaultValue: `删除 ${command.name}`,
+                            name: command.name,
+                            defaultValue: `Remove ${command.name}`,
                           }) as string
                         }
                         title={
-                          t("common.remove", { defaultValue: "删除" }) as string
+                          t("input.remove", { defaultValue: "Remove" }) as string
                         }
                         onClick={() => onRemoveCommand(command.name)}
                       >
@@ -1102,12 +1116,12 @@ export default function ComposerV2({
                       )}
                       title={
                         t("input.addContext", {
-                          defaultValue: "添加文件或技能",
+                          defaultValue: "Add files or skills",
                         }) as string
                       }
                       aria-label={
                         t("input.addContext", {
-                          defaultValue: "添加文件或技能",
+                          defaultValue: "Add files or skills",
                         }) as string
                       }
                       aria-haspopup="menu"
@@ -1144,11 +1158,11 @@ export default function ComposerV2({
                           className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
-                            {t("input.files", { defaultValue: "文件" })}
+                            {t("input.files", { defaultValue: "Files" })}
                           </span>
                           <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
                             {t("input.filesAndFoldersDescription", {
-                              defaultValue: "添加本地内容作为任务上下文",
+                              defaultValue: "Add local content as task context",
                             })}
                           </span>
                         </button>
@@ -1162,11 +1176,11 @@ export default function ComposerV2({
                           className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
-                            {t("input.folders", { defaultValue: "文件夹" })}
+                            {t("input.folders", { defaultValue: "Folders" })}
                           </span>
                           <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
                             {t("input.foldersDescription", {
-                              defaultValue: "保留目录层级并上传全部内容",
+                              defaultValue: "Keep folder structure and upload all content",
                             })}
                           </span>
                         </button>
@@ -1210,7 +1224,7 @@ export default function ComposerV2({
                           );
                         })}
                         <div className="mt-1 px-2 py-1 text-[11px] font-medium text-neutral-400">
-                          {t("input.skills", { defaultValue: "技能" })}
+                          {t("input.skills", { defaultValue: "Skills" })}
                         </div>
                         <div className="grid gap-0.5">
                           {isSkillsLoading ? (
@@ -1257,7 +1271,7 @@ export default function ComposerV2({
                           ) : (
                             <div className="px-3 py-4 text-center text-[12px] text-neutral-400">
                               {t("input.noSkills", {
-                                defaultValue: "暂无可用技能",
+                                defaultValue: "No skills available",
                               })}
                             </div>
                           )}
@@ -1273,7 +1287,7 @@ export default function ComposerV2({
                             }
                             placeholder={
                               t("input.searchSkills", {
-                                defaultValue: "检索技能",
+                                defaultValue: "Search skills",
                               }) as string
                             }
                             className="h-8 w-full rounded-lg border border-neutral-200 bg-[#f8f7fa] pl-8 pr-2 text-[12px] outline-none focus:border-violet-300 dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
@@ -1422,12 +1436,13 @@ export default function ComposerV2({
                           className="pointer-events-none ml-0 grid h-[18px] w-0 flex-[0_0_0] place-items-center overflow-hidden border-0 bg-transparent p-0 text-[18px] font-normal leading-none text-current opacity-0 outline-none transition-[width,flex-basis,margin-left,opacity] duration-[140ms] group-focus-within/chip:pointer-events-auto group-focus-within/chip:ml-1 group-focus-within/chip:w-[18px] group-focus-within/chip:flex-[0_0_18px] group-focus-within/chip:opacity-100 group-hover/chip:pointer-events-auto group-hover/chip:ml-1 group-hover/chip:w-[18px] group-hover/chip:flex-[0_0_18px] group-hover/chip:opacity-100"
                           aria-label={
                             t("input.removeSelectedRunMode", {
-                              defaultValue: `删除 ${label}`,
+                              name: label,
+                              defaultValue: `Remove ${label}`,
                             }) as string
                           }
                           title={
-                            t("common.remove", {
-                              defaultValue: "删除",
+                            t("input.remove", {
+                              defaultValue: "Remove",
                             }) as string
                           }
                           onClick={() => onRunModeChange("agent")}
@@ -1468,7 +1483,7 @@ export default function ComposerV2({
                       )}
                       title={
                         t("input.models.change", {
-                          defaultValue: "选择模型",
+                          defaultValue: "Select model",
                         }) as string
                       }
                       aria-haspopup="dialog"
@@ -1488,7 +1503,7 @@ export default function ComposerV2({
                         role="dialog"
                         aria-label={
                           t("input.models.change", {
-                            defaultValue: "选择模型",
+                            defaultValue: "Select model",
                           }) as string
                         }
                         className={cn(
@@ -1509,7 +1524,7 @@ export default function ComposerV2({
                               }
                               placeholder={
                                 t("input.models.search", {
-                                  defaultValue: "搜索模型",
+                                  defaultValue: "Search models",
                                 }) as string
                               }
                               className="h-8 w-full rounded-lg border border-neutral-200 bg-neutral-50 pl-8 pr-2 text-[12px] outline-none focus:border-violet-300 focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
@@ -1528,7 +1543,7 @@ export default function ComposerV2({
                             ) : filteredModels.length === 0 ? (
                               <div className="px-3 py-6 text-center text-[12px] text-neutral-400">
                                 {t("input.models.empty", {
-                                  defaultValue: "没有匹配的模型",
+                                  defaultValue: "No matching models",
                                 })}
                               </div>
                             ) : (
@@ -1596,7 +1611,7 @@ export default function ComposerV2({
                                         )}
                                         title={
                                           t("input.models.advanced", {
-                                            defaultValue: "高级设置",
+                                            defaultValue: "Advanced settings",
                                           }) as string
                                         }
                                         aria-expanded={
@@ -1619,7 +1634,7 @@ export default function ComposerV2({
                           <aside
                             aria-label={
                               t("input.models.advanced", {
-                                defaultValue: "模型高级设置",
+                                defaultValue: "Model advanced settings",
                               }) as string
                             }
                             onMouseDown={(event) => {
@@ -1643,14 +1658,14 @@ export default function ComposerV2({
                               <div>
                                 <h2 className="mb-1 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
                                   {t("input.models.reasoning", {
-                                    defaultValue: "推理强度",
+                                    defaultValue: "Reasoning",
                                   })}
                                 </h2>
                                 <CapabilityOptionList
                                   values={capabilityValues(
                                     advancedModel.capabilities.reasoning,
                                   )}
-                                  labels={REASONING_LABELS}
+                                  labels={reasoningLabels}
                                   currentValue={advancedParams.reasoning}
                                   onSelect={(reasoning) =>
                                     updateModelParams(advancedModel, {
@@ -1670,14 +1685,14 @@ export default function ComposerV2({
                               >
                                 <h2 className="mb-1 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
                                   {t("input.models.speed", {
-                                    defaultValue: "速度",
+                                    defaultValue: "Speed",
                                   })}
                                 </h2>
                                 <CapabilityOptionList
                                   values={speedOptionValues(
                                     advancedModel.capabilities.speed,
                                   )}
-                                  labels={SPEED_LABELS}
+                                  labels={speedLabels}
                                   currentValue={advancedParams.speed}
                                   onSelect={(speed) =>
                                     updateModelParams(advancedModel, { speed })
@@ -1722,7 +1737,7 @@ export default function ComposerV2({
                                     >
                                       <h2 className="mb-2 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
                                         {t("input.models.temperature", {
-                                          defaultValue: "温度",
+                                          defaultValue: "Temperature",
                                         })}
                                       </h2>
                                       {capability.type === "enum" ? (
@@ -1746,7 +1761,7 @@ export default function ComposerV2({
                                             value={currentValue}
                                             aria-label={
                                               t("input.models.temperature", {
-                                                defaultValue: "温度",
+                                                defaultValue: "Temperature",
                                               }) as string
                                             }
                                             onMouseDown={(event) =>

@@ -11,18 +11,18 @@ export type ModelParameterValues = {
 };
 
 export const REASONING_LABELS = new Map<number, string>([
-  [0, "关闭"],
-  [0.2, "轻度"],
-  [0.4, "低"],
-  [0.6, "中"],
-  [0.8, "高"],
-  [0.9, "极高"],
-  [1, "最高"],
+  [0, "Off"],
+  [0.2, "Light"],
+  [0.4, "Low"],
+  [0.6, "Medium"],
+  [0.8, "High"],
+  [0.9, "Extra high"],
+  [1, "Maximum"],
 ]);
 
 export const SPEED_LABELS = new Map<number, string>([
-  [0, "标准"],
-  [1, "快速"],
+  [0, "Standard"],
+  [1, "Fast"],
 ]);
 
 export function readFiniteNumber(value: unknown): number | undefined {

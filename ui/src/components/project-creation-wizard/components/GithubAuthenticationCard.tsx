@@ -64,18 +64,21 @@ export default function GithubAuthenticationCard({
         <>
           <div className="mb-4 grid grid-cols-3 gap-2">
             <button
+              type="button"
               onClick={() => onTokenModeChange('stored')}
               className={getModeClassName(tokenMode, 'stored')}
             >
               {t('projectWizard.step2.storedToken')}
             </button>
             <button
+              type="button"
               onClick={() => onTokenModeChange('new')}
               className={getModeClassName(tokenMode, 'new')}
             >
               {t('projectWizard.step2.newToken')}
             </button>
             <button
+              type="button"
               onClick={() => {
                 onTokenModeChange('none');
                 onSelectedGithubTokenChange('');

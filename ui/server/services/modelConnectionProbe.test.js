@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { probeModelConnection } from './modelConnectionProbe.js';
+import { isValidImageColorAnswer, probeModelConnection } from './modelConnectionProbe.js';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('model connection probe request formats', () => {
+  it.each([
+    ['red', true],
+    ['**red**', true],
+    ['The color is red.', true],
+    ['No, red.', false],
+    ['I cannot tell whether it is red.', false],
+    ['Not sure, maybe red.', false],
+    ['red or blue', false],
+    ['blue', false],
+    ['infrared', false],
+  ])('strictly validates the image-probe answer %j', (answer, expected) => {
+    expect(isValidImageColorAnswer(answer, 'red')).toBe(expected);
+  });
+
   for (const [protocol, response, assertBody] of [
     ['openai', { choices: [{ message: { content: 'red' } }] }, (body) => expect(body.messages[0].content[1].type).toBe('image_url')],
     ['openai-responses', { object: 'response', output_text: 'red' }, (body) => expect(body.input[0].content[1].type).toBe('input_image')],

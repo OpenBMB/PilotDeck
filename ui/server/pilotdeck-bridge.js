@@ -2148,6 +2148,9 @@ export async function steerQueuedInputViaGateway(sessionId, itemId, writer, prov
             message: item.command,
             projectKey: state.projectKey,
             ...(attachments.length > 0 ? { attachments } : {}),
+            ...(Array.isArray(hydratedOptions.uploadedAttachments)
+                ? { uploadedAttachments: hydratedOptions.uploadedAttachments }
+                : {}),
         });
         if (!result?.accepted) {
             if (result?.reason === 'cancelled') {

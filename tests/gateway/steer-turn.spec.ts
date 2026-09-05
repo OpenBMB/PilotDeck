@@ -6,7 +6,7 @@ import type { CanonicalMessage } from "../../src/model/index.js";
 import { InProcessGateway } from "../../src/gateway/client/InProcessGateway.js";
 import { SessionRouter } from "../../src/gateway/SessionRouter.js";
 
-test("gateway turns guidance into a canonical user message for the active run", async () => {
+test("gateway turns guidance and uploaded attachments into a canonical user message for the active run", async () => {
   let received: {
     turnId: string;
     itemId: string;
@@ -35,13 +35,25 @@ test("gateway turns guidance into a canonical user message for the active run", 
   await router.getOrCreate({ sessionKey: "session-1", channelKey: "web" });
   assert.equal(router.beginTurn("session-1", "run-1"), true);
 
-  const gateway = new InProcessGateway(router);
+  const gateway = new InProcessGateway(router, {
+    resolveUploadedAttachments: async ({ projectKey, uploads }) => {
+      assert.equal(projectKey, "/tmp/project");
+      assert.deepEqual(uploads, [{ uploadId: "upload-1", attachmentIds: ["file-1"] }]);
+      return [{
+        type: "text",
+        name: "report.pdf",
+        content: "uploaded report content",
+        source: "media_reference",
+      }];
+    },
+  });
   const result = await gateway.steerTurn({
     sessionKey: "session-1",
     runId: "run-1",
     itemId: "queue-1",
     message: "Use HTML instead",
     projectKey: "/tmp/project",
+    uploadedAttachments: [{ uploadId: "upload-1", attachmentIds: ["file-1"] }],
   });
 
   assert.deepEqual(result, { accepted: true });
@@ -52,7 +64,12 @@ test("gateway turns guidance into a canonical user message for the active run", 
     purpose: "mid_turn_steer",
     queueItemId: "queue-1",
   });
-  assert.deepEqual(received?.message.content, [{ type: "text", text: "Use HTML instead" }]);
+  assert.equal(received?.message.content.some((part) => (
+    part.type === "text" && part.text.includes("Use HTML instead")
+  )), true);
+  assert.equal(received?.message.content.some((part) => (
+    part.type === "text" && part.text.includes("uploaded report content")
+  )), true);
 
   assert.deepEqual(await gateway.steerTurn({
     sessionKey: "session-1",

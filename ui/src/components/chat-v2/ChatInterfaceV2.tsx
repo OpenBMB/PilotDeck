@@ -567,7 +567,23 @@ function ChatInterfaceV2({
     const references = attachments
       .map((attachment) => normalizeContentReference(attachment.contentReference ?? attachment))
       .filter((reference): reference is ContentReference => Boolean(reference));
-    const regularFiles = attachments
+    const browserUploads = attachments.filter((attachment) => (
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const uploadedAttachments = [...browserUploads.reduce((groups, attachment) => {
+      const uploadId = attachment.uploadId as string;
+      const attachmentIds = groups.get(uploadId) ?? [];
+      attachmentIds.push(attachment.attachmentId as string);
+      groups.set(uploadId, attachmentIds);
+      return groups;
+    }, new Map<string, string[]>())].map(([uploadId, attachmentIds]) => ({
+      uploadId,
+      attachmentIds,
+    }));
+    const modelAttachments = attachments.filter((attachment) => !(
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const regularFiles = modelAttachments
       .filter((attachment) => !attachment.kind || attachment.kind === 'file')
       .flatMap((attachment) => {
         const path = attachment.path || attachment.filePath;
@@ -602,7 +618,9 @@ function ChatInterfaceV2({
       thinking: thinkingModeToConfig(effectiveThinkingMode),
       sessionSummary: getNotificationSessionSummary(selectedSession, editedText),
       images: Array.isArray(message.images) ? message.images : [],
-      attachments,
+      attachments: modelAttachments,
+      uploadedAttachments,
+      displayAttachments: attachments,
       syntheticMessages: [{
         text: EDIT_RECONCILIATION_HINT,
         purpose: 'edited_turn_workspace_reconciliation',
@@ -694,7 +712,7 @@ function ChatInterfaceV2({
         />
       )}
       input={input}
-      placeholder="告诉PilotDeck你想完成什么。@引用项目内容，/调用技能与指令。"
+      placeholder={t('composer.placeholder', { defaultValue: 'Tell PilotDeck what you want to get done…' })}
       textareaRef={textareaRef}
       inputHighlightRef={inputHighlightRef}
       renderInputWithMentions={renderInputWithMentions}

@@ -107,6 +107,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               isCreating={isFinishing || workspace.isCreating}
               onWorkspacePathChange={workspace.setWorkspacePath}
               onGithubUrlChange={workspace.setGithubUrl}
+              onTokenModeChange={workspace.setTokenMode}
+              onSelectedGithubTokenChange={workspace.setSelectedGithubToken}
+              onNewGithubTokenChange={workspace.setNewGithubToken}
               onBack={goBack}
               onSkipChat={handleSkipChat}
               onFinish={handleFinish}

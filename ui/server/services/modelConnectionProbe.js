@@ -118,9 +118,18 @@ function hasUsableOutput(body, protocol) {
   return Boolean(extractProbeText(body, protocol).trim());
 }
 
+const UNCERTAIN_IMAGE_ANSWER = /\b(?:no|cannot|can't|unable|unsure|uncertain|unknown|maybe|perhaps|possibly|probably|whether|guess|not\s+sure|do\s+not|don't|not)\b/i;
+
+export function isValidImageColorAnswer(answer, expectedColor) {
+  const text = String(answer || '').trim().toLowerCase();
+  if (!text || UNCERTAIN_IMAGE_ANSWER.test(text)) return false;
+  const colorWords = (text.match(/[a-z]+/g) || [])
+    .filter((word) => IMAGE_COLOR_NAMES.includes(word));
+  return colorWords.length === 1 && colorWords[0] === String(expectedColor).toLowerCase();
+}
+
 function describedTestImage(body, protocol, color) {
-  const words = extractProbeText(body, protocol).toLowerCase().match(/[a-z]+/g) || [];
-  return words.includes(String(color).toLowerCase());
+  return isValidImageColorAnswer(extractProbeText(body, protocol), color);
 }
 
 function isFallbackStatus(status) {

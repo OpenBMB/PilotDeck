@@ -44,4 +44,27 @@ describe('useOnboardingWorkspace retry safety', () => {
 
     expect(mocks.createWorkspaceRequest).toHaveBeenCalledTimes(2);
   });
+
+  it('preserves GitHub authentication when cloning an HTTPS repository', async () => {
+    const { result } = renderHook(() => useOnboardingWorkspace());
+    act(() => {
+      result.current.setWorkspacePath('/workspace/private');
+      result.current.setGithubUrl('https://github.com/example/private.git');
+      result.current.setTokenMode('new');
+      result.current.setNewGithubToken('ghp_secret');
+    });
+
+    await act(async () => result.current.createWorkspace());
+
+    expect(mocks.cloneWorkspaceWithProgress).toHaveBeenCalledWith(
+      {
+        workspacePath: '/workspace/private',
+        githubUrl: 'https://github.com/example/private.git',
+        tokenMode: 'new',
+        selectedGithubToken: '',
+        newGithubToken: 'ghp_secret',
+      },
+      expect.objectContaining({ onProgress: expect.any(Function) }),
+    );
+  });
 });

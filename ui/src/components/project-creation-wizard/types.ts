@@ -28,12 +28,6 @@ export type BrowseFilesystemResponse = {
   error?: string;
 };
 
-export type NativeFolderPickerResponse = {
-  path?: string;
-  cancelled?: boolean;
-  error?: string;
-};
-
 export type CreateFolderResponse = {
   success?: boolean;
   path?: string;
