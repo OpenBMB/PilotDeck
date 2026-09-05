@@ -827,10 +827,6 @@ export function gatewayEventToFrames(event, sessionId, provider) {
     const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
     switch (event.type) {
         case 'input_accepted':
-            return event.modelSelection ? [{
-                type: 'model-selection-saved', sessionId: base.sessionId,
-                runId: event.runId, selection: event.modelSelection,
-            }] : [];
         case 'steer_unapplied':
             return [];
         case 'steer_applied': {

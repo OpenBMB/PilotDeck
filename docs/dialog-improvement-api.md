@@ -357,7 +357,7 @@ Query 参数：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `projectKey` | string | 是 | 项目注册表中的标识 |
+| `projectKey` | string | 否 | 仅兼容旧客户端；模型目录为全局配置，不按项目过滤或扫描项目 |
 | `query` | string | 否 | 按 provider、model、displayName 检索 |
 | `provider` | string | 否 | 过滤 provider |
 | `includeAuto` | boolean | 否 | 是否在 Router 可用时返回 auto |
@@ -388,6 +388,7 @@ type ModelCatalogItem = {
 };
 
 type ModelsResponse = {
+  defaultSelection: { mode: "model"; provider: string; model: string };
   items: ModelCatalogItem[];
   router: {
     enabled: boolean;
@@ -407,6 +408,10 @@ type ModelsResponse = {
 - `range` 使用 `min`、`max`、`step`；`enum` 使用 `values`。
 - 未返回的能力表示该模型不支持对应参数。
 - Router 开启且支持 auto 时，接口可返回 `{ provider: "router", model: "auto" }` 虚拟条目。
+
+Web Composer 使用同一浏览器、同一站点的全局模型偏好：首次使用 `defaultSelection`，用户手动选择后保存完整模型及参数，跨项目、会话、刷新和标签页复用。系统默认值变化只影响未手动选择的用户；不可用的已选模型保留并提示重新选择。旧项目和会话草稿不参与全局偏好恢复，避免无法确定时间顺序时任意继承旧选择。
+
+Composer 不再请求会话模型 GET/PUT 来恢复或保存选择。每条消息仍携带提交时的 `modelSelection` 快照，运行中和排队消息不受后续选择影响。下列会话 API 为兼容已有客户端保留，不决定 Web Composer 的全局选择。模型目录由页面内共享缓存复用，配置重载或 WebSocket 重连后失效。
 
 ### 6.2 查询会话模型设置
 
@@ -500,6 +505,7 @@ Gateway WebSocket 方法：`submit_turn`
 
 ```ts
 type SessionModelOverride = {
+  mode: "model";
   provider: string;
   model: string;
   reasoning?: number;
@@ -522,21 +528,22 @@ type SubmitTurnRequest = {
   mode?: "default" | "plan" | "bypassPermissions";
   basePermissionMode?: "default" | "plan" | "bypassPermissions";
   modelOverride?: SessionModelOverride;
+  modelSelection?: { mode: "auto" } | SessionModelOverride;
   runId?: string;
 };
 ```
 
-`modelOverride` 仅覆盖当前 turn，不修改第 6.3 节保存的会话模型设置。未传 `modelOverride` 时使用保存的会话设置；会话未设置时，Router 开启则使用 auto，否则使用系统默认模型。
+Web Composer 始终提交 `modelSelection` 快照，可明确选择具体模型或 Auto，并随已接收输入记录。`modelOverride` 为已有客户端保留，只覆盖当前 turn；两者不能同时传入。仅当两者都未传时，才使用兼容的会话设置；会话未设置时，Router 开启则使用 auto，否则使用系统默认模型。
 
 服务端校验：
 
-- `modelOverride.provider/model` 必须存在且可用。
+- 显式选择的 `provider/model` 必须存在且可用；Auto 必须有可用 Router。
 - reasoning、temperature、speed 必须满足模型 capabilities；speed 使用 `0..1` 的统一数值语义。
 - `uploadedAttachments` 必须属于同一 `projectKey`、状态为 completed 且未过期。
 - `mode` 和 `basePermissionMode` 必须属于声明枚举。
 - 校验失败时不得启动模型调用。
 
-模型选择优先级：本轮 `modelOverride` > 已保存的会话模型 > Router auto > 系统默认模型。
+模型选择优先级：本轮 `modelSelection` 或 `modelOverride`（互斥）> 兼容会话设置 > Router auto > 系统默认模型。Web Composer 始终发送快照，所以不依赖会话回退。
 
 响应为 Gateway 事件流，新增事件：
 

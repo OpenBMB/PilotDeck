@@ -8,7 +8,6 @@ router.get('/', async (req, res) => {
     const gateway = await getPilotDeckGateway();
     if (!(await hasCapability(gateway, 'model_catalog_list'))) return unavailable(res, 'model_catalog_list');
     return res.json(await gateway.modelCatalogList({
-      projectKey: stringParam(req.query.projectKey),
       query: optionalString(req.query.query),
       provider: optionalString(req.query.provider),
       includeAuto: req.query.includeAuto === undefined ? undefined : String(req.query.includeAuto) !== 'false',

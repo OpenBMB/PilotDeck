@@ -6,12 +6,14 @@ const catalog = { items: [{ id: 'router/auto', provider: 'router', model: 'auto'
 async function setup(page, { holdCatalog = false, unavailable = false } = {}) {
   const saved = new Map();
   const submitted = [];
+  const modelRequests = [];
   let release;
   const gate = new Promise((r) => { release = r; });
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     let result = {};
+    if (url.pathname === '/api/models' || url.pathname === '/api/sessions/model') modelRequests.push({ path: url.pathname, query: url.search, method: request.method() });
     if (url.pathname === '/api/models') {
       if (holdCatalog) await gate;
       result = unavailable ? { ...catalog, items: catalog.items.filter((x) => x.id !== 'zeta/configured') } : catalog;
@@ -28,7 +30,7 @@ async function setup(page, { holdCatalog = false, unavailable = false } = {}) {
     await route.fulfill({ json: result });
   });
   await page.goto('/e2e/fixtures/model-selection.html');
-  return { saved, submitted, release };
+  return { saved, submitted, release, modelRequests };
 }
 const choice = async (page) => JSON.parse(await page.getByTestId('selection').textContent());
 
@@ -46,10 +48,13 @@ test('general and project defaults match configuration and sending is blocked wh
 });
 
 test('manual selection survives sending, completion and reload', async ({ page }) => {
-  const { submitted } = await setup(page);
+  const { submitted, modelRequests } = await setup(page);
   await expect.poll(() => choice(page)).toEqual(B);
   await page.getByRole('button', { name: 'configured', exact: true }).click();
   await page.getByRole('button', { name: 'first', exact: true }).click();
+  await page.getByRole('button', { name: 'Project', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual(A);
+  expect(modelRequests).toEqual([{ path: '/api/models', query: '?includeAuto=true', method: 'GET' }]);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0].options.modelSelection).toEqual(A);
@@ -81,11 +86,14 @@ test('unavailable configured models block sending and the picker still allows re
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
 
-test('a new conversation inherits the latest choice made inside the preceding session', async ({ page }) => {
-  const { submitted } = await setup(page);
+test('new conversations and projects share the latest choice without model reloads', async ({ page }) => {
+  const { submitted, modelRequests } = await setup(page);
   await expect.poll(() => choice(page)).toEqual(B);
   await page.getByRole('button', { name: 'configured', exact: true }).click();
   await page.getByRole('button', { name: 'first', exact: true }).click();
+  await page.getByRole('button', { name: 'Project', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual(A);
+  expect(modelRequests).toEqual([{ path: '/api/models', query: '?includeAuto=true', method: 'GET' }]);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(1);
   await page.getByRole('button', { name: 'Finish', exact: true }).click();
@@ -130,4 +138,21 @@ for (const ready of [false, true]) test(`settings/help commands work with model 
     await input.press('Enter');
     await expect(page.getByTestId('model-requests')).toHaveText('0');
   }
+});
+
+
+test('manual model choices synchronize between browser tabs', async ({ page, context }) => {
+  await setup(page);
+  await expect.poll(() => choice(page)).toEqual(B);
+  const other = await context.newPage();
+  await setup(other);
+  await expect.poll(() => choice(other)).toEqual(B);
+  await page.getByRole('button', { name: 'configured', exact: true }).click();
+  await page.getByRole('button', { name: 'first', exact: true }).click();
+  await expect.poll(() => choice(other)).toEqual(A);
+  await other.getByRole('button', { name: 'first', exact: true }).click();
+  await other.getByRole('button', { name: 'Auto', exact: true }).click();
+  await expect.poll(() => choice(page)).toEqual({ mode: 'auto' });
+  await page.reload();
+  await expect.poll(() => choice(page)).toEqual({ mode: 'auto' });
 });

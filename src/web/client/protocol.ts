@@ -224,7 +224,7 @@ export type WebCommandsListInput = { projectKey: string; query?: string; cursor?
 export type WebCommandsListResult = { pinned: unknown[]; builtIn: unknown[]; custom: unknown[]; nextCursor?: string };
 export type WebExplicitModelSelection = { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number };
 export type WebSessionModelSelection = { mode: "auto" } | WebExplicitModelSelection;
-export type WebModelCatalogListInput = { projectKey: string; query?: string; provider?: string; includeAuto?: boolean };
+export type WebModelCatalogListInput = { projectKey?: string; query?: string; provider?: string; includeAuto?: boolean };
 export type WebModelCatalogListResult = {
   defaultSelection: WebExplicitModelSelection;
   items: unknown[];

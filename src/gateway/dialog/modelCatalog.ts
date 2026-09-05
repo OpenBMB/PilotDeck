@@ -16,8 +16,7 @@ const REASONING_VALUES = new Map<number, ThinkingMode>([
 ]);
 
 export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.ProcessEnv = process.env): ModelCatalogListResult {
-  if (!input.projectKey?.trim()) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required.");
-  const config = loadPilotConfig({ projectRoot: input.projectKey, env }).config;
+  const config = loadPilotConfig({ env }).config;
   const query = input.query?.trim().toLocaleLowerCase() ?? "";
   const items: ModelCatalogItem[] = [];
   for (const [providerId, provider] of Object.entries(config.model.providers)) {

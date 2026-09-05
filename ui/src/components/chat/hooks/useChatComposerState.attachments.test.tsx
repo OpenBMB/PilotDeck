@@ -52,22 +52,19 @@ describe('useChatComposerState attachment submission', () => {
     });
     const sendMessage = vi.fn(() => true);
     const enqueuePreparedInput = vi.fn(async () => ({ ok: true }));
-    const registerEarlierChoice = vi.fn(() => vi.fn());
-    const registerLaterChoice = vi.fn(() => vi.fn());
     const initialChoice = { mode: 'model' as const, provider: 'zeta', model: 'configured', reasoning: 0.8, temperature: 0.3, speed: 1 };
     const selectedProject = { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' };
     const selectedSession = queued ? { id: 'web:queue' } : null;
-    const { result, rerender } = renderHook(({ modelSelection, registerModelSelectionSubmission }) => useChatComposerState({
+    const { result, rerender } = renderHook(({ modelSelection }) => useChatComposerState({
       selectedProject, selectedSession, currentSessionId: queued ? 'web:queue' : null,
       model: 'zeta/configured', modelSelection, isModelSelectionReady: true,
-      registerModelSelectionSubmission,
       permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(), isLoading: queued,
       canAbortSession: queued, tokenBudget: null, sendMessage, enqueuePreparedInput,
       pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage: vi.fn(),
       clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
       setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
       pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
-    }), { initialProps: { modelSelection: initialChoice as import('./useChatProviderState').ChatModelSelection, registerModelSelectionSubmission: registerEarlierChoice } });
+    }), { initialProps: { modelSelection: initialChoice as import('./useChatProviderState').ChatModelSelection } });
     act(() => {
       result.current.setInput('keep my selected model');
       result.current.addAttachmentFiles([new File(['content'], 'test.txt', { type: 'text/plain' })]);
@@ -75,13 +72,11 @@ describe('useChatComposerState attachment submission', () => {
     await waitFor(() => expect(result.current.attachedImages).toHaveLength(1));
     let submitting!: Promise<void>;
     act(() => { submitting = result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
-    rerender({ modelSelection: { mode: 'auto' }, registerModelSelectionSubmission: registerLaterChoice });
+    rerender({ modelSelection: { mode: 'auto' } });
     await act(async () => { finishUpload(); await submitting; });
     expect(queued ? enqueuePreparedInput : sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       options: expect.objectContaining({ modelSelection: initialChoice }),
     }));
-    expect(registerEarlierChoice).toHaveBeenCalledOnce();
-    expect(registerLaterChoice).not.toHaveBeenCalled();
   });
 
   it('does not create an optimistic sidebar session when attachment upload fails', async () => {

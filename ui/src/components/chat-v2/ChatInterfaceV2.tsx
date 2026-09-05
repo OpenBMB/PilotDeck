@@ -139,7 +139,6 @@ function ChatInterfaceV2({
     modelCatalog,
     modelSelection,
     setModelSelection,
-    registerModelSelectionSubmission,
     isModelCatalogLoading,
     isModelSelectionReady,
     runningModels,
@@ -307,7 +306,6 @@ function ChatInterfaceV2({
     model,
     modelSelection,
     isModelSelectionReady,
-    registerModelSelectionSubmission,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
@@ -608,7 +606,6 @@ function ChatInterfaceV2({
     });
 
     const effectiveThinkingMode = getEffectiveThinkingMode(thinkingMode, thinkingModeAvailability);
-    const forgetSubmission = registerModelSelectionSubmission(runId);
     regenerateLastSessionCommand({
       sendMessage,
       selectedProject,
@@ -636,13 +633,12 @@ function ChatInterfaceV2({
       }],
     });
 
-    return result.catch((error) => { forgetSubmission(); throw error; });
+    return result;
   }, [
     currentSessionId,
     isModelSelectionReady,
     modelSelection,
     modelCatalogError,
-    registerModelSelectionSubmission,
     effectivePermissionMode,
     model,
     permissionMode,

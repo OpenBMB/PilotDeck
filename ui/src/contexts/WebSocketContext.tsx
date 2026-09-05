@@ -1,3 +1,4 @@
+import { globalModelSelectionStore } from '../components/chat/utils/globalModelSelection';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../components/auth/context/AuthContext';
 import { IS_PLATFORM } from '../constants/config';
@@ -131,6 +132,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
           websocket.addEventListener('close', () => clearInterval(pingInterval));
 
           if (hasConnectedRef.current) {
+            globalModelSelectionStore.invalidate();
             const reconnectMsg = { type: 'websocket-reconnected', timestamp: Date.now() };
             const subs = subscribersRef.current;
             if (subs.size > 0) {
@@ -147,6 +149,8 @@ const useWebSocketProviderState = (): WebSocketContextType => {
           if (connectIdRef.current !== id) return;
           try {
             const data = JSON.parse(event.data);
+            // Invalidate even while the composer is unmounted (for example in settings).
+            if (data?.type === 'config:reloaded') globalModelSelectionStore.invalidate();
             const subs = subscribersRef.current;
             if (subs.size > 0) {
               subs.forEach((sub) => {

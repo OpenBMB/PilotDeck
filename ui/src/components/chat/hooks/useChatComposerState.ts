@@ -66,7 +66,6 @@ interface UseChatComposerStateArgs {
   model: string;
   modelSelection?: ChatModelSelection | null;
   isModelSelectionReady?: boolean;
-  registerModelSelectionSubmission?: (runId: string) => () => void;
   permissionMode: PermissionMode | string;
   basePermissionMode?: PermissionMode | string;
   runMode?: string;
@@ -264,7 +263,6 @@ export function useChatComposerState({
   model,
   modelSelection,
   isModelSelectionReady = true,
-  registerModelSelectionSubmission,
   permissionMode,
   basePermissionMode,
   runMode,
@@ -1433,7 +1431,6 @@ export function useChatComposerState({
       // server atomically decides whether to dispatch now or retain the item,
       // avoiding upload/session-busy races while preserving the richer PR payload.
       if (shouldRoutePreparedInputThroughQueue(queueTargetSessionId)) {
-        const forgetSubmission = registerModelSelectionSubmission?.(runId);
         const result = await enqueuePreparedInput?.({
           id: runId,
           runId,
@@ -1462,7 +1459,6 @@ export function useChatComposerState({
           },
         }) ?? { ok: false, error: 'Message queue is unavailable.' };
         if (!result.ok) {
-          forgetSubmission?.();
           addMessage({
             type: 'error',
             content: result.error || 'Failed to queue this message.',
@@ -1488,7 +1484,6 @@ export function useChatComposerState({
       // server acknowledgement, reconnecting could execute it twice. Dispatch
       // first and only expose optimistic session state after the WebSocket has
       // accepted the frame locally.
-      const forgetSubmission = registerModelSelectionSubmission?.(runId);
       const startedSessionId = startSessionCommand({
         sendMessage,
         selectedProject,
@@ -1511,7 +1506,6 @@ export function useChatComposerState({
       });
 
       if (!startedSessionId) {
-        forgetSubmission?.();
         addMessage({
           type: 'error',
           content: 'Connection lost before the message could be sent. Reconnect and try again.',
@@ -1560,7 +1554,6 @@ export function useChatComposerState({
       model,
       modelSelection,
       isModelSelectionReady,
-      registerModelSelectionSubmission,
       currentSessionId,
       executeCommand,
       isLoading,

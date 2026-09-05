@@ -174,3 +174,21 @@ test('invalid and conflicting choices cannot execute or replace the saved prefer
   assert.equal(f.requests.length, 0);
   assert.deepEqual(await f.saved(), A);
 });
+
+test('global model catalog needs no project registration and ignores legacy project scope', async (t) => {
+  const f = await fixture(t);
+  const global = await f.gateway.modelCatalogList!({ includeAuto: true });
+  const unregistered = await f.gateway.modelCatalogList!({ projectKey: '/not-a-registered-project', includeAuto: true });
+  assert.deepEqual(unregistered, global);
+  assert.deepEqual(global.defaultSelection, { mode: 'model', provider: B.provider, model: B.model });
+});
+
+test('a new explicit snapshot overrides an old session preference after restart', async (t) => {
+  const f = await fixture(t);
+  await f.submit(A);
+  f.restart();
+  await f.submit(B);
+  assert.equal(f.requests.at(-1)!.provider, B.provider);
+  assert.equal(f.requests.at(-1)!.model, B.model);
+  assert.equal(f.requests.at(-1)!.temperature, B.temperature);
+});

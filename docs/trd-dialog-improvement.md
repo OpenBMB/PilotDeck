@@ -213,7 +213,9 @@ type UploadedAttachmentRef = {
 
 ### 9.1 模型目录
 
-`GET /api/models?projectKey=&query=&provider=&includeAuto=`
+`GET /api/models?query=&provider=&includeAuto=`
+
+模型目录直接读取全局配置，不枚举项目或会话；旧客户端传入的 `projectKey` 仅为兼容保留。返回 `defaultSelection` 明确指定系统默认模型，目录顺序不影响选择。
 
 返回 provider、model、displayName、available 以及 reasoning（推理强度）、temperature 和可选 speed 的能力声明。对话框统一使用 0..1 的数值语义；每个模型可通过能力声明限制可用范围、步长或枚举值，后端负责把 0..1 值映射为 Provider 所需参数。temperature 和 speed 统一范围为 0..1。官方 OpenAI / Anthropic 模型默认声明 speed；自定义模型需显式 `supportsSpeed: true`，且 Google Provider 当前不支持该字段。目录将 speed 暴露为枚举 `0`（标准）与 `1`（快速）。
 
@@ -227,6 +229,7 @@ type UploadedAttachmentRef = {
 
 ```ts
 type SessionModelOverride = {
+  mode: "model";
   provider: string;
   model: string;
   reasoning?: number;
@@ -235,11 +238,16 @@ type SessionModelOverride = {
 };
 type GatewaySubmitTurnInput = ExistingGatewaySubmitTurnInput & {
   modelOverride?: SessionModelOverride;
+  modelSelection?: { mode: "auto" } | SessionModelOverride;
   uploadedAttachments?: UploadedAttachmentRef[];
 };
 ```
 
-### 9.3 会话模型状态
+### 9.3 Web 全局偏好与兼容会话模型状态
+
+Web Composer 只保存同一浏览器、同一站点内最近一次手动选择的模型及参数，不区分项目或会话，并同步其他标签页。未手动选择时使用系统默认模型；手动选择后，配置默认值变化、会话切换、提交确认和运行结果都不改写偏好。已选模型不可用时提示重新选择，不自动切换。
+
+Composer 不再调用下列会话模型读写接口。它在准备附件之前固定每条提交的 `modelSelection`，队列、编辑重发和历史执行记录继续保留各自的快照。会话 API 保留给已有客户端，其保存值不参与 Web 全局选择恢复。
 
 新增会话模型读写接口：
 
@@ -249,7 +257,7 @@ type GatewaySubmitTurnInput = ExistingGatewaySubmitTurnInput & {
 
 保存值写入 session metadata，会话恢复后继续生效。`mode=auto` 仅在 Router 开启时允许；清除设置后，Router 开启则回到 auto，Router 关闭则回到 `agent.model`。
 
-`submit_turn.modelOverride` 只覆盖本轮，不修改会话保存值。模型解析顺序：本轮 `modelOverride` > 会话保存模型 > Router auto/路由决策 > `agent.model` 默认模型。
+`submit_turn.modelSelection` 为 Web 提交时固定的模型快照，随已接收输入记录；`modelOverride` 只覆盖本轮，不修改会话保存值。两者互斥，均优先于兼容会话设置。只有两者都未传时才使用会话保存模型 > Router auto/路由决策 > `agent.model` 默认模型；Web Composer 不依赖这条回退路径。
 
 `provider/model` 不存在或不可用返回 `INVALID_MODEL_OVERRIDE`；reasoning、temperature 或 speed 不满足模型能力返回 `UNSUPPORTED_MODEL_PARAMETER`。未声明支持的参数不发送给 Provider。speed 必须在 canonical request 入口通过 `0..1` 校验，再由支持 speed 的 Provider adapter 映射为原生字段；Google Provider 不声明或接收 speed。
 

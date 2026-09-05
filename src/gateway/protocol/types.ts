@@ -100,7 +100,7 @@ export type GatewaySubmitTurnInput = {
   uploadedAttachments?: UploadedAttachmentRef[];
   /** A one-turn model override. Persisted session preferences are managed separately. */
   modelOverride?: ExplicitModelSelection;
-  /** Dialog choice: used for this turn and saved with accepted input. */
+  /** Submitted choice: used for this turn and recorded with accepted input; never updates the Web global preference. */
   modelSelection?: SessionModelSelection;
   runMode?: AgentRunMode;
   mode?: GatewayMode;
@@ -469,7 +469,8 @@ export type ModelCatalogItem = {
 };
 
 export type ModelCatalogListInput = {
-  projectKey: string;
+  /** Accepted for compatibility; the model catalog is global. */
+  projectKey?: string;
   query?: string;
   provider?: string;
   includeAuto?: boolean;

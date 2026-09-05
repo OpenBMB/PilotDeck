@@ -382,8 +382,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       return listCommands({ ...input, projectKey }, pilotHome);
     },
     async modelCatalogList(input) {
-      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
-      return listModelCatalog({ ...input, projectKey }, env);
+      return listModelCatalog(input, env);
     },
     async sessionModelGet(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);

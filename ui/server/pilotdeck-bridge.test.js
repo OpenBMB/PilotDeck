@@ -911,10 +911,10 @@ describe('dialog model preference frames', () => {
         }
     });
 
-    it('forwards accepted preference separately from the model actually executing', () => {
+    it('reports execution models without broadcasting changes to the composer preference', () => {
         const sessionId = 'web:s';
         const accepted = gatewayEventToFrames({ type: 'input_accepted', runId: 'run-1', modelSelection: { mode: 'auto' } }, sessionId, 'pilotdeck');
-        expect(accepted[0]).toMatchObject({ type: 'model-selection-saved', sessionId, selection: { mode: 'auto' } });
+        expect(accepted).toEqual([]);
         const running = gatewayEventToFrames({ type: 'model_selection_changed', runId: 'run-1', provider: 'chosen', model: 'routed', source: 'router' }, sessionId, 'pilotdeck');
         expect(running[0]).toMatchObject({ type: 'model-selection-changed', modelProvider: 'chosen', model: 'routed', runId: 'run-1' });
     });

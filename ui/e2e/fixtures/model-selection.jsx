@@ -25,13 +25,12 @@ function App() {
   const [frame, setFrame] = useState(null);
   const listener = useRef(noop);
   const subscribe = useCallback((fn) => { listener.current = fn; return noop; }, []);
-  const model = useChatModelSelection({ projectKey, sessionId, subscribe });
+  const model = useChatModelSelection({ subscribe });
   const textareaRef = useRef(null), highlightRef = useRef(null);
   const send = (event) => {
     event.preventDefault();
     if (!model.isModelSelectionReady) return;
     const runId = createUserTurnRunId();
-    model.registerModelSelectionSubmission(runId);
     startSessionCommand({
       selectedProject: { name: 'fixture', path: projectKey }, sessionId,
       command: input, modelSelection: model.modelSelection, runId,
