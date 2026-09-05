@@ -195,6 +195,7 @@ function ChatInterfaceV2({
     setCanAbortSession,
     isAborting: _isAborting,
     setIsAborting,
+    canReturnToLatest,
     setIsUserScrolledUp,
     tokenBudget,
     setTokenBudget,
@@ -211,7 +212,8 @@ function ChatInterfaceV2({
     createDiff,
     scrollContainerRef,
     scrollToBottom,
-    handleScroll,
+    scheduleScrollToBottom,
+    pauseScrollFollowing,
   } = useChatSessionState({
     selectedProject,
     selectedSession,
@@ -501,11 +503,9 @@ function ChatInterfaceV2({
       setInput(forkDraft);
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
-        scrollToBottom?.();
+        scheduleScrollToBottom?.();
       });
-      // Messages load asynchronously after the session switch; scroll again
-      // once the carried history has had a chance to render.
-      setTimeout(() => scrollToBottom?.(), 400);
+      // The scroll controller follows when the carried history finishes loading.
       addToast(
         'success',
         t('fork.ready', {
@@ -525,7 +525,7 @@ function ChatInterfaceV2({
     isLoading,
     sessionIsReadOnly,
     onNavigateToSession,
-    scrollToBottom,
+    scheduleScrollToBottom,
     selectedProject,
     selectedSession?.id,
     setInput,
@@ -858,8 +858,9 @@ function ChatInterfaceV2({
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        onWheel={handleScroll}
-        onTouchMove={handleScroll}
+        showReturnToLatest={canReturnToLatest}
+        onResumeScroll={scrollToBottom}
+        onPauseScroll={pauseScrollFollowing}
         isLoadingSessionMessages={isLoadingSessionMessages}
         sessionLoadError={sessionLoadError}
         onRetrySessionLoad={handleWebSocketReconnect}

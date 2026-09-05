@@ -119,8 +119,6 @@ function createPaneElement({
     <FindShortcutProvider activeScope="chat">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        onWheel={() => {}}
-        onTouchMove={() => {}}
         isLoadingSessionMessages={false}
         chatMessages={messages}
         activityMessages={activityMessages}
@@ -178,8 +176,6 @@ function SessionPaneHarness({
     <FindShortcutProvider activeScope="chat">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        onWheel={() => {}}
-        onTouchMove={() => {}}
         isLoadingSessionMessages={false}
         chatMessages={messages}
         visibleMessages={messages}
@@ -342,7 +338,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
   });
 
-  it('expands the reasoning window when switching away from inline thinking during a run', () => {
+  it('preserves the same reasoning viewport when switching display modes during a run', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -367,12 +363,13 @@ describe('MessagesPaneV2 render behavior', () => {
     };
     const view = renderPane({ ...options, inlineThinking: true });
 
-    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
+    const region = screen.getByRole('region', { name: 'Live thinking content' });
+    expect(screen.getAllByRole('button', { name: 'Thinking...' })).toHaveLength(1);
 
     view.rerender(createPaneElement({ ...options, inlineThinking: false }));
 
     expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBe(region);
   });
 
   it('stops an unfinished subagent from an older run while the next run is active', () => {
@@ -770,6 +767,7 @@ describe('MessagesPaneV2 render behavior', () => {
         timestamp: now,
         isAgentActivity: true,
         activityId: 'activity-1',
+        toolId: 'tool-read-1',
         phase: 'tool',
         state: 'running',
         title: 'Reading file',
@@ -1431,7 +1429,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(container.querySelector('.border-l-red-500')).toBeNull();
   });
 
-  it('shows a waiting status below an in-progress web_fetch in plan mode', () => {
+  it('shows a single waiting status for an in-progress web_fetch in plan mode', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -1460,10 +1458,11 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, isAssistantWorking: true, runMode: 'plan', planModeActive: true });
 
-    expect(screen.getByText('Fetching web content...')).toBeTruthy();
+    expect(screen.getAllByText('Fetching web content...')).toHaveLength(1);
+    expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
   });
 
-  it('does not show the web_fetch waiting status in agent mode', () => {
+  it('shows a single web_fetch status in agent mode', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -1492,7 +1491,8 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, isAssistantWorking: true, runMode: 'agent' });
 
-    expect(screen.queryByText('Fetching web content...')).toBeNull();
+    expect(screen.getAllByText('Fetching web content...')).toHaveLength(1);
+    expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
   });
 
   it('does not render a completed compact boundary as a plan-mode process row', () => {

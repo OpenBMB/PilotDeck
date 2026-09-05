@@ -85,14 +85,14 @@ afterEach(() => {
 });
 
 describe('SubagentDetailMessageFlow', () => {
-  it('renders streaming subagent thinking through the live preview channel', () => {
+  it('renders streaming subagent thinking once before the tool status', async () => {
     renderFlow([
       assistant('a-1', 'I will edit the file.', 100),
       streamingThinking('Choose the smallest patch.', 200),
       tool('edit-1', 'Edit', 300),
     ]);
 
-    const thinkingText = screen.getByText('Choose the smallest patch.');
+    const thinkingText = await screen.findByText('Choose the smallest patch.');
     const status = screen.getByRole('status');
 
     expect(screen.getAllByText('Choose the smallest patch.')).toHaveLength(1);
@@ -110,7 +110,7 @@ describe('SubagentDetailMessageFlow', () => {
     expect(screen.getAllByText('Standalone thought two.')).toHaveLength(1);
   });
 
-  it('keeps completed subagent thinking inside related tool status details', () => {
+  it('keeps completed subagent thinking in its own rows outside tool status details', () => {
     renderFlow([
       assistant('a-1', 'I will inspect the issue.', 100),
       thinking('think-1', 'Completed thought one.', 200),
@@ -118,7 +118,7 @@ describe('SubagentDetailMessageFlow', () => {
       tool('read-1', 'Read', 400),
     ], false);
 
-    expect(screen.queryByText('Completed thought one.')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Thought process|思考过程/i })).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: /Explored 1 file|已探索 1 个文件/i }));
 
     const status = screen.getByRole('status');
@@ -126,8 +126,8 @@ describe('SubagentDetailMessageFlow', () => {
 
     expect(screen.getAllByText('Completed thought one.')).toHaveLength(1);
     expect(screen.getAllByText('Completed thought two.')).toHaveLength(1);
-    expect(processRow?.textContent).toContain('Completed thought one.');
-    expect(processRow?.textContent).toContain('Completed thought two.');
+    expect(processRow?.textContent).not.toContain('Completed thought one.');
+    expect(processRow?.textContent).not.toContain('Completed thought two.');
     expect(status.textContent).not.toContain('Completed thought one.');
     expect(status.textContent).not.toContain('Completed thought two.');
     expect(screen.queryByText('Thought through next step')).toBeNull();

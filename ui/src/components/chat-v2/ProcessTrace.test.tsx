@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StreamingThinkingPreview } from './ProcessTrace';
 
@@ -27,12 +27,14 @@ describe('StreamingThinkingPreview', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('pauses live following while the user reads older reasoning and resumes at the bottom', () => {
+  it('pauses live following while the user reads older reasoning and resumes at the bottom', async () => {
     const view = render(<StreamingThinkingPreview content={content} scrollable />);
 
     const region = screen.getByRole('region', { name: 'Live thinking content' });
     Object.defineProperty(region, 'scrollHeight', { configurable: true, value: 600 });
     Object.defineProperty(region, 'clientHeight', { configurable: true, value: 200 });
+    await waitFor(() => expect(region.scrollTop).toBe(400));
+    fireEvent.wheel(region, { deltaY: -300 });
     region.scrollTop = 100;
     fireEvent.scroll(region);
 
@@ -47,6 +49,8 @@ describe('StreamingThinkingPreview', () => {
       <StreamingThinkingPreview content={`${content}\nA newly streamed thinking line\nAnother line`} scrollable />,
     );
 
-    expect(region.scrollTop).toBe(600);
+    Object.defineProperty(region, 'scrollHeight', { configurable: true, value: 650 });
+    view.rerender(<StreamingThinkingPreview content={`${content}\nFinal line`} scrollable />);
+    await waitFor(() => expect(region.scrollTop).toBe(450));
   });
 });

@@ -1518,7 +1518,7 @@ export function useChatComposerState({
       });
 
       setIsUserScrolledUp(false);
-      setTimeout(() => scrollToBottom(), 100);
+      scrollToBottom();
 
       if (!effectiveSessionId && !submitSelectedSession?.id) {
         if (typeof window !== 'undefined') {
