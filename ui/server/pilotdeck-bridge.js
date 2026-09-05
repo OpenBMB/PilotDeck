@@ -827,7 +827,6 @@ export function gatewayEventToFrames(event, sessionId, provider) {
     const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
     switch (event.type) {
         case 'input_accepted':
-            return [];
         case 'steer_unapplied':
             return [];
         case 'steer_applied': {
@@ -863,6 +862,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     text: 'started',
                 }),
             ];
+        case 'model_selection_changed':
+            return [{
+                type: 'model-selection-changed',
+                sessionId: base.sessionId,
+                runId: event.runId,
+                modelProvider: event.provider,
+                model: event.model,
+                source: event.source,
+            }];
         case 'model_request_started':
             return [
                 createNormalizedMessage({
@@ -879,6 +887,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'stream_delta',
                     content: event.text,
+                    ...(event.model ? { model: event.model } : {}),
                 }),
             ];
         case 'assistant_thinking_delta':
@@ -1506,7 +1515,7 @@ export async function runChatViaGateway(
 
     const state = ensureSessionState(sessionKey, projectKey, channelKey);
     const staleRunId = state.active ? state.runId : undefined;
-
+    const runId = resolveTurnRunId(options?.runId);
 
     if (isNewSession) {
         writer.send(
@@ -1516,11 +1525,12 @@ export async function runChatViaGateway(
                 kind: 'session_created',
                 newSessionId: sessionKey,
                 sessionKey,
+                projectKey,
+                runId,
             }),
         );
     }
 
-    const runId = resolveTurnRunId(options?.runId);
     if (!staleRunId) {
         setLocalActiveRun(state, runId);
         setPendingGatewayRun(state, runId);
@@ -1568,6 +1578,7 @@ export async function runChatViaGateway(
             runId,
             ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
+            ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
             ...(workspaceCwd ? { workspaceCwd } : {}),

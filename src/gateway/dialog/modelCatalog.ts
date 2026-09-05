@@ -16,8 +16,7 @@ const REASONING_VALUES = new Map<number, ThinkingMode>([
 ]);
 
 export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.ProcessEnv = process.env): ModelCatalogListResult {
-  if (!input.projectKey?.trim()) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required.");
-  const config = loadPilotConfig({ projectRoot: input.projectKey, env }).config;
+  const config = loadPilotConfig({ env }).config;
   const query = input.query?.trim().toLocaleLowerCase() ?? "";
   const items: ModelCatalogItem[] = [];
   for (const [providerId, provider] of Object.entries(config.model.providers)) {
@@ -51,11 +50,15 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
     && (!query || "router auto".includes(query))) {
     items.unshift({ id: "router/auto", provider: "router", model: "auto", displayName: "Auto", available: true, capabilities: {} });
   }
-  return { items, router: { enabled: routerEnabled, autoAvailable: routerEnabled } };
+  return {
+    items,
+    defaultSelection: { mode: "model", provider: config.agent.model.provider, model: config.agent.model.model },
+    router: { enabled: routerEnabled, autoAvailable: routerEnabled },
+  };
 }
 
 export function validateModelSelection(projectKey: string, selection: SessionModelSelection, env: NodeJS.ProcessEnv = process.env): void {
-  if (selection.mode === "auto") {
+  if (selection?.mode === "auto") {
     if (!listModelCatalog({ projectKey }, env).router.autoAvailable) {
       throw new DialogGatewayError("ROUTER_AUTO_UNAVAILABLE", "Router auto is not available for this project.");
     }

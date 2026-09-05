@@ -554,10 +554,13 @@ export class InProcessGateway implements Gateway {
         }));
         const modelSelection = this.options.resolveTurnModelSelection
           ? await this.options.resolveTurnModelSelection(input)
-          : input.modelOverride
-            ? { selection: input.modelOverride, source: "turn" as const }
-            : { source: "default" as const };
+          : input.modelSelection?.mode === "auto"
+            ? { source: "router" as const }
+            : input.modelSelection?.mode === "model" || input.modelOverride
+              ? { selection: input.modelSelection?.mode === "model" ? input.modelSelection : input.modelOverride, source: "turn" as const }
+              : { source: "default" as const };
         let lastEmittedModel: string | undefined;
+        let actualRequestModel: string | undefined;
         if (modelSelection.selection) {
           const event: GatewayEvent = {
             type: "model_selection_changed",
@@ -577,6 +580,7 @@ export class InProcessGateway implements Gateway {
           agentInput,
           {
             turnId: runId,
+            modelSelection: input.modelSelection,
             maxTurns: input.maxTurns,
             runMode,
             permissionMode,
@@ -620,6 +624,7 @@ export class InProcessGateway implements Gateway {
           if (event.type === "input_accepted") {
             await this.commitAcceptedTurnReplacement(input.sessionKey, runId);
           }
+          if (event.type === "model_event" && event.event.type === "request_started") actualRequestModel = event.event.model;
           if (event.type === "model_event" && event.event.type === "request_started"
             && lastEmittedModel !== `${event.event.provider}\0${event.event.model}`) {
             const selectionEvent: GatewayEvent = {
@@ -634,6 +639,10 @@ export class InProcessGateway implements Gateway {
             lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
           }
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
+            if (gatewayEvent.type === "assistant_text_delta" && actualRequestModel) gatewayEvent.model = actualRequestModel;
+            if (gatewayEvent.type === "input_accepted" && input.modelSelection) {
+              gatewayEvent.modelSelection = { ...input.modelSelection };
+            }
             if (gatewayEvent.type === "context_budget") {
               this.recordGatewayStatusMessage({
                 sessionKey: input.sessionKey,

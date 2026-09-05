@@ -157,6 +157,8 @@ export type ComposerV2Props = {
   modelCatalog: ChatModelCatalogItem[];
   modelSelection: ChatModelSelection | null;
   isModelCatalogLoading?: boolean;
+  isModelSelectionReady?: boolean;
+  canSubmitWithoutModel?: boolean;
   modelCatalogError?: string | null;
   projectKey: string;
   onModelSelectionChange: (selection: ChatModelSelection) => void;
@@ -510,6 +512,8 @@ export default function ComposerV2({
   modelCatalog,
   modelSelection,
   isModelCatalogLoading = false,
+  isModelSelectionReady = true,
+  canSubmitWithoutModel = false,
   modelCatalogError,
   projectKey,
   onModelSelectionChange,
@@ -646,7 +650,8 @@ export default function ComposerV2({
   );
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
-  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages;
+  const modelBlocksSubmission = !isModelSelectionReady && !canSubmitWithoutModel;
+  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || modelBlocksSubmission;
   const primaryAction = getComposerPrimaryAction({
     isLoading,
     isInputQueuePaused,
@@ -695,7 +700,7 @@ export default function ComposerV2({
     modelSelection?.mode === "auto"
       ? (t("input.models.auto", { defaultValue: "Auto" }) as string)
       : selectedModel?.displayName ||
-        selectedModel?.model ||
+        selectedModel?.model || (modelSelection?.mode === "model" ? modelSelection.model : "") ||
         (t("input.models.select", {
           defaultValue: "Select model",
         }) as string);
@@ -756,6 +761,7 @@ export default function ComposerV2({
         {!hasBlockingPermissionPanel ? (
           <form
             onSubmit={(event) => {
+              if (modelBlocksSubmission) { event.preventDefault(); return; }
               if (showWorkspacePicker && !workspaceSelectedProject) {
                 event.preventDefault();
                 setWorkspaceMenuForceOpen(true);
@@ -1532,13 +1538,12 @@ export default function ComposerV2({
                             />
                           </div>
                           <div className="max-h-64 overflow-y-auto [scrollbar-color:#c1c1c1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c1c1c1] [&::-webkit-scrollbar-track]:bg-transparent">
+                            {modelCatalogError ? (
+                              <div className="px-3 py-3 text-[12px] text-red-500" role="alert">{modelCatalogError}</div>
+                            ) : null}
                             {isModelCatalogLoading ? (
                               <div className="flex justify-center py-8 text-neutral-400">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                              </div>
-                            ) : modelCatalogError ? (
-                              <div className="px-3 py-6 text-center text-[12px] text-red-500">
-                                {modelCatalogError}
                               </div>
                             ) : filteredModels.length === 0 ? (
                               <div className="px-3 py-6 text-center text-[12px] text-neutral-400">

@@ -134,6 +134,8 @@ export type CanonicalContentBlock =
   | CanonicalMediaReferenceBlock;
 
 export type CanonicalMessageMetadata = {
+  /** Actual model that generated this assistant message. */
+  model?: string;
   /** True for messages injected by the system (e.g. JSON self-correct prompts). */
   synthetic?: boolean;
   /** Synthetic prompt that should be consumed by the next assistant response only. */

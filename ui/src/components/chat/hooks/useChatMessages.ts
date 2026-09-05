@@ -126,6 +126,7 @@ function convertSingleMessage(
           id: msg.id,
           entryId: msg.entryId,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: text,
           timestamp: msg.timestamp,
           ...turnIdentity,
@@ -139,6 +140,7 @@ function convertSingleMessage(
           id: msg.id,
           entryId: msg.entryId,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: '',
           artifacts: msg.artifacts,
           timestamp: msg.timestamp,
@@ -227,6 +229,7 @@ function convertSingleMessage(
         return {
           id: msg.id,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: unescapeWithMathProtection(thinkingContent),
           timestamp: msg.timestamp,
           ...turnIdentity,
@@ -349,6 +352,7 @@ function convertSingleMessage(
         return {
           id: msg.id,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: msg.content,
           timestamp: msg.timestamp,
           ...turnIdentity,

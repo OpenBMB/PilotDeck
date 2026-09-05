@@ -902,3 +902,26 @@ describe('Always-On turn notification forwarding', () => {
         });
     });
 });
+
+describe('dialog model preference frames', () => {
+    it('keeps Auto and explicit parameter choices in persisted queued messages', () => {
+        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, temperature: 0.3, speed: 1 }]) {
+            const item = { id: 'queued-model', options: { modelSelection: selection } };
+            expect(hydrateQueuedInputOptions(restoreQueuedInputFromStorage(serializeQueuedInputForStorage(item)).options).modelSelection).toEqual(selection);
+        }
+    });
+
+    it('reports execution models without broadcasting changes to the composer preference', () => {
+        const sessionId = 'web:s';
+        const accepted = gatewayEventToFrames({ type: 'input_accepted', runId: 'run-1', modelSelection: { mode: 'auto' } }, sessionId, 'pilotdeck');
+        expect(accepted).toEqual([]);
+        const running = gatewayEventToFrames({ type: 'model_selection_changed', runId: 'run-1', provider: 'chosen', model: 'routed', source: 'router' }, sessionId, 'pilotdeck');
+        expect(running[0]).toMatchObject({ type: 'model-selection-changed', modelProvider: 'chosen', model: 'routed', runId: 'run-1' });
+    });
+});
+
+
+it('carries the actual model on assistant text deltas', () => {
+  const frames = gatewayEventToFrames({ type: 'assistant_text_delta', text: 'Hello', model: 'qwen3.8-27b', runId: 'run-model' }, 'web:model', 'pilotdeck');
+  expect(frames[0]).toMatchObject({ kind: 'stream_delta', model: 'qwen3.8-27b', content: 'Hello', runId: 'run-model' });
+});

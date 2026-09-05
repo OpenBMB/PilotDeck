@@ -95,6 +95,7 @@ export class AgentSession {
       permissionRules: submitOptions.permissionRules,
       syntheticMessages: submitOptions.syntheticMessages,
       modelOverride: submitOptions.modelOverride,
+      modelSelection: submitOptions.modelSelection,
       abortSignal: this.state.abortController.signal,
       openSteerMailbox: () => this.steerMailbox.start(turnId),
       drainSteerMessages: () => this.steerMailbox.drain(turnId),

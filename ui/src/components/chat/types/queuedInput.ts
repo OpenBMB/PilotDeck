@@ -1,3 +1,4 @@
+import type { ChatModelSelection } from '../hooks/useChatProviderState';
 import type { ChatAttachment } from './types';
 
 export type QueuedInputStatus = 'queued' | 'steering' | 'dispatching' | 'delivery_uncertain' | 'failed';
@@ -34,6 +35,7 @@ export type PreparedQueuedInput = {
     permissionMode?: string;
     basePermissionMode?: string;
     model?: string;
+    modelSelection?: ChatModelSelection;
     modelOverride?: {
       mode: 'model';
       provider: string;

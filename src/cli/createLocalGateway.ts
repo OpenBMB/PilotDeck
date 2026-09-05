@@ -382,8 +382,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       return listCommands({ ...input, projectKey }, pilotHome);
     },
     async modelCatalogList(input) {
-      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
-      return listModelCatalog({ ...input, projectKey }, env);
+      return listModelCatalog(input, env);
     },
     async sessionModelGet(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
@@ -415,13 +414,22 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     },
     async resolveTurnModelSelection(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      if (input.modelSelection !== undefined && input.modelOverride !== undefined) {
+        throw new DialogGatewayError("INVALID_MODEL_OVERRIDE", "Specify modelSelection or modelOverride, not both.");
+      }
+      if (input.modelSelection !== undefined) {
+        validateModelSelection(projectKey, input.modelSelection, env);
+        return input.modelSelection.mode === "model"
+          ? { selection: input.modelSelection, source: "turn" as const }
+          : { source: "router" as const };
+      }
       if (input.modelOverride) {
         validateExplicitModelSelection(projectKey, input.modelOverride, env);
         return { selection: input.modelOverride, source: "turn" as const };
       }
       const saved = await readSavedModel(projectKey, input.sessionKey);
+      if (saved) validateModelSelection(projectKey, saved, env);
       if (saved?.mode === "model") {
-        validateExplicitModelSelection(projectKey, saved, env);
         return { selection: saved, source: "session" as const };
       }
       const config = loadPilotConfig({ projectRoot: projectKey, env }).config;

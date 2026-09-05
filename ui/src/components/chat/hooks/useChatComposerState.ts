@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getSubmittedCommand, isModelIndependentCommand } from '../utils/composerCommand';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -64,6 +65,7 @@ interface UseChatComposerStateArgs {
   currentSessionId: string | null;
   model: string;
   modelSelection?: ChatModelSelection | null;
+  isModelSelectionReady?: boolean;
   permissionMode: PermissionMode | string;
   basePermissionMode?: PermissionMode | string;
   runMode?: string;
@@ -260,6 +262,7 @@ export function useChatComposerState({
   currentSessionId,
   model,
   modelSelection,
+  isModelSelectionReady = true,
   permissionMode,
   basePermissionMode,
   runMode,
@@ -1124,6 +1127,9 @@ export function useChatComposerState({
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
       event.preventDefault();
+      const submitCommand = getSubmittedCommand(inputValueRef.current, selectedCommands, slashCommands);
+      if (!isModelSelectionReady && (skipSlashDetectionOnceRef.current || !isModelIndependentCommand(submitCommand))) return;
+      const submittedModelSelection = modelSelection ? { ...modelSelection } : undefined;
       const currentInput = inputValueRef.current;
       const submitAttachedImages = attachedImages;
       let submittedAttachmentFiles = submitAttachedImages;
@@ -1175,8 +1181,7 @@ export function useChatComposerState({
         }
         return;
       } else if (trimmedInput.startsWith('/')) {
-        const commandName = trimmedInput.match(/^(\S+)/)?.[1] ?? trimmedInput;
-        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
+        const matchedCommand = submitCommand;
         if (matchedCommand) {
           const commandResult = await executeCommand(matchedCommand, trimmedInput);
           if (!commandResult) return;
@@ -1205,6 +1210,9 @@ export function useChatComposerState({
         }
       }
 
+      // Custom commands can expand and re-enter this handler. They still need
+      // a usable model before entering the normal/queued submission path.
+      if (!isModelSelectionReady) return;
       const userVisibleInput = currentInput.trim()
         || (hasDocumentReferences
           ? referenceOnlyPrompt
@@ -1386,7 +1394,6 @@ export function useChatComposerState({
       const toolsSettings = getPilotDeckSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
       const resolvedProjectPath = getSelectedProjectPath(selectedProject);
-      const modelOverride = modelSelection?.mode === 'model' ? modelSelection : undefined;
 
       const clearSubmittedComposerState = () => {
         if (inputValueRef.current === currentInput) {
@@ -1448,7 +1455,7 @@ export function useChatComposerState({
             images: uploadedImages,
             attachments: turnAttachments,
             uploadedAttachments: uploadedAttachmentRefs,
-            modelOverride,
+            modelSelection: submittedModelSelection,
           },
         }) ?? { ok: false, error: 'Message queue is unavailable.' };
         if (!result.ok) {
@@ -1492,7 +1499,7 @@ export function useChatComposerState({
         thinking: thinkingModeToConfig(thinkingMode),
         sessionSummary,
         toolsSettings,
-        modelOverride,
+        modelSelection: submittedModelSelection,
         images: uploadedImages,
         attachments: turnAttachments,
         uploadedAttachments: uploadedAttachmentRefs,
@@ -1546,6 +1553,7 @@ export function useChatComposerState({
       clearSelectedCommands,
       model,
       modelSelection,
+      isModelSelectionReady,
       currentSessionId,
       executeCommand,
       isLoading,
@@ -2026,6 +2034,7 @@ export function useChatComposerState({
 
   return {
     input,
+    canSubmitWithoutModel: !skipSlashDetectionOnceRef.current && isModelIndependentCommand(getSubmittedCommand(input, selectedCommands, slashCommands)),
     setInput,
     textareaRef,
     inputHighlightRef,

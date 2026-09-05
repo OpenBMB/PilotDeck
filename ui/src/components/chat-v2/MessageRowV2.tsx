@@ -597,6 +597,11 @@ function MessageRowV2({
           data-testid="assistant-message-actions"
           className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100"
         >
+          {message.model ? (
+            <span data-testid="assistant-message-model" className="mr-1 truncate text-xs text-neutral-400 dark:text-neutral-500">
+              {message.model}
+            </span>
+          ) : null}
           {assistantMessageTime ? (
             <time
               dateTime={assistantMessageTime.dateTime}
