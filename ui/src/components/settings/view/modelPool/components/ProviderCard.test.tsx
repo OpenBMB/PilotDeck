@@ -44,6 +44,25 @@ describe("ProviderCard custom model add", () => {
     vi.clearAllMocks();
   });
 
+  it("does not expose provider retry settings", () => {
+    render(
+      <ProviderCard
+        providerId="openrouter"
+        provider={{
+          protocol: "openai",
+          url: "https://openrouter.ai/api/v1",
+          apiKey: "sk-test",
+          models: { "model-a": {} },
+        }}
+        catalogEntry={catalogEntry}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("pilotDeckConfig.panels.models.providerAdvancedToggle")).toBeNull();
+  });
+
   it("puts add-model first in candidates and enables a typed ID on enter", async () => {
     render(
       <ProviderCard
@@ -199,5 +218,59 @@ describe("ProviderCard connection badge", () => {
     await waitFor(() => expect(onBindConnectionTest).toHaveBeenCalledWith("test_1"));
     expect(screen.getByText("pilotDeckConfig.panels.models.connected")).toBeTruthy();
     expect(onPendingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("falls back to the legacy connection endpoint when the batch route is unavailable", async () => {
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/config/test-connections") {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ message: "API route not found" }),
+        };
+      }
+      if (url === "/api/config/test-connection") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, supportsImage: false }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    render(
+      <ProviderCard
+        providerId="openrouter"
+        provider={{
+          protocol: "openai",
+          url: "https://openrouter.ai/api/v1",
+          apiKey: "sk-test",
+          models: { "model-a": {} },
+        }}
+        catalogEntry={catalogEntry}
+        onSave={onSave}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "pilotDeckConfig.panels.models.testConnection" }));
+
+    await waitFor(() => expect(mocks.authenticatedFetch).toHaveBeenCalledWith(
+      "/api/config/test-connection",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(
+      "openrouter",
+      expect.objectContaining({
+        models: {
+          "model-a": expect.objectContaining({
+            connectionTest: expect.objectContaining({ status: "passed" }),
+          }),
+        },
+      }),
+    ));
+    expect(screen.getByText("pilotDeckConfig.panels.models.connectionNormal")).toBeTruthy();
   });
 });

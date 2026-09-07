@@ -31,7 +31,6 @@ import DeleteConfirmationModal, {
 import ProviderAvatar from "./ProviderAvatar";
 import {
   CheckCircleIcon,
-  ChevronDownIcon,
   InfoIcon,
   KeyIcon,
   LinkIcon,
@@ -80,6 +79,13 @@ type ConnectionTestResponse = {
   error?: { code?: string; message?: string } | null;
   code?: string;
   message?: string;
+};
+
+type LegacyConnectionTestResponse = {
+  ok?: boolean;
+  error?: string | { message?: string };
+  message?: string;
+  supportsImage?: boolean | null;
 };
 
 type DeleteDialogState = {
@@ -158,7 +164,6 @@ export default function ProviderCard({
   const savingRef = useRef(false);
   const [draftCustomModelId, setDraftCustomModelId] = useState<string | null>(null);
   const [modelSearch, setModelSearch] = useState("");
-  const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
   const [providerIdError, setProviderIdError] = useState("");
   const trimmedProviderId = providerIdDraft.trim();
@@ -212,18 +217,6 @@ export default function ProviderCard({
         (key) => key in patchValue && patchValue[key as keyof V2Provider] !== prev[key as keyof V2Provider],
       );
       return credentialsChanged ? clearProviderConnectionTests(next) : next;
-    });
-  };
-
-  const updateRetry = (
-    key: keyof NonNullable<V2Provider["retry"]>,
-    value: number | undefined,
-  ) => {
-    update({
-      retry: {
-        ...draftProvider.retry,
-        [key]: value,
-      },
     });
   };
 
@@ -465,9 +458,11 @@ export default function ProviderCard({
     data: ConnectionTestResponse,
     previousProvider: V2Provider,
   ) => {
-    setDraftProvider(applyPassingConnectionTests(previousProvider, data.models, data.testedAt));
-    if (!data.testId || !onBindConnectionTest) return;
-    const result = await onBindConnectionTest(data.testId);
+    const testedProvider = applyPassingConnectionTests(previousProvider, data.models, data.testedAt);
+    setDraftProvider(testedProvider);
+    const result = data.testId && onBindConnectionTest
+      ? await onBindConnectionTest(data.testId)
+      : await onSave(providerId, testedProvider);
     if (!result.ok) {
       setDraftProvider(previousProvider);
     }
@@ -478,6 +473,47 @@ export default function ProviderCard({
     ?? data.error?.message
     ?? data.message
     ?? t("pilotDeckConfig.panels.models.testFailed");
+
+  const testConnectionWithLegacyEndpoint = async (): Promise<ConnectionTestResponse> => {
+    const models: ConnectionTestModel[] = [];
+    for (const model of enabledModels) {
+      const response = await authenticatedFetch("/api/config/test-connection", {
+        method: "POST",
+        body: JSON.stringify({
+          providerId,
+          providerType: protocol,
+          baseUrl: effectiveUrl,
+          apiKey: draftProvider.apiKey ?? "",
+          model,
+        }),
+      });
+      const result = await response.json() as LegacyConnectionTestResponse;
+      if (!response.ok || result.ok !== true) {
+        const message = typeof result.error === "string"
+          ? result.error
+          : result.error?.message ?? result.message;
+        return {
+          status: "failed",
+          models: [{
+            modelId: model,
+            textInput: "unsupported",
+            imageInput: "unknown",
+            error: { message: message ?? t("pilotDeckConfig.panels.models.testFailed") },
+          }],
+        };
+      }
+      models.push({
+        modelId: model,
+        textInput: "supported",
+        imageInput: result.supportsImage === true ? "supported" : "unsupported",
+      });
+    }
+    return {
+      status: "passed",
+      models,
+      testedAt: new Date().toISOString(),
+    };
+  };
 
   const testConnection = async () => {
     if (!enabledModels.length) {
@@ -511,8 +547,16 @@ export default function ProviderCard({
           retryPolicy: {},
         }),
       });
-      const data = await res.json() as ConnectionTestResponse;
+      const data = res.status === 404
+        ? await testConnectionWithLegacyEndpoint()
+        : await res.json() as ConnectionTestResponse;
       if (!res.ok) {
+        if (res.status === 404 && data.status === "passed") {
+          setTestStatus("success");
+          setTestMessage(t("pilotDeckConfig.panels.models.testSuccess"));
+          await persistPassingTest(data, draftProvider);
+          return;
+        }
         setTestStatus("error");
         setTestMessage(testErrorMessage(data));
         return;
@@ -684,7 +728,7 @@ export default function ProviderCard({
                 <span>{t("pilotDeckConfig.panels.models.baseUrl")}</span>
                 <input
                   value={draftProvider.url ?? ""}
-                  placeholder={effectiveCatalogEntry?.defaultUrl || "https://api.example.com/v1"}
+                  placeholder="https://api.example.com/v1"
                   className="mono"
                   onChange={(event) => update({ url: event.target.value })}
                 />
@@ -717,51 +761,6 @@ export default function ProviderCard({
               </small>
             ) : null}
           </label>
-        </section>
-
-        <section className="form-section">
-          <button
-            className="button secondary compact"
-            type="button"
-            aria-expanded={showProviderAdvanced}
-            onClick={() => setShowProviderAdvanced((value) => !value)}
-          >
-            <ChevronDownIcon
-              className={cn(showProviderAdvanced && "rotate-180")}
-            />
-            {t("pilotDeckConfig.panels.models.providerAdvancedToggle")}
-          </button>
-          {showProviderAdvanced ? (
-            <div className="connection-grid">
-              {([
-                ["requestMaxRetries", "2"],
-                ["streamMaxRetries", "3"],
-                ["streamIdleTimeoutMs", "600000"],
-                ["baseDelayMs", "1000"],
-                ["maxDelayMs", "60000"],
-              ] as const).map(([key, placeholder]) => (
-                <label className="field" key={key}>
-                  <span>
-                    {t(`pilotDeckConfig.panels.models.providerRetry.${key}.label`)}
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={draftProvider.retry?.[key] ?? ""}
-                    placeholder={placeholder}
-                    disabled={fieldsDisabled}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      updateRetry(key, value === "" ? undefined : Number(value));
-                    }}
-                  />
-                  <small className="field-help">
-                    {t(`pilotDeckConfig.panels.models.providerRetry.${key}.description`)}
-                  </small>
-                </label>
-              ))}
-            </div>
-          ) : null}
         </section>
 
         <section className="form-section models-section">
