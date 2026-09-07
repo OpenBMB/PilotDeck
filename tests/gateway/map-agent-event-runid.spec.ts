@@ -15,6 +15,20 @@ test("mapAgentEvent propagates runId to streaming lifecycle boundaries", () => {
   }, runId);
   assert.deepEqual(accepted, [{ type: "input_accepted", runId }]);
 
+  const unapplied = mapAgentEvent({
+    type: "steer_unapplied",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    itemId: "queue-1",
+    reason: "turn_ended",
+  }, runId);
+  assert.deepEqual(unapplied, [{
+    type: "steer_unapplied",
+    itemId: "queue-1",
+    reason: "turn_ended",
+    runId,
+  }]);
+
   const toolStarted = mapAgentEvent({
     type: "tool_calls_detected",
     sessionId: "session-1",

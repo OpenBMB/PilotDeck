@@ -8,7 +8,7 @@
  */
 
 import { promises as fs } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 
 // ---------------------------------------------------------------------------
@@ -334,7 +334,7 @@ function isRunTaskNotification(
 
 function isWithinDirectory(parentDir: string, candidatePath: string): boolean {
   const rel = relative(parentDir, candidatePath);
-  return Boolean(rel) && !rel.startsWith("..") && !resolve(rel).startsWith("/");
+  return Boolean(rel) && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 function getTranscriptInfoFromPath(projectDir: string, transcriptPath: string) {

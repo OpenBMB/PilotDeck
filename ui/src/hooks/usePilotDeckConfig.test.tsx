@@ -22,12 +22,14 @@ vi.mock("../contexts/WebSocketContext", () => ({
 
 type TestResponse = {
   ok: boolean;
+  status: number;
   json: () => Promise<unknown>;
 };
 
-function response(body: unknown, ok = true): TestResponse {
+function response(body: unknown, ok = true, status = ok ? 200 : 400): TestResponse {
   return {
     ok,
+    status,
     json: async () => body,
   };
 }
@@ -68,6 +70,50 @@ describe("usePilotDeckConfig saves", () => {
       return vi.fn();
     });
   });
+
+  it.each(["watcher", "gateway-save"])(
+    "uses the revision from a clean %s update on the next save",
+    async (source) => {
+      const writeBodies: string[] = [];
+      mocks.authenticatedFetch.mockImplementation(
+        (url: string, options?: RequestInit) => {
+          if (url === "/api/config" && !options?.method) {
+            return Promise.resolve(response(configResponse("initial", "revision-initial")));
+          }
+          if (url === "/api/config/validate") {
+            return Promise.resolve(response({ valid: true, errors: [], warnings: [] }));
+          }
+          if (url === "/api/config" && options?.method === "PUT") {
+            writeBodies.push(String(options.body));
+            return Promise.resolve(response(configResponse("saved", "revision-saved")));
+          }
+          throw new Error(`Unexpected request: ${url}`);
+        },
+      );
+
+      const { result } = renderHook(() => usePilotDeckConfig(), { wrapper: ConfigWrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => {
+        mocks.listener?.({
+          type: "config:reloaded",
+          source,
+          ...configResponse("updated", "revision-updated"),
+        });
+      });
+      expect(result.current.raw).toBe("updated");
+
+      act(() => result.current.setRaw("draft"));
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(JSON.parse(writeBodies[0])).toMatchObject({
+        raw: "draft",
+        baseRevision: "revision-updated",
+      });
+    },
+  );
 
   it("serializes immediate saves and prevents an older response replacing the latest draft", async () => {
     const firstWrite = deferred<TestResponse>();
@@ -144,6 +190,40 @@ describe("usePilotDeckConfig saves", () => {
     expect(results).toEqual([{ ok: true }, { ok: true }]);
     expect(result.current.raw).toBe("second");
     expect(result.current.saving).toBe(false);
+  });
+
+  it("serializes model test bindings with a config save", async () => {
+    const writeBodies: string[] = [];
+    mocks.authenticatedFetch.mockImplementation(
+      (url: string, options?: RequestInit) => {
+        if (url === "/api/config" && !options?.method) {
+          return Promise.resolve(response(configResponse("initial")));
+        }
+        if (url === "/api/config" && options?.method === "PUT") {
+          writeBodies.push(String(options.body));
+          return Promise.resolve(response(configResponse("saved")));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    const { result } = renderHook(() => usePilotDeckConfig(), { wrapper: ConfigWrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.setRaw("draft");
+    });
+    let saveResult!: Awaited<ReturnType<typeof result.current.save>>;
+    await act(async () => {
+      saveResult = await result.current.save({ modelTestBindings: [{ testId: "test_123" }] });
+    });
+
+    expect(saveResult).toEqual({ ok: true });
+    expect(JSON.parse(writeBodies[0])).toMatchObject({
+      raw: "draft",
+      baseRevision: "revision-initial",
+      modelTestBindings: [{ testId: "test_123" }],
+    });
   });
 
   it("tracks the saved disk snapshot without replacing a newer raw draft", async () => {
@@ -242,6 +322,92 @@ describe("usePilotDeckConfig saves", () => {
     });
     expect(result.current.error).toBe("Config write rejected");
     expect(result.current.saving).toBe(false);
+  });
+
+  it("rolls a rejected structured save back to the latest confirmed config", async () => {
+    mocks.authenticatedFetch.mockImplementation(
+      (url: string, options?: RequestInit) => {
+        if (url === "/api/config" && !options?.method) {
+          return Promise.resolve(response(configResponse("confirmed")));
+        }
+        if (url === "/api/config/validate") {
+          return Promise.resolve(
+            response({ valid: false, errors: ["draft is invalid"], warnings: [] }),
+          );
+        }
+        if (url === "/api/config" && options?.method === "PUT") {
+          return Promise.resolve(
+            response({
+              error: "Invalid PilotDeck config",
+              validation: {
+                valid: false,
+                errors: ["model.providers.provider1.apiKey is required"],
+                warnings: [],
+              },
+            }, false),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    const { result } = renderHook(() => usePilotDeckConfig(), {
+      wrapper: ConfigWrapper,
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let saveResult;
+    await act(async () => {
+      saveResult = await result.current.commitRaw("invalid structured draft");
+    });
+
+    expect(saveResult).toEqual({
+      ok: false,
+      error: "model.providers.provider1.apiKey is required",
+    });
+    expect(result.current.error).toBe(
+      "model.providers.provider1.apiKey is required",
+    );
+    expect(result.current.raw).toBe("confirmed");
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  it("keeps the draft when a server failure makes the write result ambiguous", async () => {
+    mocks.authenticatedFetch.mockImplementation(
+      (url: string, options?: RequestInit) => {
+        if (url === "/api/config" && !options?.method) {
+          return Promise.resolve(response(configResponse("confirmed")));
+        }
+        if (url === "/api/config/validate") {
+          return Promise.resolve(
+            response({ valid: true, errors: [], warnings: [] }),
+          );
+        }
+        if (url === "/api/config" && options?.method === "PUT") {
+          return Promise.resolve(
+            response({ error: "Reload failed after write" }, false, 500),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    const { result } = renderHook(() => usePilotDeckConfig(), {
+      wrapper: ConfigWrapper,
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let saveResult;
+    await act(async () => {
+      saveResult = await result.current.commitRaw("possibly saved draft");
+    });
+
+    expect(saveResult).toEqual({
+      ok: false,
+      error: "Reload failed after write",
+    });
+    expect(result.current.raw).toBe("possibly saved draft");
+    expect(result.current.isDirty).toBe(true);
   });
 
   it("shares one draft and save queue between settings consumers", async () => {

@@ -10,6 +10,7 @@ import {
   isMaskedSecret,
 } from "../../modelPool/utils/providerRefs";
 import {
+  isWebSearchApiKeyRequired,
   webSearchConfigForProvider,
   type WebSearchProvider,
 } from "../utils/webSearchConfig";
@@ -239,6 +240,7 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
   const provider = normalizeProvider(ws.provider);
   const apiKey = typeof ws.apiKey === "string" ? ws.apiKey : "";
   const endpoint = typeof ws.endpoint === "string" ? ws.endpoint : "";
+  const apiKeyRequired = isWebSearchApiKeyRequired(ws);
   const [editingField, setEditingField] =
     useState<EditableSearchField | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
@@ -333,7 +335,12 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
         : "";
     const trimmedEndpoint = endpoint.trim();
 
-    if (provider === "custom" && !trimmedEndpoint && !trimmedKey) {
+    if (
+      provider === "custom"
+      && !trimmedEndpoint
+      && apiKeyRequired
+      && !trimmedKey
+    ) {
       setTestStatus("error");
       setTestErrorKind("validation");
       setTestMessage(
@@ -347,7 +354,7 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
       setTestMessage(t("pilotDeckConfig.panels.tools.test.needsEndpoint"));
       return;
     }
-    if (!trimmedKey) {
+    if (apiKeyRequired && !trimmedKey) {
       setTestStatus("error");
       setTestErrorKind("validation");
       setTestMessage(t("pilotDeckConfig.panels.tools.test.needsKey"));

@@ -40,6 +40,8 @@ export type CatalogProvider = {
   displayName: string;
   protocol: CatalogProviderProtocol;
   defaultUrl: string;
+  /** Environment variable used when apiKey is omitted from the config. */
+  apiKeyEnvVar?: string;
   modelListUrl?: string;
   /** The provider rejects model-list requests until an API key is supplied. */
   modelListRequiresApiKey?: boolean;
@@ -53,6 +55,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Anthropic',
     protocol: 'anthropic',
     defaultUrl: 'https://api.anthropic.com',
+    apiKeyEnvVar: 'ANTHROPIC_API_KEY',
     models: [
       { id: 'claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', aliases: ['claude-sonnet-4-6'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 128000 },
       { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', aliases: ['claude-opus-4', 'claude-opus-4.6'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 32768 },
@@ -66,6 +69,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenAI',
     protocol: 'openai',
     defaultUrl: 'https://api.openai.com/v1',
+    apiKeyEnvVar: 'OPENAI_API_KEY',
     models: [
       { id: 'gpt-4.1', displayName: 'GPT-4.1', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
       { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
@@ -80,6 +84,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenAI (Responses API)',
     protocol: 'openai-responses',
     defaultUrl: 'https://api.openai.com/v1',
+    apiKeyEnvVar: 'OPENAI_API_KEY',
     models: [
       { id: 'gpt-4.1', displayName: 'GPT-4.1', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
       { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
@@ -94,6 +99,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '阿里云百炼 (DashScope)',
     protocol: 'openai',
     defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiKeyEnvVar: 'DASHSCOPE_API_KEY',
     models: [
       { id: 'qwen3.7-max', displayName: 'Qwen3.7 Max', maxContextTokens: 1000000, maxOutputTokens: 65536 },
       { id: 'qwen3.7-plus', displayName: 'Qwen3.7 Plus', supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 65536 },
@@ -108,6 +114,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'DeepSeek',
     protocol: 'openai',
     defaultUrl: 'https://api.deepseek.com/v1',
+    apiKeyEnvVar: 'DEEPSEEK_API_KEY',
     modelListUrl: 'https://api.deepseek.com/models',
     modelListRequiresApiKey: true,
     models: [
@@ -120,6 +127,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Google AI (Gemini)',
     protocol: 'google',
     defaultUrl: 'https://generativelanguage.googleapis.com',
+    apiKeyEnvVar: 'GEMINI_API_KEY',
     models: [
       { id: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro Preview', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
       { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
@@ -132,6 +140,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenRouter',
     protocol: 'openai',
     defaultUrl: 'https://openrouter.ai/api/v1',
+    apiKeyEnvVar: 'OPENROUTER_API_KEY',
     models: [
       { id: 'anthropic/claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 128000 },
       { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
@@ -156,6 +165,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'MiniMax',
     protocol: 'openai',
     defaultUrl: 'https://api.minimax.io/v1',
+    apiKeyEnvVar: 'MINIMAX_API_KEY',
     models: [
       { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5', maxContextTokens: 1000000, maxOutputTokens: 16384 },
       { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000, maxOutputTokens: 16384 },
@@ -166,6 +176,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Moonshot AI (Kimi)',
     protocol: 'openai',
     defaultUrl: 'https://api.moonshot.cn/v1',
+    apiKeyEnvVar: 'MOONSHOT_API_KEY',
     modelListRequiresApiKey: true,
     models: [
       { id: 'kimi-k2.6', displayName: 'Kimi K2.6', aliases: ['moonshotai/kimi-k2.6'], supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 8192 },
@@ -179,6 +190,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '火山方舟 (Volcano Ark)',
     protocol: 'openai',
     defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    apiKeyEnvVar: 'VOLC_ARK_API_KEY',
     models: [
       { id: 'doubao-1.5-pro-256k', displayName: 'Doubao 1.5 Pro 256K', supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 16384 },
       { id: 'doubao-1.5-pro', displayName: 'Doubao 1.5 Pro', supportsImage: true, maxContextTokens: 131072, maxOutputTokens: 16384 },
@@ -192,6 +204,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '智谱 Z.AI',
     protocol: 'openai',
     defaultUrl: 'https://api.z.ai/api/paas/v4',
+    apiKeyEnvVar: 'ZAI_API_KEY',
     models: [
       { id: 'glm-5.2', displayName: 'GLM-5.2', maxContextTokens: 131072, maxOutputTokens: 65536 },
       { id: 'glm-5.1', displayName: 'GLM-5.1', maxContextTokens: 131072, maxOutputTokens: 65536 },

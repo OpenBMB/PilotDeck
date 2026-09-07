@@ -11,7 +11,15 @@ export const isSshGitUrl = (url: string): boolean => {
 export const shouldShowGithubAuthentication = (
   workspaceType: WorkspaceType,
   githubUrl: string,
-): boolean => workspaceType === 'new' && githubUrl.trim().length > 0 && !isSshGitUrl(githubUrl);
+): boolean => {
+  if (workspaceType !== 'new' || isSshGitUrl(githubUrl)) return false;
+  try {
+    const parsed = new URL(githubUrl.trim());
+    return parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === 'github.com';
+  } catch {
+    return false;
+  }
+};
 
 export const isCloneWorkflow = (workspaceType: WorkspaceType, githubUrl: string): boolean =>
   workspaceType === 'new' && githubUrl.trim().length > 0;

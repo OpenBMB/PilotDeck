@@ -15,6 +15,7 @@ import type { SessionMetadataValue } from "../../session/transcript/TranscriptEn
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import { FileArtifactCollector, type FileArtifact } from "../../session/artifacts/index.js";
+import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 
 export type TurnRunnerOptions = {
   sessionId: string;
@@ -35,6 +36,11 @@ export type TurnRunnerOptions = {
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
   syntheticMessages?: CanonicalMessage[];
   modelOverride?: AgentModelOverride;
+  modelSelection?: NonNullable<SessionMetadataValue["modelSelection"]>;
+  openSteerMailbox?: () => void;
+  drainSteerMessages?: () => AgentSteerMessage[];
+  drainOrCloseSteerMailbox?: () => { messages: AgentSteerMessage[]; closed: boolean };
+  closeSteerMailbox?: () => AgentSteerMessage[];
 };
 
 export type TurnRunnerResult = {
@@ -98,6 +104,25 @@ export class TurnRunner {
           now: this.now,
         }).catch(() => undefined);
     try {
+      const unacknowledgedSteers = new Map<string, AgentSteerMessage>();
+      const trackDrainedSteers = (steers: AgentSteerMessage[]): AgentSteerMessage[] => {
+        for (const steer of steers) unacknowledgedSteers.set(steer.itemId, steer);
+        return steers;
+      };
+      const closeSteerMailbox = (): AgentEvent[] => {
+        const unapplied = new Map(unacknowledgedSteers);
+        for (const steer of options.closeSteerMailbox?.() ?? []) {
+          unapplied.set(steer.itemId, steer);
+        }
+        unacknowledgedSteers.clear();
+        return [...unapplied.values()].map((steer) => ({
+          type: "steer_unapplied" as const,
+          sessionId: options.sessionId,
+          turnId: options.turnId,
+          itemId: steer.itemId,
+          reason: "turn_ended" as const,
+        }));
+      };
       let artifactsFinished = false;
       const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
         if (!artifactCollector || artifactsFinished) return [];
@@ -194,6 +219,7 @@ export class TurnRunner {
         return { result, messages };
       }
 
+      options.openSteerMailbox?.();
       try {
         let hasRecordedVisibleFailureStatus = false;
         const generator = this.loop.run({
@@ -210,6 +236,20 @@ export class TurnRunner {
           permissionRules: options.permissionRules,
           modelOverride: options.modelOverride,
           abortSignal: options.abortSignal,
+          drainSteerMessages: options.drainSteerMessages
+            ? () => trackDrainedSteers(options.drainSteerMessages?.() ?? [])
+            : undefined,
+          drainOrCloseSteerMailbox: options.drainOrCloseSteerMailbox
+            ? () => {
+                const drained = options.drainOrCloseSteerMailbox?.() ?? { messages: [], closed: true };
+                return { ...drained, messages: trackDrainedSteers(drained.messages) };
+              }
+            : undefined,
+          onSteerApplied: (itemId) => {
+            const applied = unacknowledgedSteers.get(itemId);
+            if (applied) messages.push(applied.message);
+            unacknowledgedSteers.delete(itemId);
+          },
           onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
           onAgentStatusMessage: async (status) => {
             if (isVisibleFailureStatus(status)) {
@@ -251,17 +291,18 @@ export class TurnRunner {
           yield event;
         }
 
+        const unappliedSteers = closeSteerMailbox();
         const artifacts = await finishArtifacts(runResult.result);
         if (artifacts.length > 0) {
           yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
-        if (turnCompletedEvent) {
-          yield turnCompletedEvent;
-        }
+        for (const event of unappliedSteers) yield event;
+        if (turnCompletedEvent) yield turnCompletedEvent;
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
         await this.finalizeSessionMetadata(options, sessionTitle);
         return runResult;
       } catch (error) {
+        const unappliedSteers = closeSteerMailbox();
         const normalized = normalizeAgentError(error);
         const result = this.createErrorResult(options, normalized);
         const artifacts = await finishArtifacts(result);
@@ -273,10 +314,12 @@ export class TurnRunner {
         yield this.toAgentStatusEvent(options, status);
         await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
+        for (const event of unappliedSteers) yield event;
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
       }
     } finally {
+      options.closeSteerMailbox?.();
       artifactCollector?.dispose();
     }
   }
@@ -446,12 +489,15 @@ export class TurnRunner {
 
     const snapshot = metadataStore.getSnapshot();
     const prompt = allHumanText(acceptedMessages);
-    if (!prompt) return;
+    if (!prompt && !options.modelSelection) return;
 
-    const boundedPrompt = prompt.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
+    const boundedPrompt = prompt?.slice(0, SESSION_LISTING_PROMPT_MAX_CHARS);
     await metadataStore.record(options.turnId, {
-      ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
-      lastPrompt: boundedPrompt,
+      ...(boundedPrompt ? {
+        ...(snapshot.firstPrompt ? {} : { firstPrompt: boundedPrompt }),
+        lastPrompt: boundedPrompt,
+      } : {}),
+      ...(options.modelSelection ? { modelSelection: { ...options.modelSelection } } : {}),
       updatedAt: this.now().toISOString(),
     }).catch(() => {});
   }
@@ -463,6 +509,8 @@ function isVisibleFailureStatus(status: AgentStatusMessageInput): boolean {
 
 function acceptedInputMetadata(options: TurnRunnerOptions): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {};
+  // Save alongside input so a crash before the metadata snapshot cannot lose the choice.
+  if (options.modelSelection) metadata.modelSelection = { ...options.modelSelection };
   if (options.permissionMode) {
     metadata.permissionMode = options.permissionMode;
   }

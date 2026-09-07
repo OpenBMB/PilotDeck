@@ -2,7 +2,7 @@ import type { CliProvider } from '../../provider-auth/types';
 import type { ApiModelListItem } from '../../../shared/modelListApi';
 import type { CatalogProvider, CatalogProviderProtocol } from '../../../shared/catalogProviders';
 import type { OnboardingStepId } from './constants';
-import type { WorkspaceType } from '../../project-creation-wizard/types';
+import type { TokenMode, WorkspaceType } from '../../project-creation-wizard/types';
 
 export type { CliProvider };
 export type { OnboardingStepId };
@@ -39,6 +39,7 @@ export type LlmSetupController = {
   modelListStatus: ModelListStatus;
   modelListMessage: string;
   customProviderId: string;
+  customProviderIdError: string;
   customProtocol: CatalogProviderProtocol;
   isCustomMode: boolean;
   selectedModels: Array<{ id: string; displayName: string }>;
@@ -49,6 +50,8 @@ export type LlmSetupController = {
   effectiveProtocol: CatalogProviderProtocol;
   effectiveProviderId: string;
   selectedProviderRequiresApiKey: boolean;
+  hasEnvironmentApiKeyFallback: boolean;
+  apiKeyInputRequired: boolean;
   canFetchModels: boolean;
   canTest: boolean;
   canContinue: boolean;
@@ -74,4 +77,7 @@ export type WorkspaceDraft = {
   workspaceType: WorkspaceType;
   workspacePath: string;
   githubUrl: string;
+  tokenMode: TokenMode;
+  selectedGithubToken: string;
+  newGithubToken: string;
 };

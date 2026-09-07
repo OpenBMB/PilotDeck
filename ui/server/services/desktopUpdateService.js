@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DEFAULT_REPOSITORY = 'openbmb/PilotDeck';
+const DEFAULT_REPOSITORY = 'OpenBMB/PilotDeck';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_AGENT = 'PilotDeck-Updater/1.0';
@@ -41,6 +41,16 @@ export function parseVersionParts(value) {
     .replace(/^pilotdeck[-_ ]?/i, '')
     .replace(/^desktop[-_ ]?/i, '')
     .replace(/^v/i, '');
+  const dateMatch = /^(\d{4})[.-](\d{1,2})[.-](\d{1,2})(?:-r(\d+))?$/i.exec(normalized);
+  if (dateMatch) {
+    const year = Number.parseInt(dateMatch[1], 10);
+    const month = Number.parseInt(dateMatch[2], 10);
+    const day = Number.parseInt(dateMatch[3], 10);
+    const releaseNumber = dateMatch[4] ? Number.parseInt(dateMatch[4], 10) : 1;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && releaseNumber >= 1) {
+      return [year, month * 100 + day, releaseNumber - 1];
+    }
+  }
   const matches = normalized.match(/\d+/g);
   return matches?.map((part) => Number.parseInt(part, 10)).filter(Number.isFinite) ?? [0];
 }
@@ -67,7 +77,9 @@ export function normalizeRepository(value) {
 
 export function mapGitHubRelease(release) {
   const tagName = String(release?.tag_name || '').trim();
-  const version = tagName.replace(/^v/i, '') || String(release?.name || '').trim();
+  const version = normalizeDesktopReleaseVersion(tagName)
+    || tagName.replace(/^v/i, '')
+    || String(release?.name || '').trim();
   const assets = Array.isArray(release?.assets)
     ? release.assets.map((asset) => ({
         id: asset.id,
@@ -92,6 +104,18 @@ export function mapGitHubRelease(release) {
     draft: Boolean(release?.draft),
     assets,
   };
+}
+
+export function isDesktopRelease(release) {
+  return /^desktop-v\d{4}\.\d{2}\.\d{2}(?:-r\d+)?$/i.test(String(release?.tagName || release?.tag_name || '').trim());
+}
+
+export function normalizeDesktopReleaseVersion(tagName) {
+  const match = /^desktop-v(\d{4})\.(\d{2})\.(\d{2})(?:-r(\d+))?$/i.exec(String(tagName || '').trim());
+  if (!match) return '';
+  const [, year, month, day, releaseNumber] = match;
+  const revision = releaseNumber ? Math.max(0, Number.parseInt(releaseNumber, 10) - 1) : 0;
+  return `${Number(year)}.${Number(month) * 100 + Number(day)}.${revision}`;
 }
 
 export function selectDesktopAsset(release, options = {}) {
@@ -198,6 +222,7 @@ export async function listDesktopReleases(options = {}) {
     env,
     repository,
     limit,
+    desktopOnly: true,
     includePrerelease: options.includePrerelease ?? shouldIncludePrerelease(env),
   });
   return {
@@ -331,19 +356,17 @@ export function resetDesktopUpdateStateForTesting() {
 }
 
 async function fetchLatestRelease(options) {
-  if (options.includePrerelease) {
-    const releases = await fetchReleases({ ...options, limit: 10 });
-    const release = releases.find((item) => !item.draft);
-    if (!release) throw new Error('No GitHub releases are available.');
-    return release;
-  }
-
-  const url = `https://api.github.com/repos/${options.repository}/releases/latest`;
-  return mapGitHubRelease(await fetchJson(url, options.env));
+  const releases = await fetchReleases({ ...options, limit: 30, desktopOnly: true });
+  const release = releases.find((item) => !item.draft);
+  if (!release) throw new Error('No PilotDeck desktop releases are available.');
+  return release;
 }
 
 async function fetchReleases(options) {
-  const url = `https://api.github.com/repos/${options.repository}/releases?per_page=${options.limit}`;
+  // Filter after fetching so unrelated Web/server releases cannot hide a
+  // desktop release simply because the caller requested a small result page.
+  const perPage = options.desktopOnly ? 100 : Math.min(options.limit, 100);
+  const url = `https://api.github.com/repos/${options.repository}/releases?per_page=${perPage}`;
   const releases = await fetchJson(url, options.env);
   if (!Array.isArray(releases)) {
     throw new Error('GitHub releases response was not a list.');
@@ -352,6 +375,7 @@ async function fetchReleases(options) {
   return releases
     .map(mapGitHubRelease)
     .filter((release) => !release.draft)
+    .filter((release) => !options.desktopOnly || isDesktopRelease(release))
     .filter((release) => options.includePrerelease || !release.prerelease)
     .slice(0, options.limit);
 }
@@ -526,10 +550,15 @@ function scoreExtension(name, platform) {
 
 function scoreArch(name, arch) {
   if (/(universal|all)/.test(name)) return 20;
-  if (arch === 'arm64') return /(arm64|aarch64)/.test(name) ? 25 : 0;
-  if (arch === 'x64') return /(x64|x86_64|amd64)/.test(name) ? 25 : 0;
-  if (arch === 'ia32') return /(ia32|x86|i386)/.test(name) ? 25 : 0;
-  return 0;
+  const assetArch = /(arm64|aarch64)/.test(name)
+    ? 'arm64'
+    : /(x64|x86_64|amd64)/.test(name)
+      ? 'x64'
+      : /(ia32|i386|(?:^|[-_.])x86(?:[-_.]|$))/.test(name)
+        ? 'ia32'
+        : null;
+  if (!assetArch) return 0;
+  return assetArch === arch ? 25 : -200;
 }
 
 function readPackageVersion(projectRoot) {

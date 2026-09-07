@@ -28,6 +28,66 @@ test("catalog provider resolves api key from default env var when apiKey is blan
   assert.equal(config.providers.google.apiKey, "gemini-env");
 });
 
+test("Google OpenAI compatibility keeps its official endpoint environment fallback", () => {
+  const config = parseModelConfig({
+    providers: {
+      google: {
+        protocol: "openai",
+        models: { "gemini-2.0-flash": {} },
+      },
+    },
+  }, { env: { GEMINI_API_KEY: "gemini-env" } });
+
+  assert.equal(
+    config.providers.google.url,
+    "https://generativelanguage.googleapis.com/v1beta/openai",
+  );
+  assert.equal(config.providers.google.apiKey, "gemini-env");
+});
+
+test("catalog environment credentials are not inferred for custom provider scopes", () => {
+  assert.throws(
+    () => parseModelConfig({
+      providers: {
+        openai: {
+          protocol: "openai",
+          url: "https://proxy.example/v1",
+          models: { "gpt-4o-mini": {} },
+        },
+      },
+    }, { env: { OPENAI_API_KEY: "catalog-secret" } }),
+    (error: unknown) => (error as { code?: string }).code === "missing_api_key",
+  );
+
+  assert.throws(
+    () => parseModelConfig({
+      providers: {
+        openai: {
+          protocol: "anthropic",
+          url: "https://api.openai.com/v1",
+          models: { "gpt-4o-mini": {} },
+        },
+      },
+    }, { env: { OPENAI_API_KEY: "catalog-secret" } }),
+    (error: unknown) => (error as { code?: string }).code === "missing_api_key",
+  );
+});
+
+test("an explicit environment reference remains valid for a custom endpoint", () => {
+  const config = parseModelConfig({
+    providers: {
+      openai: {
+        protocol: "openai",
+        url: "https://proxy.example/v1",
+        apiKey: "${PROXY_API_KEY}",
+        models: { "gpt-4o-mini": {} },
+      },
+    },
+  }, { env: { PROXY_API_KEY: "proxy-secret" } });
+
+  assert.equal(config.providers.openai.apiKey, "proxy-secret");
+});
+
 test("unknown custom models default to text-only input", () => {
   const config = parseModelConfig({
     providers: {

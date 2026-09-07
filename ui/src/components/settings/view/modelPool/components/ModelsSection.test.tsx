@@ -1,96 +1,167 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { V2Provider } from "../types";
+import type { PilotDeckConfig } from "../types";
+import { findCatalogProviderById } from "../../../../../shared/catalogProviders";
 import ModelsSection from "./ModelsSection";
+import ProviderCard from "./ProviderCard";
+
+const mocks = vi.hoisted(() => ({
+  fetchProviderModels: vi.fn(),
+}));
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("./CatalogPicker", () => ({
-  default: ({ onCustom }: { onCustom: () => void }) => (
-    <button type="button" onClick={onCustom}>pick-custom-provider</button>
-  ),
+vi.mock("../../../../../shared/modelListApi", () => ({
+  fetchProviderModels: mocks.fetchProviderModels,
 }));
 
-vi.mock("./ProviderCard", () => ({
-  default: ({
-    isNew,
-    onSave,
-    onCancelNew,
-  }: {
-    isNew?: boolean;
-    onSave: (id: string, provider: V2Provider) => Promise<{ ok: boolean; error?: string }>;
-    onCancelNew?: () => void;
-  }) => (
-    <div>
-      <span>{isNew ? "new-provider-draft" : "saved-provider"}</span>
-      <button
-        type="button"
-        onClick={() => void onSave("provider1", {
-          protocol: "openai",
-          url: "https://example.com/v1",
-          apiKey: "secret",
-          models: { "model-a": {} },
-        })}
-      >
-        save-provider
-      </button>
-      <button type="button" onClick={onCancelNew}>cancel-provider</button>
-    </div>
-  ),
-}));
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
-describe("ModelsSection provider creation", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("persists a new provider only after the user saves it", async () => {
-    const onChange = vi.fn().mockResolvedValue({ ok: true });
-    render(
-      <ModelsSection
-        config={{ model: { providers: {} } }}
-        onChange={onChange}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "pick-custom-provider" }));
-
-    expect(screen.getByText("new-provider-draft")).toBeTruthy();
-    expect(onChange).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "save-provider" }));
-
-    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
-    expect(onChange.mock.calls[0][0]).toMatchObject({
-      model: {
-        providers: {
-          provider1: {
-            url: "https://example.com/v1",
-            models: { "model-a": {} },
-          },
-        },
-      },
-    });
-  });
-
-  it("discards a new provider without persisting when cancelled", () => {
+describe("model provider drafts", () => {
+  it("keeps a new custom provider local until it is explicitly saved", () => {
     const onChange = vi.fn();
+    const config = { model: { providers: {} } } as PilotDeckConfig;
+
+    render(<ModelsSection config={config} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "pilotDeckConfig.panels.models.addProvider",
+    }));
+    fireEvent.click(screen.getByRole("button", {
+      name: /pilotDeckConfig\.panels\.models\.customProvider/,
+    }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("provider1")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "settingsPage.actions.cancel",
+    }));
+
+    expect(screen.queryByDisplayValue("provider1")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("validates a new provider before calling the save handler", () => {
+    const onSave = vi.fn(async () => ({ ok: true }));
+
     render(
-      <ModelsSection
-        config={{ model: { providers: {} } }}
-        onChange={onChange}
+      <ProviderCard
+        providerId="provider1"
+        provider={{ protocol: "openai", url: "", apiKey: "", models: {} }}
+        initialEditing
+        onSave={onSave}
+        onRemove={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "pick-custom-provider" }));
-    fireEvent.click(screen.getByRole("button", { name: "cancel-provider" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: "actions.saveChanges",
+    }));
 
-    expect(screen.queryByText("new-provider-draft")).toBeNull();
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText(
+      "pilotDeckConfig.panels.models.providerUrlRequired",
+    )).toBeTruthy();
+  });
+
+  it("allows a catalog provider to use its environment API key fallback", async () => {
+    const onSave = vi.fn(async () => ({ ok: true }));
+
+    render(
+      <ProviderCard
+        providerId="anthropic"
+        provider={{
+          protocol: "anthropic",
+          url: "https://api.anthropic.com",
+          models: { "claude-sonnet-4.6": {} },
+        }}
+        catalogEntry={findCatalogProviderById("anthropic")}
+        initialEditing
+        onSave={onSave}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByRole("button", {
+      name: "pilotDeckConfig.panels.models.fetchApiModels",
+    }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", {
+      name: "actions.saveChanges",
+    }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(
+      "pilotDeckConfig.panels.models.providerApiKeyRequired",
+    )).toBeNull();
+  });
+
+  it("uses the edited catalog provider ID when fetching with an environment key", async () => {
+    mocks.fetchProviderModels.mockResolvedValue([]);
+
+    render(
+      <ProviderCard
+        providerId="openai"
+        provider={{ models: { "gpt-4.1": {} } }}
+        catalogEntry={findCatalogProviderById("openai")}
+        initialEditing
+        onSave={vi.fn(async () => ({ ok: true }))}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue("openai"), {
+      target: { value: "anthropic" },
+    });
+    fireEvent.click(screen.getByRole("button", {
+      name: "pilotDeckConfig.panels.models.fetchApiModels",
+    }));
+
+    await waitFor(() => expect(mocks.fetchProviderModels).toHaveBeenCalledWith({
+      providerId: "anthropic",
+      protocol: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      apiKey: "",
+    }));
+  });
+
+  it("prevents duplicate saves while the first provider save is pending", async () => {
+    let finish!: (result: { ok: boolean }) => void;
+    const onSave = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => {
+      finish = resolve;
+    }));
+
+    render(
+      <ProviderCard
+        providerId="provider1"
+        provider={{
+          protocol: "openai",
+          url: "https://api.example.test/v1",
+          apiKey: "sk-test",
+          models: { "model-a": {} },
+        }}
+        initialEditing
+        onSave={onSave}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", {
+      name: "actions.saveChanges",
+    });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    finish({ ok: true });
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "actions.saveChanges",
+    })).toBeNull());
   });
 });
 
@@ -100,13 +171,9 @@ const passingTest = {
   imageInput: "supported",
 };
 
-describe("ModelsSection connection status", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("shows a yellow pending dot when enabled models have not passed connection tests", () => {
-    render(
+describe("model provider connection status", () => {
+  it("shows pending status until every enabled model passes", () => {
+    const { rerender } = render(
       <ModelsSection
         config={{
           model: {
@@ -122,11 +189,11 @@ describe("ModelsSection connection status", () => {
       />,
     );
 
-    expect(screen.getByLabelText("pilotDeckConfig.panels.models.pending")).toBeTruthy();
-  });
+    expect(screen.getByLabelText(
+      "pilotDeckConfig.panels.models.pending",
+    )).toBeTruthy();
 
-  it("hides the yellow pending dot when every enabled model passed connection tests", () => {
-    render(
+    rerender(
       <ModelsSection
         config={{
           model: {
@@ -142,6 +209,8 @@ describe("ModelsSection connection status", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("pilotDeckConfig.panels.models.pending")).toBeNull();
+    expect(screen.queryByLabelText(
+      "pilotDeckConfig.panels.models.pending",
+    )).toBeNull();
   });
 });

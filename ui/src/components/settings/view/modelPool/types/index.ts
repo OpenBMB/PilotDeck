@@ -67,7 +67,7 @@ export type PilotDeckConfig = {
   tools?: {
     webSearch?: {
       enabled?: boolean;
-      provider?: "glm" | "tavily" | "custom";
+      provider?: "glm" | "tavily" | "custom" | "serper" | "brave";
       apiKey?: string;
       endpoint?: string;
       customProvider?: {

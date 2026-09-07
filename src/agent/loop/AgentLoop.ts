@@ -56,6 +56,7 @@ import type {
 import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
+import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -142,6 +143,12 @@ export type AgentLoopInput = {
     boundary: AgentControlBoundaryTranscriptEntry["boundary"];
     messages: CanonicalMessage[];
   }) => void | Promise<void>;
+  /** Drain user guidance that should join this active turn before the next model request. */
+  drainSteerMessages?: () => AgentSteerMessage[];
+  /** Atomically drain pending guidance or close the inbox before terminal completion. */
+  drainOrCloseSteerMailbox?: () => { messages: AgentSteerMessage[]; closed: boolean };
+  /** Acknowledge guidance only after its canonical user message is durable. */
+  onSteerApplied?: (itemId: string) => void;
 };
 
 export type AgentLoopRunResult = {
@@ -213,6 +220,24 @@ export class AgentLoop {
     const createAbortStatus = (): AgentStatusMessage | undefined => {
       if (!shouldSurfaceAbortStatus(input.abortSignal?.reason)) return undefined;
       return createTurnAbortedStatus({ reason: stringifyAbortReason(input.abortSignal?.reason) });
+    };
+    const allowedReadFiles = this.allowedReadFiles;
+    const applySteerMessages = async function* (pending: AgentSteerMessage[]): AsyncGenerator<AgentEvent, void, unknown> {
+      for (const steer of pending) {
+        await input.onDurableMessage?.(steer.message);
+        for (const filePath of steer.allowedReadFiles ?? []) {
+          allowedReadFiles.add(filePath);
+        }
+        messages.push(steer.message);
+        input.onSteerApplied?.(steer.itemId);
+        yield {
+          type: "steer_applied",
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          itemId: steer.itemId,
+          message: steer.message,
+        };
+      }
     };
     const captureTurn = async (errored: boolean): Promise<void> => {
       const hook = this.dependencies.context?.captureTurn;
@@ -408,6 +433,11 @@ export class AgentLoop {
         await captureTurn(result.type === "error");
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
+      }
+
+      const pendingSteers = input.drainSteerMessages?.() ?? [];
+      for await (const event of applySteerMessages(pendingSteers)) {
+        yield event;
       }
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
@@ -1620,6 +1650,28 @@ export class AgentLoop {
               detectedFormat: assembled.textToolCallFormat ?? detectFormatByText(assistantText)?.id,
             },
           };
+        }
+
+        // A steer starts another model iteration, so it must obey the same
+        // turn budget as tool-driven continuation. Leave guidance in the
+        // mailbox when the budget is exhausted; TurnRunner will report it as
+        // unapplied and the host can keep it queued for a later turn.
+        const canContinueForSteer = !input.maxTurns || turnCount < input.maxTurns;
+        const terminalSteers = canContinueForSteer
+          ? input.drainOrCloseSteerMailbox?.()
+          : undefined;
+        if (terminalSteers && terminalSteers.messages.length > 0) {
+          for await (const event of applySteerMessages(terminalSteers.messages)) {
+            yield event;
+          }
+          turnCount += 1;
+          yield {
+            type: "turn_continued",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            reason: "user_steer",
+          };
+          continue;
         }
 
         const stopHooks = await this.dispatchLifecycle(input, "Stop", {

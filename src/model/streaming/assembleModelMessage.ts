@@ -18,6 +18,7 @@ import {
 export type ModelMessageAssemblerState = {
   content: CanonicalContentBlock[];
   textBuffer: string;
+  model?: string;
   thinkingBuffer: string;
   thinkingReasoningContentBuffer: string;
   thinkingSignature?: string;
@@ -67,6 +68,8 @@ export function applyModelEventToAssembler(
 ): void {
   switch (event.type) {
     case "request_started":
+      state.model = event.model;
+      return;
     case "message_start":
     case "tool_call_start":
     case "tool_call_delta":
@@ -151,6 +154,7 @@ export function assembleAssistantMessage(state: ModelMessageAssemblerState): Ass
     message: {
       role: "assistant",
       content: [...state.content],
+      ...(state.model ? { metadata: { model: state.model } } : {}),
     },
     finishReason: state.finishReason ?? (state.error ? "error" : "unknown"),
     hasMessageEnd: state.hasMessageEnd,

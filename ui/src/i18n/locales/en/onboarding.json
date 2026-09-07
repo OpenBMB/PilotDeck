@@ -38,6 +38,7 @@
     "provider": "Provider",
     "providerId": "Provider ID",
     "providerIdHint": "Used as the YAML key. Lowercase, no spaces.",
+    "providerIdReserved": "This Provider ID is reserved for a catalog provider. Choose a different ID.",
     "protocol": "Protocol",
     "protocolOpenai": "openai (Chat Completions)",
     "protocolOpenaiResponses": "openai-responses (Responses API)",

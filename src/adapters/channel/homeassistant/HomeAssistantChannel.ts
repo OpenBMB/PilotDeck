@@ -17,6 +17,12 @@ try {
 }
 
 const DEFAULT_URL = "http://127.0.0.1:8123";
+const SERVICE_CALL_TIMEOUT_MS = 10_000;
+
+type PendingServiceCall = {
+  resolve: (delivered: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 export type HomeAssistantChannelOptions = {
   url?: string;
@@ -50,6 +56,7 @@ export class HomeAssistantChannel implements ChannelAdapter {
   private wsSessionReady = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authSettle: ((ok: boolean) => void) | null = null;
+  private readonly pendingServiceCalls = new Map<number, PendingServiceCall>();
   private activeChats = new Set<string>();
   private readonly elicitation = new ImElicitationHelper();
   private readonly permissions = new ImPermissionHelper();
@@ -127,6 +134,7 @@ export class HomeAssistantChannel implements ChannelAdapter {
       };
       const onClose = () => {
         this.ws = null;
+        this.failPendingServiceCalls();
         this.authSettle?.(false);
         if (this.wsSessionReady && !this.closed) {
           this.reconnectTimer = setTimeout(() => this.openSocket(), 5000);
@@ -154,15 +162,57 @@ export class HomeAssistantChannel implements ChannelAdapter {
   }
 
   private async cleanupWs(): Promise<void> {
+    this.failPendingServiceCalls();
     if (this.ws) {
       try { this.ws.close(); } catch { /* best effort */ }
       this.ws = null;
     }
   }
 
-  private sendJson(obj: Record<string, unknown>): void {
-    if (!this.ws || this.ws.readyState !== 1) return;
-    this.ws.send(JSON.stringify(obj));
+  private sendJson(obj: Record<string, unknown>): boolean {
+    if (!this.ws || this.ws.readyState !== 1) return false;
+    try {
+      this.ws.send(JSON.stringify(obj));
+      return true;
+    } catch (e) {
+      this.logger?.error?.(`homeassistant: send failed: ${e}`);
+      return false;
+    }
+  }
+
+  private sendServiceCall(obj: Record<string, unknown>): Promise<boolean> {
+    const id = obj.id;
+    if (typeof id !== "number") return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingServiceCalls.delete(id);
+        resolve(false);
+      }, SERVICE_CALL_TIMEOUT_MS);
+      this.pendingServiceCalls.set(id, { resolve, timer });
+      if (!this.sendJson(obj)) {
+        clearTimeout(timer);
+        this.pendingServiceCalls.delete(id);
+        resolve(false);
+      }
+    });
+  }
+
+  private failPendingServiceCalls(): void {
+    for (const [id, pending] of this.pendingServiceCalls) {
+      clearTimeout(pending.timer);
+      this.pendingServiceCalls.delete(id);
+      pending.resolve(false);
+    }
+  }
+
+  private handleServiceCallResult(msg: Record<string, unknown>): void {
+    const id = msg.id;
+    if (typeof id !== "number") return;
+    const pending = this.pendingServiceCalls.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingServiceCalls.delete(id);
+    pending.resolve(msg.success === true);
   }
 
   private nextId(): number {
@@ -178,6 +228,11 @@ export class HomeAssistantChannel implements ChannelAdapter {
     }
 
     const type = msg.type as string | undefined;
+
+    if (type === "result") {
+      this.handleServiceCallResult(msg);
+      return;
+    }
 
     if (type === "auth_required") {
       this.sendJson({ type: "auth", access_token: this.token });
@@ -241,10 +296,27 @@ export class HomeAssistantChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatId) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(chatId, text, this.gateway);
-        if (confirmation) await this.sendReply(chatId, confirmation);
+        const answer = await this.permissions.answerWithState(chatId, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(chatId, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(chatId, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(chatId, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatId, answer.answerToken);
+
+            const delivered = await this.sendReply(chatId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatId, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatId, answerToken);
         this.logger?.error?.(`homeassistant: permission answer error: ${e}`);
       }
       return;
@@ -287,7 +359,7 @@ export class HomeAssistantChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatId, sessionKey, event);
-          if (questionText) await this.sendReply(chatId, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(chatId, await this.sendReply(chatId, questionText), event.requestId);
           continue;
         }
         const fragment = renderHomeAssistantEvent(event);
@@ -299,7 +371,7 @@ export class HomeAssistantChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(chatId);
-    this.permissions.clear(chatId);
+    this.permissions.clearAfterTurn(chatId);
 
     const finalText = replyText.trim();
     if (finalText) {
@@ -313,7 +385,7 @@ export class HomeAssistantChannel implements ChannelAdapter {
       return false;
     }
     const title = this.notificationTitle ?? `Gateway · ${chatId}`;
-    this.sendJson({
+    return this.sendServiceCall({
       id: this.nextId(),
       type: "call_service",
       domain: "persistent_notification",
@@ -324,6 +396,5 @@ export class HomeAssistantChannel implements ChannelAdapter {
         notification_id: `gw_${Date.now()}`,
       },
     });
-    return true;
   }
 }

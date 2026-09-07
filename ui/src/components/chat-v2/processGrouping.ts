@@ -336,7 +336,7 @@ function isUserVisibleTool(message: ChatMessage): boolean {
 }
 
 export function isProcessMessage(message: ChatMessage): boolean {
-  if (message.isAgentActivity || message.isAgentActivitySummary) {
+  if (message.isThinking || message.isAgentActivity || message.isAgentActivitySummary) {
     return false;
   }
   if (message.type === 'user' || message.type === 'error') {
@@ -352,7 +352,6 @@ export function isProcessMessage(message: ChatMessage): boolean {
     message.isToolUse ||
       message.isTaskNotification ||
       message.isCompactBoundary ||
-      (message.isThinking && !message.isStreaming) ||
       message.type === 'tool',
   );
 }
@@ -380,7 +379,6 @@ function canHostProcessSummary(message: ChatMessage): boolean {
     !message.isInteractivePrompt &&
     !message.isSubagentContainer &&
     !message.isTaskNotification &&
-    !message.isThinking &&
     typeof message.content === 'string' &&
     message.content.trim().length > 0
   );
@@ -979,12 +977,10 @@ export function getLiveProcessGroups(
 
   finishGroup(null);
 
-  const result = groups.map((group, index) => {
-    const isLatestGroup = index === groups.length - 1;
-    const isOpenEnded = group.beforeOriginalIndex == null;
+  const result = groups.map((group) => {
     return {
       ...group,
-      isRunning: Boolean(options.isAssistantWorking && isLatestGroup && isOpenEnded),
+      isRunning: Boolean(options.isAssistantWorking && group.messages.some(isPendingToolUseMessage)),
     };
   });
   return result;
@@ -1014,13 +1010,8 @@ export function isPendingToolUseMessage(message: ChatMessage): boolean {
   if (!message.isToolUse && message.type !== 'tool') {
     return false;
   }
-  if (!message.toolResult) {
-    return true;
-  }
-  const content = typeof message.toolResult.content === 'string'
-    ? message.toolResult.content.trim()
-    : '';
-  return content.length === 0 && !message.toolResult.isError;
+  // A successful empty result still represents a finished invocation.
+  return message.toolResult == null;
 }
 
 export function shouldShowWebFetchWaitingHint(
@@ -1144,13 +1135,16 @@ export function getRunningProcessTitle(
   group: LiveProcessGroup,
   t: TFunction<'chat'>,
 ): string {
-  const latestMessage = [...group.messages].reverse().find((message) => isProcessMessage(message));
+  const latestMessage = [...group.messages].reverse().find(isPendingToolUseMessage);
   if (!latestMessage) {
     return t('working.processing', { defaultValue: 'Processing' });
   }
 
   const kind = getProcessToolKind(latestMessage);
   const target = getDisplayTarget(getToolTarget(latestMessage));
+  if (isWebFetchToolMessage(latestMessage)) {
+    return t('working.waitingForWebFetch', { defaultValue: 'Fetching web content...' });
+  }
   if (kind === 'edit') {
     return target
       ? t('process.live.runningEditTarget', { target, defaultValue: `Editing ${target}` })
@@ -1190,7 +1184,9 @@ export function getLiveProcessGroupStep(
 ): ProcessTraceStep {
   const fallbackPhase = String(fallbackRunningStep?.phase || '');
   const canUseFallbackStep = fallbackRunningStep?.title &&
-    !['generation', 'thinking', 'permission'].includes(fallbackPhase);
+    !['generation', 'thinking', 'permission'].includes(fallbackPhase) &&
+    Boolean(fallbackRunningStep?.toolId && group.messages.some((message) =>
+      (message.toolId || message.toolCallId) === fallbackRunningStep.toolId && isPendingToolUseMessage(message)));
   if (group.isRunning && canUseFallbackStep) {
     return {
       ...fallbackRunningStep,
@@ -1202,7 +1198,9 @@ export function getLiveProcessGroupStep(
   const title = group.isRunning
     ? getRunningProcessTitle(group, t)
     : formatCompletedProcessTitle(group.messages, t);
-  const latestMessage = group.messages[group.messages.length - 1];
+  const latestMessage = group.isRunning
+    ? [...group.messages].reverse().find(isPendingToolUseMessage)
+    : group.messages[group.messages.length - 1];
   const kind = latestMessage ? getProcessToolKind(latestMessage) : 'tool';
 
   return {

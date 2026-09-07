@@ -1,6 +1,12 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { PILOT_PROJECT_DIR_NAME } from "../../pilot/index.js";
+import {
+  ensureWritableDirectory,
+  isVirtualProjectRoot,
+  PILOT_PROJECT_DIR_NAME,
+  resolvePilotHomeProjectArtifactDir,
+  resolveRuntimeArtifactFallbackDir,
+} from "../../pilot/index.js";
 
 export type PlanFileManager = {
   getPlanDirectoryPath(): string;
@@ -10,16 +16,42 @@ export type PlanFileManager = {
 
 export function createPlanFileManager(options: {
   projectRoot: string;
+  pilotHome: string;
+  env?: Record<string, string | undefined>;
 }): PlanFileManager {
-  const planDir = resolve(options.projectRoot, PILOT_PROJECT_DIR_NAME, "plans");
+  const virtualProject = isVirtualProjectRoot({
+    projectRoot: options.projectRoot,
+    pilotHome: options.pilotHome,
+    env: options.env,
+  });
+  const preferredPlanDir = virtualProject
+    ? resolvePilotHomeProjectArtifactDir({
+        pilotHome: options.pilotHome,
+        projectRoot: options.projectRoot,
+        artifact: "plans",
+      })
+    : resolve(options.projectRoot, PILOT_PROJECT_DIR_NAME, "plans");
+  const fallbackPlanDir = resolveRuntimeArtifactFallbackDir({
+    pilotHome: options.pilotHome,
+    purpose: "plans",
+  });
+  let resolvedPlanDir: string | undefined;
 
   function getPlanDirectoryPath(): string {
-    mkdirSync(planDir, { recursive: true });
-    return planDir;
+    resolvedPlanDir ??= virtualProject
+      ? ensureWritableDirectory({
+          preferredDir: preferredPlanDir,
+          fallbackDir: fallbackPlanDir,
+          purpose: "plans",
+        }).dir
+      : preferredPlanDir;
+    mkdirSync(resolvedPlanDir, { recursive: true });
+    return resolvedPlanDir;
   }
 
   function resolvePlanFilePath(filePath: string, cwd: string): string | undefined {
     if (!filePath.trim()) return undefined;
+    const planDir = getPlanDirectoryPath();
     const absolutePath = resolve(isAbsolute(filePath) ? filePath : resolve(cwd, filePath));
     const relativeToPlanDir = relative(planDir, absolutePath);
     if (

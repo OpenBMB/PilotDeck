@@ -2,8 +2,6 @@ import express from 'express';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
-import { addProjectManually } from '../projects.js';
-import { validateWorkspacePath, cloneGitHubRepository } from './projects.js';
 import { readPilotDeckConfigFile, withPilotDeckConfigWrite, writePilotDeckConfig } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
@@ -12,6 +10,10 @@ import { probeModelConnection } from '../services/modelConnectionProbe.js';
 const router = express.Router();
 const TEST_TTL_MS = 10 * 60 * 1000;
 const MAX_MODELS_PER_TEST = 10;
+const MAX_RETRIES_PER_PROBE = 10;
+const MAX_STREAM_RETRIES_PER_PROBE = 10;
+const MAX_RETRY_DELAY_MS = 60_000;
+const MAX_STREAM_IDLE_TIMEOUT_MS = 5 * 60_000;
 const TEST_RATE_WINDOW_MS = 60 * 1000;
 const TEST_RATE_MAX_REQUESTS = 5;
 const PROBE_GLOBAL_LIMIT = 3;
@@ -31,7 +33,7 @@ const PRESETS = {
   deepseek: { protocol: 'openai', endpoint: 'https://api.deepseek.com/v1' },
   google: { protocol: 'google', endpoint: 'https://generativelanguage.googleapis.com' },
   moonshot: { protocol: 'openai', endpoint: 'https://api.moonshot.cn/v1' },
-  minimax: { protocol: 'openai', endpoint: 'https://api.minimaxi.com/v1' },
+  minimax: { protocol: 'openai', endpoint: 'https://api.minimax.io/v1' },
   volc_ark: { protocol: 'openai', endpoint: 'https://ark.cn-beijing.volces.com/api/v3' },
   zhipu: { protocol: 'openai', endpoint: 'https://api.z.ai/api/paas/v4' },
   openrouter: { protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1' },
@@ -103,10 +105,36 @@ function apiError(res, status, code, message, modelId = undefined) {
   return res.status(status).json({ code, message, ...(modelId ? { modelId } : {}) });
 }
 function text(value) { return typeof value === 'string' ? value.trim() : ''; }
+function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+function canonicalEndpoint(value) {
+  const candidate = trimTrailingSlashes(text(value));
+  if (!candidate) return '';
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return trimTrailingSlashes(parsed.toString());
+  } catch {
+    return '';
+  }
+}
 function keyFingerprint(apiKey) { return createHmac('sha256', testKeySecret).update(apiKey).digest(); }
 function sameKey(fingerprint, apiKey) {
   const candidate = keyFingerprint(apiKey);
   return fingerprint?.length === candidate.length && timingSafeEqual(fingerprint, candidate);
+}
+
+export function connectionTestMatchesProvider(record, provider) {
+  const presetEndpoint = Object.hasOwn(PRESETS, provider?.providerId)
+    ? PRESETS[provider.providerId].endpoint
+    : '';
+  const endpoint = canonicalEndpoint(text(provider?.url) || presetEndpoint);
+  const testedEndpoint = canonicalEndpoint(record?.provider?.endpoint);
+  if (!record || !provider || !endpoint || !testedEndpoint || record.provider.protocol !== provider.protocol || testedEndpoint !== endpoint) return false;
+  return provider.providerId === 'ollama' || sameKey(record.keyFingerprint, text(provider.apiKey));
 }
 function hasOnlyKeys(value, keys) {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -115,25 +143,47 @@ function hasOnlyKeys(value, keys) {
 function retryPolicy(value) {
   const keys = ['maxRetries', 'maxStreamRetries', 'streamIdleTimeoutMs', 'baseDelayMs', 'maxDelayMs'];
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (Object.keys(value).length !== keys.length || keys.some((key) => !Object.prototype.hasOwnProperty.call(value, key))) return null;
-  const output = {};
+  if (Object.keys(value).some((key) => !keys.includes(key))) return null;
+  const output = {
+    maxRetries: 2,
+    maxStreamRetries: 2,
+    streamIdleTimeoutMs: 30_000,
+    baseDelayMs: 500,
+    maxDelayMs: 5_000,
+  };
   for (const key of keys) {
+    if (value[key] === undefined) continue;
     if (typeof value[key] !== 'number' || !Number.isInteger(value[key]) || value[key] < 0) return null;
+    if (key === 'maxRetries' && value[key] > MAX_RETRIES_PER_PROBE) return null;
+    if (key === 'maxStreamRetries' && value[key] > MAX_STREAM_RETRIES_PER_PROBE) return null;
+    if (key === 'streamIdleTimeoutMs' && value[key] > MAX_STREAM_IDLE_TIMEOUT_MS) return null;
+    if ((key === 'baseDelayMs' || key === 'maxDelayMs') && value[key] > MAX_RETRY_DELAY_MS) return null;
     output[key] = value[key];
   }
   if (output.baseDelayMs > output.maxDelayMs) return null;
   return output;
 }
-function resolveProvider(body) {
+function resolveProvider(body, { allowPresetEndpointOverride = false } = {}) {
   const requested = text(body.providerId).toLowerCase();
   const providerId = Object.hasOwn(ALIASES, requested) ? ALIASES[requested] : requested;
-  if (Object.hasOwn(PRESETS, providerId)) return { providerId, ...PRESETS[providerId], custom: false };
+  if (Object.hasOwn(PRESETS, providerId)) {
+    const preset = PRESETS[providerId];
+    const requestedEndpoint = allowPresetEndpointOverride ? text(body.endpoint) : '';
+    if (!requestedEndpoint) return { providerId, ...preset, custom: false };
+    try {
+      const url = new URL(requestedEndpoint);
+      if (!['http:', 'https:'].includes(url.protocol)) return null;
+      return { providerId, ...preset, endpoint: trimTrailingSlashes(url.toString()), custom: false };
+    } catch {
+      return null;
+    }
+  }
   const protocol = text(body.protocol).toLowerCase();
-  const endpoint = text(body.endpoint).replace(/\/+$/, '');
+  const endpoint = trimTrailingSlashes(text(body.endpoint));
   try {
     const url = new URL(endpoint);
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(providerId) || providerId === 'custom' || !PROTOCOLS.has(protocol) || !['http:', 'https:'].includes(url.protocol)) return null;
-    return { providerId, protocol, endpoint: url.toString().replace(/\/$/, ''), custom: true };
+    return { providerId, protocol, endpoint: trimTrailingSlashes(url.toString()), custom: true };
   } catch { return null; }
 }
 function parseCloneUrl(value) {
@@ -159,15 +209,27 @@ function publicResult(record) {
   return { testId: record.id, status: record.status, manualInputRequired: record.status === 'manual_input_required', models: record.models, testedAt: record.testedAt, error: record.error || null };
 }
 function getTest(req, res, testId = req.params.testId) {
-  const record = tests.get(testId);
-  if (!record || record.userId !== req.user.id) { apiError(res, 404, 'TEST_NOT_FOUND', 'Connection test was not found.'); return null; }
-  if (record.expiresAt <= Date.now()) { tests.delete(record.id); apiError(res, 410, 'TEST_EXPIRED', 'Connection test has expired.'); return null; }
+  const result = getConnectionTestRecord(req.user.id, testId);
+  if (result.reason === 'expired') { apiError(res, 410, 'TEST_EXPIRED', 'Connection test has expired.'); return null; }
+  if (!result.record) { apiError(res, 404, 'TEST_NOT_FOUND', 'Connection test was not found.'); return null; }
+  const record = result.record;
   return record;
+}
+
+/** Return a connection test only when it belongs to the caller and is alive. */
+export function getConnectionTestRecord(userId, testId) {
+  const record = tests.get(String(testId || ''));
+  if (!record || record.userId !== userId) return { record: null, reason: 'not_found' };
+  if (record.expiresAt <= Date.now()) {
+    tests.delete(record.id);
+    return { record: null, reason: 'expired' };
+  }
+  return { record, reason: null };
 }
 function deleteExpiredTests() { const now = Date.now(); for (const [id, record] of tests) if (record.expiresAt <= now) tests.delete(id); }
 setInterval(deleteExpiredTests, TEST_TTL_MS).unref();
 
-function modelTestRateLimiter(req, res, next) {
+export function modelTestRateLimiter(req, res, next) {
   const now = Date.now();
   const key = String(req.user?.id || req.ip || 'anonymous');
   const bucket = testRateBuckets.get(key);
@@ -196,8 +258,8 @@ router.get('/providers', (_req, res) => {
   });
 });
 
-router.post('/model-connection-tests', modelTestRateLimiter, async (req, res) => {
-  const provider = resolveProvider(req.body || {});
+export async function modelConnectionTestsHandler(req, res) {
+  const provider = resolveProvider(req.body || {}, { allowPresetEndpointOverride: req.allowPresetEndpointOverride === true });
   const requestedModels = Array.isArray(req.body?.models) ? req.body.models.map(text) : [];
   const models = [...new Set(requestedModels.filter(Boolean))];
   const retry = retryPolicy(req.body?.retryPolicy);
@@ -218,7 +280,7 @@ router.post('/model-connection-tests', modelTestRateLimiter, async (req, res) =>
       let textProbe;
       try {
         textProbe = await probeModelConnection({
-          protocol: provider.protocol, baseUrl: provider.endpoint, apiKey, model: modelId, signal: requestAbort.signal,
+          protocol: provider.protocol, baseUrl: provider.endpoint, apiKey, model: modelId, signal: requestAbort.signal, retryPolicy: retry,
         });
       } catch (error) {
         if (requestAbort.signal.aborted) throw error;
@@ -231,7 +293,14 @@ router.post('/model-connection-tests', modelTestRateLimiter, async (req, res) =>
       let imageProbe;
       try {
         imageProbe = await probeModelConnection({
-          protocol: provider.protocol, baseUrl: provider.endpoint, apiKey, model: modelId, image: true, signal: requestAbort.signal,
+          protocol: provider.protocol,
+          baseUrl: provider.endpoint,
+          endpointUrl: textProbe.endpointUrl,
+          apiKey,
+          model: modelId,
+          image: true,
+          signal: requestAbort.signal,
+          retryPolicy: retry,
         });
       } catch (error) {
         if (requestAbort.signal.aborted) throw error;
@@ -264,9 +333,9 @@ router.post('/model-connection-tests', modelTestRateLimiter, async (req, res) =>
     requestAbort.cleanup();
     release();
   }
-});
+}
 
-router.put('/model-connection-tests/:testId/image-capabilities', (req, res) => {
+export function imageCapabilitiesHandler(req, res) {
   const record = getTest(req, res); if (!record) return;
   const supplied = Array.isArray(req.body?.models) ? req.body.models : [];
   const normalizedSupplied = supplied.map((model) => ({
@@ -275,17 +344,37 @@ router.put('/model-connection-tests/:testId/image-capabilities', (req, res) => {
   }));
   const unknown = record.models.filter((model) => model.imageInput === 'unknown').map((model) => model.modelId).sort();
   const received = normalizedSupplied.map((model) => model.modelId).sort();
-  if (!hasOnlyKeys(req.body, ['models']) || !unknown.length || unknown.length !== received.length || unknown.some((id, index) => id !== received[index]) || normalizedSupplied.some((model) => !hasOnlyKeys(model, ['modelId', 'imageInput']) || !model.modelId || !['supported', 'unsupported'].includes(model?.imageInput))) {
+  const validPayload = hasOnlyKeys(req.body, ['models'])
+    && normalizedSupplied.every((model) => hasOnlyKeys(model, ['modelId', 'imageInput']) && model.modelId && ['supported', 'unsupported'].includes(model?.imageInput));
+  if (!validPayload) {
+    return apiError(res, 400, 'INVALID_REQUEST', 'models must provide exactly every unknown image capability.');
+  }
+  if (!unknown.length) {
+    const manualCapabilities = record.manualImageCapabilities;
+    const expected = manualCapabilities ? Object.keys(manualCapabilities).sort() : [];
+    const isReplay = expected.length > 0
+      && expected.length === received.length
+      && expected.every((id, index) => id === received[index])
+      && normalizedSupplied.every((model) => manualCapabilities[model.modelId] === model.imageInput);
+    if (isReplay) return res.json(publicResult(record));
+    return apiError(res, 400, 'INVALID_REQUEST', 'models must provide exactly every unknown image capability.');
+  }
+  if (unknown.length !== received.length || unknown.some((id, index) => id !== received[index])) {
     return apiError(res, 400, 'INVALID_REQUEST', 'models must provide exactly every unknown image capability.');
   }
   for (const model of record.models) {
     const suppliedModel = normalizedSupplied.find((item) => item.modelId === model.modelId);
     if (suppliedModel) { model.imageInput = suppliedModel.imageInput; model.error = null; }
   }
+  record.manualImageCapabilities = Object.fromEntries(normalizedSupplied.map((model) => [model.modelId, model.imageInput]));
   record.status = testStatus(record.models);
   record.error = aggregateError(record.models, record.status);
   return res.json(publicResult(record));
-});
+}
+
+router.post('/model-connection-tests', modelTestRateLimiter, modelConnectionTestsHandler);
+
+router.put('/model-connection-tests/:testId/image-capabilities', imageCapabilitiesHandler);
 
 router.put('/model-configuration', async (req, res) => {
   const record = getTest(req, res, text(req.body?.testId)); if (!record) return;
@@ -368,6 +457,8 @@ router.put('/model-configuration', async (req, res) => {
 });
 
 router.post('/workspaces', async (req, res) => {
+  const { addProjectManually } = await import('../projects.js');
+  const { validateWorkspacePath, cloneGitHubRepository } = await import('./projects.js');
   const type = text(req.body?.type);
   const requestedPath = text(req.body?.path);
   if (!hasOnlyKeys(req.body, ['type', 'path', 'githubUrl', 'modelConfigurationId']) || !['existing', 'new'].includes(type) || !requestedPath || !path.isAbsolute(requestedPath)) return apiError(res, 400, 'INVALID_REQUEST', 'type and an absolute path are required.');

@@ -167,7 +167,7 @@ docker run -d --name pilotdeck \
 | `PILOT_HOME` | PilotDeck state directory inside the container | `/root/.pilotdeck` |
 | `PILOTDECK_MODEL` | Main model identifier, formatted as `provider/model` | `openrouter/deepseek/deepseek-v4-flash` |
 | `PILOTDECK_LIGHT_MODEL` | Lightweight routing/judge model identifier | `openrouter/qwen/qwen3-8b` |
-| `PILOTDECK_API_KEY` | API key for the main model provider | `PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE` |
+| `PILOTDECK_API_KEY` | API key for the main model provider; when omitted, configure it in onboarding | — |
 | `PILOTDECK_API_URL` | Base URL for the main model provider API | `https://openrouter.ai/api/v1` |
 | `PILOTDECK_LIGHT_API_KEY` | API key for a different light-model provider | Falls back to `PILOTDECK_API_KEY` |
 | `PILOTDECK_LIGHT_API_URL` | Base URL for a different light-model provider | Falls back to `PILOTDECK_API_URL` |
@@ -181,7 +181,7 @@ docker run -d --name pilotdeck \
 Browser (localhost:3001) ──► UI Server (port 3001) ──► Gateway (port 18789)
 ```
 
-Both processes are managed by `concurrently` inside the Docker container.
+The runtime supervisor starts the UI Server first and starts the Gateway only after model configuration is ready.
 
 ## Development
 

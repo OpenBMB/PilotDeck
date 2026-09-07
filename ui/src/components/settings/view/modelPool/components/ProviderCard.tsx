@@ -3,10 +3,11 @@ import { useTranslation } from "react-i18next";
 import { isImeEnterEvent } from "../../../../../utils/ime";
 import { authenticatedFetch } from "../../../../../utils/api";
 import { cn } from "../../../../../lib/utils";
-import type {
-  CatalogModel,
-  CatalogProvider,
-  CatalogProviderProtocol,
+import {
+  findCatalogProviderById,
+  type CatalogModel,
+  type CatalogProvider,
+  type CatalogProviderProtocol,
 } from "../../../../../shared/catalogProviders";
 import {
   DEFAULT_MODEL_TOKEN_LIMITS,
@@ -30,6 +31,7 @@ import DeleteConfirmationModal, {
 import ProviderAvatar from "./ProviderAvatar";
 import {
   CheckCircleIcon,
+  ChevronDownIcon,
   InfoIcon,
   KeyIcon,
   LinkIcon,
@@ -57,6 +59,7 @@ type ProviderCardProps = {
   onPendingChange?: (pending: boolean) => void;
   onBindConnectionTest?: (testId: string) => Promise<{ ok: boolean; error?: string }>;
   catalogEntry?: CatalogProvider;
+  initialEditing?: boolean;
 };
 
 type TestStatus = "idle" | "testing" | "manual" | "success" | "error";
@@ -146,19 +149,32 @@ export default function ProviderCard({
   onPendingChange,
   onBindConnectionTest,
   catalogEntry,
+  initialEditing = false,
 }: ProviderCardProps) {
   const { t } = useTranslation("settings");
   const [draftProvider, setDraftProvider] = useState<V2Provider>(provider);
-  const [editing, setEditing] = useState(isNew);
+  const [editing, setEditing] = useState(isNew || initialEditing);
   const [saving, setSaving] = useState(false);
-  const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
-  const protocol = draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
-  const effectiveUrl = draftProvider.url || catalogEntry?.defaultUrl || "";
-  const enabledModels = Object.keys(draftProvider.models ?? {});
+  const savingRef = useRef(false);
   const [draftCustomModelId, setDraftCustomModelId] = useState<string | null>(null);
   const [modelSearch, setModelSearch] = useState("");
+  const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
   const [providerIdError, setProviderIdError] = useState("");
+  const trimmedProviderId = providerIdDraft.trim();
+  const effectiveCatalogEntry = catalogEntry?.id === trimmedProviderId
+    ? catalogEntry
+    : findCatalogProviderById(trimmedProviderId);
+  const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
+  const protocol = draftProvider.protocol ?? effectiveCatalogEntry?.protocol ?? "openai";
+  const effectiveUrl = draftProvider.url || effectiveCatalogEntry?.defaultUrl || "";
+  const enabledModels = Object.keys(draftProvider.models ?? {});
+  const providerRequiresApiKeyInForm = trimmedProviderId === "ollama"
+    ? false
+    : effectiveCatalogEntry
+      ? effectiveCatalogEntry.requiresApiKey !== false
+        && !effectiveCatalogEntry.apiKeyEnvVar
+      : true;
   const [apiModels, setApiModels] = useState<ApiModelListItem[] | null>(null);
   const [apiModelsStatus, setApiModelsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [apiModelsError, setApiModelsError] = useState("");
@@ -169,7 +185,7 @@ export default function ProviderCard({
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const displayName = providerDisplayName(
     providerIdDraft || providerId,
-    catalogEntry,
+    effectiveCatalogEntry,
     t("pilotDeckConfig.panels.models.customProvider"),
   );
   const connected = isProviderConnected(draftProvider);
@@ -188,7 +204,8 @@ export default function ProviderCard({
     onPendingChangeRef.current?.(isProviderPending(draftProvider));
   }, [draftProvider]);
 
-  const update = (patchValue: Partial<V2Provider>) =>
+  const update = (patchValue: Partial<V2Provider>) => {
+    setProviderIdError("");
     setDraftProvider((prev) => {
       const next = { ...prev, ...patchValue };
       const credentialsChanged = ["apiKey", "url", "protocol"].some(
@@ -196,6 +213,19 @@ export default function ProviderCard({
       );
       return credentialsChanged ? clearProviderConnectionTests(next) : next;
     });
+  };
+
+  const updateRetry = (
+    key: keyof NonNullable<V2Provider["retry"]>,
+    value: number | undefined,
+  ) => {
+    update({
+      retry: {
+        ...draftProvider.retry,
+        [key]: value,
+      },
+    });
+  };
 
   const cancelEditing = () => {
     if (isNew) {
@@ -211,11 +241,33 @@ export default function ProviderCard({
   };
 
   const saveEditing = async () => {
-    const nextId = providerIdDraft.trim() || providerId;
+    if (savingRef.current) return;
+    const nextId = trimmedProviderId;
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(nextId)) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerIdInvalid"));
+      return;
+    }
+    if (!effectiveUrl.trim()) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerUrlRequired"));
+      return;
+    }
+    if (providerRequiresApiKeyInForm && !draftProvider.apiKey?.trim()) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerApiKeyRequired"));
+      return;
+    }
+    if (enabledModels.length === 0) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerModelRequired"));
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     setProviderIdError("");
     try {
-      const result = await onSave(nextId, draftProvider);
+      const result = await onSave(nextId, {
+        ...draftProvider,
+        protocol,
+        url: effectiveUrl,
+      });
       if (!result.ok) {
         setProviderIdError(
           result.error || t("pilotDeckConfig.panels.models.providerIdDuplicate"),
@@ -225,6 +277,7 @@ export default function ProviderCard({
       setEditing(false);
       setDraftCustomModelId(null);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -273,13 +326,13 @@ export default function ProviderCard({
   const tokenValue = (modelId: string, key: "maxOutputTokens" | "maxContextTokens") => {
     const stored = readCapabilities(draftProvider.models?.[modelId])[key];
     if (typeof stored === "number" && stored > 0) return stored;
-    const catalog = catalogModelFor(catalogEntry, modelId);
+    const catalog = catalogModelFor(effectiveCatalogEntry, modelId);
     if (typeof catalog?.[key] === "number") return catalog[key];
     return DEFAULT_MODEL_TOKEN_LIMITS[protocol][key];
   };
 
   const modelLabel = (modelId: string) =>
-    catalogModelFor(catalogEntry, modelId)?.displayName ?? modelId;
+    catalogModelFor(effectiveCatalogEntry, modelId)?.displayName ?? modelId;
 
   const openDeleteDialog = async (kind: "model" | "provider", modelId?: string) => {
     const name = kind === "model" && modelId ? modelLabel(modelId) : displayName;
@@ -353,8 +406,8 @@ export default function ProviderCard({
     setDeleteDialog(null);
   };
 
-  const providerRequiresApiKey = catalogEntry?.requiresApiKey !== false;
-  const modelListUrl = catalogEntry?.modelListUrl ?? effectiveUrl;
+  const providerRequiresApiKey = providerRequiresApiKeyInForm;
+  const modelListUrl = effectiveCatalogEntry?.modelListUrl ?? effectiveUrl;
   const hasCompleteModelListUrl = (() => {
     try {
       const url = new URL(modelListUrl);
@@ -364,13 +417,13 @@ export default function ProviderCard({
     }
   })();
   const modelListNeedsApiKey = Boolean(
-    catalogEntry && catalogEntry.requiresApiKey !== false,
+    providerRequiresApiKeyInForm,
   );
   const canFetchModels = Boolean(
     hasCompleteModelListUrl && (!modelListNeedsApiKey || draftProvider.apiKey),
   );
   const fallbackModels: ApiModelListItem[] =
-    catalogEntry?.models.map(({ id, displayName }) => ({ id, displayName })) ?? [];
+    effectiveCatalogEntry?.models.map(({ id, displayName }) => ({ id, displayName })) ?? [];
   const candidateModels = (apiModels ?? []).filter((model) => {
     if (draftProvider.models && model.id in draftProvider.models) return false;
     return model.id.toLocaleLowerCase().includes(modelSearch.trim().toLocaleLowerCase());
@@ -388,7 +441,7 @@ export default function ProviderCard({
         protocol,
         baseUrl: modelListUrl,
         apiKey: draftProvider.apiKey ?? "",
-        providerId,
+        providerId: isMaskedKey ? providerId : trimmedProviderId,
       });
       setApiModels(models);
       setApiModelsStatus("idle");
@@ -537,7 +590,7 @@ export default function ProviderCard({
       <header className="detail-header">
         <div className="detail-identity">
           <span className="detail-provider-icon">
-            <ProviderAvatar providerId={providerIdDraft || providerId} catalogEntry={catalogEntry} />
+            <ProviderAvatar providerId={providerIdDraft || providerId} catalogEntry={effectiveCatalogEntry} />
           </span>
           <div>
             <div className="detail-title-line">
@@ -598,7 +651,7 @@ export default function ProviderCard({
             <div><h3>{t("pilotDeckConfig.panels.models.connectionInfo")}</h3></div>
           </div>
 
-          {editing && !catalogEntry && (
+          {editing && (
             <label className="field">
               <span>{t("pilotDeckConfig.panels.models.providerId")}</span>
               <input
@@ -613,7 +666,7 @@ export default function ProviderCard({
             </label>
           )}
 
-          {editing && !catalogEntry && (
+          {editing && !effectiveCatalogEntry && (
             <div className="connection-grid">
               <label className="field">
                 <span>{t("pilotDeckConfig.panels.models.protocol")}</span>
@@ -631,7 +684,7 @@ export default function ProviderCard({
                 <span>{t("pilotDeckConfig.panels.models.baseUrl")}</span>
                 <input
                   value={draftProvider.url ?? ""}
-                  placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
+                  placeholder={effectiveCatalogEntry?.defaultUrl || "https://api.example.com/v1"}
                   className="mono"
                   onChange={(event) => update({ url: event.target.value })}
                 />
@@ -664,6 +717,51 @@ export default function ProviderCard({
               </small>
             ) : null}
           </label>
+        </section>
+
+        <section className="form-section">
+          <button
+            className="button secondary compact"
+            type="button"
+            aria-expanded={showProviderAdvanced}
+            onClick={() => setShowProviderAdvanced((value) => !value)}
+          >
+            <ChevronDownIcon
+              className={cn(showProviderAdvanced && "rotate-180")}
+            />
+            {t("pilotDeckConfig.panels.models.providerAdvancedToggle")}
+          </button>
+          {showProviderAdvanced ? (
+            <div className="connection-grid">
+              {([
+                ["requestMaxRetries", "2"],
+                ["streamMaxRetries", "3"],
+                ["streamIdleTimeoutMs", "600000"],
+                ["baseDelayMs", "1000"],
+                ["maxDelayMs", "60000"],
+              ] as const).map(([key, placeholder]) => (
+                <label className="field" key={key}>
+                  <span>
+                    {t(`pilotDeckConfig.panels.models.providerRetry.${key}.label`)}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={draftProvider.retry?.[key] ?? ""}
+                    placeholder={placeholder}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      updateRetry(key, value === "" ? undefined : Number(value));
+                    }}
+                  />
+                  <small className="field-help">
+                    {t(`pilotDeckConfig.panels.models.providerRetry.${key}.description`)}
+                  </small>
+                </label>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="form-section models-section">

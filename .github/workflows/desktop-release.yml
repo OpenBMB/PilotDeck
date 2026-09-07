@@ -1,0 +1,161 @@
+name: Daily Desktop Release
+
+on:
+  schedule:
+    # 02:00 Asia/Shanghai (GitHub cron is UTC).
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even when production files have not changed
+        required: false
+        default: false
+        type: boolean
+      revision:
+        description: Optional zero-based same-day revision; automatically increments when omitted
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: daily-desktop-release
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PILOTDECK_UPDATE_REPOSITORY: ${{ github.repository }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.detect.outputs.should_build }}
+      release_date: ${{ steps.detect.outputs.release_date }}
+      revision: ${{ steps.detect.outputs.revision }}
+      source_sha: ${{ steps.detect.outputs.source_sha }}
+    steps:
+      - name: Require the main branch
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Desktop releases must run from the main branch, not $GITHUB_REF."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect production changes since the last desktop release
+        id: detect
+        shell: bash
+        env:
+          FORCE_RELEASE: ${{ inputs.force }}
+          REQUESTED_REVISION: ${{ inputs.revision }}
+        run: |
+          release_date="$(TZ=Asia/Shanghai date +%F)"
+          latest_tag="$(git tag --list 'desktop-v*' --sort=-version:refname | head -n 1)"
+          source_sha="$(git rev-parse HEAD)"
+          should_build=false
+
+          if [ "$FORCE_RELEASE" = "true" ] || [ -z "$latest_tag" ]; then
+            should_build=true
+          else
+            previous_sha="$(git rev-list -n 1 "$latest_tag")"
+            if ! git diff --quiet "$previous_sha" "$source_sha" -- \
+              src ui skills apps/desktop scripts package.json pnpm-lock.yaml pnpm-workspace.yaml \
+              .github/workflows/desktop-build.yml .github/workflows/desktop-release.yml; then
+              should_build=true
+            fi
+          fi
+
+          revision="${REQUESTED_REVISION:-0}"
+          if [ -z "$REQUESTED_REVISION" ]; then
+            while true; do
+              if [ "$revision" -eq 0 ]; then
+                candidate="desktop-v${release_date//-/.}"
+              else
+                candidate="desktop-v${release_date//-/.}-r$((revision + 1))"
+              fi
+              git rev-parse --verify --quiet "refs/tags/$candidate" >/dev/null || break
+              revision=$((revision + 1))
+            done
+          fi
+
+          echo "should_build=$should_build" >> "$GITHUB_OUTPUT"
+          echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: detect
+    if: ${{ needs.detect.outputs.should_build == 'true' }}
+    uses: ./.github/workflows/desktop-build.yml
+    with:
+      release_date: ${{ needs.detect.outputs.release_date }}
+      revision: ${{ needs.detect.outputs.revision }}
+      require_macos_signing: true
+    secrets: inherit
+
+  release:
+    needs: [detect, build]
+    if: ${{ needs.detect.outputs.should_build == 'true' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.detect.outputs.source_sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pilotdeck-desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Resolve release metadata
+        id: metadata
+        env:
+          PILOTDECK_DESKTOP_RELEASE_DATE: ${{ needs.detect.outputs.release_date }}
+          PILOTDECK_DESKTOP_REVISION: ${{ needs.detect.outputs.revision }}
+          PILOTDECK_COMMIT_SHA: ${{ needs.detect.outputs.source_sha }}
+        run: node apps/desktop/scripts/set-ci-version.mjs
+
+      - name: Create release manifest and checksums
+        env:
+          PILOTDECK_DESKTOP_VERSION: ${{ steps.metadata.outputs.version }}
+          PILOTDECK_DESKTOP_RELEASE_TAG: ${{ steps.metadata.outputs.release_tag }}
+          PILOTDECK_DESKTOP_RELEASE_DATE: ${{ steps.metadata.outputs.release_date }}
+          PILOTDECK_COMMIT_SHA: ${{ needs.detect.outputs.source_sha }}
+        run: node apps/desktop/scripts/create-release-manifest.mjs release-assets
+
+      - name: Verify complete cross-platform release
+        shell: bash
+        run: |
+          find release-assets -maxdepth 1 -name '*-mac-arm64.dmg' -print -quit | grep -q .
+          find release-assets -maxdepth 1 -name '*-mac-x64.dmg' -print -quit | grep -q .
+          find release-assets -maxdepth 1 -name '*-setup.exe' -print -quit | grep -q .
+          test -s release-assets/desktop-release.json
+          test -s release-assets/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.release_tag }}
+          RELEASE_DATE: ${{ steps.metadata.outputs.release_date }}
+          SOURCE_SHA: ${{ needs.detect.outputs.source_sha }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Desktop $RELEASE_DATE" \
+            --generate-notes
+
+  skipped:
+    needs: detect
+    if: ${{ needs.detect.outputs.should_build != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No desktop production changes since the latest desktop release."

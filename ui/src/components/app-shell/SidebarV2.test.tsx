@@ -13,6 +13,8 @@ vi.mock('lucide-react', () => ({
   ChevronRight: () => null,
   Folder: () => null,
   GitBranch: () => null,
+  MessageSquarePlus: () => null,
+  Plus: () => null,
   Pencil: () => null,
   Trash2: () => null,
 }));
@@ -42,6 +44,7 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     onSelectSession: vi.fn(),
     onStartNewSession: vi.fn(),
     onStartHomeNewConversation: vi.fn(),
+    onCreateProject: vi.fn(),
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
@@ -57,18 +60,35 @@ afterEach(() => {
 });
 
 describe('SidebarV2 layout', () => {
+  it('distinguishes a project load failure from an empty project list', () => {
+    const onRetryLoad = vi.fn();
+    renderSidebar(null, {
+      projects: [],
+      loadError: 'Gateway unavailable',
+      onRetryLoad,
+    });
+
+    expect(screen.getByRole('status').textContent).toMatch(/temporarily unavailable|暂时无法加载/);
+    expect(screen.queryByText(/No projects found|未找到项目/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Retry|重试/ }));
+    expect(onRetryLoad).toHaveBeenCalledTimes(1);
+  });
+
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    const lightLogo = screen.getByAltText('PILOTDECK');
-    expect(lightLogo.getAttribute('src')).toContain('pilotdeck-wordmark-light.png');
-    expect(lightLogo.parentElement?.querySelector('.brand-lockup-dark')?.getAttribute('src'))
-      .toContain('pilotdeck-wordmark-dark.png');
+    const brand = screen.getByRole('img', { name: 'PILOTDECK' });
+    const brandSources = Array.from(brand.querySelectorAll('img')).map((image) =>
+      image.getAttribute('src'),
+    );
+    expect(brandSources).toHaveLength(2);
+    expect(brandSources[0]).toContain('pilotdeck-wordmark-light.png');
+    expect(brandSources[1]).toContain('pilotdeck-wordmark-dark.png');
     expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
-    expect(screen.queryByText('New Chat')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
-    expect(screen.queryByText('New Project')).toBeNull();
+    expect(screen.getByRole('button', { name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Create new project|创建新项目/ })).toBeTruthy();
     expect(screen.getByText('Skills')).toBeTruthy();
     expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
     expect(screen.getByText('Projects')).toBeTruthy();
@@ -88,7 +108,7 @@ describe('SidebarV2 layout', () => {
     localStorage.setItem('sidebar-v2-width', '76');
     renderSidebar(null);
 
-    expect(screen.queryByAltText('PILOTDECK')).toBeNull();
+    expect(screen.queryByRole('img', { name: 'PILOTDECK' })).toBeNull();
     const mark = document.querySelector('.brand-mark');
     expect(mark).toBeInstanceOf(HTMLImageElement);
     expect((mark as HTMLImageElement).getAttribute('src')).toBe(
@@ -140,6 +160,15 @@ describe('SidebarV2 layout', () => {
     expect(within(list).queryByText('General')).toBeNull();
   });
 
+  it('selects a project when its row is clicked', () => {
+    const onSelectProject = vi.fn();
+    renderSidebar(null, { onSelectProject });
+
+    fireEvent.click(screen.getByRole('button', { name: /^PilotDeck$/ }));
+
+    expect(onSelectProject).toHaveBeenCalledWith(project);
+  });
+
   it('toggles project and conversation lists only from the chevron buttons', () => {
     const onStartNewSession = vi.fn();
     renderSidebar(general, { onStartNewSession });
@@ -148,8 +177,8 @@ describe('SidebarV2 layout', () => {
     const conversationsHeading = screen.getByRole('button', { name: 'Expand conversations' }).closest('.tree-heading') as HTMLElement;
 
     expect(screen.getByText('PilotDeck')).toBeTruthy();
-    expect(within(projectsHeading).queryByRole('button', { name: 'New Project' })).toBeNull();
-    expect(within(conversationsHeading).queryByRole('button', { name: 'New Chat' })).toBeNull();
+    expect(within(projectsHeading).getByRole('button', { name: /Create new project|创建新项目/ })).toBeTruthy();
+    expect(within(conversationsHeading).getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Projects'));
     expect(screen.getByText('PilotDeck')).toBeTruthy();
@@ -187,5 +216,28 @@ describe('SidebarV2 layout', () => {
 
     fireEvent.click(screen.getByText(/New conversation|新对话/));
     expect(onStartHomeNewConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens project creation from the Projects heading', () => {
+    const onCreateProject = vi.fn();
+    renderSidebar(general, { onCreateProject });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create new project|创建新项目/ }));
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a project or general conversation from the adjacent action', () => {
+    const onStartNewSession = vi.fn();
+    renderSidebar(null, { onStartNewSession });
+
+    fireEvent.click(screen.getByRole('button', {
+      name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/,
+    }));
+    expect(onStartNewSession).toHaveBeenLastCalledWith(project);
+
+    fireEvent.click(screen.getByRole('button', {
+      name: /Start a general conversation|新建通用对话/,
+    }));
+    expect(onStartNewSession).toHaveBeenLastCalledWith(general);
   });
 });

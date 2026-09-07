@@ -134,6 +134,8 @@ export type CanonicalContentBlock =
   | CanonicalMediaReferenceBlock;
 
 export type CanonicalMessageMetadata = {
+  /** Actual model that generated this assistant message. */
+  model?: string;
   /** True for messages injected by the system (e.g. JSON self-correct prompts). */
   synthetic?: boolean;
   /** Synthetic prompt that should be consumed by the next assistant response only. */
@@ -147,6 +149,8 @@ export type CanonicalMessageMetadata = {
   /** Compaction id of the effective replacement snapshot persisted in the transcript. */
   compactSnapshotId?: string;
   purpose?: string;
+  /** Stable queued-input id for a user message injected during an active turn. */
+  queueItemId?: string;
   forkCarryover?: {
     sourceSessionId: string;
     sourceTurnId?: string;

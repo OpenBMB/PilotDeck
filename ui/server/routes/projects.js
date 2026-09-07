@@ -16,6 +16,8 @@ import {
   applyWorkCycle,
   archiveWorkCycle,
 } from '../discovery-plans.js';
+import { normalizePathForComparison } from '../utils/pathSafety.js';
+import { isVirtualProjectPath, resolvePilotHome } from '../utils/pilotPaths.js';
 
 const router = express.Router();
 
@@ -56,16 +58,21 @@ export const FORBIDDEN_PATHS = [
 
 function isForbiddenWorkspacePath(inputPath) {
   const normalizedPath = path.normalize(path.resolve(inputPath));
-  if (normalizedPath === '/' || FORBIDDEN_PATHS.includes(normalizedPath)) {
+  const comparablePath = normalizePathForComparison(inputPath);
+  if (normalizedPath === '/') {
     return true;
   }
 
   for (const forbidden of FORBIDDEN_PATHS) {
-    if (normalizedPath === forbidden || normalizedPath.startsWith(forbidden + path.sep)) {
+    const comparableForbidden = normalizePathForComparison(forbidden);
+    if (comparablePath === comparableForbidden || comparablePath.startsWith(comparableForbidden + path.sep)) {
       // Exception: allow user-accessible temporary folders under /var.
       if (
         forbidden === '/var' &&
-        (normalizedPath.startsWith('/var/tmp') || normalizedPath.startsWith('/var/folders'))
+        (
+          comparablePath.startsWith(normalizePathForComparison('/var/tmp')) ||
+          comparablePath.startsWith(normalizePathForComparison('/var/folders'))
+        )
       ) {
         continue;
       }
@@ -196,6 +203,28 @@ function getDiscoveryPlanErrorStatus(error) {
   return 500;
 }
 
+async function requireRealProjectWorkspace(req, res, next) {
+  try {
+    const projectPath = await extractProjectDirectory(req.params?.projectName);
+    if (isVirtualProjectPath(projectPath, resolvePilotHome(process.env), process.env)) {
+      return res.status(403).json({
+        error: {
+          code: 'PROJECT_PATH_FORBIDDEN',
+          message: 'Project exploration is unavailable for General conversations.',
+        },
+      });
+    }
+    return next();
+  } catch (error) {
+    return res.status(404).json({
+      error: {
+        code: 'PROJECT_NOT_FOUND',
+        message: error instanceof Error ? error.message : 'Project not found',
+      },
+    });
+  }
+}
+
 export async function handleGetProjectDiscoveryPlans(req, res) {
   try {
     const projectName = getTrimmedParam(req.params?.projectName);
@@ -244,11 +273,11 @@ export async function handleExecuteProjectDiscoveryPlan(req, res) {
   }
 }
 
-router.get('/:projectName/discovery-context', handleGetProjectDiscoveryContext);
-router.get('/:projectName/discovery-plans', handleGetProjectDiscoveryPlans);
-router.post('/:projectName/discovery-plans/:planId/execute', handleExecuteProjectDiscoveryPlan);
+router.get('/:projectName/discovery-context', requireRealProjectWorkspace, handleGetProjectDiscoveryContext);
+router.get('/:projectName/discovery-plans', requireRealProjectWorkspace, handleGetProjectDiscoveryPlans);
+router.post('/:projectName/discovery-plans/:planId/execute', requireRealProjectWorkspace, handleExecuteProjectDiscoveryPlan);
 
-router.get('/:projectName/discovery-plans/:planId/report', async (req, res) => {
+router.get('/:projectName/discovery-plans/:planId/report', requireRealProjectWorkspace, async (req, res) => {
   try {
     const projectName = getTrimmedParam(req.params?.projectName);
     const planId = getTrimmedParam(req.params?.planId);
@@ -264,7 +293,7 @@ router.get('/:projectName/discovery-plans/:planId/report', async (req, res) => {
   }
 });
 
-router.get('/:projectName/work-cycles', async (req, res) => {
+router.get('/:projectName/work-cycles', requireRealProjectWorkspace, async (req, res) => {
   try {
     const projectName = getTrimmedParam(req.params?.projectName);
     if (!projectName) return res.status(400).json({ error: 'projectName is required' });
@@ -278,7 +307,7 @@ router.get('/:projectName/work-cycles', async (req, res) => {
   }
 });
 
-router.post('/:projectName/work-cycles/:cycleId/apply', async (req, res) => {
+router.post('/:projectName/work-cycles/:cycleId/apply', requireRealProjectWorkspace, async (req, res) => {
   try {
     const projectName = getTrimmedParam(req.params?.projectName);
     const cycleId = getTrimmedParam(req.params?.cycleId);
@@ -294,7 +323,7 @@ router.post('/:projectName/work-cycles/:cycleId/apply', async (req, res) => {
   }
 });
 
-router.post('/:projectName/work-cycles/:cycleId/archive', async (req, res) => {
+router.post('/:projectName/work-cycles/:cycleId/archive', requireRealProjectWorkspace, async (req, res) => {
   try {
     const projectName = getTrimmedParam(req.params?.projectName);
     const cycleId = getTrimmedParam(req.params?.cycleId);

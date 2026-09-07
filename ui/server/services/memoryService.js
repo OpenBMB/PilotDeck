@@ -7,7 +7,7 @@ import {
   EdgeClawMemoryService,
   MemoryBundleValidationError,
   hashText,
-} from '../../../src/context/memory/edgeclaw-memory-core/lib/index.js';
+} from 'edgeclaw-memory-core';
 import { extractProjectDirectory } from '../projects.js';
 import {
   buildMemoryDefaults,

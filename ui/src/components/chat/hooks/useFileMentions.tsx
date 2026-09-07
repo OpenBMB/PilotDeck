@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
+import { useTranslation } from 'react-i18next';
 import { isImeEnterEvent } from '../../../utils/ime';
 import {
   ADD_WORKSPACE_FILE_MENTION_EVENT,
@@ -21,6 +22,7 @@ export interface MentionableFile {
 
 interface UseFileMentionsOptions {
   selectedProject: Project | null;
+  enabled?: boolean;
   mentionScopeKey: string | null;
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -29,11 +31,13 @@ interface UseFileMentionsOptions {
 
 export function useFileMentions({
   selectedProject,
+  enabled = true,
   mentionScopeKey,
   input,
   setInput,
   textareaRef,
 }: UseFileMentionsOptions) {
+  const { t } = useTranslation('chat');
   const [selectedFileMentions, setSelectedFileMentions] = useState<MentionableFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<MentionableFile[]>([]);
   const [showFileDropdown, setShowFileDropdown] = useState(false);
@@ -65,10 +69,10 @@ export function useFileMentions({
     append?: boolean;
   }) => {
     const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
-    if (!projectKey) {
+    if (!enabled || !projectKey) {
       setFilteredFiles([]);
       setNextCursor(undefined);
-      setFileListError('未找到当前项目路径');
+      setFileListError(t('input.projectPathMissing', { defaultValue: 'The current project path is unavailable.' }));
       return;
     }
 
@@ -91,12 +95,18 @@ export function useFileMentions({
       });
       const contentType = response.headers?.get?.('content-type') || '';
       if (contentType && !contentType.toLowerCase().includes('application/json')) {
-        throw new Error(`项目文件接口返回了非 JSON 响应（${contentType}），请重启后端服务`);
+        throw new Error(t('input.projectFilesNonJson', {
+          contentType,
+          defaultValue: `The project files service returned an invalid response (${contentType}). Restart the backend service.`,
+        }));
       }
       const page = await response.json().catch(() => ({}));
       if (!response.ok) {
         const code = page?.error?.code;
-        const message = page?.error?.message || `项目文件加载失败（${response.status}）`;
+        const message = page?.error?.message || t('input.projectFilesLoadFailedStatus', {
+          status: response.status,
+          defaultValue: `Failed to load project files (${response.status}).`,
+        });
         throw new Error(code ? `${message} [${code}]` : message);
       }
       const items: MentionableFile[] = (Array.isArray(page?.items) ? page.items : [])
@@ -125,14 +135,16 @@ export function useFileMentions({
       }
       console.error('Error fetching files:', error);
       if (!append) setFilteredFiles([]);
-      setFileListError(error instanceof Error ? error.message : '项目文件加载失败');
+      setFileListError(error instanceof Error
+        ? error.message
+        : t('input.projectFilesLoadFailed', { defaultValue: 'Failed to load project files.' }));
     } finally {
       if (inFlightFetchRef.current === abortController) {
         inFlightFetchRef.current = null;
       }
       if (!abortController.signal.aborted) setIsLoadingFiles(false);
     }
-  }, [selectedProject?.fullPath, selectedProject?.path]);
+  }, [enabled, selectedProject?.fullPath, selectedProject?.path, t]);
 
   // Cursor and mention UI state belong to a single draft. A conversation
   // switch can keep the same project mounted, so project identity alone is
@@ -149,13 +161,13 @@ export function useFileMentions({
     setAtSymbolPosition(-1);
     hasCursorPositionRef.current = false;
     inFlightFetchRef.current?.abort();
-  }, [mentionScopeKey]);
+  }, [enabled, mentionScopeKey]);
 
   // Query the gateway-backed project file index whenever the active @ query
   // changes. Keeping this server-side preserves cursor/query signatures and
   // allows the response's match ranges to stay authoritative.
   useEffect(() => {
-    if (!showFileDropdown) {
+    if (!enabled || !showFileDropdown) {
       inFlightFetchRef.current?.abort();
       return;
     }
@@ -163,9 +175,15 @@ export function useFileMentions({
       void fetchProjectFiles({ query: mentionQuery });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [fetchProjectFiles, mentionQuery, showFileDropdown]);
+  }, [enabled, fetchProjectFiles, mentionQuery, showFileDropdown]);
 
   useEffect(() => {
+    if (!enabled) {
+      setShowFileDropdown(false);
+      setAtSymbolPosition(-1);
+      setMentionQuery('');
+      return;
+    }
     const textBeforeCursor = input.slice(0, cursorPosition);
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
@@ -187,7 +205,7 @@ export function useFileMentions({
     setAtSymbolPosition(lastAtIndex);
     setShowFileDropdown(true);
     setMentionQuery(textAfterAt);
-  }, [input, cursorPosition]);
+  }, [enabled, input, cursorPosition]);
 
   const focusMention = useCallback(
     (position: number) => {
@@ -230,6 +248,7 @@ export function useFileMentions({
   useEffect(() => {
     const handleAddWorkspaceFileMention = (event: Event) => {
       const detail = (event as CustomEvent).detail;
+      if (!enabled) return;
       if (!isWorkspaceFileMentionRequest(detail)) return;
       if (detail.projectName !== selectedProject?.name) return;
       addExternalFileMention(detail.relativePath);
@@ -239,7 +258,7 @@ export function useFileMentions({
     return () => {
       window.removeEventListener(ADD_WORKSPACE_FILE_MENTION_EVENT, handleAddWorkspaceFileMention);
     };
-  }, [addExternalFileMention, selectedProject?.name]);
+  }, [addExternalFileMention, enabled, selectedProject?.name]);
 
   const renderInputWithMentions = useCallback((text: string) => text, []);
 

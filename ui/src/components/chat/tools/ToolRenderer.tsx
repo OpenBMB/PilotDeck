@@ -30,6 +30,7 @@ interface ToolRendererProps {
     childTools: SubagentChildTool[];
     currentToolIndex: number;
     isComplete: boolean;
+    isFailed?: boolean;
   };
 }
 

@@ -538,6 +538,7 @@ export function flattenCanonicalMessage(
       role,
       kind: "text",
       text: textBuffer,
+      ...(role === "assistant" && typeof message.metadata?.model === "string" ? { model: message.metadata.model } : {}),
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
       ...(context.forkUnsupportedContent
         ? {
@@ -576,6 +577,12 @@ export function flattenCanonicalMessage(
     }
   }
   flushText();
+  const queueItemId = message.metadata?.queueItemId;
+  if (typeof queueItemId === "string" && queueItemId) {
+    for (const webMessage of out) {
+      webMessage.queueItemId = queueItemId;
+    }
+  }
   return out;
 }
 

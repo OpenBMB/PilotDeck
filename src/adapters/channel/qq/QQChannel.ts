@@ -139,10 +139,26 @@ export class QQChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(chatKey, text, this.gateway);
-        if (confirmation) await this.sendReply(groupOpenId, confirmation);
+        const answer = await this.permissions.answerWithState(chatKey, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(groupOpenId, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(chatKey, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(chatKey, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatKey, answer.answerToken);
+            const delivered = await this.sendReply(groupOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
         this.logger?.error?.(`qq: permission answer error: ${e}`);
       }
       return;
@@ -193,10 +209,26 @@ export class QQChannel implements ChannelAdapter {
     }
 
     if (this.permissions.hasPending(chatKey) && this.gateway) {
+      let answerToken: number | undefined;
       try {
-        const confirmation = await this.permissions.answer(chatKey, rawText, this.gateway);
-        if (confirmation) await this.sendC2CReply(userOpenId, confirmation);
+        const answer = await this.permissions.answerWithState(chatKey, rawText, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendC2CReply(userOpenId, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(chatKey, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(chatKey, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(chatKey, answer.answerToken);
+            const delivered = await this.sendC2CReply(userOpenId, nextPrompt);
+            this.permissions.confirmNextPrompt(chatKey, delivered, nextPromptRequestId, answer.answerToken);
+          }
+        }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(chatKey, answerToken);
         this.logger?.error?.(`qq: permission answer error (c2c): ${e}`);
       }
       return;
@@ -239,7 +271,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) await this.sendC2CReplyChunked(userOpenId, questionText, msgId);
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendC2CReplyChunked(userOpenId, questionText, msgId), event.requestId);
           continue;
         }
         const fragment = renderQQEvent(event);
@@ -251,30 +283,33 @@ export class QQChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(chatKey);
-    this.permissions.clear(chatKey);
+    this.permissions.clearAfterTurn(chatKey);
     const finalText = replyText.trim();
     if (finalText) {
       await this.sendC2CReplyChunked(userOpenId, finalText, msgId);
     }
   }
 
-  private async sendC2CReply(userOpenId: string, text: string, msgId?: string, msgSeq?: number): Promise<void> {
-    if (!this.botGateway) return;
+  private async sendC2CReply(userOpenId: string, text: string, msgId?: string, msgSeq?: number): Promise<boolean> {
+    if (!this.botGateway) return false;
     try {
       await this.botGateway.sendC2CMessage(userOpenId, text, msgId, msgSeq);
+      return true;
     } catch (e) {
       this.logger?.error?.(`qq: sendC2CMessage failed: ${e}`);
+      return false;
     }
   }
 
-  private async sendC2CReplyChunked(userOpenId: string, text: string, msgId: string): Promise<void> {
+  private async sendC2CReplyChunked(userOpenId: string, text: string, msgId: string): Promise<boolean> {
     const chunks = this.splitText(text, this.maxMessageLength);
     for (let i = 0; i < chunks.length; i++) {
-      await this.sendC2CReply(userOpenId, chunks[i], msgId, i + 1);
+      if (!await this.sendC2CReply(userOpenId, chunks[i], msgId, i + 1)) return false;
       if (chunks.length > 1) {
         await this.sleep(500);
       }
     }
+    return true;
   }
 
   private extractText(raw: string): string | null {
@@ -311,7 +346,7 @@ export class QQChannel implements ChannelAdapter {
         }
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(chatKey, sessionKey, event);
-          if (questionText) await this.sendReplyChunked(groupOpenId, questionText, msgId);
+          if (questionText) this.permissions.confirmInitialPrompt(chatKey, await this.sendReplyChunked(groupOpenId, questionText, msgId), event.requestId);
           continue;
         }
         const fragment = renderQQEvent(event);
@@ -323,30 +358,33 @@ export class QQChannel implements ChannelAdapter {
     }
 
     this.elicitation.clear(chatKey);
-    this.permissions.clear(chatKey);
+    this.permissions.clearAfterTurn(chatKey);
     const finalText = replyText.trim();
     if (finalText) {
       await this.sendReplyChunked(groupOpenId, finalText, msgId);
     }
   }
 
-  private async sendReply(groupOpenId: string, text: string, msgId?: string, msgSeq?: number): Promise<void> {
-    if (!this.botGateway) return;
+  private async sendReply(groupOpenId: string, text: string, msgId?: string, msgSeq?: number): Promise<boolean> {
+    if (!this.botGateway) return false;
     try {
       await this.botGateway.sendGroupMessage(groupOpenId, text, msgId, msgSeq);
+      return true;
     } catch (e) {
       this.logger?.error?.(`qq: sendGroupMessage failed: ${e}`);
+      return false;
     }
   }
 
-  private async sendReplyChunked(groupOpenId: string, text: string, msgId: string): Promise<void> {
+  private async sendReplyChunked(groupOpenId: string, text: string, msgId: string): Promise<boolean> {
     const chunks = this.splitText(text, this.maxMessageLength);
     for (let i = 0; i < chunks.length; i++) {
-      await this.sendReply(groupOpenId, chunks[i], msgId, i + 1);
+      if (!await this.sendReply(groupOpenId, chunks[i], msgId, i + 1)) return false;
       if (chunks.length > 1) {
         await this.sleep(500);
       }
     }
+    return true;
   }
 
   private splitText(text: string, maxLen: number): string[] {

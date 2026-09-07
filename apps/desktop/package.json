@@ -1,0 +1,123 @@
+{
+  "name": "pilotdeck-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform Electron shell for PilotDeck.",
+  "author": "PilotDeck",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "compile": "tsc -p tsconfig.json",
+    "dev": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron .",
+    "pack": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --dir",
+    "dist:mac": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac",
+    "dist:mac:arm64": "PILOTDECK_DESKTOP_NODE_ARCH=arm64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac --arm64",
+    "dist:mac:x64": "PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac --x64",
+    "dist:win": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win",
+    "dist:win:portable": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win portable",
+    "download-git-bash": "node scripts/download-git-bash.mjs",
+    "download-node": "node scripts/download-node.mjs",
+    "download-playwright-browsers": "node scripts/download-playwright-browsers.mjs",
+    "test": "node --test scripts/*.test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "cn.pilotdeck.desktop",
+    "productName": "PilotDeck",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      {
+        "from": ".",
+        "filter": [
+          "dist/**/*",
+          "package.json",
+          "!node_modules/**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "afterPack": "scripts/after-pack.cjs",
+    "extraMetadata": {
+      "dependencies": {}
+    },
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node"
+      },
+      {
+        "from": "resources/icons",
+        "to": "icons"
+      },
+      {
+        "from": "resources/build-metadata.json",
+        "to": "build-metadata.json"
+      },
+      {
+        "from": "resources/git",
+        "to": "git",
+        "filter": [
+          "**/*",
+          "!.gitkeep"
+        ]
+      },
+      {
+        "from": ".runtime/app",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "resources/icons/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist",
+      "signIgnore": [
+        "Contents/Resources/runtime/node_modules/playwright-core/\\.local-browsers/"
+      ],
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "icon": "resources/icons/icon.ico",
+      "legalTrademarks": "Copyright © OpenBMB",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}",
+      "oneClick": false,
+      "perMachine": true,
+      "installerIcon": "resources/icons/installer-icon.ico",
+      "uninstallerIcon": "resources/icons/installer-icon.ico",
+      "include": "resources/installer.nsh",
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
+    }
+  }
+}

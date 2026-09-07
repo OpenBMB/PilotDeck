@@ -5,6 +5,8 @@
     "deleteProject": "删除项目",
     "renameProject": "重命名项目",
     "noProjects": "未找到项目",
+    "loadError": "项目暂时无法加载，你的数据并未被删除。",
+    "retry": "重试",
     "loadingProjects": "加载项目中...",
     "searchPlaceholder": "搜索项目...",
     "projectNamePlaceholder": "项目名称",
@@ -25,8 +27,8 @@
     "recent": "最近打开"
   },
   "general": {
-    "title": "通用",
-    "name": "通用",
+    "title": "通用对话",
+    "name": "通用对话",
     "missing": "未找到通用工作区"
   },
   "conversations": {
@@ -83,6 +85,8 @@
     "deleteProject": "删除空项目 (Delete)",
     "showSidebar": "显示侧边栏",
     "newChat": "新建对话",
+    "newChatForProject": "在 {{project}} 中新建对话",
+    "newGeneralChat": "新建通用对话",
     "addToFavorites": "添加到收藏",
     "removeFromFavorites": "从收藏移除",
     "editSessionName": "手动编辑会话名称",

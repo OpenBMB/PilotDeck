@@ -170,3 +170,15 @@ describe('MessageRowV2 assistant actions', () => {
       ]);
   });
 });
+
+
+it('shows only the response model before time inside the existing hover actions', () => {
+  render(<MessageRowV2 message={{ id: 'model-response', type: 'assistant', content: 'Answer', model: 'qwen3.8-27b', timestamp: '2026-09-05T12:58:00Z' }} prevMessage={null} provider="pilotdeck" selectedProject={null} createDiff={() => []} />);
+  const row = screen.getByTestId('assistant-message-actions');
+  expect(row.className).toContain('opacity-0');
+  expect(row.className).toContain('group-hover/assistant-msg:opacity-100');
+  expect(row.firstElementChild).toBe(screen.getByTestId('assistant-message-model'));
+  expect(row.firstElementChild?.textContent).toBe('qwen3.8-27b');
+  expect(row.children[1].tagName).toBe('TIME');
+  expect(row.firstElementChild?.hasAttribute('title')).toBe(false);
+});

@@ -17,8 +17,7 @@ export default function AdvancedSections({ title: _title }: AdvancedSectionsProp
   const {
     path,
     raw,
-    setRaw,
-    save,
+    commitRaw,
     loading,
     saving,
     error,
@@ -27,8 +26,7 @@ export default function AdvancedSections({ title: _title }: AdvancedSectionsProp
 
   const saveConfig = async (next: PilotDeckConfig) => {
     try {
-      setRaw(configToYamlString(next));
-      const result = await save();
+      const result = await commitRaw(configToYamlString(next));
       return result.ok;
     } catch (caught) {
       console.error("Failed to serialise advanced config patch", caught);

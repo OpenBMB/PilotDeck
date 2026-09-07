@@ -14,9 +14,9 @@ vi.mock('lucide-react', () => ({
   Check: () => null,
   ChevronDown: () => null,
   Folder: () => null,
+  MessageSquare: () => null,
   Plus: () => null,
   Search: () => null,
-  X: () => null,
 }));
 
 const general: Project = {
@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe('WorkspacePickerBar', () => {
-  it('shows the unset label until a workspace is chosen', () => {
+  it('presents a transient missing selection as General', () => {
     render(
       <WorkspacePickerBar
         projects={[general, office]}
@@ -49,7 +49,7 @@ describe('WorkspacePickerBar', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /选择工作空间|Select workspace/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /通用对话|General conversation/ })).toBeTruthy();
   });
 
   it('lists existing projects, supports search, and exposes create/none actions', () => {
@@ -67,7 +67,7 @@ describe('WorkspacePickerBar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /选择工作空间|Select workspace/ }));
+    fireEvent.click(screen.getByRole('button', { name: /通用对话|General conversation/ }));
     expect(screen.getByPlaceholderText(/搜索项目|Search projects/)).toBeTruthy();
     expect(screen.getByText('office')).toBeTruthy();
     expect(screen.queryByText('general')).toBeNull();
@@ -75,12 +75,13 @@ describe('WorkspacePickerBar', () => {
     fireEvent.click(screen.getByText('office'));
     expect(onSelectProject).toHaveBeenCalledWith(office);
 
-    fireEvent.click(screen.getByRole('button', { name: /选择工作空间|Select workspace/ }));
+    fireEvent.click(screen.getByRole('button', { name: /通用对话|General conversation/ }));
     fireEvent.click(screen.getByText(/新建项目|New project/));
     expect(onCreateProject).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /选择工作空间|Select workspace/ }));
-    fireEvent.click(screen.getByText(/不在项目中工作|Work without a project/));
+    fireEvent.click(screen.getByRole('button', { name: /通用对话|General conversation/ }));
+    const generalActions = screen.getAllByText(/通用对话|General conversation/);
+    fireEvent.click(generalActions[generalActions.length - 1]);
     expect(onSelectNone).toHaveBeenCalledTimes(1);
   });
 
@@ -131,7 +132,7 @@ describe('WorkspacePickerBar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /选择工作空间|Select workspace/ }));
+    fireEvent.click(screen.getByRole('button', { name: /通用对话|General conversation/ }));
     const labels = screen
       .getAllByRole('option')
       .map((node) => node.textContent?.trim());

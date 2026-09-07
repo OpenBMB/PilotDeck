@@ -393,23 +393,17 @@ cd PilotDeck
 
 node --version          # must be v22.13.0 or newer, and below v23
 corepack enable         # enables the pinned pnpm version from package.json
-corepack pnpm install --frozen-lockfile
+corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
-PilotDeck uses the committed `pnpm-lock.yaml` for reproducible source installs. Prefer the `corepack pnpm ...` command above instead of `npm install`; on macOS, this also avoids unnecessary native rebuild fallbacks when matching prebuilt packages are available.
+PilotDeck uses the committed `pnpm-lock.yaml` for reproducible source installs. The filters keep Electron packaging dependencies out of Web-only installs. Prefer the `corepack pnpm ...` command above instead of `npm install`; on macOS, this also avoids unnecessary native rebuild fallbacks when matching prebuilt packages are available.
 
 **2. Configure a model provider**
 
-PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. You can create it manually, let the bootstrap script generate one, **or just open the Web UI and configure providers visually in the settings panel.**
+PilotDeck reads `~/.pilotdeck/pilotdeck.yaml`. You can create it manually, **or just open the Web UI and configure providers visually in onboarding.**
 Supported protocols include OpenAI, Anthropic, native Google Gemini, DeepSeek, Qwen, Kimi, MiniMax and other OpenAI-compatible endpoints.
 
-If you do not already have a config file, prepare the Web UI onboarding flow before starting in production mode:
-
-```bash
-node scripts/bootstrap-pilotdeck-config.mjs
-```
-
-This initializes `~/.pilotdeck/pilotdeck.yaml` for first-run onboarding so the Gateway can boot. Then open the Web UI and finish provider/API key setup in the onboarding/settings panel.
+If the config file is missing, PilotDeck starts the Web UI without the Gateway and opens onboarding. Saving a valid provider, API key, and model writes the config and starts the Gateway automatically.
 
 ```yaml
 schemaVersion: 1

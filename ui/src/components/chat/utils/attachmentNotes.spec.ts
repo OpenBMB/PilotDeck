@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatAttachment } from '../types/types';
 import {
+  createTextContentReference,
+  formatContentReferencePromptBlock,
+} from '../../../types/contentReference';
+import {
   buildAttachmentPathNote,
   mergeUserAttachments,
   parseUserAttachmentNote,
@@ -40,6 +44,120 @@ describe('attachment path notes', () => {
       path: filePath,
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }]);
+  });
+
+  it('hides PDF runtime metadata after refresh and restores the attachment', () => {
+    const filePath = '/workspace/政研室/.tmp/chat-uploads/run/files/file-0-opaque-upload-id';
+    const parsed = parseUserAttachmentNote([
+      '分析一下这个文件内容，总结给我',
+      `[PDF attachment: ${filePath}, 54858 bytes, estimated 1 pages. Use read_file on this registered attachment path to inspect it.]`,
+      '[Registered attachment files in this session:]',
+      `- 年度报告.pdf: ${filePath}`,
+    ].join('\n'));
+
+    expect(parsed).toEqual({
+      content: '分析一下这个文件内容，总结给我',
+      attachments: [{
+        name: '年度报告.pdf',
+        path: filePath,
+        mimeType: 'application/pdf',
+      }],
+    });
+  });
+
+  it('hides standalone Office diagnostics after refresh and restores the attachment', () => {
+    const filePath = '/workspace/政研室/.tmp/chat-uploads/run/files/file-0-report.docx';
+    const parsed = parseUserAttachmentNote([
+      '分析一下这个文件内容，总结给我',
+      '[Attachment diagnostics]',
+      `- Attachment ${filePath} has Office/archive/binary extension .docx; it was registered as a file path but not shown inline.`,
+    ].join('\n'));
+
+    expect(parsed).toEqual({
+      content: '分析一下这个文件内容，总结给我',
+      attachments: [{
+        name: 'file-0-report.docx',
+        path: filePath,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }],
+    });
+  });
+
+  it.each([
+    '请解释 <attachment path="/tmp/demo.txt"> 这段 XML',
+    '请解释 <attachment path="/tmp/demo.txt">example</attachment> 这段 XML',
+    '正文中提到了 [PDF attachment:，但这不是附件元数据',
+    '请解释 [PDF attachment: /tmp/demo.pdf, 42 bytes, estimated 1 page. Use read_file on this registered attachment path to inspect it.] 这段文本',
+    '请解释 [Attachment diagnostics] 这个标题',
+    '请解释 [Registered attachment files in this session:] 这个标题',
+  ])('preserves attachment-like user text: %s', (content) => {
+    expect(parseUserAttachmentNote(content)).toEqual({
+      content,
+      attachments: [],
+    });
+  });
+
+  it('restores a trailing generated inline attachment', () => {
+    const filePath = '/tmp/file-0-notes.txt';
+    const parsed = parseUserAttachmentNote([
+      '总结文件',
+      `<attachment path="${filePath}">\nhello\n</attachment>`,
+      '\n\n[Registered attachment files in this session:]\n',
+      `- notes.txt: ${filePath}`,
+    ].join(''));
+
+    expect(parsed).toEqual({
+      content: '总结文件',
+      attachments: [{
+        name: 'notes.txt',
+        path: filePath,
+        mimeType: 'text/plain',
+      }],
+    });
+  });
+
+  it('restores an upload and content reference from the projected production order', () => {
+    const reference = createTextContentReference({
+      id: 'reference-1',
+      createdAt: '2026-08-16T09:00:00.000Z',
+      selectionMode: 'text',
+      source: { relativePath: 'notes.md', fileName: 'notes.md' },
+      renderer: { id: 'text', backend: 'builtin', locatorQuality: 'semantic' },
+      locator: { surface: 'document', quote: { exact: 'selection' } },
+      selectedText: 'selection',
+    });
+    const filePath = '/tmp/file-0-report';
+    const parsed = parseUserAttachmentNote([
+      '比较两个文件',
+      buildAttachmentPathNote([{ name: 'report.pdf', path: filePath }]),
+      formatContentReferencePromptBlock([reference]),
+      `[PDF attachment: ${filePath}, 42 bytes, estimated 1 page. Use read_file on this registered attachment path to inspect it.]`,
+      '\n\n[Registered attachment files in this session:]\n',
+      `- report.pdf: ${filePath}`,
+    ].join(''));
+
+    expect(parsed.content).toBe('比较两个文件');
+    expect(parsed.attachments.map((attachment) => ({
+      kind: attachment.kind || 'file',
+      name: attachment.name,
+    }))).toEqual([
+      { kind: 'file', name: 'report.pdf' },
+      { kind: 'content-reference', name: 'notes.md' },
+    ]);
+  });
+
+  it('does not restore a registered image as a duplicate file card', () => {
+    const filePath = '/tmp/file-0-opaque-image-id';
+    const parsed = parseUserAttachmentNote([
+      '查看图片',
+      '[Registered attachment files in this session:]',
+      `- photo.png: ${filePath}`,
+    ].join('\n'));
+
+    expect(parsed).toEqual({
+      content: '查看图片',
+      attachments: [],
+    });
   });
 
   it('preserves a colon in the attachment filename', () => {

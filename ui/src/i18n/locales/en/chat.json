@@ -8,6 +8,26 @@
     "emptyTitle": "Ask PilotDeck about this project",
     "emptyDescription": "Reference a workspace file with @ when you want it included."
   },
+  "inputQueue": {
+    "label": "Queued messages",
+    "resume": "Continue",
+    "pausedAfterStop": "You stopped the current response, so the queue is paused",
+    "pausedAfterFailure": "The previous response failed, so the queue is paused",
+    "pausedAfterRestart": "Queued messages were restored and are paused",
+    "pausedAfterUncertainDelivery": "A message may already have been sent before restart. Retry only if needed",
+    "retryUncertain": "Retry",
+    "deliveryUncertain": "Delivery status uncertain",
+    "attachmentOnly": "Attachment message",
+    "steer": "Adjust direction",
+    "steerHint": "Add this message at the next safe boundary of the current response",
+    "delete": "Delete queued message",
+    "more": "More queue actions",
+    "moveToFront": "Move to front",
+    "resumeFailed": "Failed to resume the queue.",
+    "steerFailed": "The message remains queued.",
+    "deleteFailed": "Failed to delete the queued message.",
+    "moveFailed": "Failed to reorder the queue."
+  },
   "copyMessage": {
     "copy": "Copy message",
     "copied": "Message copied",
@@ -253,10 +273,46 @@
     "placeholder": "Type / for commands, @ for files, or ask {{provider}} anything...",
     "placeholderDefault": "Type your message...",
     "disabled": "Input disabled",
+    "uploading": "Uploading…",
+    "uploadComplete": "Upload complete",
+    "retryUpload": "Retry",
+    "cancelUpload": "Cancel upload {{file}}",
+    "removeAttachment": "Remove attachment {{file}}",
+    "attachmentOnlyPrompt": "Please review the attached file(s).",
+    "projectOnlyPrompt": "Please review the selected project content.",
+    "skillOnlyPrompt": "Please use the selected skills to complete the task.",
+    "contextFolder": "Folder",
+    "contextFile": "File",
+    "projectContextTitle": "Referenced project content:",
     "attachFiles": "Attach files",
     "attachImages": "Attach images",
     "mentionFile": "Mention a file",
     "slashCommand": "Run a slash command",
+    "projectFiles": "Reference project content",
+    "projectFilesCount_one": "{{count}} item",
+    "projectFilesCount_other": "{{count}} items",
+    "projectFilesAriaLabel": "Project content available to reference",
+    "projectFilesLoading": "Loading project files…",
+    "projectFilesEmpty": "No matching project content",
+    "projectFilesLoadingMore": "Load more…",
+    "projectPathMissing": "The current project path is unavailable.",
+    "projectFilesNonJson": "The project files service returned an invalid response ({{contentType}}). Restart the backend service.",
+    "projectFilesLoadFailedStatus": "Failed to load project files ({{status}}).",
+    "projectFilesLoadFailed": "Failed to load project files.",
+    "selectedFilesAndSkills": "Selected files, skills, and commands",
+    "removeSelectedFile": "Remove {{name}}",
+    "removeSelectedSkill": "Remove {{name}}",
+    "removeSelectedCommand": "Remove {{name}}",
+    "removeSelectedRunMode": "Remove {{name}}",
+    "remove": "Remove",
+    "addContext": "Add files or skills",
+    "files": "Files",
+    "filesAndFoldersDescription": "Add local content as task context",
+    "folders": "Folders",
+    "foldersDescription": "Keep folder structure and upload all content",
+    "skills": "Skills",
+    "noSkills": "No skills available",
+    "searchSkills": "Search skills",
     "send": "Send",
     "stop": "Stop",
     "hintText": {
@@ -293,13 +349,27 @@
     },
     "models": {
       "select": "Select model",
+      "auto": "Auto",
       "change": "Select model",
       "search": "Search models",
       "empty": "No matching models",
       "advanced": "Advanced settings",
       "reasoning": "Reasoning",
       "speed": "Speed",
-      "temperature": "Temperature"
+      "temperature": "Temperature",
+      "reasoningLevels": {
+        "off": "Off",
+        "light": "Light",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra high",
+        "max": "Maximum"
+      },
+      "speedLevels": {
+        "standard": "Standard",
+        "fast": "Fast"
+      }
     }
   },
   "documentReferences": {
@@ -402,6 +472,9 @@
       "loadingAll": "Loading all messages...",
       "allLoaded": "All messages loaded",
       "perfWarning": "All messages loaded — scrolling may be slower. Click \"Scroll to bottom\" to restore performance."
+    },
+    "scroll": {
+      "returnToLatest": "Back to latest"
     }
   },
   "loading": "Loading...",
@@ -502,7 +575,7 @@
         "auth": "Update the API key or access permissions for {{provider}} in Settings → Model Provider, or run pilotdeck setup.",
         "modelNotFound": "Choose a valid model for {{provider}} in Settings → Model Provider, or add it under model.providers.<id>.models in pilotdeck.yaml.",
         "timeout": "Increase timeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
-        "streamIdleTimeout": "Increase streamIdleTimeoutMs for {{provider}} in Settings → Advanced, or check local network/proxy and provider status.",
+        "streamIdleTimeout": "Increase streamIdleTimeoutMs for {{provider}} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.",
         "rateLimit": "Wait for the provider rate limit to reset, reduce concurrency, or switch to another provider/model in Settings.",
         "billing": "Top up billing/quota on the provider API side, or switch to another provider/model in Settings.",
         "contextOverflow": "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.",
@@ -548,12 +621,12 @@
     "select": "Select workspace",
     "search": "Search projects",
     "newProject": "New project",
-    "workWithoutProject": "Work without a project",
+    "generalConversation": "General conversation",
     "empty": "No matching projects",
     "selectRequired": "Select a workspace to send"
   },
   "welcome": {
-    "greetingWithProject": "What's on the plan today?",
+    "greetingWithProject": "What do you want us to build in {{project}}?",
     "noProject": "What's on the plan today?"
   }
 }

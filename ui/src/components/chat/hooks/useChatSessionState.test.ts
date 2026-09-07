@@ -6,6 +6,7 @@ import {
   getStreamContentKey,
   isScrollNearBottom,
   selectVisibleMessages,
+  shouldFollowConversationScroll,
   shouldRenderPendingBubble,
 } from './useChatSessionState';
 
@@ -14,6 +15,12 @@ describe('useChatSessionState scroll helpers', () => {
     expect(isScrollNearBottom(805, 1000, 100)).toBe(true);
     expect(isScrollNearBottom(803, 1000, 100)).toBe(false);
     expect(BOTTOM_FOLLOW_THRESHOLD_PX).toBe(96);
+  });
+
+  it('stops following content growth after the user scrolls up', () => {
+    expect(shouldFollowConversationScroll(true, false)).toBe(true);
+    expect(shouldFollowConversationScroll(true, true)).toBe(false);
+    expect(shouldFollowConversationScroll(false, false)).toBe(false);
   });
 
   it('changes the stream content key when the last visible message grows', () => {

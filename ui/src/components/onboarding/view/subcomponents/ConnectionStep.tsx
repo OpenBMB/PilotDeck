@@ -173,19 +173,30 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           {llm.isCustomMode ? (
             <>
               <div className="field-row">
-                <label className="field-group">
-                  <span>{t('connection.provider')}</span>
-                  <span className="select-control">
-                    <GearIcon width={18} height={18} />
-                    {providerName}
-                  </span>
-                </label>
+                <div className="field-group">
+                  <label htmlFor="custom-provider-id">{t('connection.providerId')}</label>
+                  <input
+                    id="custom-provider-id"
+                    type="text"
+                    value={llm.customProviderId}
+                    disabled={llm.saving}
+                    onChange={(event) => handleFieldChange(() => llm.setCustomProviderId(event.target.value))}
+                    placeholder="e.g. my-llm"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <small className="field-help">{t('connection.providerIdHint')}</small>
+                  {llm.customProviderIdError ? (
+                    <small className="field-error" role="alert">{llm.customProviderIdError}</small>
+                  ) : null}
+                </div>
                 <label className="field-group compact-field" htmlFor="custom-protocol">
                   <span>{t('connection.protocol')}</span>
                   <select
                     id="custom-protocol"
                     className="select-control protocol-select"
                     value={llm.customProtocol}
+                    disabled={llm.saving}
                     onChange={(event) => handleFieldChange(() => llm.setCustomProtocol(event.target.value as CatalogProviderProtocol))}
                   >
                     <option value="openai">{t('connection.protocolOpenai')}</option>
@@ -201,6 +212,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                   id="custom-endpoint"
                   type="text"
                   value={llm.customUrl}
+                  disabled={llm.saving}
                   onChange={(event) => handleFieldChange(() => llm.setCustomUrl(event.target.value))}
                   placeholder="https://your-endpoint.example/v1"
                   autoComplete="off"
@@ -225,20 +237,25 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           )}
 
           <label className="field-group" htmlFor="llm-api-key">
-            <span>{llm.selectedProviderRequiresApiKey ? t('connection.apiKey') : t('connection.apiKeyOptional')}</span>
+            <span>{llm.apiKeyInputRequired ? t('connection.apiKey') : t('connection.apiKeyOptional')}</span>
             <span className="input-with-action">
               <KeyIcon />
               <input
                 id="llm-api-key"
                 type={showApiKey ? 'text' : 'password'}
                 value={llm.apiKey}
+                disabled={llm.saving}
                 onChange={(event) => handleFieldChange(() => llm.setApiKey(event.target.value))}
+                placeholder={llm.hasEnvironmentApiKeyFallback
+                  ? `Uses ${llm.selectedProvider?.apiKeyEnvVar} when empty`
+                  : undefined}
                 autoComplete="off"
                 spellCheck={false}
               />
               <button
                 type="button"
                 aria-label={showApiKey ? t('connection.hideKey') : t('connection.showKey')}
+                disabled={llm.saving}
                 onClick={() => setShowApiKey((current) => !current)}
               >
                 {showApiKey ? <EyeSlashIcon /> : <EyeIcon />}
@@ -350,7 +367,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           onClick={() => {
             void llm.handleTest();
           }}
-          disabled={llm.testStatus === 'testing'}
+          disabled={llm.testStatus === 'testing' || llm.saving}
         >
           {llm.testStatus === 'testing' ? (
             <>

@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const gateway = vi.hoisted(() => ({
     describeProject: vi.fn(),
@@ -8,6 +11,8 @@ const gateway = vi.hoisted(() => ({
 
 vi.mock('./pilotdeck-bridge.js', () => ({
     getPilotDeckGateway: vi.fn(async () => gateway),
+    isGatewayUnavailableError: (error) => /Gateway WebSocket/i.test(error?.message || ''),
+    withPilotDeckGatewayReadRetry: vi.fn(async (operation) => operation(gateway)),
 }));
 
 vi.mock('./database/db.js', () => ({
@@ -17,6 +22,8 @@ vi.mock('./database/db.js', () => ({
 import { getProjects } from './projects.js';
 
 const originalPilotHome = process.env.PILOT_HOME;
+const originalWorkspacesRoot = process.env.WORKSPACES_ROOT;
+let testWorkspacesRoot;
 
 function deferred() {
     let resolve;
@@ -27,16 +34,24 @@ function deferred() {
 }
 
 describe('getProjects', () => {
-    beforeAll(() => {
+    beforeAll(async () => {
         process.env.PILOT_HOME = '/tmp/pilotdeck-project-sort-test';
+        testWorkspacesRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-projects-test-'));
+        process.env.WORKSPACES_ROOT = testWorkspacesRoot;
     });
 
-    afterAll(() => {
+    afterAll(async () => {
         if (originalPilotHome === undefined) {
             delete process.env.PILOT_HOME;
         } else {
             process.env.PILOT_HOME = originalPilotHome;
         }
+        if (originalWorkspacesRoot === undefined) {
+            delete process.env.WORKSPACES_ROOT;
+        } else {
+            process.env.WORKSPACES_ROOT = originalWorkspacesRoot;
+        }
+        await fs.rm(testWorkspacesRoot, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -94,6 +109,16 @@ describe('getProjects', () => {
             'workspace-zeta',
             'general',
         ]);
+        expect(projects.find((project) => project.name === 'general')).toMatchObject({
+            kind: 'general',
+            fullPath: process.env.PILOT_HOME,
+            workspaceCwd: path.join(testWorkspacesRoot, 'general'),
+            capabilities: {
+                files: false,
+                explore: false,
+                projectFileMentions: false,
+            },
+        });
         expect(projects.find((project) => project.name === 'workspace-alpha')?.lastActivity).toBe(400);
         expect(projects.find((project) => project.name === 'workspace-dormant')?.lastActivity).toBe(250);
     });
@@ -114,6 +139,12 @@ describe('getProjects', () => {
         const projects = await getProjects();
 
         expect(projects.find((project) => project.name === 'workspace-active')?.lastActivity).toBe(400);
+    });
+
+    it('does not turn a Gateway transport failure into an empty project list', async () => {
+        gateway.listProjects.mockRejectedValue(new Error('Gateway WebSocket closed.'));
+
+        await expect(getProjects()).rejects.toThrow('Gateway WebSocket closed.');
     });
 
     it('starts General session preview and summary requests concurrently', async () => {

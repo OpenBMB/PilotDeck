@@ -98,6 +98,7 @@ export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepPr
           type="button"
           aria-pressed={llm.isCustomMode}
           aria-label={t('provider.customTitle')}
+          disabled={llm.saving}
           onClick={() => llm.handleProviderSelect(CUSTOM_PROVIDER)}
         >
           <span className="provider-icon" aria-hidden="true">
@@ -121,6 +122,7 @@ export default function ProviderStep({ llm, onBack, onContinue }: ProviderStepPr
               type="button"
               aria-pressed={selected}
               aria-label={provider.displayName}
+              disabled={llm.saving}
               onClick={() => llm.handleProviderSelect(toCatalogProvider(provider))}
             >
               <span className="provider-icon" aria-hidden="true">

@@ -19,6 +19,10 @@ import {
 import { lookupCatalogModel, lookupCatalogProvider } from "../catalog/index.js";
 import { resolveApiKey, type CredentialEnv } from "./resolveCredentials.js";
 import {
+  resolveCatalogProviderApiKeyEnvVar,
+  resolveCatalogProviderDefaultUrl,
+} from "./providerCredentialScope.js";
+import {
   isModelProtocol,
   isRecord,
   type RawCapabilities,
@@ -75,7 +79,7 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
   const trimmedUrl = typeof provider.url === "string" ? provider.url.trim() : "";
   const rawUrl = trimmedUrl.length > 0
     ? trimmedUrl
-    : resolveDefaultProviderUrl(providerId, protocol, catalogProvider?.defaultUrl);
+    : resolveCatalogProviderDefaultUrl(providerId, protocol);
   if (!rawUrl) {
     throw new ModelConfigError("invalid_config_value", `Provider ${providerId} requires a url.`, { providerId });
   }
@@ -96,7 +100,12 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     id: providerId,
     protocol,
     url: rawUrl,
-    apiKey: resolveProviderApiKey(providerId, provider.apiKey, env, catalogProvider?.apiKeyEnvVar),
+    apiKey: resolveProviderApiKey(
+      providerId,
+      provider.apiKey,
+      env,
+      resolveCatalogProviderApiKeyEnvVar(providerId, protocol, rawUrl),
+    ),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
     extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
@@ -144,17 +153,6 @@ function resolveProviderApiKey(
     ? value
     : catalogEnvVar ? `\${${catalogEnvVar}}` : value;
   return resolveApiKey(effectiveValue, env);
-}
-
-function resolveDefaultProviderUrl(
-  providerId: string,
-  protocol: ModelProtocol,
-  catalogDefaultUrl: string | undefined,
-): string | undefined {
-  if (providerId === "google" && protocol === "openai") {
-    return "https://generativelanguage.googleapis.com/v1beta/openai";
-  }
-  return catalogDefaultUrl;
 }
 
 function parseRetryConfig(raw: unknown): ProviderRetryConfig | undefined {

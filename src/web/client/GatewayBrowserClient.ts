@@ -9,10 +9,14 @@
 
 import {
   PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB,
+  type WebCancelSteerInput,
+  type WebCancelSteerResult,
   type WebGatewayEvent,
   type WebGatewayFrame,
   type WebGatewayMethod,
   type WebHelloOk,
+  type WebSteerTurnInput,
+  type WebSteerTurnResult,
   type WebSubmitTurnInput,
 } from "./protocol.js";
 
@@ -135,6 +139,14 @@ export class GatewayBrowserClient {
 
   submitTurn(input: WebSubmitTurnInput): GatewayBrowserStream {
     return this.stream("submit_turn", input);
+  }
+
+  steerTurn(input: WebSteerTurnInput): Promise<WebSteerTurnResult> {
+    return this.request<WebSteerTurnResult>("steer_turn", input);
+  }
+
+  cancelSteer(input: WebCancelSteerInput): Promise<WebCancelSteerResult> {
+    return this.request<WebCancelSteerResult>("cancel_steer", input);
   }
 
   /** Convenience helpers. */

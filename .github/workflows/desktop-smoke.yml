@@ -1,0 +1,45 @@
+name: Desktop Smoke
+
+on:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - src/**
+      - ui/**
+      - skills/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/desktop-*.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile desktop shell
+        run: pnpm --filter pilotdeck-desktop run compile
+
+      - name: Test desktop packaging helpers
+        run: pnpm --filter pilotdeck-desktop run test

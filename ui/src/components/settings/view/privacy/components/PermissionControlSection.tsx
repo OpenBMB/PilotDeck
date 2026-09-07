@@ -6,7 +6,7 @@ import { SettingsCard, SettingsRow, SettingsSection, SettingsToggle } from "../.
 import type { StatusBanner } from "../types";
 
 type PermissionControlSectionProps = {
-  fileInputRef: RefObject<HTMLInputElement | null>;
+  fileInputRef: RefObject<HTMLInputElement>;
   onFileChosen: (event: ChangeEvent<HTMLInputElement>) => void;
   onExport: () => void;
   onImportClick: () => void;

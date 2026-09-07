@@ -56,18 +56,31 @@ export type ConfigProviderRename = {
 
 export type ConfigSaveOptions = {
   providerRenames?: ConfigProviderRename[];
+  modelTestBindings?: Array<{ testId: string }>;
 };
 
 export type ConfigSaveResult =
   | { ok: true }
   | { ok: false; error: string };
 
-type ReloadSource = 'ui-save' | 'ui-reload' | 'watcher' | 'refresh';
+type ReloadSource = 'ui-save' | 'ui-reload' | 'gateway-save' | 'watcher' | 'refresh';
 
 type ReloadInfo = {
   source: ReloadSource;
   at: number;
 };
+
+function configSaveError(data: unknown): string {
+  const payload = data && typeof data === 'object'
+    ? data as { error?: unknown; validation?: { errors?: unknown } }
+    : {};
+  const validationErrors = Array.isArray(payload.validation?.errors)
+    ? payload.validation.errors.filter((item: unknown) => typeof item === 'string' && item.trim())
+    : [];
+  if (validationErrors.length > 0) return validationErrors.join(', ');
+  if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+  return 'Failed to save config';
+}
 
 function usePilotDeckConfigState() {
   const [path, setPath] = useState('');
@@ -217,10 +230,11 @@ function usePilotDeckConfigState() {
         timestamp?: string;
       };
       const source: ReloadSource = payload.source ?? 'watcher';
+      const changedOutsideEditor = source === 'watcher' || source === 'gateway-save';
 
       const keepLocalDraft = (
         isDirtyRef.current
-        && source === 'watcher'
+        && changedOutsideEditor
       ) || (
         source === 'ui-save'
         && payload.raw !== rawRef.current
@@ -231,9 +245,11 @@ function usePilotDeckConfigState() {
       );
 
       if (keepLocalDraft) {
-        if (source === 'watcher') {
+        if (changedOutsideEditor) {
           setExternalChangeNotice(
-            'Config was changed on disk by an external edit. Your unsaved draft is kept — click Refresh to discard and load the new version.',
+            source === 'gateway-save'
+              ? 'Config was changed by channel settings. Your unsaved draft is kept — click Refresh before applying more changes.'
+              : 'Config was changed on disk by an external edit. Your unsaved draft is kept — click Refresh to discard and load the new version.',
           );
         }
         setValidation(payload.validation);
@@ -259,8 +275,12 @@ function usePilotDeckConfigState() {
         },
         source,
       );
-      if (source === 'watcher') {
-        setExternalChangeNotice('Config was updated on disk — the new version is now loaded.');
+      if (changedOutsideEditor) {
+        setExternalChangeNotice(
+          source === 'gateway-save'
+            ? null
+            : 'Config was updated on disk — the new version is now loaded.',
+        );
       } else {
         setExternalChangeNotice(null);
       }
@@ -268,7 +288,10 @@ function usePilotDeckConfigState() {
     return unsub;
   }, [subscribe]);
 
-  const save = useCallback((options: ConfigSaveOptions = {}): Promise<ConfigSaveResult> => {
+  const enqueueSave = useCallback((
+    options: ConfigSaveOptions = {},
+    rollbackDraft?: string,
+  ): Promise<ConfigSaveResult> => {
     const draft = rawRef.current;
     const successMessage = takeSettingsSaveSuccess();
     const sequence = ++saveSequenceRef.current;
@@ -278,6 +301,7 @@ function usePilotDeckConfigState() {
     setMessage(null);
 
     const run = async (): Promise<ConfigSaveResult> => {
+      let confirmedUnwritten = false;
       try {
         const baseRevision = revisionRef.current;
         const response = await authenticatedFetch('/api/config', {
@@ -288,15 +312,17 @@ function usePilotDeckConfigState() {
             ...(options.providerRenames?.length
               ? { providerRenames: options.providerRenames }
               : {}),
+            ...(options.modelTestBindings?.length
+              ? { modelTestBindings: options.modelTestBindings }
+              : {}),
           }),
         });
+        confirmedUnwritten = !response.ok
+          && response.status >= 400
+          && response.status < 500;
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(
-            data.error
-              || data.validation?.errors?.join(', ')
-              || 'Failed to save config',
-          );
+          throw new Error(configSaveError(data));
         }
 
         // Every successful queued write advances the disk snapshot, even when
@@ -340,6 +366,18 @@ function usePilotDeckConfigState() {
             );
           }
         }
+        // A 4xx response is an authoritative pre-write rejection from the
+        // config API. Network failures and 5xx responses are ambiguous because
+        // the server may already have committed the file before the response
+        // was lost or a reload step failed; keep that draft until it can be
+        // reconciled instead of replacing it with a stale snapshot.
+        if (
+          confirmedUnwritten
+          && rollbackDraft !== undefined
+          && rawRef.current === rollbackDraft
+        ) {
+          updateRaw(savedRawRef.current);
+        }
         return { ok: false, error: message };
       } finally {
         pendingSaveCountRef.current = Math.max(
@@ -358,7 +396,23 @@ function usePilotDeckConfigState() {
       () => undefined,
     );
     return result;
-  }, [applyResponse]);
+  }, [applyResponse, updateRaw]);
+
+  const save = useCallback((
+    options: ConfigSaveOptions = {},
+  ): Promise<ConfigSaveResult> => enqueueSave(options), [enqueueSave]);
+
+  // Structured settings use optimistic updates for responsiveness, but a
+  // rejected write must never leave that invalid draft in the shared config
+  // context. Restore the latest confirmed disk snapshot only when this is
+  // still the current draft, so a newer user edit is never overwritten.
+  const commitRaw = useCallback((
+    nextRaw: string,
+    options: ConfigSaveOptions = {},
+  ): Promise<ConfigSaveResult> => {
+    updateRaw(nextRaw);
+    return enqueueSave(options, nextRaw);
+  }, [enqueueSave, updateRaw]);
 
   const reloadConfig = useCallback(async () => {
     setSaving(true);
@@ -416,6 +470,7 @@ function usePilotDeckConfigState() {
     message,
     refresh,
     save,
+    commitRaw,
     reloadConfig,
     openFile,
   };

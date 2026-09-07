@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { pickNativeFolder } from '../../../project-creation-wizard/data/workspaceApi';
+import FolderBrowserModal from '../../../project-creation-wizard/components/FolderBrowserModal';
+import GithubAuthenticationCard from '../../../project-creation-wizard/components/GithubAuthenticationCard';
+import { useGithubTokens } from '../../../project-creation-wizard/hooks/useGithubTokens';
+import { shouldShowGithubAuthentication } from '../../../project-creation-wizard/utils/pathUtils';
+import type { TokenMode } from '../../../project-creation-wizard/types';
 import type { WorkspaceDraft } from '../types';
 import { ArrowLeftIcon, FolderBrowseIcon, StepCheckIcon } from './icons';
-
-// Restore the in-app folder picker:
-// import FolderBrowserModal from '../../../project-creation-wizard/components/FolderBrowserModal';
 
 type WorkspaceStepBaseProps = {
   draft: WorkspaceDraft;
@@ -14,6 +15,9 @@ type WorkspaceStepBaseProps = {
   isCreating: boolean;
   onWorkspacePathChange: (workspacePath: string) => void;
   onGithubUrlChange: (githubUrl: string) => void;
+  onTokenModeChange: (tokenMode: TokenMode) => void;
+  onSelectedGithubTokenChange: (tokenId: string) => void;
+  onNewGithubTokenChange: (token: string) => void;
   onFinish: () => void | Promise<void>;
 };
 
@@ -40,6 +44,9 @@ export default function WorkspaceStep(props: WorkspaceStepProps) {
     isCreating,
     onWorkspacePathChange,
     onGithubUrlChange,
+    onTokenModeChange,
+    onSelectedGithubTokenChange,
+    onNewGithubTokenChange,
     onFinish,
   } = props;
   const isDialog = props.variant === 'dialog';
@@ -48,8 +55,20 @@ export default function WorkspaceStep(props: WorkspaceStepProps) {
   const [pathInvalid, setPathInvalid] = useState(false);
   const [isPickingFolder, setIsPickingFolder] = useState(false);
   const [browseError, setBrowseError] = useState('');
-  // Restore the in-app folder picker:
-  // const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const showGithubAuthentication = shouldShowGithubAuthentication(
+    draft.workspaceType,
+    draft.githubUrl,
+  );
+  const handleAutoSelectToken = useCallback((tokenId: string) => {
+    onSelectedGithubTokenChange(tokenId);
+    onTokenModeChange('stored');
+  }, [onSelectedGithubTokenChange, onTokenModeChange]);
+  const { tokens, loading: loadingTokens, loadError: tokenLoadError } = useGithubTokens({
+    shouldLoad: showGithubAuthentication,
+    selectedTokenId: draft.selectedGithubToken,
+    onAutoSelectToken: handleAutoSelectToken,
+  });
 
   const handlePathChange = (value: string) => {
     setPathInvalid(false);
@@ -61,9 +80,11 @@ export default function WorkspaceStep(props: WorkspaceStepProps) {
     setIsPickingFolder(true);
     setBrowseError('');
     try {
-      const selectedPath = await pickNativeFolder();
-      if (selectedPath) {
-        handlePathChange(selectedPath);
+      if (window.pilotdeckDesktop?.pickFolder) {
+        const selectedPath = await window.pilotdeckDesktop.pickFolder();
+        if (selectedPath) handlePathChange(selectedPath);
+      } else {
+        setShowFolderBrowser(true);
       }
     } catch (caughtError) {
       setBrowseError(
@@ -135,6 +156,19 @@ export default function WorkspaceStep(props: WorkspaceStepProps) {
             <small>{t('workspace.githubHint')}</small>
           </span>
         </label>
+        {showGithubAuthentication ? (
+          <GithubAuthenticationCard
+            tokenMode={draft.tokenMode}
+            selectedGithubToken={draft.selectedGithubToken}
+            newGithubToken={draft.newGithubToken}
+            availableTokens={tokens}
+            loadingTokens={loadingTokens}
+            tokenLoadError={tokenLoadError}
+            onTokenModeChange={onTokenModeChange}
+            onSelectedGithubTokenChange={onSelectedGithubTokenChange}
+            onNewGithubTokenChange={onNewGithubTokenChange}
+          />
+        ) : null}
       </form>
 
       {(error || progress || browseError) && (
@@ -189,17 +223,15 @@ export default function WorkspaceStep(props: WorkspaceStepProps) {
         </div>
       </div>
 
-      {/* Restore the in-app folder picker:
       <FolderBrowserModal
         isOpen={showFolderBrowser}
-        autoAdvanceOnSelect
+        autoAdvanceOnSelect={false}
         onClose={() => setShowFolderBrowser(false)}
         onFolderSelected={(selectedPath) => {
           handlePathChange(selectedPath);
           setShowFolderBrowser(false);
         }}
       />
-      */}
     </div>
   );
 }

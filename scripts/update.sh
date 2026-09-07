@@ -70,9 +70,11 @@ git pull --ff-only origin "$CURRENT_BRANCH" 2>&1 || {
 
 log "Installing dependencies..."
 if command -v pnpm >/dev/null 2>&1; then
-  HUSKY=0 pnpm install --frozen-lockfile 2>&1 || HUSKY=0 pnpm install 2>&1
+  HUSKY=0 pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui 2>&1 \
+    || HUSKY=0 pnpm install --filter pilotdeck --filter pilotdeck-ui 2>&1
 else
-  HUSKY=0 npm install --no-audit --no-fund 2>&1
+  HUSKY=0 npm install --no-audit --no-fund --workspaces=false 2>&1
+  HUSKY=0 npm --prefix ui install --no-audit --no-fund --workspaces=false 2>&1
 fi
 
 log "Building gateway (TypeScript)..."

@@ -682,6 +682,13 @@ export function useChatRealtimeHandlers({
     }
 
     if (msg.kind === 'text' && msg.role === 'user') {
+      // A mid-turn steer is a real user-message boundary inside the same
+      // runId. Close the preceding assistant blocks so the next model call
+      // starts fresh instead of appending into the old streaming rows.
+      if (msg.isSteer) {
+        sessionStore.finalizeStreamingThinking(sid, msgRunId);
+        sessionStore.finalizeStreaming(sid, msgRunId);
+      }
       if (thinkingBySessionRef.current.has(sid)) {
         thinkingBySessionRef.current.delete(sid);
       }
@@ -755,7 +762,7 @@ export function useChatRealtimeHandlers({
       const streamId = `__streaming_${streamKey}`;
       const existing = slot?.realtimeMessages.find((m: any) => m.id === streamId);
       const currentText = existing?.content || '';
-      sessionStore.updateStreaming(sid, currentText + text, provider, msgRunId);
+      sessionStore.updateStreaming(sid, currentText + text, provider, msgRunId, msg.model);
       return;
     }
 

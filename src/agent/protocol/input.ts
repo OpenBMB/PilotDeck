@@ -35,4 +35,6 @@ export type AgentSubmitOptions = {
    */
   syntheticMessages?: import("../../model/index.js").CanonicalMessage[];
   modelOverride?: AgentModelOverride;
+  /** Submitted model snapshot, recorded for replay and legacy session clients. */
+  modelSelection?: NonNullable<import("../../session/transcript/TranscriptEntry.js").SessionMetadataValue["modelSelection"]>;
 };

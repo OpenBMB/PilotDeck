@@ -76,7 +76,7 @@ export function Markdown({
     [onFileOpen],
   );
   const remarkPlugins = useMemo(() => {
-    if (isStreaming) return [remarkGfm];
+    if (isStreaming) return [remarkGfm, remarkMath];
     if (artifactFiles === undefined) return [remarkGfm, remarkMath];
     return [remarkGfm, remarkMath, createRemarkArtifactFileTextPlugin(artifactFiles)];
   }, [artifactFiles, isStreaming]);
@@ -92,7 +92,7 @@ export function Markdown({
     <div className={`${className || ''} ${showFadeIn ? 'streaming-fade-in' : ''}`.trim()}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={isStreaming ? undefined : fullRehypePlugins}
+        rehypePlugins={fullRehypePlugins}
         components={components}
       >
         {content}

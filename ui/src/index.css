@@ -12,6 +12,20 @@
   }
 }
 
+/* Permission warning colors live outside Tailwind's layers so the dark theme
+   reliably overrides the light warning utilities on the same button. */
+.dark .pd-composer-permission-bypass {
+  border-color: rgb(146 64 14 / 0.72) !important;
+  background-color: rgb(69 26 3 / 0.4) !important;
+  color: #fcd34d !important;
+}
+
+.dark .pd-composer-permission-bypass:hover,
+.dark .pd-composer-permission-bypass[aria-expanded="true"] {
+  border-color: rgb(180 83 9 / 0.82) !important;
+  background-color: rgb(69 26 3 / 0.56) !important;
+}
+
 /* Composable global hover utilities. Kept outside cascade layers so they
    consistently override component-specific hover colors. */
 .hover-brand-text:hover:not(:disabled) {
@@ -1446,29 +1460,27 @@
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
-    padding: 0 19px;
+    padding: 0 12px;
     border-bottom: 1px solid rgba(100, 86, 189, 0.12);
   }
 
   .brand-lockup {
     display: block;
-    width: 180px;
-    height: auto;
+    height: 36px;
+    width: 165px;
     max-width: 100%;
+  }
+
+  .brand-lockup-image {
+    display: block;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     object-position: left center;
   }
 
   .brand-lockup-dark {
     display: none;
-  }
-
-  .dark .brand-lockup-light {
-    display: none;
-  }
-
-  .dark .brand-lockup-dark {
-    display: block;
   }
 
   .brand-mark {
@@ -1568,7 +1580,7 @@
 
   .tree-row.project-row {
     min-height: 32px;
-    grid-template-columns: 14px 17px minmax(0, 1fr);
+    grid-template-columns: 14px 17px minmax(0, 1fr) 24px;
     gap: 5px;
     padding: 3px 2px;
     border-radius: 6px;
@@ -1592,9 +1604,26 @@
 
   .project-chat-icon {
     display: grid;
-    width: 16px;
+    width: 24px;
     place-items: center;
     color: #7774a4;
+  }
+
+  .project-chat-icon button {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+  }
+
+  .project-chat-icon button:hover,
+  .project-chat-icon button:focus-visible {
+    background: #ffffffb8;
+    color: #4543bc;
   }
 
   .tree-heading button,
@@ -2069,6 +2098,34 @@
     background-color: #b3b0c6;
   }
 
+  .chat-panel-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #c1c1c1 transparent;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #c1c1c1;
+    border-radius: 999px;
+  }
+
+  .chat-panel-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #a9a9a9;
+  }
+
   .file-tree-scroll {
     min-height: 0;
     flex: 1;
@@ -2169,6 +2226,14 @@
     border-bottom-color: #262626;
   }
 
+  .dark .brand-lockup-light {
+    display: none;
+  }
+
+  .dark .brand-lockup-dark {
+    display: block;
+  }
+
   .dark .primary-action {
     color: #e5e5e5;
   }
@@ -2204,6 +2269,12 @@
   .dark .tree-row.chat-row:hover,
   .dark .compact-project-entry:hover {
     background: rgba(255, 255, 255, 0.06);
+  }
+
+  .dark .project-chat-icon button:hover,
+  .dark .project-chat-icon button:focus-visible {
+    background: rgba(255, 255, 255, 0.06);
+    color: #c4b5fd;
   }
 
   .dark .project-conversation {

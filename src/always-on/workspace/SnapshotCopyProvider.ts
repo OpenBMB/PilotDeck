@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { platform } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { AlwaysOnError } from "../protocol/errors.js";
 import type { WorkspaceHandle } from "../protocol/types.js";
@@ -116,7 +116,8 @@ async function tryReflinkCopy(source: string, target: string): Promise<boolean> 
 
 function isIgnored(filePath: string, root: string, ignores: Set<string>): boolean {
   if (filePath === root) return false;
-  const rel = filePath.startsWith(root) ? filePath.slice(root.length).replace(/^[/\\]+/, "") : filePath;
+  const rel = relative(root, filePath);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
   if (rel.length === 0) return false;
   const head = rel.split(/[/\\]/)[0];
   if (ignores.has(head)) return true;
@@ -160,7 +161,10 @@ type CommandResult = { exitCode: number; stdout: string; stderr: string };
 
 async function runCommand(bin: string, args: string[]): Promise<CommandResult> {
   return new Promise<CommandResult>((resolvePromise) => {
-    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(bin, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: process.platform === "win32",
+    });
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (chunk) => {

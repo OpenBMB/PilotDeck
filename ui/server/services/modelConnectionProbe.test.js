@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { probeModelConnection } from './modelConnectionProbe.js';
+import { isValidImageColorAnswer, probeModelConnection } from './modelConnectionProbe.js';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('model connection probe request formats', () => {
+  it.each([
+    ['red', true],
+    ['**red**', true],
+    ['The color is red.', true],
+    ['No, red.', false],
+    ['I cannot tell whether it is red.', false],
+    ['Not sure, maybe red.', false],
+    ['red or blue', false],
+    ['blue', false],
+    ['infrared', false],
+  ])('strictly validates the image-probe answer %j', (answer, expected) => {
+    expect(isValidImageColorAnswer(answer, 'red')).toBe(expected);
+  });
+
   for (const [protocol, response, assertBody] of [
     ['openai', { choices: [{ message: { content: 'red' } }] }, (body) => expect(body.messages[0].content[1].type).toBe('image_url')],
     ['openai-responses', { object: 'response', output_text: 'red' }, (body) => expect(body.input[0].content[1].type).toBe('input_image')],
@@ -63,6 +77,33 @@ describe('model connection probe request formats', () => {
     expect(result).toMatchObject({ ok: true, endpointUrl: 'https://example.test/chat/completions' });
     expect(calls).toEqual(['https://example.test/chat/completions']);
   });
+
+  it.each(['colored', 'infrared'])(
+    'does not accept %s as the red image-probe answer',
+    async (content) => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({ choices: [{ message: { content } }] }),
+      })));
+
+      const result = await probeModelConnection({
+        protocol: 'openai',
+        baseUrl: 'https://example.test',
+        endpointUrl: 'https://example.test/chat/completions',
+        apiKey: 'key',
+        model: 'test-model',
+        image: true,
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        imageUnsupported: false,
+        code: 'IMAGE_CAPABILITY_UNKNOWN',
+      });
+    },
+  );
 
   it('preserves an explicit image-unsupported response before endpoint fallback', async () => {
     const fetch = vi.fn(async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => JSON.stringify({ error: { message: 'This model does not support image input' } }) }));

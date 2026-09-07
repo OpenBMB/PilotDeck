@@ -16,6 +16,7 @@ design-qa/** !filter !diff !merge -text
 
 # Desktop app icon sources are tiny; avoid LFS (OpenBMB budget) and release-time smudge failures
 apps/desktop/assets/** !filter !diff !merge text=auto
+apps/desktop/resources/icons/** !filter !diff !merge text=auto
 
 # Onboarding ships these small runtime assets inside the Docker image. Keep
 # them as normal blobs so a checkout does not require the repository LFS quota.

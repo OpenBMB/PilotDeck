@@ -9,6 +9,10 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
   ProjectFilesListInput,
   ProjectFilesListResult,
   CommandsListInput,
@@ -71,7 +75,11 @@ import type {
   CronUpdateInput,
   CronUpdateResult,
 } from "../../cron/protocol/types.js";
-import { GatewayWsClient, type GatewayWsNotificationHandler } from "./GatewayWsClient.js";
+import {
+  GatewayWsClient,
+  type GatewayWsDisconnectHandler,
+  type GatewayWsNotificationHandler,
+} from "./GatewayWsClient.js";
 import { parseReloadConfigResult } from "../protocol/reloadConfigResult.js";
 
 export class RemoteGateway implements Gateway {
@@ -81,8 +89,20 @@ export class RemoteGateway implements Gateway {
     this.client.onNotification(handler);
   }
 
+  onDisconnect(handler: GatewayWsDisconnectHandler): void {
+    this.client.onDisconnect(handler);
+  }
+
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
     return this.client.stream("submit_turn", input);
+  }
+
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    return (await this.client.request("steer_turn", input)) as GatewaySteerTurnResult;
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    return (await this.client.request("cancel_steer", input)) as GatewayCancelSteerResult;
   }
 
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {

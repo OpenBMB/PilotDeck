@@ -9,10 +9,13 @@ import {
   getSessionRequestParams,
   isReadOnlySession,
 } from '../../types/app';
+import { chooseDefaultProject, isGeneralProject } from '../app-shell/appShellSelection';
+import { projectDisplayName, useCustomNamesVersion } from '../../lib/customNames';
 import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
+import { useSessionInputQueue } from '../chat/hooks/useSessionInputQueue';
 import {
   getEffectiveThinkingMode,
   getThinkingModeAvailability,
@@ -32,9 +35,10 @@ import {
   type ContentReference,
 } from '../../types/contentReference';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
-import { isGeneralProject } from '../app-shell/appShellSelection';
+import QueuedMessagesTray from './QueuedMessagesTray';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
@@ -91,10 +95,13 @@ function ChatInterfaceV2({
   workspaceBinding = null,
   onCreateProject,
 }: ChatInterfaceProps) {
+  useCustomNamesVersion();
+  const defaultProject = React.useMemo(() => chooseDefaultProject(projects), [projects]);
   const selectedProject = selectedSession
     ? selectedProjectFromShell
-    : (workspaceBinding ?? selectedProjectFromShell);
+    : (workspaceBinding ?? selectedProjectFromShell ?? defaultProject);
   const { t } = useTranslation('chat');
+  const { subscribe: contextSubscribe } = useWebSocket();
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
     useTasksSettings();
   const sessionIsReadOnly = isReadOnlySession(selectedSession);
@@ -133,6 +140,7 @@ function ChatInterfaceV2({
     modelSelection,
     setModelSelection,
     isModelCatalogLoading,
+    isModelSelectionReady,
     modelCatalogError,
     thinkingModelContext,
     permissionMode,
@@ -188,6 +196,7 @@ function ChatInterfaceV2({
     setCanAbortSession,
     isAborting: _isAborting,
     setIsAborting,
+    canReturnToLatest,
     setIsUserScrolledUp,
     tokenBudget,
     setTokenBudget,
@@ -204,7 +213,8 @@ function ChatInterfaceV2({
     createDiff,
     scrollContainerRef,
     scrollToBottom,
-    handleScroll,
+    scheduleScrollToBottom,
+    pauseScrollFollowing,
   } = useChatSessionState({
     selectedProject,
     selectedSession,
@@ -220,6 +230,13 @@ function ChatInterfaceV2({
 
   const watchedSessionId = selectedSession?.id || currentSessionId || null;
   useSessionWatch({ sessionId: watchedSessionId, ws, sendMessage });
+  const inputQueue = useSessionInputQueue({
+    sessionId: watchedSessionId,
+    projectPath: selectedProject?.fullPath || selectedProject?.path,
+    ws,
+    sendMessage,
+    subscribe: subscribe || contextSubscribe,
+  });
 
   const {
     input,
@@ -268,6 +285,7 @@ function ChatInterfaceV2({
     openImagePicker,
     addAttachmentFiles,
     handleSubmit,
+    canSubmitWithoutModel,
     handleInputChange,
     insertAtCursor,
     handleKeyDown,
@@ -280,21 +298,21 @@ function ChatInterfaceV2({
     handleGrantToolPermission,
     handleGrantSessionToolPermission,
     handleInputFocusChange,
-    isBusySendQueued,
-    isBusySendConfirmed,
-    cancelBusySendQueue,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
     currentSessionId,
     model,
     modelSelection,
+    isModelSelectionReady,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
     cycleRunMode,
     isLoading,
     canAbortSession,
+    inputQueuePaused: inputQueue.queueState.paused,
+    enqueuePreparedInput: inputQueue.enqueue,
     tokenBudget,
     sendMessage,
     subscribe,
@@ -412,6 +430,30 @@ function ChatInterfaceV2({
     setIsAbortPending(true);
   }, [canAbortSession, handleAbortSession, isAbortPending, isLoading]);
 
+  const handleResumeInputQueue = useCallback(() => {
+    void inputQueue.resume().then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.resumeFailed', { defaultValue: 'Failed to resume the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleSteerQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.steer(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.steerFailed', { defaultValue: 'The message remains queued.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleDeleteQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.remove(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.deleteFailed', { defaultValue: 'Failed to delete the queued message.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleMoveQueuedInputToFront = useCallback((itemId: string) => {
+    void inputQueue.moveToFront(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.moveFailed', { defaultValue: 'Failed to reorder the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
   const handleFork = useCallback(async (message: ChatMessage, _carriedPreview: number) => {
     if (isForkPending || isLoading || sessionIsReadOnly) return;
     const sessionId = selectedSession?.id || currentSessionId;
@@ -464,11 +506,9 @@ function ChatInterfaceV2({
       setInput(forkDraft);
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
-        scrollToBottom?.();
+        scheduleScrollToBottom?.();
       });
-      // Messages load asynchronously after the session switch; scroll again
-      // once the carried history has had a chance to render.
-      setTimeout(() => scrollToBottom?.(), 400);
+      // The scroll controller follows when the carried history finishes loading.
       addToast(
         'success',
         t('fork.ready', {
@@ -488,7 +528,7 @@ function ChatInterfaceV2({
     isLoading,
     sessionIsReadOnly,
     onNavigateToSession,
-    scrollToBottom,
+    scheduleScrollToBottom,
     selectedProject,
     selectedSession?.id,
     setInput,
@@ -526,11 +566,28 @@ function ChatInterfaceV2({
       throw new Error(t('edit.missingTarget', { defaultValue: 'The last message can no longer be edited.' }));
     }
 
+    if (!isModelSelectionReady || !modelSelection) throw new Error(modelCatalogError || "Model selection is still loading.");
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     const references = attachments
       .map((attachment) => normalizeContentReference(attachment.contentReference ?? attachment))
       .filter((reference): reference is ContentReference => Boolean(reference));
-    const regularFiles = attachments
+    const browserUploads = attachments.filter((attachment) => (
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const uploadedAttachments = [...browserUploads.reduce((groups, attachment) => {
+      const uploadId = attachment.uploadId as string;
+      const attachmentIds = groups.get(uploadId) ?? [];
+      attachmentIds.push(attachment.attachmentId as string);
+      groups.set(uploadId, attachmentIds);
+      return groups;
+    }, new Map<string, string[]>())].map(([uploadId, attachmentIds]) => ({
+      uploadId,
+      attachmentIds,
+    }));
+    const modelAttachments = attachments.filter((attachment) => !(
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const regularFiles = modelAttachments
       .filter((attachment) => !attachment.kind || attachment.kind === 'file')
       .flatMap((attachment) => {
         const path = attachment.path || attachment.filePath;
@@ -557,6 +614,7 @@ function ChatInterfaceV2({
       command,
       runId,
       userVisibleInput: editedText,
+      modelSelection: { ...modelSelection },
       toolsSettings: getPilotDeckSettings(),
       runMode,
       permissionMode: effectivePermissionMode,
@@ -565,7 +623,9 @@ function ChatInterfaceV2({
       thinking: thinkingModeToConfig(effectiveThinkingMode),
       sessionSummary: getNotificationSessionSummary(selectedSession, editedText),
       images: Array.isArray(message.images) ? message.images : [],
-      attachments,
+      attachments: modelAttachments,
+      uploadedAttachments,
+      displayAttachments: attachments,
       syntheticMessages: [{
         text: EDIT_RECONCILIATION_HINT,
         purpose: 'edited_turn_workspace_reconciliation',
@@ -575,6 +635,9 @@ function ChatInterfaceV2({
     return result;
   }, [
     currentSessionId,
+    isModelSelectionReady,
+    modelSelection,
+    modelCatalogError,
     effectivePermissionMode,
     model,
     permissionMode,
@@ -646,8 +709,18 @@ function ChatInterfaceV2({
     </div>
   ) : (
     <ComposerV2
+      queueTray={(
+        <QueuedMessagesTray
+          state={inputQueue.queueState}
+          isLoading={isLoading}
+          onResume={handleResumeInputQueue}
+          onSteer={handleSteerQueuedInput}
+          onDelete={handleDeleteQueuedInput}
+          onMoveToFront={handleMoveQueuedInputToFront}
+        />
+      )}
       input={input}
-      placeholder="告诉PilotDeck你想完成什么。@引用项目内容，/调用技能与指令。"
+      placeholder={t('composer.placeholder', { defaultValue: 'Tell PilotDeck what you want to get done…' })}
       textareaRef={textareaRef}
       inputHighlightRef={inputHighlightRef}
       renderInputWithMentions={renderInputWithMentions}
@@ -667,7 +740,7 @@ function ChatInterfaceV2({
       onRetryImage={retryAttachmentUpload}
       documentReferences={documentReferences}
       onRemoveDocumentReference={removeDocumentReference}
-        onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
+      onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
@@ -701,12 +774,14 @@ function ChatInterfaceV2({
       isLoading={isLoading}
       canAbortSession={canAbortSession}
       isAbortPending={isAbortPending}
-      isBusySendQueued={isBusySendQueued}
-      isBusySendConfirmed={isBusySendConfirmed}
-      onCancelBusySendQueue={cancelBusySendQueue}
+      isInputQueuePaused={inputQueue.queueState.paused}
+      onResumeInputQueue={handleResumeInputQueue}
+      tokenBudget={tokenBudget}
       modelCatalog={modelCatalog}
       modelSelection={modelSelection}
       isModelCatalogLoading={isModelCatalogLoading}
+      isModelSelectionReady={isModelSelectionReady}
+      canSubmitWithoutModel={canSubmitWithoutModel}
       modelCatalogError={modelCatalogError}
       projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
       onModelSelectionChange={(selection) => {
@@ -727,7 +802,7 @@ function ChatInterfaceV2({
       compact={compact}
       showWorkspacePicker={isWelcomeMode && !compact}
       workspaceProjects={projects}
-      workspaceSelectedProject={workspaceBinding ?? (!selectedSession ? selectedProjectFromShell : null)}
+      workspaceSelectedProject={!selectedSession ? selectedProject : null}
       onSelectWorkspaceProject={(project) => {
         onSelectWorkspace?.(project);
       }}
@@ -745,7 +820,9 @@ function ChatInterfaceV2({
   );
 
   if (isWelcomeMode) {
-    const projectName = selectedProject?.displayName || selectedProject?.name || '';
+    const projectName = selectedProject && !isGeneralProject(selectedProject)
+      ? projectDisplayName(selectedProject)
+      : '';
     if (compact) {
       return (
         <div className="flex h-full min-w-0 flex-col bg-white dark:bg-neutral-950">
@@ -771,10 +848,14 @@ function ChatInterfaceV2({
         <div className="flex flex-1 flex-col items-center justify-center px-6">
           <div className="w-full max-w-[860px]">
             <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
-              {t('welcome.greetingWithProject', {
-                project: projectName,
-                defaultValue: `What's on the plan today?`,
-              })}
+              {projectName
+                ? t('welcome.greetingWithProject', {
+                  project: projectName,
+                  defaultValue: `What do you want us to build in ${projectName}?`,
+                })
+                : t('welcome.noProject', {
+                  defaultValue: `What's on the plan today?`,
+                })}
             </h1>
             {composerSlot}
           </div>
@@ -787,8 +868,9 @@ function ChatInterfaceV2({
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        onWheel={handleScroll}
-        onTouchMove={handleScroll}
+        showReturnToLatest={canReturnToLatest}
+        onResumeScroll={scrollToBottom}
+        onPauseScroll={pauseScrollFollowing}
         isLoadingSessionMessages={isLoadingSessionMessages}
         sessionLoadError={sessionLoadError}
         onRetrySessionLoad={handleWebSocketReconnect}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const MIME_FRIENDLY_LABELS: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
@@ -45,6 +46,7 @@ const ImageAttachment = ({
   uploadProgress,
   error,
 }: ImageAttachmentProps) => {
+  const { t } = useTranslation('chat');
   const [preview, setPreview] = useState<string | undefined>(undefined);
   const isImage = file.type.startsWith('image/');
   
@@ -84,7 +86,7 @@ const ImageAttachment = ({
       {showProgressOverlay ? (
         <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b bg-black/55 px-2 pb-1.5 pt-1 text-white">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
-            <span>正在上传</span>
+            <span>{t('input.uploading', { defaultValue: 'Uploading…' })}</span>
             <span className="tabular-nums">{Math.round(uploadProgress)}%</span>
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-white/30">
@@ -98,8 +100,8 @@ const ImageAttachment = ({
       {isUploadComplete ? (
         <div
           className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
-          title="上传完毕"
-          aria-label="上传完毕"
+          title={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
+          aria-label={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
         >
           <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -118,7 +120,7 @@ const ImageAttachment = ({
               onClick={onRetry}
               className="rounded bg-white/95 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-white"
             >
-              重试
+              {t('input.retryUpload', { defaultValue: 'Retry' })}
             </button>
           ) : null}
         </div>
@@ -128,8 +130,8 @@ const ImageAttachment = ({
         onClick={onRemove}
         className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white opacity-100 transition-opacity focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
         aria-label={uploadProgress !== undefined && uploadProgress < 100
-          ? `取消上传 ${file.name}`
-          : `删除附件 ${file.name}`}
+          ? t('input.cancelUpload', { file: file.name, defaultValue: `Cancel upload ${file.name}` })
+          : t('input.removeAttachment', { file: file.name, defaultValue: `Remove attachment ${file.name}` })}
       >
         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -140,5 +142,4 @@ const ImageAttachment = ({
 };
 
 export default ImageAttachment;
-
 

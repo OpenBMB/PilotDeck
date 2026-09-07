@@ -67,7 +67,7 @@ export class SmoothTextStream {
   private targetContent = '';
   private renderedContent = '';
   private frame: FrameHandle | null = null;
-  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private fallbackTimer: number | null = null;
   private lastChunkAtMs: number | null = null;
   private lastFrameAtMs: number | null = null;
   private averageCharsPerSecond = DEFAULT_AVERAGE_CHARS_PER_SECOND;

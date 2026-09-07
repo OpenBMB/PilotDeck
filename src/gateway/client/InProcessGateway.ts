@@ -29,6 +29,10 @@ import type {
   GatewaySessionPermissionGrantInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayCancelSteerInput,
+  GatewayCancelSteerResult,
+  GatewaySteerTurnInput,
+  GatewaySteerTurnResult,
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
@@ -109,10 +113,13 @@ const PLAN_COMMAND_USAGE = "用法：/plan <任务>\n例如：/plan 设计一个
 const MAX_GATEWAY_TOOL_RESULT_PREVIEW_CHARS = 20_000;
 const MAX_GATEWAY_TOOL_DATA_STRING_CHARS = 4_000;
 const DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS = 60_000;
+const DEFAULT_ABORT_TURN_TIMEOUT_MS = 30_000;
 
 export type InProcessGatewayOptions = {
   /** Absolute command used by the model to install bundled FunASR assets. */
   funasrInstallCommand?: string;
+  /** Maximum time to wait for an aborted turn to finish unwinding. */
+  abortTurnTimeoutMs?: number;
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
@@ -228,6 +235,7 @@ export class InProcessGateway implements Gateway {
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly replacementTransactionTimeoutMs: number;
+  private readonly abortTurnTimeoutMs: number;
   /**
    * B1 — registry of active per-session emit sinks. The gateway shares this
    * map with the per-session `GatewayElicitationChannel` so an `askUser`
@@ -266,6 +274,7 @@ export class InProcessGateway implements Gateway {
       1,
       options.replacementTransactionTimeoutMs ?? DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS,
     );
+    this.abortTurnTimeoutMs = Math.max(1, options.abortTurnTimeoutMs ?? DEFAULT_ABORT_TURN_TIMEOUT_MS);
   }
 
   /**
@@ -545,10 +554,13 @@ export class InProcessGateway implements Gateway {
         }));
         const modelSelection = this.options.resolveTurnModelSelection
           ? await this.options.resolveTurnModelSelection(input)
-          : input.modelOverride
-            ? { selection: input.modelOverride, source: "turn" as const }
-            : { source: "default" as const };
+          : input.modelSelection?.mode === "auto"
+            ? { source: "router" as const }
+            : input.modelSelection?.mode === "model" || input.modelOverride
+              ? { selection: input.modelSelection?.mode === "model" ? input.modelSelection : input.modelOverride, source: "turn" as const }
+              : { source: "default" as const };
         let lastEmittedModel: string | undefined;
+        let actualRequestModel: string | undefined;
         if (modelSelection.selection) {
           const event: GatewayEvent = {
             type: "model_selection_changed",
@@ -568,6 +580,7 @@ export class InProcessGateway implements Gateway {
           agentInput,
           {
             turnId: runId,
+            modelSelection: input.modelSelection,
             maxTurns: input.maxTurns,
             runMode,
             permissionMode,
@@ -611,6 +624,7 @@ export class InProcessGateway implements Gateway {
           if (event.type === "input_accepted") {
             await this.commitAcceptedTurnReplacement(input.sessionKey, runId);
           }
+          if (event.type === "model_event" && event.event.type === "request_started") actualRequestModel = event.event.model;
           if (event.type === "model_event" && event.event.type === "request_started"
             && lastEmittedModel !== `${event.event.provider}\0${event.event.model}`) {
             const selectionEvent: GatewayEvent = {
@@ -625,6 +639,10 @@ export class InProcessGateway implements Gateway {
             lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
           }
           for (const gatewayEvent of mapAgentEvent(event, runId)) {
+            if (gatewayEvent.type === "assistant_text_delta" && actualRequestModel) gatewayEvent.model = actualRequestModel;
+            if (gatewayEvent.type === "input_accepted" && input.modelSelection) {
+              gatewayEvent.modelSelection = { ...input.modelSelection };
+            }
             if (gatewayEvent.type === "context_budget") {
               this.recordGatewayStatusMessage({
                 sessionKey: input.sessionKey,
@@ -723,6 +741,48 @@ export class InProcessGateway implements Gateway {
     }
   }
 
+  async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
+
+    const uploaded = input.uploadedAttachments?.length
+      ? await this.resolveUploadedAttachments(input)
+      : [];
+    const attachments = [...(input.attachments ?? []), ...uploaded];
+    const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
+    const agentInput = await buildAgentInputWithAttachments(
+      input.message,
+      attachments,
+      allowedReadFiles,
+      input.projectKey,
+      this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
+    );
+    const message: CanonicalMessage = {
+      role: "user",
+      content: agentInput.type === "text"
+        ? [{ type: "text", text: agentInput.text }]
+        : agentInput.content,
+      metadata: { purpose: "mid_turn_steer", queueItemId: input.itemId },
+    };
+    return this.router.steer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+      message,
+      allowedReadFiles,
+    });
+  }
+
+  async cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult> {
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (!activeRunId) return { cancelled: false, reason: "no_active_turn" };
+    if (activeRunId !== input.runId) return { cancelled: false, reason: "turn_mismatch" };
+    return this.router.cancelSteer(input.sessionKey, {
+      turnId: input.runId,
+      itemId: input.itemId,
+    });
+  }
+
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
     const reason = input.reason ?? (input.runId ? `aborted:${input.runId}` : "aborted");
     await this.router.abort(input.sessionKey, reason);
@@ -733,7 +793,20 @@ export class InProcessGateway implements Gateway {
     // `session_busy`.
     const pending = this.turnCompletions.get(input.sessionKey);
     if (!pending) return;
-    await pending;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const completed = await Promise.race([
+      pending.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), this.abortTurnTimeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!completed) {
+      console.warn(
+        `[pilotdeck] abortTurn timed out after ${this.abortTurnTimeoutMs}ms for session ${input.sessionKey}.`,
+      );
+    }
   }
 
   async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {
@@ -849,7 +922,7 @@ export class InProcessGateway implements Gateway {
     this.transcriptWriteReservations.add(sessionKey);
   }
 
-  private async resolveUploadedAttachments(input: GatewaySubmitTurnInput): Promise<ChannelAttachment[]> {
+  private async resolveUploadedAttachments(input: Pick<GatewaySubmitTurnInput, "projectKey" | "uploadedAttachments">): Promise<ChannelAttachment[]> {
     if (!input.projectKey) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploaded attachments.");
     if (!this.options.resolveUploadedAttachments) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Uploaded attachments are unavailable.");
     return this.options.resolveUploadedAttachments({ projectKey: input.projectKey, uploads: input.uploadedAttachments ?? [] });
@@ -1808,6 +1881,10 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{ type: "turn_started", runId }];
     case "input_accepted":
       return [{ type: "input_accepted", runId }];
+    case "steer_applied":
+      return [{ type: "steer_applied", itemId: event.itemId, message: event.message }];
+    case "steer_unapplied":
+      return [{ type: "steer_unapplied", itemId: event.itemId, reason: event.reason }];
     case "model_request_started":
       return [{ type: "model_request_started", model: event.model, provider: event.provider }];
     case "model_event":
@@ -2363,11 +2440,12 @@ async function buildAgentInputWithAttachments(
   projectRoot?: string,
   funasrInstallCommand?: string,
 ): Promise<AgentInput> {
-  const resolvedAttachments = await attachmentsToContentBlocks(attachments);
+  const allowedReadFileSet = new Set(allowedReadFiles);
+  const resolvedAttachments = await attachmentsToContentBlocks(attachments, allowedReadFileSet);
   const attachmentBlocks = resolvedAttachments.blocks;
   const pathNote = buildAttachmentPathNote(
     attachments,
-    new Set(allowedReadFiles),
+    allowedReadFileSet,
     resolvedAttachments.directContentPaths,
     resolvedAttachments.hasDiagnostics,
     projectRoot,
@@ -2414,7 +2492,9 @@ function buildAttachmentPathNote(
   }
 
   if (lines.length === 0) return undefined;
-  const guidance = hasDiagnostics || attachments.some(isAudioAttachment)
+  const guidance = hasDiagnostics
+    || attachments.some(isAudioAttachment)
+    || attachments.some((attachment) => !isReadFileInspectableAttachment(attachment))
     ? attachmentDiagnosticsGuidance(attachments, allowedReadFiles, projectRoot, installCommand)
     : "These are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.";
   return {
@@ -2459,7 +2539,9 @@ function isReadFileInspectableAttachment(attachment: ChannelAttachment): boolean
   if (mimeType === "application/json" || mimeType.endsWith("+json")) return true;
 
   const pathOrName = attachment.path || attachment.name || "";
-  const extension = extname(pathOrName).toLowerCase();
+  // Upload staging paths can be opaque IDs for legacy attachments. Prefer the
+  // original name so Office files still receive conversion guidance.
+  const extension = extname(attachment.name ?? "").toLowerCase() || extname(pathOrName).toLowerCase();
   if (extension === ".pdf" || extension === ".ipynb") return true;
   if (READ_FILE_BINARY_ATTACHMENT_EXTENSIONS.has(extension)) return false;
   return true;
@@ -2494,12 +2576,14 @@ async function collectRegisteredAttachmentReadFiles(
 
 async function attachmentsToContentBlocks(
   attachments: ChannelAttachment[] | undefined,
+  allowedReadFiles: Set<string>,
 ): Promise<{ blocks: CanonicalContentBlock[]; directContentPaths: Set<string>; hasDiagnostics: boolean }> {
   if (!attachments || attachments.length === 0) {
     return { blocks: [], directContentPaths: new Set<string>(), hasDiagnostics: false };
   }
   const blocks: CanonicalContentBlock[] = [];
   const resolverRequests: AttachmentRequest[] = [];
+  const resolverAttachments: ChannelAttachment[] = [];
   const resolverRequestPaths: Array<string | undefined> = [];
   const directContentPaths = new Set<string>();
   const diagnostics: string[] = [];
@@ -2531,26 +2615,47 @@ async function attachmentsToContentBlocks(
     }
     if (att.type === "image" || att.mimeType?.startsWith("image/")) {
       resolverRequests.push({ type: "image", path: att.path, mimeType: att.mimeType });
+      resolverAttachments.push(att);
       resolverRequestPaths.push(resolve(att.path));
     } else if (att.mimeType === "application/pdf" || att.path.toLowerCase().endsWith(".pdf")) {
       resolverRequests.push({ type: "pdf", path: att.path });
+      resolverAttachments.push(att);
       resolverRequestPaths.push(resolve(att.path));
     } else {
-      resolverRequests.push({ type: "file", path: att.path });
+      resolverRequests.push({ type: "file", path: att.path, name: att.name });
+      resolverAttachments.push(att);
       resolverRequestPaths.push(resolve(att.path));
     }
   }
 
   if (resolverRequests.length > 0) {
-    const resolved = await new AttachmentResolver().resolveAll(resolverRequests);
-    blocks.push(...resolved.blocks);
-    for (const diagnostic of resolved.diagnostics) {
-      if (diagnostic.severity === "error" || diagnostic.severity === "warning") {
-        diagnostics.push(diagnostic.message);
+    const resolver = new AttachmentResolver();
+    for (let index = 0; index < resolverRequests.length; index += 1) {
+      const request = resolverRequests[index];
+      const attachment = resolverAttachments[index];
+      if (!request || !attachment) continue;
+
+      const resolved = await resolver.resolve(request);
+      blocks.push(...resolved.blocks);
+      const isRegistered = Boolean(
+        attachment.path && safeAllowedAttachmentPath(attachment.path, allowedReadFiles),
+      );
+      let hasVisibleDiagnostic = false;
+      for (const diagnostic of resolved.diagnostics) {
+        const shouldSurface = diagnostic.severity === "error"
+          || diagnostic.severity === "warning"
+          || (
+            diagnostic.severity === "info"
+            && diagnostic.code === "attachment_unsupported"
+            && !isRegistered
+          );
+        if (shouldSurface) {
+          diagnostics.push(diagnostic.message);
+          hasVisibleDiagnostic = true;
+        }
       }
-    }
-    if (resolved.blocks.length > 0 && diagnostics.length === 0) {
-      for (const requestPath of resolverRequestPaths) {
+      if (resolved.blocks.length > 0 && !hasVisibleDiagnostic) {
+        const requestPath = resolverRequestPaths[index];
         if (requestPath) directContentPaths.add(requestPath);
       }
     }

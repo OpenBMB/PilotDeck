@@ -6,6 +6,8 @@ const gateway = vi.hoisted(() => ({
 
 vi.mock('./pilotdeck-bridge.js', () => ({
     getPilotDeckGateway: vi.fn(async () => gateway),
+    isGatewayUnavailableError: () => false,
+    withPilotDeckGatewayReadRetry: vi.fn(async (operation) => operation(gateway)),
 }));
 
 import { getProjectCronJobsOverview } from './projects.js';

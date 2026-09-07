@@ -107,9 +107,10 @@ export function createRouterRuntime(
   const stats = new TokenStatsCollector({
     ...config.stats,
     enabled: enabled && (config.stats?.enabled ?? false),
-    baselineModel: config.scenarios?.default
-      ? { provider: config.scenarios.default.provider, model: config.scenarios.default.model }
-      : config.stats?.baselineModel,
+    baselineModel: config.stats?.baselineModel
+      ?? (config.scenarios?.default
+        ? { provider: config.scenarios.default.provider, model: config.scenarios.default.model }
+        : undefined),
   });
   const externalStore = !!deps.sessionStore;
   const sessionStore = deps.sessionStore ?? new SessionRouterStore({

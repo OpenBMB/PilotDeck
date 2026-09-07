@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NormalizedMessage } from '../../stores/useSessionStore';
 import type { SessionProvider } from '../../types/app';
-import { mergeSubagentDetailMessages } from './useSubagentMessages';
+import { inheritSubagentRenderKeys, mergeSubagentDetailMessages } from './useSubagentMessages';
 
 const PROVIDER = 'pilotdeck' as SessionProvider;
 
@@ -106,5 +106,27 @@ describe('mergeSubagentDetailMessages', () => {
     expect(mergeSubagentDetailMessages(snapshot, realtime, false).map((message) => message.id)).toEqual([
       'snapshot-thinking-new',
     ]);
+  });
+});
+
+
+describe('subagent snapshot rendering identity', () => {
+  it('preserves stream identity when snapshots omit the thinking role and change message IDs', () => {
+    const previous = [thinkingMessage('live', 'A thought', '2026-05-28T00:00:01Z', { renderKey: 'reading' })];
+    const snapshot = [thinkingMessage('persisted', 'A thought', '2026-05-28T00:00:02Z', { role: undefined })];
+    expect(inheritSubagentRenderKeys(previous, snapshot)[0].renderKey).toBe('reading');
+  });
+
+  it('assigns repeated identical thoughts one to one in transcript order', () => {
+    const previous = ['first', 'second'].map((id) => thinkingMessage(id, 'Again', '2026-05-28T00:00:01Z', { renderKey: id }));
+    const snapshot = ['persisted-a', 'persisted-b'].map((id) => thinkingMessage(id, 'Again', '2026-05-28T00:00:02Z'));
+    expect(inheritSubagentRenderKeys(previous, snapshot).map((message) => message.renderKey)).toEqual(['first', 'second']);
+    expect(inheritSubagentRenderKeys(previous, snapshot.slice(0, 1))[0].renderKey).toBe('persisted-a');
+  });
+
+  it('keeps tool invocation identity when its result/content changes', () => {
+    const previous = [textMessage('live-tool', '', '2026-05-28T00:00:01Z', { kind: 'tool_use', toolId: 'call', renderKey: 'tool-row' })];
+    const snapshot = [textMessage('persisted-tool', 'Completed', '2026-05-28T00:00:02Z', { kind: 'tool_use', toolId: 'call' })];
+    expect(inheritSubagentRenderKeys(previous, snapshot)[0].renderKey).toBe('tool-row');
   });
 });

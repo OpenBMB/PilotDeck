@@ -73,13 +73,13 @@ describe("webSearchConfigForProvider", () => {
 });
 
 describe("isWebSearchApiKeyRequired", () => {
-  it("requires a key for custom search services", () => {
+  it("allows unauthenticated custom search services", () => {
     expect(
       isWebSearchApiKeyRequired({
         provider: "custom",
         customProvider: { auth: "none" },
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("requires a key for built-in and authenticated custom providers", () => {

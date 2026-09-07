@@ -1,0 +1,6 @@
+{
+  "name": "windows-skills",
+  "version": "1.0.0",
+  "description": "Builtin Windows and PowerShell guidance for PilotDeck agents.",
+  "skills": "skills"
+}

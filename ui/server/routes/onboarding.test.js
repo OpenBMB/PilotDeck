@@ -78,6 +78,21 @@ describe('onboarding routes', () => {
     expect(completed).toMatchObject({ status: 200, body: { status: 'passed', error: null, models: [{ modelId: 'model-a', imageInput: 'supported' }] } });
   });
 
+  it('matches equivalent provider endpoints after URL canonicalization', async () => {
+    const onboarding = await import('./onboarding.js');
+    const record = {
+      provider: { providerId: 'ollama', protocol: 'openai', endpoint: 'http://localhost:11434/v1' },
+      keyFingerprint: null,
+    };
+
+    expect(onboarding.connectionTestMatchesProvider(record, {
+      providerId: 'ollama',
+      protocol: 'openai',
+      url: 'HTTP://LOCALHOST:11434/v1///',
+      apiKey: '',
+    })).toBe(true);
+  });
+
   it('isolates test IDs by user and writes the tested model configuration', async () => {
     const writePilotDeckConfig = vi.fn(async (config) => ({ config }));
     const { request } = await createOnboardingApp({
@@ -135,6 +150,19 @@ describe('onboarding routes', () => {
       method: 'POST', body: JSON.stringify({ providerId: 'my/team', protocol: 'openai', endpoint: 'https://example.test', apiKey: 'key', models: ['model-a'], retryPolicy: retryPolicy() }),
     });
     expect(slashProvider).toMatchObject({ status: 400, body: { code: 'INVALID_REQUEST' } });
+  });
+
+  it('rejects retry policies that exceed bounded retry or delay limits', async () => {
+    const { request } = await createOnboardingApp();
+    const base = { providerId: 'openai', apiKey: 'key', models: ['model-a'], retryPolicy: retryPolicy() };
+    const tooManyRetries = await request('/api/v1/model-connection-tests', {
+      method: 'POST', body: JSON.stringify({ ...base, retryPolicy: { ...base.retryPolicy, maxRetries: 1_000_000_000 } }),
+    });
+    expect(tooManyRetries).toMatchObject({ status: 400, body: { code: 'INVALID_REQUEST' } });
+    const tooLongDelay = await request('/api/v1/model-connection-tests', {
+      method: 'POST', body: JSON.stringify({ ...base, retryPolicy: { ...base.retryPolicy, maxDelayMs: 60_001 } }),
+    });
+    expect(tooLongDelay).toMatchObject({ status: 400, body: { code: 'INVALID_REQUEST' } });
   });
 
   it('treats Object prototype property names as custom providers', async () => {

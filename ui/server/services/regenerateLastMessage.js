@@ -59,7 +59,7 @@ export async function regenerateLastMessageTransaction({
                 provider,
                 content: data.options?.userVisibleInput ?? data.command ?? '',
                 images: data.options?.images || [],
-                attachments: data.options?.attachments || [],
+                attachments: data.options?.displayAttachments || data.options?.attachments || [],
             });
             writer.send({
                 type: 'regenerate-last-message-result',

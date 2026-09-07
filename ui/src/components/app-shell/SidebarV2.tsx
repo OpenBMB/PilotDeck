@@ -13,6 +13,8 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   Folder,
+  MessageSquarePlus,
+  Plus,
   Pencil,
   GitBranch,
   Trash2,
@@ -20,8 +22,6 @@ import {
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
-import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
-import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
 import {
   projectDisplayName,
   sessionDisplayTitle,
@@ -29,6 +29,8 @@ import {
   setSessionCustomTitle,
   useCustomNamesVersion,
 } from '../../lib/customNames';
+import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
+import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
 import { compareProjectsBySidebarOrder } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
@@ -141,13 +143,16 @@ export type SidebarV2Props = {
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
   isLoading: boolean;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   isMobile?: boolean;
   processingSessions?: Set<string>;
   unreadSessionIds?: Set<string>;
   onSelectProject: (project: Project) => void;
   onSelectSession: (project: Project, sessionId: string) => void;
-  onStartNewSession: (project: Project | null) => void;
+  onStartNewSession: (project: Project) => void;
   onStartHomeNewConversation?: () => void;
+  onCreateProject: () => void;
   pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
   onRequestDeleteSession: (project: Project, session: ProjectSession) => void;
@@ -193,12 +198,18 @@ function SectionHeading({
   expanded,
   expandLabel,
   collapseLabel,
+  actionLabel,
+  actionIcon,
+  onAction,
   onToggle,
 }: {
   title: string;
   expanded: boolean;
   expandLabel: string;
   collapseLabel: string;
+  actionLabel?: string;
+  actionIcon?: ReactNode;
+  onAction?: () => void;
   onToggle: () => void;
 }) {
   const toggleLabel = expanded ? collapseLabel : expandLabel;
@@ -206,6 +217,18 @@ function SectionHeading({
     <div className="tree-heading shrink-0">
       <span>{title}</span>
       <div className="tree-heading-actions">
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            aria-label={actionLabel}
+            title={actionLabel}
+          >
+            {actionIcon ?? (
+              <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+            )}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onToggle}
@@ -239,6 +262,8 @@ export default function SidebarV2({
   selectedSession,
   activeTab,
   isLoading,
+  loadError = null,
+  onRetryLoad,
   isMobile = false,
   processingSessions,
   unreadSessionIds,
@@ -246,6 +271,7 @@ export default function SidebarV2({
   onSelectSession,
   onStartNewSession,
   onStartHomeNewConversation,
+  onCreateProject,
   pendingDraftProjectName = null,
   onRequestDeleteProject,
   onRequestDeleteSession,
@@ -512,9 +538,10 @@ export default function SidebarV2({
   const handleProjectClick = useCallback(
     (project: Project) => {
       if (renamingProject === project.name) return;
+      onSelectProject(project);
       toggleProjectExpanded(project);
     },
-    [renamingProject, toggleProjectExpanded],
+    [onSelectProject, renamingProject, toggleProjectExpanded],
   );
 
   const handleSessionClick = useCallback(
@@ -817,9 +844,9 @@ export default function SidebarV2({
           <button
             type="button"
             onClick={(event) => handleNewSession(event, project)}
-            className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+            className="block w-full rounded-md bg-neutral-200/70 px-2 py-1 text-left text-[14px] leading-5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
           >
-            <div className="truncate">
+            <div className="truncate font-normal">
               {t('sidebar:sessions.newSession', { defaultValue: 'New Session' })}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -936,7 +963,7 @@ export default function SidebarV2({
           )}
         >
           {isRenaming && !isGeneral ? (
-            <div className="col-span-3 flex h-full min-w-0 items-center gap-1.5">
+            <div className="col-span-4 flex h-full min-w-0 items-center gap-1.5">
               <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
               <input
                 ref={renameInputRef}
@@ -989,6 +1016,33 @@ export default function SidebarV2({
               <span className="flex-1 truncate font-normal">{label}</span>
             </button>
           )}
+
+          {!isRenaming ? (
+            <div
+              className={cn(
+                'project-chat-icon transition-opacity',
+                '[@media(hover:none)]:opacity-100',
+                isSelected
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover/project:opacity-100 focus-within:opacity-100',
+              )}
+            >
+              <button
+                type="button"
+                onClick={(event) => handleNewSession(event, project)}
+                aria-label={t('sidebar:tooltips.newChatForProject', {
+                  project: label,
+                  defaultValue: `Start a new conversation in ${label}`,
+                }) as string}
+                title={t('sidebar:tooltips.newChatForProject', {
+                  project: label,
+                  defaultValue: `Start a new conversation in ${label}`,
+                }) as string}
+              >
+                <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {isExpanded ? renderSessionRows(project) : null}
@@ -1027,17 +1081,22 @@ export default function SidebarV2({
         </button>
       ) : (
         <header className="sidebar-brand-row">
-          <img
-            alt="PILOTDECK"
-            className="brand-lockup brand-lockup-light"
-            src={pilotdeckLogoLight}
-          />
-          <img
-            alt=""
-            aria-hidden="true"
-            className="brand-lockup brand-lockup-dark"
-            src={pilotdeckLogoDark}
-          />
+          <span className="brand-lockup" role="img" aria-label="PILOTDECK">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="brand-lockup-image brand-lockup-light"
+              draggable={false}
+              src={pilotdeckLogoLight}
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              className="brand-lockup-image brand-lockup-dark"
+              draggable={false}
+              src={pilotdeckLogoDark}
+            />
+          </span>
         </header>
       )}
 
@@ -1157,6 +1216,9 @@ export default function SidebarV2({
             expanded={projectsExpanded}
             expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
             collapseLabel={t('sidebar:projects.collapse', { defaultValue: 'Collapse projects' }) as string}
+            actionLabel={t('sidebar:tooltips.createProject', { defaultValue: 'Create new project' }) as string}
+            actionIcon={<Plus aria-hidden="true" className="icon" size={16} strokeWidth={1.8} />}
+            onAction={onCreateProject}
             onToggle={() => setProjectsExpanded((previous) => !previous)}
           />
 
@@ -1165,6 +1227,26 @@ export default function SidebarV2({
             {isLoading && safeProjects.length === 0 ? (
               <div className="px-2 py-4 text-xs text-neutral-500 dark:text-neutral-400">
                 {t('sidebar:sessions.loading', { defaultValue: 'Loading...' })}
+              </div>
+            ) : loadError && safeProjects.length === 0 ? (
+              <div
+                role="status"
+                className="space-y-2 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300"
+              >
+                <p>
+                  {t('sidebar:projects.loadError', {
+                    defaultValue: 'Projects are temporarily unavailable. Your data has not been removed.',
+                  })}
+                </p>
+                {onRetryLoad ? (
+                  <button
+                    type="button"
+                    className="rounded border border-amber-300/80 px-2 py-1 font-medium hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950/40"
+                    onClick={onRetryLoad}
+                  >
+                    {t('sidebar:projects.retry', { defaultValue: 'Retry' })}
+                  </button>
+                ) : null}
               </div>
             ) : otherProjects.length === 0 ? (
               <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -1227,6 +1309,12 @@ export default function SidebarV2({
             expanded={conversationsExpanded}
             expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}
             collapseLabel={t('sidebar:conversations.collapse', { defaultValue: 'Collapse conversations' }) as string}
+            actionLabel={generalProject
+              ? t('sidebar:tooltips.newGeneralChat', { defaultValue: 'Start a general conversation' }) as string
+              : undefined}
+            onAction={generalProject
+              ? () => handleNewSession(undefined, generalProject)
+              : undefined}
             onToggle={() => setConversationsExpanded((previous) => !previous)}
           />
 

@@ -31,7 +31,17 @@ export function webSearchConfigForProvider(
 }
 
 export function isWebSearchApiKeyRequired(
-  _config: WebSearchConfig,
+  config: WebSearchConfig,
 ): boolean {
-  return true;
+  const provider =
+    config.provider === "tavily"
+    || config.provider === "custom"
+    || config.provider === "serper"
+    || config.provider === "brave"
+      ? config.provider
+      : "glm";
+  return (
+    provider !== "custom"
+    || (config.customProvider?.auth ?? "bearer") !== "none"
+  );
 }

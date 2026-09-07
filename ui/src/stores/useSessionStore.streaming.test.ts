@@ -1450,3 +1450,14 @@ describe('subagent detail thinking ids', () => {
     expect(id).not.toBe('subagent_thinking_session-1_subagent-1_0');
   });
 });
+
+
+it('keeps the generating model when patching streamed text and changes only the active message', () => {
+  const message: NormalizedMessage = { id: '__streaming_model', sessionId: 'session', timestamp: '2026-09-05T00:00:00Z', provider: PROVIDER, kind: 'stream_delta', content: 'answer', model: 'first-model' };
+  const slot = makeSlot({ merged: [message] });
+  expect(patchMergedStreamingMessage(slot, message.id, 'answer continued', PROVIDER)).toBe(true);
+  expect(slot.merged[0].model).toBe('first-model');
+  expect(patchMergedStreamingMessage(slot, message.id, 'answer continued', PROVIDER, 'actual-fallback')).toBe(true);
+  expect(slot.merged[0].model).toBe('actual-fallback');
+  expect(message.model).toBe('first-model');
+});

@@ -9,7 +9,7 @@
  * `tests/web-ui-client/protocol-sync.test.ts`.
  */
 
-export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.0";
+export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.1";
 
 export type WebGatewayMode =
   | "default"
@@ -47,8 +47,10 @@ type WebGatewayEventMetadata = {
 export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "turn_started"; runId: string }
   | { type: "input_accepted"; runId: string }
+  | { type: "steer_applied"; itemId: string; message: import("../../model/index.js").CanonicalMessage }
+  | { type: "steer_unapplied"; itemId: string; reason: "turn_ended" }
   | { type: "model_selection_changed"; provider: string; model: string; source: "turn" | "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number }
-  | { type: "assistant_text_delta"; text: string }
+  | { type: "assistant_text_delta"; text: string; model?: string }
   | { type: "assistant_thinking_delta"; text: string }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
   | {
@@ -121,6 +123,8 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
 
 export type WebGatewayMethod =
   | "submit_turn"
+  | "steer_turn"
+  | "cancel_steer"
   | "abort_turn"
   | "list_sessions"
   | "resume_session"
@@ -171,6 +175,7 @@ export type WebSubmitTurnInput = {
   projectKey?: string;
   uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   modelOverride?: WebExplicitModelSelection;
+  modelSelection?: { mode: "auto" } | WebExplicitModelSelection;
   attachments?: WebChannelAttachment[];
   runMode?: WebAgentRunMode;
   mode?: WebGatewayMode;
@@ -180,6 +185,32 @@ export type WebSubmitTurnInput = {
   canPrompt?: boolean;
   runId?: string;
   syntheticMessages?: Array<{ text: string; purpose?: string }>;
+};
+
+export type WebSteerTurnInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+  message: string;
+  projectKey?: string;
+  attachments?: WebChannelAttachment[];
+  uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
+};
+
+export type WebSteerTurnResult = {
+  accepted: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "turn_closing" | "cancelled";
+};
+
+export type WebCancelSteerInput = {
+  sessionKey: string;
+  runId: string;
+  itemId: string;
+};
+
+export type WebCancelSteerResult = {
+  cancelled: boolean;
+  reason?: "no_active_turn" | "turn_mismatch" | "too_late";
 };
 
 export type WebMatchRange = { field: string; start: number; end: number };
@@ -193,8 +224,12 @@ export type WebCommandsListInput = { projectKey: string; query?: string; cursor?
 export type WebCommandsListResult = { pinned: unknown[]; builtIn: unknown[]; custom: unknown[]; nextCursor?: string };
 export type WebExplicitModelSelection = { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number };
 export type WebSessionModelSelection = { mode: "auto" } | WebExplicitModelSelection;
-export type WebModelCatalogListInput = { projectKey: string; query?: string; provider?: string; includeAuto?: boolean };
-export type WebModelCatalogListResult = { items: unknown[]; router: { enabled: boolean; autoAvailable: boolean } };
+export type WebModelCatalogListInput = { projectKey?: string; query?: string; provider?: string; includeAuto?: boolean };
+export type WebModelCatalogListResult = {
+  defaultSelection: WebExplicitModelSelection;
+  items: unknown[];
+  router: { enabled: boolean; autoAvailable: boolean };
+};
 export type WebSessionModelInput = { projectKey: string; sessionKey: string };
 export type WebSessionModelResult = WebSessionModelInput & { saved?: WebSessionModelSelection; effective: { provider: string; model: string; source: "session" | "router" | "default"; reasoning?: number; temperature?: number; speed?: number } };
 

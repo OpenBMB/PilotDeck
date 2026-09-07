@@ -31,6 +31,7 @@
     "cron": "Cron"
   },
   "dashboardSwitcher": {
+    "explore": "Explore",
     "open": "Open dashboards menu",
     "menuLabel": "Dashboards",
     "closeActive": "Close {{tool}} dashboard",
@@ -75,7 +76,7 @@
   },
   "skillsTab": {
     "pickProject": "Open a project to manage its skills.",
-    "generalChat": "General chat — built-in and user skills",
+    "generalChat": "General conversation — built-in and user skills",
     "refresh": "Refresh",
     "newSkill": "New",
     "backToSkills": "Back to skills",

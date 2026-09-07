@@ -669,7 +669,7 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
   minimax: {
     displayName: "MiniMax",
     protocol: "openai",
-    defaultUrl: "https://api.minimaxi.com/v1",
+    defaultUrl: "https://api.minimax.io/v1",
     apiKeyEnvVar: "MINIMAX_API_KEY",
     models: {
       "MiniMax-M2.5": {

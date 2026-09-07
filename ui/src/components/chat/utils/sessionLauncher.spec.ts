@@ -47,6 +47,20 @@ describe('sessionLauncher turn identity', () => {
     }));
   });
 
+  it('does not activate a new session when the command cannot be delivered', () => {
+    const sendMessage = vi.fn(() => false);
+
+    const sessionId = startSessionCommand({
+      sendMessage,
+      selectedProject: { name: 'PilotDeck', path: '/workspace/PilotDeck' } as Project,
+      command: 'Continue.',
+      temporarySessionId: 'new-session-offline',
+    });
+
+    expect(sessionId).toBeNull();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
   it('sends an atomic same-session replacement request with preserved payload', () => {
     const sendMessage = vi.fn();
 
@@ -61,6 +75,8 @@ describe('sessionLauncher turn identity', () => {
       runId: 'new-turn',
       images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
       attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+      uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+      displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
       syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
     });
 
@@ -76,8 +92,24 @@ describe('sessionLauncher turn identity', () => {
         userVisibleInput: 'Corrected request',
         images: [{ data: 'data:image/png;base64,abc', name: 'image.png' }],
         attachments: [{ name: 'brief.pdf', path: '/workspace/brief.pdf' }],
+        uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
+        displayAttachments: [{ name: 'browser.pdf', uploadId: 'upload-1', attachmentId: 'attachment-1' }],
         syntheticMessages: [{ text: 'Inspect the current workspace.', purpose: 'edit' }],
       }),
     });
+  });
+});
+
+describe('dialog model submission', () => {
+  it.each([{ mode: 'auto' as const }, { mode: 'model' as const, provider: 'selected', model: 'chosen', reasoning: 0.8, temperature: 0.2, speed: 1 }])('snapshots %j in both new and edited requests', (selection) => {
+    const sendMessage = vi.fn();
+    const common = { sendMessage, selectedProject: { name: 'demo', path: '/demo' } as Project, command: 'hello', modelSelection: selection };
+    startSessionCommand(common);
+    regenerateLastSessionCommand({ ...common, requestId: 'edit', sessionId: 'web:s', expectedTurnId: 'old' });
+    for (const [frame] of sendMessage.mock.calls) {
+      expect(frame.options.modelSelection).toEqual(selection);
+      expect(frame.options.modelSelection).not.toBe(selection);
+      expect(frame.options.modelOverride).toBeUndefined();
+    }
   });
 });
