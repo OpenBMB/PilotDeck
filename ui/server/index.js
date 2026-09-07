@@ -45,6 +45,7 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
 import os from 'os';
@@ -1305,11 +1306,15 @@ const officePreviewPdfRateLimiter = createRouteRateLimiter({
     message: 'Too many Office preview conversion requests',
 });
 
-const nativeFolderPickerRateLimiter = createRouteRateLimiter({
+const nativeFolderPickerRateLimiter = rateLimit({
     windowMs: 60 * 1000,
-    maxRequests: 10,
-    keyPrefix: 'native-folder-picker',
-    message: 'Too many native folder picker requests',
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        error: 'Too many native folder picker requests',
+        code: 'RATE_LIMITED',
+    },
 });
 
 async function addDirectoryToZip(zip, directoryPath, rootPath) {
@@ -1439,7 +1444,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/browse-filesystem/native-folder', authenticateToken, nativeFolderPickerRateLimiter, async (req, res) => {
+app.post('/api/browse-filesystem/native-folder', nativeFolderPickerRateLimiter, authenticateToken, async (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);
 
