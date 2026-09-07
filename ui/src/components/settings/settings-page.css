@@ -72,9 +72,22 @@
   background: rgba(255, 255, 255, 0.54);
 }
 
-.sidebar-brand img {
-  width: 154px;
+.sidebar-brand-logo {
+  width: 180px;
+  max-width: 100%;
   height: auto;
+  display: block;
+}
+
+.sidebar-brand-logo-dark {
+  display: none;
+}
+
+.dark .sidebar-brand-logo-light {
+  display: none;
+}
+
+.dark .sidebar-brand-logo-dark {
   display: block;
 }
 
@@ -7978,4 +7991,215 @@
 .advanced-settings-page .advanced-environment-add,
 .advanced-settings-page .advanced-config-file-note {
   font-size: 12px !important;
+}
+
+/* Dark theme: MCP workbench */
+.dark .mcp-config-card,
+.dark .mcp-raw-config-card {
+  border-color: #2e2e3c;
+  background: #1c1c24;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.dark .mcp-config-card.project {
+  border-color: #323244;
+}
+
+.dark .mcp-config-card-header,
+.dark .mcp-config-card.project .mcp-config-card-header,
+.dark .mcp-raw-config-header {
+  background: linear-gradient(105deg, #20202a, #1c1c24);
+}
+
+.dark .mcp-config-card-header strong,
+.dark .mcp-raw-config-header strong,
+.dark .mcp-server-options strong,
+.dark .mcp-selected-project-header strong,
+.dark .mcp-detail-title strong,
+.dark .mcp-detail-empty strong,
+.dark .mcp-session-row strong {
+  color: #f4f4f5;
+}
+
+.dark .mcp-config-card-header p,
+.dark .mcp-raw-config-header p,
+.dark .mcp-header-location code,
+.dark .mcp-server-options small,
+.dark .mcp-selected-project-header small,
+.dark .mcp-detail-title small,
+.dark .mcp-detail-empty p,
+.dark .mcp-detail-invalid > small,
+.dark .mcp-session-row p,
+.dark .mcp-raw-trigger small,
+.dark .mcp-raw-actions > span {
+  color: #a1a1aa;
+}
+
+.dark .mcp-config-count,
+.dark .mcp-server-rail > header small,
+.dark .mcp-project-rail > header small,
+.dark .mcp-project-options button small {
+  border-color: #3a3a4a;
+  background: #292936;
+  color: #c4c4ff;
+}
+
+.dark .mcp-server-rail,
+.dark .mcp-project-server-rail,
+.dark .mcp-project-rail {
+  border-color: #2e2e3c;
+  background: #181820;
+}
+
+.dark .mcp-project-rail {
+  background: linear-gradient(#1e1e2a, #181820);
+}
+
+.dark .mcp-server-rail > header,
+.dark .mcp-project-rail > header,
+.dark .mcp-selected-project-header,
+.dark .mcp-server-rail > footer {
+  border-color: #2e2e3c;
+  color: #e4e4e7;
+}
+
+.dark .mcp-project-workbench,
+.dark .mcp-detail-panel,
+.dark .mcp-server-editor {
+  background: #1c1c24;
+}
+
+.dark .mcp-server-search,
+.dark .mcp-project-search,
+.dark .mcp-raw-editor,
+.dark .mcp-form-field > input,
+.dark .mcp-repeatable-row,
+.dark .mcp-session-row {
+  border-color: #3a3a4a;
+  background: #202028;
+  color: #e4e4e7;
+}
+
+.dark .mcp-server-search input,
+.dark .mcp-project-search input,
+.dark .mcp-form-field > input,
+.dark .mcp-repeatable-row input,
+.dark .mcp-inline-title-input,
+.dark .mcp-raw-trigger,
+.dark .mcp-raw-body textarea {
+  color: #e4e4e7;
+}
+
+.dark .mcp-server-options > button {
+  color: #d4d4d8;
+}
+
+.dark .mcp-server-options > button:hover,
+.dark .mcp-project-options button:hover,
+.dark .mcp-raw-trigger:hover {
+  border-color: #3a3a4a;
+  background: #25252f;
+}
+
+.dark .mcp-server-options > button.selected,
+.dark .mcp-project-options button.selected {
+  border-color: #45456c;
+  background: linear-gradient(90deg, #292947, #25253a);
+  color: #c4c4ff;
+}
+
+.dark .mcp-server-options em,
+.dark .mcp-server-editor.readonly .mcp-repeatable-row,
+.dark .mcp-form-field > input:disabled,
+.dark .mcp-add-row-button,
+.dark .mcp-server-rail > footer button {
+  border-color: #3a3a4a;
+  background: #202028;
+  color: #b4b4c0;
+  -webkit-text-fill-color: currentColor;
+}
+
+.dark .mcp-field-label {
+  color: #d4d4d8;
+}
+
+.dark .mcp-http-note {
+  border-color: #333444;
+  background: #20222c;
+  color: #a1a1aa;
+}
+
+.dark .mcp-raw-body textarea {
+  border-color: #3a3a4a;
+  background: #181820;
+}
+
+.dark .mcp-raw-body textarea:focus {
+  background: #202028;
+}
+
+/* Dark theme: advanced settings */
+.dark .agent-retry-section,
+.dark .advanced-settings-card {
+  border-color: #2e2e3c;
+  background: #1c1c24;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.dark .agent-retry-header,
+.dark .agent-retry-field strong,
+.dark .advanced-service-copy strong,
+.dark .advanced-environment-compose > strong,
+.dark .advanced-environment-item code {
+  color: #f4f4f5;
+}
+
+.dark .agent-retry-header small,
+.dark .agent-retry-field small,
+.dark .advanced-service-copy p,
+.dark .advanced-environment-empty,
+.dark .advanced-environment-quick > span,
+.dark .advanced-environment-item > span {
+  color: #a1a1aa;
+}
+
+.dark .agent-retry-field input,
+.dark .advanced-service-field input,
+.dark .advanced-environment-form input,
+.dark .advanced-environment-item input {
+  border-color: #3a3a4a;
+  background: #202028;
+  color: #e4e4e7;
+}
+
+.dark .advanced-settings-page .agent-retry-field input:disabled,
+.dark .advanced-settings-page .advanced-service-field input:disabled,
+.dark .advanced-environment-form input:disabled {
+  border-color: #343442;
+  background: #181820;
+  color: #b4b4c0;
+  -webkit-text-fill-color: #b4b4c0;
+}
+
+.dark .advanced-settings-page .agent-retry-field input:not(:disabled),
+.dark .advanced-settings-page .advanced-service-field input:not(:disabled) {
+  color: #f4f4f5;
+}
+
+.dark .advanced-environment-list {
+  border-color: #2e2e3c;
+}
+
+.dark .advanced-environment-quick button,
+.dark .advanced-environment-add {
+  border-color: #3a3a4a;
+  background: #202028;
+  color: #d4d4d8;
+}
+
+/* Dark theme: security count badges */
+.dark .security-permission-count {
+  border-color: #3a3a4a;
+  background: #292936;
+  color: #e4e4e7;
 }

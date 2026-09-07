@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils.js";
+import pilotdeckLogoDark from "../../../assets/pilotdeck-wordmark-dark.png";
+import pilotdeckLogoLight from "../../../assets/pilotdeck-wordmark-light.png";
 import type { SettingsMenuKey } from "../types";
 import {
   SETTINGS_BACK_ICON,
@@ -110,7 +112,17 @@ export default function SettingsSidebar({
   return (
     <aside className={cn("settings-sidebar", !mobileVisible && "mobile-hidden")}>
       <div className="sidebar-brand">
-        <img alt="PilotDeck" src="/pilotdeck-logo-lockup-transparent.png" />
+        <img
+          alt="PilotDeck"
+          className="sidebar-brand-logo sidebar-brand-logo-light"
+          src={pilotdeckLogoLight}
+        />
+        <img
+          alt=""
+          aria-hidden="true"
+          className="sidebar-brand-logo sidebar-brand-logo-dark"
+          src={pilotdeckLogoDark}
+        />
       </div>
 
       <button type="button" className="back-to-app" onClick={onClose}>

@@ -1446,17 +1446,29 @@
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
-    padding: 0 12px;
+    padding: 0 19px;
     border-bottom: 1px solid rgba(100, 86, 189, 0.12);
   }
 
   .brand-lockup {
     display: block;
-    height: 36px;
-    width: auto;
+    width: 180px;
+    height: auto;
     max-width: 100%;
     object-fit: contain;
     object-position: left center;
+  }
+
+  .brand-lockup-dark {
+    display: none;
+  }
+
+  .dark .brand-lockup-light {
+    display: none;
+  }
+
+  .dark .brand-lockup-dark {
+    display: block;
   }
 
   .brand-mark {

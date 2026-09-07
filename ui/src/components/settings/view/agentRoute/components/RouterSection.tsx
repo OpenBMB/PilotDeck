@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ListOrdered,
@@ -75,6 +76,7 @@ export default function RouterSection({
   config,
   onChange,
 }: RouterSectionProps) {
+  const { t } = useTranslation("settings");
   const [showAdvanced, setShowAdvanced] = useState(true);
   const [editingTiers, setEditingTiers] = useState(false);
   const [editingPricing, setEditingPricing] = useState(false);
@@ -104,7 +106,10 @@ export default function RouterSection({
     >();
     for (const option of modelOpts) {
       const slash = option.value.indexOf("/");
-      const provider = slash > 0 ? option.value.slice(0, slash) : "其他";
+      const provider =
+        slash > 0
+          ? option.value.slice(0, slash)
+          : t("pilotDeckConfig.panels.router.ui.otherProvider");
       const catalogProvider = findCatalogProviderById(provider);
       const providerLabel =
         catalogProvider?.displayName ??
@@ -127,7 +132,7 @@ export default function RouterSection({
       groups.set(provider, group);
     }
     return [...groups.entries()];
-  }, [modelOpts]);
+  }, [modelOpts, t]);
 
   const pricingRows = useMemo(() => {
     const labels = new Map(
@@ -231,7 +236,9 @@ export default function RouterSection({
       );
     }
     setEditingTiers(false);
-    queueSettingsSaveSuccess("任务层级定义已保存");
+    queueSettingsSaveSuccess(
+      t("pilotDeckConfig.panels.router.ui.tierDefinitionsSaved"),
+    );
     onChange(next);
   };
 
@@ -249,7 +256,9 @@ export default function RouterSection({
       }),
     );
     setEditingPricing(false);
-    queueSettingsSaveSuccess("模型定价已保存");
+    queueSettingsSaveSuccess(
+      t("pilotDeckConfig.panels.router.ui.pricingSaved"),
+    );
     onChange(patch(config, ["router", "stats", "modelPricing"], normalized));
   };
 
@@ -265,14 +274,24 @@ export default function RouterSection({
         aria-label={ariaLabel}
         onChange={(event) => {
           queueSettingsSaveSuccess(
-            `${ariaLabel}已切换为 ${event.target.selectedOptions[0]?.text || event.target.value}`,
+            t("pilotDeckConfig.panels.router.ui.modelChanged", {
+              label: ariaLabel,
+              value:
+                event.target.selectedOptions[0]?.text || event.target.value,
+            }),
           );
           onSelect(event.target.value);
         }}
       >
-        {!value ? <option value="">请选择模型</option> : null}
+        {!value ? (
+          <option value="">
+            {t("pilotDeckConfig.panels.router.ui.selectModel")}
+          </option>
+        ) : null}
         {includeInherit ? (
-          <option value="inherit">继承主智能体模型（对话时选用模型）</option>
+          <option value="inherit">
+            {t("pilotDeckConfig.panels.router.ui.inheritMainModel")}
+          </option>
         ) : null}
         {groupedModels.map(([provider, group]) => (
           <optgroup key={provider} label={group.label}>
@@ -295,18 +314,22 @@ export default function RouterSection({
           <span className="route-heading-icon">
             <Route size={20} />
           </span>
-          <h2>启用智能路由</h2>
+          <h2>{t("pilotDeckConfig.panels.router.ui.smartRouting")}</h2>
         </div>
         <button
           className={`route-switch${enabled ? " on" : ""}`}
           type="button"
           role="switch"
           aria-checked={enabled}
-          aria-label="启用智能路由"
+          aria-label={t("pilotDeckConfig.panels.router.ui.smartRouting")}
           onClick={() => {
             const nextEnabled = !enabled;
             queueSettingsSaveSuccess(
-              `智能路由已${nextEnabled ? "开启" : "关闭"}`,
+              t(
+                nextEnabled
+                  ? "pilotDeckConfig.panels.router.ui.routingEnabled"
+                  : "pilotDeckConfig.panels.router.ui.routingDisabled",
+              ),
             );
             onChange(
               enabled
@@ -323,25 +346,34 @@ export default function RouterSection({
         <section className="route-card route-subagent-model-card">
           <div className="route-subagent-model-setting">
             <div className="route-subagent-model-copy">
-              <label>子智能体模型</label>
-              <p>非路由路径下子智能体默认使用的模型。</p>
+              <label>
+                {t("pilotDeckConfig.panels.router.ui.subagentModel")}
+              </label>
+              <p>
+                {t(
+                  "pilotDeckConfig.panels.router.ui.subagentModelDescription",
+                )}
+              </p>
             </div>
             {renderModelSelect(
               config.agent?.subagents?.default ??
                 config.agent?.model ??
                 modelOpts[0]?.value ??
                 "",
-              "子智能体模型",
+              t("pilotDeckConfig.panels.router.ui.subagentModel"),
               (value) => updateModel(["agent", "subagents", "default"], value),
               true,
             )}
           </div>
         </section>
       ) : (
-        <fieldset className="route-config-stack" aria-label="路由配置">
+        <fieldset
+          className="route-config-stack"
+          aria-label={t("pilotDeckConfig.panels.router.ui.routingConfig")}
+        >
           <section className="route-card route-models-card">
             <header className="route-section-header">
-              <h2>路由模型</h2>
+              <h2>{t("pilotDeckConfig.panels.router.ui.routingModels")}</h2>
             </header>
             <div className="route-model-list">
               <div className="route-model-row judge-row">
@@ -351,22 +383,34 @@ export default function RouterSection({
                   </span>
                   <div>
                     <div className="route-label-line">
-                      <strong>判定模型</strong>
+                      <strong>
+                        {t(
+                          "pilotDeckConfig.panels.router.levels.judge.label",
+                        )}
+                      </strong>
                       <span>Judge</span>
                     </div>
-                    <p>判断请求复杂度，匹配任务层级。</p>
+                    <p>
+                      {t(
+                        "pilotDeckConfig.panels.router.levels.judge.description",
+                      )}
+                    </p>
                   </div>
                 </div>
                 {renderModelSelect(
                   r.tokenSaver?.judge ?? fallbackModel,
-                  "判定模型",
+                  t("pilotDeckConfig.panels.router.levels.judge.label"),
                   (value) =>
                     updateModel(["router", "tokenSaver", "judge"], value),
                 )}
               </div>
               {Object.entries(tiers).map(([key, tier], index) => {
                 const preset = DEFAULT_TIERS[key as keyof typeof DEFAULT_TIERS];
-                const label = tier.label || preset?.label || key;
+                const usesPresetLabel =
+                  preset && (!tier.label || tier.label === preset.label);
+                const label = usesPresetLabel
+                  ? t(`pilotDeckConfig.panels.router.levels.${key}.label`)
+                  : tier.label || key;
                 return (
                   <div
                     key={key}
@@ -383,14 +427,21 @@ export default function RouterSection({
                           <strong>{label}</strong>
                           <span>{preset?.alias || key}</span>
                           {defaultTier === key ? (
-                            <span className="route-default-badge">默认</span>
+                            <span className="route-default-badge">
+                              {t(
+                                "pilotDeckConfig.panels.router.ui.defaultBadge",
+                              )}
+                            </span>
                           ) : (
                             <button
                               type="button"
                               className="route-default-action"
                               onClick={() => {
                                 queueSettingsSaveSuccess(
-                                  `${label}已设为默认任务层级`,
+                                  t(
+                                    "pilotDeckConfig.panels.router.ui.defaultTierChanged",
+                                    { label },
+                                  ),
                                 );
                                 onChange(
                                   patch(
@@ -401,20 +452,31 @@ export default function RouterSection({
                                 );
                               }}
                             >
-                              设为默认
+                              {t(
+                                "pilotDeckConfig.panels.router.ui.setDefault",
+                              )}
                             </button>
                           )}
                         </div>
                         <p>
-                          {preset?.summary ||
-                            tier.description ||
-                            "自定义任务层级。"}
+                          {preset &&
+                          (!tier.description ||
+                            tier.description === preset.description)
+                            ? t(
+                                `pilotDeckConfig.panels.router.levels.${key}.description`,
+                              )
+                            : tier.description ||
+                              t(
+                                "pilotDeckConfig.panels.router.ui.customTierDescription",
+                              )}
                         </p>
                       </div>
                     </div>
                     {renderModelSelect(
                       tier.model ?? fallbackModel,
-                      `${label}模型`,
+                      t("pilotDeckConfig.panels.router.ui.modelSuffix", {
+                        label,
+                      }),
                       (value) =>
                         updateModel(
                           ["router", "tokenSaver", "tiers", key, "model"],
@@ -435,7 +497,8 @@ export default function RouterSection({
               onClick={() => setShowAdvanced((value) => !value)}
             >
               <span>
-                <SlidersHorizontal size={18} /> 高级设置
+                <SlidersHorizontal size={18} />{" "}
+                {t("pilotDeckConfig.panels.router.advancedToggle")}
               </span>
               <ChevronDown size={16} className={showAdvanced ? "open" : ""} />
             </button>
@@ -445,14 +508,28 @@ export default function RouterSection({
                   <div className="advanced-strategy-row">
                     <span className="advanced-strategy-title">
                       <SubagentIcon />
-                      <span>子智能体策略</span>
+                      <span>
+                        {t(
+                          "pilotDeckConfig.panels.router.tokenSaver.subagentPolicy.label",
+                        )}
+                      </span>
                     </span>
                     <select
-                      aria-label="子智能体策略"
+                      aria-label={t(
+                        "pilotDeckConfig.panels.router.tokenSaver.subagentPolicy.label",
+                      )}
                       value={subagentPolicy}
                       onChange={(event) => {
                         queueSettingsSaveSuccess(
-                          `子智能体策略已切换为 ${event.target.value}`,
+                          t(
+                            "pilotDeckConfig.panels.router.ui.modelChanged",
+                            {
+                              label: t(
+                                "pilotDeckConfig.panels.router.tokenSaver.subagentPolicy.label",
+                              ),
+                              value: event.target.value,
+                            },
+                          ),
                         );
                         onChange(
                           patch(
@@ -467,20 +544,31 @@ export default function RouterSection({
                       <option value="skip">skip</option>
                     </select>
                     <p>
-                      <b>judge</b> 重新评估每个子智能体轮次，<b>skip</b>{" "}
-                      让子智能体固定使用指定模型。
+                      {t(
+                        "pilotDeckConfig.panels.router.ui.subagentPolicyDescription",
+                      )}
                     </p>
                   </div>
                   {subagentPolicy === "skip" ? (
                     <div className="advanced-strategy-model-row">
                       <div className="route-subagent-model-setting compact">
                         <div className="route-subagent-model-copy">
-                          <label>子智能体模型</label>
-                          <p>跳过重新判定时，子智能体固定使用此模型。</p>
+                          <label>
+                            {t(
+                              "pilotDeckConfig.panels.router.ui.subagentModel",
+                            )}
+                          </label>
+                          <p>
+                            {t(
+                              "pilotDeckConfig.panels.router.ui.subagentFixedModelDescription",
+                            )}
+                          </p>
                         </div>
                         {renderModelSelect(
                           config.agent?.subagents?.default ?? fallbackModel,
-                          "子智能体模型",
+                          t(
+                            "pilotDeckConfig.panels.router.ui.subagentModel",
+                          ),
                           (value) =>
                             updateModel(
                               ["agent", "subagents", "default"],
@@ -500,9 +588,15 @@ export default function RouterSection({
                         <ListOrdered size={18} />
                       </span>
                       <div>
-                        <h2>任务层级定义</h2>
+                        <h2>
+                          {t(
+                            "pilotDeckConfig.panels.router.ui.tierDefinitions",
+                          )}
+                        </h2>
                         <p>
-                          定义任务级别（已预置），作为判定模型划分任务的依据。
+                          {t(
+                            "pilotDeckConfig.panels.router.ui.tierDefinitionsDescription",
+                          )}
                         </p>
                       </div>
                     </div>
@@ -515,11 +609,15 @@ export default function RouterSection({
                             onClick={() => {
                               setTierDraft(tiers);
                               setEditingTiers(false);
-                              showSettingsSuccess("已取消任务层级定义更改");
+                              showSettingsSuccess(
+                                t(
+                                  "pilotDeckConfig.panels.router.ui.tierDefinitionsCancelled",
+                                ),
+                              );
                             }}
                           >
                             <X size={15} />
-                            取消
+                            {t("pilotDeckConfig.panels.router.ui.cancel")}
                           </button>
                           <button
                             className="button primary compact"
@@ -527,7 +625,9 @@ export default function RouterSection({
                             onClick={saveTierDefinitions}
                           >
                             <Save size={15} />
-                            保存更改
+                            {t(
+                              "pilotDeckConfig.panels.router.ui.saveChanges",
+                            )}
                           </button>
                         </>
                       ) : (
@@ -537,7 +637,7 @@ export default function RouterSection({
                           onClick={() => setEditingTiers(true)}
                         >
                           <EditIcon />
-                          编辑
+                          {t("pilotDeckConfig.panels.router.ui.edit")}
                         </button>
                       )}
                     </div>
@@ -549,6 +649,20 @@ export default function RouterSection({
                       const removable = !ROUTER_TIER_KEYS.includes(
                         key as (typeof ROUTER_TIER_KEYS)[number],
                       );
+                      const localizedTierLabel = preset
+                        && (!tier.label || tier.label === preset.label)
+                        ? t(
+                            `pilotDeckConfig.panels.router.levels.${key}.label`,
+                          )
+                        : tier.label || key;
+                      const localizedTierDescription =
+                        preset &&
+                        (!tier.description ||
+                          tier.description === preset.description)
+                          ? t(
+                              `pilotDeckConfig.panels.router.levels.${key}.description`,
+                            )
+                          : tier.description ?? "";
                       return (
                         <div
                           key={key}
@@ -556,8 +670,11 @@ export default function RouterSection({
                         >
                           <input
                             className="tier-definition-label"
-                            aria-label={`${tier.label || preset?.label || key}名称`}
-                            value={tier.label || preset?.label || key}
+                            aria-label={t(
+                              "pilotDeckConfig.panels.router.ui.tierName",
+                              { label: localizedTierLabel },
+                            )}
+                            value={localizedTierLabel}
                             disabled={!editingTiers}
                             onChange={(event) =>
                               setTierDraft((current) => ({
@@ -572,10 +689,11 @@ export default function RouterSection({
                           <textarea
                             className="tier-definition-description"
                             rows={1}
-                            aria-label={`${tier.label || preset?.label || key}描述`}
-                            value={
-                              tier.description ?? preset?.description ?? ""
-                            }
+                            aria-label={t(
+                              "pilotDeckConfig.panels.router.ui.tierDescription",
+                              { label: localizedTierLabel },
+                            )}
+                            value={localizedTierDescription}
                             disabled={!editingTiers}
                             onChange={(event) =>
                               setTierDraft((current) => ({
@@ -590,7 +708,9 @@ export default function RouterSection({
                           {editingTiers && removable ? (
                             <button
                               type="button"
-                              aria-label="删除任务层级"
+                              aria-label={t(
+                                "pilotDeckConfig.panels.router.ui.deleteTier",
+                              )}
                               onClick={() =>
                                 setTierDraft((current) =>
                                   Object.fromEntries(
@@ -621,14 +741,16 @@ export default function RouterSection({
                           ...current,
                           [key]: {
                             model: fallbackModel,
-                            label: "自定义层级",
+                            label: t(
+                              "pilotDeckConfig.panels.router.ui.customTier",
+                            ),
                             description: "",
                           },
                         }));
                       }}
                     >
                       <Plus size={15} />
-                      添加
+                      {t("pilotDeckConfig.panels.router.ui.add")}
                     </button>
                   </div>
                 </section>
@@ -640,8 +762,14 @@ export default function RouterSection({
                         <ModelPricingIcon />
                       </span>
                       <div>
-                        <h2>模型定价</h2>
-                        <p>定义模型价格，用于统计 API 成本。</p>
+                        <h2>
+                          {t("pilotDeckConfig.panels.router.pricing.title")}
+                        </h2>
+                        <p>
+                          {t(
+                            "pilotDeckConfig.panels.router.ui.pricingDescription",
+                          )}
+                        </p>
                       </div>
                     </div>
                     <div className="advanced-section-actions">
@@ -653,11 +781,15 @@ export default function RouterSection({
                             onClick={() => {
                               setPricingDraft(r.stats?.modelPricing ?? {});
                               setEditingPricing(false);
-                              showSettingsSuccess("已取消模型定价更改");
+                              showSettingsSuccess(
+                                t(
+                                  "pilotDeckConfig.panels.router.ui.pricingCancelled",
+                                ),
+                              );
                             }}
                           >
                             <X size={15} />
-                            取消
+                            {t("pilotDeckConfig.panels.router.ui.cancel")}
                           </button>
                           <button
                             className="button primary compact"
@@ -665,7 +797,9 @@ export default function RouterSection({
                             onClick={savePricing}
                           >
                             <Save size={15} />
-                            保存更改
+                            {t(
+                              "pilotDeckConfig.panels.router.ui.saveChanges",
+                            )}
                           </button>
                         </>
                       ) : (
@@ -675,7 +809,7 @@ export default function RouterSection({
                           onClick={() => setEditingPricing(true)}
                         >
                           <EditIcon />
-                          编辑
+                          {t("pilotDeckConfig.panels.router.ui.edit")}
                         </button>
                       )}
                     </div>
@@ -707,10 +841,16 @@ export default function RouterSection({
                               <label key={field}>
                                 <span>
                                   {field === "input"
-                                    ? "输入"
+                                    ? t(
+                                        "pilotDeckConfig.panels.router.ui.pricingInput",
+                                      )
                                     : field === "output"
-                                      ? "输出"
-                                      : "缓存"}
+                                      ? t(
+                                          "pilotDeckConfig.panels.router.ui.pricingOutput",
+                                        )
+                                      : t(
+                                          "pilotDeckConfig.panels.router.ui.pricingCache",
+                                        )}
                                 </span>
                                 <input
                                   min="0"
@@ -726,7 +866,10 @@ export default function RouterSection({
                             ),
                           )}
                           <select
-                            aria-label={`${label}定价单位`}
+                            aria-label={t(
+                              "pilotDeckConfig.panels.router.ui.pricingUnit",
+                              { label },
+                            )}
                             disabled={!editingPricing}
                             value={entry.unit ?? "$/百万 Token"}
                             onChange={(event) =>
@@ -741,13 +884,23 @@ export default function RouterSection({
                               }))
                             }
                           >
-                            <option value="$/百万 Token">$/百万 Token</option>
-                            <option value="¥/百万 Token">¥/百万 Token</option>
+                            <option value="$/百万 Token">
+                              {t(
+                                "pilotDeckConfig.panels.router.ui.millionTokenUnitUsd",
+                              )}
+                            </option>
+                            <option value="¥/百万 Token">
+                              {t(
+                                "pilotDeckConfig.panels.router.ui.millionTokenUnitCny",
+                              )}
+                            </option>
                           </select>
                           <button
                             type="button"
                             disabled={!editingPricing}
-                            aria-label="清空模型定价"
+                            aria-label={t(
+                              "pilotDeckConfig.panels.router.ui.clearPricing",
+                            )}
                             onClick={() =>
                               setPricingDraft((current) => ({
                                 ...current,

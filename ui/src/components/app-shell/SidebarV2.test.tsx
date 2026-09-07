@@ -60,9 +60,10 @@ describe('SidebarV2 layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    expect(screen.getByAltText('PILOTDECK').getAttribute('src')).toBe(
-      '/pilotdeck-logo-lockup-transparent.png',
-    );
+    const lightLogo = screen.getByAltText('PILOTDECK');
+    expect(lightLogo.getAttribute('src')).toContain('pilotdeck-wordmark-light.png');
+    expect(lightLogo.parentElement?.querySelector('.brand-lockup-dark')?.getAttribute('src'))
+      .toContain('pilotdeck-wordmark-dark.png');
     expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
     expect(screen.queryByText('New Chat')).toBeNull();

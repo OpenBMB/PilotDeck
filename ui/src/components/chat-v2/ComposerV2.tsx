@@ -1289,8 +1289,8 @@ export default function ComposerV2({
                             ? cn(
                                 "border-[#efd39f] bg-[#fff8e8] text-[#ad620b] hover:border-[#e5b968] hover:bg-[#fff2d3]",
                                 isPermissionMenuOpen &&
-                                  "border-[#e5b968] bg-[#fff2d3]",
-                                "dark:text-amber-300 dark:hover:border-amber-700 dark:hover:bg-amber-950/50",
+                                  "border-[#e5b968] bg-[#fff2d3] dark:border-amber-700 dark:bg-amber-950/60",
+                                "dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:border-amber-700 dark:hover:bg-amber-950/60",
                               )
                             : "border-[#ddd9f3] bg-[#f8f7ff] text-[#5d58b6] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                       )}

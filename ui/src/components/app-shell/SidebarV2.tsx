@@ -20,6 +20,8 @@ import {
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
+import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
+import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
 import {
   projectDisplayName,
   sessionDisplayTitle,
@@ -1027,8 +1029,14 @@ export default function SidebarV2({
         <header className="sidebar-brand-row">
           <img
             alt="PILOTDECK"
-            className="brand-lockup"
-            src="/pilotdeck-logo-lockup-transparent.png"
+            className="brand-lockup brand-lockup-light"
+            src={pilotdeckLogoLight}
+          />
+          <img
+            alt=""
+            aria-hidden="true"
+            className="brand-lockup brand-lockup-dark"
+            src={pilotdeckLogoDark}
           />
         </header>
       )}
