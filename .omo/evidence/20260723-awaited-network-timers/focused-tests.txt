@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: networkFetch retries retryable status responses and then succeeds
+ok 1 - networkFetch retries retryable status responses and then succeeds
+  ---
+  duration_ms: 2.439708
+  type: 'test'
+  ...
+# Subtest: networkFetch uses retry-after when calculating retry delay
+ok 2 - networkFetch uses retry-after when calculating retry delay
+  ---
+  duration_ms: 0.060416
+  type: 'test'
+  ...
+# Subtest: networkFetch caps retry-after delays with maxDelayMs
+ok 3 - networkFetch caps retry-after delays with maxDelayMs
+  ---
+  duration_ms: 0.030167
+  type: 'test'
+  ...
+# Subtest: networkFetch normalizes DNS and reset errors
+ok 4 - networkFetch normalizes DNS and reset errors
+  ---
+  duration_ms: 0.075833
+  type: 'test'
+  ...
+# Subtest: networkFetch times out requests
+ok 5 - networkFetch times out requests
+  ---
+  duration_ms: 1.483667
+  type: 'test'
+  ...
+# Subtest: networkFetch honors init.signal abort reasons without options.signal
+ok 6 - networkFetch honors init.signal abort reasons without options.signal
+  ---
+  duration_ms: 0.29525
+  type: 'test'
+  ...
+# Subtest: networkFetch preserves parent NetworkFetchError reasons passed through options.signal
+ok 7 - networkFetch preserves parent NetworkFetchError reasons passed through options.signal
+  ---
+  duration_ms: 0.206041
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 96.512417
+focused_exit=0
