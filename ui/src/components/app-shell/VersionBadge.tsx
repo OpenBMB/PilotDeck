@@ -2,13 +2,24 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { GitCommit, RefreshCw, X, Check, AlertCircle } from 'lucide-react';
 import { useGitVersion } from '../../hooks/useGitVersion';
 import { cn } from '../../lib/utils.js';
+import { restartAndReload, type RestartUiStatus } from '../../utils/restartUi';
 
 type UpdatePhase = 'idle' | 'updating' | 'success' | 'error';
+type RestartModalStatus = Exclude<RestartUiStatus, 'confirmed'>;
+
+const RESTART_COPY = {
+  restartingTitle: 'Restarting PilotDeck',
+  restartingDescription: 'Restart may take a little while. Please wait.',
+  failedTitle: 'Automatic restart ran into a problem',
+  failedDescription: 'Restart PilotDeck manually from the command line, then refresh this page.',
+  refreshPage: 'Refresh',
+};
 
 export function VersionBadge() {
   const { info, loading, triggerUpdate, triggerRestart, fetchVersion } = useGitVersion();
   const [showDialog, setShowDialog] = useState(false);
   const [phase, setPhase] = useState<UpdatePhase>('idle');
+  const [restartStatus, setRestartStatus] = useState<RestartModalStatus | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const dialogRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -41,29 +52,21 @@ export function VersionBadge() {
     }
   }, [triggerUpdate]);
 
-  const handleRestart = useCallback(async () => {
-    // Immediately blank the entire page with a restart splash
-    document.title = 'Restarting PilotDeck...';
-    document.body.innerHTML = '';
-    document.body.style.cssText = 'margin:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh';
-    document.body.innerHTML = `
-      <div style="text-align:center;font-family:system-ui,-apple-system,sans-serif">
-        <svg style="width:40px;height:40px;margin-bottom:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>
-        <p style="color:#ccc;font-size:1.1rem;margin:0 0 8px">Restarting PilotDeck...</p>
-        <p style="color:#666;font-size:0.8rem;margin:0">Page will reload automatically when server is ready.</p>
-      </div>
-      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
-
-    // Fire the restart request (don't await — server may die before responding)
-    triggerRestart().catch(() => {});
-
-    // Poll until server is back, then reload
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch('/health');
-        if (res.ok) { clearInterval(poll); window.location.reload(); }
-      } catch { /* still down */ }
-    }, 2000);
+  const handleRestart = useCallback(() => {
+    setShowDialog(false);
+    restartAndReload(
+      (context) => triggerRestart({ signal: context?.signal }),
+      {
+        copy: {
+          title: RESTART_COPY.restartingTitle,
+          documentTitle: RESTART_COPY.restartingTitle,
+        },
+        onStatusChange: (status) => {
+          if (status === 'confirmed') return;
+          setRestartStatus(status);
+        },
+      },
+    );
   }, [triggerRestart]);
 
   const handleClose = useCallback(() => {
@@ -95,6 +98,42 @@ export function VersionBadge() {
           <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 dark:bg-blue-400" />
         )}
       </button>
+
+      {restartStatus && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-6 text-center shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
+            {restartStatus === 'restarting' ? (
+              <>
+                <RefreshCw className="mx-auto mb-4 h-8 w-8 animate-spin text-blue-500" />
+                <h2 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                  {RESTART_COPY.restartingTitle}
+                </h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  {RESTART_COPY.restartingDescription}
+                </p>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="mx-auto mb-4 h-8 w-8 text-red-500" />
+                <h2 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                  {RESTART_COPY.failedTitle}
+                </h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  {RESTART_COPY.failedDescription}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {RESTART_COPY.refreshPage}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showDialog && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">

@@ -36,7 +36,7 @@ Install it from a PilotDeck source checkout or installed app directory:
 
 ```bash
 cd /path/to/PilotDeck
-corepack pnpm install --frozen-lockfile
+corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 corepack pnpm run install:browser
 ```
 

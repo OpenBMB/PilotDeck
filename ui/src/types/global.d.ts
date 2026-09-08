@@ -1,3 +1,4 @@
+import type { DesktopUpdateCheck, DesktopUpdateState } from "../utils/desktopUpdates";
 export {};
 
 declare global {
@@ -9,6 +10,30 @@ declare global {
     // app navigated to it; false otherwise so callers (e.g. chat slash
     // command handler) can surface a friendly "not found" message.
     switchProject?: (projectName: string) => boolean;
+    pilotdeckDesktop?: {
+      checkUpdates: () => Promise<DesktopUpdateCheck>;
+      getUpdateStatus: () => Promise<DesktopUpdateState>;
+      startUpdate: () => Promise<DesktopUpdateState>;
+      cancelUpdate: () => Promise<DesktopUpdateState>;
+      getRuntimeInfo: () => Promise<{
+        serverPort: number;
+        gatewayPort: number;
+        gateway:
+          | { state: 'stopped' | 'starting' | 'ready' }
+          | { state: 'error'; error: string };
+        runtimeRoot: string;
+        logPath: string;
+      } | null>;
+      onRuntimeStatus: (callback: (status: {
+        phase: string;
+        message: string;
+        logPath?: string;
+        error?: string;
+      }) => void) => () => void;
+      retryRuntime: () => Promise<void>;
+      openRuntimeLog: () => Promise<void>;
+      pickFolder: () => Promise<string | null>;
+    };
   }
 
   interface EventSourceEventMap {

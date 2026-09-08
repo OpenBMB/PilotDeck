@@ -61,7 +61,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     };
 
     function buildAlwaysOn(config: AlwaysOnConfig | undefined): AlwaysOnManager | undefined {
-      if (!config?.enabled) return undefined;
+      if (!config) return undefined;
+      const hasEnabledProject = Object.values(config.projects).some((p) => p.enabled);
+      if (!hasEnabledProject) return undefined;
       return createAlwaysOnManager({
         config,
         pilotHome,
@@ -277,6 +279,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           verifyToken: fCfg.verifyToken,
           connectionMode: fCfg.connectionMode,
           domainName: fCfg.domainName,
+          permissionMode: fCfg.permissionMode,
           mapper: savedFeishu ? new FeishuSessionMapper(savedFeishu) : undefined,
           onStateChange: (state) => channelStatePersistence.save("feishu", state),
         });
@@ -317,7 +320,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         parts.push("wecom=started");
       }
 
-      const extraChannels = await loadEnabledChannels(config.adapters);
+      const extraChannels = await loadEnabledChannels(config.adapters, { pilotHome });
       for (const ch of extraChannels) {
         await serverRef.hotStartChannel(ch);
         parts.push(`${ch.channelKey}=started`);
@@ -331,7 +334,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     // --- Server startup ---
 
     const envPort = Number.parseInt(env.PILOTDECK_GATEWAY_PORT ?? "", 10);
-    const extraChannels = await loadEnabledChannels(snapshot.config.adapters);
+    const extraChannels = await loadEnabledChannels(snapshot.config.adapters, { pilotHome });
     const feishuCfg = snapshot.config.adapters?.feishu;
     const savedFeishuState = await channelStatePersistence.load<FeishuSessionMapperState>("feishu");
     const feishuChannel = feishuCfg?.enabled === true
@@ -342,6 +345,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           verifyToken: feishuCfg.verifyToken,
           connectionMode: feishuCfg.connectionMode,
           domainName: feishuCfg.domainName,
+          permissionMode: feishuCfg.permissionMode,
           mapper: savedFeishuState ? new FeishuSessionMapper(savedFeishuState) : undefined,
           onStateChange: (state) => channelStatePersistence.save("feishu", state),
         })
@@ -508,59 +512,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 }
 
 async function handleUpdateCommand(argv: string[]): Promise<void> {
-  const { execFileSync } = await import("node:child_process");
-  const { resolve: resolvePath, dirname } = await import("node:path");
-  const { fileURLToPath } = await import("node:url");
-
-  const __filename = fileURLToPath(import.meta.url);
-  const projectRoot = resolvePath(dirname(__filename), "..", "..", "..");
-  const scriptPath = resolvePath(projectRoot, "scripts", "update.sh");
-
-  const doRestart = argv.includes("--restart");
-  const checkOnly = argv.includes("--check");
-
-  if (checkOnly) {
-    try {
-      const branch = execFileSync("git", ["branch", "--show-current"], { cwd: projectRoot, encoding: "utf-8" }).trim() || "main";
-      execFileSync("git", ["fetch", "origin", branch], { cwd: projectRoot, encoding: "utf-8", stdio: "pipe" });
-      const local = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectRoot, encoding: "utf-8" }).trim();
-      const remote = execFileSync("git", ["rev-parse", `origin/${branch}`], { cwd: projectRoot, encoding: "utf-8" }).trim();
-
-      if (local === remote) {
-        console.log(`Already up-to-date (${local.slice(0, 8)}) on branch ${branch}`);
-      } else {
-        const countStr = execFileSync("git", ["rev-list", "--count", `HEAD..origin/${branch}`], { cwd: projectRoot, encoding: "utf-8" }).trim();
-        console.log(`Update available: ${countStr} new commit(s) on branch ${branch}`);
-        console.log(`  local:  ${local.slice(0, 8)}`);
-        console.log(`  remote: ${remote.slice(0, 8)}`);
-        const log = execFileSync("git", ["log", "--oneline", `HEAD..origin/${branch}`, "-5"], { cwd: projectRoot, encoding: "utf-8" }).trim();
-        if (log) {
-          console.log("\nRecent commits:");
-          console.log(log);
-        }
-      }
-    } catch (e: unknown) {
-      console.error(`Failed to check for updates: ${e instanceof Error ? e.message : String(e)}`);
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  const args = doRestart ? [scriptPath, "--restart"] : [scriptPath];
-
+  const { runUpdateProcess } = await import("../runtime/updateCommand.js");
   try {
-    execFileSync("bash", args, {
-      cwd: projectRoot,
-      stdio: "inherit",
-      env: { ...process.env, FORCE_COLOR: "1" },
-    });
-  } catch (e: unknown) {
-    const err = e as { status?: number };
-    if (err.status === 2) {
-      // Already up-to-date — not an error
-      return;
-    }
-    console.error(`Update failed with exit code ${err.status ?? "unknown"}`);
+    const result = await runUpdateProcess(argv, { output: chunk => process.stdout.write(chunk) });
+    if (result.code !== 0 && result.code !== 2) process.exitCode = 1;
+  } catch (error) {
+    console.error(`Update failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
   }
 }
@@ -774,11 +731,19 @@ function createFallbackGateway(): Gateway {
   }
   return {
     submitTurn: errorStream,
+    steerTurn: async () => ({ accepted: false, reason: "no_active_turn" }),
+    cancelSteer: async () => ({ cancelled: false, reason: "no_active_turn" }),
     abortTurn: async () => undefined,
     listSessions: async () => ({ sessions: [] }),
     resumeSession: async (input) => input,
     newSession: async (input) => ({ sessionKey: `${input.channelKey}:project=${input.projectKey ?? process.cwd()}:s_local` }),
     closeSession: async () => undefined,
+    replaceLastTurn: async () => {
+      throw new Error("Message editing is unavailable while using the fallback gateway.");
+    },
+    finalizeLastTurnReplacement: async () => {
+      throw new Error("Message editing is unavailable while using the fallback gateway.");
+    },
     describeServer: async () => ({ mode: "in_process" }),
     cronCreate: async () => {
       throw new Error("Cron runtime is not configured.");

@@ -10,7 +10,7 @@ export const GOOGLE_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsSystemPrompt: true,
   supportsPromptCache: false,
   maxContextTokens: 1_048_576,
-  maxOutputTokens: 65_536,
+  maxOutputTokens: 32_768,
 };
 
 export const GOOGLE_DEFAULT_MULTIMODAL: MultimodalConstraints = {

@@ -24,6 +24,7 @@ export default function AdvancedSections({ title }: AdvancedSectionsProps) {
     path,
     raw,
     setRaw,
+    commitRaw,
     validation,
     parseError,
     isDirty,
@@ -42,8 +43,7 @@ export default function AdvancedSections({ title }: AdvancedSectionsProps) {
 
   const onFormChange = (next: PilotDeckConfig) => {
     try {
-      setRaw(configToYamlString(next));
-      void save();
+      void commitRaw(configToYamlString(next));
     } catch (caught) {
       console.error("Failed to serialise advanced config patch", caught);
     }

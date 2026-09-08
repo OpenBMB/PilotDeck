@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Dev launcher: probe the three dev ports (server / gateway / vite), find the
- * first free one for each starting from the project defaults, then exec the
- * existing `concurrently` script with the resolved values injected as env so
- * gateway / server / vite all bind/connect to matching numbers.
+ * first free one for each starting from the project defaults, then launch the
+ * runtime supervisor with the resolved values injected as env so server / vite
+ * bind to matching ports and Gateway can start after configuration is ready.
  *
  * This means a stale leftover process on 3001 (or another team member's tool
  * occupying 18789) no longer breaks `npm run dev` — the launcher just slides
@@ -27,12 +27,19 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
+const launchConfigPath = resolveLaunchConfigPath(process.env.PILOTDECK_CONFIG_PATH);
+
+export function resolveLaunchConfigPath(value, launchCwd = process.cwd()) {
+  const configuredPath = typeof value === 'string' ? value.trim() : '';
+  return configuredPath ? resolve(launchCwd, configuredPath) : undefined;
+}
 
 function readYamlPortConfig() {
   const home = process.env.PILOT_HOME || join(homedir(), '.pilotdeck');
-  const configPath = process.env.PILOTDECK_CONFIG_PATH || join(home, 'pilotdeck.yaml');
+  const configPath = launchConfigPath || join(home, 'pilotdeck.yaml');
   try {
     const raw = readFileSync(configPath, 'utf8');
     const config = parseYaml(raw);
@@ -119,13 +126,16 @@ async function main() {
     PILOTDECK_GATEWAY_PORT: String(gateway.port),
     PILOTDECK_GATEWAY_URL:
       process.env.PILOTDECK_GATEWAY_URL ?? `ws://127.0.0.1:${gateway.port}/ws`,
+    PILOTDECK_RESTART_MODE: 'dev',
     VITE_PORT: String(vite.port),
   };
+  if (launchConfigPath) env.PILOTDECK_CONFIG_PATH = launchConfigPath;
+  else delete env.PILOTDECK_CONFIG_PATH;
 
   const child = spawn(
-    'npm',
-    ['--workspace', 'ui', 'run', 'dev:concurrent'],
-    { cwd: repoRoot, env, stdio: 'inherit', shell: true },
+    process.execPath,
+    ['ui/server/webRuntimeSupervisor.js', 'dev'],
+    { cwd: repoRoot, env, stdio: 'inherit' },
   );
 
   const forward = (signal) => {
@@ -143,7 +153,9 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

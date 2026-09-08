@@ -22,6 +22,11 @@ export function buildLiteLLMContinuationRequest<T extends CanonicalModelRequest>
         content: [{ type: "text" as const, text: LITELLM_CONTINUATION_INSTRUCTION }],
       },
     ],
+    // Continuation changes the message sequence. Any previous provider-boundary
+    // cache indices would point at the wrong messages, so the next request must
+    // rebuild or omit the cache plan rather than reuse stale markers.
+    cacheBreakpoints: undefined,
+    cachePlan: undefined,
   };
 }
 

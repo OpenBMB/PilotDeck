@@ -80,6 +80,7 @@ function convertSingleMessage(
   options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
   const turnIdentity = {
+    ...(msg.renderKey ? { renderKey: msg.renderKey } : {}),
     ...(msg.runId ? { runId: msg.runId } : {}),
     ...(msg.turnId || msg.runId ? { turnId: msg.turnId || msg.runId } : {}),
   };
@@ -125,6 +126,7 @@ function convertSingleMessage(
           id: msg.id,
           entryId: msg.entryId,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: text,
           timestamp: msg.timestamp,
           ...turnIdentity,
@@ -138,6 +140,7 @@ function convertSingleMessage(
           id: msg.id,
           entryId: msg.entryId,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: '',
           artifacts: msg.artifacts,
           timestamp: msg.timestamp,
@@ -192,7 +195,7 @@ function convertSingleMessage(
       const subagentLink = isSubagentContainer && msg.toolId
         ? subagentLinks?.get(msg.toolId)
         : undefined;
-      const msgSubagentId = (msg as Record<string, unknown>).subagentId as string | undefined;
+      const msgSubagentId = msg.subagentId;
 
       return {
         id: msg.id,
@@ -226,11 +229,12 @@ function convertSingleMessage(
         return {
           id: msg.id,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: unescapeWithMathProtection(thinkingContent),
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.id.startsWith('__streaming_thinking_'),
+          isStreaming: msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
         };
       }
       return null;
@@ -348,6 +352,7 @@ function convertSingleMessage(
         return {
           id: msg.id,
           type: 'assistant',
+          ...(msg.model ? { model: msg.model } : {}),
           content: msg.content,
           timestamp: msg.timestamp,
           ...turnIdentity,

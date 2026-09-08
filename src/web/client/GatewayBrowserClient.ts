@@ -9,10 +9,14 @@
 
 import {
   PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB,
+  type WebCancelSteerInput,
+  type WebCancelSteerResult,
   type WebGatewayEvent,
   type WebGatewayFrame,
   type WebGatewayMethod,
   type WebHelloOk,
+  type WebSteerTurnInput,
+  type WebSteerTurnResult,
   type WebSubmitTurnInput,
 } from "./protocol.js";
 
@@ -137,6 +141,14 @@ export class GatewayBrowserClient {
     return this.stream("submit_turn", input);
   }
 
+  steerTurn(input: WebSteerTurnInput): Promise<WebSteerTurnResult> {
+    return this.request<WebSteerTurnResult>("steer_turn", input);
+  }
+
+  cancelSteer(input: WebCancelSteerInput): Promise<WebCancelSteerResult> {
+    return this.request<WebCancelSteerResult>("cancel_steer", input);
+  }
+
   /** Convenience helpers. */
   abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>("abort_turn", input);
@@ -172,9 +184,44 @@ export class GatewayBrowserClient {
     );
   }
 
+  projectFilesList(input: import("./protocol.js").WebProjectFilesListInput) {
+    return this.request<import("./protocol.js").WebProjectFilesListResult>("project_files_list", input);
+  }
+
+  commandsList(input: import("./protocol.js").WebCommandsListInput) {
+    return this.request<import("./protocol.js").WebCommandsListResult>("commands_list", input);
+  }
+
+  modelCatalogList(input: import("./protocol.js").WebModelCatalogListInput) {
+    return this.request<import("./protocol.js").WebModelCatalogListResult>("model_catalog_list", input);
+  }
+
+  sessionModelGet(input: import("./protocol.js").WebSessionModelInput) {
+    return this.request<import("./protocol.js").WebSessionModelResult>("session_model_get", input);
+  }
+
+  sessionModelSet(input: import("./protocol.js").WebSessionModelInput & { selection: import("./protocol.js").WebSessionModelSelection }) {
+    return this.request<import("./protocol.js").WebSessionModelResult>("session_model_set", input);
+  }
+
+  sessionModelClear(input: import("./protocol.js").WebSessionModelInput) {
+    return this.request<{ ok: boolean }>("session_model_clear", input);
+  }
+
   getActiveTurnSnapshot(input: import("./protocol.js").WebActiveTurnSnapshotInput) {
     return this.request<import("./protocol.js").WebActiveTurnSnapshot>(
       "active_turn_snapshot",
+      input,
+    );
+  }
+
+  replaceLastTurn(input: import("./protocol.js").WebReplaceLastTurnInput) {
+    return this.request<import("./protocol.js").WebReplaceLastTurnResult>("replace_last_turn", input);
+  }
+
+  finalizeLastTurnReplacement(input: import("./protocol.js").WebFinalizeLastTurnReplacementInput) {
+    return this.request<import("./protocol.js").WebFinalizeLastTurnReplacementResult>(
+      "finalize_last_turn_replacement",
       input,
     );
   }
@@ -322,7 +369,7 @@ export class GatewayBrowserClient {
         pending.resolve(frame.result);
       } else {
         pending.reject(
-          Object.assign(new Error(frame.error.message), { code: frame.error.code }),
+          Object.assign(new Error(frame.error.message), { code: frame.error.code, details: frame.error.details }),
         );
       }
       return;

@@ -71,7 +71,7 @@ test("standalone skill precedence is project > user > builtin without legacy ali
       join(projectRoot, ".pilotdeck", "skills", "docx"),
       "docx",
       "Project DOCX skill description.",
-      "# Project DOCX skill",
+      "# Project DOCX skill\n\nROOT={{SKILL_ROOT_SHELL}}",
     );
 
     const pluginDir = join(pilotHome, "plugins", "office");
@@ -103,7 +103,11 @@ test("standalone skill precedence is project > user > builtin without legacy ali
       join(pluginDir, "skills", "docx", "SKILL.md"),
     );
 
-    assert.match(await runtime.loadSkillPrompt("docx") ?? "", /# Project DOCX skill/);
+    const projectPrompt = await runtime.loadSkillPrompt("docx") ?? "";
+    assert.match(projectPrompt, /# Project DOCX skill/);
+    assert.ok(
+      projectPrompt.includes(`ROOT='${join(projectRoot, ".pilotdeck", "skills", "docx")}'`),
+    );
     assert.equal(await runtime.loadSkillPrompt("docx:..:docx"), undefined);
     assert.equal(await runtime.loadSkillPrompt("docx:docx"), undefined);
     assert.match(await runtime.loadSkillPrompt("office:docx") ?? "", /# Plugin DOCX skill/);

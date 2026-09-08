@@ -19,9 +19,7 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
   const { t } = useTranslation("settings");
   const {
     raw,
-    setRaw,
-    restoreRawIfCurrent,
-    save,
+    commitRaw,
     loading,
     error,
   } = usePilotDeckConfig();
@@ -32,14 +30,8 @@ export default function ModelPoolSections({ title }: ModelPoolSectionsProps) {
     options?: ConfigSaveOptions,
   ): Promise<ConfigSaveResult> => {
     try {
-      const previousRaw = raw;
       const nextRaw = configToYamlString(next);
-      setRaw(nextRaw);
-      const result = await save(options);
-      if (!result.ok && options?.providerRenames?.length) {
-        restoreRawIfCurrent(nextRaw, previousRaw);
-      }
-      return result;
+      return await commitRaw(nextRaw, options);
     } catch (caught) {
       const message = caught instanceof Error
         ? caught.message

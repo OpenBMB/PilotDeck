@@ -157,6 +157,22 @@ test("unexecuted mutating tool errors do not enable workspace-diff artifacts", a
   }
 });
 
+test("unavailable mutating tools do not enable workspace-diff artifacts", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-unavailable-tool-"));
+  try {
+    await writeFile(join(projectRoot, "notes.txt"), "before");
+
+    const collector = await FileArtifactCollector.start({ cwd: projectRoot });
+
+    await writeFile(join(projectRoot, "notes.txt"), "changed before an unavailable tool");
+    collector.observeToolResult(failedToolResult("optional_writer", "tool_unavailable"));
+
+    assert.deepEqual(await collector.finish("complete"), []);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test("mutating tool execution failures still enable workspace-diff artifacts", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-failed-tool-"));
   try {

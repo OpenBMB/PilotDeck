@@ -28,6 +28,19 @@ export type SettingsFix = {
   url?: string;
 };
 
+/**
+ * Safe metadata about a stream that ended before the provider completed its
+ * response. Tool argument text is deliberately never retained here.
+ */
+export type StreamInterruption = {
+  phase: "empty" | "text" | "reasoning" | "tool_call";
+  activeToolCalls?: Array<{
+    id: string;
+    name: string;
+    argumentChars: number;
+  }>;
+};
+
 export type CanonicalModelError = {
   provider: string;
   model?: string;
@@ -53,6 +66,8 @@ export type CanonicalModelError = {
   maxOutputTokens?: number;
   /** Provider-reported output space available for this prompt. */
   availableOutputTokens?: number;
+  /** Streaming response ended before its completion sentinel. */
+  streamInterruption?: StreamInterruption;
 };
 
 /**
@@ -105,7 +120,10 @@ export const CONTEXT_OVERFLOW_PATTERN =
   /context length|context size|maximum context|too many tokens|context window|prompt exceeds max length|maximum number of tokens|exceeds the max_model_len|max_model_len|input is too long|maximum model length|context length exceeded|slot context|n_ctx_slot|超过最大长度|上下文长度|input tokens? exceed|exceeds the maximum number of input tokens/i;
 
 export const BILLING_PATTERN =
-  /insufficient credits|insufficient_quota|insufficient balance|credit balance|credits have been exhausted|top up your credits|payment required|billing hard limit|exceeded your current quota|account is deactivated|plan does not include/i;
+  /insufficient credits|insufficient_quota|insufficient balance|credit balance|credits have been exhausted|quota_exhausted|quota exhausted|quota has been exhausted|top up your credits|payment required|billing hard limit|exceeded your current quota|account is deactivated|plan does not include/i;
+
+export const INVALID_API_KEY_PATTERN =
+  /invalid_api_key|invalid api key|incorrect api key|api key is invalid/i;
 
 export const MODEL_NOT_FOUND_PATTERN =
   /is not a valid model|invalid model|model not found|model_not_found|does not exist|no such model|unknown model|unsupported model/i;

@@ -72,7 +72,11 @@ export function resolveMarkdownFileHref(
   if (/^file:\/\//i.test(trimmed)) {
     try {
       const url = new URL(trimmed);
-      return decodePath(url.pathname) || null;
+      const pathname = decodePath(url.pathname);
+      if (url.hostname && url.hostname !== 'localhost') {
+        return `//${url.hostname}${pathname}`;
+      }
+      return pathname || null;
     } catch {
       return null;
     }

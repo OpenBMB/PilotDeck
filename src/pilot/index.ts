@@ -15,4 +15,13 @@ export {
   type PilotExtensionPaths,
   type PilotPathEnv,
 } from "./paths.js";
+export {
+  ensureWritableDirectory,
+  isDesktopRuntimeProjectRoot,
+  isVirtualProjectRoot,
+  resolvePilotHomeProjectArtifactDir,
+  resolveRuntimeArtifactFallbackDir,
+  type EnsureWritableDirectoryInput,
+  type EnsureWritableDirectoryResult,
+} from "./writablePaths.js";
 export * from "./config/index.js";

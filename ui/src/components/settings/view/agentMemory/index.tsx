@@ -353,13 +353,12 @@ export default function AgentMemorySections({
   projects,
 }: AgentMemorySectionsProps) {
   const { t } = useTranslation("settings");
-  const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
+  const { raw, commitRaw, loading, error } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
 
   const onFormChange = (next: PilotDeckConfig) => {
     try {
-      setRaw(configToYamlString(next));
-      void save();
+      void commitRaw(configToYamlString(next));
     } catch (caught) {
       console.error("Failed to serialise agent memory config patch", caught);
     }

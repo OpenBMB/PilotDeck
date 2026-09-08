@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Activity,
   AlertCircle,
@@ -13,6 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { AgentTimeline } from './AgentTimeline';
+import { StreamingScrollViewport } from './StreamingScrollViewport';
 
 export type ProcessTraceMetric = {
   key: string;
@@ -27,6 +29,7 @@ export type ProcessTraceStep = {
   severity?: string;
   phase?: string;
   toolName?: string;
+  toolId?: string;
 };
 
 type ProcessTraceProps = {
@@ -70,6 +73,7 @@ export function ProcessLiveStatus({
   expanded: controlledExpanded,
   onExpandedChange,
   className = '',
+  contentClassName,
 }: {
   step: ProcessTraceStep;
   children?: ReactNode;
@@ -78,6 +82,7 @@ export function ProcessLiveStatus({
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   className?: string;
+  contentClassName?: string;
 }) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
@@ -122,28 +127,28 @@ export function ProcessLiveStatus({
 
   return (
     <div
-      role="status"
-      aria-live="polite"
       className={`process-live-status ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
     >
-      {hasDetails ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-          className={`group inline-flex min-w-0 max-w-full items-start gap-2 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
-            isRunning ? 'animate-pulse' : ''
-          }`}
-        >
-          {statusContent}
-        </button>
-      ) : (
-        <div className={`inline-flex min-w-0 max-w-full items-start gap-2 ${isRunning ? 'animate-pulse' : ''}`}>
-          {statusContent}
-        </div>
-      )}
+      <div role="status" aria-live="polite">
+        {hasDetails ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            className={`hover-brand-text group inline-flex min-w-0 max-w-full items-start gap-2 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
+              isRunning ? 'animate-pulse' : ''
+            }`}
+          >
+            {statusContent}
+          </button>
+        ) : (
+          <div className={`inline-flex min-w-0 max-w-full items-start gap-2 ${isRunning ? 'animate-pulse' : ''}`}>
+            {statusContent}
+          </div>
+        )}
+      </div>
       {expanded && hasDetails ? (
-        <div className="mt-1.5 space-y-1.5 pl-5">
+        <div className={`mt-1.5 space-y-1.5 ${contentClassName ?? 'pl-5'}`}>
           {children}
         </div>
       ) : null}
@@ -266,7 +271,7 @@ export function ProcessTrace({
           }
         }}
         disabled={!hasDetails}
-        className={`group inline-flex min-w-0 max-w-full items-center gap-2 text-left text-[14px] leading-relaxed text-neutral-400 transition hover:text-neutral-600 disabled:cursor-default disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-300 dark:disabled:hover:text-neutral-500 ${
+        className={`hover-brand-text group inline-flex min-w-0 max-w-full items-center gap-2 text-left text-[14px] leading-relaxed text-neutral-400 transition hover:text-neutral-600 disabled:cursor-default disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-300 dark:disabled:hover:text-neutral-500 ${
           isRunning ? 'animate-pulse' : ''
         }`}
       >
@@ -310,31 +315,49 @@ export function ProcessTrace({
 export function StreamingThinkingPreview({
   content,
   maxLines = 10,
+  scrollable = false,
 }: {
   content: string;
   maxLines?: number;
+  scrollable?: boolean;
 }) {
+  const { t } = useTranslation('chat');
   const lines = content.split('\n');
   const visibleLines = lines.slice(-maxLines);
   const hasOverflow = lines.length > maxLines;
 
+  if (scrollable) {
+    return (
+      <div className="mt-1 px-3 py-2 font-mono text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+        <StreamingScrollViewport
+          label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
+          className="whitespace-pre-wrap break-words border-l-2 border-neutral-200 pl-3 dark:border-neutral-700"
+        >
+          {content}
+        </StreamingScrollViewport>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="relative mt-1 overflow-hidden px-3 py-2 font-mono text-xs leading-relaxed text-neutral-500 dark:text-neutral-400"
-      style={
-        hasOverflow
-          ? {
-              maskImage: 'linear-gradient(to bottom, transparent 0%, black 25%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 25%)',
-            }
-          : undefined
-      }
-    >
-      {visibleLines.map((line, i) => (
-        <div key={i} className="whitespace-pre-wrap break-words">
-          {line || '\u00A0'}
-        </div>
-      ))}
+    <div className="relative mt-1 px-3 py-2 font-mono text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+      <div
+        className="overflow-hidden"
+        style={
+          hasOverflow
+            ? {
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 25%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 25%)',
+              }
+            : undefined
+        }
+      >
+        {visibleLines.map((line, i) => (
+          <div key={i} className="whitespace-pre-wrap break-words">
+            {line || '\u00A0'}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

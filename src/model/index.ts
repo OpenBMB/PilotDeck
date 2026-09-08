@@ -88,11 +88,13 @@ export type {
   CanonicalToolResult,
   CanonicalToolSchema,
   CanonicalUsage,
+  CachePlan,
   ModelConfig,
   ModelDefinition,
   ModelProtocol,
   ProviderConfig,
   ProviderRetryConfig,
+  SpeedMapping,
 } from "./protocol/canonical.js";
 export {
   flattenToolResultBlockText,

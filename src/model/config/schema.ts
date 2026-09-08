@@ -13,6 +13,7 @@ export type RawProviderConfig = {
   timeoutMs?: unknown;
   headers?: unknown;
   extraBody?: unknown;
+  speedMapping?: unknown;
   retry?: unknown;
   models?: unknown;
 };

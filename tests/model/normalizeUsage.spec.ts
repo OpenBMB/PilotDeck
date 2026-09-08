@@ -30,3 +30,17 @@ test("Gemini usage counts thoughts tokens as output consumption", () => {
   assert.equal(usage?.outputTokens, 13);
   assert.equal(usage?.totalTokens, 22);
 });
+
+test("Gemini usage separates cached prompt tokens from uncached input", () => {
+  const usage = normalizeGoogleUsage({
+    promptTokenCount: 100,
+    cachedContentTokenCount: 40,
+    candidatesTokenCount: 7,
+    totalTokenCount: 107,
+  });
+
+  assert.equal(usage?.inputTokens, 60);
+  assert.equal(usage?.cacheReadTokens, 40);
+  assert.equal(usage?.outputTokens, 7);
+  assert.equal(usage?.totalTokens, 107);
+});

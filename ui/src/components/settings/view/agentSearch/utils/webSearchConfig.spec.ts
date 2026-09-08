@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PilotDeckConfig } from "../../modelPool/types";
 import {
   isWebSearchApiKeyRequired,
   webSearchConfigForProvider,
@@ -19,7 +20,11 @@ describe("webSearchConfigForProvider", () => {
         "tavily",
         glmEndpoint,
       ),
-    ).toEqual({ enabled: false, provider: "tavily" });
+    ).toEqual({
+      enabled: false,
+      provider: "tavily",
+      endpoint: "https://api.tavily.com/search",
+    });
   });
 
   it("restores the GLM default endpoint", () => {
@@ -44,6 +49,17 @@ describe("webSearchConfigForProvider", () => {
       endpoint: glmEndpoint,
     });
   });
+
+  it("uses the built-in endpoints for Serper and Brave", () => {
+    expect(webSearchConfigForProvider({}, "serper", glmEndpoint)).toEqual({
+      provider: "serper",
+      endpoint: "https://google.serper.dev/search",
+    });
+    expect(webSearchConfigForProvider({}, "brave", glmEndpoint)).toEqual({
+      provider: "brave",
+      endpoint: "https://api.search.brave.com/res/v1/web/search",
+    });
+  });
 });
 
 describe("isWebSearchApiKeyRequired", () => {
@@ -64,5 +80,17 @@ describe("isWebSearchApiKeyRequired", () => {
         customProvider: { auth: "bearer" },
       }),
     ).toBe(true);
+  });
+
+  it("keeps the shared config type in sync with built-in providers", () => {
+    const providers: Array<NonNullable<NonNullable<PilotDeckConfig["tools"]>["webSearch"]>["provider"]> = [
+      "glm",
+      "tavily",
+      "custom",
+      "serper",
+      "brave",
+    ];
+    expect(providers).toContain("serper");
+    expect(providers).toContain("brave");
   });
 });

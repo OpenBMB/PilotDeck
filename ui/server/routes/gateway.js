@@ -5,7 +5,11 @@ import { homedir } from 'os';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
-import { readPilotDeckConfigFile } from '../services/pilotdeckConfig.js';
+import {
+  readPilotDeckConfigFile,
+  serializePilotDeckConfigResponse,
+  withPilotDeckConfigWrite,
+} from '../services/pilotdeckConfig.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 
 const router = express.Router();
@@ -112,11 +116,28 @@ function writeWeComConfig(config, input) {
   return config;
 }
 
-async function persistConfigAndReload(config) {
-  saveYaml(config);
-  const record = readPilotDeckConfigFile();
-  await reloadPilotDeckConfig(record.config);
-  void notifyGatewayReload();
+async function mutateConfigAndReload(mutate) {
+  return withPilotDeckConfigWrite(async () => {
+    // The read belongs inside the shared critical section. Otherwise a channel
+    // save can overwrite a config edit that completed while the request was in
+    // flight (QR polling is the common real-world example).
+    const config = loadYaml();
+    if (mutate(config) === false) return false;
+
+    saveYaml(config);
+    const record = readPilotDeckConfigFile();
+    const reloadResult = await reloadPilotDeckConfig(record.config);
+    void notifyGatewayReload();
+
+    const freshRecord = readPilotDeckConfigFile();
+    const response = serializePilotDeckConfigResponse(freshRecord, reloadResult);
+    process.emit('pilotdeck:config-broadcast', {
+      source: 'gateway-save',
+      ...response,
+      timestamp: new Date().toISOString(),
+    });
+    return true;
+  });
 }
 
 async function fetchJson(url) {
@@ -305,22 +326,18 @@ router.get('/feishu/qr-poll', async (req, res) => {
       const domain = state.domain;
 
       // Auto-save to config
-      const config = loadYaml();
-      if (!config.adapters) config.adapters = {};
-      const previous = config.adapters.feishu ?? {};
-      config.adapters.feishu = {
-        ...previous,
-        enabled: true,
-        appId,
-        appSecret,
-        connectionMode: previous.connectionMode || 'stream',
-        domainName: domain,
-      };
-      saveYaml(config);
-
-      const record = readPilotDeckConfigFile();
-      await reloadPilotDeckConfig(record.config);
-      void notifyGatewayReload();
+      await mutateConfigAndReload((config) => {
+        if (!config.adapters) config.adapters = {};
+        const previous = config.adapters.feishu ?? {};
+        config.adapters.feishu = {
+          ...previous,
+          enabled: true,
+          appId,
+          appSecret,
+          connectionMode: previous.connectionMode || 'stream',
+          domainName: domain,
+        };
+      });
 
       return res.json({
         ok: true,
@@ -356,22 +373,18 @@ router.post('/feishu/save', async (req, res) => {
   }
 
   try {
-    const config = loadYaml();
-    if (!config.adapters) config.adapters = {};
-    const previous = config.adapters.feishu ?? {};
-    config.adapters.feishu = {
-      ...previous,
-      enabled: true,
-      appId,
-      appSecret,
-      connectionMode: connectionMode || previous.connectionMode || 'stream',
-      domainName: domainName || previous.domainName || 'feishu',
-    };
-    saveYaml(config);
-
-    const record = readPilotDeckConfigFile();
-    await reloadPilotDeckConfig(record.config);
-    void notifyGatewayReload();
+    await mutateConfigAndReload((config) => {
+      if (!config.adapters) config.adapters = {};
+      const previous = config.adapters.feishu ?? {};
+      config.adapters.feishu = {
+        ...previous,
+        enabled: true,
+        appId,
+        appSecret,
+        connectionMode: connectionMode || previous.connectionMode || 'stream',
+        domainName: domainName || previous.domainName || 'feishu',
+      };
+    });
 
     res.json({ ok: true, message: '飞书配置已保存，重启后生效' });
   } catch (error) {
@@ -381,15 +394,11 @@ router.post('/feishu/save', async (req, res) => {
 
 router.post('/feishu/disable', async (_req, res) => {
   try {
-    const config = loadYaml();
-    if (config.adapters?.feishu) {
-      config.adapters.feishu.enabled = false;
-    }
-    saveYaml(config);
-
-    const record = readPilotDeckConfigFile();
-    await reloadPilotDeckConfig(record.config);
-    void notifyGatewayReload();
+    await mutateConfigAndReload((config) => {
+      if (config.adapters?.feishu) {
+        config.adapters.feishu.enabled = false;
+      }
+    });
 
     res.json({ ok: true });
   } catch (error) {
@@ -402,15 +411,13 @@ router.post('/feishu/disable', async (_req, res) => {
 router.post('/weixin/qr-begin', async (_req, res) => {
   const requestedAt = new Date().toISOString();
   try {
-    const config = loadYaml();
-    if (!config.adapters) config.adapters = {};
-    const previous = config.adapters.weixin ?? {};
-    if (previous.enabled !== true) {
+    await mutateConfigAndReload((config) => {
+      if (!config.adapters) config.adapters = {};
+      const previous = config.adapters.weixin ?? {};
+      if (previous.enabled === true) return false;
       config.adapters.weixin = { ...previous, enabled: true };
-      saveYaml(config);
-      const record = readPilotDeckConfigFile();
-      await reloadPilotDeckConfig(record.config);
-    }
+      return true;
+    });
 
     const gw = await getPilotDeckGateway();
     if (!gw?.prepareWeixinLogin) {
@@ -473,15 +480,11 @@ router.get('/weixin/qr-poll', (_req, res) => {
 
 router.post('/weixin/disable', async (_req, res) => {
   try {
-    const config = loadYaml();
-    if (config.adapters?.weixin) {
-      config.adapters.weixin.enabled = false;
-    }
-    saveYaml(config);
-
-    const record = readPilotDeckConfigFile();
-    await reloadPilotDeckConfig(record.config);
-    void notifyGatewayReload();
+    await mutateConfigAndReload((config) => {
+      if (config.adapters?.weixin) {
+        config.adapters.weixin.enabled = false;
+      }
+    });
 
     res.json({ ok: true });
   } catch (error) {
@@ -546,14 +549,15 @@ router.get('/wecom/qr-poll', async (req, res) => {
     }
 
     req.app.locals._wecomQr = null;
-    const config = writeWeComConfig(loadYaml(), {
-      botId,
-      secret,
-      websocketUrl: WECOM_DEFAULT_WS_URL,
-      dmPolicy: 'open',
-      groupPolicy: 'disabled',
+    await mutateConfigAndReload((config) => {
+      writeWeComConfig(config, {
+        botId,
+        secret,
+        websocketUrl: WECOM_DEFAULT_WS_URL,
+        dmPolicy: 'open',
+        groupPolicy: 'disabled',
+      });
     });
-    await persistConfigAndReload(config);
 
     res.json({ ok: true, botId: maskValue(botId) });
   } catch {
@@ -576,41 +580,43 @@ router.post('/wecom/save', async (req, res) => {
     allowFrom,
     groupAllowFrom,
   } = req.body || {};
-  const existing = loadYaml();
-  const existingWeCom = existing.adapters?.wecom ?? {};
-  const existingExtra = existingWeCom.extra ?? {};
   const normalizedBotId = String(botId || '').trim();
   const normalizedSecret = String(secret || '').trim();
-  const resolvedBotId = normalizedBotId || String(existingWeCom.token || '').trim();
-  const resolvedSecret = normalizedSecret || String(existingExtra.secret || '').trim();
-  if (!resolvedBotId || !resolvedSecret) {
-    return res.status(400).json({ ok: false, error: 'botId and secret are required' });
-  }
 
   try {
-    const config = writeWeComConfig(existing, {
-      botId: resolvedBotId,
-      secret: resolvedSecret,
-      websocketUrl: String(websocketUrl || '').trim() || WECOM_DEFAULT_WS_URL,
-      dmPolicy,
-      groupPolicy,
-      allowFrom,
-      groupAllowFrom,
+    await mutateConfigAndReload((config) => {
+      const existingWeCom = config.adapters?.wecom ?? {};
+      const existingExtra = existingWeCom.extra ?? {};
+      const resolvedBotId = normalizedBotId || String(existingWeCom.token || '').trim();
+      const resolvedSecret = normalizedSecret || String(existingExtra.secret || '').trim();
+      if (!resolvedBotId || !resolvedSecret) {
+        const error = new Error('botId and secret are required');
+        error.statusCode = 400;
+        throw error;
+      }
+      writeWeComConfig(config, {
+        botId: resolvedBotId,
+        secret: resolvedSecret,
+        websocketUrl: String(websocketUrl || '').trim() || WECOM_DEFAULT_WS_URL,
+        dmPolicy,
+        groupPolicy,
+        allowFrom,
+        groupAllowFrom,
+      });
     });
-    await persistConfigAndReload(config);
     res.json({ ok: true, message: 'WeCom config saved' });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json({ ok: false, error: error.message });
   }
 });
 
 router.post('/wecom/disable', async (_req, res) => {
   try {
-    const config = loadYaml();
-    if (config.adapters?.wecom) {
-      config.adapters.wecom.enabled = false;
-    }
-    await persistConfigAndReload(config);
+    await mutateConfigAndReload((config) => {
+      if (config.adapters?.wecom) {
+        config.adapters.wecom.enabled = false;
+      }
+    });
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });

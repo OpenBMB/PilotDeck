@@ -2,6 +2,8 @@ import type {
   CanonicalMessage,
   CanonicalModelError,
   CanonicalToolSchema,
+  CachePlan,
+  ModelProtocol,
 } from "../../model/index.js";
 
 /** Diagnostic produced by context runtime; non-fatal except for `severity:"fatal"`. */
@@ -34,8 +36,10 @@ export type ModelContext = {
   diagnostics: ContextDiagnostic[];
   boundaries: ContextBoundary[];
   metadata?: Record<string, unknown>;
-  /** A4: message indices for `cache_control` breakpoints (Anthropic only). */
+  /** A4: final three non-system message indices for Anthropic recent3 cache layout. */
   cacheBreakpoints?: number[];
+  /** Internal provider-boundary cache plan; never persisted to transcript. */
+  cachePlan?: CachePlan;
 };
 
 export type ContextPrepareInput = {
@@ -46,6 +50,10 @@ export type ContextPrepareInput = {
   /** Provider/model identifier. */
   provider: string;
   model: string;
+  /** Resolved wire protocol for this provider (cache policy must use this). */
+  protocol?: ModelProtocol;
+  /** Whether this concrete model explicitly supports prompt caching. */
+  supportsPromptCache?: boolean;
   /** Permission mode label for prompt assembly. */
   permissionMode: string;
   /** Run mode label for prompt assembly. */

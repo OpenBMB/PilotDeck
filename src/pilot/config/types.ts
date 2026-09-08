@@ -74,6 +74,7 @@ export type PilotAgentConfig = {
   maxOutputTokens?: number;
   thinking?: { enabled: boolean; budgetTokens?: number };
   subagents?: {
+    default?: PilotAgentModelSelection;
     timeoutMs?: number;
   };
 };
@@ -129,7 +130,7 @@ export type PilotGatewayConfig = {
   maxPerSessionMcpInstances?: number;
 };
 
-export type PilotWebSearchProvider = "glm" | "tavily" | "custom";
+export type PilotWebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
 export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
 export type PilotWebSearchCustomMethod = "GET" | "POST";
 
@@ -193,6 +194,7 @@ export type PilotAdaptersConfig = {
     defaultSessionLabel: string;
     connectionMode?: "stream" | "webhook";
     domainName?: "feishu" | "lark";
+    permissionMode?: "default" | "bypassPermissions";
   };
   weixin?: { enabled: boolean };
   qq?: {
@@ -252,6 +254,7 @@ export type PilotConfigSnapshot = {
 
 export type PilotConfigLoadOptions = {
   env?: Record<string, string | undefined>;
+  configPath?: string;
   projectRoot?: string;
   version?: number;
 };

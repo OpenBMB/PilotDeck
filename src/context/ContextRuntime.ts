@@ -1,4 +1,4 @@
-import type { CanonicalMessage, CanonicalUsage } from "../model/index.js";
+import type { CanonicalMessage } from "../model/index.js";
 import type {
   ContextBoundary,
   ContextCaptureTurnInput,
@@ -65,9 +65,8 @@ export type AgentContextRuntime = {
     abortSignal?: AbortSignal;
     maxContextTokens?: number;
     reservedOutputTokens?: number;
-    lastUsage?: CanonicalUsage;
-    /** On reactive overflow, allow the deterministic checkpoint fallback. */
+    /** Legacy compatibility flag; summary failures never fabricate a checkpoint. */
     allowFallbackOnFailure?: boolean;
-    budgetEvaluator?: (messages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>;
+    budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
   }): Promise<AutoCompactResult>;
 };

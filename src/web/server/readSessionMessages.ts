@@ -538,6 +538,7 @@ export function flattenCanonicalMessage(
       role,
       kind: "text",
       text: textBuffer,
+      ...(role === "assistant" && typeof message.metadata?.model === "string" ? { model: message.metadata.model } : {}),
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
       ...(context.forkUnsupportedContent
         ? {
@@ -576,6 +577,12 @@ export function flattenCanonicalMessage(
     }
   }
   flushText();
+  const queueItemId = message.metadata?.queueItemId;
+  if (typeof queueItemId === "string" && queueItemId) {
+    for (const webMessage of out) {
+      webMessage.queueItemId = queueItemId;
+    }
+  }
   return out;
 }
 
@@ -790,6 +797,10 @@ function compactBoundaryMetadata(entry: AgentTranscriptEntry & { type: "control_
     meta.preTokens = cm.preTokens;
     meta.postTokens = cm.postTokens;
     meta.messagesSummarized = cm.messagesSummarized;
+    if (typeof cm.targetTokens === "number") meta.targetTokens = cm.targetTokens;
+    if (typeof cm.summaryGenerated === "boolean") meta.summaryGenerated = cm.summaryGenerated;
+    if (typeof cm.checkpointMerged === "boolean") meta.checkpointMerged = cm.checkpointMerged;
+    if (typeof cm.finalRatio === "number") meta.finalRatio = cm.finalRatio;
     meta.level = cm.level;
     meta.stage = cm.stage;
     meta.stageLabel = cm.stageLabel;

@@ -37,7 +37,15 @@ export function projectToolResults(results: PilotDeckToolResult[]): CanonicalMes
     if (result.supplementalMessages) {
       for (const msg of result.supplementalMessages) {
         const blocks: CanonicalContentBlock[] = msg.content.map(toCanonicalSupplementalBlock);
-        messages.push({ role: "user", content: blocks });
+        messages.push({
+          role: "user",
+          content: blocks,
+          metadata: {
+            synthetic: true,
+            purpose: "tool_result_supplemental",
+            toolCallId: result.toolCallId,
+          },
+        });
       }
     }
   }

@@ -1,13 +1,13 @@
 import fsPromises from 'fs/promises';
-import os from 'os';
 import path from 'path';
+import { isVirtualProjectPath, resolvePilotHome } from '../utils/pilotPaths.js';
 
 const DEFAULT_MCP_CONFIG = {
   mcpServers: {},
 };
 
 function pilotHome() {
-  return process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
+  return resolvePilotHome(process.env);
 }
 
 export function getGlobalMcpConfigPath() {
@@ -15,7 +15,7 @@ export function getGlobalMcpConfigPath() {
 }
 
 export function getProjectMcpConfigPath(projectPath) {
-  return path.join(projectPath || process.cwd(), '.pilotdeck', 'mcp.json');
+  return path.join(projectPath, '.pilotdeck', 'mcp.json');
 }
 
 export function normalizeMcpConfig(input) {
@@ -49,6 +49,16 @@ export function normalizeMcpConfig(input) {
 }
 
 export async function readMcpConfigFile(scope, projectPath) {
+  if (scope === 'project' && (!projectPath || isVirtualProjectPath(projectPath, pilotHome()))) {
+    return {
+      exists: false,
+      path: null,
+      raw: JSON.stringify(DEFAULT_MCP_CONFIG, null, 2),
+      config: DEFAULT_MCP_CONFIG,
+      disabled: true,
+      reason: 'Project MCP config requires a real project. Use global scope for general chat.',
+    };
+  }
   const filePath = scope === 'project' ? getProjectMcpConfigPath(projectPath) : getGlobalMcpConfigPath();
   try {
     const raw = await fsPromises.readFile(filePath, 'utf8');
@@ -74,6 +84,9 @@ export async function readMcpConfigFile(scope, projectPath) {
 
 export async function writeMcpConfigFile(scope, raw, projectPath) {
   const parsed = normalizeMcpConfig(JSON.parse(raw));
+  if (scope === 'project' && (!projectPath || isVirtualProjectPath(projectPath, pilotHome()))) {
+    throw new Error('Project MCP config requires a real project. Use global scope for general chat.');
+  }
   const filePath = scope === 'project' ? getProjectMcpConfigPath(projectPath) : getGlobalMcpConfigPath();
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   await fsPromises.writeFile(filePath, JSON.stringify(parsed, null, 2) + '\n', { mode: 0o600 });

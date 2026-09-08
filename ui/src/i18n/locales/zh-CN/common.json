@@ -31,6 +31,7 @@
     "cron": "Cron"
   },
   "dashboardSwitcher": {
+    "explore": "探索",
     "open": "打开看板菜单",
     "menuLabel": "看板",
     "closeActive": "关闭{{tool}}看板",
@@ -57,6 +58,11 @@
     "collapseAssistant": "收起助手",
     "openAssistant": "打开助手",
     "resizeAssistant": "调整助手宽度",
+    "panelControls": "工作台面板",
+    "smartChat": "智能对话",
+    "fileDirectory": "文件目录",
+    "resizeVerticalPanels": "调整上下区域大小",
+    "resizeHorizontalPanels": "调整左右区域大小",
     "conversations": {
       "switchConversation": "切换对话",
       "newConversation": "新建对话",
@@ -70,7 +76,7 @@
   },
   "skillsTab": {
     "pickProject": "选一个项目来管理它的技能。",
-    "generalChat": "通用聊天 — 内置技能和用户技能",
+    "generalChat": "通用对话 — 内置技能和用户技能",
     "refresh": "刷新",
     "newSkill": "新建",
     "backToSkills": "返回技能列表",
@@ -468,6 +474,23 @@
       "providePath": "请提供工作区路径",
       "failedToCreate": "创建工作区失败",
       "failedToCreateFolder": "创建文件夹失败"
+    },
+    "folderBrowser": {
+      "title": "选择文件夹",
+      "select": "选择",
+      "path": "路径：",
+      "cancel": "取消",
+      "useThisFolder": "使用此文件夹",
+      "showHidden": "显示隐藏文件夹",
+      "hideHidden": "不显示隐藏文件夹",
+      "createFolder": "新建文件夹",
+      "close": "关闭",
+      "newFolderName": "新文件夹名称",
+      "create": "创建",
+      "browseFolders": "浏览文件夹",
+      "noSubfolders": "未找到子文件夹",
+      "loadFailed": "加载文件夹失败",
+      "createFailed": "创建文件夹失败"
     }
   },
   "notifications": {

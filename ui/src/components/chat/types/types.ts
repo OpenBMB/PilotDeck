@@ -35,6 +35,9 @@ export interface ChatAttachment {
   createdAt?: string;
   truncated?: boolean;
   contentReference?: ContentReference;
+  /** Stable identity for a transient browser upload, not a workspace path. */
+  uploadId?: string;
+  attachmentId?: string;
 }
 
 export interface ChatFileArtifact {
@@ -81,7 +84,10 @@ export interface SubagentChildTool {
 }
 
 export interface ChatMessage {
+  /** Actual generating model stored with this response. */
+  model?: string;
   id?: string;
+  renderKey?: string;
   entryId?: string;
   type: string;
   content?: string;
@@ -241,7 +247,7 @@ export interface ChatInterfaceProps {
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;
-  sendMessage: (message: unknown) => void;
+  sendMessage: (message: unknown) => boolean;
   subscribe?: (handler: (message: any) => void) => () => void;
   latestMessage: any;
   onFileOpen?: (filePath: string, diffInfo?: any) => void;
@@ -280,4 +286,9 @@ export interface ChatInterfaceProps {
   // Files workbench: render a quieter, narrow-panel empty state and keep the
   // composer docked to the bottom instead of using the large welcome hero.
   compact?: boolean;
+  projects?: Project[];
+  onStartNewSession?: (project: Project) => void;
+  onSelectWorkspace?: (project: Project) => void;
+  workspaceBinding?: Project | null;
+  onCreateProject?: () => void;
 }

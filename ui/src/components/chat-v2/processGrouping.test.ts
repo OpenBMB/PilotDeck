@@ -279,6 +279,17 @@ describe('processGrouping', () => {
     expect(processAttachments(thirdAssistant)).toHaveLength(0);
   });
 
+  it('keeps alternating thinking and tool segments in chronological order after completion', () => {
+    const transcript = [user('u'), thinking('think-a'), tool('read', 'Read'), thinking('think-b'), tool('bash', 'Bash'), assistant('answer', 'Done')];
+    const items = buildRenderableMessageItems(transcript, { isAssistantWorking: false });
+    const timeline = items.flatMap((item) => [
+      ...item.beforeProcessAttachments.flatMap((attachment) => attachment.processDetailMessages.map((message) => message.id)),
+      item.message.id,
+      ...item.afterProcessAttachments.flatMap((attachment) => attachment.processDetailMessages.map((message) => message.id)),
+    ]);
+    expect(timeline).toEqual(transcript.map((message) => message.id));
+  });
+
   it('attaches completed run duration after the user turn finishes', () => {
     const messages: ChatMessage[] = [
       user('u1'),
@@ -333,6 +344,22 @@ describe('processGrouping', () => {
     expect(finalAssistant?.beforeProcessAttachments).toHaveLength(1);
     expect(finalAssistant?.beforeProcessAttachments[0].processSummary.compactCount).toBe(1);
     expect(finalAssistant?.beforeProcessAttachments[0].processSummary.commandCount).toBe(2);
+    expect(finalAssistant?.afterProcessAttachments).toHaveLength(0);
+  });
+
+  it('folds a recovered trailing compact boundary before the completed final answer', () => {
+    const messages = [
+      user('u1'),
+      assistant('a-final', 'Workbook delivered.', 300),
+      compact('compact-recovered', 400),
+    ];
+
+    const items = buildRenderableMessageItems(messages);
+    const finalAssistant = items.find((item) => item.message.id === 'a-final');
+
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-final']);
+    expect(finalAssistant?.beforeProcessAttachments).toHaveLength(1);
+    expect(finalAssistant?.beforeProcessAttachments[0].processSummary.compactCount).toBe(1);
     expect(finalAssistant?.afterProcessAttachments).toHaveLength(0);
   });
 
@@ -481,7 +508,7 @@ describe('processGrouping', () => {
     expect(groups[0].messages.map((message) => message.id)).toEqual(['read-1', 'grep-1']);
   });
 
-  it('does not render thinking as standalone after empty live assistant shells', () => {
+  it('keeps thinking standalone after empty live assistant shells to preserve its viewport', () => {
     const messages = [
       user('u1'),
       assistant('a1', 'Starting work.', 100),
@@ -493,10 +520,10 @@ describe('processGrouping', () => {
     const items = buildRenderableMessageItems(messages, { isAssistantWorking: true });
     const groups = getLiveProcessGroups(messages, { isAssistantWorking: true });
 
-    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a1']);
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a1', 'think-1']);
     expect(groups).toHaveLength(1);
-    expect(groups[0].messages.map((message) => message.id)).toEqual(['bash-1', 'think-1']);
-    expect(groups[0].detailMessages.map((message) => message.id)).toEqual(['bash-1', 'think-1']);
+    expect(groups[0].messages.map((message) => message.id)).toEqual(['bash-1']);
+    expect(groups[0].detailMessages.map((message) => message.id)).toEqual(['bash-1']);
   });
 
   it('keeps leading live thinking inside the current running status details', () => {

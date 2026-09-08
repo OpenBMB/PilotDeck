@@ -1,6 +1,5 @@
 import {
   Check,
-  ChevronDown,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -156,7 +155,13 @@ export default function ConversationSwitcher({
     : t('filesWorkbench.conversations.newConversation');
 
   return (
-    <div ref={rootRef} className="relative flex min-w-0 flex-1 items-center gap-1">
+    <div ref={rootRef} className="conversation-title-wrap">
+      <span className="header-icon">
+        <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
+          <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
+        </svg>
+      </span>
       <button
         ref={triggerRef}
         type="button"
@@ -172,24 +177,12 @@ export default function ConversationSwitcher({
             setOpen(true);
           }
         }}
-        className="group flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-700"
+        className="conversation-switch"
       >
-        <MessageSquare className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.8} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12px] font-medium leading-4 text-neutral-700 dark:text-neutral-300">
-              {t('filesWorkbench.assistant')}
-            </span>
-            <span className="block truncate text-[10px] leading-3 text-neutral-400 dark:text-neutral-500">
-              {currentTitle}
-            </span>
-          </span>
-        <ChevronDown
-          className={cn(
-            'h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform group-hover:text-neutral-600 dark:text-neutral-500 dark:group-hover:text-neutral-300',
-            open && 'rotate-180',
-          )}
-          strokeWidth={1.8}
-        />
+        <b>{currentTitle}</b>
+        <svg aria-hidden="true" className={cn('icon', open && 'rotate-180')} fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="15">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       <button
@@ -198,11 +191,15 @@ export default function ConversationSwitcher({
           close();
           onNewSession();
         }}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 dark:focus-visible:ring-neutral-700"
+        className="icon-button tooltip tooltip-bottom"
+        data-tooltip={t('filesWorkbench.conversations.newConversation')}
         title={t('filesWorkbench.conversations.newConversation')}
         aria-label={t('filesWorkbench.conversations.newConversation')}
       >
-        <MessageSquarePlus className="h-4 w-4" strokeWidth={1.8} />
+        <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
+          <path d="M5 12h14" />
+          <path d="M12 5v14" />
+        </svg>
       </button>
 
       {open ? (

@@ -1,4 +1,6 @@
 import type { AgentSession } from "../agent/index.js";
+import type { CanonicalMessage } from "../model/index.js";
+import type { AgentCancelSteerResult, AgentSteerResult } from "../agent/session/SteerMailbox.js";
 import type { GatewaySessionInfo, ListSessionsInput, ListSessionsResult } from "./protocol/types.js";
 
 export type GatewaySessionContext = {
@@ -97,6 +99,14 @@ export class SessionRouter {
     return true;
   }
 
+  hasActiveTurn(sessionKey: string): boolean {
+    return this.inFlightTurns.has(sessionKey);
+  }
+
+  activeTurnRunId(sessionKey: string): string | undefined {
+    return this.inFlightTurns.get(sessionKey);
+  }
+
   endTurn(sessionKey: string, runId?: string): void {
     const record = this.sessions.get(sessionKey);
     const inFlightRunId = this.inFlightTurns.get(sessionKey);
@@ -114,6 +124,26 @@ export class SessionRouter {
     if (record) {
       record.lastUsedAt = this.nowMs();
     }
+  }
+
+  steer(
+    sessionKey: string,
+    input: { turnId: string; itemId: string; message: CanonicalMessage; allowedReadFiles?: string[] },
+  ): AgentSteerResult {
+    const record = this.sessions.get(sessionKey);
+    if (!record) return { accepted: false, reason: "no_active_turn" };
+    record.lastUsedAt = this.nowMs();
+    return record.session.steer(input);
+  }
+
+  cancelSteer(
+    sessionKey: string,
+    input: { turnId: string; itemId: string },
+  ): AgentCancelSteerResult {
+    const record = this.sessions.get(sessionKey);
+    if (!record) return { cancelled: false, reason: "no_active_turn" };
+    record.lastUsedAt = this.nowMs();
+    return record.session.cancelSteer(input);
   }
 
   async close(sessionKey: string): Promise<void> {

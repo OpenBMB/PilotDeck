@@ -127,3 +127,35 @@ test("status-only active turn snapshots preserve includeEvents through remote an
     result: expected,
   });
 });
+
+test("gateway failure status keeps the attempted run id for live/history deduplication", async () => {
+  const router = {
+    beginTurn: () => true,
+    getOrCreate: async () => {
+      throw new Error("project setup failed");
+    },
+    endTurn: () => undefined,
+  } as unknown as SessionRouter;
+  const recorded: Array<{ turnId: string }> = [];
+  const gateway = new InProcessGateway(router, {
+    recordAgentStatusMessage: async (input) => {
+      recorded.push({ turnId: input.turnId });
+      return { recorded: true };
+    },
+  });
+  const events: GatewayEvent[] = [];
+
+  for await (const event of gateway.submitTurn({
+    sessionKey: "web:failure",
+    channelKey: "web",
+    projectKey: "/tmp/project",
+    message: "hello",
+    runId: "run-failure",
+  })) {
+    events.push(event);
+  }
+
+  assert.deepEqual(recorded, [{ turnId: "run-failure" }]);
+  assert.equal(events.find((event) => event.type === "agent_status")?.runId, "run-failure");
+  assert.equal(events.find((event) => event.type === "error")?.runId, "run-failure");
+});

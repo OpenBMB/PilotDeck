@@ -123,6 +123,7 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: process.platform === "win32",
     });
     let stdout = "";
     child.stdout.on("data", (chunk: Buffer) => {

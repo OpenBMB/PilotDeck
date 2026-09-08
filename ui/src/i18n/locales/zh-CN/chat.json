@@ -8,12 +8,41 @@
     "emptyTitle": "就这个项目询问 PilotDeck",
     "emptyDescription": "需要把文件加入上下文时，请用 @ 引用工作区文件。"
   },
+  "inputQueue": {
+    "label": "排队消息",
+    "resume": "继续",
+    "pausedAfterStop": "由于你中断了当前响应，队列已暂停",
+    "pausedAfterFailure": "上一轮响应失败，队列已暂停",
+    "pausedAfterRestart": "已恢复排队消息，队列处于暂停状态",
+    "pausedAfterUncertainDelivery": "有消息可能已在重启前发送；仅在确有需要时重试",
+    "retryUncertain": "重试",
+    "deliveryUncertain": "发送状态不确定",
+    "attachmentOnly": "附件消息",
+    "steer": "调整方向",
+    "steerHint": "在当前响应的下一个安全边界加入这条消息",
+    "delete": "删除排队消息",
+    "more": "更多队列操作",
+    "moveToFront": "移到最前",
+    "resumeFailed": "无法继续队列。",
+    "steerFailed": "消息仍保留在队列中。",
+    "deleteFailed": "无法删除排队消息。",
+    "moveFailed": "无法调整队列顺序。"
+  },
   "copyMessage": {
     "copy": "复制消息",
     "copied": "消息已复制",
     "selectFormat": "选择复制格式",
     "copyAsMarkdown": "复制为 Markdown",
     "copyAsText": "复制为纯文本"
+  },
+  "edit": {
+    "message": "修改消息",
+    "cancel": "取消",
+    "send": "发送",
+    "failed": "无法修改这条消息。",
+    "cancelled": "已取消修改消息。",
+    "missingTarget": "最后一条消息已无法修改。",
+    "timeout": "修改请求超时，请重试。"
   },
   "messageTypes": {
     "user": "U",
@@ -57,7 +86,8 @@
   "working": {
     "default": "处理中",
     "processing": "处理中",
-    "thinking": "连接中...",
+    "thinking": "思考中...",
+    "waitingForModel": "等待模型响应...",
     "callingModel": "调用模型中...",
     "executingTool": "执行工具中...",
     "generating": "正在生成回复",
@@ -158,7 +188,8 @@
   "thinking": {
     "title": "思考中...",
     "completed": "思考过程",
-    "emoji": "💭 思考中..."
+    "emoji": "💭 思考中...",
+    "liveContentLabel": "实时思考内容"
   },
   "json": {
     "response": "JSON 响应"
@@ -224,11 +255,47 @@
     "placeholder": "输入 / 调用命令，@ 选择文件，或向 {{provider}} 提问...",
     "placeholderDefault": "输入您的消息...",
     "disabled": "输入已禁用",
+    "uploading": "正在上传…",
+    "uploadComplete": "上传完毕",
+    "retryUpload": "重试",
+    "cancelUpload": "取消上传 {{file}}",
+    "removeAttachment": "删除附件 {{file}}",
+    "attachmentOnlyPrompt": "请查看所选附件。",
+    "projectOnlyPrompt": "请查看所选项目内容。",
+    "skillOnlyPrompt": "请使用所选技能完成任务。",
+    "contextFolder": "文件夹",
+    "contextFile": "文件",
+    "projectContextTitle": "引用的项目内容：",
     "attachFile": "上传附件",
     "attachFiles": "附加文件",
     "attachImages": "附加图片",
     "mentionFile": "引用文件",
     "slashCommand": "运行斜杠命令",
+    "projectFiles": "引用项目内容",
+    "projectFilesCount_one": "{{count}} 项可引用内容",
+    "projectFilesCount_other": "{{count}} 项可引用内容",
+    "projectFilesAriaLabel": "可引用的项目内容",
+    "projectFilesLoading": "正在加载项目文件…",
+    "projectFilesEmpty": "没有匹配的项目内容",
+    "projectFilesLoadingMore": "加载更多…",
+    "projectPathMissing": "未找到当前项目路径。",
+    "projectFilesNonJson": "项目文件接口返回了无效响应（{{contentType}}），请重启后端服务。",
+    "projectFilesLoadFailedStatus": "项目文件加载失败（{{status}}）。",
+    "projectFilesLoadFailed": "项目文件加载失败。",
+    "selectedFilesAndSkills": "已选文件、技能与命令",
+    "removeSelectedFile": "删除 {{name}}",
+    "removeSelectedSkill": "删除 {{name}}",
+    "removeSelectedCommand": "删除 {{name}}",
+    "removeSelectedRunMode": "删除 {{name}}",
+    "remove": "删除",
+    "addContext": "添加文件或技能",
+    "files": "文件",
+    "filesAndFoldersDescription": "添加本地内容作为任务上下文",
+    "folders": "文件夹",
+    "foldersDescription": "保留目录层级并上传全部内容",
+    "skills": "技能",
+    "noSkills": "暂无可用技能",
+    "searchSkills": "检索技能",
     "send": "发送",
     "stop": "停止",
     "hintText": {
@@ -262,6 +329,30 @@
       "agentDescription": "直接处理并执行任务",
       "planDescription": "先产出计划，确认后再执行",
       "askDescription": "仅回答问题，不修改文件"
+    },
+    "models": {
+      "select": "选择模型",
+      "auto": "自动",
+      "change": "选择模型",
+      "search": "搜索模型",
+      "empty": "没有匹配的模型",
+      "advanced": "高级设置",
+      "reasoning": "推理强度",
+      "speed": "速度",
+      "temperature": "温度",
+      "reasoningLevels": {
+        "off": "关闭",
+        "light": "轻度",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "xhigh": "极高",
+        "max": "最高"
+      },
+      "speedLevels": {
+        "standard": "标准",
+        "fast": "快速"
+      }
     }
   },
   "documentReferences": {
@@ -269,6 +360,13 @@
     "pages": "第 {{pages}} 页",
     "pageUnknown": "页码未知",
     "remove": "删除引用"
+  },
+  "replyQuotes": {
+    "addToChat": "添加到PilotDeck对话",
+    "chip": "{{count}}条标签",
+    "remove": "删除这条标签",
+    "removeAll": "删除全部标签",
+    "panelLabel": "已引用的回复内容"
   },
   "commandMenu": {
     "empty": "暂无可用命令",
@@ -356,6 +454,9 @@
       "loadingAll": "正在加载全部消息...",
       "allLoaded": "全部消息已加载",
       "perfWarning": "已加载全部消息 - 滚动可能变慢。点击「滚动到底部」恢复性能。"
+    },
+    "scroll": {
+      "returnToLatest": "回到最新"
     }
   },
   "loading": "加载中...",
@@ -435,9 +536,17 @@
     "placeholder": "告诉 PilotDeck 你想完成什么…",
     "welcomePlaceholder": "告诉 PilotDeck 你想完成什么…"
   },
+  "workspacePicker": {
+    "select": "选择工作空间",
+    "search": "搜索项目",
+    "newProject": "新建项目",
+    "generalConversation": "通用对话",
+    "empty": "未找到匹配的项目",
+    "selectRequired": "请先选择工作空间"
+  },
   "welcome": {
-    "greetingWithProject": "今天想做点什么？",
-    "noProject": "从左侧选择一个项目开始"
+    "greetingWithProject": "你想让我们在 {{project}} 中构建什么？",
+    "noProject": "今天想做点什么？"
   },
   "subagent": {
     "detailTitle": "子任务详情",
@@ -460,6 +569,7 @@
         "auth": "请在“设置 → 模型 Provider”中更新 {{provider}} 的 API Key 或访问权限，或运行 pilotdeck setup。",
         "modelNotFound": "请在“设置 → 模型 Provider”中为 {{provider}} 选择有效模型，或在 pilotdeck.yaml 的 model.providers.<id>.models 下添加该模型。",
         "timeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 timeoutMs，或检查本机网络、代理和 provider 状态。",
+        "streamIdleTimeout": "请在“设置 → 模型 Provider → 高级”中增大 {{provider}} 的 streamIdleTimeoutMs，或检查本机网络、代理和 provider 状态。",
         "rateLimit": "请等待 provider 限流窗口恢复、减少并发请求，或在设置中切换 provider/model。",
         "billing": "请在 provider API 侧充值或恢复 quota，或在设置中切换 provider/model。",
         "contextOverflow": "请运行 /compact、开启新会话、移除大型附件，或在设置中切换到更大上下文模型。",

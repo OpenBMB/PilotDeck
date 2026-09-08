@@ -11,6 +11,8 @@ export type PilotDeckMcpServerSpec =
       args?: string[];
       env?: Record<string, string>;
       cwd?: string;
+      /** Optional per-server tool timeout for slow first-load operations. */
+      callTimeoutMs?: number;
       /**
        * When true, the MCP runtime injects a unique `--user-data-dir` per
        * spawn so multiple concurrent sessions each get their own isolated
@@ -24,6 +26,8 @@ export type PilotDeckMcpServerSpec =
       transport: "streamable_http";
       url: string;
       headers?: Record<string, string>;
+      /** Optional per-server tool timeout for slow first-load operations. */
+      callTimeoutMs?: number;
     };
 
 export type PilotDeckMcpToolAnnotations = {

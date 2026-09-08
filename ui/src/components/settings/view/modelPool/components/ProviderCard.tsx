@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -12,10 +12,11 @@ import {
 import { Button } from "../../../../../shared/view/ui";
 import { isImeEnterEvent } from "../../../../../utils/ime";
 import { cn } from "../../../../../lib/utils";
-import type {
-  CatalogModel,
-  CatalogProvider,
-  CatalogProviderProtocol,
+import {
+  findCatalogProviderById,
+  type CatalogModel,
+  type CatalogProvider,
+  type CatalogProviderProtocol,
 } from "../../../../../shared/catalogProviders";
 import {
   fetchProviderModels,
@@ -40,6 +41,8 @@ type ProviderCardProps = {
   ) => Promise<{ ok: boolean; error?: string }>;
   onRemove: () => void;
   catalogEntry?: CatalogProvider;
+  initialEditing?: boolean;
+  onCancelNew?: () => void;
 };
 
 export default function ProviderCard({
@@ -48,19 +51,32 @@ export default function ProviderCard({
   onSave,
   onRemove,
   catalogEntry,
+  initialEditing = false,
+  onCancelNew,
 }: ProviderCardProps) {
   const { t } = useTranslation("settings");
   const [draftProvider, setDraftProvider] = useState<V2Provider>(provider);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
   const [saving, setSaving] = useState(false);
-  const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
-  const protocol = draftProvider.protocol ?? catalogEntry?.protocol ?? "openai";
-  const effectiveUrl = draftProvider.url || catalogEntry?.defaultUrl || "";
-  const enabledModels = Object.keys(draftProvider.models ?? {});
+  const savingRef = useRef(false);
   const [newModelId, setNewModelId] = useState("");
   const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
   const [providerIdError, setProviderIdError] = useState("");
+  const trimmedProviderId = providerIdDraft.trim();
+  const effectiveCatalogEntry = catalogEntry?.id === trimmedProviderId
+    ? catalogEntry
+    : findCatalogProviderById(trimmedProviderId);
+  const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
+  const protocol = draftProvider.protocol ?? effectiveCatalogEntry?.protocol ?? "openai";
+  const effectiveUrl = draftProvider.url || effectiveCatalogEntry?.defaultUrl || "";
+  const enabledModels = Object.keys(draftProvider.models ?? {});
+  const providerRequiresApiKeyInForm = trimmedProviderId === "ollama"
+    ? false
+    : effectiveCatalogEntry
+      ? effectiveCatalogEntry.requiresApiKey !== false
+        && !effectiveCatalogEntry.apiKeyEnvVar
+      : true;
   const [apiModels, setApiModels] = useState<ApiModelListItem[] | null>(null);
   const [apiModelsStatus, setApiModelsStatus] = useState<
     "idle" | "loading" | "error"
@@ -68,7 +84,7 @@ export default function ProviderCard({
   const [apiModelsError, setApiModelsError] = useState("");
   const displayName = providerDisplayName(
     providerIdDraft || providerId,
-    catalogEntry,
+    effectiveCatalogEntry,
     t("pilotDeckConfig.panels.models.customProvider"),
   );
 
@@ -79,8 +95,10 @@ export default function ProviderCard({
     setProviderIdError("");
   }, [editing, provider, providerId]);
 
-  const update = (patchValue: Partial<V2Provider>) =>
+  const update = (patchValue: Partial<V2Provider>) => {
+    setProviderIdError("");
     setDraftProvider((prev) => ({ ...prev, ...patchValue }));
+  };
 
   const cancelEditing = () => {
     setDraftProvider(provider);
@@ -88,14 +106,37 @@ export default function ProviderCard({
     setProviderIdError("");
     setNewModelId("");
     setEditing(false);
+    onCancelNew?.();
   };
 
   const saveEditing = async () => {
-    const nextId = providerIdDraft.trim() || providerId;
+    if (savingRef.current) return;
+    const nextId = providerIdDraft.trim();
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(nextId)) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerIdInvalid"));
+      return;
+    }
+    if (!effectiveUrl.trim()) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerUrlRequired"));
+      return;
+    }
+    if (providerRequiresApiKeyInForm && !draftProvider.apiKey?.trim()) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerApiKeyRequired"));
+      return;
+    }
+    if (enabledModels.length === 0) {
+      setProviderIdError(t("pilotDeckConfig.panels.models.providerModelRequired"));
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     setProviderIdError("");
     try {
-      const result = await onSave(nextId, draftProvider);
+      const result = await onSave(nextId, {
+        ...draftProvider,
+        protocol,
+        url: effectiveUrl,
+      });
       if (!result.ok) {
         setProviderIdError(
           result.error || t("pilotDeckConfig.panels.models.providerIdDuplicate"),
@@ -105,6 +146,7 @@ export default function ProviderCard({
       setEditing(false);
       setNewModelId("");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -132,10 +174,9 @@ export default function ProviderCard({
   };
 
   const visibleModels: Array<ApiModelListItem | CatalogModel> =
-    apiModels ?? catalogEntry?.models ?? [];
-  const providerRequiresApiKey = catalogEntry?.requiresApiKey !== false;
+    apiModels ?? effectiveCatalogEntry?.models ?? [];
   const canFetchModels = Boolean(
-    effectiveUrl && (!providerRequiresApiKey || draftProvider.apiKey),
+    effectiveUrl && (!providerRequiresApiKeyInForm || draftProvider.apiKey),
   );
 
   const refreshModels = async () => {
@@ -147,7 +188,9 @@ export default function ProviderCard({
         protocol,
         baseUrl: effectiveUrl,
         apiKey: draftProvider.apiKey ?? "",
-        providerId,
+        // A masked key still belongs to the saved provider until the rename is
+        // committed. Explicit and blank keys follow the provider ID being edited.
+        providerId: isMaskedKey ? providerId : trimmedProviderId,
       });
       setApiModels(models);
       setApiModelsStatus("idle");
@@ -259,17 +302,17 @@ export default function ProviderCard({
           </span>
           <TextInput
             value={draftProvider.url}
-            placeholder={catalogEntry?.defaultUrl || "https://api.example.com/v1"}
+            placeholder={effectiveCatalogEntry?.defaultUrl || "https://api.example.com/v1"}
             monospace
             onChange={(v) => update({ url: v })}
           />
           <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
             {t("pilotDeckConfig.panels.models.baseUrlHint")}
           </span>
-          {!draftProvider.url && catalogEntry && (
+          {!draftProvider.url && effectiveCatalogEntry && (
             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
               {t("pilotDeckConfig.panels.models.defaultsTo")}{" "}
-              <code className="font-mono">{catalogEntry.defaultUrl}</code>{" "}
+              <code className="font-mono">{effectiveCatalogEntry.defaultUrl}</code>{" "}
               {t("pilotDeckConfig.panels.models.fromCatalog")}
             </span>
           )}
@@ -285,13 +328,13 @@ export default function ProviderCard({
       <label className="block text-xs text-muted-foreground">
         <span className="mb-1 block">
           {t("pilotDeckConfig.panels.models.apiKey")}
-          {!providerRequiresApiKey
+          {!providerRequiresApiKeyInForm
             ? ` (${t("pilotDeckConfig.panels.models.optional")})`
             : ""}
         </span>
         <SecretTextInput
           value={draftProvider.apiKey}
-          emptyPlaceholder={providerRequiresApiKey ? "sk-..." : ""}
+          emptyPlaceholder={providerRequiresApiKeyInForm ? "sk-..." : ""}
           maskedPlaceholder={t("pilotDeckConfig.panels.models.maskedKeyPlaceholder")}
           onChange={(v) => update({ apiKey: v })}
         />
@@ -484,7 +527,7 @@ export default function ProviderCard({
               >
                 <NumberInput
                   value={draftProvider.retry?.streamIdleTimeoutMs}
-                  placeholder="30000"
+                  placeholder="600000"
                   onChange={(v) =>
                     update({
                       retry: { ...draftProvider.retry, streamIdleTimeoutMs: v },

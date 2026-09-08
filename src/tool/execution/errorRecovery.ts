@@ -4,6 +4,7 @@ import type { PilotDeckToolValidationIssue } from "../protocol/schema.js";
 export type ToolErrorFailureClass =
   | "fix_input"
   | "reduce_scope"
+  | "tool_unavailable"
   | "switch_tool"
   | "ask_user"
   | "environment_issue"
@@ -118,6 +119,9 @@ function summarizeError(
   if (code === "tool_not_found") {
     return `The model emitted a tool name that is not registered: ${toolName}.`;
   }
+  if (code === "tool_unavailable") {
+    return `The ${toolName} capability is known but unavailable in this session.`;
+  }
   if (code === "plan_mode_violation") {
     return `The ${toolName} call is not allowed while the agent is in plan mode.`;
   }
@@ -148,6 +152,9 @@ function classifyError(
   }
   if (code === "result_too_large") {
     return "reduce_scope";
+  }
+  if (code === "tool_unavailable") {
+    return "tool_unavailable";
   }
   if (
     code === "tool_not_found" ||
@@ -241,6 +248,11 @@ function baseNextActions(
       return invalidToolInputNextActions(toolName, rawMessage, details);
     case "tool_not_found":
       return ["Use a registered canonical tool name from the current tool list."];
+    case "tool_unavailable":
+      return [
+        "Configure the missing capability or use another available tool.",
+        "Do not retry this tool until its configuration or runtime becomes available.",
+      ];
     case "plan_mode_violation":
       return [
         "Do not retry this write/action tool while in plan mode.",
@@ -417,6 +429,8 @@ function defaultAvoidRetryReason(code: PilotDeckToolErrorCode): string | undefin
       return "The path policy will continue blocking this location.";
     case "setup_required":
       return "The missing setup must be completed outside this tool call.";
+    case "tool_unavailable":
+      return "This known tool is unavailable; repeated calls cannot enable it.";
     case "plan_mode_violation":
       return "Plan mode blocks this class of tool until execution mode is restored.";
     case "ask_mode_violation":

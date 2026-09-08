@@ -51,7 +51,7 @@ export async function listWebProjects(
     if (resolve(fullPath) === resolve(options.pilotHome)) {
       continue;
     }
-    const summary = await summarizeProject(fullPath, options);
+    const summary = await summarizeProject(fullPath, options, dir);
     projects.push(summary);
   }
 
@@ -63,15 +63,70 @@ export async function describeWebProject(
   projectKey: string,
   options: ListWebProjectsOptions,
 ): Promise<WebProjectSummary> {
-  return summarizeProject(projectKey, options);
+  const projectStorageDir = await resolveProjectStorageDir(projectKey, options);
+  return summarizeProject(projectKey, options, projectStorageDir);
+}
+
+async function resolveProjectStorageDir(
+  projectRoot: string,
+  options: ListWebProjectsOptions,
+): Promise<string | undefined> {
+  const projectsDir = resolve(options.pilotHome, "projects");
+  const candidate = resolve(projectsDir, createProjectId(projectRoot));
+  let legacyCandidate: string | undefined;
+  try {
+    if ((await stat(candidate)).isDirectory()) {
+      try {
+        const marker = (await readFile(resolve(candidate, ".cwd"), "utf8")).trim();
+        if (marker && resolve(marker) === resolve(projectRoot)) {
+          return candidate;
+        }
+        if (!marker) legacyCandidate = candidate;
+      } catch {
+        // Legacy project directories may not have a marker.
+        legacyCandidate = candidate;
+      }
+    }
+  } catch {
+    // Fall through to .cwd marker lookup for collision-resistant IDs.
+  }
+
+  let entries;
+  try {
+    entries = await readdir(projectsDir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const marker = (await readFile(resolve(projectsDir, entry.name, ".cwd"), "utf8")).trim();
+      if (marker && resolve(marker) === resolve(projectRoot)) {
+        return resolve(projectsDir, entry.name);
+      }
+    } catch {
+      // Ignore missing or unreadable markers.
+    }
+  }
+  return legacyCandidate;
 }
 
 async function summarizeProject(
   projectRoot: string,
   options: ListWebProjectsOptions,
+  projectStorageDir?: string,
 ): Promise<WebProjectSummary> {
   let sessionCount = 0;
   let lastActivity: number | undefined;
+  let createdAt: number | undefined;
+  if (projectStorageDir) {
+    try {
+      const storageStats = await stat(projectStorageDir);
+      createdAt = storageStats.birthtimeMs || storageStats.ctimeMs;
+    } catch {
+      createdAt = undefined;
+    }
+  }
   try {
     const sessions = await listProjectSessions({
       projectRoot,
@@ -88,6 +143,7 @@ async function summarizeProject(
     fullPath: projectRoot,
     sessionCount,
     lastActivity,
+    createdAt,
   };
 }
 

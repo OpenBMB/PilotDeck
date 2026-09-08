@@ -25,13 +25,12 @@ export {
   parseAlwaysOnConfig,
   defaultAlwaysOnConfig,
   DEFAULT_IGNORE_GLOBS,
+  DEFAULT_SNAPSHOT_MAX_BYTES,
+  DEFAULT_MAX_PLANS_PER_CYCLE,
   type AlwaysOnConfig,
   type AlwaysOnPromptLanguage,
-  type AlwaysOnDormancyConfig,
-  type AlwaysOnExecutionConfig,
   type AlwaysOnProjectConfig,
   type AlwaysOnTriggerConfig,
-  type AlwaysOnWorkspaceConfig,
 } from "./config/parseAlwaysOnConfig.js";
 export {
   resolveAlwaysOnPaths,

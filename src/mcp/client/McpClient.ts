@@ -216,7 +216,9 @@ export class McpClient {
       throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
     }
     const sdkResult = await this.callWithReconnect(() =>
-      this.client!.listTools(undefined, { timeout: this.options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS }),
+      this.client!.listTools(undefined, {
+        timeout: this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+      }),
     );
 
     const tools = (sdkResult.tools ?? []).map((tool: unknown) => this.toToolSpec(tool));
@@ -237,7 +239,7 @@ export class McpClient {
     if (!this.client) {
       throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
     }
-    const timeoutMs = options.timeoutMs ?? this.options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const timeoutMs = options.timeoutMs ?? this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
     const result = await this.callWithReconnect(() =>
       this.client!.callTool(
         { name: toolName, arguments: (args ?? {}) as Record<string, unknown> },

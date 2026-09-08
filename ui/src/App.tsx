@@ -13,7 +13,7 @@ import i18n from './i18n/config.js';
 export default function App() {
   // Single wildcard so URL changes don't remount the shell. Params are
   // resolved inside AppShellV2 via useMatch so navigation between
-  // /, /p/:name, /p/:name/c/:id, and /session/:id preserves all state.
+  // /, /p/:name, /p/:name/c/:id, /session/:id, /cron, and /skills preserves all state.
   return (
     <I18nextProvider i18n={i18n}>
       <ThemeProvider>

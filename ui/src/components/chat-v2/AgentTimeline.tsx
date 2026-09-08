@@ -134,7 +134,7 @@ function TimelineGroupRow({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className={`group inline-flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] leading-relaxed transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60 ${
+        className={`hover-brand-text group inline-flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] leading-relaxed transition hover:bg-neutral-100 dark:hover:bg-neutral-800/60 ${
           group.isRunning
             ? 'text-neutral-600 dark:text-neutral-300'
             : 'text-neutral-400 dark:text-neutral-500'

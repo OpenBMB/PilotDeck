@@ -438,15 +438,36 @@ export class WeixinChannel implements ChannelAdapter {
       return;
     }
 
-    if (this.permissions.hasPending(fromUser) && this.gateway) {
+    if ((this.permissions.hasPending(fromUser) || this.permissions.isAnswering(fromUser)) && this.gateway) {
+      let answerToken: number | undefined;
       try {
         const trimmed = text.trim();
-        const confirmation = await this.permissions.answer(fromUser, text, this.gateway);
-        if (confirmation) await this.sendReply(fromUser, confirmation);
-        if (trimmed === "1" || trimmed === "2") {
-          await this.activeLiveReplies.get(fromUser)?.resumeActivity("tool", { immediate: false });
+        const answer = await this.permissions.answerWithState(fromUser, text, this.gateway);
+        answerToken = answer?.answerToken;
+        if (answer?.text) {
+          const confirmationDelivered = await this.sendReply(fromUser, answer.text);
+          if (!confirmationDelivered) {
+            this.permissions.releaseAnswer(fromUser, answer.answerToken);
+            return;
+          }
+          if (!answer.canAdvance && !answer.retryPrompt) return;
+          const nextPrompt = this.permissions.takeNextPrompt(fromUser, answer.answerToken);
+          if (nextPrompt) {
+            const nextPromptRequestId = this.permissions.getPromptRequestId(fromUser, answer.answerToken);
+            const delivered = await this.sendReply(fromUser, nextPrompt);
+            if (!delivered) throw new Error("permission prompt delivery failed");
+            this.permissions.confirmNextPrompt(fromUser, true, nextPromptRequestId, answer.answerToken);
+          }
+          if (
+            (trimmed === "1" || trimmed === "2")
+            && answer.text.startsWith("已允许")
+            && !this.permissions.hasPending(fromUser)
+          ) {
+            await this.activeLiveReplies.get(fromUser)?.resumeActivity("tool", { immediate: false });
+          }
         }
       } catch (e) {
+        if (answerToken !== undefined) this.permissions.releaseAnswer(fromUser, answerToken);
         this.logger?.error?.(`weixin: permission answer error: ${e}`);
       }
       return;
@@ -700,7 +721,7 @@ export class WeixinChannel implements ChannelAdapter {
         if (event.type === "permission_request") {
           const questionText = this.permissions.capture(userId, sessionKey, event);
           await liveReply.pauseActivity();
-          if (questionText) await this.sendReply(userId, questionText);
+          if (questionText) this.permissions.confirmInitialPrompt(userId, await this.sendReply(userId, questionText), event.requestId);
           continue;
         }
         if (event.type === "error" && event.code === "agent_aborted") {
@@ -750,7 +771,7 @@ export class WeixinChannel implements ChannelAdapter {
     if (isCurrentTurn()) {
       this.chatState.clearActiveRun(userId);
       this.elicitation.clear(userId);
-      this.permissions.clear(userId);
+      this.permissions.clearAfterTurn(userId);
       await liveReply.flushFinal();
     }
   }

@@ -43,10 +43,20 @@ import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependenci
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
+import { buildCachePlan } from "../../context/cache/CachePlan.js";
+import { truncateHeadPreservingCheckpoint } from "../../context/compaction/CompactionEngine.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
-import type { ContextRecoveryDecision, ContextSupplementalToolResultMessage, TokenBudgetSnapshot } from "../../context/index.js";
+import type {
+  CompactionResult,
+  ContextRecoveryDecision,
+  ContextSupplementalToolResultMessage,
+  TokenCalibrationBaseline,
+  TokenBudgetSnapshot,
+} from "../../context/index.js";
+import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
+import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -60,6 +70,7 @@ import {
 } from "../../tool/askModeConstraints.js";
 import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
 import { repairToolName } from "../../model/streaming/repairToolName.js";
+import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
@@ -124,6 +135,7 @@ export type AgentLoopInput = {
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
+  modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
@@ -131,6 +143,12 @@ export type AgentLoopInput = {
     boundary: AgentControlBoundaryTranscriptEntry["boundary"];
     messages: CanonicalMessage[];
   }) => void | Promise<void>;
+  /** Drain user guidance that should join this active turn before the next model request. */
+  drainSteerMessages?: () => AgentSteerMessage[];
+  /** Atomically drain pending guidance or close the inbox before terminal completion. */
+  drainOrCloseSteerMailbox?: () => { messages: AgentSteerMessage[]; closed: boolean };
+  /** Acknowledge guidance only after its canonical user message is durable. */
+  onSteerApplied?: (itemId: string) => void;
 };
 
 export type AgentLoopRunResult = {
@@ -148,6 +166,7 @@ export class AgentLoop {
   private readonly readFileState: PilotDeckReadFileStateMap;
   private readonly writeSnapshots: PilotDeckWriteSnapshotMap;
   private readonly allowedReadFiles: Set<string>;
+  private readonly tokenCalibrationByRoute = new Map<string, TokenCalibrationBaseline>();
   private readonly transientTokenCaps = new Map<string, {
     maxContextTokens?: number;
     requestedMaxOutputTokens?: number;
@@ -184,7 +203,6 @@ export class AgentLoop {
     let messages = [...input.messages];
     let turnCount = 1;
     let usage: CanonicalUsage = {};
-    let lastModelUsage: CanonicalUsage | undefined;
     let permissionDenials: AgentPermissionDenial[] = [];
     let structuredOutput: unknown;
     let finalMessage: CanonicalMessage | undefined;
@@ -202,6 +220,24 @@ export class AgentLoop {
     const createAbortStatus = (): AgentStatusMessage | undefined => {
       if (!shouldSurfaceAbortStatus(input.abortSignal?.reason)) return undefined;
       return createTurnAbortedStatus({ reason: stringifyAbortReason(input.abortSignal?.reason) });
+    };
+    const allowedReadFiles = this.allowedReadFiles;
+    const applySteerMessages = async function* (pending: AgentSteerMessage[]): AsyncGenerator<AgentEvent, void, unknown> {
+      for (const steer of pending) {
+        await input.onDurableMessage?.(steer.message);
+        for (const filePath of steer.allowedReadFiles ?? []) {
+          allowedReadFiles.add(filePath);
+        }
+        messages.push(steer.message);
+        input.onSteerApplied?.(steer.itemId);
+        yield {
+          type: "steer_applied",
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          itemId: steer.itemId,
+          message: steer.message,
+        };
+      }
     };
     const captureTurn = async (errored: boolean): Promise<void> => {
       const hook = this.dependencies.context?.captureTurn;
@@ -253,6 +289,10 @@ export class AgentLoop {
     let hasAttemptedReasoningContentRetry = false;
     /** Prevent a provider that keeps rejecting text-only retries from looping forever. */
     let hasAttemptedImageStrip = false;
+    const MAX_STREAM_INTERRUPTION_RECOVERIES = 2;
+    let streamInterruptionRecoveryCount = 0;
+    const MAX_UNKNOWN_FINISH_RECOVERIES = 2;
+    let unknownFinishRecoveryCount = 0;
     const largeFileRepair = new LargeFileRepair();
 
     /**
@@ -395,9 +435,14 @@ export class AgentLoop {
         return { result, messages };
       }
 
+      const pendingSteers = input.drainSteerMessages?.() ?? [];
+      for await (const event of applySteerMessages(pendingSteers)) {
+        yield event;
+      }
+
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
-      const preRoutingMaxContextTokens = this.currentMaxContextTokens(this.config.provider, this.config.model);
+      const preRoutingMaxContextTokens = this.preRoutingMaxContextTokens();
       if (ctx?.tryAutoCompact) {
         try {
           const reservedOutputTokens = this.getReservedOutputTokens();
@@ -407,7 +452,6 @@ export class AgentLoop {
             messages,
             abortSignal: input.abortSignal,
             reservedOutputTokens,
-            lastUsage: lastModelUsage,
             budgetEvaluator: this.createBudgetEvaluator(input, {
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
@@ -415,6 +459,7 @@ export class AgentLoop {
           });
           if (compact.type === "compacted") {
             messages = compact.messages;
+            this.tokenCalibrationByRoute.clear();
             await this.persistCompactSnapshot(input, compact);
             yield {
               type: "turn_continued",
@@ -475,7 +520,15 @@ export class AgentLoop {
       // Split decide + execute so we can insert a post-routing compact pass
       // when the routed model's context window differs from the agent's
       // default model (the window used by the first tryAutoCompact above).
-      const decision = await this.dependencies.router.decide({
+      const decision = input.modelOverride ? {
+        provider: input.modelOverride.provider,
+        model: input.modelOverride.model,
+        scenarioType: "explicit" as const,
+        isSubagent: Boolean(this.config.isSubagent),
+        orchestrating: false,
+        resolvedFrom: "explicit" as const,
+        mutations: {},
+      } : await this.dependencies.router.decide({
         request,
         sessionId: input.sessionId,
         isMainAgent: !this.config.isSubagent,
@@ -504,7 +557,6 @@ export class AgentLoop {
               abortSignal: input.abortSignal,
               maxContextTokens: routedMaxCtx,
               reservedOutputTokens,
-              lastUsage: lastModelUsage,
               budgetEvaluator: this.createBudgetEvaluator(input, {
                 decision,
                 baseRequest: request,
@@ -514,6 +566,7 @@ export class AgentLoop {
             });
             if (recompact.type === "compacted") {
               messages = recompact.messages;
+              this.tokenCalibrationByRoute.clear();
               request = await this.createModelRequest(messages, input);
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               await this.persistCompactSnapshot(input, recompact);
@@ -563,7 +616,13 @@ export class AgentLoop {
         };
       }
 
+      const calibrationRequest = this.dependencies.router.materializeRequest
+        ? this.dependencies.router.materializeRequest(decision, request)
+        : { ...request, provider: decision.provider, model: decision.model };
+      const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
+      const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
       const assembler = createModelMessageAssemblerState();
+      let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
           sessionId: input.sessionId,
@@ -571,6 +630,13 @@ export class AgentLoop {
           projectPath: this.config.cwd,
           abortSignal: input.abortSignal,
         })) {
+          if (event.type === "request_started") {
+            executedRequest = {
+              provider: event.provider,
+              model: event.model,
+              fingerprint: event.requestFingerprint,
+            };
+          }
           yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event };
           applyModelEventToAssembler(assembler, event);
           if (event.type === "error") {
@@ -581,13 +647,18 @@ export class AgentLoop {
       } catch (error) {
         if (input.abortSignal?.aborted) {
           const partialAssembled = assembleAssistantMessage(assembler);
-          if (partialAssembled.message.content.length > 0) {
-            finalMessage = partialAssembled.message;
-            messages.push(partialAssembled.message);
+          const safePartialMessage = safeFinalTextMessage(
+            partialAssembled.message,
+            partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
+            partialAssembled.toolCalls,
+          );
+          if (safePartialMessage) {
+            finalMessage = safePartialMessage;
+            messages.push(safePartialMessage);
             expireConsumedTransientPrompts();
             usage = mergeUsage(usage, partialAssembled.usage);
-            yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: partialAssembled.message };
-            await input.onDurableMessage?.(partialAssembled.message);
+            yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: safePartialMessage };
+            await input.onDurableMessage?.(safePartialMessage);
           }
           const result = this.createTurnResult(input, {
             type: "aborted",
@@ -633,13 +704,18 @@ export class AgentLoop {
 
       if (input.abortSignal?.aborted) {
         const partialAssembled = assembleAssistantMessage(assembler);
-        if (partialAssembled.message.content.length > 0) {
-          finalMessage = partialAssembled.message;
-          messages.push(partialAssembled.message);
+        const safePartialMessage = safeFinalTextMessage(
+          partialAssembled.message,
+          partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
+          partialAssembled.toolCalls,
+        );
+        if (safePartialMessage) {
+          finalMessage = safePartialMessage;
+          messages.push(safePartialMessage);
           expireConsumedTransientPrompts();
           usage = mergeUsage(usage, partialAssembled.usage);
-          yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: partialAssembled.message };
-          await input.onDurableMessage?.(partialAssembled.message);
+          yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: safePartialMessage };
+          await input.onDurableMessage?.(safePartialMessage);
         }
         const result = this.createTurnResult(input, {
           type: "aborted",
@@ -661,7 +737,16 @@ export class AgentLoop {
 
       const assembled = assembleAssistantMessage(assembler);
       usage = mergeUsage(usage, assembled.usage);
-      lastModelUsage = assembled.usage;
+      // A fallback, media downgrade, or interrupted-stream continuation can
+      // change request contents without changing the route. Calibrate only
+      // against the exact request whose usage the provider reported.
+      if (
+        executedRequest?.provider === calibrationRequest.provider
+        && executedRequest.model === calibrationRequest.model
+        && executedRequest.fingerprint === calibrationRequestFingerprint
+      ) {
+        this.recordTokenCalibration(calibrationRequest, assembled.usage, requestInputEstimate);
+      }
       let assistantMessage = assembled.message;
       let toolCalls = collectToolCalls(assistantMessage);
       if (assembled.hasTextFallbackToolCalls) {
@@ -672,9 +757,140 @@ export class AgentLoop {
       finalMessage = assistantMessage;
       expireConsumedTransientPrompts();
 
+      const streamInterruption = assembled.error?.streamInterruption;
+      if (streamInterruption) {
+        if (streamInterruptionRecoveryCount < MAX_STREAM_INTERRUPTION_RECOVERIES) {
+          streamInterruptionRecoveryCount++;
+          const hasTextToolCall = assembled.hasPartialTextToolCall
+            || assembled.hasTextFallbackToolCalls
+            || toolCalls.length > 0;
+          if (hasTextToolCall) {
+            // Do not expose a text-encoded tool-call fragment if recovery is
+            // cancelled before the replacement response arrives.
+            finalMessage = undefined;
+          }
+          if (streamInterruption.phase === "text" && !hasTextToolCall) {
+            const partialTextMessage = withoutThinkingBlocks(assistantMessage);
+            if (textFromMessage(partialTextMessage).trim().length > 0) {
+              finalMessage = partialTextMessage;
+              messages.push(partialTextMessage);
+              yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: partialTextMessage };
+              await input.onDurableMessage?.(partialTextMessage);
+            }
+          }
+          const recoveryPrompt = hasTextToolCall
+            ? buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall)
+            : buildStreamInterruptionRecoveryPrompt(streamInterruption);
+          pushTransientSyntheticPrompt(
+            recoveryPrompt,
+            hasTextToolCall ? "max_output_recovery" : "stream_interruption_recovery",
+          );
+          yield {
+            type: "turn_continued",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            reason: "model_error",
+          };
+          continue;
+        }
+
+        const error = agentError(
+          "agent_model_error",
+          `Stream interruption recovery exhausted after ${MAX_STREAM_INTERRUPTION_RECOVERIES} attempts (${streamInterruption.phase}).`,
+          assembled.error,
+          "The model stream repeatedly disconnected. Retry the turn or switch providers.",
+        );
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        finalMessage = exhaustedMessage;
+        if (exhaustedMessage) {
+          messages.push(exhaustedMessage);
+          yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: exhaustedMessage };
+          await input.onDurableMessage?.(exhaustedMessage);
+        }
+        await this.dispatchLifecycle(input, "StopFailure", { error: error.message });
+        yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: error.message };
+        const result = this.createTurnResult(input, {
+          type: "error",
+          stopReason: "model_error",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+          structuredOutput,
+          errors: [error],
+        });
+        yield await emitStatus(createModelRequestFailedStatus({ error, modelError: assembled.error }));
+        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+        await captureTurn(true);
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
+      }
+      streamInterruptionRecoveryCount = 0;
+
+      if (!assembled.error && assembled.hasMessageEnd && !assembled.hasPartialTextToolCall && assembled.finishReason === "unknown") {
+        if (unknownFinishRecoveryCount < MAX_UNKNOWN_FINISH_RECOVERIES) {
+          unknownFinishRecoveryCount++;
+          const partialTextMessage = withoutThinkingBlocks(assistantMessage);
+          if (toolCalls.length === 0 && textFromMessage(partialTextMessage).trim().length > 0) {
+            finalMessage = partialTextMessage;
+            messages.push(partialTextMessage);
+            yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: partialTextMessage };
+            await input.onDurableMessage?.(partialTextMessage);
+          }
+          pushTransientSyntheticPrompt(
+            buildUnknownFinishRecoveryPrompt(toolCalls),
+            "unknown_finish_recovery",
+          );
+          yield {
+            type: "turn_continued",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            reason: "model_error",
+          };
+          continue;
+        }
+
+        const error = agentError(
+          "agent_model_error",
+          `Unknown finish reason recovery exhausted after ${MAX_UNKNOWN_FINISH_RECOVERIES} attempts.`,
+          undefined,
+          "The provider repeatedly ended the stream without a recognized finish reason. Retry the turn or switch providers.",
+        );
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        finalMessage = exhaustedMessage;
+        if (exhaustedMessage) {
+          messages.push(exhaustedMessage);
+          yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: exhaustedMessage };
+          await input.onDurableMessage?.(exhaustedMessage);
+        }
+        await this.dispatchLifecycle(input, "StopFailure", { error: error.message });
+        yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: error.message };
+        const result = this.createTurnResult(input, {
+          type: "error",
+          stopReason: "model_error",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+          structuredOutput,
+          errors: [error],
+        });
+        yield await emitStatus(createModelRequestFailedStatus({ error }));
+        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+        await captureTurn(true);
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
+      }
+      unknownFinishRecoveryCount = 0;
+
       if (assembled.hasPartialTextToolCall) {
         if (maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
           maxOutputRecoveryCount++;
+          // The current assistant message contains an unsafe tool fragment;
+          // clear it before yielding so cancellation cannot return it.
+          finalMessage = undefined;
           pushTransientSyntheticPrompt(
             buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall),
             "max_output_recovery",
@@ -691,6 +907,7 @@ export class AgentLoop {
         const detail = assembled.partialTextToolCall
           ? `${assembled.partialTextToolCall.format}/${assembled.partialTextToolCall.reason}`
           : "unknown partial text tool-call";
+        finalMessage = safeFinalTextMessage(assistantMessage, true, toolCalls);
         const result = this.createTurnResult(input, {
           type: "error",
           stopReason: "model_error",
@@ -1069,18 +1286,31 @@ export class AgentLoop {
           messages = stripTrailingErrorPair(messages);
           if (ctx?.tryAutoCompact) {
             try {
+              const maxContextTokens = this.currentMaxContextTokens(target.provider, target.model);
+              const reservedOutputTokens = this.getReservedOutputTokens(target.provider, target.model);
+              const recoveryDecision = {
+                ...decision,
+                provider: target.provider,
+                model: target.model,
+              };
               const compact = await ctx.tryAutoCompact({
                 sessionId: input.sessionId,
                 turnId: input.turnId,
                 messages,
                 abortSignal: input.abortSignal,
-                maxContextTokens: this.currentMaxContextTokens(target.provider, target.model),
-                reservedOutputTokens: this.getReservedOutputTokens(target.provider, target.model),
-                lastUsage: lastModelUsage,
+                maxContextTokens,
+                reservedOutputTokens,
+                budgetEvaluator: this.createBudgetEvaluator(input, {
+                  decision: recoveryDecision,
+                  baseRequest: { ...request, provider: target.provider, model: target.model },
+                  maxContextTokens,
+                  reservedOutputTokens,
+                }),
                 allowFallbackOnFailure: true,
               });
               if (compact.type === "compacted") {
                 messages = compact.messages;
+                this.tokenCalibrationByRoute.clear();
                 await this.persistCompactSnapshot(input, compact);
                 if (compact.error) {
                   const failure = await contextOverflowAfterEmergency(compact);
@@ -1093,13 +1323,16 @@ export class AgentLoop {
                 }
               } else {
                 messages = truncateHeadKeepRatio(messages, 0.5);
+                this.tokenCalibrationByRoute.clear();
               }
             } catch (error: unknown) {
               logAutoCompactFailure("model-error-recovery", input, error);
               messages = truncateHeadKeepRatio(messages, 0.5);
+              this.tokenCalibrationByRoute.clear();
             }
           } else {
             messages = truncateHeadKeepRatio(messages, 0.5);
+            this.tokenCalibrationByRoute.clear();
           }
           hasAttemptedCompact = true;
           yield {
@@ -1117,6 +1350,7 @@ export class AgentLoop {
           // keepRatio so the cap is computed against valid history only.
           messages = stripTrailingErrorPair(messages);
           messages = truncateHeadKeepRatio(messages, reactive.keepRatio);
+          this.tokenCalibrationByRoute.clear();
           hasAttemptedCompact = true;
           yield {
             type: "turn_continued",
@@ -1131,6 +1365,7 @@ export class AgentLoop {
           hasAttemptedImageStrip = true;
           messages = stripTrailingErrorPair(messages);
           messages = stripImagesFromMessages(messages);
+          this.tokenCalibrationByRoute.clear();
           yield {
             type: "turn_continued",
             sessionId: input.sessionId,
@@ -1415,6 +1650,28 @@ export class AgentLoop {
               detectedFormat: assembled.textToolCallFormat ?? detectFormatByText(assistantText)?.id,
             },
           };
+        }
+
+        // A steer starts another model iteration, so it must obey the same
+        // turn budget as tool-driven continuation. Leave guidance in the
+        // mailbox when the budget is exhausted; TurnRunner will report it as
+        // unapplied and the host can keep it queued for a later turn.
+        const canContinueForSteer = !input.maxTurns || turnCount < input.maxTurns;
+        const terminalSteers = canContinueForSteer
+          ? input.drainOrCloseSteerMailbox?.()
+          : undefined;
+        if (terminalSteers && terminalSteers.messages.length > 0) {
+          for await (const event of applySteerMessages(terminalSteers.messages)) {
+            yield event;
+          }
+          turnCount += 1;
+          yield {
+            type: "turn_continued",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            reason: "user_steer",
+          };
+          continue;
         }
 
         const stopHooks = await this.dispatchLifecycle(input, "Stop", {
@@ -1813,12 +2070,16 @@ export class AgentLoop {
     if (this.config.runMode === "ask") {
       tools = filterAskModeTools(toolDefinitions);
     }
+    const requestProvider = input.modelOverride?.provider ?? this.config.provider;
+    const requestModel = input.modelOverride?.model ?? this.config.model;
     const prepared = await contextRuntime.prepareForModel({
       sessionId: input.sessionId,
       turnId: input.turnId,
       cwd: this.config.cwd,
-      provider: this.config.provider,
-      model: this.config.model,
+      provider: requestProvider,
+      model: requestModel,
+      protocol: this.dependencies.getModelProtocol?.(requestProvider),
+      supportsPromptCache: this.dependencies.getModelSupportsPromptCache?.(requestProvider, requestModel),
       permissionMode: this.config.permissionMode,
       runMode: this.config.runMode ?? "agent",
       additionalWorkingDirectories: this.config.permissionContext.additionalWorkingDirectories,
@@ -1850,21 +2111,38 @@ export class AgentLoop {
       );
     }
 
+    const finalMessages = this.config.permissionMode === "plan"
+      ? appendPlanModeReminder(materialized.messages)
+      : materialized.messages;
+    const finalCachePlan = prepared.cachePlan
+      ? buildCachePlan({
+          provider: requestProvider,
+          model: requestModel,
+          systemPrompt: prepared.systemPrompt,
+          tools: prepared.tools,
+          messages: finalMessages,
+          enabled: true,
+        }, prepared.cachePlan.generation)
+      : undefined;
+    const finalCacheBreakpoints = finalCachePlan?.messages ?? (
+      this.config.permissionMode === "plan" ? undefined : prepared.cacheBreakpoints
+    );
+
     return {
-      provider: this.config.provider,
-      model: this.config.model,
-      messages: this.config.permissionMode === "plan"
-        ? appendPlanModeReminder(materialized.messages)
-        : materialized.messages,
+      provider: requestProvider,
+      model: requestModel,
+      messages: finalMessages,
       systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
       tools: prepared.tools,
       toolChoice: this.config.toolChoice,
       maxOutputTokens: this.config.maxOutputTokens,
-      temperature: this.config.temperature,
-      thinking: this.config.thinking,
+      temperature: input.modelOverride?.temperature ?? this.config.temperature,
+      speed: input.modelOverride?.speed,
+      thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
       metadata: this.config.metadata,
-      cacheBreakpoints: prepared.cacheBreakpoints,
+      cacheBreakpoints: finalCacheBreakpoints,
+      cachePlan: finalCachePlan,
     };
   }
 
@@ -1876,44 +2154,61 @@ export class AgentLoop {
       maxContextTokens?: number;
       reservedOutputTokens: number;
     },
-  ): ((candidateMessages: CanonicalMessage[], lastUsage?: CanonicalUsage) => Promise<TokenBudgetSnapshot>) | undefined {
+  ): ((candidateMessages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>) | undefined {
     const tokenAccounting = this.dependencies.tokenAccounting;
     const maxContextTokens = options.maxContextTokens;
     if (!tokenAccounting || !maxContextTokens) {
       return undefined;
     }
-    return async (candidateMessages, lastUsage) => {
+    return async (candidateMessages) => {
       let candidateRequest = await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
       });
-      if (options.decision && options.baseRequest && this.dependencies.router.materializeRequest) {
+      if (options.decision && options.baseRequest) {
         const patchedBase = { ...options.baseRequest, messages: candidateRequest.messages };
-        candidateRequest = this.dependencies.router.materializeRequest(options.decision, {
+        const materializedRequest = {
           ...patchedBase,
           systemPrompt: candidateRequest.systemPrompt,
           tools: candidateRequest.tools,
           cacheBreakpoints: candidateRequest.cacheBreakpoints,
-        });
+          cachePlan: candidateRequest.cachePlan,
+        };
+        candidateRequest = this.dependencies.router.materializeRequest
+          ? this.dependencies.router.materializeRequest(options.decision, materializedRequest)
+          : {
+              ...materializedRequest,
+              provider: options.decision.provider,
+              model: options.decision.model,
+            };
       }
       const snapshot = await tokenAccounting.evaluateRequestBudget(candidateRequest, {
         maxContextTokens,
         reservedOutputTokens: options.reservedOutputTokens,
         signal: input.abortSignal,
-        usePadding: true,
+        calibration: this.tokenCalibrationByRoute.get(tokenCalibrationKey(
+          candidateRequest.provider,
+          candidateRequest.model,
+        )),
       });
-      const usageTokens = tokensFromUsage(lastUsage);
-      if (usageTokens === undefined || usageTokens <= snapshot.tokens) {
-        return snapshot;
-      }
-      return tokenAccounting.snapshotFromTokens(usageTokens, maxContextTokens, {
-        reservedOutputTokens: options.reservedOutputTokens,
-        usageTokens,
-        budgetTokens: snapshot.budgetTokens,
-        source: snapshot.source,
-        exact: snapshot.exact,
-        estimatorError: snapshot.estimatorError,
-      });
+      return snapshot;
     };
+  }
+
+  private recordTokenCalibration(
+    request: CanonicalModelRequest,
+    usage: CanonicalUsage | undefined,
+    estimatedInputTokens: number | undefined,
+  ): void {
+    const actualInputTokens = actualInputTokensFromUsage(usage);
+    if (actualInputTokens === undefined || estimatedInputTokens === undefined || estimatedInputTokens <= 0) {
+      return;
+    }
+    this.tokenCalibrationByRoute.set(tokenCalibrationKey(request.provider, request.model), {
+      provider: request.provider,
+      model: request.model,
+      actualInputTokens,
+      estimatedInputTokens,
+    });
   }
 
   private getReservedOutputTokens(provider?: string, model?: string): number {
@@ -1939,22 +2234,61 @@ export class AgentLoop {
   private currentMaxContextTokens(provider: string, model: string): number {
     const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model))?.maxContextTokens;
     return transient
-      ?? this.config.maxContextTokens
+      ?? this.getBaselineSubagentTokenLimits(provider, model)?.maxContextTokens
+      ?? this.currentConfigMaxContextTokens()
       ?? this.dependencies.getModelMaxContextTokens?.(provider, model)
       ?? this.getModelTokenLimits(provider, model)?.maxContextTokens
       ?? 1_000_000;
   }
 
+  private preRoutingMaxContextTokens(): number {
+    if (this.config.isSubagent && this.config.subagentModel) {
+      return 1_000_000;
+    }
+    return this.currentMaxContextTokens(this.config.provider, this.config.model);
+  }
+
   private currentMaxOutputTokens(provider: string, model: string): number | undefined {
     const transient = this.transientTokenCaps.get(this.tokenCapKey(provider, model));
     const modelMaxOutputTokens = this.getModelTokenLimits(provider, model)?.maxOutputTokens;
-    const requested = transient?.attemptMaxOutputTokens ?? transient?.requestedMaxOutputTokens ?? this.config.maxOutputTokens;
+    const requested = transient?.attemptMaxOutputTokens
+      ?? transient?.requestedMaxOutputTokens
+      ?? this.getBaselineSubagentTokenLimits(provider, model)?.maxOutputTokens
+      ?? this.currentConfigMaxOutputTokens();
     const candidates = [requested, transient?.hardMaxOutputTokens]
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
     if (candidates.length > 0 && typeof modelMaxOutputTokens === "number" && Number.isFinite(modelMaxOutputTokens) && modelMaxOutputTokens > 0) {
       candidates.push(modelMaxOutputTokens);
     }
     return candidates.length > 0 ? Math.min(...candidates.map((value) => Math.floor(value))) : undefined;
+  }
+
+  private getBaselineSubagentTokenLimits(provider: string, model: string): { maxContextTokens?: number; maxOutputTokens?: number } | undefined {
+    if (this.config.isSubagent !== true) {
+      return undefined;
+    }
+    const baseline = this.config.subagentModel;
+    if (!baseline || baseline.provider !== provider || baseline.model !== model) {
+      return undefined;
+    }
+    return {
+      maxContextTokens: baseline.maxContextTokens,
+      maxOutputTokens: baseline.maxOutputTokens,
+    };
+  }
+
+  private currentConfigMaxContextTokens(): number | undefined {
+    if (this.config.isSubagent && this.config.subagentModel) {
+      return undefined;
+    }
+    return this.config.maxContextTokens;
+  }
+
+  private currentConfigMaxOutputTokens(): number | undefined {
+    if (this.config.isSubagent && this.config.subagentModel) {
+      return undefined;
+    }
+    return this.config.maxOutputTokens;
   }
 
   private setTransientTokenCap(provider: string, model: string, cap: {
@@ -2005,15 +2339,16 @@ export class AgentLoop {
         compactionId: compact.result.compactionId,
         trigger: compact.result.trigger,
         preTokens: compact.result.preTokens,
-        ...(compact.result.postTokens !== undefined ? { postTokens: compact.result.postTokens } : {}),
+        postTokens: compact.snapshot.tokens,
         messagesSummarized: compact.result.messagesSummarized,
+        ...(compact.result.targetPostTokens !== undefined ? { targetTokens: compact.result.targetPostTokens } : {}),
+        summaryGenerated: compactionSummaryGenerated(compact.result),
+        checkpointMerged: compact.result.checkpointMerged ?? compact.result.cacheReset === true,
+        finalRatio: compact.snapshot.ratio,
         extra: {
           tier: compact.tier,
-          summarySucceeded: compact.result.error === undefined,
+          summarySucceeded: compactionSummarySucceeded(compact.result),
           ...(compact.result.cacheReset ? { cacheReset: true } : {}),
-          ...(compact.result.stablePrefix && compact.result.stablePrefix.length > 0
-            ? { checkpointVersion: Math.floor(compact.result.stablePrefix.length / 2) + 1 }
-            : {}),
           ...(compact.error
             ? {
                 finalBudgetTokens: compact.snapshot.maxContextTokens,
@@ -2027,7 +2362,7 @@ export class AgentLoop {
     };
     await Promise.resolve(input.onCompactPersisted({
       boundary,
-      messages: markCompactReplacementMessages(compact.messages),
+      messages: markCompactReplacementMessages(compact.messages, compact.result.compactionId),
     })).catch(() => {});
   }
 
@@ -2592,6 +2927,57 @@ function textFromMessage(message: CanonicalMessage): string {
     .join("\n");
 }
 
+function withoutThinkingBlocks(message: CanonicalMessage): CanonicalMessage {
+  return {
+    ...message,
+    content: messageContent(message).filter((block) => block.type !== "thinking"),
+  };
+}
+
+function safeFinalTextMessage(
+  message: CanonicalMessage,
+  hasPartialTextToolCall: boolean | undefined,
+  toolCalls: CanonicalToolCall[],
+): CanonicalMessage | undefined {
+  if (hasPartialTextToolCall || toolCalls.length > 0) {
+    return undefined;
+  }
+  const textMessage = withoutThinkingBlocks(message);
+  return textFromMessage(textMessage).trim().length > 0 ? textMessage : undefined;
+}
+
+function buildStreamInterruptionRecoveryPrompt(
+  interruption: NonNullable<CanonicalModelError["streamInterruption"]>,
+): string {
+  if (interruption.phase === "tool_call") {
+    const tools = interruption.activeToolCalls?.map((call) => call.name || "unknown").filter(Boolean) ?? [];
+    const toolLabel = tools.length > 0 ? ` (${tools.slice(0, 3).join(", ")})` : "";
+    return [
+      `The previous model stream disconnected while generating a tool call${toolLabel}. No incomplete tool call was executed.`,
+      "Continue the original task from the current workspace state. Inspect relevant files before writing.",
+      "Do not retry the same large atomic write. Create or extend the artifact through small focused write_file or edit_file calls, keeping each tool call well under 8K output tokens.",
+    ].join("\n");
+  }
+  if (interruption.phase === "reasoning") {
+    return "The previous model stream disconnected during reasoning. Continue the original task directly from the current workspace state; do not repeat analysis or recap.";
+  }
+  if (interruption.phase === "text") {
+    return "The previous model stream disconnected mid-response. Continue exactly where the visible response ended; do not repeat prior text or recap.";
+  }
+  return "The previous model stream disconnected before producing a response. Continue the original task directly from the current workspace state.";
+}
+
+function buildUnknownFinishRecoveryPrompt(toolCalls: CanonicalToolCall[]): string {
+  if (toolCalls.length > 0) {
+    return [
+      "The previous response ended without a recognized finish reason after generating tool calls. No tool call was executed.",
+      "Continue the original task from the current workspace state. Inspect relevant files before acting.",
+      "Do not repeat the same large atomic write. Use small focused write_file or edit_file calls.",
+    ].join("\n");
+  }
+  return "The previous response ended without a recognized finish reason. Continue exactly where the visible response ended; do not repeat prior text or recap.";
+}
+
 function isMissingReasoningContentError(error: CanonicalModelError): boolean {
   return /\breasoning_content\b/i.test(error.message) &&
     /thinking\s+mode/i.test(error.message) &&
@@ -2672,7 +3058,7 @@ function buildPartialTextToolCallRecoveryPrompt(
   partial: PartialTextToolCallInfo | undefined,
 ): string {
   const evidence = partial
-    ? `Detected partial text tool-call syntax (${partial.format}/${partial.reason}). Preview: ${partial.preview}`
+    ? `Detected partial text tool-call syntax (${partial.format}/${partial.reason}).`
     : "Detected partial text tool-call syntax.";
   return [
     "The previous response contained partial tool-call XML/text and could not be safely executed.",
@@ -2682,11 +3068,9 @@ function buildPartialTextToolCallRecoveryPrompt(
   ].join("\n");
 }
 
-/** Keep only the trailing `keepRatio` portion of the message history. */
+/** Keep a bounded tail without dropping the user request that initiated it. */
 function truncateHeadKeepRatio(messages: CanonicalMessage[], keepRatio: number): CanonicalMessage[] {
-  const ratio = Math.max(0.05, Math.min(1, keepRatio));
-  const keep = Math.max(1, Math.floor(messages.length * ratio));
-  return messages.slice(-keep);
+  return truncateHeadPreservingCheckpoint(messages, keepRatio);
 }
 
 function buildInvalidFingerprint(results: PilotDeckToolResult[]): string {
@@ -3084,6 +3468,10 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
     return modelFailureActionResult(hint, "settings", "modelNotFound", { provider: error.provider ?? "the provider", model: error.model });
   }
   if (error.code === "timeout") {
+    if (error.settingsFix?.configPath === "model.providers.<id>.retry.streamIdleTimeoutMs") {
+      const hint = `Increase streamIdleTimeoutMs for${providerLabel} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`;
+      return modelFailureActionResult(hint, "network", "streamIdleTimeout", { provider: error.provider ?? "the provider" });
+    }
     const hint = `Increase timeoutMs for${providerLabel} in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`;
     return modelFailureActionResult(hint, "network", "timeout", { provider: error.provider ?? "the provider" });
   }
@@ -3443,26 +3831,29 @@ function clampOutputToModelCap(requested: number, modelMaxOutputTokens: number |
   return next;
 }
 
-function tokensFromUsage(usage: CanonicalUsage | undefined): number | undefined {
-  if (!usage) return undefined;
-  const inputTokens = usage.inputTokens;
-  if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens) || inputTokens <= 0) {
-    return undefined;
-  }
-  const outputTokens = typeof usage.outputTokens === "number" && Number.isFinite(usage.outputTokens) && usage.outputTokens > 0
-    ? usage.outputTokens
-    : 0;
-  return Math.ceil(inputTokens + outputTokens);
+function tokenCalibrationKey(provider: string, model: string): string {
+  return `${provider}\u0000${model}`;
 }
 
-function markCompactReplacementMessages(messages: CanonicalMessage[]): CanonicalMessage[] {
+function markCompactReplacementMessages(messages: CanonicalMessage[], compactionId: string): CanonicalMessage[] {
   return messages.map((message) => ({
     ...message,
     metadata: {
       ...(message.metadata ?? {}),
       compactReplacement: true,
+      compactSnapshotId: compactionId,
     },
   }));
+}
+
+function compactionSummarySucceeded(result: CompactionResult): boolean {
+  return result.error === undefined
+    && result.summaryMessage !== undefined;
+}
+
+function compactionSummaryGenerated(result: CompactionResult): boolean {
+  return result.summaryGenerated
+    ?? result.summaryMessage !== undefined;
 }
 
 function modelErrorTarget(error: CanonicalModelError, fallbackProvider: string, fallbackModel: string): {

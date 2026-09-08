@@ -16,6 +16,7 @@ import { cleanSchemaForGoogle, normalizeGoogleToolSchema } from "../google/schem
 import { normalizeOpenAISchema } from "./schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
+import { hasSpeedMapping, mapSpeedToOpenAIServiceTier } from "../../request/speedMapping.js";
 
 export type OpenAIRequestBody = {
   model: string;
@@ -24,6 +25,7 @@ export type OpenAIRequestBody = {
   tools?: OpenAITool[];
   tool_choice?: unknown;
   temperature?: number;
+  service_tier?: "priority";
   stream?: boolean;
   metadata?: Record<string, unknown>;
   reasoning?: { effort?: string };
@@ -84,6 +86,10 @@ export function buildOpenAIRequest(
     tools: request.tools?.map((tool) => toOpenAITool(tool, googleOpenAICompatible)),
     tool_choice: toOpenAIToolChoice(request.toolChoice),
     temperature: thinkingPlan.omitTemperature ? undefined : request.temperature,
+    service_tier: request.speed !== undefined && model.capabilities.supportsSpeed === true
+      && hasSpeedMapping(provider?.speedMapping, "openai_service_tier")
+      ? mapSpeedToOpenAIServiceTier(request.speed)
+      : undefined,
     stream: request.stream,
     metadata: request.metadata
       ? Object.fromEntries(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PilotDeckConfigProvider } from "../../hooks/usePilotDeckConfig";
+import { desktopUpdates } from "../../utils/desktopUpdates";
 import { authenticatedFetch } from "../../utils/api";
 import type { SettingsProps } from "./shared/types";
 import type { SettingsMenuKey } from "./types";
@@ -15,6 +16,11 @@ export type DesktopVersionCheckResult = {
   latestVersion: string | null;
   latestPublishedAt: string | null;
   buildTime: string | null;
+  canUpdate?: boolean;
+  canDownload?: boolean;
+  desktopReason?: string | null;
+  webReason?: string | null;
+  latestSourceSha?: string | null;
 };
 
 function normalizeDesktopVersionResult(payload: any): DesktopVersionCheckResult {
@@ -24,6 +30,8 @@ function normalizeDesktopVersionResult(payload: any): DesktopVersionCheckResult 
     checkUnavailable: Boolean(payload?.checkUnavailable),
     currentVersion: payload?.current?.version ?? "unknown",
     latestVersion: payload?.latest?.version ?? null,
+    canDownload: payload?.canDownload === true,
+    desktopReason: payload?.reason ?? null,
     latestPublishedAt: payload?.latest?.publishedAt ?? null,
     buildTime: payload?.current?.buildTime ?? null,
   };
@@ -34,10 +42,13 @@ function normalizeWebVersionResult(payload: any): DesktopVersionCheckResult {
     mode: "web",
     hasUpdate: Boolean(payload?.hasUpdate),
     checkUnavailable: Boolean(payload?.checkUnavailable),
-    currentVersion: payload?.localHead ?? "unknown",
-    latestVersion: payload?.remoteHead ?? null,
-    latestPublishedAt: null,
-    buildTime: null,
+    currentVersion: payload?.current?.tagName || payload?.current?.sourceSha?.slice(0, 8) || "unknown",
+    latestVersion: payload?.latest?.tagName ?? null,
+    latestPublishedAt: payload?.latest?.publishedAt ?? null,
+    buildTime: payload?.current?.buildTime ?? null,
+    canUpdate: payload?.canUpdate === true,
+    webReason: payload?.reason ?? null,
+    latestSourceSha: payload?.latest?.sourceSha ?? null,
   };
 }
 
@@ -72,17 +83,14 @@ function SettingsInner({
   const checkVersion = useCallback(async () => {
     setCheckingVersion(true);
     try {
-      const res = isDesktopApp
-        ? await authenticatedFetch("/api/update/desktop/check", {
-            method: "POST",
-          })
-        : await authenticatedFetch("/api/update/check", {
-            method: "POST",
-          });
-      if (!res.ok) {
-        throw new Error("Failed to check version");
+      let data;
+      if (isDesktopApp) {
+        data = await desktopUpdates().checkUpdates();
+      } else {
+        const res = await authenticatedFetch("/api/update/check", { method: "POST" });
+        if (!res.ok) throw new Error("Failed to check version");
+        data = await res.json();
       }
-      const data = await res.json();
       setVersionInfo(
         isDesktopApp
           ? normalizeDesktopVersionResult(data)
@@ -93,6 +101,10 @@ function SettingsInner({
         ...prev,
         hasUpdate: false,
         checkUnavailable: true,
+        canUpdate: false,
+        canDownload: false,
+        desktopReason: "checkFailed",
+        webReason: "checkFailed",
       }));
     } finally {
       setCheckingVersion(false);

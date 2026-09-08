@@ -1,5 +1,6 @@
 const WINDOWS_CMD_SHIMS = new Set([
   'claude',
+  'clawhub',
   'npm',
   'npx',
   'task-master',

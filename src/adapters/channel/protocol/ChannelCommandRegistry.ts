@@ -131,79 +131,26 @@ const commands: ChannelCommand[] = [
   {
     name: "update",
     aliases: ["升级", "更新"],
-    description: "Pull latest code, rebuild, and restart PilotDeck",
+    description: "Install the latest supported Release and request a Web service restart",
     systemLevel: true,
     handler: async (ctx, arg) => {
-      const { execFile } = await import("node:child_process");
-      const { resolve: resolvePath, dirname } = await import("node:path");
-      const { promisify } = await import("node:util");
-      const { fileURLToPath } = await import("node:url");
-      const execFileAsync = promisify(execFile);
-
-      const thisFile = fileURLToPath(import.meta.url);
-      const projectRoot = resolvePath(dirname(thisFile), "..", "..", "..", "..");
-      const scriptPath = resolvePath(projectRoot, "scripts", "update.sh");
-
       const subcommand = arg?.trim() || "";
-
-      if (subcommand === "check") {
-        await ctx.reply("⏳ 正在检查更新...");
-        try {
-          const { stdout: branch } = await execFileAsync("git", ["branch", "--show-current"], { cwd: projectRoot });
-          const currentBranch = branch.trim() || "main";
-          await execFileAsync("git", ["fetch", "origin", currentBranch], { cwd: projectRoot });
-          const { stdout: localH } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
-          const { stdout: remoteH } = await execFileAsync("git", ["rev-parse", `origin/${currentBranch}`], { cwd: projectRoot });
-          if (localH.trim() === remoteH.trim()) {
-            await ctx.reply(`✅ 已是最新版本 (${localH.trim().slice(0, 8)})，无需更新。`);
-          } else {
-            const { stdout: countStr } = await execFileAsync(
-              "git", ["rev-list", "--count", `HEAD..origin/${currentBranch}`], { cwd: projectRoot },
-            );
-            const { stdout: logStr } = await execFileAsync(
-              "git", ["log", "--oneline", `HEAD..origin/${currentBranch}`, "-5"], { cwd: projectRoot },
-            );
-            const lines = [
-              `🆕 有 ${countStr.trim()} 个新提交可用`,
-              `当前: ${localH.trim().slice(0, 8)} → 最新: ${remoteH.trim().slice(0, 8)}`,
-              "",
-              "最近提交:",
-              logStr.trim(),
-              "",
-              "发送 /update 执行更新",
-            ];
-            await ctx.reply(lines.join("\n"));
-          }
-        } catch (e) {
-          await ctx.reply(`❌ 检查更新失败: ${e instanceof Error ? e.message : String(e)}`);
-        }
+      if (subcommand && subcommand !== "check") {
+        await ctx.reply("用法：/update check 检查 Release；/update 更新并请求重启。未运行 Web 服务时，请使用 CLI 手动更新。");
         return;
       }
-
-      // Execute the update
-      await ctx.reply("🚀 开始更新 PilotDeck...\n正在拉取最新代码、重新构建...");
+      await ctx.reply(subcommand === "check" ? "⏳ 正在检查 Release 更新..." : "⏳ 正在检查部署资格并更新 Release，完成后向 Web 服务请求重启...");
       try {
-        const { stdout, stderr } = await execFileAsync("bash", [scriptPath, "--restart"], {
-          cwd: projectRoot,
-          env: { ...process.env, FORCE_COLOR: "0" },
-          timeout: 300_000,
-        });
-
-        const output = (stdout || "").trim();
-        const lastLines = output.split("\n").slice(-5).join("\n");
-        await ctx.reply(`✅ 更新完成！\n\n${lastLines}\n\n服务即将重启...`);
-
-        // Exit so the process manager (docker/systemd) restarts us.
-        // In local dev without a process manager, the user must restart manually.
-        setTimeout(() => process.exit(0), 2000);
-      } catch (e: unknown) {
-        const err = e as { code?: number; stdout?: string; stderr?: string };
-        if (err.code === 2) {
-          await ctx.reply("✅ 已是最新版本，无需更新。");
-          return;
+        const { runUpdateProcess } = await import("../../../runtime/updateCommand.js");
+        const result = await runUpdateProcess(subcommand === "check" ? ["--check"] : ["--restart"]);
+        if (result.code === 2) await ctx.reply("✅ 已是最新 Release，无需更新。");
+        else {
+          // Relay the command outcome, not build logs or local proxy settings.
+          const message = result.output.split(/\r?\n/).filter(Boolean).at(-1) || "更新命令未返回结果，请查看设置页。";
+          await ctx.reply(`${result.code === 0 ? "✅" : "❌"} ${message}`);
         }
-        const detail = err.stderr?.trim().split("\n").slice(-3).join("\n") || "";
-        await ctx.reply(`❌ 更新失败\n\n${detail || (e instanceof Error ? e.message : String(e))}`);
+      } catch (error) {
+        await ctx.reply(`❌ 更新失败：${error instanceof Error ? error.message : String(error)}`);
       }
     },
   },

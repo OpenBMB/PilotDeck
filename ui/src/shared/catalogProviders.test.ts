@@ -28,7 +28,7 @@ describe('catalogProviders maxOutputTokens', () => {
 
     expect(zhipu?.protocol).toBe('openai');
     expect(zhipu?.defaultUrl).toBe('https://api.z.ai/api/paas/v4');
-    expect(zhipu?.models.find((model) => model.id === 'glm-5.2')?.maxOutputTokens).toBe(131_072);
+    expect(zhipu?.models.find((model) => model.id === 'glm-5.2')?.maxOutputTokens).toBe(65_536);
     expect(zhipu?.models.find((model) => model.id === 'glm-4.6')?.maxContextTokens).toBe(131_072);
     expect(zhipu?.models.find((model) => model.id === 'glm-4.7')?.maxContextTokens).toBe(200_000);
     expect(zhipu?.models.find((model) => model.id === 'glm-4-plus')?.maxOutputTokens).toBe(8_192);

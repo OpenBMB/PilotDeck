@@ -12,6 +12,7 @@ import { messageContent } from "../../protocol/clone.js";
 import { normalizeOpenAISchema } from "../openai/schema.js";
 import { resolveThinkingPlan, throwIfUnsupportedThinkingPlan } from "../../thinking/registry.js";
 import { formatToolResultReferenceText } from "../toolResultReferenceText.js";
+import { hasSpeedMapping, mapSpeedToOpenAIServiceTier } from "../../request/speedMapping.js";
 
 export type OpenAIResponsesRequestBody = {
   model: string;
@@ -20,6 +21,7 @@ export type OpenAIResponsesRequestBody = {
   max_output_tokens: number;
   stream?: boolean;
   temperature?: number;
+  service_tier?: "priority";
   metadata?: Record<string, unknown>;
   tools?: OpenAIResponsesTool[];
   tool_choice?: unknown;
@@ -80,6 +82,10 @@ export function buildOpenAIResponsesRequest(
     tools: request.tools?.map(toResponsesTool),
     tool_choice: toResponsesToolChoice(request.toolChoice),
     temperature: request.temperature,
+    service_tier: request.speed !== undefined && model.capabilities.supportsSpeed === true
+      && hasSpeedMapping(_provider?.speedMapping, "openai_service_tier")
+      ? mapSpeedToOpenAIServiceTier(request.speed)
+      : undefined,
     stream: request.stream,
     metadata: request.metadata
       ? Object.fromEntries(

@@ -1,25 +1,20 @@
-import { authenticatedFetch } from "../../../../utils/api";
-
 export type WebUpdateTerminalStatus = "success" | "up-to-date" | "error";
 
 type UpdateProgressMessage = {
   stage?: unknown;
   status?: unknown;
+  reason?: string;
 };
-
-type RequestLike = (
-  url: string,
-  options?: {
-    method?: string;
-    body?: string;
-  },
-) => Promise<{ ok: boolean }>;
 
 function readTerminalStatus(
   line: string,
+  onError?: (reason: string) => void,
 ): WebUpdateTerminalStatus | null {
   const parsed = JSON.parse(line) as UpdateProgressMessage;
-  if (parsed.status === "error") return "error";
+  if (parsed.status === "error") {
+    onError?.(parsed.reason || "applyFailed");
+    return "error";
+  }
   if (
     parsed.stage === "complete" &&
     (parsed.status === "success" || parsed.status === "up-to-date")
@@ -31,6 +26,7 @@ function readTerminalStatus(
 
 export async function readWebUpdateTerminalStatus(
   body: ReadableStream<Uint8Array> | null,
+  onError?: (reason: string) => void,
 ): Promise<WebUpdateTerminalStatus> {
   if (!body) {
     throw new Error("Update response did not include a progress stream.");
@@ -55,7 +51,7 @@ export async function readWebUpdateTerminalStatus(
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      const status = readTerminalStatus(line);
+      const status = readTerminalStatus(line, onError);
       if (status === "error") {
         terminalStatus = "error";
       } else if (!terminalStatus && status) {
@@ -67,7 +63,7 @@ export async function readWebUpdateTerminalStatus(
   }
 
   if (pending.trim()) {
-    const status = readTerminalStatus(pending);
+    const status = readTerminalStatus(pending, onError);
     if (status === "error" || (!terminalStatus && status)) {
       terminalStatus = status;
     }
@@ -77,17 +73,4 @@ export async function readWebUpdateTerminalStatus(
     throw new Error("Update stream ended without a terminal status.");
   }
   return terminalStatus;
-}
-
-export async function launchDesktopInstaller(
-  filePath: string | null,
-  request: RequestLike = authenticatedFetch,
-): Promise<void> {
-  const response = await request("/api/update/desktop/install", {
-    method: "POST",
-    body: JSON.stringify({ filePath }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to launch desktop installer");
-  }
 }

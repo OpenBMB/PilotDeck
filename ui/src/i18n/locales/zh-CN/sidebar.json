@@ -5,6 +5,8 @@
     "deleteProject": "删除项目",
     "renameProject": "重命名项目",
     "noProjects": "未找到项目",
+    "loadError": "项目暂时无法加载，你的数据并未被删除。",
+    "retry": "重试",
     "loadingProjects": "加载项目中...",
     "searchPlaceholder": "搜索项目...",
     "projectNamePlaceholder": "项目名称",
@@ -19,12 +21,29 @@
     "tryDifferentSearch": "尝试调整您的搜索词",
     "runPilotDeckCli": "在项目目录中运行 PilotDeck CLI 以开始使用",
     "collapseAll": "折叠全部项目",
-    "expandAll": "展开全部项目"
+    "expandAll": "展开全部项目",
+    "collapse": "折叠项目",
+    "expand": "展开项目",
+    "recent": "最近打开"
   },
   "general": {
-    "title": "通用",
-    "name": "通用",
+    "title": "通用对话",
+    "name": "通用对话",
     "missing": "未找到通用工作区"
+  },
+  "conversations": {
+    "title": "对话",
+    "collapse": "折叠对话",
+    "expand": "展开对话"
+  },
+  "quickActions": {
+    "label": "快捷操作",
+    "newChat": "新建对话",
+    "newConversation": "新对话",
+    "newProject": "新建项目",
+    "skills": "技能",
+    "skillsCompact": "技能工具",
+    "scheduledTasks": "定时任务"
   },
   "sectionToggle": {
     "label": "侧边栏分区"
@@ -59,12 +78,15 @@
   "tooltips": {
     "viewEnvironments": "查看环境",
     "hideSidebar": "隐藏侧边栏",
+    "expandSidebar": "展开项目目录",
     "createProject": "创建新项目",
     "refresh": "刷新项目和会话 (Ctrl+R)",
     "renameProject": "重命名项目 (F2)",
     "deleteProject": "删除空项目 (Delete)",
     "showSidebar": "显示侧边栏",
     "newChat": "新建对话",
+    "newChatForProject": "在 {{project}} 中新建对话",
+    "newGeneralChat": "新建通用对话",
     "addToFavorites": "添加到收藏",
     "removeFromFavorites": "从收藏移除",
     "editSessionName": "手动编辑会话名称",
@@ -72,7 +94,8 @@
     "save": "保存",
     "cancel": "取消",
     "clearSearch": "清除搜索",
-    "resize": "调整侧边栏宽度"
+    "resize": "调整侧边栏宽度",
+    "resizeProjectsConversations": "调整项目与对话区域大小"
   },
   "navigation": {
     "chat": "智能体",

@@ -7,6 +7,28 @@ import { mapAgentEvent } from "../../src/gateway/client/InProcessGateway.js";
 test("mapAgentEvent propagates runId to streaming lifecycle boundaries", () => {
   const runId = "run-1";
 
+  const accepted = mapAgentEvent({
+    type: "input_accepted",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    messages: [],
+  }, runId);
+  assert.deepEqual(accepted, [{ type: "input_accepted", runId }]);
+
+  const unapplied = mapAgentEvent({
+    type: "steer_unapplied",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    itemId: "queue-1",
+    reason: "turn_ended",
+  }, runId);
+  assert.deepEqual(unapplied, [{
+    type: "steer_unapplied",
+    itemId: "queue-1",
+    reason: "turn_ended",
+    runId,
+  }]);
+
   const toolStarted = mapAgentEvent({
     type: "tool_calls_detected",
     sessionId: "session-1",

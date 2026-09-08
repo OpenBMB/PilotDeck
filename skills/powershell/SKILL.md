@@ -42,7 +42,7 @@ Run commands in sequence with explicit lines:
 Set-Location C:\path\to\PilotDeck
 node --version
 corepack enable
-corepack pnpm install --frozen-lockfile
+corepack pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 ```
 
 Use `npm.cmd` or `pnpm.cmd` when PowerShell execution policy blocks `.ps1` shims:

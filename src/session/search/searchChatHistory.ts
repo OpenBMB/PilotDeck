@@ -4,8 +4,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getPilotProjectChatDir } from "../../pilot/paths.js";
 import { sanitizeSessionIdForPath } from "../storage/ProjectSessionStorage.js";
-import { parseSessionInfoFromLite, type SessionInfo } from "../storage/SessionList.js";
-import { readSessionLite } from "../storage/SessionLiteReader.js";
+import { readSessionInfo, type SessionInfo } from "../storage/SessionList.js";
 
 const ALWAYS_ON_AUXILIARY_PATTERN = /^always-on-(discovery|workspace|report)[:\-]/;
 const DEFAULT_LIMIT = 20;
@@ -283,9 +282,7 @@ async function buildSessionTitleIndex(files: SessionFileTarget[]): Promise<Map<s
   await Promise.all(files.map(async (file) => {
     const sessionId = file.path.split(/[\\/]/).pop()?.replace(/\.jsonl$/, "");
     if (!sessionId) return;
-    const lite = await readSessionLite(file.path);
-    if (!lite) return;
-    const info = parseSessionInfoFromLite(sessionId, lite, file.projectKey);
+    const info = await readSessionInfo(file.path, sessionId, file.projectKey);
     if (!info) return;
     titles.set(`${file.projectKey ?? ""}:${sessionId}`, formatSessionTitle(info));
   }));

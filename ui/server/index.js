@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../../scripts/check-node-runtime.mjs';
 // Load environment variables before other imports execute
 import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
@@ -7,6 +8,7 @@ installGlobalProxy();
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -15,6 +17,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const installMode = fs.existsSync(path.join(__dirname, '..', '..', '.git')) ? 'git' : 'npm';
+const serverInstanceId = crypto.randomUUID();
+const serverStartedAt = new Date().toISOString();
+const serverPid = process.pid;
 
 // ANSI color codes for terminal output
 const colors = {
@@ -42,7 +47,6 @@ console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import os from 'os';
 import http from 'http';
 import cors from 'cors';
@@ -53,12 +57,15 @@ import fetch from 'node-fetch';
 import mime from 'mime-types';
 import JSZip from 'jszip';
 import { readPermissionSettings } from './services/permissionSettings.js';
+import { regenerateLastMessageTransaction } from './services/regenerateLastMessage.js';
 import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 
 import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
 import {
     runChatViaGateway,
+    replaceLastTurnViaGateway,
+    finalizeLastTurnReplacementViaGateway,
     abortViaGateway,
     decidePermissionViaGateway,
     grantSessionPermissionViaGateway,
@@ -69,8 +76,17 @@ import {
     getRouterSessionStats,
     getRouterStatsSummary,
     getPilotDeckGateway,
+    isGatewayUnavailableError,
     registerAlwaysOnNotificationForwarding,
+    registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
+    getInputQueueStateViaGateway,
+    enqueueInputViaGateway,
+    deleteQueuedInputViaGateway,
+    moveQueuedInputToFrontViaGateway,
+    pauseInputQueueViaGateway,
+    resumeInputQueueViaGateway,
+    steerQueuedInputViaGateway,
 } from './pilotdeck-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
@@ -81,6 +97,8 @@ import memoryRoutes, { MEMORY_DASHBOARD_DIR } from './routes/memory.js';
 import mcpUtilsRoutes from './routes/mcp-utils.js';
 import commandsRoutes from './routes/commands.js';
 import skillsRoutes from './routes/skills.js';
+import uploadsRoutes from './routes/uploads.js';
+import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
@@ -105,14 +123,16 @@ import { getAlwaysOnDashboardEvents } from './services/always-on-events.js';
 import agentRoutes from './routes/agent.js';
 import updateRoutes from './routes/update.js';
 import projectsRoutes, { WORKSPACES_ROOT, validateWorkspacePath } from './routes/projects.js';
+import onboardingRoutes from './routes/onboarding.js';
 import userRoutes from './routes/user.js';
 import pluginsRoutes from './routes/plugins.js';
 import messagesRoutes from './routes/messages.js';
 import { closeMemoryServices, startMemoryScheduler, stopMemoryScheduler } from './services/memoryService.js';
-import { createNormalizedMessage } from './pilotdeck-message.js';
+import { createNormalizedMessage, createOptimisticUserFrames } from './pilotdeck-message.js';
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
 import { initializeDatabase, sessionNamesDb, applyCustomSessionNames, userDb } from './database/db.js';
 import { configureWebPush } from './services/vapid-keys.js';
+import { runtimeCoordination } from './services/runtimeCoordination.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
@@ -120,10 +140,34 @@ import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
+import { isPathInsideOrEqual } from './utils/pathSafety.js';
+import { isVirtualProjectPath, resolvePilotHome } from './utils/pilotPaths.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
 // cursor-cli, openai-codex, gemini-cli) has been removed.
 const VALID_PROVIDERS = ['pilotdeck'];
+
+async function requireRealProjectFilesystem(req, res, next) {
+    try {
+        const projectRoot = await extractProjectDirectory(req.params.projectName);
+        if (isVirtualProjectPath(projectRoot, resolvePilotHome(process.env), process.env)) {
+            return res.status(403).json({
+                error: {
+                    code: 'PROJECT_PATH_FORBIDDEN',
+                    message: 'Project file operations are unavailable for General conversations.',
+                },
+            });
+        }
+        return next();
+    } catch (error) {
+        return res.status(404).json({
+            error: {
+                code: 'PROJECT_NOT_FOUND',
+                message: error instanceof Error ? error.message : 'Project not found',
+            },
+        });
+    }
+}
 
 // File-system watchers for the chat transcript root maintained by
 // PilotDeck. Provider-specific watchers (.pilotdeck) were dropped along with the four provider adapters.
@@ -212,6 +256,10 @@ function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) 
     });
 }
 
+registerSessionInputNotificationForwarding((sessionId, frame) => {
+    broadcastToSessionWatchers(sessionId, frame, undefined);
+});
+
 // Broadcast progress to all connected WebSocket clients
 function broadcastProgress(progress) {
     const message = JSON.stringify({
@@ -234,6 +282,7 @@ function broadcastConfigReloaded(payload) {
             client.send(message);
         }
     });
+    runtimeCoordination.publishConfigurationState();
 }
 process.on('pilotdeck:config-broadcast', broadcastConfigReloaded);
 
@@ -346,6 +395,11 @@ async function setupProjectsWatcher() {
 
 
 const app = express();
+app.locals.restartInstanceInfo = {
+    instanceId: serverInstanceId,
+    startedAt: serverStartedAt,
+    pid: serverPid
+};
 const server = http.createServer(app);
 
 const ptySessionsMap = new Map();
@@ -471,10 +525,14 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
+    const instanceInfo = req.app.locals.restartInstanceInfo || {};
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        installMode
+        installMode,
+        instanceId: instanceInfo.instanceId,
+        startedAt: instanceInfo.startedAt,
+        pid: instanceInfo.pid
     });
 });
 
@@ -483,6 +541,49 @@ app.use('/api', validateApiKey);
 
 // Authentication routes (public)
 app.use('/api/auth', authRoutes);
+
+// Gateway-owned project file discovery. Keep this before the generic project
+// router so `/files` cannot be consumed as a project name.
+app.get('/api/projects/files', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const serverInfo = await gateway.describeServer();
+        if (!serverInfo.capabilities?.includes('project_files_list')) {
+            return res.status(501).json({
+                error: { code: 'CAPABILITY_UNAVAILABLE', message: 'project_files_list is unavailable.' },
+            });
+        }
+        const result = await gateway.projectFilesList({
+            projectKey: typeof req.query.projectKey === 'string' ? req.query.projectKey : '',
+            query: typeof req.query.query === 'string' ? req.query.query : undefined,
+            cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+            limit: req.query.limit === undefined ? undefined : Number(req.query.limit),
+            includeDirs: req.query.includeDirs === undefined
+                ? undefined
+                : String(req.query.includeDirs) !== 'false',
+        });
+        return res.json(result);
+    } catch (error) {
+        const code = typeof error?.code === 'string' ? error.code : 'gateway_request_failed';
+        const statuses = {
+            PROJECT_NOT_FOUND: 404,
+            PROJECT_PATH_FORBIDDEN: 403,
+            INVALID_CURSOR: 400,
+            INVALID_LIMIT: 400,
+            INVALID_QUERY: 400,
+            FILE_INDEX_LIMIT: 422,
+            CAPABILITY_UNAVAILABLE: 501,
+        };
+        return res.status(statuses[code] || 500).json({
+            error: {
+                code,
+                message: error instanceof Error ? error.message : String(error),
+                ...(error?.details ? { details: error.details } : {}),
+                ...(req.id ? { requestId: req.id } : {}),
+            },
+        });
+    }
+});
 
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
@@ -509,12 +610,18 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 // top-right Skills tab. Backed by bundled skills, ~/.pilotdeck/skills/, and
 // project-level .pilotdeck/skills/ via PilotDeck plugin runtime.
 app.use('/api/skills', authenticateToken, skillsRoutes);
+app.use('/api/uploads', authenticateToken, uploadsRoutes);
+app.use('/api/models', authenticateToken, modelsRoutes);
 
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+
+// Versioned onboarding API. It remains behind the global /api API-key gate
+// and the same JWT middleware as the rest of the local UI server.
+app.use('/api/v1', authenticateToken, onboardingRoutes);
 
 // Gateway IM channel setup routes (protected)
 app.use('/api/gateway', authenticateToken, gatewayRoutes);
@@ -526,6 +633,10 @@ app.use('/api/user', authenticateToken, userRoutes);
 app.use('/api/plugins', authenticateToken, pluginsRoutes);
 
 // Unified session messages route (protected) — PilotDeck-only.
+const sessionModelHandlers = createSessionModelHandlers();
+app.get('/api/sessions/model', authenticateToken, sessionModelHandlers.get);
+app.put('/api/sessions/model', authenticateToken, sessionModelHandlers.set);
+app.delete('/api/sessions/model', authenticateToken, sessionModelHandlers.clear);
 app.use('/api/sessions', authenticateToken, messagesRoutes);
 
 // Agent API Routes (uses API key authentication)
@@ -794,6 +905,14 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
         const projects = await getProjects(broadcastProgress);
         res.json(projects);
     } catch (error) {
+        if (isGatewayUnavailableError(error)) {
+            return res.status(503).json({
+                error: {
+                    code: 'gateway_unavailable',
+                    message: 'PilotDeck Gateway is restarting. Retry shortly.',
+                },
+            });
+        }
         res.status(500).json({ error: error.message });
     }
 });
@@ -805,6 +924,14 @@ app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, re
         applyCustomSessionNames(result.sessions, 'pilotdeck');
         res.json(result);
     } catch (error) {
+        if (isGatewayUnavailableError(error)) {
+            return res.status(503).json({
+                error: {
+                    code: 'gateway_unavailable',
+                    message: 'PilotDeck Gateway is restarting. Retry shortly.',
+                },
+            });
+        }
         res.status(500).json({ error: error.message });
     }
 });
@@ -985,7 +1112,7 @@ const getWindowsDriveSuggestions = async () => {
             return {
                 path: drivePath,
                 name: drivePath,
-                type: 'directory',
+                type: 'drive',
             };
         } catch (error) {
             return null;
@@ -1000,9 +1127,7 @@ function resolvePathInProject(projectRoot, targetPath = '') {
     const resolved = path.isAbsolute(targetPath)
         ? path.resolve(targetPath)
         : path.resolve(projectRoot, targetPath);
-    const normalizedRoot = path.resolve(projectRoot);
-
-    if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + path.sep)) {
+    if (!isPathInsideOrEqual(projectRoot, resolved)) {
         return { valid: false, error: 'Path must be under project root' };
     }
 
@@ -1229,6 +1354,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
             return res.json({
                 path: '/',
                 suggestions,
+                rootsPath: '/',
             });
         }
 
@@ -1295,7 +1421,8 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
 
         res.json({
             path: resolvedPath,
-            suggestions: suggestions
+            suggestions: suggestions,
+            ...(process.platform === 'win32' ? { rootsPath: '/' } : {}),
         });
 
     } catch (error) {
@@ -1345,7 +1472,7 @@ app.post('/api/create-folder', authenticateToken, async (req, res) => {
 });
 
 // Read file content endpoint
-app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectName/file', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { filePath } = req.query;
@@ -1365,8 +1492,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) =
         const resolved = path.isAbsolute(filePath)
             ? path.resolve(filePath)
             : path.resolve(projectRoot, filePath);
-        const normalizedRoot = path.resolve(projectRoot) + path.sep;
-        if (!resolved.startsWith(normalizedRoot)) {
+        if (!isPathInsideOrEqual(projectRoot, resolved)) {
             return res.status(403).json({ error: 'Path must be under project root' });
         }
 
@@ -1385,7 +1511,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) =
 });
 
 // Serve raw file bytes for previews and downloads.
-app.get('/api/projects/:projectName/files/content', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectName/files/content', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: filePath } = req.query;
@@ -1460,7 +1586,7 @@ app.get('/api/office-preview/status', authenticateToken, officePreviewStatusRate
 // Convert Office files to PDF for lightweight read-only preview.
 // This is an optional fallback for legacy Office/PPT formats; it only works
 // when LibreOffice/soffice is available on the host.
-app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, requireRealProjectFilesystem, officePreviewPdfRateLimiter, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: filePath } = req.query;
@@ -1523,7 +1649,7 @@ app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, offic
 // Preserve workbook semantics for spreadsheet previews. The manifest exposes
 // visible worksheet tabs, while each worksheet is rendered as its own PDF so
 // multi-page sheets remain grouped under one tab in the UI.
-app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authenticateToken, requireRealProjectFilesystem, officePreviewPdfRateLimiter, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: filePath } = req.query;
@@ -1566,7 +1692,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authent
     }
 });
 
-app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticateToken, requireRealProjectFilesystem, officePreviewPdfRateLimiter, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: filePath } = req.query;
@@ -1613,7 +1739,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticat
     }
 });
 
-app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authenticateToken, officePreviewPdfRateLimiter, async (req, res) => {
+app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authenticateToken, requireRealProjectFilesystem, officePreviewPdfRateLimiter, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: filePath, sheet: sheetIndex } = req.query;
@@ -1666,7 +1792,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authentica
 
 // Serve project files through a stable project-root URL so generated HTML can
 // load sibling CSS, JS and image assets with normal relative paths.
-app.get('/api/projects/:projectName/preview/*', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectName/preview/*', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const relativeFilePath = req.params[0] || 'index.html';
@@ -1702,7 +1828,7 @@ app.get('/api/projects/:projectName/preview/*', authenticateToken, async (req, r
 });
 
 // Download the complete project as a zip archive.
-app.get('/api/projects/:projectName/download', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectName/download', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
@@ -1745,7 +1871,7 @@ app.get('/api/projects/:projectName/download', authenticateToken, async (req, re
 });
 
 // Save file content endpoint
-app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) => {
+app.put('/api/projects/:projectName/file', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { filePath, content } = req.body;
@@ -1769,8 +1895,7 @@ app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) =
         const resolved = path.isAbsolute(filePath)
             ? path.resolve(filePath)
             : path.resolve(projectRoot, filePath);
-        const normalizedRoot = path.resolve(projectRoot) + path.sep;
-        if (!resolved.startsWith(normalizedRoot)) {
+        if (!isPathInsideOrEqual(projectRoot, resolved)) {
             return res.status(403).json({ error: 'Path must be under project root' });
         }
 
@@ -1794,7 +1919,7 @@ app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) =
     }
 });
 
-app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectName/files', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
 
         // Using fsPromises from import
@@ -1838,8 +1963,7 @@ function validatePathInProject(projectRoot, targetPath) {
     const resolved = path.isAbsolute(targetPath)
         ? path.resolve(targetPath)
         : path.resolve(projectRoot, targetPath);
-    const normalizedRoot = path.resolve(projectRoot) + path.sep;
-    if (!resolved.startsWith(normalizedRoot)) {
+    if (!isPathInsideOrEqual(projectRoot, resolved)) {
         return { valid: false, error: 'Path must be under project root' };
     }
     return { valid: true, resolved };
@@ -1872,7 +1996,7 @@ function validateFilename(name) {
 }
 
 // POST /api/projects/:projectName/files/create - Create new file or directory
-app.post('/api/projects/:projectName/files/create', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectName/files/create', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: parentPath, type, name } = req.body;
@@ -1949,7 +2073,7 @@ app.post('/api/projects/:projectName/files/create', authenticateToken, async (re
 });
 
 // PUT /api/projects/:projectName/files/rename - Rename file or directory
-app.put('/api/projects/:projectName/files/rename', authenticateToken, async (req, res) => {
+app.put('/api/projects/:projectName/files/rename', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { oldPath, newName } = req.body;
@@ -2026,7 +2150,7 @@ app.put('/api/projects/:projectName/files/rename', authenticateToken, async (req
 });
 
 // DELETE /api/projects/:projectName/files - Delete file or directory
-app.delete('/api/projects/:projectName/files', authenticateToken, async (req, res) => {
+app.delete('/api/projects/:projectName/files', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
         const { path: targetPath, type } = req.body;
@@ -2252,7 +2376,7 @@ const uploadFilesHandler = async (req, res) => {
     });
 };
 
-app.post('/api/projects/:projectName/files/upload', authenticateToken, uploadFilesHandler);
+app.post('/api/projects/:projectName/files/upload', authenticateToken, requireRealProjectFilesystem, uploadFilesHandler);
 
 /**
  * Proxy an authenticated client WebSocket to a plugin's internal WS server.
@@ -2392,6 +2516,8 @@ function handleChatConnection(ws, request) {
             if (data.type === 'watch-session') {
                 if (requestSessionId) {
                     sessionWatchRegistry.watch(requestSessionId, ws);
+                    const queueState = await getInputQueueStateViaGateway(requestSessionId, data.options || {});
+                    if (queueState) writer.send(queueState);
                 }
                 return;
             }
@@ -2423,25 +2549,11 @@ function handleChatConnection(ws, request) {
                     if (userVisibleInput) {
                         const nowIso = new Date().toISOString();
                         const provider = data.options?.providerHint || 'pilotdeck';
-                        const optimisticUserFrame = createNormalizedMessage({
-                            id: `local_ws_user_${crypto.randomUUID()}`,
+                        const [optimisticUserFrame, optimisticStatusFrame] = createOptimisticUserFrames({
                             sessionId: commandSessionId,
                             provider,
-                            kind: 'text',
-                            role: 'user',
-                            content: userVisibleInput,
-                            ...(Array.isArray(data.options?.attachments) && data.options.attachments.length > 0
-                                ? { attachments: data.options.attachments }
-                                : {}),
-                            timestamp: nowIso,
-                        });
-                        const optimisticStatusFrame = createNormalizedMessage({
-                            id: `local_ws_status_${crypto.randomUUID()}`,
-                            sessionId: commandSessionId,
-                            provider,
-                            kind: 'status',
-                            text: 'Processing',
-                            canInterrupt: true,
+                            userVisibleInput,
+                            options: data.options,
                             timestamp: nowIso,
                         });
                         // The submitting tab already rendered its optimistic user row.
@@ -2452,9 +2564,94 @@ function handleChatConnection(ws, request) {
                 }
                 const providerHint = data.options?.providerHint || data.type.replace('-command', '');
                 await runChatViaGateway(data.command, data.options, streamWriter, providerHint);
+            } else if (data.type === 'get-input-queue') {
+                const queueState = await getInputQueueStateViaGateway(requestSessionId, data.options || {});
+                if (queueState) writer.send(queueState);
+            } else if (data.type === 'queue-input') {
+                const result = await enqueueInputViaGateway(
+                    requestSessionId,
+                    data.item,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'enqueue',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'delete-queued-input') {
+                const result = await deleteQueuedInputViaGateway(requestSessionId, data.itemId, streamWriter);
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'delete',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'move-queued-input') {
+                const result = moveQueuedInputToFrontViaGateway(requestSessionId, data.itemId, streamWriter);
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'move',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'steer-queued-input') {
+                const result = await steerQueuedInputViaGateway(
+                    requestSessionId,
+                    data.itemId,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'steer',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'resume-input-queue') {
+                const result = await resumeInputQueueViaGateway(
+                    requestSessionId,
+                    streamWriter,
+                    data.provider || 'pilotdeck',
+                );
+                writer.send({
+                    type: 'input-queue-operation-result',
+                    operation: 'resume',
+                    requestId: data.requestId,
+                    sessionId: requestSessionId,
+                    ...result,
+                });
+            } else if (data.type === 'regenerate-last-message') {
+                const sessionId = normalizeSessionId(data.sessionId || data.options?.sessionId);
+                const requestId = typeof data.requestId === 'string' ? data.requestId : null;
+                const expectedTurnId = typeof data.expectedTurnId === 'string'
+                    ? data.expectedTurnId.trim()
+                    : '';
+                const provider = data.options?.providerHint || 'pilotdeck';
+                if (sessionId) {
+                    sessionWatchRegistry.watch(sessionId, ws);
+                }
+                await regenerateLastMessageTransaction({
+                    data,
+                    sessionId,
+                    requestId,
+                    expectedTurnId,
+                    provider,
+                    writer,
+                    streamWriter,
+                    replaceLastTurn: replaceLastTurnViaGateway,
+                    finalizeLastTurnReplacement: finalizeLastTurnReplacementViaGateway,
+                    runChat: runChatViaGateway,
+                });
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
                 const provider = data.provider || 'pilotdeck';
+                pauseInputQueueViaGateway(data.sessionId, streamWriter, 'user_stopped');
                 const success = await abortViaGateway(data.sessionId, provider);
                 writer.send(createNormalizedMessage({ kind: 'complete', exitCode: success ? 0 : 1, aborted: true, success, sessionId: data.sessionId, provider }));
             } else if (data.type === 'permission-response') {
@@ -2514,7 +2711,12 @@ function handleChatConnection(ws, request) {
                     sessionWatchRegistry.watch(sessionId, ws);
                 }
                 const includeActiveTurnMessages = data.includeActiveTurnMessages !== false;
-                const activity = await getSessionActivityViaGateway(sessionId, data.provider || 'pilotdeck', includeActiveTurnMessages);
+                const activity = await getSessionActivityViaGateway(
+                    sessionId,
+                    data.provider || 'pilotdeck',
+                    includeActiveTurnMessages,
+                    streamWriter,
+                );
                 writer.send({
                     type: 'session-status',
                     sessionId,
@@ -3576,6 +3778,7 @@ async function startServer() {
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
                 // the right port after a fallback.
                 process.env.SERVER_PORT = String(boundPort);
+                runtimeCoordination.publishConfigurationState();
                 {
                     const appInstallPath = path.join(__dirname, '..');
 

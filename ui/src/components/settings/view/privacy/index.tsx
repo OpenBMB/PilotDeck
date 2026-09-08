@@ -32,7 +32,7 @@ type PrivacySectionsProps = {
 
 export default function PrivacySections({ title }: PrivacySectionsProps) {
   const { t } = useTranslation("settings");
-  const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
+  const { raw, commitRaw, loading, error } = usePilotDeckConfig();
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
   const [skipPermissions, setSkipPermissions] = useState(false);
@@ -111,10 +111,9 @@ export default function PrivacySections({ title }: PrivacySectionsProps) {
     (value: boolean) => {
       const nextRaw = setTelemetryEnabled(raw, value);
       if (!nextRaw) return;
-      setRaw(nextRaw);
-      void save();
+      void commitRaw(nextRaw);
     },
-    [raw, save, setRaw],
+    [commitRaw, raw],
   );
 
   useEffect(() => {

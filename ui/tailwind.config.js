@@ -63,13 +63,10 @@ export default {
       },
       fontFamily: {
         sans: [
-          '"InterVariable"',
           'Inter',
-          'ui-sans-serif',
+          '"PingFang SC"',
+          '"Microsoft YaHei"',
           'system-ui',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'Segoe UI',
           'sans-serif',
         ],
       },

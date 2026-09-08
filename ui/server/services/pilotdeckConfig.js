@@ -2,8 +2,16 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { parseGatewayConfig } from '../../../src/pilot/config/parseGatewayConfig.js';
+import { parseToolsConfig } from '../../../src/pilot/config/parseToolsConfig.js';
+import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
+import {
+  resolveCatalogProviderApiKeyEnvVar,
+  resolveCatalogProviderDefaultUrl,
+} from '../../../src/model/config/providerCredentialScope.js';
+import { findModelReferences } from './modelReferences.js';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -27,9 +35,33 @@ const CONFIG_VERSION = 1;
 const PILOT_HOME_DIR = process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
 const DEFAULT_CONFIG_PATH = path.join(PILOT_HOME_DIR, 'pilotdeck.yaml');
 const MASK = '********';
+const ENV_REFERENCE_PATTERN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|auth[_-]?token|access[_-]?token|bot[_-]?token|app[_-]?token|encoding[_-]?aes[_-]?key)$/i;
 const SECRET_EXACT_KEYS = new Set(['key', 'apiKey', 'api_key', 'authToken', 'accessToken']);
+const CATALOG_PROVIDER_DEFAULT_URLS = {
+  anthropic: 'https://api.anthropic.com',
+  openai: 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
+  dashscope: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  google: 'https://generativelanguage.googleapis.com',
+  moonshot: 'https://api.moonshot.cn/v1',
+  minimax: 'https://api.minimax.io/v1',
+  volc_ark: 'https://ark.cn-beijing.volces.com/api/v3',
+  zhipu: 'https://api.z.ai/api/paas/v4',
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama: 'http://localhost:11434/v1',
+};
+let configWriteQueue = Promise.resolve();
+
+// Serialize every read-modify-write caller against the same local YAML file.
+// The callback must read the config inside this critical section.
+export function withPilotDeckConfigWrite(operation) {
+  const run = configWriteQueue.then(operation, operation);
+  configWriteQueue = run.catch(() => undefined);
+  return run;
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -190,13 +222,22 @@ export function resolveModel(config, ref, options = {}) {
     if (options.allowMissing) return null;
     throw new Error(`Provider not found for model "${effective}": ${parts.providerId}`);
   }
-  const def = isRecord(provider.models) ? provider.models[parts.modelId] : null;
+  const models = isRecord(provider.models) ? provider.models : {};
+  if (!Object.prototype.hasOwnProperty.call(models, parts.modelId)) {
+    if (options.allowMissing) return null;
+    throw new Error(`Model not found for provider "${parts.providerId}": ${parts.modelId}`);
+  }
+  const rawDef = models[parts.modelId];
+  if (rawDef !== null && rawDef !== undefined && !isRecord(rawDef)) {
+    if (options.allowMissing) return null;
+    throw new Error(`Model definition for provider "${parts.providerId}" must be an object: ${parts.modelId}`);
+  }
   return {
     id: effective,
     providerId: parts.providerId,
     provider,
     model: parts.modelId,
-    def: isRecord(def) ? def : {},
+    def: isRecord(rawDef) ? rawDef : {},
   };
 }
 
@@ -216,9 +257,23 @@ function validateProvider(id, provider, errors) {
   else if (protocol !== 'openai' && protocol !== 'openai-responses' && protocol !== 'anthropic' && protocol !== 'google') {
     errors.push(`model.providers.${id}.protocol must be "openai", "openai-responses", "anthropic", or "google"`);
   }
-  if (!normalizeString(provider.url)) errors.push(`model.providers.${id}.url is required`);
-  if (!allowsMissingApiKey(id) && !normalizeString(provider.apiKey)) {
+  if (!normalizeString(provider.url) && !Object.hasOwn(CATALOG_PROVIDER_DEFAULT_URLS, id)) {
+    errors.push(`model.providers.${id}.url is required`);
+  }
+  if (!allowsMissingApiKey(id) && !resolveConfiguredProviderApiKey(id, provider)) {
     errors.push(`model.providers.${id}.apiKey is required`);
+  }
+  if (!isRecord(provider.models) || Object.keys(provider.models).length === 0) {
+    errors.push(`model.providers.${id}.models must contain at least one model`);
+  } else {
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      if (!normalizeString(modelId)) {
+        errors.push(`model.providers.${id}.models contains an empty model id`);
+      }
+      if (model !== null && model !== undefined && !isRecord(model)) {
+        errors.push(`model.providers.${id}.models.${modelId} must be an object`);
+      }
+    }
   }
 }
 
@@ -230,14 +285,67 @@ function validateModelRef(config, ref, label, errors) {
   }
 }
 
+function validateRequiredModelRef(config, ref, label, errors) {
+  if (typeof ref !== 'string' || !normalizeString(ref)) {
+    errors.push(`${label} must use provider/model format`);
+    return;
+  }
+  const modelRef = normalizeString(ref);
+  if (!splitModelRef(modelRef)) {
+    errors.push(`${label} must use provider/model format`);
+    return;
+  }
+  validateModelRef(config, modelRef, label, errors);
+}
+
+function validateBaselineModelRef(config, ref, errors) {
+  const label = 'router.stats.baselineModel';
+  if (ref === undefined) return;
+  if (typeof ref === 'string') {
+    const modelRef = normalizeString(ref);
+    if (!splitModelRef(modelRef)) {
+      errors.push(`${label} must use provider/model format`);
+      return;
+    }
+    validateModelRef(config, modelRef, label, errors);
+    return;
+  }
+  if (!isRecord(ref)) {
+    errors.push(`${label} must be an object with provider and model`);
+    return;
+  }
+  const provider = normalizeString(ref.provider);
+  const model = normalizeString(ref.model);
+  if (!provider || !model) {
+    errors.push(`${label} must contain provider and model`);
+    return;
+  }
+  validateModelRef(config, `${provider}/${model}`, label, errors);
+}
+
+function validateOptionalSubagentDefault(config, warnings) {
+  const modelRef = normalizeString(config.agent?.subagents?.default);
+  if (!modelRef || modelRef === 'inherit') return;
+  if (!resolveModel(config, modelRef, { allowMissing: true })) {
+    warnings.push(
+      `agent.subagents.default="${modelRef}" doesn't resolve to a configured provider/model; subagents will inherit agent.model`,
+    );
+  }
+}
+
 function validateRouterModelRefs(config, errors) {
   const router = config.router;
   if (!isRecord(router)) return;
   if (router.enabled === false) return;
+  validateBaselineModelRef(config, router.stats?.baselineModel, errors);
+
+  if (router.enabled !== undefined && typeof router.enabled !== 'boolean') {
+    errors.push('router.enabled must be a boolean');
+  }
 
   if (isRecord(router.scenarios)) {
     for (const [key, ref] of Object.entries(router.scenarios)) {
-      validateModelRef(config, ref, `router.scenarios.${key}`, errors);
+      validateRequiredModelRef(config, ref, `router.scenarios.${key}`, errors);
     }
   }
 
@@ -248,15 +356,82 @@ function validateRouterModelRefs(config, errors) {
     }
   }
 
+  validateRouterPricing(config, router.stats, errors);
   const tokenSaver = router.tokenSaver;
   if (!isRecord(tokenSaver)) return;
 
-  validateModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
+  if (tokenSaver.enabled !== undefined && typeof tokenSaver.enabled !== 'boolean') {
+    errors.push('router.tokenSaver.enabled must be a boolean');
+  }
+  if (tokenSaver.enabled === false) return;
+  validateRequiredModelRef(config, tokenSaver.judge, 'router.tokenSaver.judge', errors);
+
+  if (tokenSaver.defaultTier !== undefined && typeof tokenSaver.defaultTier !== 'string') {
+    errors.push('router.tokenSaver.defaultTier must be a string');
+  }
+  if (tokenSaver.tiers !== undefined && !isRecord(tokenSaver.tiers)) {
+    errors.push('router.tokenSaver.tiers must be a non-empty object');
+  }
 
   if (isRecord(tokenSaver.tiers)) {
+    if (Object.keys(tokenSaver.tiers).length === 0) {
+      errors.push('router.tokenSaver.tiers must be a non-empty object');
+    }
     for (const [key, tier] of Object.entries(tokenSaver.tiers)) {
-      if (!isRecord(tier)) continue;
-      validateModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+      if (!isRecord(tier)) {
+        errors.push(`router.tokenSaver.tiers.${key} must be an object with model`);
+        continue;
+      }
+      validateRequiredModelRef(config, tier.model, `router.tokenSaver.tiers.${key}.model`, errors);
+      if (tier.description !== undefined && typeof tier.description !== 'string') {
+        errors.push(`router.tokenSaver.tiers.${key}.description must be a string`);
+      }
+    }
+    if (typeof tokenSaver.defaultTier === 'string' && !Object.prototype.hasOwnProperty.call(tokenSaver.tiers, tokenSaver.defaultTier)) {
+      errors.push(`router.tokenSaver.defaultTier="${tokenSaver.defaultTier}" must exist in router.tokenSaver.tiers`);
+    }
+  }
+
+  if (tokenSaver.subagent !== undefined) {
+    if (!isRecord(tokenSaver.subagent)) {
+      errors.push('router.tokenSaver.subagent must be an object');
+    } else if (!['skip', 'judge'].includes(tokenSaver.subagent.policy)) {
+      errors.push('router.tokenSaver.subagent.policy must be one of skip / judge');
+    }
+  }
+
+}
+
+function validateRouterPricing(config, stats, errors) {
+  if (stats === undefined) return;
+  if (!isRecord(stats)) {
+    errors.push('router.stats must be an object');
+    return;
+  }
+  if (stats.enabled !== undefined && typeof stats.enabled !== 'boolean') {
+    errors.push('router.stats.enabled must be a boolean');
+  }
+  if (stats.modelPricing === undefined) return;
+  if (!isRecord(stats.modelPricing)) {
+    errors.push('router.stats.modelPricing must be an object keyed by provider/model');
+    return;
+  }
+  for (const [key, pricing] of Object.entries(stats.modelPricing)) {
+    const label = `router.stats.modelPricing.${key}`;
+    if (!splitModelRef(key) || !resolveModel(config, key, { allowMissing: true })) {
+      errors.push(`${label} must reference a configured provider/model`);
+    }
+    if (!isRecord(pricing)) {
+      errors.push(`${label} must be an object`);
+      continue;
+    }
+    for (const field of ['input', 'output', 'cacheRead']) {
+      if (pricing[field] !== undefined && (typeof pricing[field] !== 'number' || !Number.isFinite(pricing[field]) || pricing[field] < 0)) {
+        errors.push(`${label}.${field} must be a finite non-negative number`);
+      }
+    }
+    if (pricing.unit !== undefined && !['$/百万 Token', '¥/百万 Token'].includes(pricing.unit)) {
+      errors.push(`${label}.unit must be one of $/百万 Token or ¥/百万 Token`);
     }
   }
 }
@@ -274,10 +449,27 @@ function validateGatewayConfig(config, errors, warnings) {
   }
 }
 
+function validateToolsConfig(config, errors, warnings) {
+  const diagnostics = [];
+  parseToolsConfig(config.tools, diagnostics);
+  for (const diagnostic of diagnostics) {
+    const message = diagnostic.path ? `${diagnostic.path}: ${diagnostic.message}` : diagnostic.message;
+    if (diagnostic.severity === 'warning') warnings.push(message);
+    else errors.push(message);
+  }
+}
+
 export function validatePilotDeckConfig(config) {
   const normalized = normalizePilotDeckConfig(config);
   const errors = [];
   const warnings = [];
+
+  const providers = normalized.model?.providers;
+  if (isRecord(providers)) {
+    for (const [providerId, provider] of Object.entries(providers)) {
+      validateProvider(providerId, provider, errors);
+    }
+  }
 
   const mainRef = normalizeString(normalized.agent.model);
   if (!mainRef) {
@@ -286,8 +478,6 @@ export function validatePilotDeckConfig(config) {
     const main = resolveModel(normalized, mainRef, { allowMissing: true });
     if (!main) {
       errors.push(`agent.model="${mainRef}" doesn't resolve to a configured provider/model`);
-    } else {
-      validateProvider(main.providerId, main.provider, errors);
     }
   }
 
@@ -301,8 +491,10 @@ export function validatePilotDeckConfig(config) {
     }
   }
 
+  validateOptionalSubagentDefault(normalized, warnings);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
+  validateToolsConfig(normalized, errors, warnings);
 
   if (normalized.webui?.runtime?.contextWindow !== undefined) {
     warnings.push(
@@ -380,6 +572,27 @@ function providerProtocolToMemoryApi(protocol) {
   return 'openai-completions';
 }
 
+export function resolveConfiguredProviderUrl(providerId, provider) {
+  const configured = normalizeString(provider?.url);
+  if (configured) return configured;
+  const catalog = lookupCatalogProvider(providerId);
+  const protocol = normalizeString(provider?.protocol) || catalog?.protocol;
+  return resolveCatalogProviderDefaultUrl(providerId, protocol) || '';
+}
+
+export function resolveConfiguredProviderApiKey(providerId, provider, env = process.env) {
+  const configured = normalizeString(provider?.apiKey);
+  if (configured) {
+    const envReference = ENV_REFERENCE_PATTERN.exec(configured);
+    return envReference ? normalizeString(env[envReference[1]]) : configured;
+  }
+  const catalog = lookupCatalogProvider(providerId);
+  const protocol = normalizeString(provider?.protocol) || catalog?.protocol;
+  const url = resolveConfiguredProviderUrl(providerId, provider);
+  const envName = resolveCatalogProviderApiKeyEnvVar(providerId, protocol, url);
+  return envName ? normalizeString(env[envName]) : '';
+}
+
 export function buildRuntimeEnv(config) {
   const normalized = normalizePilotDeckConfig(config);
   const main = resolveModel(normalized, normalized.agent.model, { allowMissing: true });
@@ -404,17 +617,18 @@ export function buildRuntimeEnv(config) {
   }
 
   if (main) {
-    env.PILOTDECK_API_BASE_URL = main.provider.url || '';
-    env.PILOTDECK_API_KEY = main.provider.apiKey || '';
+    const mainUrl = resolveConfiguredProviderUrl(main.providerId, main.provider);
+    const mainApiKey = resolveConfiguredProviderApiKey(main.providerId, main.provider);
+    env.PILOTDECK_API_BASE_URL = mainUrl;
+    env.PILOTDECK_API_KEY = mainApiKey;
     env.PILOTDECK_MODEL = main.model;
-    env.OPENAI_BASE_URL = main.provider.url || '';
-    env.OPENAI_API_KEY = main.provider.apiKey || '';
+    env.OPENAI_BASE_URL = mainUrl;
+    // Standard provider credential variables are user-controlled inputs. Do
+    // not replace them with the active provider's key: config reloads happen
+    // in the same process, so doing so destroys the original values and can
+    // send one provider's credential to another after a provider switch.
     env.OPENAI_MODEL = main.model;
-    env.ANTHROPIC_API_KEY = main.provider.apiKey || '';
     env.ANTHROPIC_MODEL = main.model;
-    env.GEMINI_API_KEY = main.provider.apiKey || '';
-    env.GOOGLE_API_KEY = main.provider.apiKey || '';
-    env.GOOGLE_GENERATIVE_AI_API_KEY = main.provider.apiKey || '';
     env.GEMINI_MODEL = main.model;
   }
 
@@ -445,8 +659,11 @@ export function buildRuntimeEnv(config) {
   if (memory) {
     env.PILOTDECK_MEMORY_MODEL = memory.model;
     env.PILOTDECK_MEMORY_PROVIDER = memory.providerId;
-    env.PILOTDECK_MEMORY_BASE_URL = memory.provider.url || '';
-    env.PILOTDECK_MEMORY_API_KEY = memory.provider.apiKey || '';
+    env.PILOTDECK_MEMORY_BASE_URL = resolveConfiguredProviderUrl(memory.providerId, memory.provider);
+    env.PILOTDECK_MEMORY_API_KEY = resolveConfiguredProviderApiKey(
+      memory.providerId,
+      memory.provider,
+    );
     env.PILOTDECK_MEMORY_API_TYPE = normalizeString(normalized.memory?.apiType)
       || providerProtocolToMemoryApi(memory.provider.protocol);
   }
@@ -477,8 +694,8 @@ export function buildMemoryLlmOptions(config) {
     model: memory.model,
     apiType: normalizeString(normalized.memory?.apiType)
       || providerProtocolToMemoryApi(memory.provider.protocol),
-    baseUrl: memory.provider.url || '',
-    apiKey: memory.provider.apiKey || '',
+    baseUrl: resolveConfiguredProviderUrl(memory.providerId, memory.provider),
+    apiKey: resolveConfiguredProviderApiKey(memory.providerId, memory.provider),
     headers: isRecord(memory.provider.headers) ? memory.provider.headers : {},
   };
 }
@@ -538,6 +755,55 @@ export function readPilotDeckConfigFile() {
   return { exists: true, configPath, raw, config, rawYaml: parsed, parseError: null };
 }
 
+export function configRevision(raw) {
+  return createHash('sha256').update(String(raw ?? '')).digest('hex');
+}
+
+// Keep every config publisher on the same masked representation and revision.
+// The revision deliberately matches what the UI receives, not the secret-bearing
+// source file, so it can be sent back safely as an optimistic-lock token.
+export function serializePilotDeckConfigResponse(record, reloadResult = null) {
+  if (record.parseError) {
+    return {
+      exists: record.exists,
+      path: record.configPath,
+      raw: record.raw,
+      revision: configRevision(record.raw),
+      config: maskSecrets(record.config),
+      configDisabled: true,
+      parseError: record.parseError,
+      validation: {
+        valid: false,
+        errors: [`Invalid YAML: ${record.parseError}`],
+        warnings: [],
+      },
+      ...(reloadResult ? { reload: reloadResult } : {}),
+    };
+  }
+
+  const validation = validatePilotDeckConfig(record.config);
+  const maskedConfig = maskSecrets(record.config);
+  const hasDiskYaml = record.rawYaml
+    && typeof record.rawYaml === 'object'
+    && Object.keys(record.rawYaml).length > 0;
+  const raw = hasDiskYaml
+    ? rawYamlToMaskedString(record.rawYaml)
+    : configToYaml(maskedConfig);
+  return {
+    exists: record.exists,
+    path: record.configPath,
+    raw,
+    revision: configRevision(raw),
+    config: maskedConfig,
+    validation: {
+      valid: validation.valid,
+      errors: validation.errors,
+      warnings: validation.warnings,
+    },
+    ...(reloadResult ? { reload: reloadResult } : {}),
+  };
+}
+
 // Keep `router.scenarios.default` aligned with `agent.model` whenever we
 // write the config. The gateway treats agent.model as the source of truth
 // (loadPilotConfig.ts auto-overrides router.scenarios.default with
@@ -576,65 +842,128 @@ export function syncAgentModelWithRouter(config) {
 
 const BOOTSTRAP_PLACEHOLDER_KEY = 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE';
 
-// Remove bootstrap placeholder providers — both the new `_placeholder` name
-// and any legacy provider whose apiKey is still the onboarding sentinel.
-// Called automatically on every config write so stale placeholders disappear
-// as soon as the user saves real provider details.
-function purgeBootstrapPlaceholder(config) {
+function isBootstrapPlaceholderProvider(providerId, provider) {
+  return providerId === '_placeholder'
+    || normalizeString(provider?.apiKey) === BOOTSTRAP_PLACEHOLDER_KEY;
+}
+
+// Older settings builds persisted a provider immediately when the user picked
+// "Add provider", before any credentials or models had been entered. Those
+// empty, unreferenced records are drafts rather than usable providers. Remove
+// them on the next successful write so upgrading users are not locked out of
+// every other settings page by the stricter all-provider validation.
+function purgeLegacyProviderDrafts(config, previousConfig) {
   if (!isRecord(config)) return config;
   const providers = config?.model?.providers;
+  const previousProviders = previousConfig?.model?.providers;
+  if (!isRecord(providers) || !isRecord(previousProviders)) return config;
+
+  for (const [providerId, provider] of Object.entries(providers)) {
+    if (!isRecord(provider)) continue;
+    const previousProvider = previousProviders[providerId];
+    const modelsAreEmpty = provider.models === undefined
+      || (isRecord(provider.models) && Object.keys(provider.models).length === 0);
+    if (
+      modelsAreEmpty
+      && !normalizeString(provider.apiKey)
+      && isRecord(previousProvider)
+      && JSON.stringify(provider) === JSON.stringify(previousProvider)
+      && findModelReferences(config, { providerId }).length === 0
+    ) {
+      delete providers[providerId];
+    }
+  }
+  return config;
+}
+
+// Keep the bootstrap provider until onboarding has selected a real, resolvable
+// agent model. Unrelated settings (for example Web Search) must remain writable
+// before onboarding is complete. Once a real model is selected, remove all
+// current and legacy sentinels and repair references that pointed at them in
+// the same atomic write.
+function finalizeBootstrapPlaceholder(config) {
+  if (!isRecord(config)) return config;
+  const providers = config?.model?.providers;
+  const agentModel = normalizeString(config?.agent?.model);
+  const selected = agentModel
+    ? resolveModel(config, agentModel, { allowMissing: true })
+    : null;
+  if (
+    !selected
+    || isBootstrapPlaceholderProvider(selected.providerId, selected.provider)
+  ) return config;
+
+  const removedProviderIds = new Set();
   if (isRecord(providers)) {
-    for (const [pid, prov] of Object.entries(providers)) {
-      if (pid === '_placeholder' || normalizeString(prov?.apiKey) === BOOTSTRAP_PLACEHOLDER_KEY) {
-        delete providers[pid];
+    for (const [providerId, provider] of Object.entries(providers)) {
+      if (isBootstrapPlaceholderProvider(providerId, provider)) {
+        removedProviderIds.add(providerId);
+        delete providers[providerId];
       }
     }
   }
+  if (removedProviderIds.size === 0) return config;
 
-  const agentModel = normalizeString(config?.agent?.model);
-  if (agentModel === '_placeholder/_placeholder') {
-    const realProviders = isRecord(providers) ? Object.keys(providers) : [];
-    if (realProviders.length > 0) {
-      const firstProvider = realProviders[0];
-      const models = Object.keys(providers[firstProvider]?.models ?? {});
-      if (models.length > 0) {
-        config.agent.model = `${firstProvider}/${models[0]}`;
-      }
-    }
+  function referencesRemovedProvider(ref) {
+    const value = normalizeString(ref);
+    const slash = value.indexOf('/');
+    return slash > 0 && removedProviderIds.has(value.slice(0, slash));
+  }
+
+  const subagentDefault = normalizeString(config?.agent?.subagents?.default);
+  if (subagentDefault && subagentDefault !== 'inherit' && referencesRemovedProvider(subagentDefault)) {
+    config.agent.subagents.default = 'inherit';
+  }
+
+  if (referencesRemovedProvider(config?.memory?.model)) {
+    config.memory.model = 'inherit';
   }
 
   const router = config?.router;
   if (!isRecord(router)) return config;
 
-  const agentRef = normalizeString(config.agent?.model);
-  const survivingProviders = isRecord(providers) ? new Set(Object.keys(providers)) : new Set();
-
-  function isOrphanRef(ref) {
-    const s = normalizeString(ref);
-    if (!s) return false;
-    const slash = s.indexOf('/');
-    if (slash <= 0) return false;
-    return !survivingProviders.has(s.slice(0, slash));
-  }
-
   if (isRecord(router.scenarios)) {
     for (const [key, val] of Object.entries(router.scenarios)) {
-      if (isOrphanRef(val)) router.scenarios[key] = agentRef || val;
+      if (referencesRemovedProvider(val)) router.scenarios[key] = agentModel;
     }
   }
-  if (Array.isArray(router.fallback?.default)) {
-    router.fallback.default = router.fallback.default.map(
-      v => isOrphanRef(v) ? (agentRef || v) : v
-    );
+  if (isRecord(router.fallback)) {
+    for (const [key, refs] of Object.entries(router.fallback)) {
+      if (!Array.isArray(refs)) continue;
+      router.fallback[key] = refs.map(
+        value => referencesRemovedProvider(value) ? agentModel : value,
+      );
+    }
+  }
+  if (isRecord(router.stats?.modelPricing)) {
+    for (const ref of Object.keys(router.stats.modelPricing)) {
+      // Placeholder pricing cannot be assumed to match the newly selected
+      // model, so discard it instead of copying incorrect cost metadata.
+      if (referencesRemovedProvider(ref)) delete router.stats.modelPricing[ref];
+    }
+  }
+  if (typeof router.stats?.baselineModel === 'string'
+    && referencesRemovedProvider(router.stats.baselineModel)) {
+    router.stats.baselineModel = agentModel;
+  } else if (isRecord(router.stats?.baselineModel)) {
+    const baseline = router.stats.baselineModel;
+    if (removedProviderIds.has(normalizeString(baseline.provider))) {
+      const selectedRef = splitModelRef(agentModel);
+      router.stats.baselineModel = {
+        ...baseline,
+        provider: selectedRef?.providerId,
+        model: selectedRef?.modelId,
+      };
+    }
   }
   if (isRecord(router.tokenSaver)) {
-    if (isOrphanRef(router.tokenSaver.judge)) {
-      router.tokenSaver.judge = agentRef || router.tokenSaver.judge;
+    if (referencesRemovedProvider(router.tokenSaver.judge)) {
+      router.tokenSaver.judge = agentModel;
     }
     if (isRecord(router.tokenSaver.tiers)) {
       for (const tier of Object.values(router.tokenSaver.tiers)) {
-        if (isRecord(tier) && isOrphanRef(tier.model)) {
-          tier.model = agentRef || tier.model;
+        if (isRecord(tier) && referencesRemovedProvider(tier.model)) {
+          tier.model = agentModel;
         }
       }
     }
@@ -647,11 +976,23 @@ function purgeBootstrapPlaceholder(config) {
 // after running through validation. UI-internal === disk schema, so
 // there's no read-modify-write needed anymore (the previous translation
 // layer existed only to bridge an older internal schema).
-export async function writePilotDeckConfig(config) {
-  const sanitized = purgeBootstrapPlaceholder(
+export async function writePilotDeckConfig(config, { previousConfig } = {}) {
+  let previous = previousConfig;
+  if (!isRecord(previous)) {
+    try {
+      const diskRecord = readPilotDeckConfigFile();
+      if (!diskRecord.parseError) previous = diskRecord.config;
+    } catch {
+      // A missing/unreadable previous config is not a migration candidate.
+    }
+  }
+  const sanitized = finalizeBootstrapPlaceholder(
     syncAgentModelWithRouter(
-      sanitizeProviderCredentials(
-        isRecord(config) ? deepMerge({}, config) : config,
+      purgeLegacyProviderDrafts(
+        sanitizeProviderCredentials(
+          isRecord(config) ? deepMerge({}, config) : config,
+        ),
+        previous,
       ),
     ),
   );
@@ -684,8 +1025,8 @@ export async function writePilotDeckConfig(config) {
 // Kept as a thin alias for callers that supply an already-parsed YAML
 // object (Raw YAML editor path). Behaviour is identical to
 // writePilotDeckConfig now that internal === disk.
-export async function writeRawPilotDeckYaml(yamlObj) {
-  return writePilotDeckConfig(yamlObj);
+export async function writeRawPilotDeckYaml(yamlObj, options) {
+  return writePilotDeckConfig(yamlObj, options);
 }
 
 export function expandTilde(value) {

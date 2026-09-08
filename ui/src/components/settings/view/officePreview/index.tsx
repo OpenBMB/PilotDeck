@@ -393,13 +393,12 @@ export default function OfficePreviewSections({
   title,
 }: OfficePreviewSectionsProps) {
   const { t } = useTranslation("settings");
-  const { raw, setRaw, save, loading, error } = usePilotDeckConfig();
+  const { raw, commitRaw, loading, error } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
 
   const onFormChange = async (next: PilotDeckConfig) => {
     try {
-      setRaw(configToYamlString(next));
-      await save();
+      await commitRaw(configToYamlString(next));
     } catch (caught) {
       console.error(
         "Failed to serialise Office preview config patch",

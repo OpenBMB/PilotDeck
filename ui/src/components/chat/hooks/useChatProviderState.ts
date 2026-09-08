@@ -3,9 +3,11 @@ import { authenticatedFetch } from '../../../utils/api';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { CLAUDE_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode } from '../types/types';
-import type { ProjectSession } from '../../../types/app';
+import type { Project, ProjectSession } from '../../../types/app';
+import { useChatModelSelection } from './useChatModelSelection';
 
 interface UseChatProviderStateArgs {
+  selectedProject: Project | null;
   selectedSession: ProjectSession | null;
 }
 
@@ -21,6 +23,38 @@ type ThinkingModelContext = {
   modelId?: string;
   supportsThinking?: boolean;
 };
+
+export type ModelNumericCapability = {
+  type: 'range' | 'enum';
+  min?: number;
+  max?: number;
+  step?: number;
+  values?: number[];
+};
+
+export type ChatModelCatalogItem = {
+  id: string;
+  provider: string;
+  model: string;
+  displayName: string;
+  available: boolean;
+  capabilities: {
+    reasoning?: ModelNumericCapability;
+    temperature?: ModelNumericCapability;
+    speed?: ModelNumericCapability;
+  };
+};
+
+export type ChatModelSelection =
+  | { mode: 'auto' }
+  | {
+      mode: 'model';
+      provider: string;
+      model: string;
+      reasoning?: number;
+      temperature?: number;
+      speed?: number;
+    };
 
 const DEFAULT_MODEL_OPTIONS: ModelOption[] = CLAUDE_MODELS.OPTIONS.map((option) => ({
   ...option,
@@ -75,7 +109,7 @@ function readThinkingModelContext(config: unknown): ThinkingModelContext | null 
   };
 }
 
-export function useChatProviderState({ selectedSession }: UseChatProviderStateArgs) {
+export function useChatProviderState({ selectedProject, selectedSession }: UseChatProviderStateArgs) {
   const { subscribe } = useWebSocket();
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>(() => {
     return readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY) || 'default';
@@ -86,6 +120,7 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(DEFAULT_MODEL_OPTIONS);
   const [thinkingModelContext, setThinkingModelContext] = useState<ThinkingModelContext | null>(null);
+  const modelState = useChatModelSelection();
 
   useEffect(() => {
     const defaultMode = readStoredPermissionMode(DEFAULT_PERMISSION_MODE_KEY);
@@ -199,10 +234,13 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     setPermissionMode(nextMode);
   }, [permissionMode, setPermissionMode]);
 
+
   return {
-    model,
+    model: modelState.modelSelection?.mode === 'model'
+      ? `${modelState.modelSelection.provider}/${modelState.modelSelection.model}` : model,
     setModel,
     modelOptions,
+    ...modelState,
     thinkingModelContext,
     permissionMode,
     setPermissionMode,

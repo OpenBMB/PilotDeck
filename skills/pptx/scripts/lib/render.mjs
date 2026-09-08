@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { loadDependencies } from './runtime.mjs';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -62,36 +61,6 @@ async function renderPdf(pdfPath, outputDir, dpi, renderer) {
   throw new Error(`Unsupported PDF renderer: ${renderer}`);
 }
 
-export async function createMontage(imageFiles, outputPath, options = {}) {
-  if (!imageFiles.length) throw new Error('Cannot create a montage without images');
-  const { sharp } = loadDependencies();
-  const columns = Math.max(1, Number(options.columns ?? Math.min(4, imageFiles.length)));
-  const tileWidth = Number(options.tileWidth ?? 480);
-  const gap = Number(options.gap ?? 18);
-  const background = options.background ?? '#E9EDF2';
-  const rendered = [];
-  let tileHeight = 0;
-  for (const file of imageFiles) {
-    const item = await sharp(file).resize({ width: tileWidth }).png().toBuffer({ resolveWithObject: true });
-    tileHeight = Math.max(tileHeight, item.info.height);
-    rendered.push(item);
-  }
-  const rows = Math.ceil(rendered.length / columns);
-  const width = columns * tileWidth + (columns + 1) * gap;
-  const height = rows * tileHeight + (rows + 1) * gap;
-  const composites = rendered.map((item, index) => ({
-    input: item.data,
-    left: gap + (index % columns) * (tileWidth + gap),
-    top: gap + Math.floor(index / columns) * (tileHeight + gap),
-  }));
-  await fs.mkdir(path.dirname(path.resolve(outputPath)), { recursive: true });
-  await sharp({ create: { width, height, channels: 4, background } })
-    .composite(composites)
-    .png()
-    .toFile(path.resolve(outputPath));
-  return path.resolve(outputPath);
-}
-
 export async function renderPptx(inputPath, outputDir, options = {}) {
   const availability = renderingAvailability();
   if (!availability.available) {
@@ -124,19 +93,8 @@ export async function renderPptx(inputPath, outputDir, options = {}) {
       .map((name) => path.join(output, name))
       .sort(numericSort);
     if (!slides.length) throw new Error('PDF renderer did not produce any slide images');
-    let montage = null;
-    if (options.montage !== false) {
-      montage = path.resolve(options.montage || path.join(output, 'montage.png'));
-      await createMontage(slides, montage, { columns: options.columns });
-    }
-    let exportedPdf = null;
-    if (options.pdf) {
-      exportedPdf = path.resolve(options.pdf);
-      await fs.mkdir(path.dirname(exportedPdf), { recursive: true });
-      await fs.copyFile(pdf, exportedPdf);
-    }
     return {
-      status: 'passed',
+      status: 'ready',
       baseline: 'libreoffice',
       engine: availability.soffice,
       rasterizer: availability.renderer,
@@ -144,46 +102,10 @@ export async function renderPptx(inputPath, outputDir, options = {}) {
       output,
       dpi,
       slides,
-      montage,
-      pdf: exportedPdf,
       slideCount: slides.length,
       compatibilityNote: 'LibreOffice rendering is a baseline and may substitute fonts differently from Microsoft PowerPoint.',
     };
   } finally {
     await fs.rm(temp, { recursive: true, force: true });
   }
-}
-
-export async function compareRenderedDirectories(referenceDir, candidateDir, options = {}) {
-  const { sharp } = loadDependencies();
-  const list = async (dir) => (await fs.readdir(path.resolve(dir)))
-    .filter((name) => /^slide-\d+\.png$/i.test(name))
-    .map((name) => path.join(path.resolve(dir), name))
-    .sort(numericSort);
-  const reference = await list(referenceDir);
-  const candidate = await list(candidateDir);
-  if (reference.length !== candidate.length) {
-    return { status: 'failed', reason: 'slide_count_mismatch', referenceCount: reference.length, candidateCount: candidate.length, slides: [] };
-  }
-  const slides = [];
-  for (let i = 0; i < reference.length; i += 1) {
-    const ref = await sharp(reference[i]).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const cand = await sharp(candidate[i])
-      .resize(ref.info.width, ref.info.height, { fit: 'fill' })
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    let total = 0;
-    for (let j = 0; j < ref.data.length; j += 1) total += Math.abs(ref.data[j] - cand.data[j]);
-    const meanAbsoluteError = total / (ref.data.length * 255);
-    slides.push({ slide: i + 1, meanAbsoluteError: Math.round(meanAbsoluteError * 1000000) / 1000000 });
-  }
-  const threshold = Number(options.threshold ?? 0.01);
-  const maxDifference = Math.max(0, ...slides.map((item) => item.meanAbsoluteError));
-  return {
-    status: maxDifference <= threshold ? 'passed' : 'failed',
-    threshold,
-    maxDifference,
-    slides,
-  };
 }

@@ -46,20 +46,36 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
   const ws = config.tools?.webSearch ?? {};
   const enabled = ws.enabled !== false;
   const provider: WebSearchProvider =
-    ws.provider === "tavily" || ws.provider === "custom" ? ws.provider : "glm";
+    ws.provider === "tavily" || ws.provider === "custom" || ws.provider === "serper" || ws.provider === "brave"
+      ? ws.provider
+      : "glm";
   const apiKey = typeof ws.apiKey === "string" ? ws.apiKey : "";
   const endpoint = typeof ws.endpoint === "string" ? ws.endpoint : "";
   const custom = ws.customProvider ?? {};
   const apiKeyRequired = isWebSearchApiKeyRequired(ws);
   const hasConfiguredApiKey =
     hasUsableSecret(apiKey) || isMaskedSecret(apiKey);
-  const endpointValue = endpoint || (provider === "glm" ? glmDefaultEndpoint : "");
+  const endpointValue = endpoint || (
+    provider === "glm"
+      ? glmDefaultEndpoint
+      : provider === "tavily"
+        ? "https://api.tavily.com/search"
+        : provider === "serper"
+          ? "https://google.serper.dev/search"
+          : provider === "brave"
+            ? "https://api.search.brave.com/res/v1/web/search"
+            : ""
+  );
   const endpointPlaceholder =
     provider === "custom"
       ? "https://example.com/search"
       : provider === "tavily"
         ? "https://api.tavily.com/search"
-        : glmDefaultEndpoint;
+        : provider === "serper"
+          ? "https://google.serper.dev/search"
+          : provider === "brave"
+            ? "https://api.search.brave.com/res/v1/web/search"
+            : glmDefaultEndpoint;
 
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [testMessage, setTestMessage] = useState("");
@@ -202,11 +218,15 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
                 options={[
                   { value: "glm", label: t("pilotDeckConfig.panels.tools.provider.glm") },
                   { value: "tavily", label: t("pilotDeckConfig.panels.tools.provider.tavily") },
+                  { value: "serper", label: t("pilotDeckConfig.panels.tools.provider.serper", { defaultValue: "Serper" }) },
+                  { value: "brave", label: t("pilotDeckConfig.panels.tools.provider.brave", { defaultValue: "Brave Search" }) },
                   { value: "custom", label: t("pilotDeckConfig.panels.tools.provider.custom") },
                 ]}
                 onChange={(value) =>
                   setProvider(
-                    value === "custom" ? "custom" : value === "tavily" ? "tavily" : "glm",
+                    value === "custom" || value === "tavily" || value === "serper" || value === "brave"
+                      ? value
+                      : "glm",
                   )
                 }
               />

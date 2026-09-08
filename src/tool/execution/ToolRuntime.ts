@@ -35,6 +35,7 @@ export class ToolRuntime {
   ) {}
 
   async execute(call: PilotDeckToolCall, context: PilotDeckToolRuntimeContext): Promise<PilotDeckToolResult> {
+    context = withPlanDirectoryWorkspaceRoot(context);
     const startedAtDate = now(context);
     const runtimeContext: PilotDeckToolRuntimeContext = context.executeTool
       ? context
@@ -56,9 +57,19 @@ export class ToolRuntime {
     context = runtimeContext;
     const startedAt = startedAtDate.toISOString();
     let tool = this.registry.get(call.name);
+    let repairedName: string | undefined;
     if (!tool) {
-      const repaired = repairToolName(call.name, this.registry.list(), context.toolAliases);
+      const repaired = repairToolName(
+        call.name,
+        this.registry.list(),
+        context.toolAliases,
+        this.registry.listUnavailableEntries().map(({ diagnostic, aliases }) => ({
+          name: diagnostic.toolName,
+          aliases,
+        })),
+      );
       if (repaired) {
+        repairedName = repaired.name;
         tool = this.registry.get(repaired.name);
       }
     }
@@ -69,6 +80,24 @@ export class ToolRuntime {
     }
 
     if (!tool) {
+      const unavailable = this.registry.getUnavailable(repairedName ?? call.name);
+      if (unavailable) {
+        const code: PilotDeckToolErrorCode = unavailable.code === "setup_required"
+          ? "setup_required"
+          : "tool_unavailable";
+        return this.errorResult(
+          call.id,
+          call.name,
+          code,
+          unavailable.reason,
+          startedAt,
+          runtimeContext,
+          {
+            availabilityCode: unavailable.code,
+            reason: unavailable.reason,
+          },
+        );
+      }
       return this.errorResult(
         call.id,
         call.name,
@@ -427,6 +456,23 @@ ${formatValidationError(tool.name, updatedValidation.issues, {
       nonBlockingErrors: [],
     };
   }
+}
+
+function withPlanDirectoryWorkspaceRoot(context: PilotDeckToolRuntimeContext): PilotDeckToolRuntimeContext {
+  const planDirectoryPath = context.permissionContext.planDirectoryPath;
+  if (context.permissionContext.mode !== "plan" || !planDirectoryPath) return context;
+
+  const resolvedPlanDirectory = resolve(planDirectoryPath);
+  const roots = context.permissionContext.additionalWorkingDirectories;
+  if (roots.some((root) => resolve(root) === resolvedPlanDirectory)) return context;
+
+  return {
+    ...context,
+    permissionContext: {
+      ...context.permissionContext,
+      additionalWorkingDirectories: [...roots, resolvedPlanDirectory],
+    },
+  };
 }
 
 function formatToolErrorContent(

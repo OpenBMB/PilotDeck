@@ -4,6 +4,7 @@ import {
   BILLING_PATTERN,
   CONTEXT_OVERFLOW_PATTERN,
   IMAGE_TOO_LARGE_PATTERN,
+  INVALID_API_KEY_PATTERN,
   MAX_OUTPUT_REACHED_PATTERN,
   MODEL_NOT_FOUND_PATTERN,
   MULTIMODAL_PROCESSOR_PATTERN,
@@ -133,6 +134,9 @@ function classifySemanticError(
   status: number | undefined,
   protocol: ModelProtocol,
 ): CanonicalModelErrorCode | undefined {
+  if (INVALID_API_KEY_PATTERN.test(message)) {
+    return "auth_error";
+  }
   if (PROMPT_TOO_LONG_ANTHROPIC_PATTERN.test(message)) {
     return "prompt_too_long";
   }
@@ -146,11 +150,15 @@ function classifySemanticError(
     return "max_output_reached";
   }
 
+  if (
+    status === 429
+    || RATE_LIMIT_MESSAGE_PATTERN.test(message)
+    || (USAGE_LIMIT_PATTERN.test(message) && TRANSIENT_USAGE_SIGNAL_PATTERN.test(message))
+  ) {
+    return "rate_limit_error";
+  }
   if (BILLING_PATTERN.test(message)) {
     return "billing";
-  }
-  if (RATE_LIMIT_MESSAGE_PATTERN.test(message)) {
-    return "rate_limit_error";
   }
   if (IMAGE_TOO_LARGE_PATTERN.test(message)) {
     return "image_too_large";
@@ -288,6 +296,15 @@ function resolveUserHint(
         userHint: "Model output hit the token limit. Increase max output tokens in Settings → Model Provider or ask the agent to split the answer into smaller parts.",
       };
     case "timeout":
+      if (/stream idle timeout|no data received/i.test(message)) {
+        return {
+          userHint: `Stream stalled${provider ? ` for provider \"${provider}\"` : ""}. Increase retry.streamIdleTimeoutMs in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`,
+          settingsFix: {
+            description: "Increase stream idle timeout for this provider.",
+            configPath: "model.providers.<id>.retry.streamIdleTimeoutMs",
+          },
+        };
+      }
       return {
         userHint: `Request timed out${provider ? ` for provider \"${provider}\"` : ""}. Increase provider.timeoutMs in Settings → Model Provider → Advanced, or check local network/proxy and provider status.`,
         settingsFix: {

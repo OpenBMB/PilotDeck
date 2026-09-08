@@ -17,7 +17,7 @@ export function planFallback(
   }
 
   if (scenarioType === "explicit") {
-    return { attempts: capFallbackAttempts(fallback.default ?? [], fallback.maxFallbacks) };
+    return { attempts: [] };
   }
 
   return {

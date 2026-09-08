@@ -8,6 +8,7 @@ import { PluginRegistry } from "./PluginRegistry.js";
 import { truncateMcpInstructionString } from "./truncateMcpString.js";
 import type { PilotDeckHooksSettings } from "../../hooks/protocol/settings.js";
 import type { PilotDeckCustomRouter } from "../../../router/customRouter/customRouter.js";
+import { renderSkillContent } from "../../skills/renderSkillContent.js";
 
 /**
  * Static MCP server contribution shape callers can rely on. Manifests load
@@ -176,7 +177,7 @@ export class PluginRuntime {
     for (const plugin of plugins) {
       const skill = plugin.skills?.find((entry) => entry.name === extensionId);
       if (skill) {
-        return skill.content;
+        return renderSkillContent(skill.content, skill.path);
       }
     }
 
@@ -185,7 +186,7 @@ export class PluginRuntime {
     for (const plugin of plugins) {
       const skill = plugin.skills?.find((entry) => entry.name.endsWith(`:${extensionId}`));
       if (skill) {
-        return skill.content;
+        return renderSkillContent(skill.content, skill.path);
       }
     }
 
@@ -208,7 +209,7 @@ export class PluginRuntime {
       projectRoot: this.options.projectRoot,
       pilotHome: this.options.pilotHome,
     });
-    const [discovered, discoveredSkills] = await Promise.all([
+    const [discovered, discoveredSkills, loadedBuiltins] = await Promise.all([
       discoverPluginPaths([
         { path: paths.globalPluginsDir, source: "global" },
         { path: paths.projectPluginsDir, source: "project" },
@@ -220,6 +221,11 @@ export class PluginRuntime {
         { path: paths.globalSkillsDir, source: "global" },
         { path: paths.projectSkillsDir, source: "project" },
       ]),
+      Promise.all(
+        (this.options.builtinPlugins ?? []).map((plugin) =>
+          loadPluginFromPath(plugin.path, "builtin").catch(() => plugin),
+        ),
+      ),
     ]);
     const [loaded, loadedSkills] = await Promise.all([
       Promise.all(
@@ -230,7 +236,7 @@ export class PluginRuntime {
       ),
     ]);
     const plugins = [
-      ...enabledBuiltinPlugins(this.options.builtinPlugins ?? [], this.options.builtinPluginsEnabled ?? {}),
+      ...enabledBuiltinPlugins(loadedBuiltins, this.options.builtinPluginsEnabled ?? {}),
       ...loaded.filter(isLoadedPlugin),
       ...loadedSkills.filter(isLoadedPlugin),
     ];

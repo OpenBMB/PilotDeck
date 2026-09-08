@@ -60,6 +60,12 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
 
     switch (entry.type) {
       case "accepted_input":
+        if (entry.metadata?.modelSelection) {
+          const choice = entry.metadata.modelSelection as SessionMetadataValue["modelSelection"];
+          if (choice?.mode === "auto" || (choice?.mode === "model" && typeof choice.provider === "string" && typeof choice.model === "string")) {
+            metadata = mergeMetadata(metadata, { modelSelection: { ...choice } });
+          }
+        }
         if (!beforeBoundary) {
           messages.push(...cloneMessages(entry.messages));
           events.push({

@@ -1,0 +1,421 @@
+openapi: 3.1.0
+info:
+  title: PilotDeck Onboarding Local API
+  version: 0.1.0
+  description: >-
+    PilotDeck 首次配置引导使用的本机后端接口。接口运行在现有 UI Server，
+    API Key 按当前兼容策略写入本机 pilotdeck.yaml，不得出现在响应或日志中。
+servers:
+  - url: http://127.0.0.1:{port}/api/v1
+    description: PilotDeck local UI server
+    variables:
+      port:
+        default: "3001"
+security:
+  - bearerAuth: []
+paths:
+  /model-connection-tests:
+    post:
+      summary: Test model connectivity and input capabilities
+      operationId: createModelConnectionTest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelConnectionTestRequest"
+      responses:
+        "200":
+          description: Test executed; inspect the business status in the response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelConnectionTestResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /model-connection-tests/{testId}/image-capabilities:
+    put:
+      summary: Fill unknown image input capabilities manually
+      operationId: setManualImageCapabilities
+      parameters:
+        - $ref: "#/components/parameters/TestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualImageCapabilitiesRequest"
+      responses:
+        "200":
+          description: Capabilities updated and final result returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelConnectionTestResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          $ref: "#/components/responses/Expired"
+  /model-configuration:
+    put:
+      summary: Save a verified model configuration
+      operationId: saveModelConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelConfigurationRequest"
+      responses:
+        "200":
+          description: Configuration saved locally
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelConfigurationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/Expired"
+  /workspaces:
+    post:
+      summary: Register an existing workspace or create a new one
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TestId:
+      name: testId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Unauthorized:
+      description: Missing JWT or invalid optional instance API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AuthError"
+    Forbidden:
+      description: Invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AuthError"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Conflict:
+      description: Request conflicts with current state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Expired:
+      description: Connection test expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    RateLimited:
+      description: Too many connection tests or workspace clones in progress
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+  schemas:
+    Protocol:
+      type: string
+      enum: [openai, openai-responses, anthropic, google]
+    RetryPolicy:
+      type: object
+      additionalProperties: false
+      required: [maxRetries, maxStreamRetries, streamIdleTimeoutMs, baseDelayMs, maxDelayMs]
+      properties:
+        maxRetries:
+          type: integer
+          minimum: 0
+          default: 2
+        maxStreamRetries:
+          type: integer
+          minimum: 0
+          default: 3
+        streamIdleTimeoutMs:
+          type: integer
+          minimum: 0
+          default: 30000
+        baseDelayMs:
+          type: integer
+          minimum: 0
+          default: 1000
+        maxDelayMs:
+          type: integer
+          minimum: 0
+          default: 60000
+    ModelConnectionTestRequest:
+      type: object
+      additionalProperties: false
+      required: [providerId, models, retryPolicy]
+      properties:
+        providerId:
+          type: string
+          minLength: 1
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
+          examples: [anthropic]
+        protocol:
+          anyOf:
+            - $ref: "#/components/schemas/Protocol"
+            - type: "null"
+          description: Required only for a custom provider
+        endpoint:
+          oneOf:
+            - type: "null"
+            - type: string
+              pattern: '^https?:\\/\\/.+$'
+          description: Required only for a custom provider; ignored for presets
+        apiKey:
+          type: string
+          writeOnly: true
+          format: password
+          description: Required for every provider except Ollama.
+        models:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        retryPolicy:
+          $ref: "#/components/schemas/RetryPolicy"
+    ManualImageCapabilitiesRequest:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [modelId, imageInput]
+            properties:
+              modelId:
+                type: string
+                minLength: 1
+              imageInput:
+                type: string
+                enum: [supported, unsupported]
+    ModelConnectionTestResult:
+      type: object
+      additionalProperties: false
+      required: [testId, status, manualInputRequired, models, testedAt]
+      properties:
+        testId:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed, manual_input_required]
+        manualInputRequired:
+          type: boolean
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelTestResult"
+        testedAt:
+          type: string
+          format: date-time
+        error:
+          anyOf:
+            - $ref: "#/components/schemas/ApiError"
+            - type: "null"
+    ModelTestResult:
+      type: object
+      additionalProperties: false
+      required: [modelId, textInput, imageInput]
+      properties:
+        modelId:
+          type: string
+        textInput:
+          type: string
+          enum: [supported, unsupported, unknown]
+        imageInput:
+          type: string
+          enum: [supported, unsupported, unknown]
+        error:
+          anyOf:
+            - $ref: "#/components/schemas/ApiError"
+            - type: "null"
+    ModelConfigurationRequest:
+      type: object
+      additionalProperties: false
+      required: [testId, providerId, models, retryPolicy]
+      properties:
+        testId:
+          type: string
+          minLength: 1
+        providerId:
+          type: string
+          minLength: 1
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
+        protocol:
+          anyOf:
+            - $ref: "#/components/schemas/Protocol"
+            - type: "null"
+        endpoint:
+          oneOf:
+            - type: "null"
+            - type: string
+              pattern: '^https?:\\/\\/.+$'
+        apiKey:
+          type: [string, "null"]
+          writeOnly: true
+          format: password
+          description: Required for a new remote provider; null preserves an existing key
+        models:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [modelId, textInput, imageInput]
+            properties:
+              modelId:
+                type: string
+                minLength: 1
+              textInput:
+                type: boolean
+              imageInput:
+                type: boolean
+        retryPolicy:
+          $ref: "#/components/schemas/RetryPolicy"
+    ModelConfigurationResponse:
+      type: object
+      additionalProperties: false
+      required: [configurationId, savedAt]
+      properties:
+        configurationId:
+          type: string
+        savedAt:
+          type: string
+          format: date-time
+    CreateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required: [type, path]
+      properties:
+        type:
+          type: string
+          enum: [existing, new]
+        path:
+          type: string
+          minLength: 1
+          pattern: '^(?:/|[A-Za-z]:[\\/])'
+        githubUrl:
+          oneOf:
+            - type: "null"
+            - type: string
+              pattern: '^https?:\\/\\/.+$'
+            - type: string
+              pattern: '^ssh:\\/\\/.+$'
+            - type: string
+              pattern: '^(?:[\\w.-]+@)?[\\w.-]+:[^\\s]+$'
+          description: Optional HTTP(S), ssh://, or SCP-style SSH repository URL, valid only for a new workspace
+        modelConfigurationId:
+          type: [string, "null"]
+          description: Uses the current default configuration when omitted
+    Workspace:
+      type: object
+      additionalProperties: false
+      required: [id, type, path, status]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [existing, new]
+        path:
+          type: string
+        status:
+          type: string
+          enum: [ready]
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [INVALID_API_KEY]
+        message:
+          type: string
+        modelId:
+          type: [string, "null"]
+    AuthError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string

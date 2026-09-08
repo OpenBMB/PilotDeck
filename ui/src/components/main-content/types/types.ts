@@ -65,6 +65,9 @@ export type MainContentProps = {
   onReplaceTemporarySession: SessionLifecycleHandler;
   onNavigateToSession: (targetSessionId: string) => void;
   onStartNewSession: (project: Project, options?: SessionNavigationOptions) => void;
+  onCreateProject?: () => void;
+  onSelectWorkspace?: (project: Project) => void;
+  workspaceBinding?: Project | null;
   // Used by session lists to jump to the Agent tab and select
   // (project, sessionId). Optional because legacy MainContent
   // consumers don't need it.

@@ -4,13 +4,14 @@
  * the engine catalog (different tsconfig / build root).
  *
  * Keep this in sync with the engine catalog when adding providers/models.
- * The engine catalog auto-fills capabilities and multimodal — this UI list
- * only needs the IDs and display names.
+ * Token limits are used as the settings placeholders, so they must match the
+ * effective capabilities resolved by the engine.
  */
 
 export type CatalogModel = {
   id: string;
   displayName: string;
+  aliases?: string[];
   /** Whether the model accepts image input. Drives the 🖼 indicator in the UI. */
   supportsImage?: boolean;
   /** Context window size (tokens). Drives the placeholder in the max-context-tokens setting. */
@@ -21,11 +22,26 @@ export type CatalogModel = {
 
 export type CatalogProviderProtocol = 'anthropic' | 'openai' | 'openai-responses' | 'google';
 
+export type ModelTokenLimits = {
+  maxContextTokens: number;
+  maxOutputTokens: number;
+};
+
+/** Mirrors the protocol defaults used by `src/model/config/parseModelConfig.ts`. */
+export const DEFAULT_MODEL_TOKEN_LIMITS: Record<CatalogProviderProtocol, ModelTokenLimits> = {
+  anthropic: { maxContextTokens: 200_000, maxOutputTokens: 32_768 },
+  openai: { maxContextTokens: 128_000, maxOutputTokens: 32_768 },
+  'openai-responses': { maxContextTokens: 128_000, maxOutputTokens: 32_768 },
+  google: { maxContextTokens: 1_048_576, maxOutputTokens: 32_768 },
+};
+
 export type CatalogProvider = {
   id: string;
   displayName: string;
   protocol: CatalogProviderProtocol;
   defaultUrl: string;
+  /** Environment variable used when apiKey is omitted from the config. */
+  apiKeyEnvVar?: string;
   modelListUrl?: string;
   /** The provider rejects model-list requests until an API key is supplied. */
   modelListRequiresApiKey?: boolean;
@@ -39,12 +55,13 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Anthropic',
     protocol: 'anthropic',
     defaultUrl: 'https://api.anthropic.com',
+    apiKeyEnvVar: 'ANTHROPIC_API_KEY',
     models: [
-      { id: 'claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 128000 },
-      { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 32768 },
-      { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 16384 },
-      { id: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 8192 },
-      { id: 'claude-haiku-3-5-20241022', displayName: 'Claude 3.5 Haiku', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 8192 },
+      { id: 'claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', aliases: ['claude-sonnet-4-6'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 128000 },
+      { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', aliases: ['claude-opus-4', 'claude-opus-4.6'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 32768 },
+      { id: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4', aliases: ['claude-sonnet-4'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 16384 },
+      { id: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', aliases: ['claude-sonnet-4.5', 'claude-3-5-sonnet-20250929'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 8192 },
+      { id: 'claude-haiku-3-5-20241022', displayName: 'Claude 3.5 Haiku', aliases: ['claude-3-5-haiku', 'claude-3.5-haiku', 'claude-haiku-3.5'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 8192 },
     ],
   },
   {
@@ -52,6 +69,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenAI',
     protocol: 'openai',
     defaultUrl: 'https://api.openai.com/v1',
+    apiKeyEnvVar: 'OPENAI_API_KEY',
     models: [
       { id: 'gpt-4.1', displayName: 'GPT-4.1', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
       { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
@@ -66,6 +84,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenAI (Responses API)',
     protocol: 'openai-responses',
     defaultUrl: 'https://api.openai.com/v1',
+    apiKeyEnvVar: 'OPENAI_API_KEY',
     models: [
       { id: 'gpt-4.1', displayName: 'GPT-4.1', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
       { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', supportsImage: true, maxContextTokens: 1047576, maxOutputTokens: 32768 },
@@ -89,13 +108,14 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '阿里云百炼 (DashScope)',
     protocol: 'openai',
     defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiKeyEnvVar: 'DASHSCOPE_API_KEY',
     models: [
       { id: 'qwen3.7-max', displayName: 'Qwen3.7 Max', maxContextTokens: 1000000, maxOutputTokens: 65536 },
       { id: 'qwen3.7-plus', displayName: 'Qwen3.7 Plus', supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 65536 },
       { id: 'qwen3.6-flash', displayName: 'Qwen3.6 Flash', maxContextTokens: 1000000, maxOutputTokens: 65536 },
-      { id: 'qwen-max', displayName: 'Qwen Max', maxContextTokens: 131072, maxOutputTokens: 2000 },
-      { id: 'qwen-plus', displayName: 'Qwen Plus', maxContextTokens: 131072, maxOutputTokens: 2000 },
-      { id: 'qwen-turbo', displayName: 'Qwen Turbo', maxContextTokens: 131072, maxOutputTokens: 1500 },
+      { id: 'qwen-max', displayName: 'Qwen Max', aliases: ['qwen-max-latest'], maxContextTokens: 131072, maxOutputTokens: 2000 },
+      { id: 'qwen-plus', displayName: 'Qwen Plus', aliases: ['qwen-plus-latest'], maxContextTokens: 131072, maxOutputTokens: 2000 },
+      { id: 'qwen-turbo', displayName: 'Qwen Turbo', aliases: ['qwen-turbo-latest'], maxContextTokens: 131072, maxOutputTokens: 1500 },
     ],
   },
   {
@@ -103,6 +123,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'DeepSeek',
     protocol: 'openai',
     defaultUrl: 'https://api.deepseek.com/v1',
+    apiKeyEnvVar: 'DEEPSEEK_API_KEY',
     modelListUrl: 'https://api.deepseek.com/models',
     modelListRequiresApiKey: true,
     models: [
@@ -115,11 +136,12 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Google AI (Gemini)',
     protocol: 'google',
     defaultUrl: 'https://generativelanguage.googleapis.com',
+    apiKeyEnvVar: 'GEMINI_API_KEY',
     models: [
       { id: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro Preview', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
       { id: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
       { id: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
-      { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 8192 },
+      { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', aliases: ['gemini-2.0-flash-001'], supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
     ],
   },
   {
@@ -127,11 +149,12 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'OpenRouter',
     protocol: 'openai',
     defaultUrl: 'https://openrouter.ai/api/v1',
+    apiKeyEnvVar: 'OPENROUTER_API_KEY',
     models: [
-      { id: 'anthropic/claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', supportsImage: true, maxContextTokens: 200000 },
-      { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportsImage: true, maxContextTokens: 1048576 },
-      { id: 'deepseek/deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', maxContextTokens: 1048576 },
-      { id: 'moonshotai/kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144 },
+      { id: 'anthropic/claude-sonnet-4.6', displayName: 'Claude Sonnet 4.6', supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 128000 },
+      { id: 'google/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65536 },
+      { id: 'deepseek/deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', maxContextTokens: 1048576, maxOutputTokens: 393216 },
+      { id: 'moonshotai/kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 8192 },
     ],
   },
   {
@@ -151,9 +174,10 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'MiniMax',
     protocol: 'openai',
     defaultUrl: 'https://api.minimax.io/v1',
+    apiKeyEnvVar: 'MINIMAX_API_KEY',
     models: [
-      { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5', maxContextTokens: 1000000 },
-      { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000 },
+      { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5', maxContextTokens: 1000000, maxOutputTokens: 16384 },
+      { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed', maxContextTokens: 1000000, maxOutputTokens: 16384 },
     ],
   },
   {
@@ -161,12 +185,13 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: 'Moonshot AI (Kimi)',
     protocol: 'openai',
     defaultUrl: 'https://api.moonshot.cn/v1',
+    apiKeyEnvVar: 'MOONSHOT_API_KEY',
     modelListRequiresApiKey: true,
     models: [
-      { id: 'kimi-k2.6', displayName: 'Kimi K2.6', supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 8192 },
-      { id: 'kimi-k2.7-code', displayName: 'Kimi K2.7 Code' },
-      { id: 'kimi-k2.7-code-highspeed', displayName: 'Kimi K2.7 Code Highspeed' },
-      { id: 'kimi-k3', displayName: 'Kimi K3' },
+      { id: 'kimi-k2.6', displayName: 'Kimi K2.6', aliases: ['moonshotai/kimi-k2.6'], supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 8192 },
+      { id: 'kimi-k2.7-code', displayName: 'Kimi K2.7 Code', aliases: ['moonshotai/kimi-k2.7-code'], maxContextTokens: 262144, maxOutputTokens: 8192 },
+      { id: 'kimi-k2.7-code-highspeed', displayName: 'Kimi K2.7 Code Highspeed', aliases: ['moonshotai/kimi-k2.7-code-highspeed'], maxContextTokens: 262144, maxOutputTokens: 8192 },
+      { id: 'kimi-k3', displayName: 'Kimi K3', aliases: ['moonshotai/kimi-k3'], maxContextTokens: 262144, maxOutputTokens: 8192 },
     ],
   },
   {
@@ -174,12 +199,13 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '火山方舟 (Volcano Ark)',
     protocol: 'openai',
     defaultUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    apiKeyEnvVar: 'VOLC_ARK_API_KEY',
     models: [
-      { id: 'doubao-1.5-pro-256k', displayName: 'Doubao 1.5 Pro 256K', supportsImage: true, maxContextTokens: 262144 },
-      { id: 'doubao-1.5-pro', displayName: 'Doubao 1.5 Pro', supportsImage: true, maxContextTokens: 131072 },
-      { id: 'doubao-1.5-lite-128k', displayName: 'Doubao 1.5 Lite 128K', maxContextTokens: 131072 },
-      { id: 'doubao-1.5-lite', displayName: 'Doubao 1.5 Lite', maxContextTokens: 32768 },
-      { id: 'deepseek-r1', displayName: 'DeepSeek R1 (Volc)', maxContextTokens: 65536 },
+      { id: 'doubao-1.5-pro-256k', displayName: 'Doubao 1.5 Pro 256K', supportsImage: true, maxContextTokens: 262144, maxOutputTokens: 16384 },
+      { id: 'doubao-1.5-pro', displayName: 'Doubao 1.5 Pro', supportsImage: true, maxContextTokens: 131072, maxOutputTokens: 16384 },
+      { id: 'doubao-1.5-lite-128k', displayName: 'Doubao 1.5 Lite 128K', maxContextTokens: 131072, maxOutputTokens: 8192 },
+      { id: 'doubao-1.5-lite', displayName: 'Doubao 1.5 Lite', maxContextTokens: 32768, maxOutputTokens: 8192 },
+      { id: 'deepseek-r1', displayName: 'DeepSeek R1 (Volc)', maxContextTokens: 65536, maxOutputTokens: 16384 },
     ],
   },
   {
@@ -187,11 +213,12 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     displayName: '智谱 Z.AI',
     protocol: 'openai',
     defaultUrl: 'https://api.z.ai/api/paas/v4',
+    apiKeyEnvVar: 'ZAI_API_KEY',
     models: [
-      { id: 'glm-5.2', displayName: 'GLM-5.2', maxContextTokens: 131072, maxOutputTokens: 131072 },
-      { id: 'glm-5.1', displayName: 'GLM-5.1', maxContextTokens: 131072, maxOutputTokens: 131072 },
-      { id: 'glm-5-turbo', displayName: 'GLM-5 Turbo', maxContextTokens: 131072, maxOutputTokens: 131072 },
-      { id: 'glm-4.6', displayName: 'GLM-4.6', maxContextTokens: 131072, maxOutputTokens: 131072 },
+      { id: 'glm-5.2', displayName: 'GLM-5.2', maxContextTokens: 131072, maxOutputTokens: 65536 },
+      { id: 'glm-5.1', displayName: 'GLM-5.1', maxContextTokens: 131072, maxOutputTokens: 65536 },
+      { id: 'glm-5-turbo', displayName: 'GLM-5 Turbo', maxContextTokens: 131072, maxOutputTokens: 65536 },
+      { id: 'glm-4.6', displayName: 'GLM-4.6', maxContextTokens: 131072, maxOutputTokens: 65536 },
       { id: 'glm-4.7', displayName: 'GLM-4.7', maxContextTokens: 200000, maxOutputTokens: 131072 },
       { id: 'glm-4.7-flashx', displayName: 'GLM-4.7 FlashX', maxContextTokens: 200000, maxOutputTokens: 131072 },
       { id: 'glm-4.7-flash', displayName: 'GLM-4.7 Flash', maxContextTokens: 200000, maxOutputTokens: 131072 },

@@ -51,7 +51,7 @@ export function useSettingsController({
   );
   const [saveStatus, setSaveStatus] = useState<"success" | "error" | null>(null);
   const [projectSortOrder, setProjectSortOrderState] =
-    useState<ProjectSortOrder>("name");
+    useState<ProjectSortOrder>("date");
   const [codeEditorSettings, setCodeEditorSettings] =
     useState<CodeEditorSettingsState>(() => readCodeEditorSettings());
 
@@ -63,7 +63,7 @@ export function useSettingsController({
       localStorage.getItem("pilotdeck-settings"),
       {},
     );
-    setProjectSortOrderState(stored.projectSortOrder === "date" ? "date" : "name");
+    setProjectSortOrderState(stored.projectSortOrder === "name" ? "name" : "date");
   }, [isOpen, initialTab]);
 
   useEffect(() => {

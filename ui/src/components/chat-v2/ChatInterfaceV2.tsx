@@ -9,22 +9,48 @@ import {
   getSessionRequestParams,
   isReadOnlySession,
 } from '../../types/app';
+import { chooseDefaultProject, isGeneralProject } from '../app-shell/appShellSelection';
+import { projectDisplayName, useCustomNamesVersion } from '../../lib/customNames';
 import { useChatProviderState } from '../chat/hooks/useChatProviderState';
 import { useChatSessionState } from '../chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../chat/hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../chat/hooks/useChatComposerState';
-import { getThinkingModeAvailability } from '../chat/constants/thinkingModeAvailability';
+import { useSessionInputQueue } from '../chat/hooks/useSessionInputQueue';
+import {
+  getEffectiveThinkingMode,
+  getThinkingModeAvailability,
+} from '../chat/constants/thinkingModeAvailability';
+import { thinkingModeToConfig } from '../chat/constants/thinkingModes';
 import { useSessionStore } from '../../stores/useSessionStore';
-import { getDraftInputStorageKey, safeLocalStorage } from '../chat/utils/chatStorage';
+import { getDraftInputStorageKey, getPilotDeckSettings, safeLocalStorage } from '../chat/utils/chatStorage';
+import { buildAttachmentPathNote } from '../chat/utils/attachmentNotes';
+import {
+  createUserTurnRunId,
+  getNotificationSessionSummary,
+  regenerateLastSessionCommand,
+} from '../chat/utils/sessionLauncher';
+import {
+  formatContentReferencePromptBlock,
+  normalizeContentReference,
+  type ContentReference,
+} from '../../types/contentReference';
 import { useSessionWatch } from '../../hooks/useSessionWatch';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
+import QueuedMessagesTray from './QueuedMessagesTray';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
   sessionId: string | null;
   startedAt: number;
 };
+
+const EDIT_RECONCILIATION_HINT = [
+  'The user replaced their immediately previous request with this edited request.',
+  'The conversation transcript no longer contains the replaced turn, but its tool actions may already have changed the current workspace.',
+  'Treat the current workspace as the source of truth: inspect existing changes, do not assume earlier work is correct, and reconcile or revise it to satisfy the edited request.',
+].join(' ');
 
 // V2 chat wrapper. Reuses all business-logic hooks from legacy
 // `ChatInterface` so streaming, file-mentions, slash commands, permissions,
@@ -34,7 +60,7 @@ type PendingViewSession = {
 //   · ComposerV2     — card textarea + paperclip/at + arrow-up send
 //   · NO provider picker empty state, NO pill bar, NO gradient bubbles
 function ChatInterfaceV2({
-  selectedProject,
+  selectedProject: selectedProjectFromShell,
   selectedSession,
   ws,
   sendMessage,
@@ -63,8 +89,19 @@ function ChatInterfaceV2({
   forceWelcome,
   onExitWelcome,
   compact = false,
+  projects = [],
+  onStartNewSession: _onStartNewSession,
+  onSelectWorkspace,
+  workspaceBinding = null,
+  onCreateProject,
 }: ChatInterfaceProps) {
+  useCustomNamesVersion();
+  const defaultProject = React.useMemo(() => chooseDefaultProject(projects), [projects]);
+  const selectedProject = selectedSession
+    ? selectedProjectFromShell
+    : (workspaceBinding ?? selectedProjectFromShell ?? defaultProject);
   const { t } = useTranslation('chat');
+  const { subscribe: contextSubscribe } = useWebSocket();
   const { tasksEnabled: _tasksEnabled, isTaskMasterInstalled: _isTaskMasterInstalled } =
     useTasksSettings();
   const sessionIsReadOnly = isReadOnlySession(selectedSession);
@@ -81,6 +118,11 @@ function ChatInterfaceV2({
   const [isAbortPending, setIsAbortPending] = useState(false);
   const [runMode, setRunMode] = useState<ChatRunMode>('agent');
   const [isForkPending, setIsForkPending] = useState(false);
+  const regenerateRequestsRef = useRef(new Map<string, {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timeoutId: number;
+  }>());
   const { addToast } = useToast();
 
   const resetStreamingState = useCallback(() => {
@@ -94,12 +136,18 @@ function ChatInterfaceV2({
 
   const {
     model,
+    modelCatalog,
+    modelSelection,
+    setModelSelection,
+    isModelCatalogLoading,
+    isModelSelectionReady,
+    modelCatalogError,
+    thinkingModelContext,
     permissionMode,
     setPermissionMode: setPermissionModeRaw,
-    thinkingModelContext,
     pendingPermissionRequests,
     setPendingPermissionRequests,
-  } = useChatProviderState({ selectedSession });
+  } = useChatProviderState({ selectedProject, selectedSession });
 
   const thinkingModeAvailability = React.useMemo(
     () => getThinkingModeAvailability(thinkingModelContext),
@@ -148,6 +196,7 @@ function ChatInterfaceV2({
     setCanAbortSession,
     isAborting: _isAborting,
     setIsAborting,
+    canReturnToLatest,
     setIsUserScrolledUp,
     tokenBudget,
     setTokenBudget,
@@ -164,7 +213,8 @@ function ChatInterfaceV2({
     createDiff,
     scrollContainerRef,
     scrollToBottom,
-    handleScroll,
+    scheduleScrollToBottom,
+    pauseScrollFollowing,
   } = useChatSessionState({
     selectedProject,
     selectedSession,
@@ -180,6 +230,13 @@ function ChatInterfaceV2({
 
   const watchedSessionId = selectedSession?.id || currentSessionId || null;
   useSessionWatch({ sessionId: watchedSessionId, ws, sendMessage });
+  const inputQueue = useSessionInputQueue({
+    sessionId: watchedSessionId,
+    projectPath: selectedProject?.fullPath || selectedProject?.path,
+    ws,
+    sendMessage,
+    subscribe: subscribe || contextSubscribe,
+  });
 
   const {
     input,
@@ -188,7 +245,6 @@ function ChatInterfaceV2({
     inputHighlightRef,
     isTextareaExpanded: _isTextareaExpanded,
     thinkingMode,
-    setThinkingMode,
     slashCommandsCount: _slashCommandsCount,
     filteredCommands,
     frequentCommands,
@@ -200,12 +256,25 @@ function ChatInterfaceV2({
     handleCommandSelect,
     handleToggleCommandMenu,
     showFileDropdown,
+    fileMentionQuery,
     filteredFiles,
     selectedFileIndex,
+    isLoadingFiles,
+    fileListError,
+    hasMoreFiles,
+    loadMoreFiles,
+    selectedFileMentions,
+    removeFileMention,
+    selectedSkills,
+    selectSkill,
+    removeSkill,
+    selectedCommands,
+    removeSelectedCommand,
     renderInputWithMentions,
     selectFile,
     attachedImages,
-    setAttachedImages,
+    removeAttachedImage,
+    retryAttachmentUpload,
     documentReferences,
     removeDocumentReference,
     uploadingImages,
@@ -214,7 +283,9 @@ function ChatInterfaceV2({
     getInputProps,
     isDragActive,
     openImagePicker,
+    addAttachmentFiles,
     handleSubmit,
+    canSubmitWithoutModel,
     handleInputChange,
     insertAtCursor,
     handleKeyDown,
@@ -227,22 +298,22 @@ function ChatInterfaceV2({
     handleGrantToolPermission,
     handleGrantSessionToolPermission,
     handleInputFocusChange,
-    isBusySendQueued,
-    isBusySendConfirmed,
-    cancelBusySendQueue,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
     currentSessionId,
     model,
+    modelSelection,
+    isModelSelectionReady,
     runMode,
     permissionMode: effectivePermissionMode,
     basePermissionMode: permissionMode,
     cycleRunMode,
     isLoading,
     canAbortSession,
+    inputQueuePaused: inputQueue.queueState.paused,
+    enqueuePreparedInput: inputQueue.enqueue,
     tokenBudget,
-    thinkingModeAvailability,
     sendMessage,
     subscribe,
     sendByCtrlEnter,
@@ -359,9 +430,33 @@ function ChatInterfaceV2({
     setIsAbortPending(true);
   }, [canAbortSession, handleAbortSession, isAbortPending, isLoading]);
 
+  const handleResumeInputQueue = useCallback(() => {
+    void inputQueue.resume().then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.resumeFailed', { defaultValue: 'Failed to resume the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleSteerQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.steer(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.steerFailed', { defaultValue: 'The message remains queued.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleDeleteQueuedInput = useCallback((itemId: string) => {
+    void inputQueue.remove(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.deleteFailed', { defaultValue: 'Failed to delete the queued message.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
+  const handleMoveQueuedInputToFront = useCallback((itemId: string) => {
+    void inputQueue.moveToFront(itemId).then((result) => {
+      if (!result.ok) addToast('error', result.error || t('inputQueue.moveFailed', { defaultValue: 'Failed to reorder the queue.' }));
+    });
+  }, [addToast, inputQueue, t]);
+
   const handleFork = useCallback(async (message: ChatMessage, _carriedPreview: number) => {
     if (isForkPending || isLoading || sessionIsReadOnly) return;
-    const sessionId = currentSessionId || selectedSession?.id;
+    const sessionId = selectedSession?.id || currentSessionId;
     const fromEntryId = message.entryId;
     if (!sessionId || !fromEntryId || !selectedProject) {
       addToast('error', t('fork.missingTarget', { defaultValue: 'Cannot fork this message.' }));
@@ -411,11 +506,9 @@ function ChatInterfaceV2({
       setInput(forkDraft);
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
-        scrollToBottom?.();
+        scheduleScrollToBottom?.();
       });
-      // Messages load asynchronously after the session switch; scroll again
-      // once the carried history has had a chance to render.
-      setTimeout(() => scrollToBottom?.(), 400);
+      // The scroll controller follows when the carried history finishes loading.
       addToast(
         'success',
         t('fork.ready', {
@@ -435,12 +528,127 @@ function ChatInterfaceV2({
     isLoading,
     sessionIsReadOnly,
     onNavigateToSession,
-    scrollToBottom,
+    scheduleScrollToBottom,
     selectedProject,
     selectedSession?.id,
     setInput,
     t,
     textareaRef,
+  ]);
+
+  useEffect(() => {
+    if (!subscribe) return undefined;
+    const unsubscribe = subscribe((message: any) => {
+      if (message?.type !== 'regenerate-last-message-result') return;
+      const requestId = typeof message.requestId === 'string' ? message.requestId : '';
+      const pending = regenerateRequestsRef.current.get(requestId);
+      if (!pending) return;
+      regenerateRequestsRef.current.delete(requestId);
+      window.clearTimeout(pending.timeoutId);
+      if (message.success) pending.resolve();
+      else pending.reject(new Error(message.error || t('edit.failed', { defaultValue: 'Could not edit this message.' })));
+    });
+    return () => unsubscribe();
+  }, [subscribe, t]);
+
+  useEffect(() => () => {
+    for (const pending of regenerateRequestsRef.current.values()) {
+      window.clearTimeout(pending.timeoutId);
+      pending.reject(new Error(t('edit.cancelled', { defaultValue: 'Message edit was cancelled.' })));
+    }
+    regenerateRequestsRef.current.clear();
+  }, [t]);
+
+  const handleRegenerate = useCallback(async (message: ChatMessage, editedText: string) => {
+    const sessionId = selectedSession?.id || currentSessionId;
+    const expectedTurnId = String(message.turnId || message.runId || '').trim();
+    if (!sessionId || !expectedTurnId || !selectedProject || sessionIsReadOnly) {
+      throw new Error(t('edit.missingTarget', { defaultValue: 'The last message can no longer be edited.' }));
+    }
+
+    if (!isModelSelectionReady || !modelSelection) throw new Error(modelCatalogError || "Model selection is still loading.");
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    const references = attachments
+      .map((attachment) => normalizeContentReference(attachment.contentReference ?? attachment))
+      .filter((reference): reference is ContentReference => Boolean(reference));
+    const browserUploads = attachments.filter((attachment) => (
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const uploadedAttachments = [...browserUploads.reduce((groups, attachment) => {
+      const uploadId = attachment.uploadId as string;
+      const attachmentIds = groups.get(uploadId) ?? [];
+      attachmentIds.push(attachment.attachmentId as string);
+      groups.set(uploadId, attachmentIds);
+      return groups;
+    }, new Map<string, string[]>())].map(([uploadId, attachmentIds]) => ({
+      uploadId,
+      attachmentIds,
+    }));
+    const modelAttachments = attachments.filter((attachment) => !(
+      typeof attachment.uploadId === 'string' && typeof attachment.attachmentId === 'string'
+    ));
+    const regularFiles = modelAttachments
+      .filter((attachment) => !attachment.kind || attachment.kind === 'file')
+      .flatMap((attachment) => {
+        const path = attachment.path || attachment.filePath;
+        return path ? [{ name: attachment.name, path }] : [];
+      });
+    const command = `${editedText}${buildAttachmentPathNote(regularFiles)}${formatContentReferencePromptBlock(references)}`;
+    const requestId = createUserTurnRunId();
+    const runId = createUserTurnRunId();
+    const result = new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        regenerateRequestsRef.current.delete(requestId);
+        reject(new Error(t('edit.timeout', { defaultValue: 'Editing timed out. Please try again.' })));
+      }, 120_000);
+      regenerateRequestsRef.current.set(requestId, { resolve, reject, timeoutId });
+    });
+
+    const effectiveThinkingMode = getEffectiveThinkingMode(thinkingMode, thinkingModeAvailability);
+    regenerateLastSessionCommand({
+      sendMessage,
+      selectedProject,
+      requestId,
+      sessionId,
+      expectedTurnId,
+      command,
+      runId,
+      userVisibleInput: editedText,
+      modelSelection: { ...modelSelection },
+      toolsSettings: getPilotDeckSettings(),
+      runMode,
+      permissionMode: effectivePermissionMode,
+      basePermissionMode: permissionMode,
+      model,
+      thinking: thinkingModeToConfig(effectiveThinkingMode),
+      sessionSummary: getNotificationSessionSummary(selectedSession, editedText),
+      images: Array.isArray(message.images) ? message.images : [],
+      attachments: modelAttachments,
+      uploadedAttachments,
+      displayAttachments: attachments,
+      syntheticMessages: [{
+        text: EDIT_RECONCILIATION_HINT,
+        purpose: 'edited_turn_workspace_reconciliation',
+      }],
+    });
+
+    return result;
+  }, [
+    currentSessionId,
+    isModelSelectionReady,
+    modelSelection,
+    modelCatalogError,
+    effectivePermissionMode,
+    model,
+    permissionMode,
+    runMode,
+    selectedProject,
+    selectedSession,
+    sendMessage,
+    sessionIsReadOnly,
+    t,
+    thinkingMode,
+    thinkingModeAvailability,
   ]);
 
   useEffect(() => {
@@ -492,7 +700,7 @@ function ChatInterfaceV2({
   // The composer is identical in welcome / normal mode — just rendered in a
   // different parent container. Pulled out so we don't drift between the two.
   const composer = sessionIsReadOnly ? (
-    <div className="mx-auto w-full max-w-[720px] px-6 pb-6 pt-3">
+    <div className="mx-auto w-full max-w-[860px] px-6 pb-6 pt-3">
       <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
         {t('session.readonlyTranscript', {
           defaultValue: 'This transcript is read-only.',
@@ -501,10 +709,18 @@ function ChatInterfaceV2({
     </div>
   ) : (
     <ComposerV2
+      queueTray={(
+        <QueuedMessagesTray
+          state={inputQueue.queueState}
+          isLoading={isLoading}
+          onResume={handleResumeInputQueue}
+          onSteer={handleSteerQueuedInput}
+          onDelete={handleDeleteQueuedInput}
+          onMoveToFront={handleMoveQueuedInputToFront}
+        />
+      )}
       input={input}
-      placeholder={t('composer.placeholder', {
-        defaultValue: 'Tell PilotDeck what you want to get done…',
-      }) as string}
+      placeholder={t('composer.placeholder', { defaultValue: 'Tell PilotDeck what you want to get done…' })}
       textareaRef={textareaRef}
       inputHighlightRef={inputHighlightRef}
       renderInputWithMentions={renderInputWithMentions}
@@ -518,29 +734,39 @@ function ChatInterfaceV2({
       onSubmit={wrappedSubmit as typeof handleSubmit}
       onAbortSession={handleAbortWithPending}
       openImagePicker={openImagePicker}
+      onAddAttachmentFiles={addAttachmentFiles}
       attachedImages={attachedImages}
-      onRemoveImage={(index) =>
-        setAttachedImages((previous) =>
-          previous.filter((_, currentIndex) => currentIndex !== index),
-        )
-      }
+      onRemoveImage={removeAttachedImage}
+      onRetryImage={retryAttachmentUpload}
       documentReferences={documentReferences}
       onRemoveDocumentReference={removeDocumentReference}
-        onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
+      onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
+      fileMentionQuery={fileMentionQuery}
       filteredFiles={filteredFiles}
       selectedFileIndex={selectedFileIndex}
+      isLoadingFiles={isLoadingFiles}
+      fileListError={fileListError}
+      hasMoreFiles={hasMoreFiles}
+      onLoadMoreFiles={loadMoreFiles}
       onSelectFile={selectFile}
+      selectedFileMentions={selectedFileMentions}
+      onRemoveFileMention={removeFileMention}
+      selectedSkills={selectedSkills}
+      onSelectSkill={selectSkill}
+      onRemoveSkill={removeSkill}
+      selectedCommands={selectedCommands}
+      onRemoveCommand={removeSelectedCommand}
       filteredCommands={filteredCommands}
+      commandQuery={commandQuery}
       selectedCommandIndex={selectedCommandIndex}
       onCommandSelect={handleCommandSelect}
       onCloseCommandMenu={dismissCommandMenu}
       isCommandMenuOpen={showCommandMenu}
       frequentCommands={commandQuery ? [] : frequentCommands}
       onToggleCommandMenu={handleToggleCommandMenu}
-      onInsertMention={() => insertAtCursor('@')}
       onInsertSlash={() => insertAtCursor('/')}
       getRootProps={getRootProps as (...args: unknown[]) => Record<string, unknown>}
       getInputProps={getInputProps as (...args: unknown[]) => Record<string, unknown>}
@@ -548,13 +774,21 @@ function ChatInterfaceV2({
       isLoading={isLoading}
       canAbortSession={canAbortSession}
       isAbortPending={isAbortPending}
-      isBusySendQueued={isBusySendQueued}
-      isBusySendConfirmed={isBusySendConfirmed}
-      onCancelBusySendQueue={cancelBusySendQueue}
+      isInputQueuePaused={inputQueue.queueState.paused}
+      onResumeInputQueue={handleResumeInputQueue}
       tokenBudget={tokenBudget}
-      thinkingMode={thinkingMode}
-      thinkingModeAvailability={thinkingModeAvailability}
-      onThinkingModeChange={setThinkingMode}
+      modelCatalog={modelCatalog}
+      modelSelection={modelSelection}
+      isModelCatalogLoading={isModelCatalogLoading}
+      isModelSelectionReady={isModelSelectionReady}
+      canSubmitWithoutModel={canSubmitWithoutModel}
+      modelCatalogError={modelCatalogError}
+      projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
+      onModelSelectionChange={(selection) => {
+        void setModelSelection(selection).catch((error) => {
+          addToast('error', error instanceof Error ? error.message : String(error));
+        });
+      }}
       pendingPermissionRequests={pendingPermissionRequests}
       handlePermissionDecision={handlePermissionDecision}
       handleGrantToolPermission={handleGrantToolPermission}
@@ -562,10 +796,21 @@ function ChatInterfaceV2({
       onPermissionModeChange={selectPermissionMode}
       runMode={runMode}
       onRunModeChange={setRunMode}
-      planModeAvailable={true}
       onPlanExecutionApproved={handlePlanExecutionApproved}
       sendByCtrlEnter={sendByCtrlEnter}
       chromeless={isWelcomeMode && !compact}
+      compact={compact}
+      showWorkspacePicker={isWelcomeMode && !compact}
+      workspaceProjects={projects}
+      workspaceSelectedProject={!selectedSession ? selectedProject : null}
+      onSelectWorkspaceProject={(project) => {
+        onSelectWorkspace?.(project);
+      }}
+      onSelectWorkspaceNone={() => {
+        const generalProject = projects.find(isGeneralProject);
+        if (generalProject) onSelectWorkspace?.(generalProject);
+      }}
+      onCreateWorkspaceProject={onCreateProject}
     />
   );
   const composerSlot = (
@@ -575,7 +820,9 @@ function ChatInterfaceV2({
   );
 
   if (isWelcomeMode) {
-    const projectName = selectedProject?.displayName || selectedProject?.name || '';
+    const projectName = selectedProject && !isGeneralProject(selectedProject)
+      ? projectDisplayName(selectedProject)
+      : '';
     if (compact) {
       return (
         <div className="flex h-full min-w-0 flex-col bg-white dark:bg-neutral-950">
@@ -599,16 +846,16 @@ function ChatInterfaceV2({
     return (
       <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
         <div className="flex flex-1 flex-col items-center justify-center px-6">
-          <div className="w-full max-w-[720px]">
+          <div className="w-full max-w-[860px]">
             <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
-              {selectedProject
+              {projectName
                 ? t('welcome.greetingWithProject', {
-                    project: projectName,
-                    defaultValue: `What's on the plan today?`,
-                  })
+                  project: projectName,
+                  defaultValue: `What do you want us to build in ${projectName}?`,
+                })
                 : t('welcome.noProject', {
-                    defaultValue: 'Pick a project from the sidebar to get started',
-                  })}
+                  defaultValue: `What's on the plan today?`,
+                })}
             </h1>
             {composerSlot}
           </div>
@@ -621,8 +868,9 @@ function ChatInterfaceV2({
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <MessagesPaneV2
         scrollContainerRef={scrollContainerRef}
-        onWheel={handleScroll}
-        onTouchMove={handleScroll}
+        showReturnToLatest={canReturnToLatest}
+        onResumeScroll={scrollToBottom}
+        onPauseScroll={pauseScrollFollowing}
         isLoadingSessionMessages={isLoadingSessionMessages}
         sessionLoadError={sessionLoadError}
         onRetrySessionLoad={handleWebSocketReconnect}
@@ -657,6 +905,7 @@ function ChatInterfaceV2({
         planModeActive={effectivePermissionMode === 'plan'}
         sessionStore={sessionStore}
         onFork={sessionIsReadOnly ? undefined : handleFork}
+        onRegenerate={sessionIsReadOnly ? undefined : handleRegenerate}
         forkDisabled={isForkPending}
       />
       {composerSlot}

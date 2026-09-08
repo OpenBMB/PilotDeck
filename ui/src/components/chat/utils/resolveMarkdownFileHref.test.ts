@@ -22,6 +22,15 @@ describe('resolveMarkdownFileHref', () => {
     expect(resolveMarkdownFileHref('/docs/report.md')).toBe('docs/report.md');
   });
 
+  it('preserves Windows drive and UNC paths from file URLs', () => {
+    expect(resolveMarkdownFileHref(
+      'file:///C:/Work/PilotDeck/docs/report.md',
+    )).toBe('/C:/Work/PilotDeck/docs/report.md');
+    expect(resolveMarkdownFileHref(
+      'file://server/Share/PilotDeck/docs/report.md',
+    )).toBe('//server/Share/PilotDeck/docs/report.md');
+  });
+
   it('ignores external URLs and non-file session paths', () => {
     expect(resolveMarkdownFileHref('https://example.com/report.md', { origin: ORIGIN })).toBeNull();
     expect(resolveMarkdownFileHref('http://localhost:5173/session/abc-123-def', { origin: ORIGIN })).toBeNull();

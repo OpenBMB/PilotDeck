@@ -17,6 +17,33 @@ function rewriteProviderRef(
   return `${newProviderId}/${value.slice(oldPrefix.length)}`;
 }
 
+function splitModelRef(value: unknown): { providerId: string; modelId: string } | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash <= 0 || slash === trimmed.length - 1) return null;
+  return { providerId: trimmed.slice(0, slash), modelId: trimmed.slice(slash + 1) };
+}
+
+export function clearSubagentDefaultForRemovedProvider(
+  config: PilotDeckConfig,
+  providerId: string,
+): PilotDeckConfig {
+  const parsed = splitModelRef(config.agent?.subagents?.default);
+  if (!parsed || parsed.providerId !== providerId) return config;
+  return patch(config, ["agent", "subagents", "default"], "inherit");
+}
+
+export function clearSubagentDefaultForRemovedModel(
+  config: PilotDeckConfig,
+  providerId: string,
+  modelId: string,
+): PilotDeckConfig {
+  const parsed = splitModelRef(config.agent?.subagents?.default);
+  if (!parsed || parsed.providerId !== providerId || parsed.modelId !== modelId) return config;
+  return patch(config, ["agent", "subagents", "default"], "inherit");
+}
+
 export function rewriteProviderRefs(
   config: PilotDeckConfig,
   oldProviderId: string,

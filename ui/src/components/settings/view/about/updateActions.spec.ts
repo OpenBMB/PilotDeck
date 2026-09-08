@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  launchDesktopInstaller,
   readWebUpdateTerminalStatus,
 } from "./updateActions";
 
@@ -62,18 +61,4 @@ describe("readWebUpdateTerminalStatus", () => {
       ).resolves.toBe(status);
     },
   );
-});
-
-describe("launchDesktopInstaller", () => {
-  it("only launches the downloaded installer", async () => {
-    const request = vi.fn().mockResolvedValue({ ok: true });
-
-    await launchDesktopInstaller("/tmp/PilotDeck-installer.exe", request);
-
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(request).toHaveBeenCalledWith("/api/update/desktop/install", {
-      method: "POST",
-      body: JSON.stringify({ filePath: "/tmp/PilotDeck-installer.exe" }),
-    });
-  });
 });

@@ -7,6 +7,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { promisify } from 'util';
 import { readPilotDeckConfigFile } from './pilotdeckConfig.js';
+import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -220,12 +221,11 @@ async function publishConvertedPdf(tempDir, cacheDir) {
 }
 
 function resolvePathInsideRoot(rootPath, targetPath) {
-  const normalizedRoot = path.resolve(rootPath);
   const resolved = path.isAbsolute(targetPath)
     ? path.resolve(targetPath)
-    : path.resolve(normalizedRoot, targetPath);
+    : path.resolve(rootPath, targetPath);
 
-  if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + path.sep)) {
+  if (!isPathInsideOrEqual(rootPath, resolved)) {
     throw createOfficePreviewError('Path must be under project root', 403, 'OFFICE_PREVIEW_PATH_FORBIDDEN');
   }
 
