@@ -27,6 +27,26 @@ export default defineConfig(({ mode }) => {
   const serverPort = env.SERVER_PORT || env.PORT || 3001
   const localNodeModules = (...segments) =>
     path.resolve(process.cwd(), 'node_modules', ...segments)
+  const codeMirrorDependencies = [
+    '@codemirror/autocomplete',
+    '@codemirror/commands',
+    '@codemirror/lang-css',
+    '@codemirror/lang-html',
+    '@codemirror/lang-javascript',
+    '@codemirror/lang-json',
+    '@codemirror/lang-markdown',
+    '@codemirror/lang-python',
+    '@codemirror/language',
+    '@codemirror/lint',
+    '@codemirror/merge',
+    '@codemirror/search',
+    '@codemirror/state',
+    '@codemirror/theme-one-dark',
+    '@codemirror/view',
+    '@replit/codemirror-minimap',
+    '@uiw/react-codemirror',
+    'codemirror',
+  ]
 
   const disableLocalAuth =
     env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
@@ -38,12 +58,21 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     resolve: {
+      // Every extension passed to @uiw/react-codemirror must use the same
+      // @codemirror/state instance, including after lockfile updates change
+      // CodeMirror versions and Vite rebuilds its development cache.
+      dedupe: ['react', 'react-dom', ...codeMirrorDependencies],
       alias: {
         react: localNodeModules('react'),
         'react-dom': localNodeModules('react-dom'),
         'react/jsx-runtime': localNodeModules('react', 'jsx-runtime.js'),
         'react/jsx-dev-runtime': localNodeModules('react', 'jsx-dev-runtime.js'),
       }
+    },
+    optimizeDeps: {
+      // Pre-bundle the wrapper and direct extension imports as one dependency
+      // graph so Vite never mixes optimized and source CodeMirror instances.
+      include: codeMirrorDependencies,
     },
     server: {
       host,
