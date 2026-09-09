@@ -186,7 +186,7 @@ jobs:
           mv apps/desktop/dist-electron/latest-mac.yml apps/desktop/dist-electron/latest-${{ matrix.arch }}-mac.yml
 
       - name: Upload macOS installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pilotdeck-desktop-macos-${{ matrix.arch }}
           overwrite: true
