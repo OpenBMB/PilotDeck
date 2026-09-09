@@ -1592,6 +1592,10 @@ export default function ComposerV2({
                                     <button
                                       type="button"
                                       disabled={!item.available}
+                                      onMouseDown={(event) => {
+                                        // Safari can blur the search input and unmount this button before click.
+                                        event.preventDefault();
+                                      }}
                                       onClick={() => {
                                         onModelSelectionChange(
                                           isAuto
