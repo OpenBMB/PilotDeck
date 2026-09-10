@@ -363,14 +363,22 @@ export class GatewayBrowserClient {
     }
     if (frame.type === "response") {
       const pending = this.pending.get(frame.id);
-      if (!pending) return;
+      if (!pending) {
+
+        if (!frame.ok) {
+          const stream = this.streams.get(frame.id);
+          if (stream) {
+            this.streams.delete(frame.id);
+            stream.fail(responseError(frame.error));
+          }
+        }
+        return;
+      }
       this.pending.delete(frame.id);
       if (frame.ok) {
         pending.resolve(frame.result);
       } else {
-        pending.reject(
-          Object.assign(new Error(frame.error.message), { code: frame.error.code, details: frame.error.details }),
-        );
+        pending.reject(responseError(frame.error));
       }
       return;
     }
@@ -449,7 +457,10 @@ export async function readLocalGatewayToken(
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {
   private readonly values: T[] = [];
-  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
+  private readonly waiters: Array<{
+    resolve: (result: IteratorResult<T>) => void;
+    reject: (error: Error) => void;
+  }> = [];
   private closed = false;
   private error?: Error;
 
@@ -459,7 +470,7 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
     }
     const waiter = this.waiters.shift();
     if (waiter) {
-      waiter({ done: false, value });
+      waiter.resolve({ done: false, value });
       return;
     }
     this.values.push(value);
@@ -469,13 +480,20 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
     if (this.closed) return;
     this.closed = true;
     for (const waiter of this.waiters.splice(0)) {
-      waiter({ done: true, value: undefined });
+      waiter.resolve({ done: true, value: undefined });
     }
   }
 
   fail(error: Error): void {
-    this.error = error;
-    this.close();
+    this.closed = true;
+    const waiters = this.waiters.splice(0);
+    if (waiters.length === 0) {
+      this.error = error;
+      return;
+    }
+    for (const waiter of waiters) {
+      waiter.reject(error);
+    }
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -497,8 +515,17 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
     if (this.closed) {
       return Promise.resolve({ done: true, value: undefined as never });
     }
-    return new Promise((resolve) => this.waiters.push(resolve));
+    return new Promise((resolve, reject) => this.waiters.push({ resolve, reject }));
   }
+}
+
+function responseError(
+  error: { code?: string; message?: string; details?: unknown } | undefined,
+): Error {
+  return Object.assign(new Error(error?.message ?? "Gateway request failed."), {
+    code: error?.code ?? "gateway_request_failed",
+    details: error?.details,
+  });
 }
 
 function waitForOpen(ws: WebSocketLike): Promise<void> {
