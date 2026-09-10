@@ -933,6 +933,86 @@ function mergeUnconfirmedOptimisticUsers(
   return result;
 }
 
+function getActiveThinkingSnapshotCandidateIndexes(
+  server: NormalizedMessage[],
+  realtimeThinking: NormalizedMessage,
+): number[] {
+  if (
+    realtimeThinking.kind !== 'thinking'
+    || !realtimeThinking.id.startsWith('__streaming_thinking_')
+  ) {
+    return [];
+  }
+
+  const turnId = getMessageTurnId(realtimeThinking);
+  if (!turnId || realtimeThinking.serverTailIdAtStart === undefined) return [];
+
+  let startIndex = 0;
+  if (realtimeThinking.serverTailIdAtStart !== null) {
+    const tailIndex = server.findIndex((message) => (
+      message.id === realtimeThinking.serverTailIdAtStart
+    ));
+    if (tailIndex < 0) return [];
+    startIndex = tailIndex + 1;
+  }
+
+  const realtimeContent = normalizeRealtimeText(realtimeThinking.content);
+  if (!realtimeContent) return [];
+
+  return server.flatMap((message, index) => {
+    if (
+      index < startIndex
+      || message.kind !== 'thinking'
+      || getMessageTurnId(message) !== turnId
+    ) {
+      return [];
+    }
+    const serverContent = normalizeRealtimeText(message.content);
+    if (
+      !serverContent
+      || (!realtimeContent.startsWith(serverContent) && !serverContent.startsWith(realtimeContent))
+    ) {
+      return [];
+    }
+    return [index];
+  });
+}
+
+function reconcileActiveThinkingSnapshots(
+  server: NormalizedMessage[],
+  extra: NormalizedMessage[],
+): { server: NormalizedMessage[]; extra: NormalizedMessage[] } {
+  const serverIndexesToDrop = new Set<number>();
+  const realtimeIndexesToDrop = new Set<number>();
+
+  extra.forEach((realtimeThinking, realtimeIndex) => {
+    const candidates = getActiveThinkingSnapshotCandidateIndexes(server, realtimeThinking);
+    if (candidates.length === 0) return;
+
+    const realtimeContent = normalizeRealtimeText(realtimeThinking.content);
+    const bestServerIndex = candidates.reduce((bestIndex, candidateIndex) => {
+      const bestLength = normalizeRealtimeText(server[bestIndex].content).length;
+      const candidateLength = normalizeRealtimeText(server[candidateIndex].content).length;
+      return candidateLength > bestLength ? candidateIndex : bestIndex;
+    });
+    const serverContent = normalizeRealtimeText(server[bestServerIndex].content);
+
+    if (serverContent.length >= realtimeContent.length) {
+      realtimeIndexesToDrop.add(realtimeIndex);
+    } else {
+      serverIndexesToDrop.add(bestServerIndex);
+    }
+  });
+
+  if (serverIndexesToDrop.size === 0 && realtimeIndexesToDrop.size === 0) {
+    return { server, extra };
+  }
+  return {
+    server: server.filter((_, index) => !serverIndexesToDrop.has(index)),
+    extra: extra.filter((_, index) => !realtimeIndexesToDrop.has(index)),
+  };
+}
+
 /**
  * Compute merged messages: server + realtime, deduped by id.
  * Server messages take priority (they're the persisted source of truth).
@@ -944,10 +1024,15 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
   }
   if (server.length === 0) return realtime;
   const confirmedRealtimeIndexes = getConfirmedRealtimeUserIndexes(server, realtime);
-  const extra = realtime.filter((message, index) => {
+  let extra = realtime.filter((message, index) => {
     if (isOptimisticUserMessage(message)) return !confirmedRealtimeIndexes.has(index);
     return !isRealtimeMessageRepresentedOnServer(message, server);
   });
+  if (extra.length === 0) return server;
+
+  const thinkingReconciliation = reconcileActiveThinkingSnapshots(server, extra);
+  server = thinkingReconciliation.server;
+  extra = thinkingReconciliation.extra;
   if (extra.length === 0) return server;
 
   // Structural dedup: if there's an active __streaming_ message in extras
@@ -964,7 +1049,9 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
   // captured into `serverTailIdAtStart`, so a `lastServer.id ===
   // streamMsg.serverTailIdAtStart` match means "still the same tail
   // that was there at turn start" → don't dedup.
-  const streamIdx = extra.findIndex(m => m.id.startsWith('__streaming_'));
+  const streamIdx = extra.findIndex((message) => (
+    message.kind === 'stream_delta' && message.id.startsWith('__streaming_')
+  ));
   if (streamIdx >= 0 && server.length > 0) {
     const lastServer = server[server.length - 1];
     const streamMsg = extra[streamIdx];

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionProvider } from '../../../types/app';
 import type { ChatMessage } from '../types/types';
-import { chatMessageToNormalized, resolveConversationScrollTop } from './useChatSessionState';
+import {
+  chatMessageToNormalized,
+  hasEquivalentUserMessage,
+  resolveConversationScrollTop,
+} from './useChatSessionState';
 
 describe('chatMessageToNormalized', () => {
   it('preserves user turn identity on optimistic rows', () => {
@@ -23,6 +27,47 @@ describe('chatMessageToNormalized', () => {
       runId: 'run-user-1',
       turnId: 'turn-user-1',
     });
+  });
+});
+
+describe('hasEquivalentUserMessage', () => {
+  it('matches a pending image query to its same-turn persisted text projection', () => {
+    const pending: ChatMessage = {
+      type: 'user',
+      content: '这个是不是设置的太高了 或者跳跃太矮了',
+      images: [{ data: 'data:image/png;base64,realtime-preview', name: 'game.png' }],
+      runId: 'run-image-1',
+      timestamp: new Date('2026-09-10T09:00:00.000Z'),
+    };
+    const persisted: ChatMessage = {
+      id: 'persisted-user',
+      type: 'user',
+      content: '这个是不是设置的太高了 或者跳跃太矮了',
+      turnId: 'run-image-1',
+      timestamp: '2026-09-10T09:00:00.100Z',
+    };
+
+    expect(hasEquivalentUserMessage([persisted], pending)).toBe(true);
+  });
+
+  it('does not match the same image query from a different turn', () => {
+    const pending: ChatMessage = {
+      type: 'user',
+      content: 'Describe this image.',
+      images: [{ data: 'data:image/png;base64,new', name: 'new.png' }],
+      runId: 'run-new',
+      timestamp: new Date('2026-09-10T09:00:01.000Z'),
+    };
+    const previous: ChatMessage = {
+      id: 'previous-user',
+      type: 'user',
+      content: 'Describe this image.',
+      images: [{ data: 'data:image/png;base64,new', name: 'new.png' }],
+      turnId: 'run-old',
+      timestamp: '2026-09-10T09:00:00.000Z',
+    };
+
+    expect(hasEquivalentUserMessage([previous], pending)).toBe(false);
   });
 });
 
