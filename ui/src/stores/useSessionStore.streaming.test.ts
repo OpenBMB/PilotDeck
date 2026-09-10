@@ -319,6 +319,103 @@ describe('computeMerged', () => {
     ]);
   });
 
+  it('keeps pre-tool reasoning when the captured server tail was stale', () => {
+    const server: NormalizedMessage[] = [
+      textMessage('stale-tail', 'User prompt', '2026-09-10T10:00:00.000Z', {
+        role: 'user',
+        runId: 'run-1',
+        turnId: 'run-1',
+      }),
+      {
+        id: 'thinking-before-tool',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'I should inspect the game settings.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-use',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'tool_use',
+        toolId: 'read-settings',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-result',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:03.000Z',
+        provider: PROVIDER,
+        kind: 'tool_result',
+        toolId: 'read-settings',
+        content: 'settings',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:04.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'I should inspect the game settings. The values are too high.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'stale-tail',
+      toolBoundaryIdAtStart: 'read-settings',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'stale-tail',
+      'thinking-before-tool',
+      'tool-use',
+      'tool-result',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('waits for a missing persisted tool boundary before reconciling reasoning', () => {
+    const server: NormalizedMessage[] = [
+      textMessage('stale-tail', 'User prompt', '2026-09-10T10:00:00.000Z', {
+        role: 'user',
+        runId: 'run-1',
+        turnId: 'run-1',
+      }),
+      {
+        id: 'thinking-before-tool',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'Repeated reasoning prefix.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:04.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'Repeated reasoning prefix. This is after the tool.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'stale-tail',
+      toolBoundaryIdAtStart: 'read-settings',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'stale-tail',
+      'thinking-before-tool',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
   it('does not deduplicate matching reasoning text from another turn', () => {
     const server: NormalizedMessage[] = [{
       id: 'thinking-from-old-turn',

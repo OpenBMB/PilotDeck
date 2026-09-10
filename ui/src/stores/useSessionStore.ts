@@ -170,6 +170,8 @@ export interface NormalizedMessage {
   // means the history was empty. Reconciliation uses this as a turn boundary
   // so an older persisted row cannot confirm a newer optimistic send.
   serverTailIdAtStart?: string | null;
+  /** Latest tool boundary before an active thinking block began. */
+  toolBoundaryIdAtStart?: string;
   /** The optimistic row was created before its initial history request completed. */
   serverHistoryPendingAtStart?: boolean;
 }
@@ -956,6 +958,38 @@ function getActiveThinkingSnapshotCandidateIndexes(
     startIndex = tailIndex + 1;
   }
 
+  if (realtimeThinking.toolBoundaryIdAtStart) {
+    let toolBoundaryIndex = -1;
+    for (let index = server.length - 1; index >= startIndex; index -= 1) {
+      const message = server[index];
+      if (
+        getMessageTurnId(message) === turnId
+        && (message.kind === 'tool_use' || message.kind === 'tool_result')
+        && message.toolId === realtimeThinking.toolBoundaryIdAtStart
+      ) {
+        toolBoundaryIndex = index;
+        break;
+      }
+    }
+    // The persisted history is still behind the realtime tool boundary.
+    // Wait for a later refresh instead of matching an earlier reasoning block.
+    if (toolBoundaryIndex < 0) return [];
+    startIndex = toolBoundaryIndex + 1;
+  } else {
+    // Legacy active rows do not carry the realtime boundary. The latest
+    // persisted tool event is still a safe lower bound for the current block.
+    for (let index = server.length - 1; index >= startIndex; index -= 1) {
+      const message = server[index];
+      if (
+        getMessageTurnId(message) === turnId
+        && (message.kind === 'tool_use' || message.kind === 'tool_result')
+      ) {
+        startIndex = index + 1;
+        break;
+      }
+    }
+  }
+
   const realtimeContent = normalizeRealtimeText(realtimeThinking.content);
   if (!realtimeContent) return [];
 
@@ -1222,6 +1256,24 @@ function forceRecomputeMerged(slot: SessionSlot): void {
 
 function streamingKey(sessionId: string, runId?: string): string {
   return runId ? `${sessionId}_${runId}` : sessionId;
+}
+
+function findLatestRealtimeToolBoundaryId(
+  messages: NormalizedMessage[],
+  runId?: string,
+): string | undefined {
+  if (!runId) return undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      getMessageTurnId(message) === runId
+      && (message.kind === 'tool_use' || message.kind === 'tool_result')
+      && message.toolId
+    ) {
+      return message.toolId;
+    }
+  }
+  return undefined;
 }
 
 export function getFinalizedSubagentThinkingId(
@@ -2009,7 +2061,7 @@ export function useSessionStore() {
         content: accumulatedText,
         ...(model ? { model } : {}),
         runId,
-        serverTailIdAtStart: serverTailId ?? undefined,
+        serverTailIdAtStart: serverTailId,
       };
       slot.realtimeMessages = [...slot.realtimeMessages, msg];
     }
@@ -2070,6 +2122,10 @@ export function useSessionStore() {
       const serverTailId = slot.serverMessages.length > 0
         ? slot.serverMessages[slot.serverMessages.length - 1].id
         : null;
+      const toolBoundaryIdAtStart = findLatestRealtimeToolBoundaryId(
+        slot.realtimeMessages,
+        runId,
+      );
       const msg: NormalizedMessage = {
         id: streamId,
         renderKey: `${streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
@@ -2079,7 +2135,8 @@ export function useSessionStore() {
         kind: 'thinking',
         content: accumulatedText,
         runId,
-        serverTailIdAtStart: serverTailId ?? undefined,
+        serverTailIdAtStart: serverTailId,
+        ...(toolBoundaryIdAtStart ? { toolBoundaryIdAtStart } : {}),
       };
       slot.realtimeMessages = [...slot.realtimeMessages, msg];
     }
