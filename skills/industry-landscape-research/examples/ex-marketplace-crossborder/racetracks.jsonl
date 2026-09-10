@@ -1,0 +1,5 @@
+{"racetrack_id":"m2c-fullhost","name":"M2C 全托管","mode":"manufacturer-to-consumer","geo":"global","tier":"hot","note":"SHEIN/Temu 模式，毛利率 80%+ 但补贴重"}
+{"racetrack_id":"marketplace-classic","name":"平台型 Marketplace","mode":"platform","geo":"global","tier":"mature","note":"AliExpress/Shopee/Lazada"}
+{"racetrack_id":"livecommerce-cross","name":"直播跨境电商","mode":"content-driven","geo":"global","tier":"hot","note":"TikTok Shop 主导"}
+{"racetrack_id":"vertical-cross","name":"垂类跨境","mode":"vertical","geo":"global","tier":"niche","note":"Farfetch 奢侈、Wayfair 家具"}
+{"racetrack_id":"regional-leader","name":"区域领导者","mode":"regional","geo":"LATAM/MENA","tier":"core","note":"Mercado Libre、Noon"}

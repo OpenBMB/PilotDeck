@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SKU",
+  "description": "快速演进 catalog 类行业的单个 SKU/版本记录。一行一个 SKU。",
+  "type": "object",
+  "required": ["sku_id", "company_id", "name", "release_date", "status", "as_of_date", "sources"],
+  "properties": {
+    "sku_id": {
+      "type": "string",
+      "description": "全局唯一 ID，建议 <company>-<sku_slug> 如 'qwen-qwen3-max'",
+      "pattern": "^[a-z0-9][a-z0-9-_.]*$"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "所属公司 ID，引用 companies.jsonl 中的 id"
+    },
+    "name": {
+      "type": "string",
+      "description": "SKU/版本完整名，如 'Qwen3-Max', 'Seedance 2.5 Pro', 'gpt-4o-2024-08-06'"
+    },
+    "category": {
+      "type": "string",
+      "description": "细分品类，如 LLM-text / VLM / T2I / T2V / R2V / Embedding / ASR / TTS / Coding / Reasoning"
+    },
+    "release_date": {
+      "type": "string",
+      "description": "发布日 YYYY-MM-DD 或 YYYY-Q[1-4]",
+      "pattern": "^[0-9]{4}(-(([01][0-9]-[0-3][0-9])|Q[1-4]))?$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["GA", "Beta", "Preview", "Deprecated", "Private", "Sunset"],
+      "description": "GA 通用版 / Beta 公测 / Preview 预览 / Deprecated 弃用 / Private 灰度 / Sunset 已下线"
+    },
+    "params": {
+      "type": "object",
+      "description": "核心参数（自由 schema，按品类填）",
+      "properties": {
+        "context_length": {"type": "integer", "description": "上下文窗口 token 数"},
+        "model_size": {"type": "string", "description": "参数量，如 7B / 72B / MoE-A3B / unknown"},
+        "modality": {"type": "array", "items": {"type": "string"}, "description": "['text','image','video','audio']"},
+        "max_resolution": {"type": "string", "description": "图像/视频 SKU 最大分辨率，如 1920x1080 / 4K"},
+        "max_duration_sec": {"type": "number", "description": "视频/音频最大时长（秒）"},
+        "vector_dim": {"type": "integer", "description": "Embedding 维度"},
+        "reasoning_mode": {"type": "boolean", "description": "是否原生支持 thinking/reasoning token"},
+        "tool_use": {"type": "boolean"},
+        "structured_output": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "pricing": {
+      "type": "object",
+      "description": "定价信息",
+      "properties": {
+        "currency": {"type": "string", "enum": ["USD", "CNY", "EUR", "JPY"]},
+        "input_per_mtoken": {"type": ["number", "null"], "description": "输入每 1M token 价格"},
+        "output_per_mtoken": {"type": ["number", "null"], "description": "输出每 1M token 价格"},
+        "cache_hit_per_mtoken": {"type": ["number", "null"], "description": "Cache 命中价"},
+        "reasoning_per_mtoken": {"type": ["number", "null"], "description": "Reasoning token 单价（如有单独计费）"},
+        "image_per_call": {"type": ["number", "null"], "description": "图像生成每次价格"},
+        "video_per_sec": {"type": ["number", "null"], "description": "视频生成每秒价格"},
+        "audio_per_min": {"type": ["number", "null"], "description": "音频每分钟价格"},
+        "free_tier": {"type": ["string", "null"], "description": "免费额度描述"},
+        "batch_discount_pct": {"type": ["number", "null"], "description": "Batch API 折扣 (0-100)"},
+        "tiered": {"type": ["array", "null"], "description": "阶梯定价", "items": {"type": "object"}},
+        "pricing_page_url": {"type": "string", "format": "uri", "description": "官方 pricing page URL"},
+        "pricing_as_of": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "价格抓取日"},
+        "grade": {"type": "string", "enum": ["L1", "L2", "L3", "L4"]}
+      }
+    },
+    "rate_limits": {
+      "type": "object",
+      "properties": {
+        "rpm": {"type": ["integer", "null"], "description": "Requests per minute"},
+        "tpm": {"type": ["integer", "null"], "description": "Tokens per minute"},
+        "concurrency": {"type": ["integer", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "predecessor": {
+      "type": ["string", "null"],
+      "description": "前代 SKU 的 sku_id；首代留 null"
+    },
+    "successor": {
+      "type": ["string", "null"],
+      "description": "下一代 SKU 的 sku_id；最新版留 null"
+    },
+    "upgrade_summary": {
+      "type": "string",
+      "description": "相比前代 1-2 句变化"
+    },
+    "benchmarks": {
+      "type": "array",
+      "description": "公开 benchmark 分数",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "description": "如 MMLU / LMArena ELO / Artificial Analysis Index"},
+          "value": {"type": "number"},
+          "as_of_date": {"type": "string"},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "availability_regions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "可用区域，如 ['CN','US','EU','APAC']"
+    },
+    "deprecation": {
+      "type": "object",
+      "description": "弃用信息（status=Deprecated/Sunset 时填）",
+      "properties": {
+        "announced_date": {"type": "string"},
+        "sunset_date": {"type": "string"},
+        "recommended_alternative_sku_id": {"type": "string"}
+      }
+    },
+    "as_of_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "本条记录的快照日"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "来源 URL 列表，至少 1 个 L1 官方源",
+      "items": {
+        "type": "object",
+        "required": ["url", "grade"],
+        "properties": {
+          "url": {"type": "string", "format": "uri"},
+          "grade": {"type": "string", "enum": ["L1", "L2", "L3", "L4"]},
+          "fetched_at": {"type": "string"}
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

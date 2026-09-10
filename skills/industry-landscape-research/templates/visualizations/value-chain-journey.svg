@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 客户旅程价值链。N 个环节 × 4 层覆盖（用户/产品/数据/平台） -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 800" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .segment-bg { fill: #1A1C20; stroke: #2A2A2E; stroke-width: 1; }
+      .segment-arrow { fill: #C9A87C; }
+      .segment-name { fill: #C9A87C; font-size: 16px; font-weight: 700; text-anchor: middle; }
+      .layer-label { fill: #8B8680; font-size: 12px; font-weight: 600; }
+      .cell { fill: #0F1115; stroke: #2A2A2E; stroke-width: 1; }
+      .cell-content { fill: #E5E0D8; font-size: 11px; }
+      .ai-cell { fill: #1A2A40; stroke: #4A90E2; stroke-width: 1.5; }
+      .ai-content { fill: #4A90E2; font-size: 11px; font-weight: 600; }
+      .title { fill: #E5E0D8; font-size: 26px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="800"/>
+
+  <text class="title" x="40" y="50">{{INDUSTRY_NAME}} 价值链 / 客户旅程</text>
+  <text class="subtitle" x="40" y="74">{{N}} 段流程 × 4 层覆盖（现状/AI 介入/代表工具/解决方案） · 数据截止 {{AS_OF_DATE}}</text>
+
+  <!-- 阶段箭头（5 段示例） -->
+  <g id="segment-1">
+    <polygon class="segment-bg" points="100,120 380,120 410,150 380,180 100,180"/>
+    <text class="segment-name" x="240" y="158">{{SEG_1_NAME}}</text>
+  </g>
+  <g id="segment-2">
+    <polygon class="segment-bg" points="380,120 660,120 690,150 660,180 380,180 410,150"/>
+    <text class="segment-name" x="535" y="158">{{SEG_2_NAME}}</text>
+  </g>
+  <g id="segment-3">
+    <polygon class="segment-bg" points="660,120 940,120 970,150 940,180 660,180 690,150"/>
+    <text class="segment-name" x="815" y="158">{{SEG_3_NAME}}</text>
+  </g>
+  <g id="segment-4">
+    <polygon class="segment-bg" points="940,120 1220,120 1250,150 1220,180 940,180 970,150"/>
+    <text class="segment-name" x="1095" y="158">{{SEG_4_NAME}}</text>
+  </g>
+  <g id="segment-5">
+    <polygon class="segment-bg" points="1220,120 1480,120 1500,150 1480,180 1220,180 1250,150"/>
+    <text class="segment-name" x="1360" y="158">{{SEG_5_NAME}}</text>
+  </g>
+
+  <!-- 4 层（标签） -->
+  <text class="layer-label" x="40" y="240">现状痛点</text>
+  <text class="layer-label" x="40" y="380">AI 介入点</text>
+  <text class="layer-label" x="40" y="520">代表工具</text>
+  <text class="layer-label" x="40" y="660">解决方案</text>
+
+  <!-- 单元格 5 段 × 4 层 = 20 格 -->
+  <!-- Row 1: 现状痛点 -->
+  <rect class="cell" x="100" y="210" width="280" height="120"/>
+  <text class="cell-content" x="115" y="240">{{S1_PAIN}}</text>
+  <rect class="cell" x="380" y="210" width="280" height="120"/>
+  <text class="cell-content" x="395" y="240">{{S2_PAIN}}</text>
+  <rect class="cell" x="660" y="210" width="280" height="120"/>
+  <text class="cell-content" x="675" y="240">{{S3_PAIN}}</text>
+  <rect class="cell" x="940" y="210" width="280" height="120"/>
+  <text class="cell-content" x="955" y="240">{{S4_PAIN}}</text>
+  <rect class="cell" x="1220" y="210" width="260" height="120"/>
+  <text class="cell-content" x="1235" y="240">{{S5_PAIN}}</text>
+
+  <!-- Row 2: AI 介入点（高亮） -->
+  <rect class="ai-cell" x="100" y="350" width="280" height="120"/>
+  <text class="ai-content" x="115" y="380">{{S1_AI}}</text>
+  <rect class="ai-cell" x="380" y="350" width="280" height="120"/>
+  <text class="ai-content" x="395" y="380">{{S2_AI}}</text>
+  <rect class="ai-cell" x="660" y="350" width="280" height="120"/>
+  <text class="ai-content" x="675" y="380">{{S3_AI}}</text>
+  <rect class="ai-cell" x="940" y="350" width="280" height="120"/>
+  <text class="ai-content" x="955" y="380">{{S4_AI}}</text>
+  <rect class="ai-cell" x="1220" y="350" width="260" height="120"/>
+  <text class="ai-content" x="1235" y="380">{{S5_AI}}</text>
+
+  <!-- Row 3: 代表工具 -->
+  <rect class="cell" x="100" y="490" width="280" height="120"/>
+  <text class="cell-content" x="115" y="520">{{S1_TOOL}}</text>
+  <rect class="cell" x="380" y="490" width="280" height="120"/>
+  <text class="cell-content" x="395" y="520">{{S2_TOOL}}</text>
+  <rect class="cell" x="660" y="490" width="280" height="120"/>
+  <text class="cell-content" x="675" y="520">{{S3_TOOL}}</text>
+  <rect class="cell" x="940" y="490" width="280" height="120"/>
+  <text class="cell-content" x="955" y="520">{{S4_TOOL}}</text>
+  <rect class="cell" x="1220" y="490" width="260" height="120"/>
+  <text class="cell-content" x="1235" y="520">{{S5_TOOL}}</text>
+
+  <!-- Row 4: 解决方案 -->
+  <rect class="cell" x="100" y="630" width="280" height="120"/>
+  <text class="cell-content" x="115" y="660">{{S1_SOLUTION}}</text>
+  <rect class="cell" x="380" y="630" width="280" height="120"/>
+  <text class="cell-content" x="395" y="660">{{S2_SOLUTION}}</text>
+  <rect class="cell" x="660" y="630" width="280" height="120"/>
+  <text class="cell-content" x="675" y="660">{{S3_SOLUTION}}</text>
+  <rect class="cell" x="940" y="630" width="280" height="120"/>
+  <text class="cell-content" x="955" y="660">{{S4_SOLUTION}}</text>
+  <rect class="cell" x="1220" y="630" width="260" height="120"/>
+  <text class="cell-content" x="1235" y="660">{{S5_SOLUTION}}</text>
+</svg>

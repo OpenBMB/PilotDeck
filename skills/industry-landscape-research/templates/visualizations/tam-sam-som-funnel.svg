@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TAM/SAM/SOM 漏斗：三算法交叉显示 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .tam { fill: #1A2A40; stroke: #4A90E2; stroke-width: 2; }
+      .sam { fill: #2A1F16; stroke: #C9A87C; stroke-width: 2; }
+      .som { fill: #3A1818; stroke: #C04040; stroke-width: 2; }
+      .label-big { fill: #E5E0D8; font-size: 22px; font-weight: 700; font-family: 'Playfair Display', serif; text-anchor: middle; }
+      .label-small { fill: #8B8680; font-size: 12px; text-anchor: middle; }
+      .label-num { fill: #C9A87C; font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-anchor: middle; }
+      .method-box { fill: #1A1C20; stroke: #2A2A2E; stroke-width: 1; }
+      .method-title { fill: #C9A87C; font-size: 13px; font-weight: 600; }
+      .method-result { fill: #E5E0D8; font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+      .method-detail { fill: #8B8680; font-size: 11px; }
+      .converge { fill: #6BE06B; font-size: 13px; font-style: italic; }
+      .title { fill: #E5E0D8; font-size: 28px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1200" height="800"/>
+
+  <text class="title" x="50" y="50">{{INDUSTRY_NAME}} TAM / SAM / SOM</text>
+  <text class="subtitle" x="50" y="74">三算法交叉验证 · 数据截止 {{AS_OF_DATE}}</text>
+
+  <!-- 漏斗 -->
+  <polygon class="tam" points="180,140 700,140 660,260 220,260"/>
+  <text class="label-big" x="440" y="180">TAM</text>
+  <text class="label-num" x="440" y="220">{{TAM_VALUE}}</text>
+  <text class="label-small" x="440" y="244">总潜在市场（不受约束）</text>
+
+  <polygon class="sam" points="240,280 640,280 600,400 280,400"/>
+  <text class="label-big" x="440" y="320">SAM</text>
+  <text class="label-num" x="440" y="360">{{SAM_VALUE}}</text>
+  <text class="label-small" x="440" y="384">可服务（产品/地理/合规可达）</text>
+
+  <polygon class="som" points="300,420 580,420 540,540 340,540"/>
+  <text class="label-big" x="440" y="460">SOM</text>
+  <text class="label-num" x="440" y="500">{{SOM_VALUE}}</text>
+  <text class="label-small" x="440" y="524">可获得（3-5 年内现实份额）</text>
+
+  <!-- 三种算法盒子（右侧） -->
+  <rect class="method-box" x="760" y="140" width="380" height="120" rx="6"/>
+  <text class="method-title" x="780" y="166">① 自上而下（Top-down）</text>
+  <text class="method-result" x="780" y="194">{{METHOD_1_TAM}}</text>
+  <text class="method-detail" x="780" y="214">{{METHOD_1_FORMULA}}</text>
+  <text class="method-detail" x="780" y="232">来源：{{METHOD_1_SOURCE}}</text>
+  <text class="method-detail" x="780" y="250">置信：{{METHOD_1_CONFIDENCE}}</text>
+
+  <rect class="method-box" x="760" y="280" width="380" height="120" rx="6"/>
+  <text class="method-title" x="780" y="306">② 自下而上（Bottom-up）</text>
+  <text class="method-result" x="780" y="334">{{METHOD_2_TAM}}</text>
+  <text class="method-detail" x="780" y="354">{{METHOD_2_FORMULA}}</text>
+  <text class="method-detail" x="780" y="372">来源：{{METHOD_2_SOURCE}}</text>
+  <text class="method-detail" x="780" y="390">置信：{{METHOD_2_CONFIDENCE}}</text>
+
+  <rect class="method-box" x="760" y="420" width="380" height="120" rx="6"/>
+  <text class="method-title" x="780" y="446">③ 类比法（Analogy）</text>
+  <text class="method-result" x="780" y="474">{{METHOD_3_TAM}}</text>
+  <text class="method-detail" x="780" y="494">{{METHOD_3_FORMULA}}</text>
+  <text class="method-detail" x="780" y="512">来源：{{METHOD_3_SOURCE}}</text>
+  <text class="method-detail" x="780" y="530">置信：{{METHOD_3_CONFIDENCE}}</text>
+
+  <!-- 收敛区间 -->
+  <rect class="method-box" x="100" y="600" width="1040" height="160" rx="6" style="fill:#1E2A1E;stroke:#6BE06B;"/>
+  <text class="method-title" x="120" y="630" style="fill:#6BE06B;">收敛判定</text>
+  <text class="converge" x="120" y="660">三种算法中位数 = {{CONVERGED_TAM}}，区间 [{{TAM_LOW}} — {{TAM_HIGH}}]</text>
+  <text class="method-detail" x="120" y="690">差异原因：{{DELTA_EXPLAIN}}</text>
+  <text class="method-detail" x="120" y="710">敏感度分析（关键变量 ±20%）：{{SENSITIVITY}}</text>
+  <text class="method-detail" x="120" y="730">局限性：{{LIMITATION}}</text>
+  <text class="method-detail" x="120" y="750">下一步：{{NEXT_STEP}}</text>
+</svg>
