@@ -4,7 +4,7 @@ import test from "node:test";
 import { parseModelConfig } from "../../../src/model/config/parseModelConfig.js";
 import type { CanonicalModelEvent, CanonicalModelRequest, ProviderConfig } from "../../../src/model/protocol/canonical.js";
 import type { GoogleClientFactory } from "../../../src/model/providers/google/client.js";
-import { resolveStreamIdleTimeout, streamModel } from "../../../src/model/streaming/streamModel.js";
+import { resolveStreamIdleTimeout, streamModel, type ProviderAttemptEvent } from "../../../src/model/streaming/streamModel.js";
 
 function createConfig(input: { timeoutMs?: number; streamMaxRetries?: number; streamIdleTimeoutMs?: number } = {}) {
   return parseModelConfig({
@@ -98,15 +98,19 @@ test("stream request setup uses the stream timeout instead of provider timeout",
 test("retries an interrupted stream only before the first content event", async () => {
   const config = createConfig();
   let requests = 0;
+  const attempts: ProviderAttemptEvent[] = [];
   const events = await collect(streamModel(createRequest(), config, {
     fetch: async () => {
       requests++;
       return requests === 1 ? sse("") : sse("data: [DONE]\n\n");
     },
+    onProviderAttempt: (attempt) => attempts.push(attempt),
   }));
 
   assert.equal(requests, 2);
   assert.equal(events.some((event) => event.type === "error"), false);
+  assert.deepEqual(attempts.map((attempt) => [attempt.attempt, attempt.status]), [[1, "failed"], [2, "succeeded"]]);
+  assert.equal("messages" in attempts[0]!, false);
 });
 
 test("continues a pure text stream after interruption", async () => {
