@@ -29,6 +29,7 @@
     "dev": "node scripts/dev-launcher.mjs",
     "test": "npm run build && node --test --test-force-exit --test-timeout 60000 \"dist/tests/**/*.test.js\" \"dist/tests/**/*.spec.js\"",
     "evaluation:summarize": "tsx scripts/evaluation/summarize-ledger.mts",
+    "evaluation:analyze": "tsx scripts/evaluation/analyze-results.mts",
     "evaluation:budget": "tsx scripts/evaluation/estimate-budget.mts",
     "e2e:real-compaction": "npm run build && PILOTDECK_RUN_REAL_COMPACTION_E2E=1 node dist/tests/agent/e2e/run-real-compaction.js",
     "e2e:real-agent-lifecycle-hooks": "npm run build && PILOTDECK_RUN_REAL_AGENT_LIFECYCLE_E2E=1 node dist/tests/agent/e2e/run-real-agent-lifecycle-hooks.js",
