@@ -18,6 +18,12 @@ export type AgentInput =
 export type AgentSubmitOptions = {
   turnId?: string;
   maxTurns?: number;
+  /** Gateway-owned USD ceiling for this submitted turn. */
+  maxBudgetUsd?: number;
+  /** Gateway-owned USD ceiling shared by every turn in an SDK session. */
+  taskBudgetUsd?: number;
+  /** Gateway-owned amount already charged to `taskBudgetUsd` before this turn. */
+  initialTaskBudgetSpentUsd?: number;
   metadata?: Record<string, unknown>;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
@@ -27,6 +33,8 @@ export type AgentSubmitOptions = {
   /** Allow model-visible plan mode tools for this turn. */
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
+  /** Allow the native elicitation channel without enabling permission prompts. */
+  canElicit?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
   /**
    * Synthetic messages appended after the user input in the turn.

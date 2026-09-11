@@ -1,14 +1,29 @@
 import type { CanonicalThinkingConfig, CanonicalToolChoice, MultimodalConstraints } from "../../model/index.js";
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
+import type { SubagentDefinition } from "../sub/builtinSubagentTypes.js";
 
 export type AgentRuntimeConfig = {
   provider: string;
   model: string;
+  /** Gateway-resolved session fallback candidates for pre-content model failures. */
+  fallbackModels?: Array<{ provider: string; model: string }>;
+  /**
+   * Gateway-resolved, SDK-only model restriction for this runtime. It is
+   * consumed by the Router adapter per execution; absent preserves native
+   * Router selection and fallback behavior.
+   */
+  managedModelPolicy?: { allow: string[]; deny: string[] };
+  /** Opt-in projection of transient tool progress to the Gateway event stream. */
+  includeToolProgress?: boolean;
   /** Multimodal constraints of the selected model (absent = text-only). */
   modelMultimodal?: MultimodalConstraints;
   cwd: string;
   systemPrompt?: string;
+  /** Optional addendum appended after the assembled system prompt. */
+  appendSystemPrompt?: string;
+  /** SDK-provided plan-mode instructions, applied only in native plan mode. */
+  planModeInstructions?: string;
   maxOutputTokens?: number;
   temperature?: number;
   thinking?: CanonicalThinkingConfig;
@@ -52,6 +67,8 @@ export type AgentRuntimeConfig = {
   };
   /** Optional timeout budget for forked subagents spawned by the `agent` tool. */
   subagentTimeoutMs?: number;
+  /** Session-scoped Agent SDK presets. Absent preserves builtin definitions. */
+  subagentDefinitions?: Record<string, SubagentDefinition>;
   /** Enable automatic JSON self-correction retry on invalid_tool_arguments. Default false. */
   jsonSelfCorrect?: boolean;
   /**

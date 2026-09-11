@@ -811,6 +811,7 @@ function createFallbackGateway(): Gateway {
       throw new Error("Cron runtime is not configured.");
     },
     respondElicitation: async () => ({ delivered: false }),
+    respondUserDialog: async () => ({ delivered: false }),
     permissionDecide: async () => ({ delivered: false }),
     grantSessionPermission: async () => ({ granted: false }),
     readSessionMessages: async () => {

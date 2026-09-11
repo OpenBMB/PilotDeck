@@ -13,6 +13,7 @@ import type { AgentStatusMessageInput, AgentTranscriptWriterState } from "../../
 import type { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
 import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
+import type { PromptSuggestionGenerator } from "../../session/prompt/PromptSuggestionGenerator.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 import { FileArtifactCollector, type FileArtifact } from "../../session/artifacts/index.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
@@ -23,6 +24,12 @@ export type TurnRunnerOptions = {
   messages: CanonicalMessage[];
   input: AgentInput;
   maxTurns?: number;
+  /** Gateway-owned USD ceiling for this submitted turn. */
+  maxBudgetUsd?: number;
+  /** Gateway-owned USD ceiling shared by every turn in an SDK session. */
+  taskBudgetUsd?: number;
+  /** Amount already charged to `taskBudgetUsd` before this turn. */
+  initialTaskBudgetSpentUsd?: number;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -31,6 +38,7 @@ export type TurnRunnerOptions = {
   /** Allow model-visible plan mode tools for this turn. */
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
+  canElicit?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
   abortSignal?: AbortSignal;
   /** Synthetic messages appended after user input; stored with metadata.synthetic flag. */
@@ -60,11 +68,14 @@ export type TurnRunnerRuntimeReloadSnapshot = {
   metadata?: SessionMetadataValue;
 };
 
-export type AgentLoopRunner = Pick<AgentLoop, "run" | "snapshotFileState">;
+export type AgentLoopRunner = Pick<AgentLoop, "run" | "snapshotFileState"> &
+  Partial<Pick<AgentLoop, "seedReadState">>;
 
 export type TurnRunnerDependencies = {
   metadataStore?: SessionMetadataStore;
   sessionTitleGenerator?: SessionTitleGenerator;
+  /** Optional Gateway-owned generator for SDK promptSuggestions. */
+  promptSuggestionGenerator?: PromptSuggestionGenerator;
   autoGenerateSessionTitle?: boolean;
 };
 
@@ -228,12 +239,16 @@ export class TurnRunner {
           turnId: options.turnId,
           messages,
           maxTurns: options.maxTurns,
+          maxBudgetUsd: options.maxBudgetUsd,
+          taskBudgetUsd: options.taskBudgetUsd,
+          initialTaskBudgetSpentUsd: options.initialTaskBudgetSpentUsd,
           runMode: options.runMode,
           permissionMode: options.permissionMode,
           allowedReadFiles: options.allowedReadFiles,
           basePermissionMode: options.basePermissionMode,
           allowPlanModeTools: options.allowPlanModeTools,
           canPrompt: options.canPrompt,
+          canElicit: options.canElicit,
           permissionRules: options.permissionRules,
           modelOverride: options.modelOverride,
           abortSignal: options.abortSignal,
@@ -298,6 +313,10 @@ export class TurnRunner {
           yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
         for (const event of unappliedSteers) yield event;
+        const suggestion = await this.generatePromptSuggestion(options, prompt, runResult.result);
+        if (suggestion) {
+          yield { type: "prompt_suggestion", sessionId: options.sessionId, turnId: options.turnId, suggestion };
+        }
         if (turnCompletedEvent) yield turnCompletedEvent;
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
         await this.finalizeSessionMetadata(options, sessionTitle);
@@ -335,6 +354,15 @@ export class TurnRunner {
 
   snapshotFileState(): AgentLoopSeedState {
     return this.loop.snapshotFileState();
+  }
+
+  async seedReadState(filePath: string, mtimeMs: number): Promise<{ applied: boolean }> {
+    if (!this.loop.seedReadState) {
+      throw Object.assign(new Error("seedReadState is unavailable for this AgentLoop runner."), {
+        code: "CAPABILITY_UNAVAILABLE",
+      });
+    }
+    return this.loop.seedReadState(filePath, mtimeMs);
   }
 
   private createErrorResult(options: TurnRunnerOptions, error: ReturnType<typeof agentError>): AgentTurnResult {
@@ -479,6 +507,28 @@ export class TurnRunner {
   ): Promise<void> {
     await this.flushReadySessionTitle(options, pending);
     await this.turnDependencies.metadataStore?.reappendTail(options.turnId).catch(() => {});
+  }
+
+  private async generatePromptSuggestion(
+    options: TurnRunnerOptions,
+    userPrompt: string,
+    result: AgentTurnResult,
+  ): Promise<string | null> {
+    const generate = this.turnDependencies.promptSuggestionGenerator;
+    if (!generate || result.type !== "success" || options.abortSignal?.aborted) return null;
+    const assistantResponse = result.finalMessage?.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n")
+      .trim();
+    if (!assistantResponse) return null;
+    return await generate({
+      userPrompt,
+      assistantResponse,
+      sessionId: options.sessionId,
+      turnId: options.turnId,
+      signal: options.abortSignal ?? new AbortController().signal,
+    });
   }
 
   private async persistListingPromptMetadata(

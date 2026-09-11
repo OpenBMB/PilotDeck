@@ -15,8 +15,10 @@ export const FORK_BOILERPLATE_TAG = "pilotdeck-fork";
 export const FORK_PLACEHOLDER_RESULT =
   "<pilotdeck-fork-placeholder>Subtask handled by forked subagent — see child transcript.</pilotdeck-fork-placeholder>";
 
-export function buildForkedMessages(directive: string): CanonicalMessage[] {
+export function buildForkedMessages(directive: string, initialPrompt?: string): CanonicalMessage[] {
+  const prefix = initialPrompt?.trim();
   return [
+    ...(prefix ? [{ role: "user" as const, content: [{ type: "text" as const, text: prefix }] }] : []),
     { role: "user", content: [{ type: "text", text: directive }] },
   ];
 }

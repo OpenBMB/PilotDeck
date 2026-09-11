@@ -33,12 +33,14 @@ import type {
 import { ConcurrentToolScheduler } from "../../tool/scheduler/ConcurrentToolScheduler.js";
 import { ToolRuntime } from "../../tool/execution/ToolRuntime.js";
 import { PermissionRuntime } from "../../permission/index.js";
+import { McpRuntime, createMcpToolDefinitionsFromRuntime } from "../../mcp/index.js";
 import {
   buildForkedMessages,
 } from "./buildForkedMessages.js";
 import {
   buildSubagentSystemPrompt,
   type SubagentDefinition,
+  type SubagentMcpServerConfig,
 } from "./builtinSubagentTypes.js";
 import {
   applySystemPromptFilters,
@@ -73,6 +75,8 @@ export type SubAgentSessionOptions = {
   maxTurns?: number;
   /** Abort signal forwarded to the child loop. */
   abortSignal?: AbortSignal;
+  /** Read-only event tap used by the Gateway observer adapter. */
+  onActivity?: (event: AgentEvent) => void;
   /**
    * Optional sidechain transcript writer for C3. When provided, each
    * AgentLoop event that produces a durable message is mirrored here. The
@@ -117,87 +121,102 @@ export class SubAgentSession {
     const startedAt = Date.now();
 
     const messages = this.buildInitialMessages();
-    const subRegistry = this.buildScopedRegistry();
-    const subDependencies = this.cloneDependencies(subRegistry);
-    const subConfig = this.buildConfig();
+    const nativeScopedRegistry = this.buildScopedRegistry();
+    const subRegistry = this.options.parentDependencies.createSubagentToolRegistry?.(
+      this.options.definition,
+      nativeScopedRegistry,
+    ) ?? nativeScopedRegistry;
+    const definitionMcp = await this.attachDefinitionMcpTools(subRegistry);
+    try {
+      const filteredSubRegistry = this.options.parentDependencies.filterSubagentToolRegistry?.(
+        this.options.definition,
+        subRegistry,
+      ) ?? subRegistry;
+      const subDependencies = this.cloneDependencies(filteredSubRegistry);
+      const subConfig = this.buildConfig();
 
-    const loop = new AgentLoop(subConfig, subDependencies, {
-      readFileState: cloneReadFileState(this.options.parentReadFileState),
-      writeSnapshots: cloneWriteSnapshots(this.options.parentWriteSnapshots),
-    });
+      const loop = new AgentLoop(subConfig, subDependencies, {
+        readFileState: cloneReadFileState(this.options.parentReadFileState),
+        writeSnapshots: cloneWriteSnapshots(this.options.parentWriteSnapshots),
+      });
 
-    let last: AgentLoopRunResult | undefined;
-    const turnId = `${this.options.subagentId}-t0`;
-    if (this.options.sidechainTranscript) {
-      await this.options.sidechainTranscript.recordAcceptedInput(
-        this.options.subagentSessionId,
-        turnId,
-        messages,
-      );
-    }
-    const generator = loop.run({
-      sessionId: this.options.subagentSessionId,
-      turnId,
-      messages,
-      maxTurns: this.options.maxTurns,
-      abortSignal: this.options.abortSignal,
-    });
-    while (true) {
-      const next = await generator.next();
-      if (next.done) {
-        last = next.value;
-        break;
-      }
-      const event = next.value;
-      this.forwardActivity(event);
-      if (
-        this.options.sidechainTranscript &&
-        (event.type === "assistant_message" || event.type === "tool_results_projected")
-      ) {
-        await this.options.sidechainTranscript.recordDurableMessage(
+      let last: AgentLoopRunResult | undefined;
+      const turnId = `${this.options.subagentId}-t0`;
+      if (this.options.sidechainTranscript) {
+        await this.options.sidechainTranscript.recordAcceptedInput(
           this.options.subagentSessionId,
           turnId,
-          event.type === "assistant_message" ? event.message : event.message,
+          messages,
         );
       }
+      const generator = loop.run({
+        sessionId: this.options.subagentSessionId,
+        turnId,
+        messages,
+        maxTurns: this.options.maxTurns,
+        abortSignal: this.options.abortSignal,
+      });
+      while (true) {
+        const next = await generator.next();
+        if (next.done) {
+          last = next.value;
+          break;
+        }
+        const event = next.value;
+        this.options.onActivity?.(event);
+        this.forwardActivity(event);
+        if (
+          this.options.sidechainTranscript &&
+          (event.type === "assistant_message" || event.type === "tool_results_projected")
+        ) {
+          await this.options.sidechainTranscript.recordDurableMessage(
+            this.options.subagentSessionId,
+            turnId,
+            event.type === "assistant_message" ? event.message : event.message,
+          );
+        }
+      }
+      if (!last) {
+        throw new Error("SubAgentSession: AgentLoop returned no result");
+      }
+      if (last.result.type === "aborted") {
+        throw new Error(
+          `SubAgentSession: subagent turn aborted (${last.result.stopReason})`,
+        );
+      }
+      if (last.result.type === "error") {
+        const details = last.result.errors?.map((error) => error.message).join("; ");
+        throw new Error(
+          `SubAgentSession: subagent turn failed (${last.result.stopReason})${details ? `: ${details}` : ""}`,
+        );
+      }
+      const text = extractFinalAssistantText(last.messages);
+      const parsed = parseSummary(text);
+      return {
+        subagentId: this.options.subagentId,
+        definitionId: this.options.definition.id,
+        markdown: text,
+        parsed,
+        usage: last.result.usage,
+        turns: last.result.turns,
+        durationMs: Date.now() - startedAt,
+      };
+    } finally {
+      await definitionMcp?.stop();
     }
-    if (!last) {
-      throw new Error("SubAgentSession: AgentLoop returned no result");
-    }
-    if (last.result.type === "aborted") {
-      throw new Error(
-        `SubAgentSession: subagent turn aborted (${last.result.stopReason})`,
-      );
-    }
-    if (last.result.type === "error") {
-      const details = last.result.errors?.map((error) => error.message).join("; ");
-      throw new Error(
-        `SubAgentSession: subagent turn failed (${last.result.stopReason})${details ? `: ${details}` : ""}`,
-      );
-    }
-    const text = extractFinalAssistantText(last.messages);
-    const parsed = parseSummary(text);
-    return {
-      subagentId: this.options.subagentId,
-      definitionId: this.options.definition.id,
-      markdown: text,
-      parsed,
-      usage: last.result.usage,
-      turns: last.result.turns,
-      durationMs: Date.now() - startedAt,
-    };
   }
 
   private buildInitialMessages(): CanonicalMessage[] {
-    return buildForkedMessages(this.options.directive);
+    return buildForkedMessages(this.options.directive, this.options.definition.initialPrompt);
   }
 
   private buildScopedRegistry(): ToolRegistry {
     const scoped = new ToolRegistry();
     const allowedSet = new Set(this.options.definition.allowedTools);
+    const disallowedSet = new Set(this.options.definition.disallowedTools ?? []);
     const wildcard = allowedSet.has("*");
     for (const tool of this.options.parentDependencies.tools.registry.list()) {
-      if (!wildcard && !allowedSet.has(tool.name)) {
+      if ((!wildcard && !allowedSet.has(tool.name)) || disallowedSet.has(tool.name)) {
         continue;
       }
       if (tool.name === "enter_plan_mode" || tool.name === "exit_plan_mode") {
@@ -209,12 +228,36 @@ export class SubAgentSession {
       if (tool.name.startsWith("always_on_")) {
         continue; // Always-On tools require a RunContext unavailable in subagents.
       }
-      if (tool.name === "ask_user_question") {
-        continue; // Subagents have no elicitation channel.
+      if (tool.name === "ask_user_question" || tool.name === "request_user_input") {
+        continue; // Subagents cannot own parent-session user dialogs.
       }
       scoped.register(tool as PilotDeckToolDefinition);
     }
     return scoped;
+  }
+
+  /** Start only this definition's MCP endpoints and add their native tools. */
+  private async attachDefinitionMcpTools(registry: ToolRegistry): Promise<McpRuntime | undefined> {
+    const configured = this.options.definition.mcpServers;
+    if (!configured || Object.keys(configured).length === 0) return undefined;
+    const runtime = new McpRuntime(
+      Object.entries(configured).map(([id, config]) => toSubagentMcpServerSpec(id, config)),
+    );
+    try {
+      await runtime.start();
+      const allowed = new Set(this.options.definition.allowedTools);
+      const denied = new Set(this.options.definition.disallowedTools ?? []);
+      const wildcard = allowed.has("*");
+      for (const tool of await createMcpToolDefinitionsFromRuntime(runtime)) {
+        if ((!wildcard && !allowed.has(tool.name)) || denied.has(tool.name)) continue;
+        if (registry.has(tool.name)) registry.replace(tool);
+        else registry.register(tool);
+      }
+      return runtime;
+    } catch (error) {
+      await runtime.stop();
+      throw error;
+    }
   }
 
   private forwardActivity(event: AgentEvent): void {
@@ -263,7 +306,8 @@ export class SubAgentSession {
     return {
       router: this.options.parentDependencies.router,
       tools: { scheduler, registry },
-      context: this.options.parentDependencies.context,
+      context: this.options.parentDependencies.createSubagentContext?.(this.options.definition)
+        ?? this.options.parentDependencies.context,
       now: this.options.parentDependencies.now,
       uuid: this.options.parentDependencies.uuid,
       auditRecorder: this.options.parentDependencies.auditRecorder,
@@ -280,7 +324,10 @@ export class SubAgentSession {
 
   private buildConfig(): AgentRuntimeConfig {
     const parent = this.options.parentConfig;
-    const subagentModel = parent.subagentModel;
+    const permissionMode = this.options.definition.permissionMode ?? parent.permissionMode;
+    // A dynamic AgentDefinition model is more specific than the project-wide
+    // subagent default. When neither is present, preserve parent inheritance.
+    const subagentModel = this.options.definition.modelOverride ?? parent.subagentModel;
     const {
       maxContextTokens: _parentMaxContextTokens,
       maxOutputTokens: _parentMaxOutputTokens,
@@ -291,9 +338,13 @@ export class SubAgentSession {
       parent.systemPrompt ?? "",
       this.options.definition,
     );
-    const systemPrompt = filteredParentSystem.length > 0
+    const baseSystemPrompt = filteredParentSystem.length > 0
       ? `${subagentSystem}\n\n${filteredParentSystem}`
       : subagentSystem;
+    const criticalReminder = this.options.definition.criticalSystemReminder?.trim();
+    const systemPrompt = criticalReminder
+      ? `${baseSystemPrompt}\n\n${criticalReminder}`
+      : baseSystemPrompt;
     return {
       ...(subagentModel ? parentWithoutTokenCaps : parent),
       ...(subagentModel
@@ -310,8 +361,10 @@ export class SubAgentSession {
       // object while constructing the registry.
       runMode: this.isReadOnlySession() ? "ask" : parent.runMode,
       isSubagent: true,
+      permissionMode,
       permissionContext: {
         ...parent.permissionContext,
+        mode: permissionMode,
         rules: {
           allow: parent.permissionContext.rules.allow,
           deny: parent.permissionContext.rules.deny,
@@ -333,6 +386,39 @@ export class SubAgentSession {
       || this.options.parentConfig.permissionMode === "plan"
       || this.options.parentConfig.runMode === "ask";
   }
+}
+
+function toSubagentMcpServerSpec(
+  id: string,
+  config: SubagentMcpServerConfig,
+): import("../../mcp/protocol/types.js").PilotDeckMcpServerSpec {
+  if (config.type === "stdio") {
+    return {
+      id,
+      transport: "stdio",
+      command: config.command,
+      ...(config.args?.length ? { args: [...config.args] } : {}),
+      ...(config.env ? { env: { ...config.env } } : {}),
+      ...(config.cwd ? { cwd: config.cwd } : {}),
+      ...(config.timeout !== undefined ? { callTimeoutMs: config.timeout } : {}),
+    };
+  }
+  if (config.type === "sse") {
+    return {
+      id,
+      transport: "sse",
+      url: config.url,
+      ...(config.headers ? { headers: { ...config.headers } } : {}),
+      ...(config.timeout !== undefined ? { callTimeoutMs: config.timeout } : {}),
+    };
+  }
+  return {
+    id,
+    transport: "streamable_http",
+    url: config.url,
+    ...(config.headers ? { headers: { ...config.headers } } : {}),
+    ...(config.timeout !== undefined ? { callTimeoutMs: config.timeout } : {}),
+  };
 }
 
 function extractFinalAssistantText(messages: CanonicalMessage[]): string {

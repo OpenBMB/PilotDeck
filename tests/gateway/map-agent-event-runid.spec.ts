@@ -15,6 +15,20 @@ test("mapAgentEvent propagates runId to streaming lifecycle boundaries", () => {
   }, runId);
   assert.deepEqual(accepted, [{ type: "input_accepted", runId }]);
 
+  const permissionDenied = mapAgentEvent({
+    type: "permission_denied",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    toolName: "write_file",
+    reason: "Writes are disabled for this request.",
+  }, runId);
+  assert.deepEqual(permissionDenied, [{
+    type: "permission_denied",
+    toolName: "write_file",
+    reason: "Writes are disabled for this request.",
+    runId,
+  }]);
+
   const unapplied = mapAgentEvent({
     type: "steer_unapplied",
     sessionId: "session-1",
@@ -105,5 +119,126 @@ test("mapAgentEvent preserves an aborted subagent completion", () => {
     success: false,
     aborted: true,
     durationMs: 10,
+  });
+});
+
+test("mapAgentEvent exposes child text only when the SDK stream opts in", () => {
+  const event: AgentEvent = {
+    type: "subagent_model_event",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    subagentId: "subagent-1",
+    subagentType: "researcher",
+    event: { type: "text_delta", text: "Child result" },
+  };
+
+  assert.deepEqual(mapAgentEvent(event, "run-1"), [{
+    type: "agent_status",
+    event: "subagent_text_delta",
+    detail: {
+      subagentId: "subagent-1",
+      subagentType: "researcher",
+      text: "Child result",
+    },
+    runId: "run-1",
+  }]);
+
+  assert.deepEqual(mapAgentEvent(event, "run-1", { forwardSubagentText: true }), [{
+    type: "subagent_text_delta",
+    subagentId: "subagent-1",
+    subagentType: "researcher",
+    text: "Child result",
+    runId: "run-1",
+  }]);
+});
+
+test("mapAgentEvent forwards native context-budget diagnostics without changing legacy fields", () => {
+  const [mapped] = mapAgentEvent({
+    type: "context_budget",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    snapshot: {
+      tokens: 120,
+      displayTokens: 118,
+      localEstimateTokens: 130,
+      estimateSource: "usage",
+      usageTokens: 120,
+      totalContextTokens: 1_000,
+      maxContextTokens: 900,
+      effectiveContextTokens: 900,
+      maxOutputTokens: 100,
+      warningRatio: 0.8,
+      blockingRatio: 0.9,
+      ratio: 120 / 900,
+      state: "ok",
+      source: "provider",
+      exact: true,
+      reservedOutputTokens: 100,
+      breakdown: {
+        source: "local_estimate",
+        total: 130,
+        system: 30,
+        tools: 40,
+        messages: 40,
+        mcp: 10,
+        memory: 10,
+      },
+    },
+  }, "run-1");
+
+  assert.deepEqual(mapped, {
+    type: "context_budget",
+    used: 120,
+    displayUsed: 120,
+    localEstimateTokens: 130,
+    displayTokens: 118,
+    estimateSource: "usage",
+    usageTokens: 120,
+    total: 1_000,
+    totalContextTokens: 1_000,
+    maxContextTokens: 900,
+    effectiveTotal: 900,
+    effectiveContextTokens: 900,
+    maxOutputTokens: 100,
+    reservedOutputTokens: 100,
+    warningRatio: 0.8,
+    blockingRatio: 0.9,
+    ratio: 120 / 900,
+    state: "ok",
+    source: "provider",
+    exact: true,
+    breakdown: {
+      source: "local_estimate",
+      total: 130,
+      system: 30,
+      tools: 40,
+      messages: 40,
+      mcp: 10,
+      memory: 10,
+    },
+    runId: "run-1",
+  });
+});
+
+test("mapAgentEvent projects transient tool progress with the active run id", () => {
+  const [mapped] = mapAgentEvent({
+    type: "tool_progress",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    toolCallId: "call-1",
+    toolName: "bash",
+    message: "stdout: 12 bytes",
+    metadata: { stream: "stdout", byteCount: 12 },
+    createdAt: "2026-09-09T00:00:00.000Z",
+  }, "run-1");
+
+  assert.deepEqual(mapped, {
+    type: "tool_progress",
+    toolCallId: "call-1",
+    toolName: "bash",
+    message: "stdout: 12 bytes",
+    metadata: { stream: "stdout", byteCount: 12 },
+    createdAt: "2026-09-09T00:00:00.000Z",
+    runId: "run-1",
   });
 });

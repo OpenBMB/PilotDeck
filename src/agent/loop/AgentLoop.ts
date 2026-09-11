@@ -1,4 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   applyModelEventToAssembler,
@@ -33,7 +35,7 @@ import type {
 } from "../../tool/index.js";
 import {
   SUBAGENT_DEFINITIONS,
-  getSubagentDefinition,
+  type SubagentDefinition,
 } from "../sub/builtinSubagentTypes.js";
 import { agentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
@@ -53,7 +55,7 @@ import type {
   TokenCalibrationBaseline,
   TokenBudgetSnapshot,
 } from "../../context/index.js";
-import { actualInputTokensFromUsage } from "../../context/index.js";
+import { actualInputTokensFromUsage, countTokens } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
@@ -74,6 +76,17 @@ import {
 import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
 import { repairToolName } from "../../model/streaming/repairToolName.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
+import { resolvePilotDeckWorkspacePath } from "../../tool/builtin/filesystem/pathSafety.js";
+import { readTextFile } from "../../tool/builtin/filesystem/readTextFile.js";
+import { recordWriteSnapshot } from "../../tool/builtin/filesystem/writeSnapshots.js";
+import {
+  hasBinaryExtension,
+  isBlockedDevicePath,
+  isImagePath,
+  isNotebookPath,
+  isPdfPath,
+} from "../../tool/builtin/filesystem/fileTypeSafety.js";
+import { PilotDeckToolRuntimeError } from "../../tool/protocol/errors.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
@@ -124,11 +137,34 @@ type AgentStatusMessage = {
   detail?: Record<string, unknown>;
 };
 
+type InternalSubagentForkInput = Parameters<PilotDeckSubagentForkApi["fork"]>[0] & {
+  /** Internal observer launches must not recursively attach observers. */
+  suppressAutoObserver?: boolean;
+  /** Observer sessions use a host-restricted copy of a configured definition. */
+  definitionOverride?: SubagentDefinition;
+};
+
+type ObserverOutcome = {
+  success: boolean;
+  markdown?: string;
+  error?: string;
+  durationMs?: number;
+};
+
+const OBSERVER_MAX_ACTIVITY_EVENTS = 64;
+const OBSERVER_MAX_TEXT_CHARS = 12_000;
+
 export type AgentLoopInput = {
   sessionId: string;
   turnId: string;
   messages: CanonicalMessage[];
   maxTurns?: number;
+  /** Gateway-owned USD ceiling for this submitted turn. */
+  maxBudgetUsd?: number;
+  /** Gateway-owned USD ceiling shared by every turn in an SDK session. */
+  taskBudgetUsd?: number;
+  /** Amount already charged to `taskBudgetUsd` before this turn. */
+  initialTaskBudgetSpentUsd?: number;
   runMode?: AgentRunMode;
   permissionMode?: PermissionMode;
   allowedReadFiles?: string[];
@@ -137,6 +173,8 @@ export type AgentLoopInput = {
   /** Allow model-visible plan mode tools for this turn. */
   allowPlanModeTools?: boolean;
   canPrompt?: boolean;
+  /** SDK-only opt-in for native elicitation when permission prompts stay disabled. */
+  canElicit?: boolean;
   permissionRules?: Partial<PermissionRuleSet>;
   modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
@@ -180,6 +218,12 @@ export class AgentLoop {
   }>();
   private readonly modelPort: ModelInvokerPort;
   private readonly toolPort: ToolPort;
+  /** Populated only while one serialized AgentSession turn is running. */
+  private activeBudget?: {
+    turnSpentUsd: number;
+    taskBudgetUsd?: number;
+    initialTaskBudgetSpentUsd: number;
+  };
 
   constructor(
     private readonly config: AgentRuntimeConfig,
@@ -192,6 +236,8 @@ export class AgentLoop {
     this.modelPort = dependencies.ports?.model ?? createRouterModelInvokerPort(dependencies.router, {
       isMainAgent: !config.isSubagent,
       projectPath: config.cwd,
+      fallbackModels: config.fallbackModels,
+      managedModelPolicy: config.managedModelPolicy,
     });
     this.toolPort = dependencies.ports?.tools ?? createToolSchedulerPort(
       dependencies.tools.registry,
@@ -207,6 +253,69 @@ export class AgentLoop {
     };
   }
 
+  /**
+   * Seed the native file-read state after a caller has retained a prior Read
+   * outside the model context. This is an explicit SDK/Gateway control only;
+   * normal AgentLoop construction and turns leave the state untouched.
+   */
+  async seedReadState(filePath: string, mtimeMs: number): Promise<{ applied: boolean }> {
+    const pathContext = {
+      cwd: this.config.cwd,
+      permissionMode: this.config.permissionMode,
+      permissionContext: this.config.permissionContext,
+      allowedReadFiles: [...this.allowedReadFiles],
+    } as PilotDeckToolRuntimeContext;
+    const resolved = resolvePilotDeckWorkspacePath(filePath, pathContext, {
+      mustExist: true,
+      allowRegisteredReadFiles: true,
+    });
+    if (!resolved.ok) {
+      throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message, resolved.error.details);
+    }
+    if (
+      isBlockedDevicePath(resolved.absolutePath)
+      || hasBinaryExtension(resolved.absolutePath)
+      || isImagePath(resolved.absolutePath)
+      || isPdfPath(resolved.absolutePath)
+      || isNotebookPath(resolved.absolutePath)
+    ) {
+      throw new PilotDeckToolRuntimeError(
+        "invalid_tool_input",
+        "seedReadState supports only text files previously read by read_file.",
+      );
+    }
+
+    const expectedMtimeMs = Math.floor(mtimeMs);
+    const beforeRead = await stat(resolved.absolutePath);
+    if (!beforeRead.isFile()) {
+      throw new PilotDeckToolRuntimeError("file_conflict", `${resolved.absolutePath} is not a regular file.`);
+    }
+    if (Math.floor(beforeRead.mtimeMs) !== expectedMtimeMs) {
+      return { applied: false };
+    }
+
+    const content = await readTextFile(resolved.absolutePath);
+    const afterRead = await stat(resolved.absolutePath);
+    if (!afterRead.isFile()) {
+      throw new PilotDeckToolRuntimeError("file_conflict", `${resolved.absolutePath} is not a regular file.`);
+    }
+    if (Math.floor(afterRead.mtimeMs) !== expectedMtimeMs) {
+      return { applied: false };
+    }
+
+    this.readFileState.set(`${resolved.absolutePath}::text::1::all::`, {
+      mtimeMs: expectedMtimeMs,
+      kind: "text",
+    });
+    recordWriteSnapshot(
+      { writeSnapshots: this.writeSnapshots } as PilotDeckToolRuntimeContext,
+      resolved.absolutePath,
+      content,
+      expectedMtimeMs,
+    );
+    return { applied: true };
+  }
+
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
@@ -218,6 +327,16 @@ export class AgentLoop {
     let messages = [...input.messages];
     let turnCount = 1;
     let usage: CanonicalUsage = {};
+    const tracksBudget = input.maxBudgetUsd !== undefined || input.taskBudgetUsd !== undefined;
+    let spentBudgetUsd = input.initialTaskBudgetSpentUsd ?? 0;
+    let turnSpentBudgetUsd = 0;
+    this.activeBudget = tracksBudget
+      ? {
+          turnSpentUsd: 0,
+          taskBudgetUsd: input.taskBudgetUsd,
+          initialTaskBudgetSpentUsd: input.initialTaskBudgetSpentUsd ?? 0,
+        }
+      : undefined;
     let permissionDenials: AgentPermissionDenial[] = [];
     let structuredOutput: unknown;
     let finalMessage: CanonicalMessage | undefined;
@@ -553,6 +672,7 @@ export class AgentLoop {
         modelOverride: input.modelOverride
           ? { provider: input.modelOverride.provider, model: input.modelOverride.model }
           : undefined,
+        managedModelPolicy: this.config.managedModelPolicy,
       };
       let prepared = await this.modelPort.prepare({ request, context: modelContext });
       let decision = prepared.opaque as RouterDecision | undefined;
@@ -773,7 +893,6 @@ export class AgentLoop {
       }
 
       const assembled = assembleAssistantMessage(assembler);
-      usage = mergeUsage(usage, assembled.usage);
       // A fallback, media downgrade, or interrupted-stream continuation can
       // change request contents without changing the route. Calibrate only
       // against the exact request whose usage the provider reported.
@@ -791,8 +910,82 @@ export class AgentLoop {
         assistantMessage = repaired.message;
         toolCalls = repaired.toolCalls;
       }
+      const budgetUsage = !tracksBudget
+        ? assembled.usage
+        : this.resolveBudgetUsage(assembled.usage, requestInputEstimate, assistantMessage);
+      usage = mergeUsage(usage, budgetUsage);
       finalMessage = assistantMessage;
       expireConsumedTransientPrompts();
+
+      const budgetProvider = executedRequest?.provider ?? prepared.provider;
+      const budgetModel = executedRequest?.model ?? prepared.model;
+      const invocationCostUsd = this.estimateUsageCost(budgetUsage, budgetProvider, budgetModel);
+      if (invocationCostUsd !== undefined) {
+        spentBudgetUsd += invocationCostUsd;
+        turnSpentBudgetUsd += invocationCostUsd;
+        if (this.activeBudget) this.activeBudget.turnSpentUsd = turnSpentBudgetUsd;
+      }
+      const maxTurnBudgetReached = input.maxBudgetUsd !== undefined && turnSpentBudgetUsd >= input.maxBudgetUsd;
+      const taskBudgetReached = input.taskBudgetUsd !== undefined && spentBudgetUsd >= input.taskBudgetUsd;
+      if (maxTurnBudgetReached || taskBudgetReached) {
+        // A completed model request may cross a budget ceiling. Stop before
+        // recovery, tool execution, or another model request can add cost or
+        // create side effects. The normal, no-budget path is unchanged.
+        const taskBudgetIsTerminal = taskBudgetReached && !maxTurnBudgetReached;
+        const limit = taskBudgetIsTerminal ? input.taskBudgetUsd! : input.maxBudgetUsd!;
+        const errorCode = taskBudgetIsTerminal ? "agent_task_budget_reached" : "agent_max_budget_reached";
+        const budgetName = taskBudgetIsTerminal ? "taskBudget.total" : "maxBudgetUsd";
+        const error = agentError(
+          errorCode,
+          `Reached Gateway-owned ${budgetName} ($${limit.toFixed(6)}) after spending $${spentBudgetUsd.toFixed(6)}.`,
+          {
+            ...(input.maxBudgetUsd !== undefined ? { maxBudgetUsd: input.maxBudgetUsd } : {}),
+            ...(input.taskBudgetUsd !== undefined ? { taskBudgetUsd: input.taskBudgetUsd } : {}),
+            spentBudgetUsd,
+            turnSpentBudgetUsd,
+            lastInvocationCostUsd: invocationCostUsd,
+            provider: budgetProvider,
+            model: budgetModel,
+          },
+          taskBudgetIsTerminal
+            ? "Increase taskBudget.total or start a new SDK session with a larger budget."
+            : "Increase maxBudgetUsd or start a new turn with a larger budget.",
+        );
+        const safeMessage = safeFinalTextMessage(
+          assistantMessage,
+          assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls,
+          toolCalls,
+        );
+        finalMessage = safeMessage;
+        if (safeMessage) {
+          messages.push(safeMessage);
+          yield { type: "assistant_message", sessionId: input.sessionId, turnId: input.turnId, message: safeMessage };
+          await input.onDurableMessage?.(safeMessage);
+        }
+        await this.dispatchLifecycle(input, "StopFailure", { error: error.message });
+        yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: error.message };
+        yield await emitStatus({
+          event: taskBudgetIsTerminal ? "task_budget_reached" : "max_budget_reached",
+          kind: "error",
+          text: error.message,
+          detail: error.details as Record<string, unknown>,
+        });
+        const result = this.createTurnResult(input, {
+          type: "error",
+          stopReason: taskBudgetIsTerminal ? "task_budget" : "max_budget",
+          usage,
+          permissionDenials,
+          turns: turnCount,
+          startedAt,
+          finalMessage,
+          structuredOutput,
+          errors: [error],
+        });
+        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error };
+        await captureTurn(true);
+        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+        return { result, messages };
+      }
 
       const streamInterruption = assembled.error?.streamInterruption;
       if (streamInterruption) {
@@ -2089,11 +2282,13 @@ export class AgentLoop {
     const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
     const canPrompt = input.canPrompt ?? this.config.permissionContext.canPrompt;
+    const canElicit = input.canElicit === true && this.dependencies.elicitation !== undefined;
     const promptBlockedToolNames = canPrompt
       ? new Set<string>()
       : new Set(
           this.toolPort.list()
-            .filter((tool) => requiresPromptCapability(tool, {}))
+            .filter((tool) => requiresPromptCapability(tool, {})
+              && !(canElicit && tool.name === "ask_user_question"))
             .map((tool) => tool.name),
         );
     let toolDefinitions = this.toolPort.list()
@@ -2125,7 +2320,11 @@ export class AgentLoop {
       tools,
       maxMessages: this.config.maxContextMessages,
       customSystemPrompt: this.config.systemPrompt,
-      appendSystemPrompt: planTodo?.buildPromptAddendum(),
+      appendSystemPrompt: joinSystemPromptAddenda(
+        this.config.appendSystemPrompt,
+        this.config.permissionMode === "plan" ? this.config.planModeInstructions : undefined,
+        planTodo?.buildPromptAddendum(),
+      ),
       abortSignal: input.abortSignal,
     });
 
@@ -2181,6 +2380,48 @@ export class AgentLoop {
       metadata: this.config.metadata,
       cacheBreakpoints: finalCacheBreakpoints,
       cachePlan: finalCachePlan,
+    };
+  }
+
+  private estimateUsageCost(
+    usage: CanonicalUsage | undefined,
+    provider: string,
+    model: string,
+  ): number | undefined {
+    const routerEstimate = this.dependencies.router.estimateUsageCost?.(usage, provider, model);
+    if (typeof routerEstimate === "number" && Number.isFinite(routerEstimate) && routerEstimate >= 0) {
+      return routerEstimate;
+    }
+    const nativeCost = usage?.nativeCost;
+    return typeof nativeCost === "number" && Number.isFinite(nativeCost) && nativeCost >= 0
+      ? nativeCost
+      : undefined;
+  }
+
+  /**
+   * Provider usage is preferred. When a budgeted invocation has no usage
+   * payload, reuse the existing token-accounting estimator so the Gateway
+   * still has a conservative cost basis before it permits another action.
+   */
+  private resolveBudgetUsage(
+    usage: CanonicalUsage | undefined,
+    estimatedInputTokens: number | undefined,
+    assistantMessage: CanonicalMessage,
+  ): CanonicalUsage | undefined {
+    if (usage && Object.values(usage).some((value) => typeof value === "number" && Number.isFinite(value))) {
+      return usage;
+    }
+    const responseText = assistantMessage.content.map((block) => {
+      if (block.type === "text" || block.type === "thinking") return block.text;
+      if (block.type === "tool_call") return typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {});
+      return "";
+    }).join("\n");
+    const outputTokens = countTokens(responseText);
+    if (estimatedInputTokens === undefined && outputTokens === 0) return usage;
+    return {
+      ...(estimatedInputTokens !== undefined ? { inputTokens: estimatedInputTokens } : {}),
+      ...(outputTokens > 0 ? { outputTokens } : {}),
+      totalTokens: (estimatedInputTokens ?? 0) + outputTokens,
     };
   }
 
@@ -2471,6 +2712,7 @@ export class AgentLoop {
       runMode: this.config.runMode ?? "agent",
       permissionMode: this.config.permissionMode,
       permissionContext,
+      canElicit: input.canElicit === true && this.dependencies.elicitation !== undefined,
       auditRecorder: this.dependencies.auditRecorder,
       now: this.now,
       env: buildTurnEnvironment(
@@ -2480,6 +2722,22 @@ export class AgentLoop {
         input.turnId,
       ),
       maxResultBytes: this.config.maxResultBytes,
+      ...(this.config.includeToolProgress === true && this.dependencies.eventEmitter
+        ? {
+            progress: (event: import("../../tool/index.js").PilotDeckToolProgressEvent) => {
+              this.dependencies.eventEmitter?.({
+                type: "tool_progress",
+                sessionId: input.sessionId,
+                turnId: input.turnId,
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                message: event.message,
+                ...(event.metadata ? { metadata: event.metadata } : {}),
+                createdAt: event.createdAt,
+              });
+            },
+          }
+        : {}),
       // Tools that need a secondary model call (e.g. `agent` subagents in
       // fallback mode, `web_fetch` extraction) get a thin adapter that
       // funnels into the router's stream so subagents inherit fallback /
@@ -2489,12 +2747,15 @@ export class AgentLoop {
           this.dependencies.router.stream(request, {
             sessionId: input.sessionId,
             turnId: input.turnId,
-            projectPath: this.config.cwd,
-            abortSignal: signal,
-            isMainAgent: false,
-          }),
+          projectPath: this.config.cwd,
+          abortSignal: signal,
+          isMainAgent: false,
+          fallbackModels: this.config.fallbackModels,
+          managedModelPolicy: this.config.managedModelPolicy,
+        }),
       },
       elicitation: this.dependencies.elicitation,
+      userDialog: this.dependencies.userDialog,
       fileHistory: this.dependencies.fileHistory,
       subagentDepth: this.config.subagentDepth ?? 0,
       subagent: this.buildSubagentForkApi(input, messages),
@@ -2525,20 +2786,71 @@ export class AgentLoop {
   ): PilotDeckSubagentForkApi {
     const depth = this.config.subagentDepth ?? 0;
     const maxDepth = this.config.maxSubagentDepth ?? 1;
+    const definitions: Record<string, SubagentDefinition> =
+      this.config.subagentDefinitions ?? SUBAGENT_DEFINITIONS;
     return {
       depth,
       maxSubagentDepth: maxDepth,
       listDefinitions: () =>
-        Object.values(SUBAGENT_DEFINITIONS).map((d) => ({
+        Object.values(definitions).map((d) => ({
           id: d.id,
           description: d.description,
         })),
-      isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
-      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
+      isAllowedDefinition: (id: string) => definitions[id] !== undefined,
+      isBackgroundDefinition: (id: string) => definitions[id]?.background === true,
+      launchBackground: async ({ definitionId, directive, subagentId, toolCallId, timeoutMs }) => {
+        const definition = definitions[definitionId];
+        if (!definition) throw new Error(`Unknown subagent type: ${definitionId}`);
+        if (!definition.background) {
+          throw new Error(`Subagent type ${definitionId} is not configured for background execution.`);
+        }
+        const launcher = this.dependencies.backgroundSubagents;
+        if (!launcher) {
+          throw new Error("Background subagent execution is unavailable in this host.");
+        }
+        return launcher.launch({
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          subagentId,
+          subagentType: definition.id,
+          // A background child must outlive its parent's tool call and turn.
+          // Its Gateway-owned controller is the only cancellation authority.
+          run: async (abortSignal) => {
+            await this.buildSubagentForkApi(input, messages).fork({
+              definitionId,
+              directive,
+              subagentId,
+              toolCallId,
+              abortSignal,
+              timeoutMs,
+            });
+          },
+        });
+      },
+      fork: async (forkInput) => {
+        const {
+          definitionId,
+          directive,
+          subagentId,
+          toolCallId,
+          abortSignal,
+          timeoutMs,
+        } = forkInput;
+        const internalInput = forkInput as InternalSubagentForkInput;
         // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
-        const def = getSubagentDefinition(definitionId);
+        const def = internalInput.definitionOverride ?? definitions[definitionId];
         if (!def) throw new Error(`Unknown subagent type: ${definitionId}`);
+        const observerDefinition = !internalInput.suppressAutoObserver && def.observer
+          ? definitions[def.observer]
+          : undefined;
+        if (def.observer && !internalInput.suppressAutoObserver && !observerDefinition) {
+          throw new Error(`Observer definition ${def.observer} for ${def.id} is not configured.`);
+        }
+        if (observerDefinition && !this.dependencies.observerSubagents) {
+          throw new Error(`Observer definition ${observerDefinition.id} requires a host observer-subagent launcher.`);
+        }
+        const observerActivity: AgentEvent[] = [];
         const composedAbort = composeAbortSignal({
           parent: abortSignal,
           timeoutMs,
@@ -2586,7 +2898,15 @@ export class AgentLoop {
           parentTurnId: input.turnId,
           subagentSessionId,
           subagentId,
+          maxTurns: def.maxTurns,
           abortSignal: composedAbort.signal,
+          ...(observerDefinition
+            ? {
+                onActivity: (event: AgentEvent) => {
+                  if (observerActivity.length < OBSERVER_MAX_ACTIVITY_EVENTS) observerActivity.push(event);
+                },
+              }
+            : {}),
           sidechainTranscript: sidechain
             ? {
                 recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
@@ -2638,6 +2958,24 @@ export class AgentLoop {
             aborted,
             durationMs: 0,
           });
+          if (observerDefinition) {
+            await this.launchObserverSubagent({
+              input,
+              messages,
+              definitions,
+              observedDefinition: def,
+              observerDefinition,
+              observedSubagentId: subagentId,
+              activity: observerActivity,
+              directive,
+              observerMessage: def.observerMessage,
+              timeoutMs,
+              outcome: {
+                success: false,
+                error: failure instanceof Error ? failure.message : String(failure),
+              },
+            });
+          }
           throw failure;
         }
         composedAbort.cleanup();
@@ -2667,6 +3005,25 @@ export class AgentLoop {
           success: !errored,
           durationMs: report.durationMs,
         });
+        if (observerDefinition) {
+          await this.launchObserverSubagent({
+            input,
+            messages,
+            definitions,
+            observedDefinition: def,
+            observerDefinition,
+            observedSubagentId: subagentId,
+            activity: observerActivity,
+            directive,
+            observerMessage: def.observerMessage,
+            timeoutMs,
+            outcome: {
+              success: true,
+              markdown: report.markdown,
+              durationMs: report.durationMs,
+            },
+          });
+        }
 
         return {
           markdown: report.markdown,
@@ -2677,6 +3034,104 @@ export class AgentLoop {
         };
       },
     };
+  }
+
+  /**
+   * Start the observer only after the observed fork has produced its bounded
+   * activity digest. The observer has no tools and runs in a detached host
+   * task, so it cannot alter the observed child, parent tool result, or
+   * parent model context.
+   */
+  private async launchObserverSubagent(args: {
+    input: AgentLoopInput;
+    messages: CanonicalMessage[];
+    definitions: Record<string, SubagentDefinition>;
+    observedDefinition: SubagentDefinition;
+    observerDefinition: SubagentDefinition;
+    observedSubagentId: string;
+    activity: AgentEvent[];
+    directive: string;
+    observerMessage?: string;
+    timeoutMs?: number;
+    outcome: ObserverOutcome;
+  }): Promise<void> {
+    const launcher = this.dependencies.observerSubagents;
+    if (!launcher) {
+      throw new Error(`Observer definition ${args.observerDefinition.id} requires a host observer-subagent launcher.`);
+    }
+    const observerSubagentId = this.dependencies.uuid?.() ?? randomUUID();
+    const observerDefinition: SubagentDefinition = {
+      ...args.observerDefinition,
+      // An observer may inspect only the supplied digest. It cannot invoke
+      // tool code, mount MCP servers, retrieve memory, or spawn a child.
+      allowedTools: [],
+      disallowedTools: [],
+      isReadOnly: true,
+      permissionMode: "plan",
+      mcpServers: undefined,
+      skills: undefined,
+      memory: "disabled",
+      initialPrompt: undefined,
+      background: undefined,
+      observer: undefined,
+      observerMessage: undefined,
+    };
+    const digest = buildObserverActivityDigest({
+      observedDefinition: args.observedDefinition,
+      directive: args.directive,
+      activity: args.activity,
+      observerMessage: args.observerMessage,
+      outcome: args.outcome,
+    });
+
+    await launcher.launch({
+      sessionId: args.input.sessionId,
+      turnId: args.input.turnId,
+      observedSubagentId: args.observedSubagentId,
+      observerSubagentId,
+      observerSubagentType: observerDefinition.id,
+      run: async (abortSignal) => {
+        const startedAt = this.now().getTime();
+        try {
+          const report = await this.buildSubagentForkApi(args.input, args.messages).fork({
+            definitionId: observerDefinition.id,
+            directive: digest,
+            subagentId: observerSubagentId,
+            abortSignal,
+            timeoutMs: args.timeoutMs,
+            suppressAutoObserver: true,
+            definitionOverride: observerDefinition,
+          } as InternalSubagentForkInput);
+          this.dependencies.eventEmitter?.({
+            type: "observer_report",
+            sessionId: args.input.sessionId,
+            turnId: args.input.turnId,
+            observedSubagentId: args.observedSubagentId,
+            observedSubagentType: args.observedDefinition.id,
+            observerSubagentId,
+            observerSubagentType: observerDefinition.id,
+            success: true,
+            report: report.markdown,
+            durationMs: this.now().getTime() - startedAt,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.dependencies.eventEmitter?.({
+            type: "observer_report",
+            sessionId: args.input.sessionId,
+            turnId: args.input.turnId,
+            observedSubagentId: args.observedSubagentId,
+            observedSubagentType: args.observedDefinition.id,
+            observerSubagentId,
+            observerSubagentType: observerDefinition.id,
+            success: false,
+            error: message,
+            durationMs: this.now().getTime() - startedAt,
+          });
+          throw error;
+        }
+      },
+    });
   }
 
   private async dispatchLifecycle(
@@ -2865,6 +3320,15 @@ export class AgentLoop {
       sessionId: input.sessionId,
       turnId: input.turnId,
       completedAt: this.now().toISOString(),
+      ...(this.activeBudget ? {
+        budget: {
+          turnSpentUsd: this.activeBudget.turnSpentUsd,
+          ...(this.activeBudget.taskBudgetUsd !== undefined ? {
+            taskBudgetUsd: this.activeBudget.taskBudgetUsd,
+            taskSpentUsd: this.activeBudget.initialTaskBudgetSpentUsd + this.activeBudget.turnSpentUsd,
+          } : {}),
+        },
+      } : {}),
     };
   }
 
@@ -3390,6 +3854,7 @@ function mergeUsage(first: CanonicalUsage, second: CanonicalUsage | undefined): 
     cacheReadTokens: add(first.cacheReadTokens, second.cacheReadTokens),
     cacheWriteTokens: add(first.cacheWriteTokens, second.cacheWriteTokens),
     totalTokens: add(first.totalTokens, second.totalTokens),
+    nativeCost: add(first.nativeCost, second.nativeCost),
   };
 }
 
@@ -3879,6 +4344,12 @@ function clampOutputToModelCap(requested: number, modelMaxOutputTokens: number |
   return next;
 }
 
+/** Combine the SDK session addendum with the existing turn-local addendum. */
+function joinSystemPromptAddenda(...values: Array<string | undefined>): string | undefined {
+  const parts = values.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
 function tokenCalibrationKey(provider: string, model: string): string {
   return `${provider}\u0000${model}`;
 }
@@ -3912,6 +4383,59 @@ function modelErrorTarget(error: CanonicalModelError, fallbackProvider: string, 
     provider: error.provider || fallbackProvider,
     model: error.model || fallbackModel,
   };
+}
+
+function buildObserverActivityDigest(args: {
+  observedDefinition: SubagentDefinition;
+  directive: string;
+  activity: AgentEvent[];
+  observerMessage?: string;
+  outcome: ObserverOutcome;
+}): string {
+  const activity = args.activity
+    .map(observerActivityLine)
+    .filter((line): line is string => line !== undefined);
+  const lines = [
+    "You are an observer. Do not execute the observed task or attempt to change its outcome.",
+    "Review this read-only activity digest and produce a concise report of risks, failures, or notable findings.",
+    "",
+    `Observed agent: ${args.observedDefinition.id}`,
+    `Observed directive: ${truncateObserverText(args.directive, 2_000)}`,
+    "",
+    "Activity:",
+    ...(activity.length > 0 ? activity.map((line) => `- ${line}`) : ["- No observable model or tool activity was recorded."]),
+    "",
+    `Outcome: ${args.outcome.success ? "completed" : "failed"}`,
+    ...(args.outcome.markdown ? ["Observed final report:", truncateObserverText(args.outcome.markdown, 4_000)] : []),
+    ...(args.outcome.error ? [`Observed error: ${truncateObserverText(args.outcome.error, 1_000)}`] : []),
+    ...(args.observerMessage?.trim() ? ["", args.observerMessage.trim()] : []),
+  ];
+  return truncateObserverText(lines.join("\n"), OBSERVER_MAX_TEXT_CHARS);
+}
+
+function observerActivityLine(event: AgentEvent): string | undefined {
+  switch (event.type) {
+    case "model_request_started":
+      return `model request: ${event.provider}/${event.model}`;
+    case "tool_calls_detected":
+      return `tool calls: ${event.calls.map((call) => call.name).join(", ") || "none"}`;
+    case "tool_result":
+      return `tool result: ${event.result.toolName} (${event.result.type === "success" ? "success" : "error"})`;
+    case "assistant_message":
+      return "assistant response emitted";
+    case "warning":
+      return `warning: ${truncateObserverText(event.code, 120)}`;
+    case "agent_status":
+      return `agent status: ${truncateObserverText(event.event, 120)}`;
+    default:
+      return undefined;
+  }
+}
+
+function truncateObserverText(value: string, maxChars: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 72))}\n\n[observer digest truncated]`;
 }
 
 function composeAbortSignal(args: {

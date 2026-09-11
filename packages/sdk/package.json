@@ -1,0 +1,36 @@
+{
+  "name": "@pilotdeck/sdk",
+  "version": "0.1.0-alpha.0",
+  "description": "Claude Agent SDK-like TypeScript client for PilotDeck Gateway.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0 <23"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./embedded": {
+      "types": "./dist/embedded.d.ts",
+      "import": "./dist/embedded.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "examples"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "node -e \"require('node:fs').rmSync('dist-test', { recursive: true, force: true })\"",
+    "test": "pnpm run build && tsc -p tsconfig.test.json && node --test dist-test/test/**/*.test.js"
+  }
+}

@@ -9,6 +9,7 @@ import {
   SUBAGENT_PROMPT_PREVIEW_BYTES,
   SUBAGENT_SUMMARY_PREVIEW_BYTES,
   type AgentControlBoundaryTranscriptEntry,
+  type AgentFileSnapshotRecordedTranscriptEntry,
   type AgentMessageTranscriptEntry,
   type AgentSubagentCompletedTranscriptEntry,
   type AgentSubagentStartedTranscriptEntry,
@@ -30,6 +31,12 @@ export type SubagentTranscriptHandle = {
 export type JsonlTranscriptWriterOptions = {
   path: string;
   now?: () => Date;
+  /**
+   * Optional durable append sink. When supplied, entries are serialized by
+   * this writer but persisted by the owning host instead of the local JSONL
+   * file. The sink must provide atomic append semantics for its key.
+   */
+  appendEntry?: (path: string, entry: AgentTranscriptEntry) => void | Promise<void>;
   /**
    * Optional resolver mapping a subagentId → absolute sidechain path. Wired
    * by the parent session so {@link JsonlTranscriptWriter#forSubagent} can
@@ -142,10 +149,26 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
     });
   }
 
+  recordFileSnapshot(
+    sessionId: string,
+    turnId: string,
+    snapshot: Omit<AgentFileSnapshotRecordedTranscriptEntry, "type" | "sessionId" | "turnId" | "sequence" | "createdAt" | "entryId" | "parentEntryId">,
+  ): Promise<void> {
+    return this.recordEntry({
+      type: "file_snapshot_recorded",
+      ...this.baseEntry(sessionId, turnId),
+      ...snapshot,
+    });
+  }
+
   recordEntry(entry: AgentTranscriptEntry): Promise<void> {
     this.sequence = Math.max(this.sequence, entry.sequence);
     this.lastEntryId = entry.entryId ?? this.lastEntryId;
     this.writeChain = this.writeChain.then(async () => {
+      if (this.options.appendEntry) {
+        await this.options.appendEntry(this.options.path, entry);
+        return;
+      }
       await mkdir(dirname(this.options.path), { recursive: true, mode: 0o700 });
       await appendFile(this.options.path, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
     });
@@ -221,7 +244,11 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
     const path =
       this.options.subagentTranscriptPath?.(subagentId) ??
       defaultSubagentPath(this.options.path, subagentId);
-    const writer = new JsonlTranscriptWriter({ path, now: now ?? this.now });
+    const writer = new JsonlTranscriptWriter({
+      path,
+      now: now ?? this.now,
+      appendEntry: this.options.appendEntry,
+    });
     return { subagentId, writer, transcriptPath: path };
   }
 

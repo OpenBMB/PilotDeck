@@ -8,6 +8,7 @@ export {
 } from "./FileHistoryStore.js";
 export type {
   FileHistoryBackup,
+  FileHistoryBackupStorage,
   FileHistoryDiffStats,
   FileHistorySnapshot,
   FileHistoryState,

@@ -14,6 +14,7 @@ import type {
 import type { AgentRunMode } from "../../agent/protocol/input.js";
 import type { PilotDeckToolAuditRecorder } from "../audit/ToolAuditRecorder.js";
 import type { PilotDeckElicitationChannel } from "../elicitation/PilotDeckElicitationChannel.js";
+import type { PilotDeckUserDialogChannel } from "../dialog/PilotDeckUserDialogChannel.js";
 import type { PilotDeckToolInputSchema, PilotDeckToolValidationResult } from "./schema.js";
 
 /**
@@ -25,6 +26,8 @@ import type { PilotDeckToolInputSchema, PilotDeckToolValidationResult } from "./
  */
 export type PilotDeckToolFileHistorySink = {
   trackEdit(filePath: string, messageId: string): Promise<void>;
+  /** Records the file state after a successful PilotDeck write, when supported. */
+  markEditCommitted?(filePath: string, messageId: string): Promise<void>;
 };
 
 /**
@@ -52,6 +55,16 @@ export type PilotDeckSubagentForkApi = {
   maxSubagentDepth: number;
   listDefinitions(): { id: string; description: string }[];
   isAllowedDefinition(id: string): boolean;
+  /** Whether this definition launches as a Gateway-owned background task. */
+  isBackgroundDefinition?(id: string): boolean;
+  /** Starts a background fork without awaiting its AgentLoop completion. */
+  launchBackground?(args: {
+    definitionId: string;
+    directive: string;
+    subagentId: string;
+    toolCallId?: string;
+    timeoutMs?: number;
+  }): Promise<{ taskId: string }>;
   fork(args: {
     definitionId: string;
     directive: string;
@@ -245,6 +258,11 @@ export type PilotDeckToolRuntimeContext = {
   toolAliases?: Record<string, string>;
   permissionMode: PermissionMode;
   permissionContext: PermissionContext;
+  /**
+   * Allows `ask_user_question` to use an explicitly wired elicitation channel
+   * even when generic permission prompts are disabled. Defaults to false.
+   */
+  canElicit?: boolean;
   auditRecorder?: PilotDeckToolAuditRecorder;
   /**
    * The final allow decision for the current tool call, populated by
@@ -277,6 +295,11 @@ export type PilotDeckToolRuntimeContext = {
    * tools must report `unsupported_tool`.
    */
   elicitation?: PilotDeckElicitationChannel;
+  /**
+   * Optional Gateway-owned free-form input dialog channel. It is only wired
+   * for SDK sessions that opt into the corresponding dialog kind.
+   */
+  userDialog?: PilotDeckUserDialogChannel;
   /**
    * Optional file-history sink (C4). When provided, `edit_file` /
    * `write_file` call `trackEdit(filePath, messageId)` *before* mutating,

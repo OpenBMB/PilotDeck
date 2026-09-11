@@ -557,6 +557,51 @@ test("startup recovery restores a prepared replacement that was never accepted",
   }
 });
 
+test("startup recovery supports a Gateway-resolved native chat directory", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-replace-native-recovery-project-"));
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-replace-native-recovery-home-"));
+  const nativeStorageHome = await mkdtemp(join(tmpdir(), "pilotdeck-replace-native-storage-"));
+  try {
+    const sessionKey = "web:s_replace_native_recovery";
+    const storage = createAgentProjectSessionStorage({
+      projectRoot,
+      pilotHome: nativeStorageHome,
+      sessionId: sessionKey,
+    });
+    await storage.transcript.recordAcceptedInput(sessionKey, "turn-1", [{
+      role: "user",
+      content: [{ type: "text", text: "original native request" }],
+    }]);
+    await storage.transcript.recordDurableMessage(sessionKey, "turn-1", {
+      role: "assistant",
+      content: [{ type: "text", text: "original native answer" }],
+    });
+    const original = await readFile(storage.transcriptPath, "utf8");
+
+    await replaceLastWebSessionTurn(
+      {
+        sessionKey,
+        projectKey: projectRoot,
+        expectedTurnId: "turn-1",
+        replacementTurnId: "turn-2",
+      },
+      { projectRoot, pilotHome, storage },
+    );
+
+    const recovery = recoverPendingLastTurnReplacements(pilotHome, {
+      chatDirs: [storage.chatDir],
+    });
+    assert.equal(recovery.rolledBack, 1);
+    assert.equal(recovery.committed, 0);
+    assert.deepEqual(recovery.failures, []);
+    assert.equal(await readFile(storage.transcriptPath, "utf8"), original);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+    await rm(nativeStorageHome, { recursive: true, force: true });
+  }
+});
+
 test("startup recovery recognizes a durable legacy replacement without its journal", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-replace-commit-recovery-project-"));
   const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-replace-commit-recovery-home-"));

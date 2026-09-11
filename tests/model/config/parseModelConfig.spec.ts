@@ -28,6 +28,32 @@ test("catalog provider resolves api key from default env var when apiKey is blan
   assert.equal(config.providers.google.apiKey, "gemini-env");
 });
 
+test("provider config retains non-secret credential provenance", () => {
+  const config = parseModelConfig({
+    providers: {
+      literal: {
+        protocol: "openai",
+        url: "https://literal.example/v1",
+        apiKey: "literal-key",
+        models: { test: {} },
+      },
+      environment: {
+        protocol: "openai",
+        url: "https://environment.example/v1",
+        apiKey: "${TEST_PROVIDER_API_KEY}",
+        models: { test: {} },
+      },
+      ollama: {
+        models: { llama3: {} },
+      },
+    },
+  }, { env: { TEST_PROVIDER_API_KEY: "environment-key" } });
+
+  assert.equal(config.providers.literal.credentialSource, "literal");
+  assert.equal(config.providers.environment.credentialSource, "environment");
+  assert.equal(config.providers.ollama.credentialSource, "provider_default");
+});
+
 test("unknown custom models default to text-only input", () => {
   const config = parseModelConfig({
     providers: {

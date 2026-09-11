@@ -192,6 +192,55 @@ test("failed or unavailable provider counting falls back to matching calibration
   assert.equal(isolated.source, "local");
 });
 
+test("request budget reports additive local categories without faking provider precision", async () => {
+  const accounting = new TokenAccountingRuntime({
+    modelConfig: modelConfig("openai", "http://127.0.0.1:8000/v1"),
+  });
+  const budget = await accounting.evaluateRequestBudget({
+    ...request(),
+    systemPrompt: [
+      "Base runtime guidance.",
+      "<mcp-instructions><server name=\"tickets\">Read issue data.</server></mcp-instructions>",
+      "<memory-context>Previous decisions.</memory-context>",
+    ].join("\n\n"),
+    tools: [{
+      name: "read_file",
+      description: "Read a workspace file.",
+      inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+    }],
+  }, {
+    maxContextTokens: 128_000,
+    useProviderCount: false,
+  });
+
+  assert.deepEqual(budget.breakdown?.source, "local_estimate");
+  assert.ok((budget.breakdown?.mcp ?? 0) > 0);
+  assert.ok((budget.breakdown?.memory ?? 0) > 0);
+  assert.ok((budget.breakdown?.tools ?? 0) > 0);
+  assert.ok((budget.breakdown?.messages ?? 0) > 0);
+  assert.equal(
+    (budget.breakdown?.system ?? 0)
+      + (budget.breakdown?.mcp ?? 0)
+      + (budget.breakdown?.memory ?? 0)
+      + (budget.breakdown?.tools ?? 0)
+      + (budget.breakdown?.messages ?? 0),
+    budget.breakdown?.total,
+  );
+  assert.equal(budget.breakdown?.total, accounting.estimateRequestInput({
+    ...request(),
+    systemPrompt: [
+      "Base runtime guidance.",
+      "<mcp-instructions><server name=\"tickets\">Read issue data.</server></mcp-instructions>",
+      "<memory-context>Previous decisions.</memory-context>",
+    ].join("\n\n"),
+    tools: [{
+      name: "read_file",
+      description: "Read a workspace file.",
+      inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+    }],
+  }));
+});
+
 test("real input usage includes cache traffic and excludes output tokens", () => {
   assert.equal(actualInputTokensFromUsage({
     inputTokens: 10_000,

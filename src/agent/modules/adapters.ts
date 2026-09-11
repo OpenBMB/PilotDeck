@@ -6,6 +6,8 @@ import type { AgentExecutionContext, ModelInvokerPort, PreparedModelInvocation, 
 export type LegacyModelAdapterOptions = {
   isMainAgent?: boolean;
   projectPath?: string;
+  fallbackModels?: ReadonlyArray<{ provider: string; model: string }>;
+  managedModelPolicy?: { allow: string[]; deny: string[] };
   materialize?: (decision: RouterDecision, request: import("../../model/index.js").CanonicalModelRequest) => import("../../model/index.js").CanonicalModelRequest;
 };
 
@@ -51,6 +53,8 @@ export function createRouterModelInvokerPort(
         turnId: context.turnId,
         projectPath: options.projectPath,
         abortSignal: context.abortSignal,
+        fallbackModels: options.fallbackModels,
+        managedModelPolicy: context.managedModelPolicy ?? options.managedModelPolicy,
       });
     },
   };

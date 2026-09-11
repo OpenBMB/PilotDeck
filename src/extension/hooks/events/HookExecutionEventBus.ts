@@ -14,6 +14,9 @@ export type PilotDeckHookExecutionEvent =
       stderr: string;
       exitCode?: number;
       outcome: "success" | "blocking" | "non_blocking_error" | "cancelled" | "timeout";
+      /** Present when an SDK HTTP hook deferred its result through the Gateway. */
+      asyncInvocationId?: string;
+      asyncTimeoutMs?: number;
     };
 
 export type PilotDeckHookExecutionEventHandler = (event: PilotDeckHookExecutionEvent) => void;

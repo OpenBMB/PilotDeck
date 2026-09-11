@@ -157,6 +157,8 @@ export type WebGatewayMethod =
   | "list_projects"
   | "describe_project"
   | "reload_config"
+  | "update_settings"
+  | "resolve_settings"
   | "skill_list"
   | "skill_read"
   | "skill_write"
@@ -358,6 +360,10 @@ export type WebForkSessionInput = {
   projectKey?: string;
   /** Transcript entry id of the user turn to fork from (accepted_input entryId). */
   fromEntryId: string;
+  /** Preserve the target accepted-input entry for a truncating SDK resume. */
+  resumeAt?: boolean;
+  /** Optional guard: discarded entries must all belong to this turn. */
+  resumeDropsTurn?: string;
 };
 
 export type WebForkSessionResult = {

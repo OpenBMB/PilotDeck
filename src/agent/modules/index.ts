@@ -17,6 +17,7 @@ export {
   type ModuleHandshakeRequest,
   type HostCapabilityModuleMethod,
   type HostContextModuleMethod,
+  type HostPermissionModuleMethod,
   type HostModuleCapabilities,
   type ModuleMessage,
   type ModuleMessageBase,

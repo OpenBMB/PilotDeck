@@ -50,6 +50,18 @@ test("parses baselineModel object references", () => {
   });
 });
 
+test("parses a positive Router stats retention window and rejects invalid values", () => {
+  const valid = parseRouterConfig({ stats: { retentionMs: 86_400_000 } }, modelConfig);
+  assert.equal(valid.diagnostics.filter((item) => item.severity === "fatal").length, 0);
+  assert.equal(valid.config?.stats?.retentionMs, 86_400_000);
+
+  const invalid = parseRouterConfig({ stats: { retentionMs: 0 } }, modelConfig);
+  assert.deepEqual(
+    invalid.diagnostics.filter((item) => item.severity === "fatal").map((item) => item.code),
+    ["ROUTER_STATS_RETENTION_INVALID"],
+  );
+});
+
 test("rejects invalid pricing unit and values", () => {
   const result = parseRouterConfig({
     stats: {

@@ -23,7 +23,13 @@ import {
   type CanonicalMessage,
   type CanonicalUsage,
 } from "../../model/index.js";
-import { listProjectSessions, readTranscript, type SessionInfo } from "../../session/index.js";
+import {
+  listProjectSessions,
+  readAgentProjectSessionTranscript,
+  readTranscript,
+  type AgentProjectSessionStorage,
+  type SessionInfo,
+} from "../../session/index.js";
 import type { AgentTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
@@ -37,6 +43,8 @@ import type { WebMessage, WebMessageKind, WebMessageRole } from "../client/webMe
 export type ReadWebSessionMessagesOptions = {
   projectRoot: string;
   pilotHome: string;
+  /** Gateway-resolved native storage for the requested parent session. */
+  storage?: AgentProjectSessionStorage;
   maxContextTokens?: number;
   maxOutputTokens?: number;
   /** Override clock for deterministic tests. */
@@ -50,14 +58,18 @@ export async function readWebSessionMessages(
   options: ReadWebSessionMessagesOptions,
 ): Promise<WebReadSessionMessagesResult> {
   const effectiveProjectRoot = input.projectKey ?? options.projectRoot;
-  const chatDir = getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
-  const transcriptPath = resolveTranscriptPath(input, chatDir);
+  const chatDir = options.storage?.chatDir ?? getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
+  const transcriptPath = isBackgroundTaskInput(input)
+    ? resolveTranscriptPath(input, chatDir)
+    : options.storage?.transcriptPath ?? resolveTranscriptPath(input, chatDir);
   const isBackgroundTask = isBackgroundTaskInput(input);
   const sessionInfo = isBackgroundTask ? undefined : await locateSession(input.sessionKey, {
     ...options,
     projectRoot: effectiveProjectRoot,
   });
-  const { entries } = await readTranscript(transcriptPath);
+  const { entries } = options.storage && !isBackgroundTask
+    ? await readAgentProjectSessionTranscript(options.storage)
+    : await readTranscript(transcriptPath);
   const webReplay = extractWebVisibleMessages(entries);
   const entryTimestamps = webReplay.timestamps;
   const entryIds = webReplay.entryIds;
@@ -335,10 +347,14 @@ export async function readSubagentWebMessages(
   options: ReadWebSessionMessagesOptions,
 ): Promise<{ messages: WebMessage[]; total: number }> {
   const effectiveProjectRoot = input.projectKey ?? options.projectRoot;
-  const chatDir = getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
-  const parentTranscriptPath = resolveTranscriptPath(input, chatDir);
+  const chatDir = options.storage?.chatDir ?? getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
+  const parentTranscriptPath = isBackgroundTaskInput(input)
+    ? resolveTranscriptPath(input, chatDir)
+    : options.storage?.transcriptPath ?? resolveTranscriptPath(input, chatDir);
 
-  const { entries: parentEntries } = await readTranscript(parentTranscriptPath);
+  const { entries: parentEntries } = options.storage && !isBackgroundTaskInput(input)
+    ? await readAgentProjectSessionTranscript(options.storage)
+    : await readTranscript(parentTranscriptPath);
   let sidechainRelative: string | undefined;
   for (const entry of parentEntries) {
     if (entry.type === "subagent_started" && entry.subagentId === input.subagentId) {
@@ -356,7 +372,9 @@ export async function readSubagentWebMessages(
     dirname(parentTranscriptPath),
     chatDir,
   );
-  const { entries } = await readTranscript(sidechainPath);
+  const { entries } = options.storage?.readTranscriptAtPath && !isBackgroundTaskInput(input)
+    ? await options.storage.readTranscriptAtPath(sidechainPath)
+    : await readTranscript(sidechainPath);
   const webReplay = extractSubagentExecutionMessages(entries);
 
   const flattenedPerMessage: WebMessage[][] = webReplay.messages
@@ -474,6 +492,7 @@ async function locateSession(
   const sessions = await listProjectSessions({
     projectRoot: options.projectRoot,
     pilotHome: options.pilotHome,
+    ...(options.storage ? { chatDir: options.storage.chatDir } : {}),
   });
   // sessionId in SessionInfo is the on-disk filename (already sanitized);
   // the incoming sessionKey may still be the raw form (e.g. tui:project=/foo:default).

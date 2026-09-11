@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { getBackupFileName } from "./backupNaming.js";
-import type { FileHistoryBackup } from "./types.js";
+import type { FileHistoryBackup, FileHistoryBackupStorage } from "./types.js";
 
 export type CreateBackupOptions = {
   filePath: string;
@@ -10,6 +10,8 @@ export type CreateBackupOptions = {
   /** Files larger than this are skipped (returns null backup with `oversize: true`). */
   maxFileBytes?: number;
   now?: () => Date;
+  /** Optional host-owned byte store. Omitting it preserves filesystem backup files. */
+  backupStorage?: FileHistoryBackupStorage;
 };
 
 export type CreateBackupResult = {
@@ -60,11 +62,15 @@ export async function createBackup(
   }
 
   const backupFileName = getBackupFileName(options.filePath, options.version);
-  const backupPath = path.join(options.backupDir, backupFileName);
-  await fs.mkdir(options.backupDir, { recursive: true });
-  await fs.copyFile(options.filePath, backupPath);
-  if (process.platform !== "win32") {
-    await fs.chmod(backupPath, stat.mode & 0o777);
+  if (options.backupStorage) {
+    await options.backupStorage.write(backupFileName, await fs.readFile(options.filePath));
+  } else {
+    const backupPath = path.join(options.backupDir, backupFileName);
+    await fs.mkdir(options.backupDir, { recursive: true });
+    await fs.copyFile(options.filePath, backupPath);
+    if (process.platform !== "win32") {
+      await fs.chmod(backupPath, stat.mode & 0o777);
+    }
   }
 
   return {

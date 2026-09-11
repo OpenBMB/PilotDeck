@@ -78,6 +78,17 @@ export class ToolRuntime {
       return this.errorResult(call.id, toolName, "tool_aborted", "Tool execution was aborted.", startedAt, runtimeContext);
     }
 
+    if (tool && this.registry.isHidden(tool.name)) {
+      return this.errorResult(
+        call.id,
+        call.name,
+        "tool_not_found",
+        `Tool ${call.name} is deferred for this session. Use search_tools to load it before calling it.`,
+        startedAt,
+        runtimeContext,
+      );
+    }
+
     if (!tool) {
       const unavailable = this.registry.getUnavailable(repairedName ?? call.name);
       if (unavailable) {
@@ -149,7 +160,12 @@ export class ToolRuntime {
       );
     }
 
-    if (runtimeContext.permissionContext.canPrompt === false && requiresPromptCapability(tool, call.input)) {
+    const canUseDedicatedElicitation = tool.name === "ask_user_question"
+      && runtimeContext.canElicit === true
+      && runtimeContext.elicitation !== undefined;
+    if (runtimeContext.permissionContext.canPrompt === false
+      && requiresPromptCapability(tool, call.input)
+      && !canUseDedicatedElicitation) {
       return this.errorResult(
         call.id,
         tool.name,

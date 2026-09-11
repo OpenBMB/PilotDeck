@@ -5,6 +5,13 @@ import type {
   AlwaysOnRerunPlanResult,
   Gateway,
   GatewayElicitationResponseInput,
+  GatewayUserDialogResponseInput,
+  GatewayListUserDialogsInput,
+  GatewayListUserDialogsResult,
+  GatewayUserDialogClaimInput,
+  GatewayUserDialogClaimResult,
+  GatewayUserDialogReleaseInput,
+  GatewayUserDialogReleaseResult,
   GatewayEvent,
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
@@ -25,6 +32,10 @@ import type {
   ListSessionsInput,
   ListSessionsResult,
   NewSessionInput,
+  GatewayExportSessionTranscriptInput,
+  GatewayRestoreSessionTranscriptInput,
+  GatewayRestoreSessionTranscriptResult,
+  GatewaySessionTranscriptArchive,
   PrepareWeixinLoginResult,
   ReloadConfigResult,
   ReloadExtensionsInput,
@@ -117,6 +128,28 @@ export class RemoteGateway implements Gateway {
     await this.client.request("close_session", input);
   }
 
+  async deleteSession(input: { sessionKey: string; projectKey?: string }): Promise<void> {
+    await this.client.request("delete_session", input);
+  }
+
+  async exportSessionTranscript(input: GatewayExportSessionTranscriptInput): Promise<GatewaySessionTranscriptArchive> {
+    return (await this.client.request("export_session_transcript", input)) as GatewaySessionTranscriptArchive;
+  }
+
+  async restoreSessionTranscript(
+    input: GatewayRestoreSessionTranscriptInput,
+  ): Promise<GatewayRestoreSessionTranscriptResult> {
+    return (await this.client.request("restore_session_transcript", input)) as GatewayRestoreSessionTranscriptResult;
+  }
+
+  async renameSession(input: import("../protocol/types.js").GatewaySessionMetadataInput): Promise<{ updated: boolean }> {
+    return (await this.client.request("rename_session", input)) as { updated: boolean };
+  }
+
+  async tagSession(input: import("../protocol/types.js").GatewaySessionMetadataInput): Promise<{ updated: boolean }> {
+    return (await this.client.request("tag_session", input)) as { updated: boolean };
+  }
+
   async recordAgentStatusMessage(input: import("../protocol/types.js").GatewayRecordAgentStatusMessageInput): Promise<{ recorded: boolean }> {
     return (await this.client.request("record_agent_status_message", input)) as { recorded: boolean };
   }
@@ -149,6 +182,102 @@ export class RemoteGateway implements Gateway {
     await this.client.request("session_model_clear", input);
   }
 
+  async supportedAgents(): Promise<import("../protocol/types.js").GatewaySupportedAgentsResult> {
+    return (await this.client.request("supported_agents", {})) as import("../protocol/types.js").GatewaySupportedAgentsResult;
+  }
+
+  async mcpServerStatus(input: import("../protocol/types.js").GatewayMcpServerStatusInput): Promise<import("../protocol/types.js").GatewayMcpServerStatusResult> {
+    return (await this.client.request("mcp_server_status", input)) as import("../protocol/types.js").GatewayMcpServerStatusResult;
+  }
+
+  async setMcpServers(input: import("../protocol/types.js").GatewaySetMcpServersInput): Promise<import("../protocol/types.js").GatewayMcpSetServersResult> {
+    return (await this.client.request("set_mcp_servers", input)) as import("../protocol/types.js").GatewayMcpSetServersResult;
+  }
+
+  async reconnectMcpServer(input: import("../protocol/types.js").GatewayMcpServerControlInput): Promise<void> {
+    await this.client.request("mcp_server_reconnect", input);
+  }
+
+  async toggleMcpServer(input: import("../protocol/types.js").GatewayMcpServerToggleInput): Promise<void> {
+    await this.client.request("mcp_server_toggle", input);
+  }
+
+  async setMcpPermissionModeOverride(
+    input: import("../protocol/types.js").GatewayMcpPermissionModeOverrideInput,
+  ): Promise<import("../protocol/types.js").GatewayMcpPermissionModeOverrideResult> {
+    return (await this.client.request("set_mcp_permission_mode_override", input)) as import("../protocol/types.js").GatewayMcpPermissionModeOverrideResult;
+  }
+
+  async projectFileRead(input: import("../protocol/types.js").GatewayProjectFileReadInput): Promise<import("../protocol/types.js").GatewayProjectFileReadResult | null> {
+    return (await this.client.request("project_file_read", input)) as import("../protocol/types.js").GatewayProjectFileReadResult | null;
+  }
+
+  async setPermissionMode(input: import("../protocol/types.js").GatewaySetPermissionModeInput): Promise<{ applied: boolean }> {
+    return (await this.client.request("set_permission_mode", input)) as { applied: boolean };
+  }
+
+  async applyFlagSettings(
+    input: import("../protocol/types.js").GatewayApplyFlagSettingsInput,
+  ): Promise<import("../protocol/types.js").GatewayApplyFlagSettingsResult> {
+    return (await this.client.request("apply_flag_settings", input)) as import("../protocol/types.js").GatewayApplyFlagSettingsResult;
+  }
+
+  async updateSettings(
+    input: import("../protocol/types.js").GatewayUpdateSettingsInput,
+  ): Promise<import("../protocol/types.js").GatewayUpdateSettingsResult> {
+    return (await this.client.request("update_settings", input)) as import("../protocol/types.js").GatewayUpdateSettingsResult;
+  }
+
+  async resolveSettings(): Promise<import("../protocol/types.js").GatewayResolvedSettingsResult> {
+    return (await this.client.request("resolve_settings", {})) as import("../protocol/types.js").GatewayResolvedSettingsResult;
+  }
+
+  async setSessionThinking(input: import("../protocol/types.js").GatewaySetSessionThinkingInput): Promise<{ applied: boolean }> {
+    return (await this.client.request("set_session_thinking", input)) as { applied: boolean };
+  }
+
+  async outputStylesList(input: import("../protocol/types.js").GatewayOutputStylesListInput): Promise<import("../protocol/types.js").GatewayOutputStylesListResult> {
+    return (await this.client.request("output_styles_list", input)) as import("../protocol/types.js").GatewayOutputStylesListResult;
+  }
+
+  async setOutputStyle(input: import("../protocol/types.js").GatewaySetOutputStyleInput): Promise<import("../protocol/types.js").GatewaySetOutputStyleResult> {
+    return (await this.client.request("set_output_style", input)) as import("../protocol/types.js").GatewaySetOutputStyleResult;
+  }
+
+  async reloadOutputStyles(input: import("../protocol/types.js").GatewayReloadOutputStylesInput = {}): Promise<import("../protocol/types.js").GatewayReloadOutputStylesResult> {
+    return (await this.client.request("reload_output_styles", input)) as import("../protocol/types.js").GatewayReloadOutputStylesResult;
+  }
+
+  async usageSnapshot(input: import("../protocol/types.js").GatewayUsageSnapshotInput): Promise<import("../protocol/types.js").GatewayUsageSnapshotResult> {
+    return (await this.client.request("usage_snapshot", input)) as import("../protocol/types.js").GatewayUsageSnapshotResult;
+  }
+
+  async modelUsageSnapshot(input: import("../protocol/types.js").GatewayModelUsageSnapshotInput): Promise<import("../protocol/types.js").GatewayModelUsageSnapshotResult> {
+    return (await this.client.request("model_usage_snapshot", input)) as import("../protocol/types.js").GatewayModelUsageSnapshotResult;
+  }
+
+  async rewindFiles(input: import("../protocol/types.js").GatewayRewindFilesInput): Promise<import("../protocol/types.js").GatewayRewindFilesResult> {
+    return (await this.client.request("rewind_files", input)) as import("../protocol/types.js").GatewayRewindFilesResult;
+  }
+
+  async stopBackgroundTask(input: import("../protocol/types.js").GatewayStopBackgroundTaskInput): Promise<import("../protocol/types.js").GatewayStopBackgroundTaskResult> {
+    return (await this.client.request("background_task_stop", input)) as import("../protocol/types.js").GatewayStopBackgroundTaskResult;
+  }
+
+  async backgroundTasks(input: import("../protocol/types.js").GatewayBackgroundTasksInput): Promise<import("../protocol/types.js").GatewayBackgroundTasksResult> {
+    return (await this.client.request("background_tasks", input)) as import("../protocol/types.js").GatewayBackgroundTasksResult;
+  }
+
+  async submitAsyncHookResult(
+    input: import("../protocol/types.js").GatewayAsyncHookResultInput,
+  ): Promise<import("../protocol/types.js").GatewayAsyncHookResult> {
+    return (await this.client.request("hook_async_result", input)) as import("../protocol/types.js").GatewayAsyncHookResult;
+  }
+
+  async seedReadState(input: import("../protocol/types.js").GatewaySeedReadStateInput): Promise<import("../protocol/types.js").GatewaySeedReadStateResult> {
+    return (await this.client.request("seed_read_state", input)) as import("../protocol/types.js").GatewaySeedReadStateResult;
+  }
+
   async getActiveTurnSnapshot(input: import("../protocol/types.js").GatewayActiveTurnSnapshotInput): Promise<import("../protocol/types.js").GatewayActiveTurnSnapshot> {
     return (await this.client.request("active_turn_snapshot", input)) as import("../protocol/types.js").GatewayActiveTurnSnapshot;
   }
@@ -179,6 +308,30 @@ export class RemoteGateway implements Gateway {
 
   async respondElicitation(input: GatewayElicitationResponseInput): Promise<{ delivered: boolean }> {
     return (await this.client.request("elicitation_respond", input)) as { delivered: boolean };
+  }
+
+  async respondUserDialog(input: GatewayUserDialogResponseInput): Promise<{
+    delivered: boolean;
+    recovered?: true;
+    reason?: "gateway_restarted";
+  }> {
+    return (await this.client.request("user_dialog_respond", input)) as {
+      delivered: boolean;
+      recovered?: true;
+      reason?: "gateway_restarted";
+    };
+  }
+
+  async listUserDialogs(input: GatewayListUserDialogsInput): Promise<GatewayListUserDialogsResult> {
+    return (await this.client.request("user_dialog_list", input)) as GatewayListUserDialogsResult;
+  }
+
+  async claimUserDialog(input: GatewayUserDialogClaimInput): Promise<GatewayUserDialogClaimResult> {
+    return (await this.client.request("user_dialog_claim", input)) as GatewayUserDialogClaimResult;
+  }
+
+  async releaseUserDialog(input: GatewayUserDialogReleaseInput): Promise<GatewayUserDialogReleaseResult> {
+    return (await this.client.request("user_dialog_release", input)) as GatewayUserDialogReleaseResult;
   }
 
   async permissionDecide(input: GatewayPermissionDecisionInput): Promise<{ delivered: boolean }> {

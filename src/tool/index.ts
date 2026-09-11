@@ -78,11 +78,18 @@ export {
 } from "./builtin/agent.js";
 export { createReadFileTool, type ReadFileInput } from "./builtin/readFile.js";
 export { createReadSkillTool, type ReadSkillDeps, type ReadSkillInput } from "./builtin/readSkill.js";
+export {
+  SEARCH_TOOLS_TOOL_NAME,
+  createDeferredToolSearchTool,
+  type CreateDeferredToolSearchToolOptions,
+  type DeferredToolSearchEntry,
+} from "./builtin/searchTools.js";
 export { createGlobTool, extractGlobBaseDirectory, type GlobInput } from "./builtin/glob.js";
 export { createGrepTool, type GrepInput } from "./builtin/grep.js";
 export {
   createExecuteCodeTool,
   type CreateExecuteCodeToolOptions,
+  type ExecuteCodeHelperToolName,
   type ExecuteCodeOutput,
   type ExecuteCodeStatus,
   type ExecuteCodeToolCallLogEntry,
@@ -109,6 +116,10 @@ export {
   type PilotDeckCommandOptions,
   type PilotDeckCommandResult,
   type PilotDeckCommandRunner,
+  BubblewrapSandboxCommandRunner,
+  toShellCommand,
+  type BubblewrapInvocation,
+  type BubblewrapSandboxCommandRunnerOptions,
 } from "./builtin/bash.js";
 export {
   ASK_USER_QUESTION_HEADER_MAX,
@@ -120,6 +131,37 @@ export {
   type AskUserQuestionOutput,
 } from "./builtin/askUserQuestion.js";
 export {
+  REQUEST_USER_INPUT_TOOL_NAME,
+  createRequestUserInputTool,
+  type RequestUserInputInput,
+  type RequestUserInputOutput,
+} from "./builtin/requestUserInput.js";
+export {
+  REQUEST_USER_CHOICE_TOOL_NAME,
+  createRequestUserChoiceTool,
+  type RequestUserChoiceInput,
+  type RequestUserChoiceOption,
+  type RequestUserChoiceOutput,
+} from "./builtin/requestUserChoice.js";
+export {
+  REQUEST_USER_CONFIRMATION_TOOL_NAME,
+  createRequestUserConfirmationTool,
+  type RequestUserConfirmationInput,
+  type RequestUserConfirmationOutput,
+} from "./builtin/requestUserConfirmation.js";
+export {
+  REQUEST_USER_FORM_TOOL_NAME,
+  createRequestUserFormTool,
+  type RequestUserFormInput,
+  type RequestUserFormOutput,
+} from "./builtin/requestUserForm.js";
+export {
+  acceptsFormDialogAnswer,
+  validateFormDialogSchema,
+  type FormDialogFieldSchema,
+  type FormDialogSchema,
+} from "./dialog/FormDialogSchema.js";
+export {
   InMemoryElicitationChannel,
   type PilotDeckElicitationAnswer,
   type PilotDeckElicitationChannel,
@@ -127,6 +169,18 @@ export {
   type PilotDeckElicitationQuestion,
   type PilotDeckElicitationRequest,
 } from "./elicitation/PilotDeckElicitationChannel.js";
+export type {
+  PilotDeckUserDialogChannel,
+  PilotDeckUserConfirmationAnswer,
+  PilotDeckUserConfirmationRequest,
+  PilotDeckUserDialogChoice,
+  PilotDeckUserFormAnswer,
+  PilotDeckUserFormRequest,
+  PilotDeckUserInputAnswer,
+  PilotDeckUserInputRequest,
+  PilotDeckUserSelectAnswer,
+  PilotDeckUserSelectRequest,
+} from "./dialog/PilotDeckUserDialogChannel.js";
 export { validateHtmlPreview } from "./elicitation/validateHtmlPreview.js";
 export {
   createWebFetchTool,

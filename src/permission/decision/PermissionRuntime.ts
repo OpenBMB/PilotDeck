@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type { PilotDeckToolDefinition, PilotDeckToolRuntimeContext } from "../../tool/index.js";
 import { buildPlanModeViolationMessage, buildPlanModeBashViolationMessage } from "../../tool/planModeConstraints.js";
 import { matchPermissionRule } from "../policy/matchPermissionRule.js";
+import { resolvePilotDeckWorkspacePath } from "../../tool/builtin/filesystem/pathSafety.js";
 import type {
   PermissionContext,
   PermissionDecision,
@@ -41,6 +42,20 @@ export class PermissionRuntime {
 
     if (sessionAllowRule) {
       return this.allowSessionRule(tool, input, context, toolCallId, sessionAllowRule);
+    }
+
+    // Claude's `acceptEdits` is a narrow SDK adapter mode. It must not turn
+    // into native bypassPermissions: only the three native file-edit tools
+    // are auto-allowed, and only when path safety proves the target is inside
+    // the workspace (or an explicitly configured additional root). Bash,
+    // MCP, network and arbitrary custom tools continue through their normal
+    // permission checks below.
+    if (permissionContext.acceptEdits && isSafeWorkspaceEdit(tool, input, permissionContext)) {
+      return allow({
+        type: "mode",
+        mode: permissionContext.mode,
+        message: `SDK acceptEdits allows workspace file tool ${tool.name}.`,
+      });
     }
 
     // Check user-configured allow rules BEFORE consulting the tool's own
@@ -142,6 +157,27 @@ export class PermissionRuntime {
       message: `Session allow rule permits ${tool.name}.`,
     });
   }
+}
+
+function isSafeWorkspaceEdit(
+  tool: PilotDeckToolDefinition,
+  input: unknown,
+  permissionContext: PermissionContext,
+): boolean {
+  if (tool.name !== "write_file" && tool.name !== "edit_file" && tool.name !== "edit_notebook") {
+    return false;
+  }
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const pathValue = tool.name === "edit_notebook" ? record.notebook_path : record.file_path;
+  if (typeof pathValue !== "string" || !pathValue.trim()) return false;
+  const resolved = resolvePilotDeckWorkspacePath(pathValue, {
+    sessionId: "permission-check",
+    turnId: "permission-check",
+    cwd: permissionContext.cwd,
+    permissionMode: permissionContext.mode,
+    permissionContext,
+  }, { forWrite: true });
+  return resolved.ok;
 }
 
 function normalizeToolPermission(
@@ -295,6 +331,48 @@ function createPermissionRequest(
 
 function finalizeAsk(decision: PermissionDecision, context: PermissionContext): PermissionDecision {
   if (decision.type !== "ask") {
+    return decision;
+  }
+
+  // Gateway policy is a one-way restriction. It must not become an
+  // implicit allow merely because a caller selected bypassPermissions.
+  if (context.policyCanPrompt === false) {
+    return {
+      type: "deny",
+      reason: {
+        type: "runtime",
+        message: "Permission prompt denied because Gateway policy disables prompts for this session.",
+      },
+      message: "Permission prompt denied because Gateway policy disables prompts for this session.",
+    };
+  }
+
+  // A policy ask rule is intentionally evaluated before any remembered
+  // session allow. Preserve the ask even when an SDK/client requested
+  // bypassPermissions; the Gateway host owns this policy tier.
+  if (decision.reason.type === "rule" && decision.reason.rule.source === "policy") {
+    if (context.canPrompt === false) {
+      return {
+        type: "deny",
+        reason: {
+          type: "runtime",
+          message: "Permission prompt denied because prompts are disabled for this session.",
+        },
+        message: "Permission prompt denied because prompts are disabled for this session.",
+      };
+    }
+    return decision;
+  }
+
+  // `force` is an adapter-only escape hatch used by the SDK's explicit MCP
+  // permission override. Keep it narrowly scoped so a native/project rule
+  // cannot accidentally change the established bypassPermissions behavior.
+  if (
+    decision.reason.type === "rule"
+    && decision.reason.rule.force === true
+    && decision.reason.rule.source === "session"
+    && decision.reason.rule.toolName.startsWith("mcp__")
+  ) {
     return decision;
   }
 

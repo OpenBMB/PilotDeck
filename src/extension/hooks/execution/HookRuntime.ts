@@ -29,6 +29,14 @@ export type HookRuntimeRunResult = {
   nonBlockingErrors: PilotDeckLifecycleError[];
 };
 
+/** Default-absent bridge for a Gateway-owned SDK deferred-hook registry. */
+export type AsyncHookRegistrationHandler = (input: {
+  hookName: string;
+  hookEvent: PilotDeckHookEvent;
+  invocationId: string;
+  timeoutMs?: number;
+}) => void;
+
 export class HookRuntime {
   constructor(
     private readonly settings: PilotDeckHooksSettings = {},
@@ -39,6 +47,7 @@ export class HookRuntime {
     private readonly httpExecutor = new HttpHookExecutor(),
     private readonly agentExecutor = new AgentHookExecutor(),
     private readonly callbackExecutor = new CallbackHookExecutor(),
+    private readonly onAsyncHookRegistered?: AsyncHookRegistrationHandler,
   ) {}
 
   /**
@@ -75,21 +84,36 @@ export class HookRuntime {
         stderr: result.stderr,
         exitCode: result.exitCode,
         outcome: result.outcome,
+        ...(result.output.type === "async" && result.output.invocationId
+          ? { asyncInvocationId: result.output.invocationId }
+          : {}),
+        ...(result.output.type === "async" && result.output.timeoutMs !== undefined
+          ? { asyncTimeoutMs: result.output.timeoutMs }
+          : {}),
       };
       events.push(response);
       this.eventBus.emit(response);
 
       if (result.output.type === "async") {
-        this.asyncRegistry.register({
-          id: `${hookName}:${Date.now()}`,
-          startedAt: new Date(),
-          hookName,
-          hookEvent: input.event,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          responseDelivered: false,
-          asyncRewake: hook.type === "command" ? hook.asyncRewake : undefined,
-        });
+        if (result.output.invocationId && this.onAsyncHookRegistered) {
+          this.onAsyncHookRegistered({
+            hookName,
+            hookEvent: input.event,
+            invocationId: result.output.invocationId,
+            ...(result.output.timeoutMs !== undefined ? { timeoutMs: result.output.timeoutMs } : {}),
+          });
+        } else {
+          this.asyncRegistry.register({
+            id: `${hookName}:${Date.now()}`,
+            startedAt: new Date(),
+            hookName,
+            hookEvent: input.event,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            responseDelivered: false,
+            asyncRewake: hook.type === "command" ? hook.asyncRewake : undefined,
+          });
+        }
       }
 
       if (result.outcome === "blocking") {

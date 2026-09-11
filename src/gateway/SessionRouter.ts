@@ -7,6 +7,8 @@ export type GatewaySessionContext = {
   sessionKey: string;
   projectKey?: string;
   channelKey: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
 };
 
 export type GatewaySessionFactory = (context: GatewaySessionContext) => AgentSession | Promise<AgentSession>;
@@ -27,7 +29,10 @@ export type SessionRouterOptions = {
    * idle sweep, explicit close, or dirty-recreate. Use this to clean up
    * per-session resources (e.g. per-session MCP runtimes / browser processes).
    */
-  onSessionEvict?: (sessionKey: string) => void;
+  onSessionEvict?: (
+    sessionKey: string,
+    reason: "idle" | "closed" | "dirty_recreate" | "shutdown",
+  ) => void;
   onSessionIdleEvict?: (sessionKey: string, record: SessionEvictionSnapshot) => void;
 };
 
@@ -51,6 +56,7 @@ const DEFAULT_IDLE_SWEEP_INTERVAL_MS = 60 * 1000;
 export class SessionRouter {
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly inFlightTurns = new Map<string, string>();
+  private readonly sessionControls = new Set<string>();
   private readonly idleSessionTimeoutMs: number;
   private readonly idleSweepIntervalMs: number;
   private readonly now: () => Date;
@@ -71,6 +77,12 @@ export class SessionRouter {
     this.sweepIdle();
     const cached = this.sessions.get(context.sessionKey);
     if (cached) {
+      // Tool filters shape the registry constructed for an AgentSession.
+      // Recreate only when an explicit Gateway/SDK filter changes; callers
+      // without filters retain the exact native cached-session behavior.
+      if (hasToolFilterChanged(cached.context, context)) {
+        cached.dirtyReason = "tool_filter_changed";
+      }
       cached.context = mergeSessionContext(cached.context, context);
       if (cached.dirtyReason && this.options.recreateSession) {
         this.emitSessionEvict(context.sessionKey, cached, "dirty_recreate");
@@ -92,7 +104,7 @@ export class SessionRouter {
 
   beginTurn(sessionKey: string, runId: string): boolean {
     this.sweepIdle();
-    if (this.inFlightTurns.has(sessionKey)) {
+    if (this.inFlightTurns.has(sessionKey) || this.sessionControls.has(sessionKey)) {
       return false;
     }
     this.inFlightTurns.set(sessionKey, runId);
@@ -101,6 +113,12 @@ export class SessionRouter {
 
   hasActiveTurn(sessionKey: string): boolean {
     return this.inFlightTurns.has(sessionKey);
+  }
+
+  /** True when a live AgentSession currently owns this key in Gateway memory. */
+  hasSession(sessionKey: string): boolean {
+    this.sweepIdle();
+    return this.sessions.has(sessionKey);
   }
 
   activeTurnRunId(sessionKey: string): string | undefined {
@@ -123,6 +141,27 @@ export class SessionRouter {
     record?.session.abort(reason);
     if (record) {
       record.lastUsedAt = this.nowMs();
+    }
+  }
+
+  async seedReadState(
+    context: GatewaySessionContext,
+    input: { path: string; mtime: number },
+  ): Promise<{ applied: boolean }> {
+    this.sweepIdle();
+    if (this.inFlightTurns.has(context.sessionKey) || this.sessionControls.has(context.sessionKey)) {
+      throw sessionBusyError("Cannot seed file read state while a turn or session control is active.");
+    }
+
+    this.sessionControls.add(context.sessionKey);
+    try {
+      const session = await this.getOrCreate(context);
+      if (this.inFlightTurns.has(context.sessionKey)) {
+        throw sessionBusyError("Cannot seed file read state while a turn is active.");
+      }
+      return await session.seedReadState(input.path, input.mtime);
+    } finally {
+      this.sessionControls.delete(context.sessionKey);
     }
   }
 
@@ -219,6 +258,7 @@ export class SessionRouter {
     }
     this.sessions.clear();
     this.inFlightTurns.clear();
+    this.sessionControls.clear();
   }
 
   /**
@@ -255,7 +295,7 @@ export class SessionRouter {
     record: SessionRecord,
     reason: "idle" | "closed" | "dirty_recreate" | "shutdown",
   ): void {
-    this.options.onSessionEvict?.(sessionKey);
+    this.options.onSessionEvict?.(sessionKey, reason);
     if (reason === "idle") {
       this.options.onSessionIdleEvict?.(sessionKey, snapshotEvictedSession(sessionKey, record));
     }
@@ -289,5 +329,30 @@ function mergeSessionContext(
     sessionKey: next.sessionKey,
     channelKey: next.channelKey || current.channelKey,
     projectKey: current.projectKey ?? next.projectKey,
+    allowedTools: next.allowedTools ?? current.allowedTools,
+    disallowedTools: next.disallowedTools ?? current.disallowedTools,
   };
+}
+
+function hasToolFilterChanged(
+  current: GatewaySessionContext,
+  next: GatewaySessionContext,
+): boolean {
+  // `undefined` means that this turn does not update the session's tool
+  // filter. The Gateway wire format deliberately has no implicit "clear"
+  // operation, so an ordinary native turn cannot undo an SDK-set filter.
+  return (next.allowedTools !== undefined
+      && !sameOptionalStringArray(current.allowedTools, next.allowedTools))
+    || (next.disallowedTools !== undefined
+      && !sameOptionalStringArray(current.disallowedTools, next.disallowedTools));
+}
+
+function sameOptionalStringArray(left: string[] | undefined, right: string[] | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function sessionBusyError(message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code: "SESSION_BUSY" });
 }

@@ -62,6 +62,8 @@ export type RouterStatsConfig = {
   modelPricing?: RouterModelPricingMap;
   /** Override the default ~/.pilotdeck/router/stats.json path (useful for tests). */
   filePath?: string;
+  /** Optional positive millisecond window for durable Router usage records. */
+  retentionMs?: number;
   /** Provider/model ref used as the "no-router" baseline for savedCost calculation. */
   baselineModel?: { provider: string; model: string };
 };

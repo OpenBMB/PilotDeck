@@ -1,6 +1,8 @@
 export type AgentErrorCode =
   | "agent_aborted"
   | "agent_max_turns_reached"
+  | "agent_max_budget_reached"
+  | "agent_task_budget_reached"
   | "agent_model_error"
   | "agent_model_capability_error"
   | "agent_prompt_too_long"

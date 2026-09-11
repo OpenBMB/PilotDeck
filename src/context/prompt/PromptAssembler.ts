@@ -18,6 +18,8 @@ export type PromptAssemblerInput = {
   customSystemPrompt?: string;
   /** Optional appended fragment (always last). */
   appendSystemPrompt?: string;
+  /** Include extension projections even when a host supplies a custom prompt. */
+  includeExtensionsWithCustomSystemPrompt?: boolean;
   /** Optional override for the user-context "now" line. */
   now?: () => Date;
 };
@@ -65,7 +67,7 @@ export class PromptAssembler {
 
     parts.push(...sections.userContext);
 
-    if (!useCustom) {
+    if (!useCustom || input.includeExtensionsWithCustomSystemPrompt === true) {
       parts.push(...sections.systemContext);
     }
 

@@ -43,6 +43,7 @@ import {
   shouldRetryZeroUsage,
 } from "./retry/zeroUsageRetry.js";
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
+import { RouterRuntimeError } from "./protocol/errors.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
 import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
@@ -66,6 +67,11 @@ export type RouterRuntimeDeps = {
    * When provided, `shutdown()` will NOT clear it.
    */
   sessionStore?: SessionRouterStore;
+  /**
+   * Optional Gateway-host restriction applied before a provider request or
+   * fallback attempt. Omit it to retain the historical Router behavior.
+   */
+  isModelAllowed?: (model: RouterModelRef) => boolean;
 };
 
 export type InvalidateStickyResult = {
@@ -95,6 +101,8 @@ export type RouterRuntime = {
    */
   invalidateSticky(sessionId: string): InvalidateStickyResult;
   observeUsage(sessionId: string, usage: import("../model/index.js").CanonicalUsage | undefined): void;
+  /** Per-request cost estimate using the Router's configured price table. */
+  estimateUsageCost(usage: import("../model/index.js").CanonicalUsage | undefined, provider: string, model: string): number;
   stats: TokenStatsCollector;
   shutdown(): Promise<void>;
 };
@@ -121,6 +129,28 @@ export function createRouterRuntime(
   const judgeRuntime = deps.judgeRuntime ?? deps.modelRuntime;
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
+  const isModelAllowed = deps.isModelAllowed ?? (() => true);
+
+  function assertModelAllowed(model: RouterModelRef): void {
+    if (isModelAllowed(model)) return;
+    throw new RouterRuntimeError(
+      "MODEL_POLICY_DENIED",
+      `Gateway model policy denies ${model.provider}/${model.model}.`,
+      { provider: model.provider, model: model.model },
+    );
+  }
+
+  function isManagedModelAllowed(
+    policy: RouterExecuteContext["managedModelPolicy"],
+    model: RouterModelRef,
+  ): boolean {
+    if (!policy) return true;
+    const matches = (selector: string) => selector === "*"
+      || selector === `${model.provider}/*`
+      || selector === `${model.provider}/${model.model}`;
+    if (policy.deny.some(matches)) return false;
+    return policy.allow.length === 0 || policy.allow.some(matches);
+  }
   const healthTrackers = new Map<string, ProviderHealthTracker>();
   function getHealthTracker(sessionId: string): ProviderHealthTracker {
     let tracker = healthTrackers.get(sessionId);
@@ -175,6 +205,7 @@ export function createRouterRuntime(
     required: readonly InputModality[],
   ): RouterModelRef | undefined {
     return fallbackCandidatesFor(scenarioType)
+      .filter((ref) => isModelAllowed(ref))
       .find((ref) => supportsMediaRequirements(ref, required));
   }
 
@@ -573,7 +604,27 @@ export function createRouterRuntime(
     request: CanonicalModelRequest,
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
-    if (!enabled) {
+    const requestedAttempt: RouterModelRef = {
+      id: `${decision.provider}/${decision.model}`,
+      provider: decision.provider,
+      model: decision.model,
+    };
+    assertModelAllowed(requestedAttempt);
+    if (!isManagedModelAllowed(ctx.managedModelPolicy, requestedAttempt)) {
+      throw new RouterRuntimeError(
+        "SDK_MANAGED_MODEL_DENIED",
+        `SDK managedSettings.models denies model ${requestedAttempt.provider}/${requestedAttempt.model}.`,
+        { provider: requestedAttempt.provider, model: requestedAttempt.model },
+      );
+    }
+    const isExecutionModelAllowed = (model: RouterModelRef) =>
+      isModelAllowed(model) && isManagedModelAllowed(ctx.managedModelPolicy, model);
+    const sessionFallbackAttempts = (ctx.fallbackModels ?? []).map((model) => ({
+      id: `${model.provider}/${model.model}`,
+      provider: model.provider,
+      model: model.model,
+    })).filter(isExecutionModelAllowed);
+    if (!enabled && sessionFallbackAttempts.length === 0) {
       const routedCachePlan = request.cachePlan &&
         (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
         (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
@@ -590,7 +641,7 @@ export function createRouterRuntime(
       };
       const downgradedPassthrough = downgradeRequestForAttempt(
         passthroughRequest,
-        { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model },
+        requestedAttempt,
         deps.modelRuntime,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
@@ -611,18 +662,18 @@ export function createRouterRuntime(
     }
 
     const startedAt = (deps.now?.() ?? new Date()).toISOString();
-    const fallbackPlan = planFallback(config.fallback, decision.scenarioType);
+    // An SDK fallback is scoped to this execution and deliberately also works
+    // for an explicit model selection, where project-level fallback config is
+    // otherwise skipped by planFallback().
+    const fallbackPlan = sessionFallbackAttempts.length > 0
+      ? { attempts: sessionFallbackAttempts }
+      : planFallback(config.fallback, decision.scenarioType);
     const baseRequest = applyDecisionToRequest(decision, request);
     const requiredModalities = collectRequiredInputModalities(baseRequest.messages);
-    const requestedAttempt: RouterModelRef = {
-      id: `${decision.provider}/${decision.model}`,
-      provider: decision.provider,
-      model: decision.model,
-    };
     const candidateAttempts: RouterModelRef[] = [
       requestedAttempt,
       ...fallbackPlan.attempts,
-    ].filter((attempt, index, all) =>
+    ].filter(isExecutionModelAllowed).filter((attempt, index, all) =>
       all.findIndex((candidate) =>
         candidate.provider === attempt.provider && candidate.model === attempt.model
       ) === index
@@ -1039,6 +1090,9 @@ export function createRouterRuntime(
     observeUsage(sessionId, usage) {
       if (!enabled) return;
       usageCache.observe(sessionId, usage);
+    },
+    estimateUsageCost(usage, provider, model) {
+      return stats.estimateCost(usage, provider, model);
     },
     stats,
     async shutdown() {

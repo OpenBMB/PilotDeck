@@ -4,8 +4,14 @@ import {
   type SidecarExecution,
   type SidecarExecutionFactory,
 } from "../agent/modules/sidecar.js";
-import type { HostCapabilityModuleMethod, HostContextModuleMethod, HostModuleCapabilities } from "../agent/modules/protocol.js";
-import { AgentLoop, type AgentLoopSeedState } from "../agent/loop/AgentLoop.js";
+import type {
+  HostCapabilityModuleMethod,
+  HostContextModuleMethod,
+  HostModuleCapabilities,
+  HostPermissionModuleMethod,
+} from "../agent/modules/protocol.js";
+import { AgentLoop } from "../agent/loop/AgentLoop.js";
+import { parseAgentLoopSeedStateProjection } from "../agent/modules/checkpoint/seedStateProjection.js";
 import type { AgentRuntimeConfig } from "../agent/runtime/AgentRuntimeConfig.js";
 import type { AgentRunMode } from "../agent/protocol/input.js";
 import { createDefaultPermissionContext } from "../permission/index.js";
@@ -46,6 +52,7 @@ export const createSidecarExecution: SidecarExecutionFactory = ({ request, abort
   const hostModules = asRecord(payload.hostModules);
   const contextMethods = readHostContextMethods(asRecord(hostModules?.context)?.methods);
   const capabilityMethods = readHostCapabilityMethods(asRecord(hostModules?.capability)?.methods);
+  const permissionMethods = readHostPermissionMethods(asRecord(hostModules?.permission)?.methods);
   const hasOverrideMessages = Object.prototype.hasOwnProperty.call(contextOverride, "messages");
   const sessionId = String(request.sessionId ?? request.operationId);
   const turnId = String(request.turnId ?? request.operationId);
@@ -62,6 +69,9 @@ export const createSidecarExecution: SidecarExecutionFactory = ({ request, abort
   const config: AgentRuntimeConfig = {
     provider: String(agent.provider ?? payload.provider ?? "default"),
     model: String(agent.model ?? payload.model ?? "default"),
+    ...(asManagedModelPolicy(agent.managedModelPolicy) ? {
+      managedModelPolicy: asManagedModelPolicy(agent.managedModelPolicy),
+    } : {}),
     cwd,
     systemPrompt: asString(
       contextOverride.systemPrompt ?? agent.systemPrompt ?? payload.systemPrompt,
@@ -102,11 +112,16 @@ export const createSidecarExecution: SidecarExecutionFactory = ({ request, abort
     config,
     {
       router: {} as never,
-      ports: createSidecarPorts(callModule, { tools, capabilityMethods, onAbort: abortExecution }),
+      ports: createSidecarPorts(callModule, {
+        tools,
+        capabilityMethods,
+        permissionMethods,
+        onAbort: abortExecution,
+      }),
       tools: { registry: { list: () => [] } as never, scheduler: { executeAll: async () => [] } as never },
       ...(context ? { context } : {}),
     },
-    parseSeedState(payload.seedState),
+    parseAgentLoopSeedStateProjection(payload.seedState),
   );
   return {
     loop,
@@ -253,59 +268,11 @@ function readHostCapabilityMethods(value: unknown): HostCapabilityModuleMethod[]
     method === "execute" || method === "execute_batch");
 }
 
-function parseSeedState(value: unknown): AgentLoopSeedState | undefined {
-  if (value === undefined || value === null) return undefined;
-  const source = asRecord(value);
-  if (!source) throw new Error("Invalid sidecar seedState: expected an object.");
-  const seed: AgentLoopSeedState = {};
-  if (source.allowedReadFiles !== undefined) {
-    if (!Array.isArray(source.allowedReadFiles) || source.allowedReadFiles.some((path) => typeof path !== "string")) {
-      throw new Error("Invalid sidecar seedState.allowedReadFiles.");
-    }
-    seed.allowedReadFiles = [...source.allowedReadFiles];
-  }
-  if (source.readFileState !== undefined) seed.readFileState = parseReadFileState(source.readFileState);
-  if (source.writeSnapshots !== undefined) seed.writeSnapshots = parseWriteSnapshots(source.writeSnapshots);
-  return seed;
+function readHostPermissionMethods(value: unknown): HostPermissionModuleMethod[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((method): method is HostPermissionModuleMethod => method === "decide");
 }
 
-function parseReadFileState(value: unknown): Map<string, { mtimeMs: number; kind: "text" | "image" | "pdf" | "notebook"; offset?: number; limit?: number; pages?: string }> {
-  const source = asRecord(value);
-  if (!source) throw new Error("Invalid sidecar seedState.readFileState.");
-  const result = new Map<string, { mtimeMs: number; kind: "text" | "image" | "pdf" | "notebook"; offset?: number; limit?: number; pages?: string }>();
-  for (const [path, rawEntry] of Object.entries(source)) {
-    const entry = asRecord(rawEntry);
-    if (!entry || typeof entry.mtimeMs !== "number" || !isReadKind(entry.kind)) throw new Error(`Invalid readFileState entry: ${path}.`);
-    result.set(path, {
-      mtimeMs: entry.mtimeMs,
-      kind: entry.kind,
-      ...(typeof entry.offset === "number" ? { offset: entry.offset } : {}),
-      ...(typeof entry.limit === "number" ? { limit: entry.limit } : {}),
-      ...(typeof entry.pages === "string" ? { pages: entry.pages } : {}),
-    });
-  }
-  return result;
-}
-
-function parseWriteSnapshots(value: unknown): Map<string, { absolutePath: string; mtimeMs: number; contentHash: string; offset?: number; limit?: number }> {
-  const source = asRecord(value);
-  if (!source) throw new Error("Invalid sidecar seedState.writeSnapshots.");
-  const result = new Map<string, { absolutePath: string; mtimeMs: number; contentHash: string; offset?: number; limit?: number }>();
-  for (const [path, rawEntry] of Object.entries(source)) {
-    const entry = asRecord(rawEntry);
-    if (!entry || typeof entry.absolutePath !== "string" || typeof entry.mtimeMs !== "number" || typeof entry.contentHash !== "string") {
-      throw new Error(`Invalid writeSnapshots entry: ${path}.`);
-    }
-    result.set(path, {
-      absolutePath: entry.absolutePath,
-      mtimeMs: entry.mtimeMs,
-      contentHash: entry.contentHash,
-      ...(typeof entry.offset === "number" ? { offset: entry.offset } : {}),
-      ...(typeof entry.limit === "number" ? { limit: entry.limit } : {}),
-    });
-  }
-  return result;
-}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -328,6 +295,18 @@ function asModelOverride(value: unknown): { provider: string; model: string } | 
   const provider = asString(override?.provider);
   const model = asString(override?.model);
   return provider && model ? { provider, model } : undefined;
+}
+
+function asManagedModelPolicy(value: unknown): { allow: string[]; deny: string[] } | undefined {
+  const policy = asRecord(value);
+  if (!policy) return undefined;
+  const allow = Array.isArray(policy.allow) && policy.allow.every((entry) => typeof entry === "string")
+    ? [...policy.allow]
+    : undefined;
+  const deny = Array.isArray(policy.deny) && policy.deny.every((entry) => typeof entry === "string")
+    ? [...policy.deny]
+    : undefined;
+  return allow && deny ? { allow, deny } : undefined;
 }
 
 function asInputSchema(value: unknown): PilotDeckToolInputSchema {
@@ -354,8 +333,5 @@ function isToolKind(value: unknown): value is PilotDeckToolDefinition["kind"] {
     || value === "session" || value === "agent" || value === "structured_output" || value === "custom";
 }
 
-function isReadKind(value: unknown): value is "text" | "image" | "pdf" | "notebook" {
-  return value === "text" || value === "image" || value === "pdf" || value === "notebook";
-}
 
 export default createSidecarExecution;

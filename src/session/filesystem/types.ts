@@ -28,9 +28,15 @@ export type FileHistoryBackup = {
   mode?: number;
 };
 
+/** State expected after a successful PilotDeck edit. */
+export type FileHistoryExpectedFileState =
+  | { exists: false }
+  | { exists: true; sha256: string; mode?: number };
+
 export type FileHistorySnapshot = {
   messageId: string;
   trackedFileBackups: Record<string, FileHistoryBackup>;
+  expectedFileStates?: Record<string, FileHistoryExpectedFileState>;
   timestamp: Date;
 };
 
@@ -43,4 +49,17 @@ export type FileHistoryDiffStats = {
   filesChanged: number;
   insertions: number;
   deletions: number;
+};
+
+/**
+ * Durable bytes for one session's file-history backups. The FileHistoryStore
+ * remains responsible for snapshot ordering, workspace conflict checks and
+ * restore semantics; a host can use this port for a database or object store
+ * instead of the historical backup directory.
+ */
+export type FileHistoryBackupStorage = {
+  write(backupFileName: string, bytes: Uint8Array): void | Promise<void>;
+  read(backupFileName: string): Promise<Uint8Array | undefined>;
+  /** Idempotently removes a no-longer-referenced backup blob. */
+  delete(backupFileName: string): void | Promise<void>;
 };

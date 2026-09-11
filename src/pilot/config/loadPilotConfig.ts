@@ -5,7 +5,12 @@ import { parseCronConfig } from "../../cron/config/parseCronConfig.js";
 import { parseModelConfig } from "../../model/config/parseModelConfig.js";
 import { isRecord } from "../../model/config/schema.js";
 import { ModelConfigError } from "../../model/protocol/errors.js";
-import { getPilotConfigFilePath, getPilotMemoryRootDir, resolvePilotHome } from "../paths.js";
+import {
+  getPilotConfigFilePath,
+  getPilotMemoryRootDir,
+  getPilotProjectConfigFilePath,
+  resolvePilotHome,
+} from "../paths.js";
 import { sha256, stableStringify } from "./hash.js";
 import { mergeConfigSources } from "./merge.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
@@ -52,6 +57,17 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   const defaultConfigPath = getPilotConfigFilePath(pilotHome);
   const defaultConfig = readYamlSource(defaultConfigPath, "default", 10, loadedAt, diagnostics, sources);
 
+  // Project configuration is a Gateway-host-owned source. It is resolved
+  // before environment overrides so a process-level deployment policy can
+  // still take precedence. A missing project file is intentionally a no-op,
+  // preserving the historical global-config-only behavior.
+  const projectConfigPath = options.projectRoot
+    ? getPilotProjectConfigFilePath(options.projectRoot)
+    : undefined;
+  const projectConfig = projectConfigPath
+    ? readYamlSource(projectConfigPath, "project", 20, loadedAt, diagnostics, sources)
+    : undefined;
+
   const envConfig = readEnvOverrides(env);
   if (envConfig) {
     sources.push({
@@ -63,7 +79,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     });
   }
 
-  const rawConfig = mergeConfigSources(defaultConfig, envConfig) as PilotRawConfig;
+  const rawConfig = mergeConfigSources(defaultConfig, projectConfig, envConfig) as PilotRawConfig;
   validateTopLevel(rawConfig, diagnostics);
   const schemaVersion = parseSchemaVersion(rawConfig.schemaVersion, diagnostics);
 
@@ -404,7 +420,7 @@ function parseAgentSubagents(
         path: "agent.subagents.params",
         recoverable: true,
       });
-    } else if (key !== "timeoutMs" && key !== "default" && key !== "params") {
+    } else if (key !== "timeoutMs" && key !== "default" && key !== "maxDepth" && key !== "params") {
       diagnostics.push({
         code: "CONFIG_AGENT_UNKNOWN_FIELD",
         severity: "warning",
@@ -426,9 +442,11 @@ function parseAgentSubagents(
       );
     }
   }
+  const maxDepth = readOptionalNonNegativeSafeInteger(value.maxDepth, "agent.subagents.maxDepth");
   return {
     ...(defaultModel ? { default: defaultModel } : {}),
     timeoutMs: readOptionalPositiveInteger(value.timeoutMs, "agent.subagents.timeoutMs"),
+    ...(maxDepth !== undefined ? { maxDepth } : {}),
   };
 }
 
@@ -692,6 +710,14 @@ function readOptionalPositiveInteger(value: unknown, path: string): number | und
     throw new PilotConfigError("CONFIG_INVALID_VALUE", `${path} must be a positive integer.`);
   }
   return Math.floor(value);
+}
+
+function readOptionalNonNegativeSafeInteger(value: unknown, path: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new PilotConfigError("CONFIG_INVALID_VALUE", `${path} must be a non-negative safe integer.`);
+  }
+  return value;
 }
 
 function throwConfigErrorIfFatal(diagnostics: PilotConfigDiagnostic[]): void {

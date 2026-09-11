@@ -1,6 +1,7 @@
 import type { CanonicalMessage, CanonicalModelEvent, CanonicalModelRequest } from "../../model/index.js";
 import type {
   PilotDeckElicitationChannel,
+  PilotDeckUserDialogChannel,
   PilotDeckToolAuditRecorder,
   PilotDeckFileUpdateNotifier,
   PilotDeckToolFileHistorySink,
@@ -16,10 +17,41 @@ import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ModelProtocol } from "../../model/index.js";
 import type { ModelInvokerPort, ToolPort } from "../modules/protocol.js";
+import type { SubagentDefinition } from "../sub/builtinSubagentTypes.js";
 
 export type AgentRuntimePorts = {
   model?: ModelInvokerPort;
   tools?: ToolPort;
+};
+
+/**
+ * Host boundary for non-blocking dynamic subagents. The host owns task
+ * identity, cancellation and shutdown; AgentLoop supplies only the child run.
+ */
+export type AgentBackgroundSubagentLauncher = {
+  launch(input: {
+    sessionId: string;
+    turnId: string;
+    subagentId: string;
+    subagentType: string;
+    run(signal: AbortSignal): Promise<unknown>;
+  }): { taskId: string } | Promise<{ taskId: string }>;
+};
+
+/**
+ * Host boundary for an AgentDefinition observer. Observers are detached from
+ * the parent model flow: the host owns their cancellation and shutdown while
+ * AgentLoop supplies a read-only child run after an activity digest is ready.
+ */
+export type AgentObserverSubagentLauncher = {
+  launch(input: {
+    sessionId: string;
+    turnId: string;
+    observedSubagentId: string;
+    observerSubagentId: string;
+    observerSubagentType: string;
+    run(signal: AbortSignal): Promise<unknown>;
+  }): void | Promise<void>;
 };
 
 /**
@@ -34,6 +66,7 @@ export type AgentRouterRuntime = Pick<RouterRuntime, "stream" | "decide" | "exec
   materializeRequest?: RouterRuntime["materializeRequest"];
   observeUsage?: RouterRuntime["observeUsage"];
   invalidateSticky?: RouterRuntime["invalidateSticky"];
+  estimateUsageCost?: RouterRuntime["estimateUsageCost"];
 };
 
 /**
@@ -98,6 +131,23 @@ export type AgentRuntimeDependencies = {
     registry: ToolRegistry;
   };
   context?: AgentContextRuntime;
+  /**
+   * Optional host-owned context adapter for a dynamic subagent. Absent keeps
+   * the historical behavior of sharing the parent's context runtime.
+   */
+  createSubagentContext?: (definition: SubagentDefinition) => AgentContextRuntime | undefined;
+  /**
+   * Optional host-owned registry projection for a dynamic subagent. It runs
+   * after the native tool allow/deny scope and before the child scheduler is
+   * built, so Gateway extension scopes cannot widen the parent registry.
+  */
+  createSubagentToolRegistry?: (definition: SubagentDefinition, registry: ToolRegistry) => ToolRegistry | undefined;
+  /**
+   * Optional host-owned final filter for a dynamic subagent registry. It runs
+   * after fork-local MCP tools are attached and before the child scheduler is
+   * built, so late MCP contributions cannot bypass host restrictions.
+   */
+  filterSubagentToolRegistry?: (definition: SubagentDefinition, registry: ToolRegistry) => ToolRegistry | undefined;
   tokenAccounting?: TokenAccountingRuntime;
   /**
    * Look up a model's context-window size by provider/model id. Used after
@@ -123,12 +173,18 @@ export type AgentRuntimeDependencies = {
   lifecycle?: LifecycleRuntime;
   /** C3 sidechain transcript hooks (optional). */
   subagentTranscript?: AgentSubagentTranscriptHooks;
+  /** Optional Gateway-owned launcher for AgentDefinition.background forks. */
+  backgroundSubagents?: AgentBackgroundSubagentLauncher;
+  /** Optional Gateway-owned launcher for detached, read-only AgentDefinition observers. */
+  observerSubagents?: AgentObserverSubagentLauncher;
   /**
    * Elicitation channel — wired into the per-tool `PilotDeckToolRuntimeContext`
    * so `ask_user_question` (B1) can drive the gateway. When omitted, the
    * tool returns a `mcp_unavailable` error instead of crashing.
    */
   elicitation?: PilotDeckElicitationChannel;
+  /** Gateway-owned opt-in generic user-dialog channel. */
+  userDialog?: PilotDeckUserDialogChannel;
   /**
    * File-history sink — wired into the per-tool runtime context so
    * `edit_file` / `write_file` (C4) snapshot the file before mutation.

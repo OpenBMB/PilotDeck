@@ -47,6 +47,8 @@ export type AutoCompactResult =
 
 export type DefaultContextRuntimeOptions = {
   extension?: ExtensionResolver;
+  /** Defaults false so ordinary custom system prompts keep their current contract. */
+  includeExtensionsWithCustomSystemPrompt?: boolean;
   promptAssembler?: PromptAssembler;
   messageProjector?: MessageProjector;
   toolResultBudget?: ToolResultBudget;
@@ -100,6 +102,7 @@ const EMERGENCY_HEAD_KEEP_RATIO = 0.10;
 
 export class DefaultContextRuntime implements ContextRuntime {
   private readonly extension: ExtensionResolver;
+  private readonly includeExtensionsWithCustomSystemPrompt: boolean;
   private readonly promptAssembler: PromptAssembler;
   private readonly messageProjector: MessageProjector;
   private readonly toolResultBudget?: ToolResultBudget;
@@ -123,6 +126,7 @@ export class DefaultContextRuntime implements ContextRuntime {
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
     this.extension = options.extension ?? new NullExtensionResolver();
+    this.includeExtensionsWithCustomSystemPrompt = options.includeExtensionsWithCustomSystemPrompt ?? false;
     this.promptAssembler = options.promptAssembler ?? new PromptAssembler(this.extension);
     this.messageProjector = options.messageProjector ?? new MessageProjector();
     this.toolResultBudget = options.toolResultBudget;
@@ -171,6 +175,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
+      includeExtensionsWithCustomSystemPrompt: this.includeExtensionsWithCustomSystemPrompt,
       now: this.now,
     });
 

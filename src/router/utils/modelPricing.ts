@@ -9,6 +9,7 @@ export type RouterModelPricing = {
 export type RouterModelPricingMap = Record<string, RouterModelPricing>;
 
 export type RouterPricingUnit = "$/百万 Token" | "¥/百万 Token";
+export type RouterModelPricingSource = "configured_price" | "built_in_estimate" | "fallback_estimate";
 
 // $/million tokens – fallback when neither nativeCost nor user modelPricing is available
 const DEFAULT_PRICING: Array<{ pattern: RegExp; input: number; output: number; cacheRead?: number }> = [
@@ -62,20 +63,38 @@ export function lookupModelPricing(
   model: string,
   modelPricing?: RouterModelPricingMap,
 ): RouterModelPricing {
+  return lookupModelPricingWithSource(provider, model, modelPricing).pricing;
+}
+
+/**
+ * Resolves the rate and identifies whether the result is an operator-supplied
+ * rate or one of PilotDeck's estimates. Callers must not present an estimate
+ * as provider-reported cost.
+ */
+export function lookupModelPricingWithSource(
+  provider: string,
+  model: string,
+  modelPricing?: RouterModelPricingMap,
+): { pricing: RouterModelPricing; source: RouterModelPricingSource } {
   const combined = `${provider}/${model}`;
   if (modelPricing) {
     const exact = modelPricing[combined];
-    if (exact) return exact;
+    if (exact) return { pricing: exact, source: "configured_price" };
     for (const [key, val] of Object.entries(modelPricing)) {
-      if (model.includes(key) || key.includes(model)) return val;
+      if (model.includes(key) || key.includes(model)) {
+        return { pricing: val, source: "configured_price" };
+      }
     }
   }
   for (const entry of DEFAULT_PRICING) {
     if (entry.pattern.test(combined) || entry.pattern.test(model)) {
-      return { input: entry.input, output: entry.output, cacheRead: entry.cacheRead };
+      return {
+        pricing: { input: entry.input, output: entry.output, cacheRead: entry.cacheRead },
+        source: "built_in_estimate",
+      };
     }
   }
-  return FALLBACK_PRICING;
+  return { pricing: FALLBACK_PRICING, source: "fallback_estimate" };
 }
 
 export function calculateInputCost(

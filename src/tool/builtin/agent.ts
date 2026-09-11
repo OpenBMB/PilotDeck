@@ -86,6 +86,8 @@ export type AgentToolOutput = {
   subagentType: string;
   description: string;
   text: string;
+  /** Present only for AgentDefinition.background launches. */
+  backgroundTaskId?: string;
   usage?: CanonicalUsage;
   turns?: number;
   durationMs?: number;
@@ -339,6 +341,9 @@ async function runFullFork(args: {
       { errorCode: "subagent_depth_exceeded" },
     );
   }
+  if (fork.isBackgroundDefinition?.(requestedType)) {
+    return runBackgroundFork({ input, context, requestedType, directive, fork });
+  }
   const subagentId = randomUUID();
   const timeoutMs = context.subagentTimeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
   let report;
@@ -395,6 +400,63 @@ async function runFullFork(args: {
       forkMode: "full",
       turns: report.turns,
       durationMs: report.durationMs,
+    },
+  };
+}
+
+async function runBackgroundFork(args: {
+  input: AgentToolInput;
+  context: PilotDeckToolRuntimeContext;
+  requestedType: string;
+  directive: string;
+  fork: PilotDeckSubagentForkApi;
+}): Promise<PilotDeckToolExecutionOutput<AgentToolOutput>> {
+  const { input, context, requestedType, directive, fork } = args;
+  if (!fork.launchBackground) {
+    throw new PilotDeckToolRuntimeError(
+      "unsupported_tool",
+      `Background subagent ${requestedType} requires a Gateway background-subagent launcher.`,
+    );
+  }
+  if (context.abortSignal?.aborted) {
+    throw new PilotDeckToolRuntimeError("tool_aborted", "agent subagent aborted before launch.");
+  }
+  const subagentId = randomUUID();
+  const timeoutMs = context.subagentTimeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
+  let launched: { taskId: string };
+  try {
+    launched = await fork.launchBackground({
+      definitionId: requestedType,
+      directive,
+      subagentId,
+      toolCallId: context.currentToolCallId,
+      timeoutMs,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `background agent subagent failed to launch: ${message}`,
+      { errorCode: "subagent_launch_failed" },
+    );
+  }
+  const output: AgentToolOutput = {
+    subagentType: requestedType,
+    description: input.description,
+    text: `Background subagent started as task ${launched.taskId}.`,
+    backgroundTaskId: launched.taskId,
+  };
+  return {
+    content: [
+      { type: "text", text: `[${requestedType}] ${input.description}\n\n${output.text}` },
+      { type: "json", value: output },
+    ],
+    data: output,
+    metadata: {
+      subagent: requestedType,
+      subagentId,
+      backgroundTaskId: launched.taskId,
+      forkMode: "background",
     },
   };
 }

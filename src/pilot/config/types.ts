@@ -76,6 +76,8 @@ export type PilotAgentConfig = {
   subagents?: {
     default?: PilotAgentModelSelection;
     timeoutMs?: number;
+    /** Maximum nested `agent` fork depth; zero disables forks. */
+    maxDepth?: number;
   };
 };
 

@@ -86,12 +86,16 @@ export class AgentSession {
       messages: this.state.messages,
       input,
       maxTurns: submitOptions.maxTurns,
+      maxBudgetUsd: submitOptions.maxBudgetUsd,
+      taskBudgetUsd: submitOptions.taskBudgetUsd,
+      initialTaskBudgetSpentUsd: submitOptions.initialTaskBudgetSpentUsd,
       runMode: submitOptions.runMode,
       permissionMode: submitOptions.permissionMode,
       allowedReadFiles: submitOptions.allowedReadFiles,
       basePermissionMode: submitOptions.basePermissionMode,
       allowPlanModeTools: submitOptions.allowPlanModeTools,
       canPrompt: submitOptions.canPrompt,
+      canElicit: submitOptions.canElicit,
       permissionRules: submitOptions.permissionRules,
       syntheticMessages: submitOptions.syntheticMessages,
       modelOverride: submitOptions.modelOverride,
@@ -168,6 +172,16 @@ export class AgentSession {
       fileState: this.options.turnRunner.snapshotFileState(),
       metadata: runtime.metadata,
     };
+  }
+
+  async seedReadState(filePath: string, mtimeMs: number): Promise<{ applied: boolean }> {
+    if (this.state.status === "running") {
+      const error = Object.assign(new Error("Cannot seed file read state while a turn is active."), {
+        code: "SESSION_BUSY",
+      });
+      throw error;
+    }
+    return this.options.turnRunner.seedReadState(filePath, mtimeMs);
   }
 
   async *replay(): AsyncGenerator<AgentEvent, void, unknown> {

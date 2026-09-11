@@ -375,3 +375,9 @@ function stripQuotedText(command: string): string {
 }
 
 export type { PilotDeckCommandOptions, PilotDeckCommandResult, PilotDeckCommandRunner } from "./bash/commandRunner.js";
+export {
+  BubblewrapSandboxCommandRunner,
+  toShellCommand,
+  type BubblewrapInvocation,
+  type BubblewrapSandboxCommandRunnerOptions,
+} from "./bash/bubblewrapSandbox.js";

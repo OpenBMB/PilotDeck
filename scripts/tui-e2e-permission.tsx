@@ -110,6 +110,7 @@ class MockGateway implements Gateway {
   cronStop = stub({ stopped: true }) as Gateway["cronStop"];
   cronRunNow = stub({ triggered: true }) as unknown as Gateway["cronRunNow"];
   respondElicitation = stub({ delivered: false }) as Gateway["respondElicitation"];
+  respondUserDialog = stub({ delivered: false }) as Gateway["respondUserDialog"];
   grantSessionPermission = stub({ granted: false }) as Gateway["grantSessionPermission"];
   readSessionMessages = stub({ messages: [], hasMore: false, session: {} as any }) as unknown as Gateway["readSessionMessages"];
   readSubagentMessages = stub({ messages: [], total: 0 }) as unknown as Gateway["readSubagentMessages"];

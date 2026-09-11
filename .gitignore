@@ -199,6 +199,12 @@ test/
 test.ts
 *.test.ts
 
+# The published SDK owns its source-level unit tests. Its compiled test
+# output remains local, like other build products.
+!packages/sdk/test/
+!packages/sdk/test/**
+packages/sdk/dist-test/
+
 # Auto-Research-Skills (local-only)
 Auto-Research-Skills/
 

@@ -57,6 +57,7 @@ afterEach(() => {
 });
 
 type TestableSubAgentSession = {
+  buildInitialMessages(): CanonicalMessage[];
   buildScopedRegistry(): ToolRegistry;
   buildConfig(): AgentRuntimeConfig;
 };
@@ -424,6 +425,53 @@ test("explore subagent does not probe tool safety before execution", async () =>
   assert.deepEqual(readOnlyChecks, []);
 });
 
+test("custom SDK subagent definitions scope tools, mode, and turn budget", () => {
+  const registry = new ToolRegistry();
+  registry.register(createNoopTool("read_file", () => true));
+  registry.register(createNoopTool("bash", () => false));
+  const definition: SubagentDefinition = {
+    id: "reviewer",
+    description: "Review source files.",
+    allowedTools: ["*"],
+    disallowedTools: ["bash"],
+    omitProjectInstructions: false,
+    omitGitStatus: false,
+    isReadOnly: true,
+    systemPromptSuffix: "Review only.",
+    maxTurns: 2,
+    permissionMode: "plan",
+  };
+  const session = sessionFor(definition, registry);
+  const scoped = session.buildScopedRegistry();
+  assert.equal(scoped.has("read_file"), true);
+  assert.equal(scoped.has("bash"), false);
+  const config = session.buildConfig();
+  assert.equal(config.permissionMode, "plan");
+  assert.equal(config.permissionContext.mode, "plan");
+});
+
+test("dynamic subagent initial prompt and critical reminder stay scoped to its fork", () => {
+  const registry = new ToolRegistry();
+  const session = sessionFor({
+    ...SUBAGENT_DEFINITIONS["general-purpose"],
+    initialPrompt: "First, inspect the repository conventions.",
+    criticalSystemReminder: "Return only verified findings.",
+  }, registry);
+
+  const messages = session.buildInitialMessages();
+  assert.deepEqual(messages, [
+    { role: "user", content: [{ type: "text", text: "First, inspect the repository conventions." }] },
+    { role: "user", content: [{ type: "text", text: "Inspect the workspace." }] },
+  ]);
+  assert.match(session.buildConfig().systemPrompt ?? "", /Return only verified findings\./);
+
+  const defaultSession = sessionFor(SUBAGENT_DEFINITIONS["general-purpose"], registry);
+  assert.deepEqual(defaultSession.buildInitialMessages(), [
+    { role: "user", content: [{ type: "text", text: "Inspect the workspace." }] },
+  ]);
+  assert.doesNotMatch(defaultSession.buildConfig().systemPrompt ?? "", /Return only verified findings\./);
+});
+
 test("parent abort emits an aborted subagent completion event", async () => {
   let markStarted: (() => void) | undefined;
   const started = new Promise<void>((resolve) => {
@@ -533,6 +581,41 @@ test("subagent config uses configured default model without copying caps to top-
     maxOutputTokens: 4096,
   });
   assert.equal(config.isSubagent, true);
+});
+
+test("definition model overrides the native subagent default without changing its inheritance state", () => {
+  const registry = new ToolRegistry();
+  const session = new SubAgentSession({
+    definition: {
+      ...SUBAGENT_DEFINITIONS["general-purpose"],
+      modelOverride: { provider: "review", model: "review-model" },
+    },
+    directive: "Review the change.",
+    parentConfig: {
+      ...parentConfig(),
+      provider: "main",
+      model: "main-model",
+      maxContextTokens: 100000,
+      maxOutputTokens: 20000,
+      subagentModel: { provider: "default", model: "default-model" },
+    },
+    parentDependencies: {
+      router: createRouter(),
+      tools: { registry, scheduler: {} as never },
+    },
+    parentSessionId: "parent-session",
+    parentTurnId: "parent-turn",
+    subagentSessionId: "subagent-session",
+    subagentId: "subagent-override",
+  }) as unknown as TestableSubAgentSession;
+
+  const config = session.buildConfig();
+
+  assert.equal(config.provider, "review");
+  assert.equal(config.model, "review-model");
+  assert.equal(config.maxContextTokens, undefined);
+  assert.equal(config.maxOutputTokens, undefined);
+  assert.deepEqual(config.subagentModel, { provider: "default", model: "default-model" });
 });
 
 test("subagent config inherits parent model when no default is configured", () => {

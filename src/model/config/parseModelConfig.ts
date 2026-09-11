@@ -17,7 +17,11 @@ import {
   type MultimodalConstraints,
 } from "../protocol/multimodal.js";
 import { lookupCatalogModel, lookupCatalogProvider } from "../catalog/index.js";
-import { resolveApiKey, type CredentialEnv } from "./resolveCredentials.js";
+import {
+  resolveApiKey,
+  resolveApiKeySource,
+  type CredentialEnv,
+} from "./resolveCredentials.js";
 import {
   isModelProtocol,
   isRecord,
@@ -92,11 +96,14 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     models[modelId] = parseModelDefinition(modelId, protocol, rawModel, providerId);
   }
 
+  const credential = resolveProviderCredential(providerId, provider.apiKey, env, catalogProvider?.apiKeyEnvVar);
+
   return {
     id: providerId,
     protocol,
     url: rawUrl,
-    apiKey: resolveProviderApiKey(providerId, provider.apiKey, env, catalogProvider?.apiKeyEnvVar),
+    apiKey: credential.apiKey,
+    credentialSource: credential.source,
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
     extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
@@ -129,21 +136,24 @@ function parseSpeedMapping(
   return undefined;
 }
 
-function resolveProviderApiKey(
+function resolveProviderCredential(
   providerId: string,
   value: unknown,
   env?: CredentialEnv,
   catalogEnvVar?: string,
-): string {
+): { apiKey: string; source: "environment" | "literal" | "provider_default" } {
   if (providerId === "ollama" && value === undefined) {
-    return "ollama";
+    return { apiKey: "ollama", source: "provider_default" };
   }
   const hasBlankString = typeof value === "string" && value.trim().length === 0;
   const hasConfigValue = value !== undefined && value !== null && !hasBlankString;
   const effectiveValue = hasConfigValue
     ? value
     : catalogEnvVar ? `\${${catalogEnvVar}}` : value;
-  return resolveApiKey(effectiveValue, env);
+  return {
+    apiKey: resolveApiKey(effectiveValue, env),
+    source: resolveApiKeySource(effectiveValue),
+  };
 }
 
 function resolveDefaultProviderUrl(

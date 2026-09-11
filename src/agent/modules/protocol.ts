@@ -9,9 +9,12 @@ export type HostContextModuleMethod =
   | "recover_from_model_error"
   | "capture_turn";
 export type HostCapabilityModuleMethod = "execute" | "execute_batch";
+export type HostPermissionModuleMethod = "decide";
 export type HostModuleCapabilities = {
   context?: { methods: HostContextModuleMethod[] };
   capability?: { methods: HostCapabilityModuleMethod[] };
+  /** Host-owned policy decision before a sidecar dispatches a tool. */
+  permission?: { methods: HostPermissionModuleMethod[] };
 };
 export type ModuleOperationState =
   | "pending"
@@ -597,6 +600,11 @@ export type ModelExecutionContext = {
   abortSignal?: AbortSignal;
   metadata?: Record<string, unknown>;
   modelOverride?: { provider: string; model: string };
+  /**
+   * Optional, serialized Gateway session restriction. This is not a model
+   * configuration or credential surface; it only narrows candidate execution.
+   */
+  managedModelPolicy?: { allow: string[]; deny: string[] };
 };
 
 export type AgentExecutionContext = ModelExecutionContext;

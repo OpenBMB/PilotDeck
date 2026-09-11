@@ -2,6 +2,7 @@ import type { CanonicalMessage } from "../../model/index.js";
 import type { AgentTurnResult } from "../../agent/protocol/result.js";
 import type {
   AgentControlBoundaryTranscriptEntry,
+  AgentFileSnapshotRecordedTranscriptEntry,
   AgentStatusMessageTranscriptEntry,
   AgentTranscriptEntry,
   SessionMetadataValue,
@@ -30,6 +31,11 @@ export type AgentTranscriptWriter = {
   recordFileArtifacts?(sessionId: string, turnId: string, artifacts: FileArtifact[]): void | Promise<void>;
   recordTurnResult(sessionId: string, turnId: string, result: AgentTurnResult): void | Promise<void>;
   recordSessionMetadata?(sessionId: string, turnId: string, metadata: SessionMetadataValue): void | Promise<void>;
+  recordFileSnapshot?(
+    sessionId: string,
+    turnId: string,
+    snapshot: Omit<AgentFileSnapshotRecordedTranscriptEntry, "type" | "sessionId" | "turnId" | "sequence" | "createdAt" | "entryId" | "parentEntryId">,
+  ): void | Promise<void>;
   recordControlBoundary?(
     sessionId: string,
     turnId: string,

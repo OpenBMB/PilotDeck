@@ -29,11 +29,7 @@ export const PILOTDECK_HOOK_EVENTS = [
    * is supported.
    */
   "CwdChanged",
-  /**
-   * @todo FileChanged — could fire after write_file/edit_file tool success.
-   * Requires injecting dispatch into ToolRuntime context (the AgentEventEmitter
-   * callback mechanism is ready; implementation deferred to avoid scope creep).
-   */
+  /** SDK FileChanged hooks are dispatched after successful native file writes. */
   "FileChanged",
   "WorktreeCreate",
   "WorktreeRemove",

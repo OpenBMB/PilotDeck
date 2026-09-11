@@ -2,6 +2,8 @@ import { ModelConfigError } from "../protocol/errors.js";
 
 export type CredentialEnv = Record<string, string | undefined>;
 
+export type ResolvedApiKeySource = "environment" | "literal";
+
 const ENV_REFERENCE_PATTERN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 /**
@@ -40,4 +42,14 @@ export function resolveApiKey(value: unknown, env: CredentialEnv = process.env):
   }
 
   return resolved;
+}
+
+/**
+ * Return only the category of a raw API-key setting. Callers must not expose
+ * the raw value or the referenced environment-variable name outside the host.
+ */
+export function resolveApiKeySource(value: unknown): ResolvedApiKeySource {
+  return typeof value === "string" && ENV_REFERENCE_PATTERN.test(value.trim())
+    ? "environment"
+    : "literal";
 }

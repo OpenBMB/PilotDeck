@@ -324,11 +324,23 @@ export type ProviderRetryConfig = {
 
 export type SpeedMapping = "openai_service_tier" | "anthropic_speed";
 
+/**
+ * Non-secret provenance for a resolved provider API key. This is deliberately
+ * limited to a source category: it never retains an API key value or an
+ * environment-variable name.
+ */
+export type ProviderCredentialSource = "environment" | "literal" | "provider_default";
+
 export type ProviderConfig = {
   id: string;
   protocol: ModelProtocol;
   url: string;
   apiKey: string;
+  /**
+   * Host-local credential provenance used by Gateway policy. Optional so
+   * programmatic ModelConfig callers keep their existing contract.
+   */
+  credentialSource?: ProviderCredentialSource;
   timeoutMs?: number;
   headers: Record<string, string>;
   /** Arbitrary fields merged into every request body (e.g. OpenRouter provider preferences). */

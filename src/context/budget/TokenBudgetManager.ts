@@ -8,6 +8,24 @@ import { effectiveInputContextTokens } from "./effectiveContext.js";
 
 export type TokenWarningState = "ok" | "warning" | "blocking";
 
+/**
+ * Gateway-owned, local-tokenizer breakdown of a prepared model request.
+ * Provider token-count APIs can report a more accurate total, but normally
+ * cannot provide equivalent per-category counts.
+ *
+ * `system` excludes the separately reported MCP instruction and memory
+ * blocks, so all buckets add up to `total`.
+ */
+export type TokenBudgetBreakdown = {
+  source: "local_estimate";
+  total: number;
+  system: number;
+  tools: number;
+  messages: number;
+  mcp: number;
+  memory: number;
+};
+
 export type TokenBudgetSnapshot = {
   tokens: number;
   /** Local tokenizer estimate retained for diagnostics, never UI display. */
@@ -31,6 +49,8 @@ export type TokenBudgetSnapshot = {
   exact?: boolean;
   reservedOutputTokens?: number;
   estimatorError?: string;
+  /** Optional request composition provided by the Gateway token accountant. */
+  breakdown?: TokenBudgetBreakdown;
 };
 
 export type TokenBudgetEvaluateOptions = {
@@ -192,6 +212,7 @@ export class TokenBudgetManager {
       displayTokens?: number;
       calibrationActualInputTokens?: number;
       calibrationEstimatedInputTokens?: number;
+      breakdown?: TokenBudgetBreakdown;
     } = {},
   ): TokenBudgetSnapshot {
     const reserved = Math.max(0, Math.floor(options.reservedOutputTokens ?? 0));
@@ -216,6 +237,7 @@ export class TokenBudgetManager {
       ...(options.calibrationEstimatedInputTokens !== undefined
         ? { calibrationEstimatedInputTokens: options.calibrationEstimatedInputTokens }
         : {}),
+      ...(options.breakdown !== undefined ? { breakdown: options.breakdown } : {}),
       totalContextTokens,
       maxContextTokens: promptBudget,
       effectiveContextTokens: promptBudget,

@@ -288,6 +288,10 @@ export function createEditNotebookTool(): PilotDeckToolDefinition<EditNotebookIn
       const updatedContent = `${JSON.stringify(notebook, null, 1)}\n`;
       await writeTextFile(resolved.absolutePath, updatedContent, { allowOverwrite: true });
       const fileStat = await stat(resolved.absolutePath);
+      await context.fileHistory?.markEditCommitted?.(
+        resolved.absolutePath,
+        context.messageId ?? context.turnId,
+      );
       invalidateReadFileState(context, resolved.absolutePath);
       recordWriteSnapshot(context, resolved.absolutePath, updatedContent, Math.floor(fileStat.mtimeMs));
 

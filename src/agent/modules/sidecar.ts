@@ -11,11 +11,14 @@ import type {
   AgentContextToolResultInput,
 } from "../../context/index.js";
 import type { PilotDeckToolDefinition, PilotDeckToolResult, PilotDeckToolRuntimeContext, PilotDeckToolCall, PilotDeckToolErrorCode } from "../../tool/index.js";
-import type { ModelInvokerPort, PreparedModelInvocation, ToolPort } from "./protocol.js";
+import { buildToolErrorRecovery } from "../../tool/execution/errorRecovery.js";
+import { toolError } from "../../tool/protocol/errors.js";
+import type { AgentExecutionContext, ModelInvokerPort, PreparedModelInvocation, ToolPort } from "./protocol.js";
 import {
   MODULE_PROTOCOL_VERSION,
   type HostCapabilityModuleMethod,
   type HostContextModuleMethod,
+  type HostPermissionModuleMethod,
   type ModuleCallRequest,
   type ModuleCapabilities,
   type ModuleExecuteRequest,
@@ -92,10 +95,13 @@ export function createSidecarPorts(
     tools?: PilotDeckToolDefinition[];
     uuid?: () => string;
     capabilityMethods?: readonly HostCapabilityModuleMethod[];
+    /** Enables host-owned permission decisions before capability dispatch. */
+    permissionMethods?: readonly HostPermissionModuleMethod[];
     onAbort?: (reason: string) => void;
   } = {},
 ): { model: ModelInvokerPort; tools: ToolPort } {
   const uuid = options.uuid ?? (() => Math.random().toString(36).slice(2));
+  const usesHostPermission = options.permissionMethods?.includes("decide") ?? false;
   return {
     model: {
       async prepare({ request }): Promise<PreparedModelInvocation> {
@@ -123,7 +129,10 @@ export function createSidecarPorts(
     tools: {
       list: () => options.tools ?? [],
       async executeAll(calls: PilotDeckToolCall[], context: PilotDeckToolRuntimeContext, execution): Promise<PilotDeckToolResult[]> {
-        if (options.capabilityMethods?.includes("execute_batch") && calls.length > 0) {
+        // A capability batch has no per-call permission response. Fall back to
+        // the normal path when the host owns permission so a batch cannot
+        // bypass an advertised policy boundary.
+        if (!usesHostPermission && options.capabilityMethods?.includes("execute_batch") && calls.length > 0) {
           const response = await callModule({
             runId: execution.runId,
             operationId: execution.operationId ?? execution.turnId,
@@ -142,7 +151,11 @@ export function createSidecarPorts(
           if (!Array.isArray(results) || results.length !== calls.length) {
             throw new Error("Capability batch response must contain one result for every call.");
           }
-          return results.map((result, index) => validateBatchToolResult(result, calls[index]!, index));
+          return results.map((result, index) => normalizeHostToolResult(
+            validateBatchToolResult(result, calls[index]!, index),
+            calls[index]!,
+            context,
+          ));
         }
         const resultSlots = new Array<PilotDeckToolResult | undefined>(calls.length);
         const concurrent: Array<{ index: number; call: PilotDeckToolCall }> = [];
@@ -158,6 +171,11 @@ export function createSidecarPorts(
           if (execution.abortSignal?.aborted) {
             throw new Error("Tool execution cancelled.");
           }
+          const tool = toolsByName.get(call.name);
+          const permission = usesHostPermission
+            ? await resolveHostPermission(callModule, uuid, call, tool, context, execution)
+            : { type: "allow" as const, input: call.input };
+          if (permission.type === "result") return permission.result;
           const response = await callModule({
             runId: execution.runId,
             operationId: execution.operationId ?? execution.turnId,
@@ -166,7 +184,7 @@ export function createSidecarPorts(
             module: "capability",
             payload: {
               name: call.name,
-              arguments: call.input,
+              arguments: permission.input,
               toolCallId: call.id,
               context: serializeToolContext(context),
               execution: serializeExecutionContext(execution),
@@ -212,7 +230,7 @@ export function createSidecarPorts(
             throw new Error("Tool execution cancelled.");
           }
           if (response.ok && payload && typeof payload === "object" && "type" in payload) {
-            return payload as unknown as PilotDeckToolResult;
+            return normalizeHostToolResult(payload as unknown as PilotDeckToolResult, call, context);
           }
           return moduleFailureResult(call, response);
         };
@@ -226,6 +244,160 @@ export function createSidecarPorts(
       },
     },
   };
+}
+
+type HostPermissionResolution =
+  | { type: "allow"; input: unknown }
+  | { type: "result"; result: PilotDeckToolResult };
+
+async function resolveHostPermission(
+  callModule: SidecarModuleCallClient,
+  uuid: () => string,
+  call: PilotDeckToolCall,
+  tool: PilotDeckToolDefinition | undefined,
+  context: PilotDeckToolRuntimeContext,
+  execution: AgentExecutionContext,
+): Promise<HostPermissionResolution> {
+  const response = await callModule({
+    runId: execution.runId,
+    operationId: execution.operationId ?? execution.turnId,
+    idempotencyKey: execution.idempotencyKey,
+    requestId: `permission-${uuid()}`,
+    module: "permission",
+    payload: {
+      operation: "decide",
+      tool: serializePermissionTool(call.name, tool, call.input),
+      input: call.input,
+      toolCallId: call.id,
+      context: serializeToolContext(context),
+      execution: serializeExecutionContext(execution),
+    },
+  });
+  if (!response.ok) {
+    return {
+      type: "result",
+      result: hostPermissionError(
+        call,
+        "permission_required",
+        String(response.error?.message ?? response.code ?? "Host permission module failed."),
+        context,
+      ),
+    };
+  }
+
+  const decision = asRecord(response.payload?.decision);
+  if (!decision) {
+    return {
+      type: "result",
+      result: hostPermissionError(call, "permission_required", "Host permission module returned an invalid decision.", context),
+    };
+  }
+  if (decision.type === "allow") {
+    return { type: "allow", input: decision.updatedInput ?? call.input };
+  }
+  if (decision.type === "deny") {
+    return {
+      type: "result",
+      result: hostPermissionError(call, "permission_denied", asNonEmptyString(decision.message) ?? `Permission denied for ${call.name}.`, context),
+    };
+  }
+  if (decision.type === "cancel") {
+    return {
+      type: "result",
+      result: hostPermissionError(call, "permission_cancelled", asNonEmptyString(decision.message) ?? `Permission cancelled for ${call.name}.`, context),
+    };
+  }
+  if (decision.type === "ask") {
+    return {
+      type: "result",
+      result: hostPermissionError(call, "permission_required", `Permission is required to run ${call.name}.`, context),
+    };
+  }
+  return {
+    type: "result",
+    result: hostPermissionError(call, "permission_required", "Host permission module returned an invalid decision.", context),
+  };
+}
+
+function serializePermissionTool(name: string, tool: PilotDeckToolDefinition | undefined, input: unknown): Record<string, unknown> {
+  return {
+    name,
+    ...(tool ? {
+      description: tool.description,
+      kind: tool.kind,
+      inputSchema: tool.inputSchema,
+      readOnly: tool.isReadOnly(input),
+    } : {}),
+  };
+}
+
+function hostPermissionError(
+  call: PilotDeckToolCall,
+  code: Extract<PilotDeckToolErrorCode, "permission_denied" | "permission_cancelled" | "permission_required">,
+  message: string,
+  context: PilotDeckToolRuntimeContext,
+): PilotDeckToolResult {
+  const timestamp = new Date().toISOString();
+  const recovery = buildToolErrorRecovery({
+    code,
+    toolName: call.name,
+    message,
+    cwd: context.cwd,
+    permissionMode: context.permissionMode,
+  });
+  return {
+    type: "error",
+    toolCallId: call.id,
+    toolName: call.name,
+    error: toolError(code, message),
+    content: [{ type: "text", text: recovery.message }],
+    metadata: { recovery: recovery.advice },
+    startedAt: timestamp,
+    completedAt: timestamp,
+  };
+}
+
+/**
+ * A host module can return an already canonical PilotDeck tool error. For a
+ * bare or foreign error, use the same recovery projection as ToolRuntime so
+ * the next model request has identical error semantics in native and sidecar
+ * execution.
+ */
+function normalizeHostToolResult(
+  result: PilotDeckToolResult,
+  call: PilotDeckToolCall,
+  context: PilotDeckToolRuntimeContext,
+): PilotDeckToolResult {
+  if (result.type !== "error" || asRecord(result.metadata)?.recovery !== undefined) return result;
+  const code = asToolErrorCode(result.error.code);
+  const message = asNonEmptyString(result.error.message) ?? "Host capability execution failed.";
+  const details = asRecord(result.error.details);
+  const recovery = buildToolErrorRecovery({
+    code,
+    toolName: result.toolName || call.name,
+    message,
+    cwd: context.cwd,
+    permissionMode: context.permissionMode,
+    ...(details ? { details } : {}),
+  });
+  return {
+    ...result,
+    toolCallId: call.id,
+    toolName: result.toolName || call.name,
+    error: toolError(code, message, details),
+    content: [{ type: "text", text: recovery.message }],
+    metadata: { ...(result.metadata ?? {}), recovery: recovery.advice },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function serializeContextInput(input: object): Record<string, unknown> {
@@ -471,8 +643,6 @@ export class AgentLoopSidecarServer {
       const moduleFailure = this.moduleFailures.get(request.operationId);
       const terminalError = deadlineExceeded
         ? { code: "DEADLINE_EXCEEDED", message: "Module execution deadline exceeded." }
-        : moduleFailure
-          ? moduleFailure
         : result.result.type === "max_turns"
           ? result.result.errors?.[0] ?? {
               code: "agent_max_turns_reached",
@@ -480,7 +650,7 @@ export class AgentLoopSidecarServer {
             }
           : result.result.type === "error"
             ? result.result.errors?.[0]
-            : undefined;
+            : moduleFailure;
       await this.send(output, {
         kind: "event",
         messageId: this.nextId("final"),

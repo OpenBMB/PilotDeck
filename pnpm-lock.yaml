@@ -26,6 +26,12 @@ importers:
       '@vscode/ripgrep':
         specifier: ^1.18.0
         version: 1.18.0
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
       csv-parse:
         specifier: ^7.0.0
         version: 7.0.0
@@ -96,6 +102,18 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/sdk:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
 
   ui:
     dependencies:
@@ -3508,7 +3526,7 @@ packages:
 
   edgeclaw-memory-core@file:src/context/memory/edgeclaw-memory-core:
     resolution: {directory: src/context/memory/edgeclaw-memory-core, type: directory}
-    engines: {node: '>=22.13.0'}
+    engines: {node: '>=22.13.0 <23'}
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}

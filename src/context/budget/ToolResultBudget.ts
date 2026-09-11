@@ -1,6 +1,5 @@
-import { mkdir, writeFile, access, copyFile } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
-import { basename, dirname, extname, relative, resolve } from "node:path";
+import { mkdir, writeFile, access } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import type {
   CanonicalContentBlock,
   CanonicalMessage,
@@ -11,6 +10,7 @@ import type {
   CanonicalToolResultReferenceBlock,
 } from "../../model/index.js";
 import { flattenToolResultBlockText } from "../../model/index.js";
+import type { ToolResultArtifactStorage } from "../../session/artifacts/ToolResultArtifactStorage.js";
 import { countTokens } from "./tokenizer.js";
 
 /** Default model-visible text cap for inline tool results. */
@@ -57,6 +57,8 @@ export type ToolResultBudgetOptions = {
   maxResultSizeTokens?: number;
   previewBytes?: number;
   toolResultsDir: string;
+  /** Optional durable host store; local files remain a read-only materialization cache. */
+  artifactStorage?: ToolResultArtifactStorage;
   state?: ToolResultBudgetState;
 };
 
@@ -79,6 +81,7 @@ export class ToolResultBudget {
   private readonly maxResultSizeTokens: number;
   private readonly previewBytes: number;
   private readonly toolResultsDir: string;
+  private readonly artifactStorage?: ToolResultArtifactStorage;
   private readonly state: ToolResultBudgetState;
 
   constructor(options: ToolResultBudgetOptions) {
@@ -86,11 +89,40 @@ export class ToolResultBudget {
     this.maxResultSizeTokens = options.maxResultSizeTokens ?? DEFAULT_MAX_RESULT_SIZE_TOKENS;
     this.previewBytes = options.previewBytes ?? PREVIEW_SIZE_BYTES;
     this.toolResultsDir = resolve(options.toolResultsDir);
+    this.artifactStorage = options.artifactStorage;
     this.state = options.state ?? createToolResultBudgetState();
   }
 
   getState(): ToolResultBudgetState {
     return this.state;
+  }
+
+  /**
+   * Restore Gateway-local read caches for references in a resumed transcript.
+   * The canonical reference remains the source of truth; this only makes the
+   * existing native `read_file` and media materialization paths work after a
+   * Gateway process starts on an empty local cache.
+   */
+  async hydrateReferences(messages: readonly CanonicalMessage[]): Promise<void> {
+    if (!this.artifactStorage) return;
+    const hydrated = new Set<string>();
+    for (const message of messages) {
+      for (const block of message.content) {
+        if (block.type !== "tool_result_reference" && block.type !== "media_reference") continue;
+        const path = this.managedArtifactPath(block.path);
+        if (!path || hydrated.has(path)) continue;
+        hydrated.add(path);
+        const bytes = await this.artifactStorage.read(basename(path));
+        // Keep the historical missing-payload behavior: the reference stays
+        // inspectable and provider materialization reports a normal failure.
+        if (!bytes) continue;
+        await this.materializeArtifact(path, bytes);
+        if (block.type === "tool_result_reference" && block.readFilePath) {
+          const aliasPath = this.resolveManagedReadFileAlias(block.readFilePath);
+          if (aliasPath) await this.materializeArtifact(aliasPath, bytes);
+        }
+      }
+    }
   }
 
   async applyToMessage(
@@ -196,14 +228,9 @@ export class ToolResultBudget {
     const isJson = looksLikeJson(flat);
     const ext = isJson ? "json" : "txt";
     const path = resolve(this.toolResultsDir, `${replacementKey}.${ext}`);
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    try {
-      await access(path);
-      // already exists — do not overwrite (legacy 'wx' flag); reuse existing record.
-    } catch {
-      await writeFile(path, flat, { flag: "wx", mode: 0o600, encoding: "utf8" });
-    }
-    const readFilePath = await this.createReadFileAlias(path, ext);
+    const bytes = Buffer.from(flat, "utf8");
+    await this.persistArtifact(path, bytes);
+    const readFilePath = await this.createReadFileAlias(bytes, ext);
 
     const preview = headTailPreview(flat, this.previewBytes);
     const record: ToolResultReplacementRecord = {
@@ -242,7 +269,7 @@ export class ToolResultBudget {
     };
   }
 
-  private async createReadFileAlias(sourcePath: string, ext: string): Promise<string> {
+  private async createReadFileAlias(bytes: Uint8Array, ext: string): Promise<string> {
     const { refsDir, workspaceRoot } = this.resolveReadFileAliasLocation();
     await mkdir(refsDir, { recursive: true, mode: 0o700 });
 
@@ -252,7 +279,7 @@ export class ToolResultBudget {
       this.state.nextReadFileAliasIndex = index + 1;
       const aliasPath = resolve(refsDir, `result-${String(index).padStart(4, "0")}.${normalizedExt || "txt"}`);
       try {
-        await copyFile(sourcePath, aliasPath, fsConstants.COPYFILE_EXCL);
+        await writeFile(aliasPath, bytes, { flag: "wx", mode: 0o600 });
         return relative(workspaceRoot, aliasPath);
       } catch (error) {
         if (isFileExistsError(error)) {
@@ -277,6 +304,38 @@ export class ToolResultBudget {
     };
   }
 
+  private async persistArtifact(path: string, bytes: Uint8Array): Promise<void> {
+    if (this.artifactStorage) {
+      await this.artifactStorage.write(basename(path), bytes.slice());
+    }
+    await this.materializeArtifact(path, bytes);
+  }
+
+  private async materializeArtifact(path: string, bytes: Uint8Array): Promise<void> {
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    try {
+      await access(path);
+      // Preserve legacy resume semantics: reference payloads are immutable.
+    } catch {
+      await writeFile(path, bytes, { flag: "wx", mode: 0o600 });
+    }
+  }
+
+  private managedArtifactPath(path: string): string | undefined {
+    const candidate = resolve(path);
+    const rel = relative(this.toolResultsDir, candidate);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel) || dirname(rel) !== ".") return undefined;
+    return candidate;
+  }
+
+  private resolveManagedReadFileAlias(readFilePath: string): string | undefined {
+    const { refsDir, workspaceRoot } = this.resolveReadFileAliasLocation();
+    const candidate = resolve(workspaceRoot, readFilePath);
+    const rel = relative(refsDir, candidate);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel) || dirname(rel) !== ".") return undefined;
+    return candidate;
+  }
+
   private async maybeReplaceMedia(
     block: CanonicalContentBlock,
     index: number,
@@ -297,12 +356,7 @@ export class ToolResultBudget {
     const ext = extensionForMedia(mediaType, mimeType);
     const id = `${scopedToolResultKey(toolCallId, options.turnId)}-${mediaType}-${index}-${hashString(block.data).slice(0, 12)}`;
     const path = resolve(this.toolResultsDir, `${id}.${ext}`);
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    try {
-      await access(path);
-    } catch {
-      await writeFile(path, block.data, { flag: "wx", mode: 0o600, encoding: "utf8" });
-    }
+    await this.persistArtifact(path, Buffer.from(block.data, "utf8"));
 
     const record: MediaReplacementRecord = {
       id,

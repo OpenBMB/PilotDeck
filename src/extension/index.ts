@@ -30,7 +30,12 @@ export { PromptHookExecutor, type PromptHookEvaluator } from "./hooks/execution/
 export { HttpHookExecutor, type HttpHookFetch } from "./hooks/execution/HttpHookExecutor.js";
 export { AgentHookExecutor, type AgentHookRunner } from "./hooks/execution/AgentHookExecutor.js";
 export { CallbackHookExecutor, type CallbackHookHandler } from "./hooks/execution/CallbackHookExecutor.js";
-export { HookRuntime, type HookRuntimeRunInput, type HookRuntimeRunResult } from "./hooks/execution/HookRuntime.js";
+export {
+  HookRuntime,
+  type AsyncHookRegistrationHandler,
+  type HookRuntimeRunInput,
+  type HookRuntimeRunResult,
+} from "./hooks/execution/HookRuntime.js";
 export { AsyncHookRegistry, type AsyncHookResponse, type PendingAsyncHook } from "./hooks/execution/AsyncHookRegistry.js";
 export { HookExecutionEventBus, type PilotDeckHookExecutionEvent } from "./hooks/events/HookExecutionEventBus.js";
 
@@ -49,6 +54,7 @@ export { loadPluginHooks } from "./plugins/loading/PluginHookLoader.js";
 export { getPluginCommandName, loadPluginCommands, type LoadedPluginCommand } from "./plugins/loading/PluginCommandLoader.js";
 export {
   PluginRuntime,
+  PluginRuntimeView,
   type PluginRuntimeOptions,
   type PluginRefreshResult,
   type PilotDeckMcpInstructionEntry,

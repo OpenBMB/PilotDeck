@@ -233,6 +233,7 @@ function mergeUsage(first: CanonicalUsage, second: CanonicalUsage): CanonicalUsa
     cacheReadTokens: add(first.cacheReadTokens, second.cacheReadTokens),
     cacheWriteTokens: add(first.cacheWriteTokens, second.cacheWriteTokens),
     totalTokens: add(first.totalTokens, second.totalTokens),
+    nativeCost: add(first.nativeCost, second.nativeCost),
   };
 }
 

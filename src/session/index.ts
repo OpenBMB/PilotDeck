@@ -1,8 +1,16 @@
 export {
   createAgentProjectSessionStorage,
+  readAgentProjectSessionTranscript,
   sanitizeSessionIdForPath,
+  type AgentProjectSubagentTranscriptHandle,
   type AgentProjectSessionStorage,
   type AgentProjectSessionStorageOptions,
+  type AgentProjectFileHistoryFork,
+  type AgentProjectToolResultArtifactFork,
+  type AgentProjectTranscriptReader,
+  type AgentProjectTranscriptPathReader,
+  type AgentProjectTranscriptReplacement,
+  type AgentProjectTranscriptWriter,
 } from "./storage/ProjectSessionStorage.js";
 export {
   listAllSessions,
@@ -41,6 +49,16 @@ export {
   type SessionTitleGenerator,
   type SessionTitleGeneratorInput,
 } from "./title/SessionTitleGenerator.js";
+export {
+  createPromptSuggestionGenerator,
+  normalizePromptSuggestionInput,
+  PROMPT_SUGGESTION_MAX_INPUT_CHARS,
+  PROMPT_SUGGESTION_MAX_OUTPUT_CHARS,
+  PROMPT_SUGGESTION_TIMEOUT_MS,
+  type CreatePromptSuggestionGeneratorOptions,
+  type PromptSuggestionGenerator,
+  type PromptSuggestionGeneratorInput,
+} from "./prompt/PromptSuggestionGenerator.js";
 export { resumeAgentSession, type ResumeAgentSessionOptions, type ResumeAgentSessionResult } from "./resume/resumeAgentSession.js";
 export { InMemoryTranscriptWriter, type InMemoryTranscriptEntry } from "./transcript/InMemoryTranscriptWriter.js";
 export {
@@ -58,6 +76,7 @@ export {
   type FileArtifactOperation,
   type FileArtifactSource,
   type FileArtifactStatus,
+  type ToolResultArtifactStorage,
 } from "./artifacts/index.js";
 export type {
   AgentAcceptedInputTranscriptEntry,
@@ -69,6 +88,7 @@ export type {
   AgentTranscriptDiagnostic,
   AgentTranscriptEntry,
   AgentTranscriptEntryType,
+  AgentFileSnapshotRecordedTranscriptEntry,
   AgentTurnResultTranscriptEntry,
   SessionMetadataValue,
 } from "./transcript/TranscriptEntry.js";
@@ -92,6 +112,7 @@ export {
   type CreateBackupOptions,
   type CreateBackupResult,
   type FileHistoryBackup,
+  type FileHistoryBackupStorage,
   type FileHistoryDiffStats,
   type FileHistorySnapshot,
   type FileHistorySnapshotRecordedEntry,

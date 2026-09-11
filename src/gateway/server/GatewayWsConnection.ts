@@ -1,9 +1,16 @@
 import type { Gateway, GatewayEvent } from "../protocol/types.js";
 import type { WsHelloFrame, WsRequestFrame } from "../protocol/frames.js";
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
-import { TextWebSocketConnection } from "./websocket.js";
 import { SkillManagerError, SkillValidationError } from "../../extension/skills/index.js";
 import { DialogGatewayError } from "../dialog/errors.js";
+
+/** Transport-neutral server-side text channel used by GatewayWsConnection. */
+export type GatewayTextConnection = {
+  onMessage(handler: (message: string) => void): void;
+  onClose(handler: () => void): void;
+  sendText(message: string): void;
+  close(code?: number, reason?: string): void;
+};
 
 export type GatewayWsConnectionOptions = {
   gateway: Gateway;
@@ -16,7 +23,7 @@ export class GatewayWsConnection {
   private readonly inFlightSessions = new Set<string>();
 
   constructor(
-    private readonly ws: TextWebSocketConnection,
+    private readonly ws: GatewayTextConnection,
     private readonly options: GatewayWsConnectionOptions,
   ) {
     ws.onMessage((message) => void this.handleMessage(message));
@@ -93,25 +100,33 @@ export class GatewayWsConnection {
         if (sessionKey) this.inFlightSessions.add(sessionKey);
         let seq = 0;
         let lastCompleted: GatewayEvent | undefined;
+        let lastError: GatewayEvent | undefined;
         try {
           for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
             if (event.type === "turn_completed") {
               lastCompleted = event;
+            }
+            if (event.type === "error") {
+              lastError = event;
             }
             this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: seq++, final: false, event }));
           }
         } finally {
           if (sessionKey) this.inFlightSessions.delete(sessionKey);
         }
-        const usage = lastCompleted?.type === "turn_completed" ? lastCompleted.usage : {};
-        const finishReason = lastCompleted?.type === "turn_completed" ? lastCompleted.finishReason : "completed";
+        const terminalEvent = lastError ?? lastCompleted ?? {
+          type: "error",
+          code: "result_unknown",
+          message: "Gateway stream ended without a terminal result.",
+          recoverable: true,
+        } as const;
         this.ws.sendText(
           JSON.stringify({
             type: "event",
             id: frame.id,
             seq,
             final: true,
-            event: { type: "turn_completed", usage, finishReason },
+            event: terminalEvent,
           }),
         );
         return;
@@ -199,6 +214,21 @@ export class GatewayWsConnection {
         return this.options.gateway.newSession(frame.params as never);
       case "close_session":
         return this.options.gateway.closeSession(frame.params as never).then(() => ({ ok: true }));
+      case "delete_session":
+        if (this.options.gateway.deleteSession) return this.options.gateway.deleteSession(frame.params as never).then(() => ({ ok: true }));
+        return Promise.reject(Object.assign(new Error("delete_session is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "export_session_transcript":
+        if (this.options.gateway.exportSessionTranscript) return this.options.gateway.exportSessionTranscript(frame.params as never);
+        return Promise.reject(Object.assign(new Error("export_session_transcript is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "restore_session_transcript":
+        if (this.options.gateway.restoreSessionTranscript) return this.options.gateway.restoreSessionTranscript(frame.params as never);
+        return Promise.reject(Object.assign(new Error("restore_session_transcript is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "rename_session":
+        if (this.options.gateway.renameSession) return this.options.gateway.renameSession(frame.params as never);
+        return Promise.reject(Object.assign(new Error("rename_session is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "tag_session":
+        if (this.options.gateway.tagSession) return this.options.gateway.tagSession(frame.params as never);
+        return Promise.reject(Object.assign(new Error("tag_session is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
       case "record_agent_status_message":
         if (this.options.gateway.recordAgentStatusMessage) {
           return this.options.gateway.recordAgentStatusMessage(frame.params as never);
@@ -227,6 +257,72 @@ export class GatewayWsConnection {
           sessionKey: (frame.params as { sessionKey?: string } | undefined)?.sessionKey ?? "",
           events: [],
         });
+      case "mcp_server_status":
+        if (this.options.gateway.mcpServerStatus) return this.options.gateway.mcpServerStatus(frame.params as never);
+        return Promise.reject(Object.assign(new Error("mcp_server_status is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "set_mcp_servers":
+        if (this.options.gateway.setMcpServers) return this.options.gateway.setMcpServers(frame.params as never);
+        return Promise.reject(Object.assign(new Error("set_mcp_servers is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "mcp_server_reconnect":
+        if (this.options.gateway.reconnectMcpServer) return this.options.gateway.reconnectMcpServer(frame.params as never).then(() => ({ ok: true }));
+        return Promise.reject(Object.assign(new Error("mcp_server_reconnect is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "mcp_server_toggle":
+        if (this.options.gateway.toggleMcpServer) return this.options.gateway.toggleMcpServer(frame.params as never).then(() => ({ ok: true }));
+        return Promise.reject(Object.assign(new Error("mcp_server_toggle is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "set_mcp_permission_mode_override":
+        if (this.options.gateway.setMcpPermissionModeOverride) return this.options.gateway.setMcpPermissionModeOverride(frame.params as never);
+        return Promise.reject(Object.assign(new Error("set_mcp_permission_mode_override is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "project_file_read":
+        if (this.options.gateway.projectFileRead) return this.options.gateway.projectFileRead(frame.params as never);
+        return Promise.reject(Object.assign(new Error("project_file_read is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "set_permission_mode":
+        if (this.options.gateway.setPermissionMode) return this.options.gateway.setPermissionMode(frame.params as never);
+        return Promise.reject(Object.assign(new Error("set_permission_mode is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "apply_flag_settings":
+        if (this.options.gateway.applyFlagSettings) return this.options.gateway.applyFlagSettings(frame.params as never);
+        return Promise.reject(Object.assign(new Error("apply_flag_settings is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "update_settings":
+        if (this.options.gateway.updateSettings) return this.options.gateway.updateSettings(frame.params as never);
+        return Promise.reject(Object.assign(new Error("update_settings is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "resolve_settings":
+        if (this.options.gateway.resolveSettings) return this.options.gateway.resolveSettings();
+        return Promise.reject(Object.assign(new Error("resolve_settings is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "set_session_thinking":
+        if (this.options.gateway.setSessionThinking) return this.options.gateway.setSessionThinking(frame.params as never);
+        return Promise.reject(Object.assign(new Error("set_session_thinking is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "output_styles_list":
+        if (this.options.gateway.outputStylesList) return this.options.gateway.outputStylesList(frame.params as never);
+        return Promise.reject(Object.assign(new Error("output_styles_list is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "set_output_style":
+        if (this.options.gateway.setOutputStyle) return this.options.gateway.setOutputStyle(frame.params as never);
+        return Promise.reject(Object.assign(new Error("set_output_style is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "reload_output_styles":
+        if (this.options.gateway.reloadOutputStyles) return this.options.gateway.reloadOutputStyles(frame.params as never);
+        return Promise.reject(Object.assign(new Error("reload_output_styles is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "usage_snapshot":
+        if (this.options.gateway.usageSnapshot) return this.options.gateway.usageSnapshot(frame.params as never);
+        return Promise.reject(Object.assign(new Error("usage_snapshot is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "model_usage_snapshot":
+        if (this.options.gateway.modelUsageSnapshot) return this.options.gateway.modelUsageSnapshot(frame.params as never);
+        return Promise.reject(Object.assign(new Error("model_usage_snapshot is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "rewind_files":
+        if (this.options.gateway.rewindFiles) return this.options.gateway.rewindFiles(frame.params as never);
+        return Promise.reject(Object.assign(new Error("rewind_files is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "background_task_stop":
+        if (this.options.gateway.stopBackgroundTask) return this.options.gateway.stopBackgroundTask(frame.params as never);
+        return Promise.reject(Object.assign(new Error("background_task_stop is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "background_tasks":
+        if (this.options.gateway.backgroundTasks) return this.options.gateway.backgroundTasks(frame.params as never);
+        return Promise.reject(Object.assign(new Error("background_tasks is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "hook_async_result":
+        if (this.options.gateway.submitAsyncHookResult) return this.options.gateway.submitAsyncHookResult(frame.params as never);
+        return Promise.reject(Object.assign(new Error("hook_async_result is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "seed_read_state":
+        if (this.options.gateway.seedReadState) return this.options.gateway.seedReadState(frame.params as never);
+        return Promise.reject(Object.assign(new Error("seed_read_state is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "supported_agents":
+        if (this.options.gateway.supportedAgents) return this.options.gateway.supportedAgents();
+        return Promise.reject(Object.assign(new Error("supported_agents is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
       case "cron_create":
         return this.options.gateway.cronCreate(frame.params as never);
       case "cron_list":
@@ -241,6 +337,17 @@ export class GatewayWsConnection {
         return this.options.gateway.cronRunNow(frame.params as never);
       case "elicitation_respond":
         return this.options.gateway.respondElicitation(frame.params as never);
+      case "user_dialog_list":
+        if (this.options.gateway.listUserDialogs) return this.options.gateway.listUserDialogs(frame.params as never);
+        return Promise.reject(Object.assign(new Error("user_dialog_list is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "user_dialog_claim":
+        if (this.options.gateway.claimUserDialog) return this.options.gateway.claimUserDialog(frame.params as never);
+        return Promise.reject(Object.assign(new Error("user_dialog_claim is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "user_dialog_release":
+        if (this.options.gateway.releaseUserDialog) return this.options.gateway.releaseUserDialog(frame.params as never);
+        return Promise.reject(Object.assign(new Error("user_dialog_release is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "user_dialog_respond":
+        return this.options.gateway.respondUserDialog(frame.params as never);
       case "permission_decide":
         return this.options.gateway.permissionDecide(frame.params as never);
       case "grant_session_permission":

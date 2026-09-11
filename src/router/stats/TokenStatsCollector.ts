@@ -4,7 +4,9 @@ import type { CanonicalUsage } from "../../model/index.js";
 import type { RouterStatsConfig } from "../config/schema.js";
 import { resolvePilotHome } from "../../pilot/paths.js";
 import type { RouterDecision } from "../protocol/decision.js";
-import { lookupModelPricing } from "../utils/modelPricing.js";
+import { lookupModelPricing, lookupModelPricingWithSource } from "../utils/modelPricing.js";
+
+export type RouterCostSource = "provider_reported" | "configured_price" | "built_in_estimate" | "fallback_estimate" | "legacy_unknown";
 
 export type RouterStatsRecord = {
   sessionId: string;
@@ -18,9 +20,29 @@ export type RouterStatsRecord = {
   role?: "main" | "subagent";
   usage: CanonicalUsage;
   cost?: { input: number; output: number; cacheRead: number; total: number };
+  /** Provenance of `cost`; older persisted records intentionally remain unknown. */
+  costSource?: RouterCostSource;
   baselineCost?: number;
   startedAt: string;
   endedAt: string;
+};
+
+export type RouterModelUsageRoleAggregate = {
+  totalRequests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  costSources: Partial<Record<RouterCostSource, number>>;
+};
+
+/** Durable per-provider/model accounting derived from Router-owned request records. */
+export type RouterModelUsageAggregate = RouterModelUsageRoleAggregate & {
+  provider: string;
+  model: string;
+  roles: Partial<Record<"main" | "subagent", RouterModelUsageRoleAggregate>>;
 };
 
 export type RouterStatsAggregate = {
@@ -35,6 +57,8 @@ export type RouterStatsAggregate = {
   perProvider: Record<string, number>;
   perTier: Record<string, number>;
   perRole: Record<string, number>;
+  costSources: Partial<Record<RouterCostSource, number>>;
+  perModelUsage: Record<string, RouterModelUsageAggregate>;
 };
 
 type HourlyBucket = RouterStatsAggregate & { hour: string };
@@ -59,14 +83,19 @@ export class TokenStatsCollector {
   private readonly jsonlPath: string | undefined;
   private readonly modelPricing: RouterStatsConfig["modelPricing"];
   private readonly baselineModel: RouterStatsConfig["baselineModel"];
+  private readonly retentionMs: number | undefined;
   private data: PersistedData;
   private recentRecords: RouterStatsRecord[] = [];
+  /** Present only when retention is configured, and contains every retained record. */
+  private retainedRecords: RouterStatsRecord[] | undefined;
+  private expiredRecordsLoaded = false;
   private fd: number | undefined;
 
   constructor(config: RouterStatsConfig | undefined) {
     this.enabled = config?.enabled ?? false;
     this.modelPricing = config?.modelPricing;
     this.baselineModel = config?.baselineModel;
+    this.retentionMs = config?.retentionMs;
 
     if (this.enabled) {
       const routerDir = config?.filePath
@@ -80,12 +109,15 @@ export class TokenStatsCollector {
       migrateJsonToJsonl(routerDir, this.jsonlPath);
 
       this.data = this.rebuildFromJsonl();
+      if (this.expiredRecordsLoaded) this.compactRetainedRecords();
 
-      // Keep the file open for appends so multiple collector instances
-      // (one per project runtime) safely share the same file via O_APPEND.
-      try {
-        this.fd = fs.openSync(this.jsonlPath, "a");
-      } catch { /* will fall back to per-write open */ }
+      // Default append-only stats keep an O_APPEND descriptor. Retention uses
+      // short-lived locked writes because it may atomically replace the file.
+      if (this.retentionMs === undefined) {
+        try {
+          this.fd = fs.openSync(this.jsonlPath, "a");
+        } catch { /* will fall back to per-write open */ }
+      }
     } else {
       this.data = createPersistedData();
     }
@@ -93,14 +125,15 @@ export class TokenStatsCollector {
 
   observe(record: RouterStatsRecord): void {
     if (!this.enabled) return;
+    this.pruneExpiredRecords();
 
-    if (record.usage.nativeCost != null && record.usage.nativeCost > 0) {
-      record.cost = { input: 0, output: 0, cacheRead: 0, total: record.usage.nativeCost };
-    } else {
-      record.cost = this.calculateCost(record.usage, record.provider, record.model);
-    }
+    const cost = this.estimateCostBreakdown(record.usage, record.provider, record.model);
+    record.cost = cost.breakdown;
+    record.costSource = cost.source;
 
     record.baselineCost = this.calculateBaselineCostForRecord(record.usage, record.provider, record.model) ?? record.cost!.total;
+
+    this.retainedRecords?.push(record);
 
     this.recentRecords.push(record);
     if (this.recentRecords.length > 500) {
@@ -138,18 +171,46 @@ export class TokenStatsCollector {
   }
 
   snapshot(): RouterStatsAggregate {
+    this.pruneExpiredRecords();
     return copyAggregate(this.data.global);
   }
 
+  /**
+   * Returns the same per-request USD estimate used by persisted router stats.
+   * This remains available when stats persistence is disabled so a Gateway
+   * turn budget does not depend on global metrics being enabled.
+   */
+  estimateCost(usage: CanonicalUsage | undefined, provider: string, model: string): number {
+    if (!usage) return 0;
+    return this.estimateCostBreakdown(usage, provider, model).breakdown.total;
+  }
+
   hourlySnapshots(): HourlyBucket[] {
+    this.pruneExpiredRecords();
     return Object.values(this.data.hourly).sort((a, b) => a.hour.localeCompare(b.hour));
   }
 
   sessionSnapshot(sessionId: string): SessionBucket | undefined {
+    this.pruneExpiredRecords();
     return this.data.sessions[sessionId];
   }
 
+  /**
+   * Returns Gateway-ready, durable model usage for one session or this Router
+   * instance. The SDK must consume this aggregate through the Gateway rather
+   * than rebuilding it from streamed events or a bounded request log.
+   */
+  modelUsageSnapshot(sessionId?: string): RouterModelUsageAggregate[] {
+    this.pruneExpiredRecords();
+    const aggregate = sessionId ? this.data.sessions[sessionId]?.aggregate : this.data.global;
+    if (!aggregate) return [];
+    return Object.values(aggregate.perModelUsage ?? {})
+      .map(copyModelUsage)
+      .sort((left, right) => left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model));
+  }
+
   recent(limit = 50): RouterStatsRecord[] {
+    this.pruneExpiredRecords();
     if (this.recentRecords.length > 0) {
       return this.recentRecords.slice(-limit);
     }
@@ -169,8 +230,15 @@ export class TokenStatsCollector {
   clear(): void {
     this.data = createPersistedData();
     this.recentRecords = [];
+    if (this.retainedRecords) this.retainedRecords = [];
     if (this.jsonlPath) {
-      try { fs.writeFileSync(this.jsonlPath, "", "utf-8"); } catch { /* ok */ }
+      if (this.retentionMs !== undefined) {
+        if (!this.withRetentionJournalLock(() => fs.writeFileSync(this.jsonlPath!, "", "utf-8"))) {
+          try { fs.writeFileSync(this.jsonlPath, "", "utf-8"); } catch { /* ok */ }
+        }
+      } else {
+        try { fs.writeFileSync(this.jsonlPath, "", "utf-8"); } catch { /* ok */ }
+      }
     }
   }
 
@@ -186,6 +254,12 @@ export class TokenStatsCollector {
   private appendRecord(record: RouterStatsRecord): void {
     const line = JSON.stringify(record) + "\n";
     try {
+      if (this.retentionMs !== undefined && this.jsonlPath) {
+        if (!this.withRetentionJournalLock(() => fs.appendFileSync(this.jsonlPath!, line, "utf-8"))) {
+          fs.appendFileSync(this.jsonlPath, line, "utf-8");
+        }
+        return;
+      }
       if (this.fd !== undefined) {
         fs.writeSync(this.fd, line);
       } else if (this.jsonlPath) {
@@ -195,63 +269,88 @@ export class TokenStatsCollector {
   }
 
   private rebuildFromJsonl(): PersistedData {
-    const data = createPersistedData();
-    if (!this.jsonlPath) return data;
+    const records: RouterStatsRecord[] = [];
+    if (this.retentionMs !== undefined) this.retainedRecords = [];
+    if (!this.jsonlPath) return createPersistedData();
     let raw: string;
     try {
       raw = fs.readFileSync(this.jsonlPath, "utf-8");
     } catch {
-      return data;
+      return createPersistedData();
     }
     for (const line of raw.split("\n")) {
       if (!line) continue;
       try {
         const record = JSON.parse(line) as RouterStatsRecord;
         if (!record.sessionId || !record.startedAt) continue;
-
-        bumpAggregate(data.global, record);
-
-        const hour = record.startedAt.slice(0, 13);
-        if (!data.hourly[hour]) {
-          data.hourly[hour] = { ...createAggregate(), hour };
+        if (!this.isRetained(record)) {
+          this.expiredRecordsLoaded = true;
+          continue;
         }
-        bumpAggregate(data.hourly[hour]!, record);
-
-        if (!data.sessions[record.sessionId]) {
-          data.sessions[record.sessionId] = {
-            sessionId: record.sessionId,
-            aggregate: createAggregate(),
-            requestLog: [],
-          };
-        }
-        const sess = data.sessions[record.sessionId]!;
-        bumpAggregate(sess.aggregate, record);
-        sess.requestLog.push(record);
+        records.push(record);
+        this.retainedRecords?.push(record);
       } catch { /* skip malformed lines */ }
     }
+    return createDataFromRecords(records);
+  }
 
-    // Prune after full replay
-    const hourKeys = Object.keys(data.hourly).sort();
-    while (hourKeys.length > MAX_HOURLY_BUCKETS) {
-      delete data.hourly[hourKeys.shift()!];
-    }
-    const sessEntries = Object.entries(data.sessions);
-    if (sessEntries.length > MAX_SESSIONS) {
-      sessEntries.sort((a, b) => {
-        const aLast = a[1].requestLog.at(-1)?.endedAt ?? "";
-        const bLast = b[1].requestLog.at(-1)?.endedAt ?? "";
-        return aLast.localeCompare(bLast);
-      });
-      for (let i = 0; i < sessEntries.length - MAX_SESSIONS; i++) {
-        delete data.sessions[sessEntries[i]![0]];
+  private isRetained(record: RouterStatsRecord, now = Date.now()): boolean {
+    if (this.retentionMs === undefined) return true;
+    const endedAt = Date.parse(record.endedAt);
+    // Preserve malformed historical timestamps rather than silently losing an
+    // accounting record. Configuration validation only controls new data.
+    return !Number.isFinite(endedAt) || endedAt >= now - this.retentionMs;
+  }
+
+  private pruneExpiredRecords(): void {
+    if (!this.retainedRecords) return;
+    const retained = this.retainedRecords.filter((record) => this.isRetained(record));
+    if (retained.length === this.retainedRecords.length) return;
+    this.retainedRecords = retained;
+    this.recentRecords = this.recentRecords.filter((record) => this.isRetained(record));
+    this.data = createDataFromRecords(retained);
+    this.compactRetainedRecords();
+  }
+
+  /** Retention is opt-in; rewrite only while retention-aware writers hold the journal lock. */
+  private compactRetainedRecords(): void {
+    if (!this.jsonlPath || !this.retainedRecords) return;
+    this.withRetentionJournalLock(() => {
+      const current = readStatsRecords(this.jsonlPath!);
+      const retained = current.filter((record) => this.isRetained(record));
+      this.retainedRecords = retained;
+      this.recentRecords = this.recentRecords.filter((record) => this.isRetained(record));
+      this.data = createDataFromRecords(retained);
+      const temporaryPath = `${this.jsonlPath}.${process.pid}.${Date.now()}.tmp`;
+      fs.writeFileSync(temporaryPath, retained.map((record) => `${JSON.stringify(record)}\n`).join(""), "utf8");
+      fs.renameSync(temporaryPath, this.jsonlPath!);
+    });
+  }
+
+  private withRetentionJournalLock(action: () => void): boolean {
+    if (!this.jsonlPath) return false;
+    const lockPath = `${this.jsonlPath}.retention.lock`;
+    let lock: number | undefined;
+    const waiter = new Int32Array(new SharedArrayBuffer(4));
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      try {
+        lock = fs.openSync(lockPath, "wx");
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false;
+        Atomics.wait(waiter, 0, 0, 1);
       }
     }
-    for (const sess of Object.values(data.sessions)) {
-      if (sess.requestLog.length > 200) {
-        sess.requestLog = sess.requestLog.slice(-100);
-      }
+    if (lock === undefined) return false;
+    try {
+      action();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      try { fs.closeSync(lock); } catch { /* ok */ }
+      try { fs.unlinkSync(lockPath); } catch { /* ok */ }
     }
-    return data;
   }
 
   private pruneHourly(): void {
@@ -276,13 +375,32 @@ export class TokenStatsCollector {
     }
   }
 
+  private estimateCostBreakdown(
+    usage: CanonicalUsage,
+    provider: string,
+    model: string,
+  ): {
+    breakdown: { input: number; output: number; cacheRead: number; total: number };
+    source: Exclude<RouterCostSource, "legacy_unknown">;
+  } {
+    if (typeof usage.nativeCost === "number" && Number.isFinite(usage.nativeCost) && usage.nativeCost >= 0) {
+      return {
+        breakdown: { input: 0, output: 0, cacheRead: 0, total: usage.nativeCost },
+        source: "provider_reported",
+      };
+    }
+    return {
+      breakdown: this.calculateCost(usage, provider, model),
+      source: lookupModelPricingWithSource(provider, model, this.modelPricing).source,
+    };
+  }
+
   private calculateCost(
     usage: CanonicalUsage,
     provider: string,
     model: string,
   ): { input: number; output: number; cacheRead: number; total: number } {
     const pricing = lookupModelPricing(provider, model, this.modelPricing);
-    if (!pricing) return { input: 0, output: 0, cacheRead: 0, total: 0 };
     const inputCost = ((usage.inputTokens ?? 0) / 1_000_000) * (pricing.input ?? 0);
     const outputCost = ((usage.outputTokens ?? 0) / 1_000_000) * (pricing.output ?? 0);
     const cacheReadCost = ((usage.cacheReadTokens ?? 0) / 1_000_000) * (pricing.cacheRead ?? 0);
@@ -327,11 +445,71 @@ function createAggregate(): RouterStatsAggregate {
     perProvider: {},
     perTier: {},
     perRole: {},
+    costSources: {},
+    perModelUsage: {},
   };
 }
 
 function createPersistedData(): PersistedData {
   return { hourly: {}, sessions: {}, global: createAggregate() };
+}
+
+function createDataFromRecords(records: readonly RouterStatsRecord[]): PersistedData {
+  const data = createPersistedData();
+  for (const record of records) {
+    bumpAggregate(data.global, record);
+
+    const hour = record.startedAt.slice(0, 13);
+    if (!data.hourly[hour]) data.hourly[hour] = { ...createAggregate(), hour };
+    bumpAggregate(data.hourly[hour]!, record);
+
+    if (!data.sessions[record.sessionId]) {
+      data.sessions[record.sessionId] = {
+        sessionId: record.sessionId,
+        aggregate: createAggregate(),
+        requestLog: [],
+      };
+    }
+    data.sessions[record.sessionId]!.requestLog.push(record);
+    bumpAggregate(data.sessions[record.sessionId]!.aggregate, record);
+  }
+
+  const hourKeys = Object.keys(data.hourly).sort();
+  while (hourKeys.length > MAX_HOURLY_BUCKETS) delete data.hourly[hourKeys.shift()!];
+
+  const sessionEntries = Object.entries(data.sessions);
+  if (sessionEntries.length > MAX_SESSIONS) {
+    sessionEntries.sort((left, right) => {
+      const leftLast = left[1].requestLog.at(-1)?.endedAt ?? "";
+      const rightLast = right[1].requestLog.at(-1)?.endedAt ?? "";
+      return leftLast.localeCompare(rightLast);
+    });
+    for (let index = 0; index < sessionEntries.length - MAX_SESSIONS; index += 1) {
+      delete data.sessions[sessionEntries[index]![0]];
+    }
+  }
+  for (const session of Object.values(data.sessions)) {
+    if (session.requestLog.length > 200) session.requestLog = session.requestLog.slice(-100);
+  }
+  return data;
+}
+
+function readStatsRecords(filePath: string): RouterStatsRecord[] {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return [];
+  }
+  const records: RouterStatsRecord[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line) continue;
+    try {
+      const record = JSON.parse(line) as RouterStatsRecord;
+      if (record.sessionId && record.startedAt) records.push(record);
+    } catch { /* ignore malformed append-only journal rows */ }
+  }
+  return records;
 }
 
 function copyAggregate(a: RouterStatsAggregate): RouterStatsAggregate {
@@ -342,6 +520,8 @@ function copyAggregate(a: RouterStatsAggregate): RouterStatsAggregate {
     perProvider: { ...a.perProvider },
     perTier: { ...a.perTier },
     perRole: { ...a.perRole },
+    costSources: { ...(a.costSources ?? {}) },
+    perModelUsage: Object.fromEntries(Object.entries(a.perModelUsage ?? {}).map(([key, usage]) => [key, copyModelUsage(usage)])),
   };
 }
 
@@ -356,6 +536,7 @@ function bumpAggregate(agg: RouterStatsAggregate, record: RouterStatsRecord): vo
   if (typeof agg.totalSavedCost !== "number") agg.totalSavedCost = 0;
   agg.totalBaselineCost += baseline;
   agg.totalSavedCost += baseline - cost;
+  bumpCostSource(agg.costSources ?? (agg.costSources = {}), record.costSource ?? "legacy_unknown");
 
   agg.perScenario[record.scenarioType] = (agg.perScenario[record.scenarioType] ?? 0) + 1;
 
@@ -369,6 +550,68 @@ function bumpAggregate(agg: RouterStatsAggregate, record: RouterStatsRecord): vo
   if (record.role) {
     agg.perRole[record.role] = (agg.perRole[record.role] ?? 0) + 1;
   }
+
+  const usage = agg.perModelUsage[modelKey] ?? createModelUsage(record.provider, record.model);
+  agg.perModelUsage[modelKey] = usage;
+  bumpModelUsage(usage, record.usage, cost, record.costSource ?? "legacy_unknown");
+  if (record.role) {
+    const roleUsage = usage.roles[record.role] ?? createModelUsageRole();
+    usage.roles[record.role] = roleUsage;
+    bumpModelUsage(roleUsage, record.usage, cost, record.costSource ?? "legacy_unknown");
+  }
+}
+
+function createModelUsageRole(): RouterModelUsageRoleAggregate {
+  return {
+    totalRequests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    totalCost: 0,
+    costSources: {},
+  };
+}
+
+function createModelUsage(provider: string, model: string): RouterModelUsageAggregate {
+  return { provider, model, ...createModelUsageRole(), roles: {} };
+}
+
+function bumpModelUsage(
+  aggregate: RouterModelUsageRoleAggregate,
+  usage: CanonicalUsage,
+  cost: number,
+  costSource: RouterCostSource,
+): void {
+  aggregate.totalRequests += 1;
+  aggregate.inputTokens += usage.inputTokens ?? 0;
+  aggregate.outputTokens += usage.outputTokens ?? 0;
+  aggregate.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  aggregate.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+  aggregate.totalTokens += usage.totalTokens ?? (
+    (usage.inputTokens ?? 0)
+    + (usage.outputTokens ?? 0)
+    + (usage.cacheReadTokens ?? 0)
+    + (usage.cacheWriteTokens ?? 0)
+  );
+  aggregate.totalCost += cost;
+  bumpCostSource(aggregate.costSources ?? (aggregate.costSources = {}), costSource);
+}
+
+function bumpCostSource(target: Partial<Record<RouterCostSource, number>>, source: RouterCostSource): void {
+  target[source] = (target[source] ?? 0) + 1;
+}
+
+function copyModelUsage(usage: RouterModelUsageAggregate): RouterModelUsageAggregate {
+  return {
+    ...usage,
+    costSources: { ...(usage.costSources ?? {}) },
+    roles: Object.fromEntries(Object.entries(usage.roles ?? {}).map(([role, totals]) => [
+      role,
+      { ...totals, costSources: { ...(totals.costSources ?? {}) } },
+    ])),
+  };
 }
 
 function isAggregate(val: unknown): val is RouterStatsAggregate {

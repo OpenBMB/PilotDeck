@@ -607,6 +607,19 @@ function parseStats(
       });
     }
   }
+  let retentionMs: number | undefined;
+  if (raw.retentionMs !== undefined) {
+    if (typeof raw.retentionMs === "number" && Number.isSafeInteger(raw.retentionMs) && raw.retentionMs > 0) {
+      retentionMs = raw.retentionMs;
+    } else {
+      diagnostics.push({
+        code: "ROUTER_STATS_RETENTION_INVALID",
+        severity: "fatal",
+        path: "router.stats.retentionMs",
+        message: "router.stats.retentionMs must be a positive safe integer in milliseconds.",
+      });
+    }
+  }
   let modelPricing: RouterStatsConfig["modelPricing"];
   if (raw.modelPricing !== undefined) {
     if (!isRecord(raw.modelPricing)) {
@@ -656,7 +669,7 @@ function parseStats(
     }
   }
   const baselineModel = optionalBaselineModel(raw.baselineModel, modelConfig, diagnostics);
-  return { enabled, modelPricing, baselineModel };
+  return { enabled, modelPricing, baselineModel, ...(retentionMs !== undefined ? { retentionMs } : {}) };
 }
 
 function parseCustomRouter(
