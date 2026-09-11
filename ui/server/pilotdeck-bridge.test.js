@@ -14,6 +14,7 @@ import {
     isGatewayUnavailableError,
     isTerminalAlwaysOnTurnEvent,
     queuedInputDispositionAfterTurn,
+    queuedUserFrame,
     reconcileRecoveredQueueItems,
     resetSteeringItemForRun,
     resolvePermissionMode,
@@ -492,6 +493,18 @@ describe('steer run identity', () => {
 });
 
 describe('web attachment conversion', () => {
+    it('echoes display-only upload previews and retains compatibility with ordinary attachments', () => {
+        const preview = { name: 'photo.png', uploadId: 'u', attachmentId: 'a',
+            previewData: 'data:image/png;base64,aW1hZ2U=' };
+        const item = { id: 'q1', displayText: 'describe this', options: {
+            images: [], attachments: [], displayAttachments: [preview],
+            uploadedAttachments: [{ uploadId: 'u', attachmentIds: ['a'] }],
+        } };
+        expect(queuedUserFrame(item, 'web:session', 'run-1', 'pilotdeck').attachments).toEqual([preview]);
+        expect(uiFilesToAttachments(item.options.attachments)).toBeUndefined();
+        expect(queuedUserFrame({ ...item, options: { attachments: [preview] } }, 'web:session', 'run-1', 'pilotdeck').attachments)
+            .toEqual([preview]);
+    });
     it('marks uploaded files with the web channel key', () => {
         expect(uiFilesToAttachments([{
             name: 'meeting.wav',

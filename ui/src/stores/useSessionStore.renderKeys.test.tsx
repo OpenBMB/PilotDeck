@@ -33,6 +33,37 @@ describe('streaming presentation identity', () => {
     const second = normalizedToChatMessages(result.current.getMessages('session'))[1];
     expect(getIntrinsicMessageKey(second)).not.toBe(getIntrinsicMessageKey(before));
   });
+  it('records an explicit empty-history boundary for a new thinking stream', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => result.current.updateStreamingThinking('session', 'First block', 'pilotdeck', 'run'));
+
+    expect(result.current.getSessionSlot('session')?.realtimeMessages[0]).toMatchObject({
+      id: '__streaming_thinking_session_run',
+      serverTailIdAtStart: null,
+    });
+  });
+  it('records the latest realtime tool boundary for a later thinking block', () => {
+    const { result } = renderHook(() => useSessionStore());
+
+    act(() => {
+      result.current.appendRealtime('session', {
+        id: 'tool-result',
+        sessionId: 'session',
+        timestamp: '2026-09-10T10:00:00.000Z',
+        provider: 'pilotdeck',
+        kind: 'tool_result',
+        toolId: 'read-settings',
+        runId: 'run',
+      });
+      result.current.updateStreamingThinking('session', 'Later block', 'pilotdeck', 'run');
+    });
+
+    expect(result.current.getSessionSlot('session')?.realtimeMessages.at(-1)).toMatchObject({
+      id: '__streaming_thinking_session_run',
+      toolBoundaryIdAtStart: 'read-settings',
+    });
+  });
   it('preserves keys when the server confirms content, without crossing runs or duplicating keys', () => {
     const previous = [{ ...msg('live'), renderKey: 'render-one' }];
     expect(inheritMessageRenderKeys(previous, [msg('server')])[0].renderKey).toBe('render-one');

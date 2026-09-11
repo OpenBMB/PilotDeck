@@ -65,3 +65,29 @@ it('retains failed sends for recovery and treats only actually dispatched inputs
     expect(serializeQueuedInputForStorage({ ...item('checking'), status: 'submitting' }).status).toBe('queued');
     expect(serializeQueuedInputForStorage({ ...item('sent'), status: 'dispatching' }).status).toBe('delivery_uncertain');
 });
+
+it.each([false, true])('acknowledges a retry after execution without dispatching again (restart=%s)', async restart => {
+    const calls = [], frames = [];
+    mock.gateway = {
+        getActiveTurnSnapshot: async () => ({ active: false, events: [] }),
+        async *submitTurn(input) {
+            calls.push(input.runId);
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const sid = `web:s_retry_${restart}`, writer = {send: frame => frames.push(frame)};
+    const first = item(`accepted-${restart}`);
+    await enqueueInputViaGateway(sid, first, writer);
+    await vi.waitFor(() => expect(frames.some(frame => frame.kind === 'complete')).toBe(true));
+    let enqueue = enqueueInputViaGateway;
+    if (restart) {
+        vi.resetModules();
+        enqueue = (await import('./pilotdeck-bridge.js')).enqueueInputViaGateway;
+    }
+    const retry = await enqueue(sid, first, writer);
+    expect(retry).toMatchObject({ok: true, state: {items: []}});
+    expect(calls).toEqual([first.id]);
+    await enqueue(sid, {...first, id: first.id + '-new', runId: first.id + '-new'}, writer);
+    await vi.waitFor(() => expect(calls).toEqual([first.id, first.id + '-new']));
+});

@@ -4,9 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
+import type { QueuedInputSummary } from '../chat/types/queuedInput';
+import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import MessagesPaneV2 from './MessagesPaneV2';
 import { ThinkingBlock } from './ThinkingBlock';
-import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import {
   getChatResponseReserveTarget,
   shouldKeepChatResponseReservedSpace,
@@ -1533,6 +1534,35 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
   });
 
+  it('updates the same live compression row from running to completed without a second status', () => {
+    const timestamp = new Date().toISOString();
+    const user: ChatMessage = { id: 'user', type: 'user', content: 'Continue', timestamp };
+    const compact: ChatMessage = { id: 'compact-start', type: 'system', content: '', timestamp,
+      isCompactBoundary: true, compactionId: 'c1', compactState: 'running' };
+    const view = renderPane({ messages: [user, compact], isAssistantWorking: true });
+    const row = screen.getByText('Compacting context...');
+    expect(screen.queryByText('Compacted context')).toBeNull();
+    view.rerender(createPaneElement({ messages: [user, { ...compact, id: 'compact-history', compactState: 'completed' }], isAssistantWorking: true }));
+    expect(screen.queryByText('Compacting context...')).toBeNull();
+    expect(screen.getByText('Compacted context')).toBe(row);
+  });
+
+  it('keeps thinking before mid-turn compaction inside the completed trace', () => {
+    const now = new Date().toISOString();
+    renderPane({ messages: [
+      { id: 'user', type: 'user', content: 'Inspect the image', timestamp: now },
+      { id: 'thought', type: 'assistant', content: 'Reasoning before compaction', timestamp: now, isThinking: true },
+      { id: 'compact', type: 'system', content: 'Context compacted', timestamp: now, isCompactBoundary: true },
+      { id: 'answer', type: 'assistant', content: 'Answer after compaction', timestamp: now },
+    ] });
+    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+    const thought = screen.getByRole('button', { name: 'Thought process' });
+    const compact = screen.getByText('Compacted context');
+    const answer = screen.getByText('Answer after compaction');
+    expect(thought.compareDocumentPosition(compact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(compact.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('does not render a completed compact boundary as a plan-mode process row', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
@@ -1673,4 +1703,54 @@ it('shows a provisional send without writing a duplicate transcript message on a
   view.rerender(createPaneElement({ messages: [{ type: 'user', runId: 'send-1', content: 'My next message', timestamp: pending.createdAt }], sendingInputs: [] }));
   expect(screen.getAllByText('My next message')).toHaveLength(1);
   expect(view.container.querySelector('[data-sending-input]')).toBeNull();
+});
+
+
+describe('uploaded image preview lifecycle', () => {
+  it('shows images immediately during generation and only once when history arrives, keeping ordinary files', () => {
+    const preview = 'data:image/png;base64,aW1hZ2U=';
+    const user: ChatMessage = { id: 'local-image', type: 'user', content: 'Describe these', timestamp: new Date(),
+      attachments: [
+        { name: 'photo.png', uploadId: 'u1', attachmentId: 'a1', mimeType: 'image/png', previewData: preview },
+        { name: 'notes.txt', mimeType: 'text/plain', size: 42 },
+      ],
+    };
+    const view = renderPane({ messages: [user], isAssistantWorking: true });
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.getByRole('img').getAttribute('src')).toBe(preview);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview photo.png' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    view.rerender(createPaneElement({ messages: [{ ...user, id: 'confirmed-image', images: [{ name: 'photo.png', data: preview }] }] }));
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+  });
+});
+
+it('uploaded image stays visible when sent with a document region reference', () => {
+  const uploadedPreview = 'data:image/png;base64,dXBsb2Fk';
+  const regionData = 'data:image/png;base64,cmVnaW9u';
+  const reference = { schemaVersion: 1 as const, kind: 'content-reference' as const,
+    id: 'region-1', selectionMode: 'region' as const, createdAt: '2026-09-11T00:00:00Z',
+    source: { fileName: 'reference.pdf', relativePath: 'reference.pdf', mimeType: 'application/pdf' },
+    renderer: { id: 'pdf' as const, backend: 'builtin' as const, locatorQuality: 'visual' as const },
+    locator: { surface: 'page' as const, pageNumber: 1, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    image: { name: 'region.png', mimeType: 'image/png' as const, width: 100, height: 100, dataUrl: regionData },
+  };
+  const messages = normalizedToChatMessages([{
+    id: 'local-mixed', sessionId: 'web:test', provider: 'pilotdeck', kind: 'text', role: 'user',
+    content: 'compare the uploaded image with this document region', timestamp: '2026-09-11T00:00:00Z',
+    images: [regionData],
+    attachments: [ { name: 'uploaded.png', uploadId: 'u', attachmentId: 'a', previewData: uploadedPreview },
+      { kind: 'content-reference', name: reference.source.fileName, path: reference.source.relativePath, contentReference: { ...reference, image: { ...reference.image, dataUrl: undefined } } } ],
+  }]);
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(screen.getAllByRole('img').some(img => img.getAttribute('src') === uploadedPreview)).toBe(true);
+  view.rerender(createPaneElement({ messages: [{ ...messages[0], images: [
+    { name: '', data: regionData }, { name: '', data: uploadedPreview },
+  ] }] }));
+  expect(screen.getAllByRole('img').filter(img => img.getAttribute('src') === uploadedPreview)).toHaveLength(1);
 });

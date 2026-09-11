@@ -102,6 +102,8 @@
     "executingTool": "Running tool...",
     "generating": "Generating response",
     "compacting": "Compacting context...",
+    "compactFailed": "Context compaction failed",
+    "compactCancelled": "Context compaction stopped",
     "compactingLevel": "Triggering level {{level}} compaction: {{label}}",
     "waitingForPermission": "Waiting for permission",
     "retrying": "Reconnecting {{attempt}}/{{max}}{{delay}}",

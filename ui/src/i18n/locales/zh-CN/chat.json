@@ -102,6 +102,8 @@
     "executingTool": "执行工具中...",
     "generating": "正在生成回复",
     "compacting": "正在压缩上下文...",
+    "compactFailed": "上下文压缩失败",
+    "compactCancelled": "上下文压缩已停止",
     "compactingLevel": "正在触发 {{level}} 级压缩：{{label}}",
     "waitingForPermission": "等待授权",
     "retrying": "重连中 {{attempt}}/{{max}}{{delay}}",

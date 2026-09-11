@@ -151,6 +151,7 @@ type UploadedAttachmentFile = {
   path: string;
   size?: number;
   mimeType?: string;
+  previewData?: string;
 };
 
 type UploadedAttachmentRef = {
@@ -173,7 +174,18 @@ type CompletedAttachmentUpload = {
   relativePath: string;
   bytes?: number;
   mimeType?: string;
+  previewData?: string;
 };
+
+function readAttachmentPreview(file: File): Promise<string | undefined> {
+  if (!file.type.startsWith('image/')) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : undefined);
+    reader.onerror = reader.onabort = () => resolve(undefined);
+    reader.readAsDataURL(file);
+  });
+}
 
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
@@ -330,6 +342,7 @@ export function useChatComposerState({
   >(null);
   const inputValueRef = useRef(input);
   const activeDraftStorageKeyRef = useRef(draftStorageKey);
+  const queueAttemptsRef = useRef(new Map<string, { fingerprint: string; id: string }>());
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSessionGrantResolversRef = useRef(new Map<string, (result: PermissionGrantResult) => void>());
   const activeAttachmentUploadsRef = useRef<AttachmentUploadBatch[]>([]);
@@ -338,7 +351,7 @@ export function useChatComposerState({
   // A cancelled upload can resolve after the user removes a file. Keep object-
   // identity tombstones so that late promises can never resurrect it.
   const removedAttachmentFilesRef = useRef(new WeakSet<File>());
-  const attachmentSubmitPendingRef = useRef(false);
+  const submitPendingRef = useRef(false);
   const handleImageFilesRef = useRef<(files: File[]) => void>(() => undefined);
   const lastDropKeyRef = useRef({ key: '', at: 0 });
 
@@ -350,18 +363,24 @@ export function useChatComposerState({
     if (record.status === 'completed') {
       setUploadingImages((previous) => {
         const next = new Map(previous);
-        files.forEach((file) => next.set(file, 100));
+        // Transport completion can precede attachment metadata. Only advertise
+        // readiness after metadata is available; late events cannot undo it.
+        files.forEach((file) => next.set(file, completedAttachmentUploadsRef.current.has(file) ? 100 : 99));
         return next;
       });
       return;
     }
     const rawPercent = Number(record.percent);
     const nextPercent = rawPercent >= 100
-      ? 100
+      ? 99
       : Math.max(0, Math.min(99, Number.isFinite(rawPercent) ? rawPercent : 0));
     setUploadingImages((previous) => {
       const next = new Map(previous);
       files.forEach((file) => {
+        if (completedAttachmentUploadsRef.current.has(file)) {
+          next.set(file, 100);
+          return;
+        }
         const current = next.get(file);
         next.set(file, current === undefined ? nextPercent : Math.max(current, nextPercent));
       });
@@ -492,6 +511,9 @@ export function useChatComposerState({
             });
             continue;
           }
+          const previewData = await readAttachmentPreview(file);
+          if (batch.cancelled || removedAttachmentFilesRef.current.has(file)
+            || !attachedImagesRef.current.includes(file)) continue;
           completedAttachmentUploadsRef.current.set(file, {
             uploadId: result.uploadId,
             attachmentId: attachment.attachmentId,
@@ -499,6 +521,7 @@ export function useChatComposerState({
             relativePath: attachment.relativePath || attachment.name || file.name,
             bytes: attachment.bytes,
             mimeType: attachment.mimeType,
+            previewData,
           });
         }
       } catch (error) {
@@ -1125,7 +1148,7 @@ export function useChatComposerState({
     noDragEventsBubbling: true,
   });
 
-  const handleSubmit = useCallback(
+  const performSubmit = useCallback(
     async (
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
@@ -1294,78 +1317,31 @@ export function useChatComposerState({
       let uploadedFiles: UploadedAttachmentFile[] = [];
       let uploadedAttachmentRefs: UploadedAttachmentRef[] = [];
       if (submitAttachedImages.length > 0) {
-        // The button is disabled while uploading, but Enter can still reach
-        // this handler. Serialize attachment preparation so repeated key
-        // presses cannot dispatch the same completed upload twice.
-        if (attachmentSubmitPendingRef.current) return;
-        attachmentSubmitPendingRef.current = true;
-        try {
-          const pendingFiles = submitAttachedImages.filter((file) => (
-            !completedAttachmentUploadsRef.current.has(file)
-            && !activeAttachmentUploadsRef.current.some((batch) => batch.files.includes(file))
-          ));
-          if (pendingFiles.length > 0) {
-            startAttachmentUploads(pendingFiles);
-          }
-          // A removal cancels its entire multi-file upload and starts a clean
-          // batch for the survivors. Follow replacement batches until the
-          // submitted files have settled, then re-read the live attachment set.
-          const awaitedBatches = new Set<AttachmentUploadBatch>();
-          while (true) {
-            const currentCandidates = submitAttachedImages.filter((file) => (
-              attachedImagesRef.current.includes(file)
-              && !removedAttachmentFilesRef.current.has(file)
-            ));
-            const pendingBatches = activeAttachmentUploadsRef.current.filter((batch) => (
-              !batch.cancelled
-              && !awaitedBatches.has(batch)
-              && batch.files.some((file) => currentCandidates.includes(file))
-            ));
-            if (pendingBatches.length === 0) break;
-            pendingBatches.forEach((batch) => awaitedBatches.add(batch));
-            await Promise.all(pendingBatches.map((batch) => batch.promise));
-          }
-          submittedAttachmentFiles = submitAttachedImages.filter((file) => (
-            attachedImagesRef.current.includes(file)
-            && !removedAttachmentFilesRef.current.has(file)
-          ));
-          const failedFiles = submittedAttachmentFiles.filter((file) => (
-            !completedAttachmentUploadsRef.current.has(file)
-          ));
-          if (failedFiles.length > 0) {
-            const message = failedFiles.map((file) => file.name).join(', ');
-            addMessage({
-              type: 'error',
-              content: `Failed to upload attachments: ${message}`,
-              timestamp: new Date(),
-            }, submitTargetSessionId);
-            return;
-          }
-
-          const refsByUploadId = new Map<string, string[]>();
-          uploadedFiles = submittedAttachmentFiles.flatMap((file) => {
-            const completed = completedAttachmentUploadsRef.current.get(file);
-            if (!completed) return [];
-            const attachmentIds = refsByUploadId.get(completed.uploadId) ?? [];
-            attachmentIds.push(completed.attachmentId);
-            refsByUploadId.set(completed.uploadId, attachmentIds);
-            return [{
-              kind: 'file' as const,
-              name: completed.name,
-              path: completed.relativePath,
-              size: completed.bytes,
-              mimeType: completed.mimeType,
-              uploadId: completed.uploadId,
-              attachmentId: completed.attachmentId,
-            }];
-          });
-          uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
-            uploadId,
-            attachmentIds,
-          }));
-        } finally {
-          attachmentSubmitPendingRef.current = false;
-        }
+        submittedAttachmentFiles = submitAttachedImages.filter(file =>
+          attachedImagesRef.current.includes(file) && !removedAttachmentFilesRef.current.has(file));
+        if (submittedAttachmentFiles.some(file => !completedAttachmentUploadsRef.current.has(file))) return;
+        const refsByUploadId = new Map<string, string[]>();
+        uploadedFiles = submittedAttachmentFiles.flatMap((file) => {
+          const completed = completedAttachmentUploadsRef.current.get(file);
+          if (!completed) return [];
+          const attachmentIds = refsByUploadId.get(completed.uploadId) ?? [];
+          attachmentIds.push(completed.attachmentId);
+          refsByUploadId.set(completed.uploadId, attachmentIds);
+          return [{
+            kind: 'file' as const,
+            name: completed.name,
+            path: completed.relativePath,
+            size: completed.bytes,
+            mimeType: completed.mimeType,
+            uploadId: completed.uploadId,
+            attachmentId: completed.attachmentId,
+            previewData: completed.previewData,
+          }];
+        });
+        uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
+          uploadId,
+          attachmentIds,
+        }));
       }
 
       if (
@@ -1394,7 +1370,7 @@ export function useChatComposerState({
       messageContent = `${messageContent}${formatContentReferencePromptBlock(submitDocumentReferences)}`;
 
       const effectiveSessionId = submitTargetSessionId;
-      const runId = createUserTurnRunId();
+      let runId = createUserTurnRunId();
       const toolsSettings = getPilotDeckSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
       const resolvedProjectPath = getSelectedProjectPath(selectedProject);
@@ -1435,6 +1411,25 @@ export function useChatComposerState({
       // server atomically decides whether to dispatch now or retain the item,
       // avoiding upload/session-busy races while preserving the richer PR payload.
       if (shouldRoutePreparedInputThroughQueue(queueTargetSessionId)) {
+        // A missing acknowledgment is not a rejection. Retry the same draft
+        // with its original identity, including after a page reload.
+        const attemptKey = `${getDraftInputStorageKey(selectedProject.name, queueTargetSessionId)}:queue-attempt`;
+        const fingerprint = JSON.stringify({
+          command: messageContent, uploadedAttachmentRefs, turnAttachments,
+          modelSelection: submittedModelSelection, model, runMode,
+          permissionMode, basePermissionMode, thinkingMode,
+        });
+        let previousAttempt = queueAttemptsRef.current.get(attemptKey);
+        if (!previousAttempt) {
+          try { previousAttempt = JSON.parse(safeLocalStorage.getItem(attemptKey) || 'null'); }
+          catch { /* A stale/corrupt draft receipt must not prevent sending. */ }
+        }
+        if (previousAttempt?.fingerprint === fingerprint && typeof previousAttempt.id === 'string') {
+          runId = previousAttempt.id;
+        }
+        const attempt = { fingerprint, id: runId };
+        queueAttemptsRef.current.set(attemptKey, attempt);
+        safeLocalStorage.setItem(attemptKey, JSON.stringify(attempt));
         const result = await enqueuePreparedInput?.({
           id: runId,
           runId,
@@ -1458,6 +1453,7 @@ export function useChatComposerState({
             userVisibleInput,
             images: uploadedImages,
             attachments: turnAttachments,
+            displayAttachments: [...uploadedFiles, ...turnAttachments],
             uploadedAttachments: uploadedAttachmentRefs,
             modelSelection: submittedModelSelection,
           },
@@ -1470,6 +1466,8 @@ export function useChatComposerState({
           }, queueTargetSessionId);
           return;
         }
+        queueAttemptsRef.current.delete(attemptKey);
+        safeLocalStorage.removeItem(attemptKey);
         bumpSessionActivity();
         clearSubmittedComposerState();
         return;
@@ -1583,11 +1581,24 @@ export function useChatComposerState({
       slashCommands,
       thinkingMode,
       referenceOnlyPrompt,
-      startAttachmentUploads,
       cancelActiveAttachmentUpload,
       t,
     ],
   );
+
+  const handleSubmit = useCallback(async (event: Parameters<typeof performSubmit>[0]) => {
+    event.preventDefault();
+    // Both entry points reject unready attachments; completion never sends a
+    // hidden pending draft. Keep the lock through the actual queue dispatch.
+    if (submitPendingRef.current
+      || attachedImagesRef.current.some(file => !completedAttachmentUploadsRef.current.has(file))) return;
+    submitPendingRef.current = true;
+    try {
+      await performSubmit(event);
+    } finally {
+      submitPendingRef.current = false;
+    }
+  }, [performSubmit]);
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
@@ -2102,6 +2113,7 @@ export function useChatComposerState({
       });
     },
     uploadingImages,
+    hasPendingAttachments: attachedImages.some(file => !completedAttachmentUploadsRef.current.has(file)),
     imageErrors,
     getRootProps,
     getInputProps,
