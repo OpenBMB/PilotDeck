@@ -1,19 +1,65 @@
 import type {
   CanonicalMessage,
   CanonicalModelRequest,
+  CanonicalUsage,
   ModelRuntime,
 } from "../../model/index.js";
 import { ModelProviderError, ModelRequestError } from "../../model/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
-import type { RouterModelRef, RouterTokenSaverConfig } from "../config/schema.js";
-import { extractLastUserMessage } from "./extractLastUserMessage.js";
-import { generateJudgePrompt } from "./generateJudgePrompt.js";
-import { parseTier } from "./parseTier.js";
+import {
+  DEFAULT_TOKEN_SAVER_CONTEXT,
+  type RouterModelRef,
+  type RouterTokenSaverConfig,
+} from "../config/schema.js";
+import {
+  buildJudgeContext,
+  isShortContinuation,
+  type ContinuationKind,
+  type JudgeContext,
+} from "./buildJudgeContext.js";
+import { generateJudgePrompt, generateJudgeSystemPrompt } from "./generateJudgePrompt.js";
+import { parseJudgeDecision, type JudgeTaskRelation } from "./parseJudgeDecision.js";
+
+export type TokenSaverResolution =
+  | "judge"
+  | "continuation_gate"
+  | "relation_guard"
+  | "confidence_guard"
+  | "default"
+  | "fallback";
+
+export type TokenSaverRoutingDiagnostics = {
+  resolution: TokenSaverResolution;
+  judgeInvoked: boolean;
+  judgeAttempts: number;
+  judgeLatencyMs: number;
+  judgeProposedTier?: string;
+  judgeConfidence?: number;
+  judgeUsage?: CanonicalUsage;
+  taskRelation?: JudgeTaskRelation;
+  continuationKind: ContinuationKind;
+  previousTierAvailable: boolean;
+  context: {
+    messageCount: number;
+    userMessageCount: number;
+    toolCallCount: number;
+    toolResultCount: number;
+    failedToolResultCount: number;
+    mediaCount: number;
+    textCharacterCount: number;
+    availableToolCount: number;
+    currentMessageChars: number;
+    previousTaskChars: number;
+      assistantTailChars: number;
+      hasNewTaskSignal: boolean;
+  };
+};
 
 export type TokenSaverDecision = {
   tier: string;
   selection: RouterModelRef;
-  resolvedFrom: "judge" | "default" | "fallback";
+  resolvedFrom: TokenSaverResolution;
+  diagnostics?: TokenSaverRoutingDiagnostics;
   failureReason?: "timeout" | "model_error" | "parse_error";
   /** Diagnostic safe to persist in router events when classification falls back. */
   failure?: TokenSaverFailure;
@@ -33,8 +79,9 @@ export type ClassifyAndRouteInput = {
   messages: CanonicalMessage[];
   judgeRuntime: ModelRuntime;
   abortSignal?: AbortSignal;
-  /** Tier from the previous turn; passed to the judge for context-aware classification. */
+  /** Tier from the previous turn; used by continuation and uncertainty guards. */
   previousTier?: string;
+  availableToolCount?: number;
   sessionId?: string;
   telemetry?: TelemetryClient;
 };
@@ -43,17 +90,23 @@ export async function classifyAndRoute(
   input: ClassifyAndRouteInput,
 ): Promise<TokenSaverDecision | undefined> {
   const { config } = input;
-  if (!config.enabled) {
-    return undefined;
-  }
+  if (!config.enabled) return undefined;
 
   const defaultTier = config.tiers[config.defaultTier];
-  if (!defaultTier) {
-    return undefined;
-  }
+  if (!defaultTier) return undefined;
 
-  const userMessage = extractLastUserMessage(input.messages);
-  if (!userMessage) {
+  const contextConfig = { ...DEFAULT_TOKEN_SAVER_CONTEXT, ...config.contextAware };
+  const context = buildJudgeContext({
+    messages: input.messages,
+    previousTier: input.previousTier,
+    availableToolCount: input.availableToolCount,
+    options: {
+      maxCurrentMessageChars: contextConfig.maxCurrentMessageChars,
+      maxPreviousTaskChars: contextConfig.maxPreviousTaskChars,
+      maxAssistantTailChars: contextConfig.maxAssistantTailChars,
+    },
+  });
+  if (!context) {
     return {
       tier: config.defaultTier,
       selection: defaultTier.model,
@@ -61,27 +114,62 @@ export async function classifyAndRoute(
     };
   }
 
+  const judgeContext = contextConfig.enabled ? context : currentMessageOnlyContext(context);
+  const previousTier = input.previousTier && config.tiers[input.previousTier]
+    ? input.previousTier
+    : undefined;
+
+  if (
+    contextConfig.enabled &&
+    contextConfig.continuationGate &&
+    previousTier &&
+    !context.hasNewTaskSignal &&
+    (context.continuationKind === "action" || context.continuationKind === "action_confirmation")
+  ) {
+    input.telemetry?.trackFeatureLoopStage({
+      module: "router",
+      ownerModule: "router",
+      executionKind: "router_judge",
+      phase: "judge",
+      loopStage: "module_event",
+      outcome: "success",
+      sessionId: input.sessionId,
+      metadata: {
+        event: "judge_skipped_continuation",
+        tier: previousTier,
+        continuationKind: context.continuationKind,
+      },
+    });
+    return {
+      tier: previousTier,
+      selection: config.tiers[previousTier]!.model,
+      resolvedFrom: "continuation_gate",
+      diagnostics: diagnosticsFor(context, {
+        resolution: "continuation_gate",
+        judgeInvoked: false,
+      }),
+    };
+  }
+
   const knownTiers = Object.keys(config.tiers);
-  const prompt = generateJudgePrompt({ userMessage, config, previousTier: input.previousTier });
+  const userPrompt = generateJudgePrompt(judgeContext);
   const judgeRequest: CanonicalModelRequest = {
     provider: config.judge.provider,
     model: config.judge.model,
-    messages: [
-      {
-        role: "user",
-        content: [{ type: "text", text: prompt }],
-      },
-    ],
-    maxOutputTokens: 256,
+    systemPrompt: generateJudgeSystemPrompt(config),
+    messages: [{ role: "user", content: [{ type: "text", text: userPrompt }] }],
+    maxOutputTokens: 128,
     // Provider defaults are more compatible than an explicit temperature for
-    // lightweight routing requests. Some compatible gateways reject the
-    // field for particular models (including Claude-backed ones).
+    // lightweight routing requests. Some compatible gateways reject it.
     thinking: { enabled: false },
     stream: false,
   };
 
   const timeoutMs = Math.max(500, config.judgeTimeoutMs ?? 5_000);
   const maxAttempts = 3;
+  const judgeStartedAt = Date.now();
+  let judgeUsage: CanonicalUsage | undefined;
+
   input.telemetry?.trackFeatureLoopStage({
     module: "router",
     ownerModule: "router",
@@ -94,20 +182,21 @@ export async function classifyAndRoute(
       event: "judge_enabled",
       provider: config.judge.provider,
       model: config.judge.model,
+      contextChars: userPrompt.length,
+      previousTierAvailable: Boolean(previousTier),
+      continuationKind: context.continuationKind,
     },
   });
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (attempt > 1) {
-      await new Promise((r) => setTimeout(r, 1_000));
-    }
+    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1_000));
     let timeout: NodeJS.Timeout | undefined;
     let timedOut = false;
     const judgeAbortController = new AbortController();
     const forwardAbort = () => judgeAbortController.abort(input.abortSignal?.reason);
     input.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
-    if (input.abortSignal?.aborted) {
-      forwardAbort();
-    }
+    if (input.abortSignal?.aborted) forwardAbort();
+
     try {
       input.telemetry?.trackFeatureLoopStage({
         module: "router",
@@ -124,12 +213,9 @@ export async function classifyAndRoute(
           model: config.judge.model,
         },
       });
-      const judgeRequestPromise = input.judgeRuntime.complete(judgeRequest, {
-        signal: judgeAbortController.signal,
-      });
       const response = await Promise.race([
-        judgeRequestPromise,
-        new Promise<never>((_, reject) => {
+        input.judgeRuntime.complete(judgeRequest, { signal: judgeAbortController.signal }),
+        new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
             timedOut = true;
             const timeoutError = new TokenSaverTimeoutError();
@@ -138,20 +224,15 @@ export async function classifyAndRoute(
           }, timeoutMs);
         }),
       ]);
-      console.log(
-        `[token-saver] Judge raw content blocks (attempt ${attempt}):`,
-        JSON.stringify(response.content).slice(0, 500),
-        `| finishReason=${response.finishReason}`,
-      );
+      judgeUsage = addUsage(judgeUsage, response.usage);
       const text = response.content
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("");
 
-      if (!text) {
-        if (attempt < maxAttempts) {
-          continue;
-        }
+      const parsed = text ? parseJudgeDecision(text, knownTiers) : undefined;
+      if (!parsed) {
+        if (attempt < maxAttempts) continue;
         input.telemetry?.trackFeatureLoopStage({
           module: "router",
           ownerModule: "router",
@@ -168,76 +249,38 @@ export async function classifyAndRoute(
             model: config.judge.model,
           },
         });
-        console.warn("[token-saver] Judge returned empty after retries");
-        return {
-          tier: config.defaultTier,
-          selection: defaultTier.model,
-          resolvedFrom: "fallback",
+        return fallbackDecision({
+          config,
+          defaultTier,
+          context,
+          attempt,
+          judgeStartedAt,
+          judgeUsage,
           failureReason: "parse_error",
-          failure: { reason: "parse_error", attempts: attempt },
-        };
+        });
       }
 
-      const tier = parseTier(text, knownTiers);
-      if (!tier) {
-        if (attempt < maxAttempts) {
-          continue;
-        }
-        input.telemetry?.trackFeatureLoopStage({
-          module: "router",
-          ownerModule: "router",
-          executionKind: "router_judge",
-          phase: "judge",
-          loopStage: "model_response",
-          outcome: "failed",
-          errorCategory: "runtime_error",
-          sessionId: input.sessionId,
-          metadata: {
-            event: "parse_failed",
-            attempt,
-            provider: config.judge.provider,
-            model: config.judge.model,
-          },
-        });
-        console.warn(
-          "[token-saver] parseTier failed. Judge text:",
-          JSON.stringify(text).slice(0, 300),
-        );
-        return {
-          tier: config.defaultTier,
-          selection: defaultTier.model,
-          resolvedFrom: "fallback",
-          failureReason: "parse_error",
-          failure: { reason: "parse_error", attempts: attempt },
-        };
-      }
-      const selection = config.tiers[tier]?.model;
+      const guarded = applyUncertaintyGuard({
+        parsed,
+        context,
+        previousTier,
+        defaultTier: config.defaultTier,
+        tierOrder: knownTiers,
+        confidenceThreshold: contextConfig.confidenceThreshold,
+      });
+      const selection = config.tiers[guarded.tier]?.model;
       if (!selection) {
-        input.telemetry?.trackFeatureLoopStage({
-          module: "router",
-          ownerModule: "router",
-          executionKind: "router_judge",
-          phase: "judge",
-          loopStage: "model_response",
-          outcome: "failed",
-          errorCategory: "runtime_error",
-          sessionId: input.sessionId,
-          metadata: {
-            event: "parse_failed",
-            attempt,
-            tier,
-            provider: config.judge.provider,
-            model: config.judge.model,
-          },
-        });
-        return {
-          tier: config.defaultTier,
-          selection: defaultTier.model,
-          resolvedFrom: "fallback",
+        return fallbackDecision({
+          config,
+          defaultTier,
+          context,
+          attempt,
+          judgeStartedAt,
+          judgeUsage,
           failureReason: "parse_error",
-          failure: { reason: "parse_error", attempts: attempt },
-        };
+        });
       }
+
       input.telemetry?.trackFeatureLoopStage({
         module: "router",
         ownerModule: "router",
@@ -249,20 +292,34 @@ export async function classifyAndRoute(
         metadata: {
           event: "request_succeeded",
           attempt,
-          tier,
+          tier: guarded.tier,
+          proposedTier: parsed.tier,
+          confidence: parsed.confidence,
+          taskRelation: parsed.taskRelation,
+          resolution: guarded.resolution,
           provider: config.judge.provider,
           model: config.judge.model,
         },
       });
-      return { tier, selection, resolvedFrom: "judge" };
+      return {
+        tier: guarded.tier,
+        selection,
+        resolvedFrom: guarded.resolution,
+        diagnostics: diagnosticsFor(context, {
+          resolution: guarded.resolution,
+          judgeInvoked: true,
+          judgeAttempts: attempt,
+          judgeLatencyMs: Date.now() - judgeStartedAt,
+          judgeProposedTier: parsed.tier,
+          judgeConfidence: parsed.confidence,
+          judgeUsage,
+          taskRelation: parsed.taskRelation,
+        }),
+      };
     } catch (error) {
-      if (input.abortSignal?.aborted) {
-        throw error;
-      }
+      if (input.abortSignal?.aborted) throw error;
       const failure = timedOut ? new TokenSaverTimeoutError() : error;
-      if (attempt < maxAttempts && shouldRetryJudgeFailure(failure)) {
-        continue;
-      }
+      if (attempt < maxAttempts && shouldRetryJudgeFailure(failure)) continue;
       const didTimeout = failure instanceof TokenSaverTimeoutError;
       input.telemetry?.trackError(error, {
         module: "router",
@@ -280,26 +337,168 @@ export async function classifyAndRoute(
           model: config.judge.model,
         },
       });
+      const failureReason = didTimeout ? "timeout" : "model_error";
       return {
         tier: config.defaultTier,
         selection: defaultTier.model,
         resolvedFrom: "fallback",
-        failureReason: didTimeout ? "timeout" : "model_error",
-        failure: describeFailure(failure, attempt),
+        failureReason,
+        failure: didTimeout
+          ? { reason: "timeout", attempts: attempt, code: "judge_timeout" }
+          : describeFailure(failure, attempt),
+        diagnostics: diagnosticsFor(context, {
+          resolution: "fallback",
+          judgeInvoked: true,
+          judgeAttempts: attempt,
+          judgeLatencyMs: Date.now() - judgeStartedAt,
+          judgeUsage,
+        }),
       };
     } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
+      if (timeout) clearTimeout(timeout);
       input.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
-  return {
-    tier: config.defaultTier,
-    selection: defaultTier.model,
-    resolvedFrom: "fallback",
+
+  return fallbackDecision({
+    config,
+    defaultTier,
+    context,
+    attempt: maxAttempts,
+    judgeStartedAt,
+    judgeUsage,
     failureReason: "parse_error",
-    failure: { reason: "parse_error", attempts: maxAttempts },
+  });
+}
+
+function applyUncertaintyGuard(input: {
+  parsed: NonNullable<ReturnType<typeof parseJudgeDecision>>;
+  context: JudgeContext;
+  previousTier?: string;
+  defaultTier: string;
+  tierOrder: string[];
+  confidenceThreshold: number;
+}): { tier: string; resolution: TokenSaverResolution } {
+  const { parsed, context, previousTier } = input;
+  if (
+    parsed.taskRelation === "continuation" &&
+    previousTier &&
+    !context.hasNewTaskSignal &&
+    tierRank(parsed.tier, input.tierOrder) < tierRank(previousTier, input.tierOrder)
+  ) {
+    return { tier: previousTier, resolution: "relation_guard" };
+  }
+
+  const lowConfidence = parsed.confidence !== undefined && parsed.confidence < input.confidenceThreshold;
+  if (!lowConfidence) return { tier: parsed.tier, resolution: "judge" };
+
+  const candidates = [parsed.tier, input.defaultTier];
+  if (
+    previousTier &&
+    !context.hasNewTaskSignal &&
+    (parsed.taskRelation === "continuation" ||
+      parsed.taskRelation === "unclear" ||
+      context.continuationKind === "acknowledgement")
+  ) candidates.push(previousTier);
+  return {
+    tier: candidates.reduce((highest, tier) =>
+      tierRank(tier, input.tierOrder) > tierRank(highest, input.tierOrder) ? tier : highest),
+    resolution: "confidence_guard",
+  };
+}
+
+function tierRank(tier: string, tierOrder: string[]): number {
+  const standardRanks: Record<string, number> = {
+    simple: 0,
+    medium: 1,
+    complex: 2,
+    reasoning: 3,
+  };
+  return standardRanks[tier] ?? Math.max(0, tierOrder.indexOf(tier));
+}
+
+function currentMessageOnlyContext(context: JudgeContext): JudgeContext {
+  return {
+    currentUserMessage: context.currentUserMessage,
+    continuationKind: "none",
+    hasNewTaskSignal: context.hasNewTaskSignal,
+    features: {
+      ...context.features,
+      messageCount: 1,
+      userMessageCount: 1,
+      assistantMessageCount: 0,
+      toolCallCount: 0,
+      toolResultCount: 0,
+      failedToolResultCount: 0,
+      mediaCount: 0,
+      textCharacterCount: context.currentUserMessage.length,
+    },
+  };
+}
+
+function diagnosticsFor(
+  context: JudgeContext,
+  input: {
+    resolution: TokenSaverResolution;
+    judgeInvoked: boolean;
+    judgeAttempts?: number;
+    judgeLatencyMs?: number;
+    judgeProposedTier?: string;
+    judgeConfidence?: number;
+    judgeUsage?: CanonicalUsage;
+    taskRelation?: JudgeTaskRelation;
+  },
+): TokenSaverRoutingDiagnostics {
+  return {
+    resolution: input.resolution,
+    judgeInvoked: input.judgeInvoked,
+    judgeAttempts: input.judgeAttempts ?? 0,
+    judgeLatencyMs: input.judgeLatencyMs ?? 0,
+    ...(input.judgeProposedTier ? { judgeProposedTier: input.judgeProposedTier } : {}),
+    ...(input.judgeConfidence === undefined ? {} : { judgeConfidence: input.judgeConfidence }),
+    ...(input.judgeUsage ? { judgeUsage: input.judgeUsage } : {}),
+    ...(input.taskRelation ? { taskRelation: input.taskRelation } : {}),
+    continuationKind: context.continuationKind,
+    previousTierAvailable: Boolean(context.previousTier),
+    context: {
+      messageCount: context.features.messageCount,
+      userMessageCount: context.features.userMessageCount,
+      toolCallCount: context.features.toolCallCount,
+      toolResultCount: context.features.toolResultCount,
+      failedToolResultCount: context.features.failedToolResultCount,
+      mediaCount: context.features.mediaCount,
+      textCharacterCount: context.features.textCharacterCount,
+      availableToolCount: context.features.availableToolCount,
+      currentMessageChars: context.currentUserMessage.length,
+      previousTaskChars: context.previousTaskMessage?.length ?? 0,
+      assistantTailChars: context.previousAssistantTail?.length ?? 0,
+      hasNewTaskSignal: context.hasNewTaskSignal,
+    },
+  };
+}
+
+function fallbackDecision(input: {
+  config: RouterTokenSaverConfig;
+  defaultTier: RouterTokenSaverConfig["tiers"][string];
+  context: JudgeContext;
+  attempt: number;
+  judgeStartedAt: number;
+  judgeUsage?: CanonicalUsage;
+  failureReason: "parse_error";
+}): TokenSaverDecision {
+  return {
+    tier: input.config.defaultTier,
+    selection: input.defaultTier.model,
+    resolvedFrom: "fallback",
+    failureReason: input.failureReason,
+    failure: { reason: input.failureReason, attempts: input.attempt },
+    diagnostics: diagnosticsFor(input.context, {
+      resolution: "fallback",
+      judgeInvoked: true,
+      judgeAttempts: input.attempt,
+      judgeLatencyMs: Date.now() - input.judgeStartedAt,
+      judgeUsage: input.judgeUsage,
+    }),
   };
 }
 
@@ -311,7 +510,6 @@ function describeFailure(error: unknown, attempts: number): TokenSaverFailure {
   if (error instanceof TokenSaverTimeoutError) {
     return { reason: "timeout", attempts, code: "judge_timeout" };
   }
-
   const modelError = error instanceof ModelProviderError
     ? error.error
     : error instanceof ModelRequestError
@@ -319,7 +517,6 @@ function describeFailure(error: unknown, attempts: number): TokenSaverFailure {
       : error instanceof Error
         ? { message: error.message }
         : undefined;
-
   return {
     reason: "model_error",
     attempts,
@@ -329,12 +526,8 @@ function describeFailure(error: unknown, attempts: number): TokenSaverFailure {
 }
 
 function shouldRetryJudgeFailure(error: unknown): boolean {
-  if (error instanceof TokenSaverTimeoutError || error instanceof ModelRequestError) {
-    return false;
-  }
-  if (error instanceof ModelProviderError) {
-    return error.error.retryable;
-  }
+  if (error instanceof TokenSaverTimeoutError || error instanceof ModelRequestError) return false;
+  if (error instanceof ModelProviderError) return error.error.retryable;
   return true;
 }
 
@@ -347,22 +540,19 @@ function sanitizeFailureMessage(message: string): string {
     .slice(0, 300);
 }
 
-const SHORT_CONTINUATION_MAX_CHARS = 30;
-
-const CONTINUATION_PATTERNS = [
-  /^(go|ok|yes|y|sure|do it|proceed|continue|next|done|start|run|好|好的|继续|开始|可以|行|嗯|对|是的|没问题|来吧|冲|走|执行|开搞|干|上)$/i,
-];
-
-/**
- * Detect short acknowledgment / continuation messages that should inherit the
- * previous turn's tier rather than being re-classified by the judge. Small LLMs
- * reliably mis-classify these as "simple" because they match the "confirmations"
- * tier description.
- */
-export function isShortContinuation(message: string): boolean {
-  const trimmed = message.trim();
-  if (trimmed.length > SHORT_CONTINUATION_MAX_CHARS) {
-    return false;
-  }
-  return CONTINUATION_PATTERNS.some((pattern) => pattern.test(trimmed));
+function addUsage(
+  accumulated: CanonicalUsage | undefined,
+  current: CanonicalUsage | undefined,
+): CanonicalUsage | undefined {
+  if (!current) return accumulated;
+  return {
+    inputTokens: (accumulated?.inputTokens ?? 0) + (current.inputTokens ?? 0),
+    outputTokens: (accumulated?.outputTokens ?? 0) + (current.outputTokens ?? 0),
+    cacheReadTokens: (accumulated?.cacheReadTokens ?? 0) + (current.cacheReadTokens ?? 0),
+    cacheWriteTokens: (accumulated?.cacheWriteTokens ?? 0) + (current.cacheWriteTokens ?? 0),
+    totalTokens: (accumulated?.totalTokens ?? 0) + (current.totalTokens ?? 0),
+    nativeCost: (accumulated?.nativeCost ?? 0) + (current.nativeCost ?? 0),
+  };
 }
+
+export { isShortContinuation };

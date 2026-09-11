@@ -43,7 +43,10 @@ import {
   shouldRetryZeroUsage,
 } from "./retry/zeroUsageRetry.js";
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
-import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
+import {
+  classifyAndRoute,
+  type TokenSaverRoutingDiagnostics,
+} from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
 import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
 import {
@@ -376,6 +379,7 @@ export function createRouterRuntime(
         : "scenario";
 
     let tokenSaverTier: string | undefined;
+    let tokenSaverRouting: TokenSaverRoutingDiagnostics | undefined;
     let cacheAwareSwitch: RouterMutationsLog["cacheAwareSwitch"];
     const subagentPolicy = config.tokenSaver?.subagent?.policy ?? DEFAULT_SUBAGENT_POLICY;
     if (
@@ -421,10 +425,12 @@ export function createRouterRuntime(
           judgeRuntime,
           abortSignal: input.abortSignal,
           previousTier: input.metadata?.previousTier,
+          availableToolCount: input.request.tools?.length ?? 0,
           sessionId: input.sessionId,
           telemetry,
         });
         if (tokenSaver) {
+          tokenSaverRouting = tokenSaver.diagnostics;
           if (tokenSaver.failureReason) {
             events.emit({
               type: "pilotdeck_router_token_saver_failed",
@@ -497,6 +503,9 @@ export function createRouterRuntime(
     );
 
     let mutations: RouterMutationsLog = {};
+    if (tokenSaverRouting) {
+      mutations = { ...mutations, tokenSaverRouting };
+    }
     if (cacheAwareSwitch) {
       mutations = { ...mutations, cacheAwareSwitch };
     }
@@ -933,6 +942,7 @@ export function createRouterRuntime(
           model: attempt.model,
           tier: decision.tokenSaverTier,
           role: decision.isSubagent ? "subagent" : "main",
+          tokenSaverRouting: attemptDecision.mutations.tokenSaverRouting,
           usage: finalUsage,
           startedAt,
           endedAt,
@@ -968,6 +978,7 @@ export function createRouterRuntime(
         model: lastAttempt.model,
         tier: decision.tokenSaverTier,
         role: decision.isSubagent ? "subagent" : "main",
+        tokenSaverRouting: lastDecision.mutations.tokenSaverRouting,
         usage: failUsage,
         startedAt,
         endedAt,

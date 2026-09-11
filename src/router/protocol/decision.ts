@@ -11,6 +11,8 @@ export type RouterDecisionResolution =
   | "fallback";
 
 export type RouterMutationsLog = {
+  /** Privacy-safe diagnostics for evaluating judge cost, latency, and guard behavior. */
+  tokenSaverRouting?: import("../tokenSaver/classifyAndRoute.js").TokenSaverRoutingDiagnostics;
   systemPromptSlim?: { from: number; to: number; preservedKeywords: string[] };
   toolsStripped?: { before: number; after: number; mode?: "allowlist" | "blocklist"; patterns: string[] };
   orchestrationPromptInjected?: { tier: string; chars: number };

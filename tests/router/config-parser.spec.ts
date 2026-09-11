@@ -102,3 +102,62 @@ test("skips auto-orchestrate tier validation when token saver is disabled", () =
   assert.equal(result.diagnostics.filter((item) => item.severity === "fatal").length, 0);
   assert.deepEqual(result.config?.autoOrchestrate?.triggerTiers, ["simple"]);
 });
+
+test("enables bounded context-aware judging by default", () => {
+  const result = parseRouterConfig({
+    tokenSaver: {
+      judge: "openai/gpt-test",
+      defaultTier: "medium",
+      tiers: { medium: { model: "openai/gpt-test" } },
+    },
+  }, modelConfig);
+
+  assert.deepEqual(result.config?.tokenSaver?.contextAware, {
+    enabled: true,
+    continuationGate: true,
+    confidenceThreshold: 0.7,
+    maxCurrentMessageChars: 2_000,
+    maxPreviousTaskChars: 800,
+    maxAssistantTailChars: 400,
+  });
+});
+
+test("parses context-aware judge controls and rejects unsafe limits", () => {
+  const valid = parseRouterConfig({
+    tokenSaver: {
+      judge: "openai/gpt-test",
+      defaultTier: "medium",
+      tiers: { medium: { model: "openai/gpt-test" } },
+      contextAware: {
+        enabled: true,
+        continuationGate: false,
+        confidenceThreshold: 0.82,
+        maxCurrentMessageChars: 1500,
+        maxPreviousTaskChars: 600,
+        maxAssistantTailChars: 240,
+      },
+    },
+  }, modelConfig);
+  assert.equal(valid.diagnostics.filter((item) => item.severity === "fatal").length, 0);
+  assert.equal(valid.config?.tokenSaver?.contextAware?.confidenceThreshold, 0.82);
+  assert.equal(valid.config?.tokenSaver?.contextAware?.continuationGate, false);
+
+  const invalid = parseRouterConfig({
+    tokenSaver: {
+      judge: "openai/gpt-test",
+      defaultTier: "medium",
+      tiers: { medium: { model: "openai/gpt-test" } },
+      contextAware: {
+        confidenceThreshold: 1.2,
+        maxPreviousTaskChars: 0,
+      },
+    },
+  }, modelConfig);
+  assert.deepEqual(
+    invalid.diagnostics.filter((item) => item.severity === "fatal").map((item) => item.code),
+    [
+      "ROUTER_TOKEN_SAVER_CONTEXT_CONFIDENCE_INVALID",
+      "ROUTER_TOKEN_SAVER_CONTEXT_LIMIT_INVALID",
+    ],
+  );
+});

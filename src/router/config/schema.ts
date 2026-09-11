@@ -28,6 +28,18 @@ export type RouterTokenSaverSubagentPolicy = "skip" | "judge";
 
 export const DEFAULT_SUBAGENT_POLICY: RouterTokenSaverSubagentPolicy = "judge";
 
+export type RouterTokenSaverContextConfig = {
+  /** Include a bounded task anchor, assistant tail, and structural features in the judge request. */
+  enabled: boolean;
+  /** Resolve high-confidence continuation commands locally without an LLM judge call. */
+  continuationGate: boolean;
+  /** Below this confidence, ambiguous classifications preserve prior task complexity or use defaultTier. */
+  confidenceThreshold: number;
+  maxCurrentMessageChars: number;
+  maxPreviousTaskChars: number;
+  maxAssistantTailChars: number;
+};
+
 export type RouterTokenSaverConfig = {
   enabled: boolean;
   judge: RouterModelRef;
@@ -38,6 +50,7 @@ export type RouterTokenSaverConfig = {
     policy: RouterTokenSaverSubagentPolicy;
   };
   judgeTimeoutMs: number;
+  contextAware?: RouterTokenSaverContextConfig;
   /**
    * Preserve the session's current model when its cache-read input cost is
    * cheaper than switching models and re-prefilling the full prompt.
@@ -105,6 +118,14 @@ export type RouterConfig = {
 };
 
 export const DEFAULT_JUDGE_TIMEOUT_MS = 15_000;
+export const DEFAULT_TOKEN_SAVER_CONTEXT: RouterTokenSaverContextConfig = {
+  enabled: true,
+  continuationGate: true,
+  confidenceThreshold: 0.7,
+  maxCurrentMessageChars: 2_000,
+  maxPreviousTaskChars: 800,
+  maxAssistantTailChars: 400,
+};
 export const DEFAULT_ZERO_USAGE_MAX_ATTEMPTS = 2;
 export const DEFAULT_TRIGGER_TIERS = ["complex"];
 

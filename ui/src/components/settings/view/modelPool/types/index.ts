@@ -147,6 +147,14 @@ export type PilotDeckConfig = {
       subagent?: {
         policy?: string;
       };
+      contextAware?: {
+        enabled?: boolean;
+        continuationGate?: boolean;
+        confidenceThreshold?: number;
+        maxCurrentMessageChars?: number;
+        maxPreviousTaskChars?: number;
+        maxAssistantTailChars?: number;
+      };
       judge?: string;
       tiers?: Record<
         string,
