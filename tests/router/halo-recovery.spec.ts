@@ -27,6 +27,7 @@ function fixture(
     delayMsByProvider?: Record<string, number>;
     deadlineMs?: number;
     fallbackRefs?: RouterModelRef[];
+    transientRetry?: RouterConfig["transientRetry"];
   } = {},
 ) {
   const calls: string[] = [];
@@ -59,7 +60,7 @@ function fixture(
     scenarios: { default: ref("a") },
     fallback: { default: options.fallbackRefs ?? [ref("b"), ref("c")], maxFallbacks: 3 },
     zeroUsageRetry: options.zeroUsageRetry ?? { enabled: false, maxAttempts: 1 },
-    transientRetry: { enabled: false, maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 },
+    transientRetry: options.transientRetry ?? { enabled: false, maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 },
     recovery: {
       enabled: recovery, maxAttempts: options.maxAttempts ?? 4, deadlineMs: options.deadlineMs ?? 1_000,
       health: { degradeThreshold: 1, openThreshold: 2, openDurationMs: 100, recordTtlMs: 1_000 },
@@ -77,9 +78,9 @@ const request: CanonicalModelRequest = {
   provider: "a", model: "m", stream: true,
   messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
 };
-const failure = (provider: string, code = "rate_limit_error", status = 429): CanonicalModelEvent[] => [
+const failure = (provider: string, code = "rate_limit_error", status = 429, retryAfterMs = 500): CanonicalModelEvent[] => [
   { type: "request_started", provider, model: "m" },
-  { type: "error", error: { provider, protocol: "openai", code, status, message: code, retryable: true, retryAfterMs: 500 } },
+  { type: "error", error: { provider, protocol: "openai", code, status, message: code, retryable: true, retryAfterMs } },
 ];
 const success = (provider: string): CanonicalModelEvent[] => [
   { type: "request_started", provider, model: "m" },
@@ -164,6 +165,21 @@ test("filters tool-incompatible fallback candidates before dispatch", async () =
   await fx.router.shutdown();
 });
 
+test("thinking disabled does not exclude a model that lacks thinking capability", async () => {
+  const noThinking = { ...capabilities, supportsThinking: false };
+  const fx = fixture(
+    { a: [failure("a")], b: [success("b")], c: [success("c")] },
+    true,
+    { a: "https://a.invalid", b: "https://b.invalid", c: "https://c.invalid" },
+    { capabilitiesByProvider: { b: noThinking } },
+  );
+  await collect(fx.router.execute(decision, { ...request, thinking: { enabled: false, mode: "off" } }, {
+    sessionId: "thinking-off", turnId: "1",
+  }));
+  assert.deepEqual(fx.calls, ["a", "b"]);
+  await fx.router.shutdown();
+});
+
 test("all candidates failing exits once with the final diagnostic", async () => {
   const fx = fixture(
     { a: [failure("a", "server_error", 503)], b: [failure("b", "server_error", 503)], c: [failure("c", "server_error", 503)] },
@@ -226,6 +242,29 @@ test("authentication failure never retries another model using the same provider
   );
   await collect(fx.router.execute(decision, request, { sessionId: "auth", turnId: "1" }));
   assert.deepEqual(fx.calls, ["a", "b"]);
+  await fx.router.shutdown();
+});
+
+test("same-domain 429 honors full Retry-After when no independent fallback is available", async () => {
+  const shared = { a: "https://shared.invalid", b: "https://shared.invalid", c: "https://shared.invalid" };
+  const fx = fixture(
+    { a: [failure("a", "rate_limit_error", 429, 30), success("a")] },
+    true,
+    shared,
+    {
+      deadlineMs: 500,
+      maxAttempts: 2,
+      transientRetry: { enabled: true, maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 1 },
+    },
+  );
+  const started = Date.now();
+  const output = await collect(fx.router.execute(decision, request, { sessionId: "retry-after", turnId: "1" }));
+  const elapsed = Date.now() - started;
+  assert.deepEqual(fx.calls, ["a", "a"]);
+  assert.ok(elapsed >= 20, `expected Retry-After wait, got ${elapsed}ms`);
+  assert.equal(output.some((event) => event.type === "text_delta" && event.text === "ok"), true);
+  const retryEvent = fx.events.find((event) => event.type === "pilotdeck_router_transient_retry");
+  assert.equal(retryEvent?.type === "pilotdeck_router_transient_retry" ? retryEvent.delayMs : undefined, 30);
   await fx.router.shutdown();
 });
 

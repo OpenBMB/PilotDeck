@@ -169,7 +169,7 @@ export function createRouterRuntime(
       if (request.tools?.length && !capabilities.supportsToolUse) return false;
       if (request.stream && !capabilities.supportsStreaming) return false;
       if (request.systemPrompt && !capabilities.supportsSystemPrompt) return false;
-      if (request.thinking && !capabilities.supportsThinking) return false;
+      if (request.thinking?.enabled && request.thinking.mode !== "off" && !capabilities.supportsThinking) return false;
       if (request.outputSchema && !capabilities.supportsJsonSchema) return false;
       const estimatedInput = countMessagesTokens(request.messages);
       const requestedOutput = request.maxOutputTokens ?? 0;
@@ -868,7 +868,17 @@ export function createRouterRuntime(
           }
           const preferFallback = !recoveryEnabled || !transientRetryEnabled || recoverySignal !== "service" || outcome.error.code === "rate_limit_error" || transientRetryCount > 0;
           if (!hasYieldedContent && isFallbackEligible(outcome.error) && preferFallback) {
-            if (attemptIndex < attemptPlans.length - 1) {
+            const nextIndex = recoveryEnabled
+              ? attemptPlans.findIndex((plan, index) => {
+                  if (index <= attemptIndex || blockedCredentialProviders.has(plan.attempt.provider)) return false;
+                  const domain = providerFailureDomain(deps.modelRuntime, plan.attempt);
+                  return !blockedFallbackDomains.has(domain) && !endpointHealth.shouldSkip(domain);
+                })
+              : attemptIndex + 1 < attemptPlans.length ? attemptIndex + 1 : -1;
+            if (nextIndex >= 0) {
+              if (nextIndex !== attemptIndex + 1) {
+                [attemptPlans[attemptIndex + 1], attemptPlans[nextIndex]] = [attemptPlans[nextIndex], attemptPlans[attemptIndex + 1]];
+              }
               const next = attemptPlans[attemptIndex + 1].attempt;
               events.emit({
                 type: "pilotdeck_router_fallback",
@@ -912,7 +922,7 @@ export function createRouterRuntime(
             (!recoveryEnabled || recoveryAttemptCount < recoveryMaxAttempts)
           ) {
             const delay = outcome.error.retryAfterMs != null
-              ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
+              ? recoveryEnabled ? outcome.error.retryAfterMs : Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
               : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
             const retryRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
             if (recoveryEnabled && (delay >= retryRemainingMs || delay < 0)) {
