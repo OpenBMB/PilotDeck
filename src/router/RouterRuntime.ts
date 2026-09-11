@@ -3,6 +3,7 @@ import type {
   CanonicalModelRequest,
   ModelRuntime,
   ModelProtocol,
+  ProviderAttemptEvent,
 } from "../model/index.js";
 import { cloneMessages, downgradeUnsupportedContent, ModelRequestError } from "../model/index.js";
 import type { InputModality } from "../model/index.js";
@@ -763,8 +764,9 @@ export function createRouterRuntime(
         let hasYieldedContent = false;
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
+        const providerAttempts: ProviderAttemptEvent[] = [];
 
-        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
+        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events, (providerAttempt) => providerAttempts.push(providerAttempt))) {
           if (item.kind === "outcome") {
             outcome = item.outcome;
             break;
@@ -797,34 +799,29 @@ export function createRouterRuntime(
 
         lastBuffered = outcome.buffered;
         lastUsage = outcome.usage;
-        const attemptEndedAt = (deps.now?.() ?? new Date()).toISOString();
-        const attemptRole = attemptIndex > 0
-          ? "fallback"
-          : attemptSequence > 1
-            ? "retry"
-            : decision.isSubagent ? "subagent" : "main";
-        ledger?.append({
-          ...ledgerDefaults,
-          sessionId: ctx.sessionId,
-          taskId: config.stats?.taskId ?? ctx.turnId,
-          decisionId: ctx.turnId,
-          callId,
-          attemptId: ledgerAttemptId,
-          parentId: decision.isSubagent ? ctx.sessionId : undefined,
-          provider: attempt.provider,
-          model: attempt.model,
-          role: attemptRole,
-          attemptNumber: attemptSequence,
-          startedAt: attemptStartedAt,
-          endedAt: attemptEndedAt,
-          status: outcome.error ? "failed" : "succeeded",
-          errorType: outcome.error?.code,
-          usage: outcome.usage,
-          usageSource: outcome.usage ? "provider_reported" : "unknown",
-          retryOfAttemptId: attemptRole === "retry" ? previousAttemptId : undefined,
-          fallbackFromAttemptId: attemptRole === "fallback" ? previousAttemptId : undefined,
-        });
-        previousAttemptId = ledgerAttemptId;
+        const accountingAttempts = providerAttempts.length > 0 ? providerAttempts : [{
+          provider: attempt.provider, model: attempt.model, attempt: 1,
+          startedAt: attemptStartedAt, endedAt: (deps.now?.() ?? new Date()).toISOString(),
+          status: outcome.error ? "failed" as const : "succeeded" as const,
+          usage: outcome.usage, errorType: outcome.error?.code,
+        }];
+        for (const [providerIndex, providerAttempt] of accountingAttempts.entries()) {
+          if (providerIndex > 0) attemptSequence += 1;
+          const currentAttemptId = providerIndex === 0 ? ledgerAttemptId : randomUUID();
+          const attemptRole = attemptIndex > 0 ? "fallback" : attemptSequence > 1 ? "retry" : decision.isSubagent ? "subagent" : "main";
+          ledger?.append({
+            ...ledgerDefaults, sessionId: ctx.sessionId, taskId: config.stats?.taskId ?? ctx.turnId,
+            decisionId: ctx.turnId, callId, attemptId: currentAttemptId,
+            parentId: decision.isSubagent ? ctx.sessionId : undefined,
+            provider: providerAttempt.provider, model: providerAttempt.model, role: attemptRole,
+            attemptNumber: attemptSequence, startedAt: providerAttempt.startedAt, endedAt: providerAttempt.endedAt,
+            status: providerAttempt.status, errorType: providerAttempt.errorType, usage: providerAttempt.usage,
+            usageSource: providerAttempt.usage ? "provider_reported" : "unknown",
+            retryOfAttemptId: attemptRole === "retry" ? previousAttemptId : undefined,
+            fallbackFromAttemptId: attemptRole === "fallback" ? previousAttemptId : undefined,
+          });
+          previousAttemptId = currentAttemptId;
+        }
 
         if (outcome.error) {
           lastError = outcome.error;
@@ -1200,6 +1197,7 @@ async function* streamAttempt(
   modelRuntime: ModelRuntime,
   ctx: RouterExecuteContext,
   events: RouterEventBus,
+  onProviderAttempt?: (attempt: ProviderAttemptEvent) => void,
 ): AsyncGenerator<
   | { kind: "event"; event: CanonicalModelEvent }
   | { kind: "outcome"; outcome: AttemptOutcome }
@@ -1225,6 +1223,7 @@ async function* streamAttempt(
           model: progress.model,
         });
       },
+      onProviderAttempt,
     })) {
       if (abortSignal?.aborted) {
         throwAbortError(abortSignal.reason);

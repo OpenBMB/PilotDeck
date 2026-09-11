@@ -16,6 +16,7 @@ Interleave strategy order within each repeat and isolate cache prefixes by `run_
 pnpm evaluation:budget -- --tasks=32 --strategies=7 --repeats=3 --main-cost=0.08 --judge-cost=0.002 --recovery-rate=0.15 --recovery-cost=0.04 --scoring-cost=0
 pnpm evaluation:summarize -- evaluation/results/<run_id>/calls.jsonl evaluation/results/<run_id>/summary
 pnpm evaluation:analyze -- evaluation/results/<run_id>/results.jsonl evaluation/results/<run_id>/calls.jsonl evaluation/results/<run_id>/analysis
+pnpm evaluation:run -- --tasks=evaluation/tasks/pilot.json --split=test --strategy=pilotroute-full --repeat=1 --command="<frozen task driver command>" --output=evaluation/results/<run_id>/pilotroute-full-r1
 ```
 
 The default estimate is 32 × 5 × 3 = 480 task-strategy runs: main `$38.40`, Judge `$0.96`, expected recovery `$2.88`, scoring `$0`, total `$42.24`. These are planning assumptions, not measured costs.
@@ -40,3 +41,5 @@ Run the same frozen task driver once per strategy/repeat, changing only the inte
 Success is determined by fixture validators (tests, exact structured values, or file hashes). Open-ended tasks require a pre-frozen blind rubric; Judge/scorer costs are reported separately. If zero tasks succeed, cost per success is `null`/undefined. Report paired per-task changes and concrete newly failing task IDs; bootstrap at task/session level, never at turn level.
 
 `results.jsonl` contains one row per task execution: `taskId`, `sessionId`, `strategy`, `repeat`, `success`, and `latencyMs`. The analyzer creates `summary.json`, `summary.csv`, and `cost-success.svg`; it refuses to overwrite an existing analysis directory. Unknown-cost attempts remain visible and are excluded from known-cost arithmetic rather than silently converted to zero.
+
+Set `PILOTROUTE_BASELINE=pilotdeck-fixed-baseline` before analysis. Comparisons are paired by task and repeat; confidence intervals resample independent sessions with a fixed seed. Newly failed and newly recovered task IDs are always listed. Pin the public PinchBench repository/version/suite in `pinchbench.lock.json`; do not tune on its frozen test subset. `strategies.json` is the canonical baseline/ablation matrix.

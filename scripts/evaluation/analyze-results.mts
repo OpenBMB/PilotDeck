@@ -10,6 +10,7 @@ fs.mkdirSync(outputDir, { recursive: false });
 const read = <T>(file: string): T[] => fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((x) => JSON.parse(x));
 const results = read<Result>(resultsPath), calls = read<Call>(callsPath);
 const strategies = [...new Set(results.map((x) => x.strategy))].sort();
+const baseline = process.env.PILOTROUTE_BASELINE ?? strategies[0];
 const rows = strategies.map((strategy) => {
   const rs = results.filter((x) => x.strategy === strategy);
   const cs = calls.filter((x) => x.strategyVersion === strategy);
@@ -27,7 +28,8 @@ const rows = strategies.map((strategy) => {
     judgeCostUsd: cs.filter((x) => x.role === "judge").reduce((n, x) => n + (x.cost ?? 0), 0),
   };
 });
-fs.writeFileSync(path.join(outputDir, "summary.json"), JSON.stringify({ schemaVersion: 1, rows, limitations: [
+const comparisons = strategies.filter((strategy) => strategy !== baseline).map((strategy) => pairedComparison(baseline!, strategy));
+fs.writeFileSync(path.join(outputDir, "summary.json"), JSON.stringify({ schemaVersion: 1, baseline, rows, comparisons, limitations: [
   "Known cost excludes unknown-cost attempts.", "No non-inferiority claim is valid without a predeclared margin and adequate session-level sample size."
 ] }, null, 2) + "\n");
 const csv = [Object.keys(rows[0] ?? {}).join(","), ...rows.map((row) => Object.values(row).map(csvCell).join(","))];
@@ -50,3 +52,30 @@ function svg(data: typeof rows): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="white"/><path d="M${pad} ${pad}V${height-pad}H${width-pad}" fill="none" stroke="black"/><text x="${width/2}" y="${height-12}" text-anchor="middle">Average known task cost (USD)</text><text x="18" y="${height/2}" transform="rotate(-90 18 ${height/2})" text-anchor="middle">Success rate</text><g fill="#2563eb" font-family="sans-serif" font-size="12">${dots}</g></svg>\n`;
 }
 function escapeXml(value: string): string { return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); }
+
+function pairedComparison(base: string, candidate: string) {
+  const index = new Map(results.filter((x) => x.strategy === base).map((x) => [`${x.taskId}\0${x.repeat}`, x]));
+  const pairs = results.filter((x) => x.strategy === candidate).flatMap((next) => {
+    const previous = index.get(`${next.taskId}\0${next.repeat}`);
+    return previous ? [{ sessionId: next.sessionId, taskId: next.taskId, delta: Number(next.success) - Number(previous.success), previous, next }] : [];
+  });
+  const sessionDeltas = [...Map.groupBy(pairs, (x) => x.sessionId)].map(([, xs]) => xs.reduce((n, x) => n + x.delta, 0) / xs.length);
+  const samples = bootstrapMean(sessionDeltas, 2_000, 0x50494c4f);
+  return {
+    candidate, pairedTasks: pairs.length, independentSessions: sessionDeltas.length,
+    successRateDifference: mean(pairs.map((x) => x.delta)),
+    sessionBootstrap95CI: samples.length ? [quantile(samples, 0.025), quantile(samples, 0.975)] : null,
+    newlyFailedTaskIds: pairs.filter((x) => x.previous.success && !x.next.success).map((x) => x.taskId),
+    newlyRecoveredTaskIds: pairs.filter((x) => !x.previous.success && x.next.success).map((x) => x.taskId),
+  };
+}
+function mean(values: number[]): number | null { return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null; }
+function bootstrapMean(values: number[], repetitions: number, seed: number): number[] {
+  if (!values.length) return [];
+  let state = seed >>> 0;
+  const random = () => ((state = (1664525 * state + 1013904223) >>> 0) / 0x100000000);
+  return Array.from({ length: repetitions }, () => {
+    let total = 0; for (let i = 0; i < values.length; i++) total += values[Math.floor(random() * values.length)]!;
+    return total / values.length;
+  }).sort((a, b) => a - b);
+}
