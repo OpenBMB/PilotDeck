@@ -66,13 +66,16 @@ export {
 export {
   buildJudgeContext,
   containsNewTaskSignal,
+  detectExplicitRiskTier,
   isShortContinuation,
   type ContinuationKind,
+  type ExplicitRiskTier,
   type JudgeContext,
   type JudgeContextFeatures,
 } from "./tokenSaver/buildJudgeContext.js";
 export {
   parseJudgeDecision,
+  parseJudgeDecisionFromThinking,
   type JudgeTaskRelation,
   type ParsedJudgeDecision,
 } from "./tokenSaver/parseJudgeDecision.js";

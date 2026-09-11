@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -75,14 +75,25 @@ async function main(): Promise<void> {
     }
   }
 
-  const caseLimit = parseCaseLimit(process.env.PILOTDECK_ROUTER_BENCH_CASE_LIMIT, CASES.length);
-  const cases = CASES.slice(0, caseLimit);
+  const selectedCases = selectCases(process.env.PILOTDECK_ROUTER_BENCH_CASE_IDS, CASES);
+  const caseLimit = parseCaseLimit(
+    process.env.PILOTDECK_ROUTER_BENCH_CASE_LIMIT,
+    selectedCases.length,
+  );
+  const cases = selectedCases.slice(0, caseLimit);
   const runtime = createModelRuntime(snapshot.config.model);
   const baseline: CaseResult[] = [];
   const optimized: CaseResult[] = [];
+  const baselineInput = process.env.PILOTDECK_ROUTER_BENCH_BASELINE_INPUT;
+  const reusableBaseline = baselineInput
+    ? loadReusableBaseline(resolve(baselineInput), cases, `${config.judge.provider}/${config.judge.model}`)
+    : undefined;
 
   for (const benchmarkCase of cases) {
-    baseline.push(await runLegacyCase(runtime, config, benchmarkCase));
+    baseline.push(
+      reusableBaseline?.get(benchmarkCase.id)
+        ?? await runLegacyCase(runtime, config, benchmarkCase),
+    );
     optimized.push(await runContextAwareCase(runtime, config, benchmarkCase));
   }
 
@@ -92,6 +103,7 @@ async function main(): Promise<void> {
     benchmark: "PilotDeck context-aware TokenSaver routing",
     generatedAt: new Date().toISOString(),
     judge: `${config.judge.provider}/${config.judge.model}`,
+    ...(baselineInput ? { reusedBaselineFrom: resolve(baselineInput) } : {}),
     note: "Latency is router decision latency before the execution model starts; it is not end-to-end answer TTFT.",
     baseline: {
       description: "Repository baseline: last user message plus previous tier in a single Judge prompt.",
@@ -99,7 +111,7 @@ async function main(): Promise<void> {
       cases: baseline,
     },
     optimized: {
-      description: "Bounded task context, deterministic continuation gate, confidence and relation guards.",
+      description: "Bounded task context, continuation and explicit-risk gates, confidence and relation guards, plus bounded thinking-output recovery.",
       summary: optimizedSummary,
       calibration: buildThresholdCalibration(optimized, config.defaultTier),
       cases: optimized,
@@ -115,6 +127,47 @@ async function main(): Promise<void> {
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
   console.log(JSON.stringify({ outputPath, ...report }, null, 2));
+}
+
+function loadReusableBaseline(
+  inputPath: string,
+  cases: BenchmarkCase[],
+  judge: string,
+): Map<string, CaseResult> {
+  const parsed = JSON.parse(readFileSync(inputPath, "utf8")) as {
+    judge?: unknown;
+    baseline?: { cases?: unknown };
+  };
+  if (parsed.judge !== judge) {
+    throw new Error(`Reusable baseline Judge mismatch: expected ${judge}.`);
+  }
+  if (!Array.isArray(parsed.baseline?.cases)) {
+    throw new Error("Reusable baseline does not contain baseline.cases.");
+  }
+  const byId = new Map<string, CaseResult>();
+  for (const candidate of parsed.baseline.cases) {
+    if (!isCaseResult(candidate)) continue;
+    byId.set(candidate.id, candidate);
+  }
+  for (const benchmarkCase of cases) {
+    const candidate = byId.get(benchmarkCase.id);
+    if (!candidate || candidate.expectedTier !== benchmarkCase.expectedTier) {
+      throw new Error(`Reusable baseline is missing or incompatible with ${benchmarkCase.id}.`);
+    }
+  }
+  return byId;
+}
+
+function isCaseResult(value: unknown): value is CaseResult {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CaseResult>;
+  return typeof candidate.id === "string"
+    && typeof candidate.expectedTier === "string"
+    && typeof candidate.predictedTier === "string"
+    && typeof candidate.judgeCalls === "number"
+    && typeof candidate.latencyMs === "number"
+    && typeof candidate.resolution === "string"
+    && Boolean(candidate.usage && typeof candidate.usage === "object");
 }
 
 async function runLegacyCase(
@@ -392,6 +445,22 @@ function parseCaseLimit(raw: string | undefined, maximum: number): number {
     throw new Error(`PILOTDECK_ROUTER_BENCH_CASE_LIMIT must be between 1 and ${maximum}.`);
   }
   return parsed;
+}
+
+function selectCases(raw: string | undefined, available: BenchmarkCase[]): BenchmarkCase[] {
+  if (!raw?.trim()) return available;
+  const ids = raw.split(",").map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) throw new Error("PILOTDECK_ROUTER_BENCH_CASE_IDS is empty.");
+  const byId = new Map(available.map((benchmarkCase) => [benchmarkCase.id, benchmarkCase]));
+  const selected = ids.map((id) => {
+    const benchmarkCase = byId.get(id);
+    if (!benchmarkCase) throw new Error(`Unknown benchmark case id: ${id}.`);
+    return benchmarkCase;
+  });
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("PILOTDECK_ROUTER_BENCH_CASE_IDS contains duplicate ids.");
+  }
+  return selected;
 }
 
 function user(text: string): CanonicalMessage {

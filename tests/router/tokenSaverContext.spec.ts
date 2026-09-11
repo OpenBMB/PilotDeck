@@ -4,11 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import type { CanonicalMessage, CanonicalModelRequest, ModelRuntime } from "../../src/model/index.js";
+import type {
+  CanonicalMessage,
+  CanonicalModelRequest,
+  CanonicalModelResponse,
+  ModelRuntime,
+} from "../../src/model/index.js";
 import {
   buildJudgeContext,
   classifyAndRoute,
+  detectExplicitRiskTier,
   parseJudgeDecision,
+  parseJudgeDecisionFromThinking,
   TokenStatsCollector,
 } from "../../src/router/index.js";
 
@@ -154,6 +161,63 @@ test("uses the same continuation gate for an approval of an assistant action que
   assert.equal(result?.resolvedFrom, "continuation_gate");
 });
 
+test("skips the judge for a pure English continuation phrase", async () => {
+  let judgeCalls = 0;
+  const result = await classifyAndRoute({
+    config: routingConfig(),
+    messages: [
+      user("Read one log file and identify the latest error."),
+      assistant("The tool call was interrupted."),
+      user("proceed with the task"),
+    ],
+    previousTier: "medium",
+    judgeRuntime: runtime(async () => {
+      judgeCalls += 1;
+      return response("<tier>simple</tier>");
+    }),
+  });
+
+  assert.equal(judgeCalls, 0);
+  assert.equal(result?.tier, "medium");
+  assert.equal(result?.resolvedFrom, "continuation_gate");
+});
+
+test("recognizes bounded references to unfinished prior work as continuations", () => {
+  const references = [
+    "把第二个方案实现掉",
+    "修复刚才那个问题",
+    "再试一次",
+    "按上面的要求做完",
+    "Please finish the previous approach.",
+  ];
+
+  for (const currentMessage of references) {
+    const context = buildJudgeContext({
+      messages: [
+        user("Analyze the repository and prepare two implementation approaches."),
+        assistant("The selected approach is not implemented yet."),
+        user(currentMessage),
+      ],
+      previousTier: "reasoning",
+    });
+    assert.equal(context?.continuationKind, "action", currentMessage);
+  }
+});
+
+test("chooses the highest explicit risk tier when risk signals overlap", () => {
+  assert.equal(
+    detectExplicitRiskTier(
+      "Analyze the entire repository and delegate independent modules to three agents in parallel.",
+    ),
+    "reasoning",
+  );
+});
+
+test("does not over-route ordinary single-file or single-paper requests", () => {
+  assert.equal(detectExplicitRiskTier("Summarize one routing paper."), undefined);
+  assert.equal(detectExplicitRiskTier("Run the tests for this one file."), undefined);
+});
+
 test("judges a terminal acknowledgement instead of blindly inheriting", async () => {
   let judgeCalls = 0;
   const result = await classifyAndRoute({
@@ -198,7 +262,7 @@ test("sends bounded task context as data and stable instructions as system promp
   });
 
   const payload = captured?.messages[0]?.content[0];
-  assert.match(captured?.systemPrompt ?? "", /COMPLETE the current user turn/);
+  assert.match(captured?.systemPrompt ?? "", /reliably complete the current turn/);
   assert.equal(payload?.type, "text");
   assert.match(payload?.type === "text" ? payload.text : "", /previous_task_anchor/);
   assert.match(payload?.type === "text" ? payload.text : "", /availableToolCount/);
@@ -244,9 +308,42 @@ test("allows a continuation to upgrade when the current turn adds harder work", 
     }),
   });
 
-  assert.equal(judgeCalls, 1);
+  assert.equal(judgeCalls, 0);
   assert.equal(result?.tier, "reasoning");
-  assert.equal(result?.resolvedFrom, "judge");
+  assert.equal(result?.resolvedFrom, "risk_gate");
+});
+
+test("routes explicit parallel subagent delegation through the complex risk gate", async () => {
+  let judgeCalls = 0;
+  const result = await classifyAndRoute({
+    config: routingConfig(),
+    messages: [user("把调研、编码和测试并行委派给三个子智能体。")],
+    judgeRuntime: runtime(async () => {
+      judgeCalls += 1;
+      return response("<tier>medium</tier>");
+    }),
+  });
+
+  assert.equal(judgeCalls, 0);
+  assert.equal(result?.tier, "complex");
+  assert.equal(result?.resolvedFrom, "risk_gate");
+});
+
+test("routes an explicit multi-paper cited report through the reasoning risk gate", async () => {
+  let judgeCalls = 0;
+  const result = await classifyAndRoute({
+    config: routingConfig(),
+    messages: [user("New task: compare five routing papers and produce a cited technical report.")],
+    previousTier: "simple",
+    judgeRuntime: runtime(async () => {
+      judgeCalls += 1;
+      return response("<tier>medium</tier>");
+    }),
+  });
+
+  assert.equal(judgeCalls, 0);
+  assert.equal(result?.tier, "reasoning");
+  assert.equal(result?.resolvedFrom, "risk_gate");
 });
 
 test("allows a confident independent task to replace prior complexity", async () => {
@@ -279,6 +376,50 @@ test("parses decimal and percentage confidence without breaking tier-only judges
     parseJudgeDecision("<tier>simple</tier>", ["simple", "medium"]),
     { tier: "simple", taskRelation: "unclear" },
   );
+  assert.deepEqual(
+    parseJudgeDecisionFromThinking(
+      "The previous tier was simple, but this now needs repository analysis, so reasoning tier.",
+      ["simple", "medium", "complex", "reasoning"],
+    ),
+    { tier: "reasoning", taskRelation: "unclear" },
+  );
+  assert.equal(
+    parseJudgeDecisionFromThinking(
+      "The previous tier was simple and more analysis is needed.",
+      ["simple", "medium", "complex", "reasoning"],
+    ),
+    undefined,
+  );
+});
+
+test("recovers a truncated Judge decision from the thinking block without retrying", async () => {
+  let calls = 0;
+  const result = await classifyAndRoute({
+    config: routingConfig(),
+    messages: [
+      user("Investigate the issue and propose two approaches."),
+      assistant("Two approaches remain, and the implementation is unfinished."),
+      user("Use the second approach and finish it."),
+    ],
+    previousTier: "simple",
+    judgeRuntime: runtime(async () => {
+      calls += 1;
+      return {
+        role: "assistant" as const,
+        content: [{
+          type: "thinking" as const,
+          text: "The previous tier was simple. The new work requires multi-file analysis, so reasoning tier.",
+        }],
+        finishReason: "length" as const,
+        usage: { inputTokens: 500, outputTokens: 128, totalTokens: 628 },
+      };
+    }),
+  });
+
+  assert.equal(calls, 1);
+  assert.equal(result?.tier, "reasoning");
+  assert.equal(result?.diagnostics?.judgeResponseSource, "thinking");
+  assert.equal(result?.diagnostics?.judgeFinishReason, "length");
 });
 
 test("accumulates judge token usage across parse retries", async () => {
@@ -416,7 +557,7 @@ function response(text: string, usage?: { inputTokens: number; outputTokens: num
 }
 
 function runtime(
-  complete: (request: CanonicalModelRequest) => Promise<ReturnType<typeof response>>,
+  complete: (request: CanonicalModelRequest) => Promise<CanonicalModelResponse>,
 ): ModelRuntime {
   return { complete } as unknown as ModelRuntime;
 }

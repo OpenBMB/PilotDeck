@@ -6,6 +6,8 @@ export type ContinuationKind =
   | "action_confirmation"
   | "acknowledgement";
 
+export type ExplicitRiskTier = "complex" | "reasoning";
+
 export type JudgeContextFeatures = {
   messageCount: number;
   userMessageCount: number;
@@ -44,10 +46,14 @@ const ACKNOWLEDGEMENT_PATTERN =
   /^(ok(?:ay)?|yes|y|sure|fine|got it|sounds good|好|好的|可以|行|嗯|对|是的|没问题|知道了|明白了|收到|来吧|冲|走)[.!。！,，?？\s]*$/i;
 
 const ACTION_CONTINUATION_PATTERNS = [
-  /^(?:continue|proceed|go ahead|do it|carry on|resume|keep going|start|run|execute)(?:\s+(?:this|it|the\s+(?:task|project|plan|work)))?[.!?,\s]*$/i,
+  /^(?:continue|proceed|go ahead|do it|carry on|resume|keep going|start|run|execute)(?:\s+(?:(?:with\s+)?(?:this|it|the\s+(?:task|project|plan|work))))?[.!?,\s]*$/i,
+  /^(?:please\s+)?(?:continue|proceed|finish|complete|implement|apply|use|fix|retry|rerun)(?:\s+with)?\s+(?:the\s+)?(?:same|previous|earlier|last|above|first|second|third|fourth)(?:\s+(?:task|project|work|plan|approach|option|issue|problem|step|change|implementation))?[.!?,\s]*$/i,
   /^(?:继续|接着|往下)(?:做|处理|进行|完成)?(?:这个|该)?(?:任务|项目|工作|方案|步骤|部分)?[吧啊呀。！!，,\s]*$/,
   /^(?:开始|执行|开搞)[吧啊呀。！!，,\s]*$/,
-  /^按照(?:刚才|之前|上面)(?:的)?(?:方案|计划)(?:继续|执行|处理|做)?[吧啊呀。！!，,\s]*$/,
+  /^(?:再|重新)(?:试|跑|执行|做)(?:一次|一遍)?[吧啊呀。！!，,\s]*$/,
+  /^按(?:照)?(?:刚才|之前|上面|上述|前面)(?:的)?(?:要求|方案|计划|步骤)(?:继续|执行|处理|做|做完|完成|实现)?[吧啊呀。！!，,\s]*$/,
+  /^(?:把|将)?(?:刚才|之前|上面|上述|前面|那个|这个|第一(?:个)?|第二(?:个)?|第三(?:个)?|第四(?:个)?|第[1-9]\d*个)(?:的)?(?:那个|这个)?(?:问题|错误|方案|计划|要求|任务|步骤|实现|修改|工作)?(?:继续|完成|做完|实现|修复|处理|执行|改完|跑完|解决)(?:掉|好|完)?[吧啊呀。！!，,\s]*$/,
+  /^(?:继续)?(?:修复|完成|实现|处理|执行|解决)(?:刚才|之前|上面|上述|前面)(?:的)?(?:那个|这个)?(?:问题|错误|方案|计划|要求|任务|步骤|实现|修改|工作)[吧啊呀。！!，,\s]*$/,
 ];
 
 const NEW_TASK_PATTERNS = [
@@ -57,6 +63,25 @@ const NEW_TASK_PATTERNS = [
 
 const ASSISTANT_ACTION_PATTERN =
   /(是否|要不要|需要我|让我|我可以|请确认).{0,30}(开始|继续|执行|修改|运行|测试|提交|部署)|(?:shall|should|may|would you like me to).{0,40}(start|continue|proceed|run|execute|implement|test|commit|deploy)/i;
+
+const EXPLICIT_COMPLEX_PATTERNS = [
+  /(?:并行|同时).{0,24}(?:委派|分配|调用).{0,16}(?:子智能体|智能体|agent)/i,
+  /(?:多个|多名|两个|三个|四个|[2-9]\s*个?).{0,12}(?:子智能体|subagents?|agents?).{0,20}(?:并行|委派|分工)/i,
+  /(?:parallel(?:ly)?).{0,24}(?:delegate|dispatch|assign).{0,20}(?:subagents?|agents?)/i,
+  /(?:orchestrat\w*).{0,20}(?:multiple|parallel).{0,16}(?:subagents?|agents?)/i,
+];
+
+const EXPLICIT_REASONING_PATTERNS = [
+  /(?:整个|完整|全量|全部).{0,12}(?:仓库|代码库|项目代码)/i,
+  /(?:多个|多份|多处|批量).{0,8}(?:文件|模块).{0,20}(?:分析|修改|重构|迁移|检查|测试)/i,
+  /(?:分析|修改|重构|迁移|检查).{0,20}(?:多个|多份|多处|批量).{0,8}(?:文件|模块)/i,
+  /跨(?:多个)?(?:文件|模块|组件)/i,
+  /(?:entire|whole|full).{0,12}(?:repository|repo|codebase)/i,
+  /(?:multi[- ]file|cross[- ]module).{0,24}(?:analysis|change|edit|refactor|migration|test)/i,
+  /(?:analy[sz]e|modify|refactor|migrate).{0,24}(?:multiple|several).{0,12}(?:files|modules)/i,
+  /(?:compare|review|survey|analy[sz]e).{0,32}(?:two|three|four|five|six|seven|eight|nine|ten|multiple|several|[2-9]\d*)[^.!?\n]{0,24}(?:papers?|studies|publications).{0,48}(?:cited|technical|research|literature).{0,16}(?:report|review|analysis)/i,
+  /(?:比较|对比|综述|调研|分析).{0,24}(?:两|三|四|五|六|七|八|九|十|多|[2-9]\d*)篇?.{0,12}(?:论文|文献).{0,36}(?:引用|技术|研究|文献)(?:报告|综述|分析)/i,
+];
 
 export function buildJudgeContext(input: {
   messages: CanonicalMessage[];
@@ -98,6 +123,13 @@ export function isShortContinuation(message: string): boolean {
 export function containsNewTaskSignal(message: string): boolean {
   const normalized = normalize(message);
   return NEW_TASK_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function detectExplicitRiskTier(message: string): ExplicitRiskTier | undefined {
+  const normalized = normalize(message);
+  if (EXPLICIT_REASONING_PATTERNS.some((pattern) => pattern.test(normalized))) return "reasoning";
+  if (EXPLICIT_COMPLEX_PATTERNS.some((pattern) => pattern.test(normalized))) return "complex";
+  return undefined;
 }
 
 function classifyContinuation(

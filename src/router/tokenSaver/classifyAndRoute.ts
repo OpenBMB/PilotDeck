@@ -13,16 +13,22 @@ import {
 } from "../config/schema.js";
 import {
   buildJudgeContext,
+  detectExplicitRiskTier,
   isShortContinuation,
   type ContinuationKind,
   type JudgeContext,
 } from "./buildJudgeContext.js";
 import { generateJudgePrompt, generateJudgeSystemPrompt } from "./generateJudgePrompt.js";
-import { parseJudgeDecision, type JudgeTaskRelation } from "./parseJudgeDecision.js";
+import {
+  parseJudgeDecision,
+  parseJudgeDecisionFromThinking,
+  type JudgeTaskRelation,
+} from "./parseJudgeDecision.js";
 
 export type TokenSaverResolution =
   | "judge"
   | "continuation_gate"
+  | "risk_gate"
   | "relation_guard"
   | "confidence_guard"
   | "default"
@@ -34,6 +40,8 @@ export type TokenSaverRoutingDiagnostics = {
   judgeAttempts: number;
   judgeLatencyMs: number;
   judgeProposedTier?: string;
+  judgeResponseSource?: "text" | "thinking";
+  judgeFinishReason?: string;
   judgeConfidence?: number;
   judgeUsage?: CanonicalUsage;
   taskRelation?: JudgeTaskRelation;
@@ -50,8 +58,8 @@ export type TokenSaverRoutingDiagnostics = {
     availableToolCount: number;
     currentMessageChars: number;
     previousTaskChars: number;
-      assistantTailChars: number;
-      hasNewTaskSignal: boolean;
+    assistantTailChars: number;
+    hasNewTaskSignal: boolean;
   };
 };
 
@@ -151,6 +159,34 @@ export async function classifyAndRoute(
     };
   }
 
+  const explicitRiskTier = contextConfig.enabled
+    ? detectExplicitRiskTier(context.currentUserMessage)
+    : undefined;
+  if (explicitRiskTier && config.tiers[explicitRiskTier]) {
+    input.telemetry?.trackFeatureLoopStage({
+      module: "router",
+      ownerModule: "router",
+      executionKind: "router_judge",
+      phase: "judge",
+      loopStage: "module_event",
+      outcome: "success",
+      sessionId: input.sessionId,
+      metadata: {
+        event: "judge_skipped_explicit_risk",
+        tier: explicitRiskTier,
+      },
+    });
+    return {
+      tier: explicitRiskTier,
+      selection: config.tiers[explicitRiskTier]!.model,
+      resolvedFrom: "risk_gate",
+      diagnostics: diagnosticsFor(context, {
+        resolution: "risk_gate",
+        judgeInvoked: false,
+      }),
+    };
+  }
+
   const knownTiers = Object.keys(config.tiers);
   const userPrompt = generateJudgePrompt(judgeContext);
   const judgeRequest: CanonicalModelRequest = {
@@ -161,7 +197,7 @@ export async function classifyAndRoute(
     maxOutputTokens: 128,
     // Provider defaults are more compatible than an explicit temperature for
     // lightweight routing requests. Some compatible gateways reject it.
-    thinking: { enabled: false },
+    thinking: judgeThinkingConfig(input.judgeRuntime, config.judge),
     stream: false,
   };
 
@@ -229,8 +265,15 @@ export async function classifyAndRoute(
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("");
+      const thinking = response.content
+        .filter((block) => block.type === "thinking")
+        .map((block) => block.text)
+        .join("\n");
 
-      const parsed = text ? parseJudgeDecision(text, knownTiers) : undefined;
+      const parsedFromText = text ? parseJudgeDecision(text, knownTiers) : undefined;
+      const parsed = parsedFromText
+        ?? (thinking ? parseJudgeDecisionFromThinking(thinking, knownTiers) : undefined);
+      const responseSource = parsedFromText ? "text" : parsed ? "thinking" : undefined;
       if (!parsed) {
         if (attempt < maxAttempts) continue;
         input.telemetry?.trackFeatureLoopStage({
@@ -297,6 +340,8 @@ export async function classifyAndRoute(
           confidence: parsed.confidence,
           taskRelation: parsed.taskRelation,
           resolution: guarded.resolution,
+          responseSource,
+          finishReason: response.finishReason,
           provider: config.judge.provider,
           model: config.judge.model,
         },
@@ -311,6 +356,8 @@ export async function classifyAndRoute(
           judgeAttempts: attempt,
           judgeLatencyMs: Date.now() - judgeStartedAt,
           judgeProposedTier: parsed.tier,
+          judgeResponseSource: responseSource,
+          judgeFinishReason: response.finishReason,
           judgeConfidence: parsed.confidence,
           judgeUsage,
           taskRelation: parsed.taskRelation,
@@ -444,6 +491,8 @@ function diagnosticsFor(
     judgeAttempts?: number;
     judgeLatencyMs?: number;
     judgeProposedTier?: string;
+    judgeResponseSource?: "text" | "thinking";
+    judgeFinishReason?: string;
     judgeConfidence?: number;
     judgeUsage?: CanonicalUsage;
     taskRelation?: JudgeTaskRelation;
@@ -455,6 +504,8 @@ function diagnosticsFor(
     judgeAttempts: input.judgeAttempts ?? 0,
     judgeLatencyMs: input.judgeLatencyMs ?? 0,
     ...(input.judgeProposedTier ? { judgeProposedTier: input.judgeProposedTier } : {}),
+    ...(input.judgeResponseSource ? { judgeResponseSource: input.judgeResponseSource } : {}),
+    ...(input.judgeFinishReason ? { judgeFinishReason: input.judgeFinishReason } : {}),
     ...(input.judgeConfidence === undefined ? {} : { judgeConfidence: input.judgeConfidence }),
     ...(input.judgeUsage ? { judgeUsage: input.judgeUsage } : {}),
     ...(input.taskRelation ? { taskRelation: input.taskRelation } : {}),
@@ -538,6 +589,25 @@ function sanitizeFailureMessage(message: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 300);
+}
+
+function judgeThinkingConfig(
+  runtime: ModelRuntime,
+  judge: RouterModelRef,
+): NonNullable<CanonicalModelRequest["thinking"]> {
+  try {
+    const capabilities = runtime.getCapabilities(judge.provider, judge.model) as {
+      supportsThinkingExplicit?: boolean;
+    };
+    // Providers explicitly declaring that thinking controls are unsupported
+    // may reject even an "off" parameter, so preserve their default request.
+    if (capabilities.supportsThinkingExplicit === false) return { enabled: false };
+  } catch {
+    // Test doubles and late-bound providers may not expose capabilities. The
+    // adapter may still honor an explicit off request. Providers can ignore it,
+    // so the response parser also has a bounded thinking-block fallback.
+  }
+  return { enabled: false, mode: "off" };
 }
 
 function addUsage(
