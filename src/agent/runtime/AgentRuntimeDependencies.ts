@@ -12,7 +12,7 @@ import type { PlanTodoStateManager } from "./PlanTodoState.js";
 import type { LifecycleRuntime } from "../../lifecycle/index.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type { TokenAccountingRuntime } from "../../context/index.js";
-import type { RouterRuntime } from "../../router/index.js";
+import type { InvalidateStickyResult, RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ModelProtocol } from "../../model/index.js";
 
@@ -28,6 +28,7 @@ export type AgentRouterRuntime = Pick<RouterRuntime, "stream" | "decide" | "exec
   materializeRequest?: RouterRuntime["materializeRequest"];
   observeUsage?: RouterRuntime["observeUsage"];
   invalidateSticky?: RouterRuntime["invalidateSticky"];
+  peekSticky?: (sessionId: string) => InvalidateStickyResult;
 };
 
 /**
