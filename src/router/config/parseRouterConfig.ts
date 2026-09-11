@@ -3,6 +3,8 @@ import {
   DEFAULT_ALLOWED_TOOLS,
   DEFAULT_BLOCKED_TOOLS,
   DEFAULT_JUDGE_TIMEOUT_MS,
+  DEFAULT_RECOVERY_DEADLINE_MS,
+  DEFAULT_RECOVERY_MAX_ATTEMPTS,
   DEFAULT_TIER_DESCRIPTIONS,
   DEFAULT_TIER_NAME,
   DEFAULT_TIER_RULES,
@@ -95,6 +97,7 @@ export function parseRouterConfig(
 
   const fallback = parseFallback(raw.fallback, modelConfig, diagnostics);
   const zeroUsageRetry = parseZeroUsageRetry(raw.zeroUsageRetry, diagnostics);
+  const recovery = parseRecovery(raw.recovery, diagnostics);
   const tokenSaver = parseTokenSaver(raw.tokenSaver, modelConfig, diagnostics);
   const autoOrchestrate = parseAutoOrchestrate(raw.autoOrchestrate, modelConfig, tokenSaver, diagnostics);
   const stats = parseStats(raw.stats, modelConfig, diagnostics);
@@ -106,6 +109,7 @@ export function parseRouterConfig(
       ...(scenarios ? { scenarios } : {}),
       fallback,
       zeroUsageRetry,
+      recovery,
       tokenSaver,
       autoOrchestrate,
       stats,
@@ -251,6 +255,65 @@ function parseZeroUsageRetry(
     }
   }
   return { enabled, maxAttempts };
+}
+
+function parseRecovery(
+  raw: unknown,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterConfig["recovery"] {
+  if (raw === undefined) return { enabled: false, maxAttempts: DEFAULT_RECOVERY_MAX_ATTEMPTS, deadlineMs: DEFAULT_RECOVERY_DEADLINE_MS };
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "ROUTER_RECOVERY_INVALID", severity: "fatal", path: "router.recovery",
+      message: "router.recovery must be an object.",
+    });
+    return { enabled: false, maxAttempts: DEFAULT_RECOVERY_MAX_ATTEMPTS, deadlineMs: DEFAULT_RECOVERY_DEADLINE_MS };
+  }
+  const enabled = typeof raw.enabled === "boolean" ? raw.enabled : false;
+  const positiveInt = (key: string, fallback: number): number => {
+    const value = raw[key];
+    if (value === undefined) return fallback;
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+    diagnostics.push({
+      code: `ROUTER_RECOVERY_${key.toUpperCase()}_INVALID`, severity: "fatal",
+      path: `router.recovery.${key}`, message: `router.recovery.${key} must be a positive integer.`,
+    });
+    return fallback;
+  };
+  let health: NonNullable<RouterConfig["recovery"]>["health"];
+  if (raw.health !== undefined) {
+    if (!isRecord(raw.health)) {
+      diagnostics.push({
+        code: "ROUTER_RECOVERY_HEALTH_INVALID", severity: "fatal", path: "router.recovery.health",
+        message: "router.recovery.health must be an object.",
+      });
+    } else {
+      health = {};
+      const defaults: Record<string, number> = {
+        capacity: 128, recordTtlMs: 900_000, openDurationMs: 30_000,
+        maxOpenDurationMs: 300_000, degradeThreshold: 2, openThreshold: 3, windowSize: 20,
+      };
+      for (const [key, fallback] of Object.entries(defaults)) {
+        const value = raw.health[key];
+        if (value === undefined) continue;
+        if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+          (health as Record<string, number>)[key] = value;
+        } else {
+          diagnostics.push({
+            code: `ROUTER_RECOVERY_HEALTH_${key.toUpperCase()}_INVALID`, severity: "fatal",
+            path: `router.recovery.health.${key}`,
+            message: `router.recovery.health.${key} must be a positive integer (default ${fallback}).`,
+          });
+        }
+      }
+    }
+  }
+  return {
+    enabled,
+    maxAttempts: positiveInt("maxAttempts", DEFAULT_RECOVERY_MAX_ATTEMPTS),
+    deadlineMs: positiveInt("deadlineMs", DEFAULT_RECOVERY_DEADLINE_MS),
+    ...(health ? { health } : {}),
+  };
 }
 
 function parseTokenSaver(

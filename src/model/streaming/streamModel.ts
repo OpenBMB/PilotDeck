@@ -30,6 +30,8 @@ export type ModelRuntimeOptions = {
   signal?: AbortSignal;
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
+  /** Per-call transport retry cap. Used by HALO so one global recovery budget owns the chain. */
+  maxRetries?: number;
 };
 
 export type ModelStreamRetryProgress = {
@@ -70,7 +72,7 @@ export async function complete(
 ) {
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
-  const maxRetries = provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -137,7 +139,7 @@ export async function* streamModel(
 ): AsyncIterable<CanonicalModelEvent> {
   const streamingRequest = { ...request, stream: true };
   const { provider } = validateModelRequest(streamingRequest, config);
-  const maxRetries = provider.retry?.streamMaxRetries ?? DEFAULT_STREAM_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? provider.retry?.streamMaxRetries ?? DEFAULT_STREAM_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
   let currentRequest = streamingRequest;
