@@ -26,10 +26,14 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
 
   const promptTokens = readNumber(raw.prompt_tokens) ?? readNumber(raw.input_tokens);
   const outputTokens = readNumber(raw.completion_tokens) ?? readNumber(raw.output_tokens);
-  const nativeCost =
-    readNumber(raw.cost) ??
-    readNumber(raw.total_cost) ??
-    readNumber(raw.estimated_cost);
+  const reportedCost = readNumber(raw.cost) ?? readNumber(raw.total_cost);
+  const estimatedCost = readNumber(raw.estimated_cost);
+  const nativeCost = reportedCost ?? estimatedCost;
+  const nativeCostSource = reportedCost != null
+    ? "provider_reported" as const
+    : estimatedCost != null
+      ? "estimated" as const
+      : undefined;
 
   const details = isRecord(raw.prompt_tokens_details)
     ? raw.prompt_tokens_details
@@ -52,6 +56,7 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
     cacheWriteTokens,
     totalTokens,
     nativeCost,
+    nativeCostSource,
   });
 }
 

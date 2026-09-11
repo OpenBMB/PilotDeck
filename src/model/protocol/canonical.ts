@@ -259,6 +259,8 @@ export type CanonicalUsage = {
   totalTokens?: number;
   /** Cost reported by the API provider (e.g. OpenRouter `usage.cost`). */
   nativeCost?: number;
+  /** Whether nativeCost is a billable provider value or an estimate exposed by the API. */
+  nativeCostSource?: "provider_reported" | "estimated";
 };
 
 export type CanonicalFinishReason =

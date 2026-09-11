@@ -2,6 +2,22 @@
 
 Every real run must use a fresh directory such as `evaluation/results/<run_id>/`; the tools refuse to overwrite summary output. Keep model responses and private prompts out of the call ledger. Public fixture IDs, hashes, validator results, and sanitized error categories are sufficient for reproduction.
 
+The accounting unit is one physical provider request, not one final answer. A route containing Judge, two failed requests to A, and one successful fallback to B therefore produces four ledger rows. `retryOfAttemptId` and `fallbackFromAttemptId` describe relationships between those rows; they never create an extra charge. The same observer is active in router-disabled passthrough mode so the fixed PilotDeck baseline and PilotRoute use the same accounting boundary without changing baseline routing behavior. The row contract is frozen in `call-ledger.schema.json`.
+
+Usage and cost provenance are intentionally separate:
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `usageSource` | `provider_reported` | Token counts came from the provider response. |
+| `usageSource` | `estimated` | Token counts were locally estimated. |
+| `usageSource` | `unknown` | No defensible token count is available; never coerce it to zero. |
+| `costSource` | `provider_reported` | Provider returned a billable `cost`/`total_cost`. |
+| `costSource` | `price_table_calculated` | Provider usage was multiplied by a configured or recognized model price table. |
+| `costSource` | `estimated` | Usage was estimated, the API labelled its amount `estimated_cost`, or only the generic fallback price matched. |
+| `costSource` | `unknown` | The request may be billable but cost cannot be established. |
+
+`nativeCost` and `usageSource=provider_reported` are not synonymous: an API's `estimated_cost` remains `costSource=estimated`. Summary output breaks down counts and dollars by both provenance dimensions. `reconciliationEligible` is true only when there are no estimated or unknown cost attempts; provider billing export comparison is still required before claiming reconciliation.
+
 ## Pilot design
 
 Use `tasks/pilot.json` as a 24-task starter set. `split=dev` is for Gate/confidence calibration; `split=test` is frozen before final comparison. Repeated turns from one `session_id` are one resampling unit.
@@ -40,7 +56,7 @@ Run the same frozen task driver once per strategy/repeat, changing only the inte
 
 Success is determined by fixture validators (tests, exact structured values, or file hashes). Open-ended tasks require a pre-frozen blind rubric; Judge/scorer costs are reported separately. If zero tasks succeed, cost per success is `null`/undefined. Report paired per-task changes and concrete newly failing task IDs; bootstrap at task/session level, never at turn level.
 
-`results.jsonl` contains one row per task execution: `taskId`, `sessionId`, `strategy`, `repeat`, `success`, and `latencyMs`. The analyzer creates `summary.json`, `summary.csv`, and `cost-success.svg`; it refuses to overwrite an existing analysis directory. Unknown-cost attempts remain visible and are excluded from known-cost arithmetic rather than silently converted to zero.
+`results.jsonl` contains one row per task execution: `taskId`, `sessionId`, `strategy`, `repeat`, `success`, and `latencyMs`. The analyzer creates `summary.json`, `summary.csv`, and `cost-success.svg`; it refuses to overwrite an existing analysis directory. The ledger summarizer additionally creates a provenance breakdown. Unknown-cost attempts remain visible and are excluded from known-cost arithmetic rather than silently converted to zero; estimated dollars remain visible but are not treated as bill evidence.
 
 The frozen task driver may write `evaluation-result.json` in its task output directory using `evaluation-result.schema.json`. This is the adapter boundary for PinchBench automated, LLM-judge, and hybrid grades. Without that file, the runner uses process exit status and labels the validator `process-exit`; it never invents a quality score. UX fields include TTFT, longest no-output wait, fallback recovery, cancellation response, and end-to-end latency. `failures.json` retains every concrete failed task and sanitized reason.
 

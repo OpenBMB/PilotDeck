@@ -30,6 +30,16 @@ test("OpenAI usage never produces negative uncached input when cache details ove
   assert.equal(usage?.cacheWriteTokens, 4);
 });
 
+test("OpenAI usage distinguishes reported cost from provider-side estimated cost", () => {
+  const reported = normalizeOpenAIUsage({ prompt_tokens: 1, cost: 0.01, estimated_cost: 9 });
+  const estimated = normalizeOpenAIUsage({ prompt_tokens: 1, estimated_cost: 0.02 });
+
+  assert.equal(reported?.nativeCost, 0.01);
+  assert.equal(reported?.nativeCostSource, "provider_reported");
+  assert.equal(estimated?.nativeCost, 0.02);
+  assert.equal(estimated?.nativeCostSource, "estimated");
+});
+
 test("Gemini usage counts thoughts tokens as output consumption", () => {
   const usage = normalizeGoogleUsage({
     promptTokenCount: 9,

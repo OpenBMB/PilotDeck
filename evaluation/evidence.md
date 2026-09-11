@@ -9,6 +9,7 @@ Baseline inspected: `cfc4d1779228f91fececc5d6705c14dab5b7ef2f` on `feat/d-evalua
 - When final usage was absent, runtime token estimates were stored without provenance. A consumer could not distinguish provider usage from estimation.
 - `TokenStatsCollector.calculateCost` used zero-valued token defaults and fallback prices, so missing usage/pricing was not represented as unknown. Its aggregate therefore is operational telemetry, not a provider-bill reconciliation.
 - Existing request duration used a single logical-call start across fallback/retry. It did not expose per-attempt timing. The new ledger records each attempt interval; task latency must use min(start) to max(end), never the sum of concurrent durations.
+- OpenAI-compatible `estimated_cost` was normalized into the same `nativeCost` field as `cost` and `total_cost`, which could make a provider-labelled estimate appear provider-reported. Generic fallback pricing likewise lacked provenance.
 
 ## Verified non-gaps / qualifications
 
@@ -17,9 +18,11 @@ Baseline inspected: `cfc4d1779228f91fececc5d6705c14dab5b7ef2f` on `feat/d-evalua
 - `nativeCost` exists in canonical usage and is preferred by the ledger, including an explicit zero.
 - Fallback eligibility excludes context compaction recovery. Compaction is performed in the Agent loop and needs a separate role-aware integration hook; it must not be inferred from a missing router `stats.observe` call.
 - Compaction summaries already traverse `RouterRuntime`; their execute context now overrides the accounting role to `compaction`. Retry and fallback remain relationship fields on the same attempt row, so the summary is not charged twice.
-- Router-disabled passthrough currently bypasses router stats. Baseline experiments therefore require the shared ledger at the provider boundary or an explicit baseline wrapper; absence from router stats is not evidence that the provider was not called.
-- Non-streaming retries in `ModelRuntime.complete` and both OpenAI/Anthropic-compatible and Google retries in `streamModel` now emit distinct content-free provider-attempt callbacks. Judge consumes the non-streaming events without duplicating its logical fallback record. Router ledger de-duplication/wiring still needs to consume streaming callbacks, so a fully provider-reconciled claim remains premature.
+- Router-disabled passthrough still bypasses the legacy aggregate stats, but it now consumes the same provider-attempt callback into the evaluation ledger. This permits a fixed PilotDeck baseline without enabling or altering routing policy.
+- Non-streaming retries in `ModelRuntime.complete` and both OpenAI/Anthropic-compatible and Google retries in `streamModel` emit distinct content-free provider-attempt callbacks. Judge and Router consume these events and use a logical fallback row only for runtimes/mocks that do not expose physical attempts, preventing duplicate charging.
+- A deterministic full-chain test proves that Judge + A1 failure + A2 failure + B1 success produces exactly four unique rows and charges all four. A separate passthrough test proves the disabled-router baseline records internal retries.
+- `usageSource` distinguishes provider-reported, estimated, and unknown token counts. `costSource` distinguishes provider-reported amount, price-table calculation, estimate, and unknown. Provider `estimated_cost` and generic fallback prices remain estimated; missing usage remains unknown rather than zero.
 
 ## Evidence limitations
 
-No paid/model-backed experiment was run. Historical demos and simulated traces are acceptable only for deterministic pipeline tests, not for cost, quality, or savings claims. Bill consistency may be claimed only for rows with provider-reported cost or provider usage plus a frozen price table, and only after comparison with provider billing exports.
+No paid/model-backed experiment was run. The four-attempt trace is a deterministic logic fixture, not cost or quality evidence. Historical demos and simulated traces are acceptable only for deterministic pipeline tests, not for cost, quality, or savings claims. Bill consistency may be claimed only when the summary has no estimated/unknown costs, the price table is frozen, and totals are compared with provider billing exports.

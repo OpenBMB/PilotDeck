@@ -55,3 +55,26 @@ test("provider native cost has precedence, including an explicit zero", () => {
   assert.equal(row.costSource, "provider_reported");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("ledger does not promote estimated native cost or generic fallback pricing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pilotroute-ledger-"));
+  const ledger = new CallLedger({ filePath: path.join(dir, "calls.jsonl") });
+  const common = {
+    runId: "r", taskId: "t", sessionId: "s", callId: "c", strategyVersion: "v",
+    baselineCommit: "b", provider: "unknown-provider", model: "unknown-model", role: "main" as const,
+    startedAt: "2026-01-01T00:00:00.000Z", endedAt: "2026-01-01T00:00:00.001Z",
+    status: "succeeded" as const, usageSource: "provider_reported" as const,
+  };
+  const providerEstimate = ledger.append({
+    ...common, attemptNumber: 1,
+    usage: { inputTokens: 10, nativeCost: 0.03, nativeCostSource: "estimated" },
+  });
+  const genericPrice = ledger.append({
+    ...common, attemptNumber: 2, usage: { inputTokens: 10 },
+  });
+  ledger.dispose();
+
+  assert.equal(providerEstimate.costSource, "estimated");
+  assert.equal(genericPrice.costSource, "estimated");
+  fs.rmSync(dir, { recursive: true, force: true });
+});

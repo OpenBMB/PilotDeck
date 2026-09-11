@@ -606,6 +606,9 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
+      const callId = randomUUID();
+      const logicalStartedAt = (deps.now?.() ?? new Date()).toISOString();
+      const providerAttempts: ProviderAttemptEvent[] = [];
       const routedCachePlan = request.cachePlan &&
         (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
         (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
@@ -627,7 +630,14 @@ export function createRouterRuntime(
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
       let sawErrorEvent = false;
-      for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx, events)) {
+      let passthroughOutcome: AttemptOutcome | undefined;
+      for await (const item of streamAttempt(
+        cappedPassthroughRequest,
+        deps.modelRuntime,
+        ctx,
+        events,
+        (providerAttempt) => providerAttempts.push(providerAttempt),
+      )) {
         if (item.kind === "event") {
           if (item.event.type === "error") {
             sawErrorEvent = true;
@@ -635,9 +645,45 @@ export function createRouterRuntime(
           yield item.event;
           continue;
         }
+        passthroughOutcome = item.outcome;
         if (item.outcome.error && !sawErrorEvent) {
           yield { type: "error", error: item.outcome.error };
         }
+      }
+      const accountingAttempts = providerAttempts.length > 0 ? providerAttempts : [{
+        provider: decision.provider,
+        model: decision.model,
+        attempt: 1,
+        startedAt: logicalStartedAt,
+        endedAt: (deps.now?.() ?? new Date()).toISOString(),
+        status: passthroughOutcome?.error ? "failed" as const : "succeeded" as const,
+        usage: passthroughOutcome?.usage,
+        errorType: passthroughOutcome?.error?.code,
+      }];
+      let previousAttemptId: string | undefined;
+      for (const [index, providerAttempt] of accountingAttempts.entries()) {
+        const attemptId = randomUUID();
+        ledger?.append({
+          ...ledgerDefaults,
+          sessionId: ctx.sessionId,
+          taskId: config.stats?.taskId ?? ctx.turnId,
+          decisionId: ctx.turnId,
+          callId,
+          attemptId,
+          parentId: decision.isSubagent ? ctx.sessionId : undefined,
+          provider: providerAttempt.provider,
+          model: providerAttempt.model,
+          role: ctx.callRole ?? (index > 0 ? "retry" : decision.isSubagent ? "subagent" : "main"),
+          attemptNumber: index + 1,
+          startedAt: providerAttempt.startedAt,
+          endedAt: providerAttempt.endedAt,
+          status: providerAttempt.status,
+          errorType: providerAttempt.errorType,
+          usage: providerAttempt.usage,
+          usageSource: providerAttempt.usage ? "provider_reported" : "unknown",
+          retryOfAttemptId: index > 0 ? previousAttemptId : undefined,
+        });
+        previousAttemptId = attemptId;
       }
       return;
     }

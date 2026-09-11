@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import type { CanonicalUsage } from "../model/index.js";
 import type { RouterModelPricingMap } from "../router/utils/modelPricing.js";
-import { lookupModelPricing } from "../router/utils/modelPricing.js";
+import { resolveModelPricing } from "../router/utils/modelPricing.js";
 
 export type CallRole = "judge" | "main" | "subagent" | "retry" | "fallback" | "compaction";
 export type AttemptStatus = "succeeded" | "failed" | "cancelled" | "unknown";
@@ -93,10 +93,14 @@ function priceAttempt(
   modelPricing?: RouterModelPricingMap,
 ): Pick<LedgerAttempt, "cost" | "costSource"> {
   if (usage?.nativeCost != null) {
-    return { cost: usage.nativeCost, costSource: "provider_reported" };
+    return {
+      cost: usage.nativeCost,
+      costSource: usage.nativeCostSource === "estimated" ? "estimated" : "provider_reported",
+    };
   }
   if (!usage || usageSource === "unknown") return { costSource: "unknown" };
-  const pricing = lookupModelPricing(provider, model, modelPricing);
+  const resolution = resolveModelPricing(provider, model, modelPricing);
+  const pricing = resolution.pricing;
   const input = usage.inputTokens ?? 0;
   const output = usage.outputTokens ?? 0;
   const cacheRead = usage.cacheReadTokens ?? 0;
@@ -107,5 +111,10 @@ function priceAttempt(
     cacheRead * (pricing.cacheRead ?? pricing.input ?? 0) +
     cacheWrite * (pricing.input ?? 0)
   ) / 1_000_000;
-  return { cost, costSource: usageSource === "estimated" ? "estimated" : "price_table_calculated" };
+  return {
+    cost,
+    costSource: usageSource === "estimated" || resolution.source === "generic_fallback"
+      ? "estimated"
+      : "price_table_calculated",
+  };
 }

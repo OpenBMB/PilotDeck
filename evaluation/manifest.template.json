@@ -11,6 +11,8 @@
   "models": [],
   "providerConfigurationRedacted": true,
   "priceTable": {},
+  "priceTableVersion": "REPLACE_WITH_FROZEN_VERSION_OR_HASH",
+  "costProvenancePolicy": "provider_reported|price_table_calculated|estimated|unknown",
   "currency": "USD",
   "cacheIsolationPrefix": "REPLACE_WITH_RUN_STRATEGY_TASK_PREFIX",
   "taskBudget": {},
