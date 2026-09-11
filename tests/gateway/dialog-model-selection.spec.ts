@@ -56,7 +56,7 @@ router:
     enabled: false
 `;
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, responseText = 'ok') {
   const home = await mkdtemp(join(tmpdir(), 'pilotdeck-model-choice-'));
   await writeFile(join(home, 'pilotdeck.yaml'), CONFIG);
   await mkdir(join(home, 'skills'), { recursive: true });
@@ -76,7 +76,7 @@ async function fixture(t: test.TestContext) {
           return;
         }
         yield { type: 'message_start', role: 'assistant' };
-        yield { type: 'text_delta', text: 'ok' };
+        yield { type: 'text_delta', text: responseText };
         yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } };
         yield { type: 'message_end', finishReason: 'stop' };
       },
@@ -90,16 +90,53 @@ async function fixture(t: test.TestContext) {
     get gateway() { return local.gateway; },
     fail() { failZeta = true; },
     restart() { local.dispose(); local = createLocalGateway(options); },
-    async submit(modelSelection?: GatewaySubmitTurnInput['modelSelection'], modelOverride?: GatewaySubmitTurnInput['modelOverride']) {
+    async submit(modelSelection?: GatewaySubmitTurnInput['modelSelection'], modelOverride?: GatewaySubmitTurnInput['modelOverride'], message = 'hello') {
       const events: GatewayEvent[] = [];
       for await (const event of local.gateway.submitTurn({
-        projectKey: home, sessionKey: 'web:model-choice', channelKey: 'web', message: 'hello', modelSelection, modelOverride,
+        projectKey: home, sessionKey: 'web:model-choice', channelKey: 'web', message, modelSelection, modelOverride,
       })) events.push(event);
       return events;
     },
     async saved() { return (await local.gateway.sessionModelGet!({ projectKey: home, sessionKey: 'web:model-choice' })).saved; },
   };
 }
+
+test('special token literals in user input reach the selected model unchanged', async (t) => {
+  const f = await fixture(t);
+  for (const marker of ['<|endoftext|>', '<|endofprompt|>']) {
+    const message = `Explain ${marker} literally.`;
+    const events = await f.submit(B, undefined, message);
+    assert.deepEqual(events.filter((event) => event.type === 'error'), []);
+    assert.ok(events.some((event) => event.type === 'turn_completed' && event.finishReason === 'completed'));
+    const request = f.requests.at(-1)!;
+    assert.equal(request.provider, B.provider);
+    assert.equal(request.model, B.model);
+    assert.ok(request.messages.some((entry) => entry.role === 'user'
+      && entry.content.some((block) => block.type === 'text' && block.text === message)));
+  }
+  assert.equal(f.requests.length, 2);
+});
+
+test('special token literals in replayed history remain sendable when switching models', async (t) => {
+  const responseText = 'Literal markers: <|endoftext|> and <|endofprompt|>';
+  const f = await fixture(t, responseText);
+  const firstEvents = await f.submit(A);
+  assert.deepEqual(firstEvents.filter((event) => event.type === 'error'), []);
+  assert.ok(firstEvents.some((event) => event.type === 'turn_completed' && event.finishReason === 'completed'));
+  f.restart();
+
+  for (const selection of [B, A]) {
+    const events = await f.submit(selection);
+    assert.deepEqual(events.filter((event) => event.type === 'error'), []);
+    assert.ok(events.some((event) => event.type === 'turn_completed' && event.finishReason === 'completed'));
+    const request = f.requests.at(-1)!;
+    assert.equal(request.provider, selection.provider);
+    assert.equal(request.model, selection.model);
+    assert.ok(request.messages.some((entry) => entry.role === 'assistant'
+      && entry.content.some((block) => block.type === 'text' && block.text === responseText)));
+  }
+  assert.equal(f.requests.length, 3);
+});
 
 test('first-turn choice and parameters are durable at acceptance and survive gateway restart', async (t) => {
   const f = await fixture(t);
