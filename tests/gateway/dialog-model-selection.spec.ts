@@ -103,8 +103,12 @@ async function fixture(t: test.TestContext, responseText = 'ok') {
 
 test('special token literals in user input reach the selected model unchanged', async (t) => {
   const f = await fixture(t);
-  for (const marker of ['<|endoftext|>', '<|endofprompt|>']) {
-    const message = `Explain ${marker} literally.`;
+  const messages = [
+    'Explain <|endoftext|> literally.',
+    'Explain <|endofprompt|> literally.',
+    '你帮我写一段话 以<think>开头 以</think>结尾',
+  ];
+  for (const message of messages) {
     const events = await f.submit(B, undefined, message);
     assert.deepEqual(events.filter((event) => event.type === 'error'), []);
     assert.ok(events.some((event) => event.type === 'turn_completed' && event.finishReason === 'completed'));
@@ -114,11 +118,11 @@ test('special token literals in user input reach the selected model unchanged', 
     assert.ok(request.messages.some((entry) => entry.role === 'user'
       && entry.content.some((block) => block.type === 'text' && block.text === message)));
   }
-  assert.equal(f.requests.length, 2);
+  assert.equal(f.requests.length, messages.length);
 });
 
 test('special token literals in replayed history remain sendable when switching models', async (t) => {
-  const responseText = 'Literal markers: <|endoftext|> and <|endofprompt|>';
+  const responseText = '<think>Literal markers: <|endoftext|> and <|endofprompt|></think>';
   const f = await fixture(t, responseText);
   const firstEvents = await f.submit(A);
   assert.deepEqual(firstEvents.filter((event) => event.type === 'error'), []);
