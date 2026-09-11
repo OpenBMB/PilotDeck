@@ -20,6 +20,7 @@ import type {
   DashboardSession,
   ProjectAggregated,
   RequestLogEntry,
+  RoutingMetrics,
 } from '../../hooks/useRoutingDashboard';
 import { cn } from '../../lib/utils.js';
 
@@ -31,12 +32,28 @@ function formatTokens(n: number): string {
 }
 
 function formatCost(n: number): string {
+  if (!Number.isFinite(n)) return '$0.00';
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
   if (!abs) return '$0.00';
   if (abs < 0.01) return `${sign}$${abs.toFixed(4)}`;
   return `${sign}$${abs.toFixed(2)}`;
 }
+
+function safeMetric(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+const EMPTY_ROUTING_METRICS: RoutingMetrics = {
+  judgeCalls: 0,
+  judgeCost: 0,
+  shortCircuits: 0,
+  taskCardRequests: 0,
+  newTaskResets: 0,
+  guardSavedCost: 0,
+  guardBypassCost: 0,
+  netSavedCost: 0,
+};
 
 function formatTime(iso?: string | null, fallback?: number): string {
   let value: number | null = null;
@@ -126,6 +143,7 @@ function collectRecentRoutes(
             byScenario: u.byScenario,
             byRole: u.byRole,
             byModel: u.byModel,
+            routingMetrics: u.routingMetrics ?? EMPTY_ROUTING_METRICS,
             firstSeenAt: u.firstSeenAt,
             lastActiveAt: u.lastActiveAt,
           },
@@ -202,6 +220,7 @@ function buildProjectGroups(
   const unmatched = data.unmatchedSessions || [];
   if (unmatched.length > 0) {
     const aggTotal = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, totalTokens: 0, requestCount: 0, estimatedCost: 0, baselineCost: 0, savedCost: 0 };
+    const aggRoutingMetrics = { ...EMPTY_ROUTING_METRICS };
     const aggByTier: Record<string, any> = {};
     const aggByRole: Record<string, any> = {};
     const sessions: DashboardSession[] = [];
@@ -215,6 +234,17 @@ function buildProjectGroups(
       aggTotal.estimatedCost += u.total?.estimatedCost || 0;
       aggTotal.baselineCost += u.total?.baselineCost || 0;
       aggTotal.savedCost += u.total?.savedCost || 0;
+      const metrics = u.routingMetrics;
+      if (metrics) {
+        aggRoutingMetrics.judgeCalls += safeMetric(metrics.judgeCalls);
+        aggRoutingMetrics.judgeCost += safeMetric(metrics.judgeCost);
+        aggRoutingMetrics.shortCircuits += safeMetric(metrics.shortCircuits);
+        aggRoutingMetrics.taskCardRequests += safeMetric(metrics.taskCardRequests);
+        aggRoutingMetrics.newTaskResets += safeMetric(metrics.newTaskResets);
+        aggRoutingMetrics.guardSavedCost += safeMetric(metrics.guardSavedCost);
+        aggRoutingMetrics.guardBypassCost += safeMetric(metrics.guardBypassCost);
+        aggRoutingMetrics.netSavedCost += safeMetric(metrics.netSavedCost);
+      }
 
       for (const [k, v] of Object.entries(u.byTier || {})) {
         if (!aggByTier[k]) aggByTier[k] = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, totalTokens: 0, requestCount: 0, estimatedCost: 0, baselineCost: 0, savedCost: 0 };
@@ -236,6 +266,7 @@ function buildProjectGroups(
           byScenario: u.byScenario,
           byRole: u.byRole,
           byModel: u.byModel,
+          routingMetrics: metrics ?? EMPTY_ROUTING_METRICS,
           firstSeenAt: u.firstSeenAt,
           lastActiveAt: u.lastActiveAt,
         },
@@ -250,6 +281,7 @@ function buildProjectGroups(
         total: aggTotal,
         byTier: aggByTier,
         byRole: aggByRole,
+        routingMetrics: aggRoutingMetrics,
         sessionCount: sessions.length,
         routedSessionCount: sessions.length,
       },
@@ -314,6 +346,7 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
           total: agg.total,
           byTier: agg.byTier,
           byRole: agg.byRole,
+          routingMetrics: agg.routingMetrics,
           projectCount: 1,
           sessionCount: agg.sessionCount,
         };
@@ -375,6 +408,19 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
   const totalBaselineCost = overall.total.baselineCost || 0;
   const totalSavedCost = overall.total.savedCost || 0;
   const hasBaselineData = totalBaselineCost > 0;
+  const reportedRoutingMetrics = overall.routingMetrics;
+  const routingMetrics = reportedRoutingMetrics ?? EMPTY_ROUTING_METRICS;
+  const judgeCalls = safeMetric(routingMetrics.judgeCalls);
+  const judgeCost = safeMetric(routingMetrics.judgeCost);
+  const shortCircuits = safeMetric(routingMetrics.shortCircuits);
+  const taskCardRequests = safeMetric(routingMetrics.taskCardRequests);
+  const newTaskResets = safeMetric(routingMetrics.newTaskResets);
+  const guardSavedCost = safeMetric(routingMetrics.guardSavedCost);
+  const guardBypassCost = safeMetric(routingMetrics.guardBypassCost);
+  const netSavedCost = safeMetric(routingMetrics.netSavedCost);
+  const taskCardCoverage = reportedRoutingMetrics && totalRequests > 0
+    ? `${Math.round((taskCardRequests / totalRequests) * 100)}% (${taskCardRequests.toLocaleString()}/${totalRequests.toLocaleString()})`
+    : '—';
 
   const routedSessionCount =
     groups.reduce((sum, g) => sum + g.aggregated.routedSessionCount, 0) +
@@ -516,6 +562,56 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
           />
         </div>
 
+        <section
+          data-testid="routing-metrics"
+          className="mt-5 border-y border-neutral-200 py-3 dark:border-neutral-800"
+        >
+          <div className="text-xxs mb-2 flex items-center gap-1.5 uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            <Activity className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <span>{t('dashboard.routingMetrics.title', { defaultValue: 'Routing metrics' })}</span>
+          </div>
+          <div className={cn(
+            'grid grid-cols-2 gap-x-4 gap-y-3',
+            !compact && 'sm:grid-cols-4 lg:grid-cols-7',
+          )}>
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.judgeCost', { defaultValue: 'Judge cost' })}
+              value={formatCost(judgeCost)}
+              sub={t('dashboard.routingMetrics.judgeCalls', {
+                count: judgeCalls,
+                defaultValue: `${judgeCalls} calls`,
+              }) as string}
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.netSaved', { defaultValue: 'Net saved' })}
+              value={formatCost(netSavedCost)}
+              tone={netSavedCost >= 0 ? 'positive' : 'warning'}
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.shortCircuits', { defaultValue: 'Short-circuits' })}
+              value={shortCircuits.toLocaleString()}
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.taskCardCoverage', { defaultValue: 'Task-card coverage' })}
+              value={taskCardCoverage}
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.newTaskResets', { defaultValue: 'New-task resets' })}
+              value={newTaskResets.toLocaleString()}
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.guardSaved', { defaultValue: 'Guard saved' })}
+              value={formatCost(guardSavedCost)}
+              tone="positive"
+            />
+            <RoutingMetric
+              label={t('dashboard.routingMetrics.bypassCost', { defaultValue: 'Bypass cost' })}
+              value={formatCost(guardBypassCost)}
+              tone="warning"
+            />
+          </div>
+        </section>
+
         {/* Project-filtered: flat session list */}
         {effectiveProjectFilter && (
           <div className="mt-6 space-y-2">
@@ -615,6 +711,32 @@ export default function DashboardV2({ projectFilter, projectFullPath, onSelectPr
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function RoutingMetric({
+  label,
+  value,
+  sub,
+  tone = 'neutral',
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  sub?: ReactNode;
+  tone?: 'neutral' | 'positive' | 'warning';
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] leading-4 text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className={cn(
+        'truncate text-[13px] font-medium tabular-nums text-neutral-800 dark:text-neutral-200',
+        tone === 'positive' && 'text-emerald-700 dark:text-emerald-300',
+        tone === 'warning' && 'text-amber-700 dark:text-amber-300',
+      )}>
+        {value}
+      </div>
+      {sub ? <div className="truncate text-[10px] text-neutral-400 dark:text-neutral-500">{sub}</div> : null}
     </div>
   );
 }

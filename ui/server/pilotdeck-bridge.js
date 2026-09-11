@@ -2579,7 +2579,7 @@ function loadPersistedStatsFromDisk() {
 
         let records;
         if (fs.existsSync(jsonlPath)) {
-            records = _loadRecordsFromJsonl(jsonlPath);
+            records = loadRouterStatsRecordsFromJsonl(jsonlPath);
         } else {
             records = _loadRecordsFromJson(jsonPath, legacyPath);
         }
@@ -2636,7 +2636,7 @@ function loadPersistedStatsFromDisk() {
     return result;
 }
 
-function _loadRecordsFromJsonl(filePath) {
+export function loadRouterStatsRecordsFromJsonl(filePath) {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const records = [];
     for (const line of raw.split('\n')) {
@@ -3128,13 +3128,13 @@ function _assignByModelCallCount(mainEntries, queries, turnStructure) {
  * mirrors what `ui/src/hooks/useRoutingDashboard.ts` expects so the V2
  * Dashboard tab renders without changing any frontend code.
  */
-export function getRouterDashboardData() {
-    const statsByProject = loadPersistedStatsFromDisk();
+export function getRouterDashboardData(statsByProject = loadPersistedStatsFromDisk()) {
 
     const projects = [];
     const overall = makeBucket();
     const overallByTier = {};
     const overallByRole = {};
+    const overallRoutingMetrics = makeRoutingMetrics();
     let overallSessionCount = 0;
 
     for (const [projectKey, snapshot] of statsByProject.entries()) {
@@ -3157,6 +3157,7 @@ export function getRouterDashboardData() {
                         byScenario: {},
                         byRole: {},
                         byModel: {},
+                        routingMetrics: makeRoutingMetrics(),
                         requestLog: [],
                         firstSeenAt: Date.parse(record.startedAt) || 0,
                         lastActiveAt: Date.parse(record.endedAt) || 0,
@@ -3165,6 +3166,8 @@ export function getRouterDashboardData() {
                 sessionMap.set(record.sessionId, sessionEntry);
             }
             const logRole = record.role === 'subagent' ? 'sub' : 'main';
+            const taskCardRoute = asPlainObject(record.routing)?.taskCardRoute;
+            const cacheAwareSwitch = asPlainObject(record.routing)?.cacheAwareSwitch;
             sessionEntry.routing.requestLog.push({
                 ts: Date.parse(record.startedAt) || 0,
                 turnId: record.turnId || undefined,
@@ -3176,6 +3179,15 @@ export function getRouterDashboardData() {
                 cost: record.cost?.total || 0,
                 baselineCost: record.baselineCost ?? (record.cost?.total || 0),
                 savedCost: (record.baselineCost ?? (record.cost?.total || 0)) - (record.cost?.total || 0),
+                ...(typeof asPlainObject(taskCardRoute)?.reason === 'string'
+                    ? { routingReason: asPlainObject(taskCardRoute).reason }
+                    : {}),
+                ...(typeof asPlainObject(taskCardRoute)?.shortCircuited === 'boolean'
+                    ? { shortCircuited: asPlainObject(taskCardRoute).shortCircuited }
+                    : {}),
+                ...(typeof asPlainObject(cacheAwareSwitch)?.action === 'string'
+                    ? { guardAction: asPlainObject(cacheAwareSwitch).action }
+                    : {}),
             });
             mergeRecordIntoSession(sessionEntry.routing, record);
             const ended = Date.parse(record.endedAt) || 0;
@@ -3195,11 +3207,13 @@ export function getRouterDashboardData() {
             total: makeBucket(),
             byTier: {},
             byRole: {},
+            routingMetrics: makeRoutingMetrics(),
             sessionCount: sessions.length,
             routedSessionCount: sessions.length,
         };
         for (const session of sessions) {
             addBuckets(aggregated.total, session.routing.total);
+            addRoutingMetrics(aggregated.routingMetrics, session.routing.routingMetrics);
             for (const [tier, bucket] of Object.entries(session.routing.byTier)) {
                 aggregated.byTier[tier] = aggregated.byTier[tier] || makeBucket();
                 addBuckets(aggregated.byTier[tier], bucket);
@@ -3211,6 +3225,7 @@ export function getRouterDashboardData() {
         }
 
         addBuckets(overall, aggregated.total);
+        addRoutingMetrics(overallRoutingMetrics, aggregated.routingMetrics);
         for (const [tier, bucket] of Object.entries(aggregated.byTier)) {
             overallByTier[tier] = overallByTier[tier] || makeBucket();
             addBuckets(overallByTier[tier], bucket);
@@ -3236,6 +3251,7 @@ export function getRouterDashboardData() {
             total: overall,
             byTier: overallByTier,
             byRole: overallByRole,
+            routingMetrics: overallRoutingMetrics,
             projectCount: projects.length,
             sessionCount: overallSessionCount,
         },
@@ -3269,6 +3285,67 @@ function addBuckets(target, source) {
     target.savedCost += source.savedCost || 0;
 }
 
+function makeRoutingMetrics() {
+    return {
+        judgeCalls: 0,
+        judgeCost: 0,
+        shortCircuits: 0,
+        taskCardRequests: 0,
+        newTaskResets: 0,
+        guardSavedCost: 0,
+        guardBypassCost: 0,
+        netSavedCost: 0,
+    };
+}
+
+function addRoutingMetrics(target, source) {
+    const safeSource = asPlainObject(source) || {};
+    target.judgeCalls += finiteNumber(safeSource.judgeCalls);
+    target.judgeCost += finiteNumber(safeSource.judgeCost);
+    target.shortCircuits += finiteNumber(safeSource.shortCircuits);
+    target.taskCardRequests += finiteNumber(safeSource.taskCardRequests);
+    target.newTaskResets += finiteNumber(safeSource.newTaskResets);
+    target.guardSavedCost += finiteNumber(safeSource.guardSavedCost);
+    target.guardBypassCost += finiteNumber(safeSource.guardBypassCost);
+    target.netSavedCost += finiteNumber(safeSource.netSavedCost);
+}
+
+function routingMetricsForRecord(record) {
+    const routing = asPlainObject(record?.routing);
+    const taskCardRoute = asPlainObject(routing?.taskCardRoute);
+    const cacheAwareSwitch = asPlainObject(routing?.cacheAwareSwitch);
+    const judge = asPlainObject(record?.judge);
+    const actualCost = finiteNumber(asPlainObject(record?.cost)?.total);
+    const baselineCost = typeof record?.baselineCost === 'number' && Number.isFinite(record.baselineCost)
+        ? record.baselineCost
+        : actualCost;
+    const guardDelta = Math.max(
+        0,
+        finiteNumber(cacheAwareSwitch?.prefillCost) - finiteNumber(cacheAwareSwitch?.cachedCost),
+    );
+    const guardSavedCost = cacheAwareSwitch?.action === 'kept_sticky' ? guardDelta : 0;
+    const guardBypassCost = cacheAwareSwitch?.action === 'bypassed_by_evidence' ? guardDelta : 0;
+    const judgeCost = finiteNumber(judge?.cost);
+    return {
+        judgeCalls: judge?.called === true ? 1 : 0,
+        judgeCost,
+        shortCircuits: taskCardRoute?.shortCircuited === true ? 1 : 0,
+        taskCardRequests: taskCardRoute?.hasCard === true ? 1 : 0,
+        newTaskResets: taskCardRoute?.isNewTask === true || taskCardRoute?.reason === 'task_done_reset' ? 1 : 0,
+        guardSavedCost,
+        guardBypassCost,
+        netSavedCost: baselineCost - actualCost + guardSavedCost - guardBypassCost - judgeCost,
+    };
+}
+
+function asPlainObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function finiteNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 function mergeRecordIntoSession(routing, record) {
     const usage = record.usage || {};
     const cost = record.cost || {};
@@ -3287,6 +3364,7 @@ function mergeRecordIntoSession(routing, record) {
         savedCost: baseline - actualCost,
     };
     addBuckets(routing.total, bucket);
+    addRoutingMetrics(routing.routingMetrics, routingMetricsForRecord(record));
 
     const tierKey = record.tier || record.scenarioType || 'default';
     routing.byTier[tierKey] = routing.byTier[tierKey] || makeBucket();

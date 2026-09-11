@@ -26,6 +26,18 @@
       "perRequest": "≈ {{value}} / 次请求",
       "noRouterCost": "不走路由 {{value}}"
     },
+    "routingMetrics": {
+      "title": "路由指标",
+      "judgeCost": "Judge 成本",
+      "judgeCalls_one": "{{count}} 次调用",
+      "judgeCalls_other": "{{count}} 次调用",
+      "netSaved": "净节省",
+      "shortCircuits": "短路次数",
+      "taskCardCoverage": "任务卡覆盖率",
+      "newTaskResets": "新任务重置",
+      "guardSaved": "守卫节省",
+      "bypassCost": "绕过成本"
+    },
     "sessions": {
       "title": "会话",
       "empty": "暂无会话。"

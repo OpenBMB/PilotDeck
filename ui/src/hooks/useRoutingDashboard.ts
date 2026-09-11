@@ -14,6 +14,20 @@ export type RequestLogEntry = {
   query?: string;
   isSubagentDispatch?: boolean;
   subRequestCount?: number;
+  routingReason?: 'continuation' | 'task_done_reset' | 'judge' | 'fallback';
+  shortCircuited?: boolean;
+  guardAction?: 'kept_sticky' | 'switched' | 'bypassed_by_evidence';
+};
+
+export type RoutingMetrics = {
+  judgeCalls: number;
+  judgeCost: number;
+  shortCircuits: number;
+  taskCardRequests: number;
+  newTaskResets: number;
+  guardSavedCost: number;
+  guardBypassCost: number;
+  netSavedCost: number;
 };
 
 export type SessionRouting = {
@@ -22,6 +36,7 @@ export type SessionRouting = {
   byScenario: Record<string, TokenBucket>;
   byRole: Record<string, TokenBucket>;
   byModel: Record<string, TokenBucket>;
+  routingMetrics: RoutingMetrics;
   requestLog?: RequestLogEntry[];
   firstSeenAt: number;
   lastActiveAt: number;
@@ -40,6 +55,7 @@ export type ProjectAggregated = {
   total: TokenBucket;
   byTier: Record<string, TokenBucket>;
   byRole: Record<string, TokenBucket>;
+  routingMetrics: RoutingMetrics;
   sessionCount: number;
   routedSessionCount: number;
 };
@@ -56,6 +72,7 @@ export type DashboardOverall = {
   total: TokenBucket;
   byTier: Record<string, TokenBucket>;
   byRole: Record<string, TokenBucket>;
+  routingMetrics: RoutingMetrics;
   projectCount: number;
   sessionCount: number;
 };
@@ -70,6 +87,7 @@ export type DashboardData = {
     byTier: Record<string, TokenBucket>;
     byRole: Record<string, TokenBucket>;
     byModel: Record<string, TokenBucket>;
+    routingMetrics?: RoutingMetrics;
     firstSeenAt: number;
     lastActiveAt: number;
   }>;

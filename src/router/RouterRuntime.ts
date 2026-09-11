@@ -44,8 +44,9 @@ import {
 } from "./retry/zeroUsageRetry.js";
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
+import { buildTaskCard } from "./tokenSaver/buildTaskCard.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
-import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
+import { calculateCacheReadCost, calculateInputCost, lookupModelPricing } from "./utils/modelPricing.js";
 import {
   collectRequiredInputModalities,
   missingInputModalities,
@@ -94,6 +95,8 @@ export type RouterRuntime = {
    * judge re-classifies the fresh message instead of reusing a stale tier.
    */
   invalidateSticky(sessionId: string): InvalidateStickyResult;
+  /** Read the main-agent sticky selection without clearing or renewing it. */
+  peekSticky(sessionId: string): InvalidateStickyResult;
   observeUsage(sessionId: string, usage: import("../model/index.js").CanonicalUsage | undefined): void;
   stats: TokenStatsCollector;
   shutdown(): Promise<void>;
@@ -218,8 +221,11 @@ export function createRouterRuntime(
   function maybePreserveStickyForCache(
     current: RouterModelRef | undefined,
     next: RouterModelRef,
+    currentTier: string | undefined,
+    nextTier: string | undefined,
     messages: CanonicalModelRequest["messages"],
     lastUsage: import("../model/index.js").CanonicalUsage | undefined,
+    upgradeEvidence: import("./tokenSaver/buildTaskCard.js").UpgradeEvidence | undefined,
   ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
     const cacheAware = config.tokenSaver?.cacheAwareSwitching;
     if (cacheAware?.enabled === false || !current) {
@@ -260,21 +266,50 @@ export function createRouterRuntime(
     );
 
     const minSavingsRatio = cacheAware?.minSavingsRatio ?? 0;
+    const direction = getTierDirection(currentTier, nextTier);
+    const policy = cacheAware?.upgradePolicy ?? "guard";
     const requiredSavings = cachedCost * minSavingsRatio;
-    const shouldSwitch = prefillCost + Number.EPSILON < cachedCost - requiredSavings;
     const from = `${current.provider}/${current.model}`;
     const to = `${next.provider}/${next.model}`;
+    const evidence = upgradeEvidence;
+    const mutationBase = {
+      from,
+      to,
+      cachedCost,
+      prefillCost,
+      estimatedInputTokens,
+      direction,
+      policy,
+      ...(evidence ? { evidence } : {}),
+    };
+
+    if (direction === "upgrade" && evidence && policy === "exempt") {
+      return {
+        selection: next,
+        mutation: {
+          action: "bypassed_by_evidence",
+          ...mutationBase,
+        },
+      };
+    }
+
+    const remainingTurns = 3;
+    const amortizedPrefillCost = prefillCost / remainingTurns;
+    const comparisonPrefillCost = direction === "upgrade" && evidence && policy === "amortized"
+      ? amortizedPrefillCost
+      : prefillCost;
+    const shouldSwitch = comparisonPrefillCost + Number.EPSILON < cachedCost - requiredSavings;
+    const amortizedFields = direction === "upgrade" && evidence && policy === "amortized"
+      ? { amortizedPrefillCost, remainingTurns }
+      : {};
 
     if (shouldSwitch) {
       return {
         selection: next,
         mutation: {
           action: "switched",
-          from,
-          to,
-          cachedCost,
-          prefillCost,
-          estimatedInputTokens,
+          ...mutationBase,
+          ...amortizedFields,
         },
       };
     }
@@ -283,13 +318,70 @@ export function createRouterRuntime(
       selection: current,
       mutation: {
         action: "kept_sticky",
-        from,
-        to,
-        cachedCost,
-        prefillCost,
-        estimatedInputTokens,
+        ...mutationBase,
+        ...amortizedFields,
       },
     };
+  }
+
+  function getTierDirection(
+    currentTier: string | undefined,
+    nextTier: string | undefined,
+  ): NonNullable<RouterMutationsLog["cacheAwareSwitch"]>["direction"] {
+    const tiers = Object.keys(config.tokenSaver?.tiers ?? {});
+    const currentRank = currentTier ? tiers.indexOf(currentTier) : -1;
+    const nextRank = nextTier ? tiers.indexOf(nextTier) : -1;
+    if (currentRank < 0 || nextRank < 0) return "unknown";
+    if (nextRank > currentRank) return "upgrade";
+    if (nextRank < currentRank) return "downgrade";
+    return "same";
+  }
+
+  function buildRoutingStats(decision: RouterDecision): Pick<
+    import("./stats/TokenStatsCollector.js").RouterStatsRecord,
+    "routing" | "judge"
+  > {
+    const taskCardRoute = decision.mutations.taskCardRoute;
+    const cacheAwareSwitch = decision.mutations.cacheAwareSwitch;
+    const routing = taskCardRoute || cacheAwareSwitch
+      ? {
+          ...(taskCardRoute ? { taskCardRoute } : {}),
+          ...(cacheAwareSwitch ? { cacheAwareSwitch } : {}),
+        }
+      : undefined;
+    const judge = taskCardRoute
+      ? {
+          called: taskCardRoute.judgeCalled,
+          ...(taskCardRoute.judgeAttempts !== undefined
+            ? { attempts: taskCardRoute.judgeAttempts }
+            : {}),
+          ...(taskCardRoute.judgeUsage ? { usage: taskCardRoute.judgeUsage } : {}),
+          cost: calculateJudgeCost(taskCardRoute.judgeUsage),
+        }
+      : undefined;
+    return {
+      ...(routing ? { routing } : {}),
+      ...(judge ? { judge } : {}),
+    };
+  }
+
+  function calculateJudgeCost(
+    usage: import("../model/index.js").CanonicalUsage | undefined,
+  ): number {
+    if (!usage || !config.tokenSaver?.judge) return 0;
+    const pricingMap = config.stats?.modelPricing;
+    if (!pricingMap) return 0;
+    const judge = config.tokenSaver.judge;
+    const combined = `${judge.provider}/${judge.model}`;
+    const hasConfiguredPricing = Object.keys(pricingMap).some(key =>
+      key === combined || judge.model.includes(key) || key.includes(judge.model)
+    );
+    if (!hasConfiguredPricing) return 0;
+    const pricing = lookupModelPricing(judge.provider, judge.model, pricingMap);
+    return ((usage.inputTokens ?? 0) / 1_000_000) * (pricing.input ?? 0)
+      + ((usage.outputTokens ?? 0) / 1_000_000) * (pricing.output ?? 0)
+      + ((usage.cacheReadTokens ?? 0) / 1_000_000) * (pricing.cacheRead ?? 0)
+      + ((usage.cacheWriteTokens ?? 0) / 1_000_000) * (pricing.input ?? 0);
   }
 
   async function resolveCustom(
@@ -338,6 +430,11 @@ export function createRouterRuntime(
     }
 
     const sticky = sessionStore.get(input.sessionId, !input.isMainAgent);
+    const nowMs = (deps.now?.() ?? new Date()).getTime();
+    const priorTaskCard = sticky?.taskCard;
+    const snapshotCard = buildTaskCard(input.metadata?.taskSnapshot, nowMs);
+    let nextTaskCard = snapshotCard ?? priorTaskCard;
+    let taskCardRoute: RouterMutationsLog["taskCardRoute"];
     const baseUsage = usageCache.get(input.sessionId);
     const inputWithUsage: RouterDecisionInput = {
       ...input,
@@ -353,6 +450,19 @@ export function createRouterRuntime(
 
     const custom = await resolveCustom(inputWithUsage);
     const scenarioOutcome = decideScenario(inputWithUsage, config.scenarios ?? {} as any);
+    const continuationEligible = input.isMainAgent
+      && input.metadata?.continuation?.matched === true
+      && !custom?.provider
+      && scenarioOutcome.scenarioType !== "explicit"
+      && config.tokenSaver?.enabled === true;
+    const taskDoneReset = priorTaskCard?.taskDone === true && !continuationEligible;
+    const snapshotStartsDifferentTask = taskDoneReset
+      && snapshotCard?.taskDone === false
+      && Boolean(snapshotCard.goal)
+      && snapshotCard.goal !== priorTaskCard.goal;
+    if (taskDoneReset) {
+      nextTaskCard = snapshotStartsDifferentTask ? snapshotCard : undefined;
+    }
 
     let scenarioType: RouterScenarioType = scenarioOutcome.scenarioType;
     const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
@@ -386,7 +496,27 @@ export function createRouterRuntime(
     ) {
       let stickyHit = false;
 
-      if (input.isMainAgent && input.request.messages.length > 1) {
+      const continuation = input.metadata?.continuation;
+      if (continuationEligible && continuation?.matched === true) {
+        selection = {
+          id: `${continuation.previousProvider}/${continuation.previousModel}`,
+          provider: continuation.previousProvider,
+          model: continuation.previousModel,
+        };
+        resolvedFrom = "tokenSaver";
+        tokenSaverTier = continuation.previousTier;
+        stickyHit = true;
+        taskCardRoute = {
+          shortCircuited: true,
+          hasCard: Boolean(nextTaskCard),
+          judgeCalled: false,
+          reason: "continuation",
+          ...(priorTaskCard?.phase ? { fromPhase: priorTaskCard.phase } : {}),
+          ...(nextTaskCard?.phase ? { toPhase: nextTaskCard.phase } : {}),
+        };
+      }
+
+      if (!stickyHit && !taskDoneReset && input.isMainAgent && input.request.messages.length > 1) {
         const mainSticky = sessionStore.get(input.sessionId, false);
         if (mainSticky?.stickyProvider && mainSticky.stickyModel) {
           selection = {
@@ -400,7 +530,7 @@ export function createRouterRuntime(
         }
       }
 
-      if (!input.isMainAgent && subagentPolicy === "judge" && input.request.messages.length > 1) {
+      if (!stickyHit && !taskDoneReset && !input.isMainAgent && subagentPolicy === "judge" && input.request.messages.length > 1) {
         const subSticky = sessionStore.get(input.sessionId, true);
         if (subSticky?.stickyProvider && subSticky.stickyModel) {
           selection = {
@@ -415,12 +545,16 @@ export function createRouterRuntime(
       }
 
       if (!stickyHit) {
+        const cardForJudge = taskDoneReset
+          ? (snapshotStartsDifferentTask ? snapshotCard : undefined)
+          : nextTaskCard;
         const tokenSaver = await classifyAndRoute({
           config: config.tokenSaver,
           messages: input.request.messages,
           judgeRuntime,
           abortSignal: input.abortSignal,
           previousTier: input.metadata?.previousTier,
+          taskCard: cardForJudge,
           sessionId: input.sessionId,
           telemetry,
         });
@@ -444,8 +578,11 @@ export function createRouterRuntime(
             const cacheAware = maybePreserveStickyForCache(
               previousStickySelection,
               selection,
+              sticky?.tokenSaverTier ?? input.metadata?.previousTier,
+              tokenSaver.tier,
               input.request.messages,
               baseUsage,
+              input.metadata?.upgradeEvidence,
             );
             selection = cacheAware.selection;
             cacheAwareSwitch = cacheAware.mutation;
@@ -453,8 +590,48 @@ export function createRouterRuntime(
           tokenSaverTier = cacheAwareSwitch?.action === "kept_sticky"
             ? (sticky?.tokenSaverTier ?? input.metadata?.previousTier ?? tokenSaver.tier)
             : tokenSaver.tier;
+
+          const judgeCalled = Boolean(tokenSaver.judgeAttempts ?? tokenSaver.failure?.attempts);
+          if (tokenSaver.failureReason) {
+            if (!taskDoneReset) nextTaskCard = snapshotCard ?? priorTaskCard;
+          } else if (tokenSaver.isNewTask === true) {
+            const snapshotIsCompletedPriorTask = snapshotCard?.taskDone === true
+              && priorTaskCard?.taskDone === true
+              && snapshotCard.goal === priorTaskCard.goal;
+            nextTaskCard = snapshotIsCompletedPriorTask ? undefined : snapshotCard;
+          } else if (!taskDoneReset) {
+            nextTaskCard = snapshotCard ?? priorTaskCard;
+          }
+          taskCardRoute = {
+            shortCircuited: false,
+            hasCard: Boolean(nextTaskCard),
+            judgeCalled,
+            ...(tokenSaver.isNewTask !== undefined ? { isNewTask: tokenSaver.isNewTask } : {}),
+            reason: tokenSaver.failureReason
+              ? "fallback"
+              : taskDoneReset
+                ? "task_done_reset"
+                : "judge",
+            ...(priorTaskCard?.phase ? { fromPhase: priorTaskCard.phase } : {}),
+            ...(nextTaskCard?.phase ? { toPhase: nextTaskCard.phase } : {}),
+            ...(tokenSaver.judgeAttempts ?? tokenSaver.failure?.attempts
+              ? { judgeAttempts: tokenSaver.judgeAttempts ?? tokenSaver.failure?.attempts }
+              : {}),
+            ...(tokenSaver.judgeUsage ? { judgeUsage: tokenSaver.judgeUsage } : {}),
+          };
         }
       }
+    }
+
+    if (taskDoneReset && !taskCardRoute) {
+      taskCardRoute = {
+        shortCircuited: false,
+        hasCard: Boolean(nextTaskCard),
+        judgeCalled: false,
+        reason: "task_done_reset",
+        ...(priorTaskCard?.phase ? { fromPhase: priorTaskCard.phase } : {}),
+        ...(nextTaskCard?.phase ? { toPhase: nextTaskCard.phase } : {}),
+      };
     }
 
     if (!selection && scenarioOutcome.subagentModelHint) {
@@ -500,6 +677,9 @@ export function createRouterRuntime(
     if (cacheAwareSwitch) {
       mutations = { ...mutations, cacheAwareSwitch };
     }
+    if (taskCardRoute) {
+      mutations = { ...mutations, taskCardRoute };
+    }
     if (config.autoOrchestrate?.enabled && orchGate) {
       const orchestrated = applyOrchestration({
         config: config.autoOrchestrate,
@@ -530,7 +710,8 @@ export function createRouterRuntime(
       stickyModel: decision.model,
       orchestrating: decision.orchestrating,
       lastUsage: sticky?.lastUsage,
-      updatedAt: (deps.now?.() ?? new Date()).getTime(),
+      taskCard: nextTaskCard,
+      updatedAt: nowMs,
     });
 
     events.emit({
@@ -934,6 +1115,7 @@ export function createRouterRuntime(
           tier: decision.tokenSaverTier,
           role: decision.isSubagent ? "subagent" : "main",
           usage: finalUsage,
+          ...buildRoutingStats(decision),
           startedAt,
           endedAt,
         });
@@ -969,6 +1151,7 @@ export function createRouterRuntime(
         tier: decision.tokenSaverTier,
         role: decision.isSubagent ? "subagent" : "main",
         usage: failUsage,
+        ...buildRoutingStats(decision),
         startedAt,
         endedAt,
       });
@@ -1017,6 +1200,7 @@ export function createRouterRuntime(
         tokenSaverTier: previousTier,
         stickyProvider: current?.stickyProvider,
         stickyModel: current?.stickyModel,
+        taskCard: current?.taskCard,
         updatedAt: (deps.now?.() ?? new Date()).getTime(),
       });
     } else {
@@ -1024,10 +1208,24 @@ export function createRouterRuntime(
         sessionId,
         isSubagent: false,
         orchestrating,
+        taskCard: current?.taskCard,
         updatedAt: (deps.now?.() ?? new Date()).getTime(),
       });
     }
     return { previousTier, previousProvider, previousModel, orchestrating };
+  }
+
+  function peekSticky(sessionId: string): InvalidateStickyResult {
+    if (!enabled) {
+      return { orchestrating: false };
+    }
+    const current = sessionStore.peek(sessionId, false);
+    return {
+      previousTier: current?.tokenSaverTier,
+      previousProvider: current?.stickyProvider,
+      previousModel: current?.stickyModel,
+      orchestrating: current?.orchestrating ?? false,
+    };
   }
 
   return {
@@ -1036,6 +1234,7 @@ export function createRouterRuntime(
     stream,
     materializeRequest: applyDecisionToRequest,
     invalidateSticky,
+    peekSticky,
     observeUsage(sessionId, usage) {
       if (!enabled) return;
       usageCache.observe(sessionId, usage);

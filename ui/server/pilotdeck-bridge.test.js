@@ -26,7 +26,132 @@ import {
     serializeQueuedInputForStorage,
     syncLocalActiveRunFromSnapshot,
     uiFilesToAttachments,
+    getRouterDashboardData,
+    loadRouterStatsRecordsFromJsonl,
 } from './pilotdeck-bridge.js';
+
+describe('router dashboard routing metrics', () => {
+    it('aggregates new JSONL evidence while keeping legacy and malformed optional records compatible', async () => {
+        const root = await mkdtemp(join(tmpdir(), 'pilotdeck-routing-dashboard-'));
+        const newPath = join(root, 'new.jsonl');
+        const legacyPath = join(root, 'legacy.jsonl');
+        try {
+            const base = {
+                sessionId: 'session-new',
+                turnId: 'turn-1',
+                projectPath: '/workspace/new-project',
+                scenarioType: 'default',
+                resolvedFrom: 'tokenSaver',
+                provider: 'actual',
+                model: 'model',
+                tier: 'medium',
+                role: 'main',
+                usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+                cost: { input: 1, output: 0, cacheRead: 0, total: 1 },
+                baselineCost: 3,
+                startedAt: '2026-09-11T10:00:00.000Z',
+                endedAt: '2026-09-11T10:00:01.000Z',
+            };
+            await writeFile(newPath, [
+                JSON.stringify({
+                    ...base,
+                    routing: {
+                        taskCardRoute: {
+                            shortCircuited: true,
+                            hasCard: true,
+                            judgeCalled: false,
+                            reason: 'continuation',
+                        },
+                        cacheAwareSwitch: {
+                            action: 'kept_sticky',
+                            cachedCost: 1,
+                            prefillCost: 2,
+                        },
+                    },
+                    judge: { called: true, attempts: 1, cost: 0.25 },
+                }),
+                JSON.stringify({
+                    ...base,
+                    turnId: 'turn-2',
+                    cost: { input: 0, output: 0, cacheRead: 0, total: 0 },
+                    baselineCost: 0,
+                    routing: {
+                        taskCardRoute: {
+                            shortCircuited: false,
+                            hasCard: false,
+                            judgeCalled: true,
+                            reason: 'task_done_reset',
+                        },
+                        cacheAwareSwitch: {
+                            action: 'bypassed_by_evidence',
+                            cachedCost: 1,
+                            prefillCost: 5,
+                        },
+                    },
+                    judge: { called: false },
+                }),
+                '{malformed-json',
+                '',
+            ].join('\n'));
+            await writeFile(legacyPath, [
+                JSON.stringify({
+                    ...base,
+                    sessionId: 'session-old',
+                    projectPath: '/workspace/old-project',
+                    cost: { input: 1, output: 0, cacheRead: 0, total: 1 },
+                    baselineCost: 1,
+                }),
+                JSON.stringify({
+                    ...base,
+                    sessionId: 'session-malformed',
+                    projectPath: '/workspace/old-project',
+                    cost: { input: 0, output: 0, cacheRead: 0, total: 0 },
+                    baselineCost: 0,
+                    routing: 'invalid',
+                    judge: ['invalid'],
+                }),
+            ].join('\n'));
+
+            const newRecords = loadRouterStatsRecordsFromJsonl(newPath);
+            const legacyRecords = loadRouterStatsRecordsFromJsonl(legacyPath);
+            const dashboard = getRouterDashboardData(new Map([
+                ['/workspace/new-project', { records: newRecords }],
+                ['/workspace/old-project', { records: legacyRecords }],
+            ]));
+            const newProject = dashboard.projects.find(project => project.fullPath === '/workspace/new-project');
+            const oldProject = dashboard.projects.find(project => project.fullPath === '/workspace/old-project');
+
+            expect(dashboard.overall.routingMetrics).toEqual({
+                judgeCalls: 1,
+                judgeCost: 0.25,
+                shortCircuits: 1,
+                taskCardRequests: 1,
+                newTaskResets: 1,
+                guardSavedCost: 1,
+                guardBypassCost: 4,
+                netSavedCost: -1.25,
+            });
+            expect(newProject.aggregated.routingMetrics).toEqual(dashboard.overall.routingMetrics);
+            expect(newProject.sessions[0].routing.routingMetrics).toEqual(dashboard.overall.routingMetrics);
+            expect(newProject.sessions[0].routing.requestLog).toEqual(expect.arrayContaining([
+                expect.objectContaining({ routingReason: 'continuation', shortCircuited: true, guardAction: 'kept_sticky' }),
+                expect.objectContaining({ routingReason: 'task_done_reset', shortCircuited: false, guardAction: 'bypassed_by_evidence' }),
+            ]));
+            expect(oldProject.aggregated.routingMetrics).toEqual({
+                judgeCalls: 0,
+                judgeCost: 0,
+                shortCircuits: 0,
+                taskCardRequests: 0,
+                newTaskResets: 0,
+                guardSavedCost: 0,
+                guardBypassCost: 0,
+                netSavedCost: 0,
+            });
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
 
 describe('per-turn permission precedence', () => {
     it('lets an explicit default selection turn off persisted full access for one turn', () => {

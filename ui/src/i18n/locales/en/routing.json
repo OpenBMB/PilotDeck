@@ -26,6 +26,18 @@
       "perRequest": "≈ {{value}} / request",
       "noRouterCost": "No-router {{value}}"
     },
+    "routingMetrics": {
+      "title": "Routing metrics",
+      "judgeCost": "Judge cost",
+      "judgeCalls_one": "{{count}} call",
+      "judgeCalls_other": "{{count}} calls",
+      "netSaved": "Net saved",
+      "shortCircuits": "Short-circuits",
+      "taskCardCoverage": "Task-card coverage",
+      "newTaskResets": "New-task resets",
+      "guardSaved": "Guard saved",
+      "bypassCost": "Bypass cost"
+    },
     "sessions": {
       "title": "Sessions",
       "empty": "No sessions yet."

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { CanonicalUsage } from "../../model/index.js";
 import type { RouterStatsConfig } from "../config/schema.js";
 import { resolvePilotHome } from "../../pilot/paths.js";
-import type { RouterDecision } from "../protocol/decision.js";
+import type { RouterDecision, RouterMutationsLog } from "../protocol/decision.js";
 import { lookupModelPricing } from "../utils/modelPricing.js";
 
 export type RouterStatsRecord = {
@@ -19,6 +19,16 @@ export type RouterStatsRecord = {
   usage: CanonicalUsage;
   cost?: { input: number; output: number; cacheRead: number; total: number };
   baselineCost?: number;
+  routing?: {
+    taskCardRoute?: RouterMutationsLog["taskCardRoute"];
+    cacheAwareSwitch?: RouterMutationsLog["cacheAwareSwitch"];
+  };
+  judge?: {
+    called: boolean;
+    attempts?: number;
+    usage?: CanonicalUsage;
+    cost?: number;
+  };
   startedAt: string;
   endedAt: string;
 };
@@ -30,6 +40,14 @@ export type RouterStatsAggregate = {
   totalCost: number;
   totalBaselineCost: number;
   totalSavedCost: number;
+  totalJudgeCalls: number;
+  totalJudgeCost: number;
+  totalShortCircuits: number;
+  totalTaskCardRequests: number;
+  totalNewTaskResets: number;
+  totalGuardSavedCost: number;
+  totalGuardBypassCost: number;
+  totalNetSavedCost: number;
   perScenario: Record<string, number>;
   perModel: Record<string, number>;
   perProvider: Record<string, number>;
@@ -322,6 +340,14 @@ function createAggregate(): RouterStatsAggregate {
     totalCost: 0,
     totalBaselineCost: 0,
     totalSavedCost: 0,
+    totalJudgeCalls: 0,
+    totalJudgeCost: 0,
+    totalShortCircuits: 0,
+    totalTaskCardRequests: 0,
+    totalNewTaskResets: 0,
+    totalGuardSavedCost: 0,
+    totalGuardBypassCost: 0,
+    totalNetSavedCost: 0,
     perScenario: {},
     perModel: {},
     perProvider: {},
@@ -357,6 +383,32 @@ function bumpAggregate(agg: RouterStatsAggregate, record: RouterStatsRecord): vo
   agg.totalBaselineCost += baseline;
   agg.totalSavedCost += baseline - cost;
 
+  ensureRoutingAggregateFields(agg);
+  const routing = asRecord(record.routing);
+  const taskCardRoute = asRecord(routing?.taskCardRoute);
+  const cacheAwareSwitch = asRecord(routing?.cacheAwareSwitch);
+  const judge = asRecord(record.judge);
+  if (judge?.called === true) agg.totalJudgeCalls += 1;
+  agg.totalJudgeCost += finiteNumber(judge?.cost);
+  if (taskCardRoute?.shortCircuited === true) agg.totalShortCircuits += 1;
+  if (taskCardRoute?.hasCard === true) agg.totalTaskCardRequests += 1;
+  if (taskCardRoute?.isNewTask === true || taskCardRoute?.reason === "task_done_reset") {
+    agg.totalNewTaskResets += 1;
+  }
+  const cacheCostDelta = Math.max(
+    0,
+    finiteNumber(cacheAwareSwitch?.prefillCost) - finiteNumber(cacheAwareSwitch?.cachedCost),
+  );
+  if (cacheAwareSwitch?.action === "kept_sticky") {
+    agg.totalGuardSavedCost += cacheCostDelta;
+  } else if (cacheAwareSwitch?.action === "bypassed_by_evidence") {
+    agg.totalGuardBypassCost += cacheCostDelta;
+  }
+  agg.totalNetSavedCost = agg.totalSavedCost
+    + agg.totalGuardSavedCost
+    - agg.totalGuardBypassCost
+    - agg.totalJudgeCost;
+
   agg.perScenario[record.scenarioType] = (agg.perScenario[record.scenarioType] ?? 0) + 1;
 
   const modelKey = `${record.provider}/${record.model}`;
@@ -369,6 +421,31 @@ function bumpAggregate(agg: RouterStatsAggregate, record: RouterStatsRecord): vo
   if (record.role) {
     agg.perRole[record.role] = (agg.perRole[record.role] ?? 0) + 1;
   }
+}
+
+function ensureRoutingAggregateFields(agg: RouterStatsAggregate): void {
+  for (const key of [
+    "totalJudgeCalls",
+    "totalJudgeCost",
+    "totalShortCircuits",
+    "totalTaskCardRequests",
+    "totalNewTaskResets",
+    "totalGuardSavedCost",
+    "totalGuardBypassCost",
+    "totalNetSavedCost",
+  ] as const) {
+    if (!Number.isFinite(agg[key])) agg[key] = 0;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isAggregate(val: unknown): val is RouterStatsAggregate {

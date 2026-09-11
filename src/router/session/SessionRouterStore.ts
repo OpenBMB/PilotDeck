@@ -42,6 +42,15 @@ export class SessionRouterStore {
     return slot.state;
   }
 
+  /** Read a live entry without changing its LRU position or deleting stale data. */
+  peek(sessionId: string, isSubagent: boolean): SessionRoutingState | undefined {
+    const slot = this.map.get(makeKey(sessionId, isSubagent));
+    if (!slot || slot.expiresAt < this.now()) {
+      return undefined;
+    }
+    return slot.state;
+  }
+
   set(state: SessionRoutingState): void {
     const key = makeKey(state.sessionId, state.isSubagent);
     const slot: Slot = {
