@@ -31,6 +31,7 @@
 - 新会话先缓存 system；有消息时再按 recent3 标记消息。
 - 每次投影后重新计算计划；消息被裁剪、微压缩或完整压缩后递增 generation。
 - 会话首次正式组装请求时固定 system prompt 的 UTC 日期；正常追加消息、重试和跨天不单独刷新日期。实际投影历史被裁剪、改写或压缩完成后，在下一次正式组装时更新日期，随后再次固定。重复投影同一份已裁剪历史不算新的裁剪。
+- UTC 日期变化后，下一次请求在消息末尾追加一条 `date_update` 合成消息，告知真实当前日期；同日后续请求保留其原位置，不重复追加，以维持已有缓存前缀。预算预演包含候选日期消息但不提交；历史改写并刷新 system 日期后清除旧日期消息。这些消息只存在于请求投影中，与 runtime 同生命周期，不写入用户会话记录，也不参与 memory retrieval。
 - 预算估算使用 `previewOnly` 组装候选请求，不提交日期、历史摘要或 cache generation，也不消费待处理的压缩 reset。日期锚点与会话 runtime 同生命周期，重建 runtime 时重新初始化。
 - plan mode 先对真实对话完成投影和 memory retrieval，再追加 reminder；最终请求的缓存计划以追加后的消息序列为准。
 - continuation request 改变消息数量后清除旧缓存计划，由下一次完整请求重新建立 provider-boundary 断点。
