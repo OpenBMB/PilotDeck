@@ -37,6 +37,14 @@ export type ClassifyAndRouteInput = {
   previousTier?: string;
   sessionId?: string;
   telemetry?: TelemetryClient;
+  onJudgeAttempt?: (attempt: {
+    attempt: number;
+    startedAt: string;
+    endedAt: string;
+    status: "succeeded" | "failed" | "cancelled";
+    usage?: import("../../model/index.js").CanonicalUsage;
+    errorType?: string;
+  }) => void;
 };
 
 export async function classifyAndRoute(
@@ -108,6 +116,7 @@ export async function classifyAndRoute(
     if (input.abortSignal?.aborted) {
       forwardAbort();
     }
+    const attemptStartedAt = new Date().toISOString();
     try {
       input.telemetry?.trackFeatureLoopStage({
         module: "router",
@@ -138,6 +147,13 @@ export async function classifyAndRoute(
           }, timeoutMs);
         }),
       ]);
+      input.onJudgeAttempt?.({
+        attempt,
+        startedAt: attemptStartedAt,
+        endedAt: new Date().toISOString(),
+        status: "succeeded",
+        usage: response.usage,
+      });
       console.log(
         `[token-saver] Judge raw content blocks (attempt ${attempt}):`,
         JSON.stringify(response.content).slice(0, 500),
@@ -256,6 +272,14 @@ export async function classifyAndRoute(
       });
       return { tier, selection, resolvedFrom: "judge" };
     } catch (error) {
+      const endedAt = new Date().toISOString();
+      input.onJudgeAttempt?.({
+        attempt,
+        startedAt: attemptStartedAt,
+        endedAt,
+        status: input.abortSignal?.aborted ? "cancelled" : "failed",
+        errorType: error instanceof Error ? error.name : "unknown_error",
+      });
       if (input.abortSignal?.aborted) {
         throw error;
       }

@@ -51,6 +51,8 @@ import {
   missingInputModalities,
 } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
+import { randomUUID } from "node:crypto";
+import { CallLedger } from "../evaluation/CallLedger.js";
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -121,6 +123,15 @@ export function createRouterRuntime(
   const judgeRuntime = deps.judgeRuntime ?? deps.modelRuntime;
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
+  const ledger = config.stats?.ledgerFilePath
+    ? new CallLedger({ filePath: config.stats.ledgerFilePath, modelPricing: config.stats.modelPricing })
+    : undefined;
+  const ledgerDefaults = {
+    runId: config.stats?.runId ?? "unconfigured-run",
+    taskId: config.stats?.taskId ?? "unconfigured-task",
+    strategyVersion: config.stats?.strategyVersion ?? "unknown",
+    baselineCommit: config.stats?.baselineCommit ?? "unknown",
+  };
   const healthTrackers = new Map<string, ProviderHealthTracker>();
   function getHealthTracker(sessionId: string): ProviderHealthTracker {
     let tracker = healthTrackers.get(sessionId);
@@ -415,6 +426,7 @@ export function createRouterRuntime(
       }
 
       if (!stickyHit) {
+        const judgeCallId = randomUUID();
         const tokenSaver = await classifyAndRoute({
           config: config.tokenSaver,
           messages: input.request.messages,
@@ -423,6 +435,23 @@ export function createRouterRuntime(
           previousTier: input.metadata?.previousTier,
           sessionId: input.sessionId,
           telemetry,
+          onJudgeAttempt: ledger ? (judgeAttempt) => {
+            ledger.append({
+              ...ledgerDefaults,
+              sessionId: input.sessionId,
+              callId: judgeCallId,
+              provider: config.tokenSaver!.judge.provider,
+              model: config.tokenSaver!.judge.model,
+              role: "judge",
+              attemptNumber: judgeAttempt.attempt,
+              startedAt: judgeAttempt.startedAt,
+              endedAt: judgeAttempt.endedAt,
+              status: judgeAttempt.status,
+              errorType: judgeAttempt.errorType,
+              usage: judgeAttempt.usage,
+              usageSource: judgeAttempt.usage ? "provider_reported" : "unknown",
+            });
+          } : undefined,
         });
         if (tokenSaver) {
           if (tokenSaver.failureReason) {
@@ -649,6 +678,9 @@ export function createRouterRuntime(
     let lastAttempt: RouterModelRef | undefined;
     let lastDecision: RouterDecision = decision;
     let lastHasYieldedContent = false;
+    const callId = randomUUID();
+    let attemptSequence = 0;
+    let previousAttemptId: string | undefined;
 
     if (attemptPlans.length === 0) {
       const missing = missingForModel(requestedAttempt, requiredModalities);
@@ -720,6 +752,9 @@ export function createRouterRuntime(
       let transientRetryCount = 0;
       while (true) {
         zeroUsageAttempt += 1;
+        attemptSequence += 1;
+        const ledgerAttemptId = randomUUID();
+        const attemptStartedAt = (deps.now?.() ?? new Date()).toISOString();
         // Live-stream events. We track whether we've already surfaced any
         // content event (text/thinking/tool) to the consumer; once we have,
         // fallback / retry is no longer safe (would duplicate text).
@@ -760,6 +795,34 @@ export function createRouterRuntime(
 
         lastBuffered = outcome.buffered;
         lastUsage = outcome.usage;
+        const attemptEndedAt = (deps.now?.() ?? new Date()).toISOString();
+        const attemptRole = attemptIndex > 0
+          ? "fallback"
+          : attemptSequence > 1
+            ? "retry"
+            : decision.isSubagent ? "subagent" : "main";
+        ledger?.append({
+          ...ledgerDefaults,
+          sessionId: ctx.sessionId,
+          taskId: config.stats?.taskId ?? ctx.turnId,
+          decisionId: ctx.turnId,
+          callId,
+          attemptId: ledgerAttemptId,
+          parentId: decision.isSubagent ? ctx.sessionId : undefined,
+          provider: attempt.provider,
+          model: attempt.model,
+          role: attemptRole,
+          attemptNumber: attemptSequence,
+          startedAt: attemptStartedAt,
+          endedAt: attemptEndedAt,
+          status: outcome.error ? "failed" : "succeeded",
+          errorType: outcome.error?.code,
+          usage: outcome.usage,
+          usageSource: outcome.usage ? "provider_reported" : "unknown",
+          retryOfAttemptId: attemptRole === "retry" ? previousAttemptId : undefined,
+          fallbackFromAttemptId: attemptRole === "fallback" ? previousAttemptId : undefined,
+        });
+        previousAttemptId = ledgerAttemptId;
 
         if (outcome.error) {
           lastError = outcome.error;
@@ -1044,6 +1107,7 @@ export function createRouterRuntime(
     async shutdown() {
       await stats.flush();
       stats.dispose();
+      ledger?.dispose();
       disposeTokenizer();
       if (!externalStore) sessionStore.clear();
       usageCache.clear();

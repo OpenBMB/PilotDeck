@@ -18,6 +18,18 @@ test("OpenAI Responses usage reads cached tokens from input token details", () =
   assert.equal(usage?.totalTokens, 107);
 });
 
+test("OpenAI usage never produces negative uncached input when cache details overlap", () => {
+  const usage = normalizeOpenAIUsage({
+    prompt_tokens: 10,
+    prompt_tokens_details: { cached_tokens: 10, cache_write_tokens: 4 },
+    completion_tokens: 1,
+  });
+
+  assert.equal(usage?.inputTokens, 0);
+  assert.equal(usage?.cacheReadTokens, 10);
+  assert.equal(usage?.cacheWriteTokens, 4);
+});
+
 test("Gemini usage counts thoughts tokens as output consumption", () => {
   const usage = normalizeGoogleUsage({
     promptTokenCount: 9,

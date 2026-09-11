@@ -40,7 +40,7 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
   const cacheWriteTokens = readNumber(details?.cache_write_tokens) ?? readNumber(raw.cache_creation_input_tokens);
 
   const inputTokens = promptTokens != null
-    ? promptTokens - (cacheReadTokens ?? 0) - (cacheWriteTokens ?? 0)
+    ? Math.max(0, promptTokens - (cacheReadTokens ?? 0) - (cacheWriteTokens ?? 0))
     : undefined;
 
   const totalTokens = readNumber(raw.total_tokens) ?? sumDefined(promptTokens, outputTokens);
