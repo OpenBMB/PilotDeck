@@ -4,6 +4,52 @@ import test from "node:test";
 import type { CanonicalModelRequest, ModelRuntime } from "../../src/model/index.js";
 import { ModelProviderError } from "../../src/model/index.js";
 import { classifyAndRoute } from "../../src/router/index.js";
+import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+
+test("classifies the real task after context appends a midnight date update", async () => {
+  let now = new Date("2026-09-10T23:59:00Z");
+  const context = new DefaultContextRuntime({ now: () => now });
+  const input = {
+    sessionId: "midnight-routing",
+    turnId: "first",
+    cwd: "/workspace",
+    provider: "main",
+    model: "main-model",
+    permissionMode: "default",
+    runMode: "agent",
+    additionalWorkingDirectories: [],
+    tools: [],
+    messages: [{ role: "user" as const, content: [{ type: "text" as const, text: "hello" }] }],
+  };
+  await context.prepareForModel(input);
+  now = new Date("2026-09-11T00:01:00Z");
+  const task = "Design a distributed transaction coordinator with crash recovery.";
+  const prepared = await context.prepareForModel({
+    ...input,
+    turnId: "second",
+    messages: [
+      ...input.messages,
+      { role: "assistant", content: [{ type: "text", text: "Ready." }] },
+      { role: "user", content: [{ type: "text", text: task }] },
+    ],
+  });
+  assert.equal(prepared.messages.at(-1)?.metadata?.purpose, "date_update");
+  let request: CanonicalModelRequest | undefined;
+  const judgeRuntime = {
+    complete: async (nextRequest: CanonicalModelRequest) => {
+      request = nextRequest;
+      return {
+        role: "assistant",
+        content: [{ type: "text", text: "<tier>medium</tier>" }],
+        finishReason: "stop",
+      };
+    },
+  } as unknown as ModelRuntime;
+  await classifyAndRoute({ config: config(), messages: prepared.messages, judgeRuntime });
+  const judgePrompt = JSON.stringify(request?.messages);
+  assert.ok(judgePrompt.includes(task), "judge must receive the actual user task");
+  assert.ok(!judgePrompt.includes("<date-update>"), "date notices must not become classification input");
+});
 
 test("records the normalized judge error when token-saver falls back", async () => {
   let attempts = 0;
