@@ -117,6 +117,7 @@ export async function classifyAndRoute(
       forwardAbort();
     }
     const attemptStartedAt = new Date().toISOString();
+    let providerAttemptObserved = false;
     try {
       input.telemetry?.trackFeatureLoopStage({
         module: "router",
@@ -135,6 +136,17 @@ export async function classifyAndRoute(
       });
       const judgeRequestPromise = input.judgeRuntime.complete(judgeRequest, {
         signal: judgeAbortController.signal,
+        onProviderAttempt: (providerAttempt) => {
+          providerAttemptObserved = true;
+          input.onJudgeAttempt?.({
+            attempt: providerAttempt.attempt,
+            startedAt: providerAttempt.startedAt,
+            endedAt: providerAttempt.endedAt,
+            status: providerAttempt.status,
+            usage: providerAttempt.usage,
+            errorType: providerAttempt.errorType,
+          });
+        },
       });
       const response = await Promise.race([
         judgeRequestPromise,
@@ -147,7 +159,7 @@ export async function classifyAndRoute(
           }, timeoutMs);
         }),
       ]);
-      input.onJudgeAttempt?.({
+      if (!providerAttemptObserved) input.onJudgeAttempt?.({
         attempt,
         startedAt: attemptStartedAt,
         endedAt: new Date().toISOString(),
@@ -273,7 +285,7 @@ export async function classifyAndRoute(
       return { tier, selection, resolvedFrom: "judge" };
     } catch (error) {
       const endedAt = new Date().toISOString();
-      input.onJudgeAttempt?.({
+      if (!providerAttemptObserved) input.onJudgeAttempt?.({
         attempt,
         startedAt: attemptStartedAt,
         endedAt,

@@ -7,6 +7,7 @@ import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CanonicalUsage,
   ModelConfig,
   ModelProtocol,
   ProviderConfig,
@@ -30,6 +31,18 @@ export type ModelRuntimeOptions = {
   signal?: AbortSignal;
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
+  onProviderAttempt?: (attempt: ProviderAttemptEvent) => void;
+};
+
+export type ProviderAttemptEvent = {
+  provider: string;
+  model: string;
+  attempt: number;
+  startedAt: string;
+  endedAt: string;
+  status: "succeeded" | "failed" | "cancelled";
+  usage?: CanonicalUsage;
+  errorType?: string;
 };
 
 export type ModelStreamRetryProgress = {
@@ -75,6 +88,7 @@ export async function complete(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
+    const attemptStartedAt = new Date().toISOString();
     if (provider.protocol === "google") {
       try {
         const raw = await sendGoogleCompleteRequest(
@@ -82,8 +96,11 @@ export async function complete(
           nonStreamingRequest,
           options,
         );
-        return parseGoogleResponse(raw, provider.id);
+        const parsed = parseGoogleResponse(raw, provider.id);
+        emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "succeeded", parsed.usage);
+        return parsed;
       } catch (error) {
+        emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, options.signal?.aborted ? "cancelled" : "failed", undefined, providerAttemptErrorType(error));
         if (attempt < maxRetries && isRetryableRequestError(error)) {
           const delayMs = retryBaseDelay * (attempt + 1);
           console.warn(
@@ -102,6 +119,7 @@ export async function complete(
     try {
       response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
     } catch (error) {
+      emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, options.signal?.aborted ? "cancelled" : "failed", undefined, providerAttemptErrorType(error));
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const delayMs = retryBaseDelay * (attempt + 1);
         console.warn(
@@ -116,16 +134,35 @@ export async function complete(
 
     if (!response.ok) {
       const raw = await safeReadJson(response);
-      throw new ModelProviderError(
-        normalizeModelError(provider.id, provider.protocol, raw, response.status),
-      );
+      const normalized = normalizeModelError(provider.id, provider.protocol, raw, response.status);
+      emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "failed", undefined, normalized.code);
+      throw new ModelProviderError(normalized);
     }
 
     const raw = await response.json();
-    return parseModelResponse(provider.protocol, raw, provider.id);
+    const parsed = parseModelResponse(provider.protocol, raw, provider.id);
+    emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "succeeded", parsed.usage);
+    return parsed;
   }
 
   throw new Error("complete() exhausted all retry attempts without a result.");
+}
+
+function emitProviderAttempt(
+  options: ModelRuntimeOptions,
+  provider: string,
+  model: string,
+  attempt: number,
+  startedAt: string,
+  status: ProviderAttemptEvent["status"],
+  usage?: CanonicalUsage,
+  errorType?: string,
+): void {
+  options.onProviderAttempt?.({ provider, model, attempt: attempt + 1, startedAt, endedAt: new Date().toISOString(), status, usage, errorType });
+}
+
+function providerAttemptErrorType(error: unknown): string {
+  return error instanceof ModelProviderError ? error.error.code : error instanceof Error ? error.name : "unknown_error";
 }
 
 const DEFAULT_STREAM_MAX_RETRIES = LITELLM_DEFAULT_MAX_RETRIES;

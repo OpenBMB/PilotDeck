@@ -17,7 +17,7 @@ Baseline inspected: `cfc4d1779228f91fececc5d6705c14dab5b7ef2f` on `feat/d-evalua
 - `nativeCost` exists in canonical usage and is preferred by the ledger, including an explicit zero.
 - Fallback eligibility excludes context compaction recovery. Compaction is performed in the Agent loop and needs a separate role-aware integration hook; it must not be inferred from a missing router `stats.observe` call.
 - Router-disabled passthrough currently bypasses router stats. Baseline experiments therefore require the shared ledger at the provider boundary or an explicit baseline wrapper; absence from router stats is not evidence that the provider was not called.
-- Retries performed internally by `ModelRuntime`/HTTP helpers are not yet exposed as distinct completed-attempt callbacks with usage. The current ledger covers Router-owned attempts (Judge retries, zero-usage retries, transient Router retries, and provider fallback); claiming a fully provider-reconciled ledger remains blocked until the provider boundary emits the same event contract.
+- Non-streaming retries performed internally by `ModelRuntime.complete` now emit distinct content-free provider-attempt callbacks; Judge consumes these events and avoids duplicating its logical-call fallback record. Streaming retries still lack completed-attempt usage callbacks, so claiming a fully provider-reconciled ledger remains blocked until the streaming provider boundary emits the same contract.
 
 ## Evidence limitations
 

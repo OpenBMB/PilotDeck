@@ -427,6 +427,7 @@ export function createRouterRuntime(
 
       if (!stickyHit) {
         const judgeCallId = randomUUID();
+        let judgeAttemptSequence = 0;
         const tokenSaver = await classifyAndRoute({
           config: config.tokenSaver,
           messages: input.request.messages,
@@ -436,6 +437,7 @@ export function createRouterRuntime(
           sessionId: input.sessionId,
           telemetry,
           onJudgeAttempt: ledger ? (judgeAttempt) => {
+            judgeAttemptSequence += 1;
             ledger.append({
               ...ledgerDefaults,
               sessionId: input.sessionId,
@@ -443,7 +445,7 @@ export function createRouterRuntime(
               provider: config.tokenSaver!.judge.provider,
               model: config.tokenSaver!.judge.model,
               role: "judge",
-              attemptNumber: judgeAttempt.attempt,
+              attemptNumber: judgeAttemptSequence,
               startedAt: judgeAttempt.startedAt,
               endedAt: judgeAttempt.endedAt,
               status: judgeAttempt.status,
