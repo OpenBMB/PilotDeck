@@ -36,9 +36,14 @@ endpoint（端点）  →  后厨的真实地址
          │    └─ 附带能力：首字节后中断 → 纯文本断点续写（设计良好的好功能）
          └─ provider HTTP 请求
 
- 另有：session 级 provider 失败计数器（很薄的熔断器雏形，且把所有错误都记成 provider 故障）
- UI：  一条"重连中"提示通道
- 统计：只记最终成功那次 attempt 的 usage
+ 另有：session 级熔断器雏形——按 provider 名计数，每 session 独立不跨请求共享，
+       固定阈值 3/5、固定 30s 冷却，无容量/TTL/探测并发控制（注释称 half_open
+       单探测但无实现），任何错误不经分类一律记为 provider 故障
+ UI：  单一 retry_progress 通道，标题仅"重连中 x/y (zs)"一个模板，
+       副行拼未本地化的原始 reason/provider/model 文本
+ 统计：每次 execute 只落一条账——成功记最终成功 attempt，全失败记最后一个
+       attempt（缺 usage 时按 token 估算补齐）；中间失败 attempt 的 usage
+       被覆盖丢弃，整条恢复链不累计
 ```
 
 先说句公道话：**原版不是设计得蠢，而是它的隐含假设在特定真实条件下会失守**：
@@ -349,11 +354,11 @@ JSON Schema 输出支持（request.outputSchema 时）
 
 ### 场景五：恢复过程从黑箱变账本
 
-> 痛点：恢复过程对评测（Agent D）不可见——失败 attempt 的费用不入账、跳过原因不留痕、成功只记最后一次。
+> 痛点：恢复过程对评测（Agent D）不可见——每次 execute 只落最后一条统计账，中间失败 attempt 的 usage 被丢弃；跳过原因不留痕。
 
 #### 情境
 
-评测要回答"这次恢复花了多少钱、几次尝试、为什么跳过候选 X"。原版统计只记最终成功那次 attempt 的 usage——**失败 attempt 消耗的 token 和费用没有累计**（流式中断的失败也可能已产生部分 token 费用）；候选为什么被跳过没有记录；谁在什么时候失败过不可追溯。
+评测要回答"这次恢复花了多少钱、几次尝试、为什么跳过候选 X"。原版统计每次 execute 只落一条账：**成功记最终成功 attempt，全失败记最后一个 attempt**（缺 usage 时按 token 估算补齐）——中间失败 attempt 的 usage 被覆盖丢弃，整条恢复链不累计（流式中断的失败 attempt 也可能已产生部分 token 费用，同样被丢弃）；候选为什么被跳过没有记录；谁在什么时候失败过不可追溯。
 
 #### 原版行为
 
