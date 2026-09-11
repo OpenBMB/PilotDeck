@@ -56,6 +56,15 @@ export {
   type RouterStatsRecord,
 } from "./stats/TokenStatsCollector.js";
 export {
+  buildTaskCard,
+  type ContinuationRoutingInfo,
+  type RoutePhase,
+  type TaskCard,
+  type TaskSnapshot,
+  type TaskSnapshotTodo,
+  type UpgradeEvidence,
+} from "./tokenSaver/buildTaskCard.js";
+export {
   classifyAndRoute,
   type ClassifyAndRouteInput,
   type TokenSaverDecision,

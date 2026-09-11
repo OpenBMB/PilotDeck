@@ -1,3 +1,11 @@
+import type {
+  TaskCard,
+  TaskSnapshot,
+  RoutePhase,
+  UpgradeEvidence,
+  ContinuationRoutingInfo,
+} from "../tokenSaver/buildTaskCard.js";
+
 export type RouterScenarioType =
   | "default"
   | "subagent"
@@ -23,12 +31,28 @@ export type RouterMutationsLog = {
     to: string;
   };
   cacheAwareSwitch?: {
-    action: "kept_sticky" | "switched";
+    action: "kept_sticky" | "switched" | "bypassed_by_evidence";
     from: string;
     to: string;
     cachedCost: number;
     prefillCost: number;
     estimatedInputTokens: number;
+    direction?: "upgrade" | "downgrade" | "same" | "unknown";
+    policy?: "guard" | "amortized" | "exempt";
+    evidence?: UpgradeEvidence;
+    amortizedPrefillCost?: number;
+    remainingTurns?: number;
+  };
+  taskCardRoute?: {
+    shortCircuited: boolean;
+    hasCard: boolean;
+    judgeCalled: boolean;
+    isNewTask?: boolean;
+    reason: "continuation" | "task_done_reset" | "judge" | "fallback";
+    fromPhase?: RoutePhase;
+    toPhase?: RoutePhase;
+    judgeAttempts?: number;
+    judgeUsage?: import("../../model/index.js").CanonicalUsage;
   };
 };
 
@@ -57,6 +81,7 @@ export type SessionRoutingState = {
   stickyModel?: string;
   orchestrating: boolean;
   lastUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  taskCard?: TaskCard;
   updatedAt: number;
 };
 
@@ -80,6 +105,9 @@ export type RouterDecisionInput = {
     previousTier?: string;
     previousProvider?: string;
     previousModel?: string;
+    taskSnapshot?: TaskSnapshot;
+    continuation?: ContinuationRoutingInfo;
+    upgradeEvidence?: UpgradeEvidence;
   };
 };
 

@@ -1,14 +1,16 @@
 import type {
   CanonicalMessage,
   CanonicalModelRequest,
+  CanonicalUsage,
   ModelRuntime,
 } from "../../model/index.js";
 import { ModelProviderError, ModelRequestError } from "../../model/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { RouterModelRef, RouterTokenSaverConfig } from "../config/schema.js";
+import type { TaskCard } from "./buildTaskCard.js";
 import { extractLastUserMessage } from "./extractLastUserMessage.js";
 import { generateJudgePrompt } from "./generateJudgePrompt.js";
-import { parseTier } from "./parseTier.js";
+import { parseJudgeDecision } from "./parseTier.js";
 
 export type TokenSaverDecision = {
   tier: string;
@@ -17,6 +19,12 @@ export type TokenSaverDecision = {
   failureReason?: "timeout" | "model_error" | "parse_error";
   /** Diagnostic safe to persist in router events when classification falls back. */
   failure?: TokenSaverFailure;
+  /** Judge's new-task signal; only present when the judge emitted a parseable <new_task> tag. */
+  isNewTask?: boolean;
+  /** Real usage reported by the judge response; never estimated or fabricated. */
+  judgeUsage?: CanonicalUsage;
+  /** Attempt number (1-based) whose response actually parsed into a decision. */
+  judgeAttempts?: number;
 };
 
 export type TokenSaverFailure = {
@@ -35,6 +43,8 @@ export type ClassifyAndRouteInput = {
   abortSignal?: AbortSignal;
   /** Tier from the previous turn; passed to the judge for context-aware classification. */
   previousTier?: string;
+  /** Deterministic read-only snapshot of the current task; forwarded to the judge prompt. */
+  taskCard?: TaskCard;
   sessionId?: string;
   telemetry?: TelemetryClient;
 };
@@ -62,7 +72,7 @@ export async function classifyAndRoute(
   }
 
   const knownTiers = Object.keys(config.tiers);
-  const prompt = generateJudgePrompt({ userMessage, config, previousTier: input.previousTier });
+  const prompt = generateJudgePrompt({ userMessage, config, previousTier: input.previousTier, taskCard: input.taskCard });
   const judgeRequest: CanonicalModelRequest = {
     provider: config.judge.provider,
     model: config.judge.model,
@@ -178,7 +188,8 @@ export async function classifyAndRoute(
         };
       }
 
-      const tier = parseTier(text, knownTiers);
+      const decision = parseJudgeDecision(text, knownTiers);
+      const tier = decision.tier;
       if (!tier) {
         if (attempt < maxAttempts) {
           continue;
@@ -254,7 +265,14 @@ export async function classifyAndRoute(
           model: config.judge.model,
         },
       });
-      return { tier, selection, resolvedFrom: "judge" };
+      return {
+        tier,
+        selection,
+        resolvedFrom: "judge",
+        ...(decision.isNewTask !== undefined ? { isNewTask: decision.isNewTask } : {}),
+        ...(response.usage !== undefined ? { judgeUsage: response.usage } : {}),
+        judgeAttempts: attempt,
+      };
     } catch (error) {
       if (input.abortSignal?.aborted) {
         throw error;
