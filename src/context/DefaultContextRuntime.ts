@@ -167,27 +167,39 @@ export class DefaultContextRuntime implements ContextRuntime {
       });
     }
 
-    // Ordinary appends advance recent3 but must not advance the prompt date.
-    // Hash projected content to detect committed pruning/compaction, including
-    // changes made by callers, without retaining another copy of large media.
+    // Track the unchanged prefix so pruning only relocates date notices after
+    // the first changed message, without retaining another copy of large media.
     const messageFingerprints = projection.messages.map((message) => createHash("sha256")
       .update(stableSerialize({ role: message.role, content: message.content }))
       .digest("hex"));
     const previousTime = this.promptTimeState.get(input.sessionId);
-    const historyRewritten = previousTime !== undefined && (
-      messageFingerprints.length < previousTime.messages.length
-      || previousTime.messages.some((hash, index) => hash !== messageFingerprints[index])
-    );
-    const refreshTime = !input.previewOnly && (
-      historyRewritten || this.cacheResetSessions.has(input.sessionId)
-    );
+    let unchangedPrefixLength = 0;
+    while (previousTime && unchangedPrefixLength < messageFingerprints.length
+      && messageFingerprints[unchangedPrefixLength] === previousTime.messages[unchangedPrefixLength]) {
+      unchangedPrefixLength += 1;
+    }
+    // Only a new full-compaction checkpoint refreshes the system date. Cache
+    // resets also cover micro-pruning and must not invalidate the system prefix.
+    // Inspect the checkpoint to cover manual compaction performed by callers.
+    const boundary = projection.messages[0];
+    const summary = projection.messages[1];
+    const newCheckpoint = previousTime !== undefined
+      && boundary?.role === "user"
+      && boundary.content.some((block) => block.type === "text" && block.text.startsWith("<compact-boundary"))
+      && summary?.role === "assistant"
+      && summary.content.some((block) => block.type === "text" && block.text.startsWith("[CONTEXT COMPACTION - REFERENCE ONLY]"))
+      && unchangedPrefixLength < 2;
+    const refreshTime = !input.previewOnly && newCheckpoint;
     const currentTime = this.now();
     const currentDate = currentTime.toISOString().slice(0, 10);
     const promptTimestamp = !previousTime || refreshTime ? currentTime.getTime() : previousTime.timestamp;
     // Keep each rollover at its original position so later requests extend the
     // same cache prefix. These request-only messages share the prompt anchor's
-    // lifetime; a rewritten history gets a fresh system date instead.
-    const dateUpdates = historyRewritten || refreshTime ? [] : [...(previousTime?.dateUpdates ?? [])];
+    // lifetime. Keep notices inside the unchanged prefix; replace affected
+    // notices with the current date at the new tail. This avoids stale indexes
+    // after pruning and never changes a prefix that pruning itself preserved.
+    const dateUpdates = refreshTime ? [] : (previousTime?.dateUpdates ?? [])
+      .filter((update) => update.index <= unchangedPrefixLength);
     const lastDate = dateUpdates.at(-1)?.date ?? new Date(promptTimestamp).toISOString().slice(0, 10);
     if (currentDate !== lastDate) {
       dateUpdates.push({

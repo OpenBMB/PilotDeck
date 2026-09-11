@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+import { MicroCompactionEngine } from "../../src/context/compaction/MicroCompactionEngine.js";
+import { AutoCompactionPolicy } from "../../src/context/compaction/AutoCompactionPolicy.js";
+import { TokenBudgetManager } from "../../src/context/budget/TokenBudgetManager.js";
 import type { CanonicalMessage, CanonicalToolSchema } from "../../src/model/index.js";
 import type { ContextPrepareInput } from "../../src/context/protocol/types.js";
 
@@ -90,6 +93,14 @@ function message(text: string): CanonicalMessage {
   return { role: "user", content: [{ type: "text", text }] };
 }
 
+function checkpoint(text: string): CanonicalMessage[] {
+  return [
+    message('<compact-boundary trigger="manual" />'),
+    { role: "assistant", content: [{ type: "text", text: `[CONTEXT COMPACTION - REFERENCE ONLY]\n${text}` }] },
+    message("continue"),
+  ];
+}
+
 function promptDate(context: { systemPrompt?: string }): string | undefined {
   return context.systemPrompt?.match(/now: (\d{4}-\d{2}-\d{2})/)?.[1];
 }
@@ -113,10 +124,9 @@ test("session prompt date survives midnight, retries, and normal appends", async
   assert.equal(promptDate(other), "2026-09-11");
 });
 
-test("date refreshes after history rewrites, then freezes again", async () => {
+test("pruning and local rewrites preserve the system date", async () => {
   for (const rewritten of [
     [message("tail")], // Head truncation / overflow recovery.
-    [message("summary"), message("tail")], // Full compaction.
     [message("head"), message("short tool result"), message("tail")], // Micro compaction.
     [message("head"), message("tail")], // Middle snip with stable head.
   ]) {
@@ -125,14 +135,14 @@ test("date refreshes after history rewrites, then freezes again", async () => {
     await runtime.prepareForModel(input({ messages: [message("head"), message("long tool result"), message("tail")] }));
     now = new Date("2026-09-11T12:00:00Z");
     const compacted = await runtime.prepareForModel(input({ messages: rewritten }));
-    assert.equal(promptDate(compacted), "2026-09-11");
+    assert.equal(promptDate(compacted), "2026-09-10");
     now = new Date("2026-09-12T12:00:00Z");
     const next = await runtime.prepareForModel(input({ messages: [...rewritten, message("next")] }));
-    assert.equal(promptDate(next), "2026-09-11");
+    assert.equal(promptDate(next), "2026-09-10");
   }
 });
 
-test("sliding window refreshes only when the projected history actually changes", async () => {
+test("sliding window preserves the system date when projected history changes", async () => {
   let now = new Date("2026-09-10T12:00:00Z");
   const runtime = new DefaultContextRuntime({ now: () => now });
   const messages = [message("old"), message("head"), message("tail")];
@@ -141,7 +151,7 @@ test("sliding window refreshes only when the projected history actually changes"
   const retry = await runtime.prepareForModel(input({ messages, maxMessages: 2 }));
   assert.equal(promptDate(retry), "2026-09-10");
   const advanced = await runtime.prepareForModel(input({ messages: [...messages, message("next")], maxMessages: 2 }));
-  assert.equal(promptDate(advanced), "2026-09-11");
+  assert.equal(promptDate(advanced), "2026-09-10");
 });
 
 test("discarded budget candidates do not change the live date or cache generation", async () => {
@@ -149,13 +159,13 @@ test("discarded budget candidates do not change the live date or cache generatio
   const runtime = new DefaultContextRuntime({ now: () => now });
   const first = await runtime.prepareForModel(input());
   now = new Date("2026-09-11T12:00:00Z");
-  const candidate = await runtime.prepareForModel(input({ previewOnly: true, messages: [message("hypothetical summary")] }));
+  const candidate = await runtime.prepareForModel(input({ previewOnly: true, messages: checkpoint("hypothetical summary") }));
   assert.equal(promptDate(candidate), "2026-09-10");
   const unchanged = await runtime.prepareForModel(input());
   assert.equal(unchanged.systemPrompt, first.systemPrompt);
   assert.equal(unchanged.cachePlan?.generation, (first.cachePlan?.generation ?? 0) + 1);
   assert.equal(dateUpdates(unchanged).length, 1);
-  const committed = await runtime.prepareForModel(input({ messages: [message("hypothetical summary")] }));
+  const committed = await runtime.prepareForModel(input({ messages: checkpoint("hypothetical summary") }));
   assert.equal(promptDate(committed), "2026-09-11");
 });
 
@@ -215,17 +225,97 @@ test("rollover previews neither consume the notice nor commit its position", asy
   assert.deepEqual(repeated.cachePlan, actual.cachePlan);
 });
 
-test("rewrites retire rollover messages when the system date refreshes", async () => {
+test("full compaction retires rollover messages and refreshes the system date", async () => {
   let now = new Date("2026-09-10T12:00:00Z");
   const runtime = new DefaultContextRuntime({ now: () => now });
   await runtime.prepareForModel(input());
   now = new Date("2026-09-11T12:00:00Z");
   assert.equal(dateUpdates(await runtime.prepareForModel(input())).length, 1);
-  const rewritten = await runtime.prepareForModel(input({ messages: [message("summary")] }));
+  const rewritten = await runtime.prepareForModel(input({ messages: checkpoint("summary") }));
   assert.equal(promptDate(rewritten), "2026-09-11");
   assert.equal(dateUpdates(rewritten).length, 0);
-  const next = await runtime.prepareForModel(input({ messages: [message("summary"), message("continue")] }));
+  const next = await runtime.prepareForModel(input({ messages: [...checkpoint("summary"), message("continue")] }));
   assert.equal(dateUpdates(next).length, 0);
+  now = new Date("2026-09-12T12:00:00Z");
+  const pruned = await runtime.prepareForModel(input({ messages: checkpoint("summary") }));
+  assert.equal(promptDate(pruned), "2026-09-11");
+  assert.equal(dateUpdates(pruned).length, 1);
+  const compactedAgain = await runtime.prepareForModel(input({ messages: checkpoint("new summary") }));
+  assert.equal(promptDate(compactedAgain), "2026-09-12");
+  assert.equal(dateUpdates(compactedAgain).length, 0);
+});
+
+test("micro-compaction cache resets do not refresh the prompt date", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({
+    now: () => now,
+    microCompaction: new MicroCompactionEngine(),
+    tokenBudget: new TokenBudgetManager(),
+    autoCompactionPolicy: new AutoCompactionPolicy(),
+  });
+  const messages: CanonicalMessage[] = [message("inspect these files")];
+  for (let index = 0; index < 5; index += 1) {
+    messages.push(
+      { role: "assistant", content: [{ type: "tool_call", id: `read-${index}`, name: "read_file", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", toolCallId: `read-${index}`, content: [{ type: "text", text: "source code line\n".repeat(1000) }] }] },
+    );
+  }
+  const first = await runtime.prepareForModel(input({ messages }));
+  now = new Date("2026-09-11T12:00:00Z");
+  let evaluations = 0;
+  const compacted = await runtime.tryAutoCompact({
+    sessionId: input().sessionId,
+    messages,
+    budgetEvaluator: async () => ({
+      tokens: ++evaluations === 1 ? 8500 : 7000,
+      maxContextTokens: 10000,
+      warningRatio: 0.8,
+      blockingRatio: 0.9,
+      state: evaluations === 1 ? "warning" : "ok",
+      ratio: evaluations === 1 ? 0.85 : 0.7,
+    }),
+  });
+  assert.equal(compacted.type, "compacted");
+  if (compacted.type !== "compacted") return;
+  assert.equal(compacted.tier, "micro");
+  const prepared = await runtime.prepareForModel(input({ messages: compacted.messages }));
+  assert.equal(prepared.systemPrompt, first.systemPrompt);
+  assert.equal(dateUpdates(prepared).length, 1);
+  assert.match(JSON.stringify(dateUpdates(prepared)), /2026-09-11/);
+  assert.ok(prepared.cachePlan!.generation > first.cachePlan!.generation);
+});
+
+test("pruning preserves prefix notices and relocates affected notices safely", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const first = await runtime.prepareForModel(input());
+  now = new Date("2026-09-11T12:00:00Z");
+  const rollover = await runtime.prepareForModel(input());
+  const messages: CanonicalMessage[] = [
+    ...input().messages,
+    { role: "assistant", content: [{ type: "tool_call", id: "read", name: "read_file", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", toolCallId: "read", content: [{ type: "text", text: "long result" }] }] },
+    message("continue"),
+  ];
+  now = new Date("2026-09-12T12:00:00Z");
+  await runtime.prepareForModel(input({ messages }));
+  const rewritten = [...messages];
+  rewritten[2] = { role: "user", content: [{ type: "tool_result", toolCallId: "read", content: [{ type: "text", text: "short result" }] }] };
+  const prepared = await runtime.prepareForModel(input({ messages: rewritten }));
+  assert.equal(prepared.systemPrompt, first.systemPrompt);
+  assert.deepEqual(prepared.messages.slice(0, rollover.messages.length), rollover.messages);
+  assert.deepEqual(prepared.messages.slice(2, 4), rewritten.slice(1, 3));
+  assert.equal(dateUpdates(prepared).length, 2);
+  assert.equal(prepared.messages.at(-1)?.metadata?.purpose, "date_update");
+  const preview = await runtime.prepareForModel(input({ previewOnly: true, messages: [message("continue")] }));
+  assert.equal(preview.systemPrompt, first.systemPrompt);
+  assert.deepEqual((await runtime.prepareForModel(input({ messages: rewritten }))).messages, prepared.messages);
+  const truncated = await runtime.prepareForModel(input({ messages: [message("continue")] }));
+  assert.equal(truncated.systemPrompt, first.systemPrompt);
+  assert.equal(truncated.messages.length, 2);
+  assert.equal(dateUpdates(truncated).length, 1);
+  assert.match(JSON.stringify(dateUpdates(truncated)), /2026-09-12/);
+  assert.deepEqual((await runtime.prepareForModel(input({ messages: [message("continue")] }))).messages, truncated.messages);
 });
 
 test("date notices preserve tool pairing and do not replace memory retrieval queries", async () => {
