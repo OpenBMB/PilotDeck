@@ -335,10 +335,12 @@ function loadQueueState(state) {
     try {
         const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         state.lastAcceptedModelSelection = parsed.lastAcceptedModelSelection;
+        state.acceptedInputIds = new Set((Array.isArray(parsed.acceptedInputIds) ? parsed.acceptedInputIds : []).filter(id => typeof id === 'string'));
         if (Array.isArray(parsed.items)) {
             state.inputQueue = parsed.items
                 .filter((item) => item && typeof item.id === 'string' && typeof item.command === 'string')
                 .map(restoreQueuedInputFromStorage);
+            for (const item of state.inputQueue) state.acceptedInputIds.add(item.id);
         }
         if (parsed.version !== 2 && !state.lastAcceptedModelSelection) {
             const last = [...state.inputQueue].reverse().find(item => item.options?.modelSelection);
@@ -491,7 +493,7 @@ function persistQueueState(state, strict = false) {
     if (!filePath) return;
     let tempPath;
     try {
-        if (state.inputQueue.length === 0 && !state.lastAcceptedModelSelection) {
+        if (state.inputQueue.length === 0 && !state.lastAcceptedModelSelection && !state.acceptedInputIds?.size) {
             fs.rmSync(filePath, { force: true });
             return;
         }
@@ -500,6 +502,7 @@ function persistQueueState(state, strict = false) {
         fs.writeFileSync(tempPath, JSON.stringify({
             version: 2,
             lastAcceptedModelSelection: state.lastAcceptedModelSelection,
+            acceptedInputIds: [...(state.acceptedInputIds || [])],
             revision: state.queueRevision,
             paused: state.queuePaused,
             pauseReason: state.queuePauseReason,
@@ -638,6 +641,7 @@ function ensureSessionState(sessionKey, projectKey, channelKey) {
             tokenBudget: null,
             hasVisibleFailureStatus: false,
             inputQueue: [],
+            acceptedInputIds: new Set(),
             queuePaused: false,
             queuePauseReason: undefined,
             queueRevision: 0,
@@ -652,6 +656,7 @@ function ensureSessionState(sessionKey, projectKey, channelKey) {
     } else {
         if (projectKey && state.projectKey !== projectKey && state.inputQueue.length === 0) {
             state.queueLoaded = false;
+            state.acceptedInputIds = new Set();
             state.lastAcceptedModelSelection = undefined;
             state.projectKey = projectKey;
         }
@@ -2066,7 +2071,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     if (!item || typeof item.id !== 'string' || typeof item.command !== 'string') {
         return { ok: false, error: 'Invalid queued input.' };
     }
-    if (state.inputQueue.some((entry) => entry.id === item.id)) {
+    if (state.acceptedInputIds.has(item.id) || state.inputQueue.some((entry) => entry.id === item.id)) {
         return { ok: true, state: inputQueueSnapshot(state) };
     }
     if (state.inputQueue.length >= 20) {
@@ -2075,6 +2080,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     const submitting = !state.active && !state.queuePaused && !state.queueDispatching && state.inputQueue.length === 0;
     const previousSelection = state.lastAcceptedModelSelection;
     const previousRevision = state.queueRevision;
+    state.acceptedInputIds.add(item.id);
     state.inputQueue.push({
         id: item.id,
         runId: item.runId,
@@ -2088,6 +2094,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     state.queueRevision += 1;
     try { persistQueueState(state, true); }
     catch (error) {
+        state.acceptedInputIds.delete(item.id);
         state.inputQueue = state.inputQueue.filter(entry => entry.id !== item.id);
         state.lastAcceptedModelSelection = previousSelection;
         state.queueRevision = previousRevision;

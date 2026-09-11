@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createAgentEventBuffer } from "../../../src/agent/protocol/events.js";
 import { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
 import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntimeConfig.js";
 import type { AgentRouterRuntime, AgentRuntimeDependencies } from "../../../src/agent/runtime/AgentRuntimeDependencies.js";
@@ -699,9 +700,13 @@ test("agent loop does not reserve catalog max output for compaction unless reque
   assert.equal(budgetEvaluations[0]!.reservedOutputTokens, 0);
 });
 
-test("agent loop records a compact boundary when auto compaction fires", async () => {
+test("agent loop records a compact boundary when auto compaction fires and streams its start before the summary resolves", { timeout: 5000 }, async () => {
   const persistedCompacts: Array<{ boundary: unknown; messages: CanonicalMessage[] }> = [];
   const tokenBudget = new TokenBudgetManager();
+  const buffer = createAgentEventBuffer();
+  let releaseSummary!: () => void;
+  const summaryGate = new Promise<void>(resolve => { releaseSummary = resolve; });
+  let summaryResolved = false;
 
   const context: AgentRuntimeDependencies["context"] = {
     prepareForModel: async (input) => ({
@@ -721,41 +726,47 @@ test("agent loop records a compact boundary when auto compaction fires", async (
       reason: "test",
     }),
     captureTurn: async () => undefined,
-    tryAutoCompact: async () => ({
-      type: "compacted",
-      tier: "full",
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "kept tail" }],
-        },
-      ],
-      snapshot: tokenBudget.snapshotFromTokens(40, 32_768, { reservedOutputTokens: 32_768 }),
-      result: {
-        compactionId: "compact-auto-1",
-        trigger: "auto",
-        preTokens: 120,
-        postTokens: 40,
-        messagesSummarized: 1,
-        summaryMessage: {
-          role: "assistant",
-          content: [{ type: "text", text: "summary" }],
-        },
-        boundaryMarker: {
-          role: "user",
-          content: [{ type: "text", text: "boundary" }],
-        },
-        messagesToKeep: [
+    tryAutoCompact: async () => {
+      buffer.emitter({ type: "compact_started", sessionId: "session-2", turnId: "turn-2", compactionId: "compact-auto-1", trigger: "auto", preTokens: 120 });
+      await summaryGate;
+      summaryResolved = true;
+      buffer.emitter({ type: "compact_completed", sessionId: "session-2", turnId: "turn-2", compactionId: "compact-auto-1", trigger: "auto", status: "completed", preTokens: 120, postTokens: 40, messagesSummarized: 1 });
+      return {
+        type: "compacted",
+        tier: "full",
+        messages: [
           {
             role: "user",
             content: [{ type: "text", text: "kept tail" }],
           },
         ],
-        attachments: [],
-        hookResults: [],
-        diagnostics: [],
-      },
-    }),
+        snapshot: tokenBudget.snapshotFromTokens(40, 32_768, { reservedOutputTokens: 32_768 }),
+        result: {
+          compactionId: "compact-auto-1",
+          trigger: "auto",
+          preTokens: 120,
+          postTokens: 40,
+          messagesSummarized: 1,
+          summaryMessage: {
+            role: "assistant",
+            content: [{ type: "text", text: "summary" }],
+          },
+          boundaryMarker: {
+            role: "user",
+            content: [{ type: "text", text: "boundary" }],
+          },
+          messagesToKeep: [
+            {
+              role: "user",
+              content: [{ type: "text", text: "kept tail" }],
+            },
+          ],
+          attachments: [],
+          hookResults: [],
+          diagnostics: [],
+        },
+      };
+    },
   };
 
   const router: AgentRouterRuntime = {
@@ -803,6 +814,7 @@ test("agent loop records a compact boundary when auto compaction fires", async (
 
   const dependencies: AgentRuntimeDependencies = {
     router,
+    drainEvents: buffer.drain,
     tools: {
       registry: new ToolRegistry(),
       scheduler: {
@@ -849,8 +861,13 @@ test("agent loop records a compact boundary when auto compaction fires", async (
     },
   })) {
     events.push(event);
+    if (event.type === "compact_started") {
+      assert.equal(summaryResolved, false);
+      releaseSummary();
+    }
   }
 
+  assert.deepEqual(events.filter(event => event.type.startsWith("compact_")).map(event => event.type), ["compact_started", "compact_completed"]);
   assert.ok(events.some((event) => event.type === "turn_continued"));
   assert.equal(persistedCompacts.length, 1);
   assert.deepEqual(persistedCompacts[0]!.boundary, {

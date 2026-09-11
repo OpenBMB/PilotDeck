@@ -98,3 +98,43 @@
 测试会话：`web:s_64ce4b33-7343-4d1a-b5c1-2042a5740768`（P1/P2/P3）与 `web:s_fe380ca1-0db9-4c38-9d90-856fd847e52c`（P4）。
 
 24 个相关测试文件、371 项通过，包含原上传/去重/压缩回归和新增即时预览、队列显示载荷隔离、图片预览弹窗、历史合并不重复及普通文件保留。TypeScript 检查、生产构建通过；修改的前端文件 ESLint 无错误，4 条既有警告。仍排除前述已有失败的 `streamSmoother.test.ts`。
+
+## 最终收口：混合图片、提交重试与真实压缩
+
+本轮只补齐以上生命周期的缺口，不增加一套新的消息排序规则。
+
+- 混合图片：原先只要存在内容引用图片，就跳过普通上传的预览。现在逐张匹配正式图片与上传预览，再补上尚未确认的预览；保留同一图片被主动选择多次的数量。新增组件回归使用真实的 normalized-to-chat 转换，覆盖普通图片与文档区域引用同发，以及正式历史到达后不重复。
+- 提交重试：同一个会话、同一份未确认的草稿沿用原输入 ID，收据保存在本地草稿存储中，刷新后仍有效。后端与队列一起持久化已接收 ID，执行结束或重启后仍能识别重试。成功确认后清除草稿收据，用户主动再次发送相同内容会获得新 ID。收据随会话队列侧车文件管理，删除会话时一起移除。
+- 真实压缩：实际模型测试发现 `AgentLoop` 等待摘要请求完成后才排空事件缓冲，因此前端一直显示等待模型。三个自动压缩入口现在使用已有工具事件泵的方式，在等待摘要期间持续发出事件。回归测试将摘要 Promise 挂起，只有观察到 `compact_started` 才允许摘要完成，确保开始事件不会再被等待操作阻塞。
+
+### 真实电脑验收
+
+为稳定触发压缩，在独立临时实例中使用真实 `qwen3.8-27b`，将该测试实例的上下文限制设置为 24k。常用实例的模型配置和上下文限制不变。输入均为合成的图形记录，无文件修改或工具执行要求。
+
+测试会话：`web:s_a3297a4c-5dae-4202-b93c-2cf0fd8ae51f`，标题 `确认压缩验收 C1`。
+
+1. C2/C3 在修复前成功产生真实模型摘要，同时暴露了开始事件延迟问题。
+2. 更新后 C4、C7、C8 实际观察到 `Compacting context...`。C7 的同一压缩 ID 开始与完成相隔约 11 秒；C8 相隔约 8 秒，后端记录 `summarySucceeded: true`。
+3. C8 开始后立即刷新页面，重新加载后仍显示 `Compacting context...`；完成后展开过程，依次为一条 `Compacted context`、思考和回答。完成记录没有跑到用户消息前。
+4. 用临时本地 WebSocket 代理只丢弃 R1 的入队确认，真实后端正常接收并执行。页面超时后保留草稿；刷新后点击发送，请求 ID 更新而输入 ID 保持 `c48c0ddf-27b7-413a-a500-5a0c45a650a7`，后端只确认原操作。页面只有一条 R1 用户输入和一条模型回答，草稿清空。
+5. C6 还覆盖了连接异常导致未取得确认、执行已经结束、刷新后重试的路径，同样没有再次执行。
+
+本轮混合图片边界由组件回归验证；普通图片即时预览、上传中回车、上传失败重试、连续回车和完成后刷新已由前几轮真实浏览器验收覆盖。临时代理仅用于故障注入，未加入应用代码。
+
+### 本轮自动验证
+
+UI 目录运行：
+
+```sh
+./node_modules/.bin/vitest run src/stores src/components/chat/hooks src/components/chat-v2/processGrouping.test.ts src/components/chat-v2/MessagesPaneV2.render.test.tsx src/components/chat-v2/ChatInterfaceV2.queue.test.tsx server/pilotdeck-bridge.test.js server/pilotdeck-bridge.sending.test.js server/review-acceptance-lifecycle.test.js --exclude '**/streamSmoother.test.ts'
+./node_modules/.bin/tsc --noEmit -p tsconfig.json
+```
+
+根目录运行：
+
+```sh
+node --import tsx --test --test-force-exit tests/agent/loop/context-cap.spec.ts tests/context/autoCompaction.spec.ts tests/context/compaction-engine.spec.ts tests/session/transcript-replay-compaction.spec.ts
+./node_modules/.bin/tsc --noEmit
+```
+
+结果：UI/桥接 26 文件、384 项通过；AgentLoop/压缩/历史回放 51 项通过；两端类型检查通过。修改的前端文件 ESLint 为 0 错误、4 条既有警告。仍明确排除上文记录的既有失败，不代表全仓测试全部通过。

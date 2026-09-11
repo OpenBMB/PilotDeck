@@ -342,6 +342,7 @@ export function useChatComposerState({
   >(null);
   const inputValueRef = useRef(input);
   const activeDraftStorageKeyRef = useRef(draftStorageKey);
+  const queueAttemptsRef = useRef(new Map<string, { fingerprint: string; id: string }>());
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSessionGrantResolversRef = useRef(new Map<string, (result: PermissionGrantResult) => void>());
   const activeAttachmentUploadsRef = useRef<AttachmentUploadBatch[]>([]);
@@ -1369,7 +1370,7 @@ export function useChatComposerState({
       messageContent = `${messageContent}${formatContentReferencePromptBlock(submitDocumentReferences)}`;
 
       const effectiveSessionId = submitTargetSessionId;
-      const runId = createUserTurnRunId();
+      let runId = createUserTurnRunId();
       const toolsSettings = getPilotDeckSettings();
       const sessionSummary = getNotificationSessionSummary(submitSelectedSession, userVisibleInput);
       const resolvedProjectPath = getSelectedProjectPath(selectedProject);
@@ -1410,6 +1411,25 @@ export function useChatComposerState({
       // server atomically decides whether to dispatch now or retain the item,
       // avoiding upload/session-busy races while preserving the richer PR payload.
       if (shouldRoutePreparedInputThroughQueue(queueTargetSessionId)) {
+        // A missing acknowledgment is not a rejection. Retry the same draft
+        // with its original identity, including after a page reload.
+        const attemptKey = `${getDraftInputStorageKey(selectedProject.name, queueTargetSessionId)}:queue-attempt`;
+        const fingerprint = JSON.stringify({
+          command: messageContent, uploadedAttachmentRefs, turnAttachments,
+          modelSelection: submittedModelSelection, model, runMode,
+          permissionMode, basePermissionMode, thinkingMode,
+        });
+        let previousAttempt = queueAttemptsRef.current.get(attemptKey);
+        if (!previousAttempt) {
+          try { previousAttempt = JSON.parse(safeLocalStorage.getItem(attemptKey) || 'null'); }
+          catch { /* A stale/corrupt draft receipt must not prevent sending. */ }
+        }
+        if (previousAttempt?.fingerprint === fingerprint && typeof previousAttempt.id === 'string') {
+          runId = previousAttempt.id;
+        }
+        const attempt = { fingerprint, id: runId };
+        queueAttemptsRef.current.set(attemptKey, attempt);
+        safeLocalStorage.setItem(attemptKey, JSON.stringify(attempt));
         const result = await enqueuePreparedInput?.({
           id: runId,
           runId,
@@ -1446,6 +1466,8 @@ export function useChatComposerState({
           }, queueTargetSessionId);
           return;
         }
+        queueAttemptsRef.current.delete(attemptKey);
+        safeLocalStorage.removeItem(attemptKey);
         bumpSessionActivity();
         clearSubmittedComposerState();
         return;

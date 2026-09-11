@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
+import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import MessagesPaneV2 from './MessagesPaneV2';
 import { ThinkingBlock } from './ThinkingBlock';
 import {
@@ -1727,4 +1728,29 @@ describe('uploaded image preview lifecycle', () => {
     expect(screen.queryByText('photo.png')).toBeNull();
     expect(screen.getByText('notes.txt')).toBeTruthy();
   });
+});
+
+it('uploaded image stays visible when sent with a document region reference', () => {
+  const uploadedPreview = 'data:image/png;base64,dXBsb2Fk';
+  const regionData = 'data:image/png;base64,cmVnaW9u';
+  const reference = { schemaVersion: 1 as const, kind: 'content-reference' as const,
+    id: 'region-1', selectionMode: 'region' as const, createdAt: '2026-09-11T00:00:00Z',
+    source: { fileName: 'reference.pdf', relativePath: 'reference.pdf', mimeType: 'application/pdf' },
+    renderer: { id: 'pdf' as const, backend: 'builtin' as const, locatorQuality: 'visual' as const },
+    locator: { surface: 'page' as const, pageNumber: 1, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    image: { name: 'region.png', mimeType: 'image/png' as const, width: 100, height: 100, dataUrl: regionData },
+  };
+  const messages = normalizedToChatMessages([{
+    id: 'local-mixed', sessionId: 'web:test', provider: 'pilotdeck', kind: 'text', role: 'user',
+    content: 'compare the uploaded image with this document region', timestamp: '2026-09-11T00:00:00Z',
+    images: [regionData],
+    attachments: [ { name: 'uploaded.png', uploadId: 'u', attachmentId: 'a', previewData: uploadedPreview },
+      { kind: 'content-reference', name: reference.source.fileName, path: reference.source.relativePath, contentReference: { ...reference, image: { ...reference.image, dataUrl: undefined } } } ],
+  }]);
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(screen.getAllByRole('img').some(img => img.getAttribute('src') === uploadedPreview)).toBe(true);
+  view.rerender(createPaneElement({ messages: [{ ...messages[0], images: [
+    { name: '', data: regionData }, { name: '', data: uploadedPreview },
+  ] }] }));
+  expect(screen.getAllByRole('img').filter(img => img.getAttribute('src') === uploadedPreview)).toHaveLength(1);
 });

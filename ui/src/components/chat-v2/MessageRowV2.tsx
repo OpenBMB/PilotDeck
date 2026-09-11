@@ -215,9 +215,18 @@ function MessageRowV2({
   );
   // Canonical history supplies images after acceptance. Until then use the
   // upload's display-only preview, retaining attachment identities for edits.
-  const visibleImages = messageImages.length > 0 ? messageImages : uploadedImagePreviews.map((attachment) => ({
-    data: attachment.previewData!, name: attachment.name, mimeType: attachment.mimeType,
-  }));
+  const visibleImages = useMemo(() => {
+    const remaining = [...uploadedImagePreviews];
+    const confirmed = messageImages.map((image) => {
+      const index = remaining.findIndex((attachment) => attachment.previewData === image.data);
+      if (index < 0) return image;
+      const [preview] = remaining.splice(index, 1);
+      return { ...image, name: image.name || preview.name };
+    });
+    return [...confirmed, ...remaining.map((attachment) => ({
+      data: attachment.previewData!, name: attachment.name, mimeType: attachment.mimeType,
+    }))];
+  }, [messageImages, uploadedImagePreviews]);
   const fileAttachments = useMemo(
     () => messageAttachments.filter((attachment) => (
       attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND
